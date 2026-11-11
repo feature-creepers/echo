@@ -1,0 +1,88 @@
+# JARVIS
+
+A personal voice assistant that runs on your Mac. Hold a key and talk; it answers aloud. It can search the web, read your Google Calendar, tell you the weather and brief you in the morning. It reads and reports: nothing in it sends email, changes your calendar or edits files. The one thing it can write is text at your cursor, when you ask for that with its own shortcut.
+
+It uses Claude as its brain through the Claude Code command-line tool, on your own Claude subscription. There is no API key to set up.
+
+## What you need
+
+- A Mac running macOS 13 or later (Intel or Apple Silicon).
+- [Node.js](https://nodejs.org) 20 or later.
+- Apple's Command Line Tools, for the Swift compiler: `xcode-select --install`.
+- [Claude Code](https://claude.com/claude-code), installed and signed in with a Claude subscription. Check with `claude --version`.
+
+Optional: connect Google Calendar to your Claude account (claude.ai → Settings → Connectors) if you want calendar reading.
+
+## Install and run
+
+```bash
+git clone <this repository> jarvis
+cd jarvis
+./build-app.sh
+open ~/Applications/JARVIS.app
+```
+
+`build-app.sh` compiles the native window and puts `JARVIS.app` in `~/Applications`. The first build takes a few minutes; later builds are quick unless `app/main.swift` changed.
+
+On first use macOS asks for the microphone and speech recognition. Allow both.
+
+To run without building the app, for quick work on the interface:
+
+```bash
+node server.mjs
+```
+
+This opens JARVIS in a Chrome window. Voice input then uses Chrome's recogniser, and the features that need the native window (Mini mode, global shortcuts, other-apps integration) are absent.
+
+## Using it
+
+| Key | What it does |
+|---|---|
+| Space | Talk, when the text box is empty (hold, or tap, depending on Settings) |
+| Enter | Send typed text |
+| Esc | Stop listening, speaking or a reply |
+| Ctrl+Option+Space | Talk from any app |
+| Ctrl+Option+Shift+Space | Speak a request and have the result typed at your cursor |
+
+Everything else is in **Settings**: voice and speed, speech language, model, standing instructions, the opening briefing, tools, history and startup options.
+
+Tell JARVIS about yourself in the context file (Settings → Assistant → Context file). Set your town in Settings → Tools and connections.
+
+## How it is put together
+
+| File | Role |
+|---|---|
+| `app/main.swift` | The native macOS window: frameless window, Mini mode, Apple speech recognition, global shortcuts, menu bar icon, reading the selection and pasting in other apps. |
+| `server.mjs` | The local server, with no dependencies. Keeps one Claude Code process running and passes questions to it, speaks replies with the Mac's `say` command, and handles settings, weather and history. Listens on `127.0.0.1` only. |
+| `public/index.html` | The whole interface: layout, animation and logic in one file. |
+| `build-app.sh` | Compiles the Swift shell, assembles `JARVIS.app` and signs it for this Mac. |
+| `workspace/CLAUDE.md` | Template for the context file. |
+
+Your own data lives outside the project, in `~/JARVIS`: `settings.json`, `history/`, `workspace/` (the context file, and the only folder JARVIS can read) and `jarvis.log`.
+
+### What the agent is allowed to do
+
+The Claude process is started with a fixed list of tools: reading files in its workspace, web search and web fetch, and four read-only Google Calendar tools. Calendar write tools and every other connector on your Claude account are explicitly hidden from it. That list is in `server.mjs` (`FILE_TOOLS`, `WEB_TOOLS`, `CONNECTOR_TOOLS`, `HIDDEN_TOOLS`). Widen it with care: the assistant reads web pages and, if you add it, email, which are text written by strangers.
+
+## Changing it
+
+- **Interface or server:** edit `public/index.html` or `server.mjs`, run `./build-app.sh`, reopen the app.
+- **Native window:** edit `app/main.swift`, then `./build-app.sh`. This recompiles, and because the app is signed for this Mac only, macOS may ask again for microphone, speech and Accessibility permission.
+- **Personality:** the `persona` function in `server.mjs`.
+- **Version:** `VERSION` in `server.mjs` and `CFBundleShortVersionString` in `build-app.sh`.
+
+For a detailed trace of what the Claude process is doing, start the app with `open ~/Applications/JARVIS.app --env JARVIS_DEBUG=1` and read `~/JARVIS/jarvis.log`.
+
+## Where your data goes
+
+- **Stays on your Mac:** settings, history and the context file.
+- **Anthropic:** your questions and whatever JARVIS reads to answer them, through Claude Code.
+- **Apple:** your voice, when speech recognition is not running on-device.
+- **Open-Meteo:** the coordinates of your weather town.
+
+## Known limits
+
+- macOS only.
+- Speech language is chosen in Settings (English UK or French); it is not detected automatically.
+- Reading the selection in another app depends on that app exposing it to macOS. Native apps generally do; some browsers and Electron apps do not.
+- The app is not notarised. Build it on the Mac that will run it rather than copying a built `JARVIS.app` between machines.

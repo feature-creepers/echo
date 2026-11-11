@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.JARVIS_PORT || 4317);
 const HOST = '127.0.0.1'; // never exposed to the network
+const VERSION = '0.4.0';   // keep in step with the version in build-app.sh
 // Where the user's own files live. The Dock app points this at ~/JARVIS so they survive app rebuilds.
 const DATA = process.env.JARVIS_DATA || ROOT;
 const WORKSPACE = path.join(DATA, 'workspace'); // the only folder the agent can read
@@ -315,6 +316,7 @@ function settingsView() {
     voices: { en: installedVoices.en.map((v) => v.name), fr: installedVoices.fr.map((v) => v.name) },
     autoVoice,
     calendarConnected: calendarSeen,
+    version: VERSION,
     dataDir: DATA.replace(os.homedir(), '~'),
   };
 }

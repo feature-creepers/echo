@@ -161,10 +161,22 @@
   #sSaved { color: var(--cyan-dim); font-size: 10px; letter-spacing: 0.2em; min-width: 80px; text-align: right; }
 
   /* settings: cards that fill the window, flowing into as many columns as fit */
-  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(370px, 1fr)); gap: 16px; align-items: start; max-width: 1560px; margin: 0 auto; }
+  /* cards are packed into columns by layoutCards(), each going to the shortest column, so no gaps are left */
+  .cards { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; max-width: 1640px; margin: 0 auto; }
+  .cards .col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+  @media (max-width: 460px) { .set { grid-template-columns: 1fr; gap: 8px; } .set .ctl { justify-content: flex-start; } .view-body { padding: 12px; } }
   .card { padding: 16px 18px 8px; backdrop-filter: none; }
   .card h2 { margin: 0 0 6px; font-size: 11px; color: var(--cyan); }
   .card > p { margin: 0 0 8px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+  /* about: one wide card with three columns of plain facts */
+  .card.about { flex: 0 0 100%; padding-bottom: 16px; }
+  .about .lede { color: var(--text); font-size: 12.5px; max-width: 900px; margin-bottom: 14px; }
+  .about .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px 32px; border-top: 1px dashed rgba(95, 225, 255, 0.12); padding-top: 12px; }
+  .about h3 { margin: 0 0 6px; font-size: 10px; letter-spacing: 0.26em; color: var(--cyan-dim); font-weight: 600; text-transform: uppercase; }
+  .about ul { margin: 0 0 12px; padding: 0; list-style: none; }
+  .about li { color: var(--muted); font-size: 11.5px; line-height: 1.5; padding: 3px 0 3px 14px; position: relative; }
+  .about li::before { content: ""; position: absolute; left: 0; top: 10px; width: 5px; height: 1px; background: var(--cyan); }
+  .about li b { color: var(--text); font-weight: 500; }
   .set { display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center; padding: 10px 0; border-top: 1px dashed rgba(95, 225, 255, 0.12); }
   .set.stack { grid-template-columns: 1fr; gap: 8px; }
   .set label, .set .name { color: var(--text); font-size: 12.5px; }
@@ -192,8 +204,8 @@
   .set button { padding: 7px 10px; white-space: nowrap; }
   .set .ctl label { display: inline-flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--muted); }
   .set .state { color: var(--muted); font-size: 10.5px; }
-  .keys { color: var(--muted); line-height: 2; padding: 6px 0 10px; border-top: 1px dashed rgba(95, 225, 255, 0.12); }
-  .keys b { color: var(--cyan); font-weight: 600; display: inline-block; min-width: 104px; }
+  .keys { color: var(--muted); display: grid; grid-template-columns: auto 1fr; gap: 9px 18px; line-height: 1.45; padding: 12px 0 10px; border-top: 1px dashed rgba(95, 225, 255, 0.12); }
+  .keys b { color: var(--cyan); font-weight: 600; white-space: nowrap; }
 
   /* history */
   #hList { max-width: 900px; margin: 0 auto; }
@@ -357,7 +369,47 @@
 
     <section class="panel card">
       <h2>Shortcuts</h2>
-      <div class="keys"><b>Space</b> talk, when the text box is empty<br><b>Enter</b> send typed text<br><b>Esc</b> stop listening, speaking or a reply<br><b>⌃⌥ Space</b> talk from any app<br><b>⌃⌥⇧ Space</b> write at the cursor of another app</div>
+      <div class="keys"><b>Space</b><span>talk, when the text box is empty</span><b>Enter</b><span>send typed text</span><b>Esc</b><span>stop listening, speaking or a reply</span><b>⌃⌥ Space</b><span>talk from any app</span><b>⌃⌥⇧ Space</b><span>write at the cursor of another app</span></div>
+    </section>
+
+    <section class="panel card about">
+      <h2>About JARVIS <span id="aVersion" style="color:var(--muted);letter-spacing:0.1em"></span></h2>
+      <p class="lede">A personal voice assistant that runs on this Mac. You talk, it answers aloud, and it can look things up for you. It reads and reports. It never sends, edits or deletes anything on its own; the one thing it can write is text at your cursor, when you ask for that.</p>
+      <div class="cols">
+        <div>
+          <h3>How it is built</h3>
+          <ul>
+            <li><b>Window:</b> a small native macOS app written in Swift, showing a web interface.</li>
+            <li><b>Server:</b> a local Node.js program with no dependencies, reachable only from this Mac.</li>
+            <li><b>Brain:</b> Claude, through the Claude Code command-line tool and your own Claude subscription. No API key.</li>
+            <li><b>Listening:</b> Apple's speech recognition, built into macOS.</li>
+            <li><b>Speaking:</b> the Mac's own text-to-speech voices.</li>
+            <li><b>Weather:</b> Open-Meteo, a free service needing no account.</li>
+          </ul>
+        </div>
+        <div>
+          <h3>What it does</h3>
+          <ul>
+            <li><b>Voice conversation:</b> hold a key to talk, replies spoken sentence by sentence.</li>
+            <li><b>Global shortcut:</b> talk from any app; optional writing at your cursor.</li>
+            <li><b>Opening briefing:</b> date, system, weather and today's calendar.</li>
+            <li><b>Google Calendar:</b> read-only, through your Claude account.</li>
+            <li><b>Web search and files:</b> searches the web and reads its own workspace folder.</li>
+            <li><b>Mini mode:</b> a small always-on-top core.</li>
+            <li><b>History:</b> past exchanges, searchable.</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Where things go</h3>
+          <ul>
+            <li><b>On this Mac:</b> settings, history and your context file, in <span id="aDir">~/JARVIS</span>.</li>
+            <li><b>To Anthropic:</b> your questions and what JARVIS reads to answer them.</li>
+            <li><b>To Apple:</b> your voice, when speech recognition is not on-device.</li>
+            <li><b>To Open-Meteo:</b> the coordinates of your weather town.</li>
+            <li><b>Not built in:</b> anything that sends email, changes your calendar or edits files.</li>
+          </ul>
+        </div>
+      </div>
     </section>
 
   </div></div>
@@ -784,6 +836,8 @@ function paintSettings() {
   $('sCalState').textContent = !cfg.tools.calendar ? 'Off.' : view.calendarConnected ? 'Connected.' : 'Not connected on your Claude account yet.';
   if (document.activeElement !== $('sTown')) $('sTown').value = cfg.location ? cfg.location.name : '';
   $('sDir').textContent = view.dataDir;
+  $('aDir').textContent = view.dataDir;
+  $('aVersion').textContent = 'v' + view.version;
 }
 let savedTimer = null;
 async function saveSetting(patch) {
@@ -801,7 +855,24 @@ async function loadSettings() {
 }
 loadSettings().then(() => setTimeout(() => ask('', { boot: true }), 5000));   // opening remarks, if one is due today
 
-function openSettings() { loadSettings(); post({ type: 'status' }); $('settings').hidden = false; $('sClose').focus(); }
+// Pack the setting cards into as many columns as the window has room for.
+const cardBox = document.querySelector('#settings .cards');
+const cards = [...cardBox.querySelectorAll('.card:not(.about)')];   // in reading order
+const aboutCard = cardBox.querySelector('.card.about');
+function layoutCards() {
+  if ($('settings').hidden) return;
+  const n = Math.max(1, Math.min(4, Math.floor((cardBox.clientWidth + 16) / 376)));
+  const cols = Array.from({ length: n }, () => { const c = document.createElement('div'); c.className = 'col'; return c; });
+  cardBox.textContent = '';
+  for (const c of cols) cardBox.appendChild(c);
+  for (const card of cards) {
+    // the shortest column so far takes the next card
+    cols.reduce((a, b) => (b.offsetHeight < a.offsetHeight ? b : a)).appendChild(card);
+  }
+  cardBox.appendChild(aboutCard);
+}
+addEventListener('resize', layoutCards);
+function openSettings() { loadSettings().then(layoutCards); post({ type: 'status' }); $('settings').hidden = false; layoutCards(); cardBox.parentElement.scrollTop = 0; $('sClose').focus(); }
 function closeSettings() { $('settings').hidden = true; $('input').focus(); }
 $('gear').onclick = openSettings;
 $('sClose').onclick = closeSettings;
