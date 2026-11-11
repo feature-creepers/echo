@@ -1,0 +1,1044 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JARVIS</title>
+<style>
+  :root {
+    --bg: #03070d;
+    --panel: rgba(8, 22, 34, 0.72);
+    --line: rgba(80, 220, 255, 0.22);
+    --cyan: #5fe1ff;
+    --cyan-dim: #2b8aa6;
+    --text: #d6f4ff;
+    --muted: #6f97a8;
+    --amber: #ffb454;
+    --red: #ff6b6b;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background:
+      radial-gradient(ellipse at 50% 42%, rgba(20, 90, 120, 0.28), transparent 60%),
+      linear-gradient(rgba(80, 220, 255, 0.035) 1px, transparent 1px) 0 0 / 100% 44px,
+      linear-gradient(90deg, rgba(80, 220, 255, 0.035) 1px, transparent 1px) 0 0 / 44px 100%,
+      var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    overflow: hidden;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+  }
+  header, footer { display: flex; align-items: center; gap: 16px; padding: 12px 20px; }
+  header { border-bottom: 1px solid var(--line); }
+  .brand { letter-spacing: 0.5em; font-weight: 700; color: var(--cyan); font-size: 15px; }
+  .sub { color: var(--muted); letter-spacing: 0.18em; font-size: 10px; text-transform: uppercase; }
+  /* living status: a heartbeat dot and a mood word, coloured by what JARVIS is doing */
+  .vital { --tone: #5fe1ff; display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 10px; letter-spacing: 0.22em; color: var(--tone); transition: color 0.6s; }
+  #pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--tone); box-shadow: 0 0 10px var(--tone); animation: beat var(--beat, 1s) ease-in-out infinite; transition: background 0.6s; }
+  #bpm { color: var(--muted); letter-spacing: 0.14em; }
+  @keyframes beat { 0%, 100% { transform: scale(0.75); opacity: 0.55; } 12% { transform: scale(1.35); opacity: 1; } 28% { transform: scale(0.9); opacity: 0.8; } 40% { transform: scale(1.15); opacity: 1; } }
+  #state { transition: color 0.6s; }
+  .spacer { flex: 1; }
+  #clock { font-size: 20px; letter-spacing: 0.12em; color: var(--cyan); }
+  #date { color: var(--muted); letter-spacing: 0.14em; font-size: 10px; text-transform: uppercase; text-align: right; }
+
+  main { display: grid; grid-template-columns: 250px 1fr 380px; gap: 16px; padding: 16px 20px; min-height: 0; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 14px;
+    position: relative;
+    min-height: 0;
+    backdrop-filter: blur(6px);
+  }
+  .panel::before, .panel::after {
+    content: ""; position: absolute; width: 12px; height: 12px; border: 2px solid var(--cyan);
+  }
+  .panel::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
+  .panel::after { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }
+  h2 { margin: 0 0 12px; font-size: 10px; letter-spacing: 0.3em; color: var(--cyan-dim); font-weight: 600; text-transform: uppercase; }
+
+  .left { display: flex; flex-direction: column; gap: 16px; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+  .left .panel { flex-shrink: 0; }
+  .wx { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+  #wxTemp { font-size: 34px; color: var(--cyan); text-shadow: 0 0 14px rgba(95, 225, 255, 0.5); line-height: 1; }
+  #wxText { text-transform: uppercase; letter-spacing: 0.12em; font-size: 11px; }
+  #wxPlace { background: none; border: 0; border-bottom: 1px dashed var(--cyan-dim); border-radius: 0; padding: 0 0 1px; color: var(--text); letter-spacing: 0.06em; font-size: 12px; text-transform: none; }
+  #wxEdit { width: 120px; background: rgba(8, 22, 34, 0.9); border: 1px solid var(--cyan); color: var(--text); font: inherit; font-size: 12px; padding: 2px 5px; outline: none; text-align: right; }
+  .gauge { margin-bottom: 12px; }
+  .gauge .row { display: flex; justify-content: space-between; margin-bottom: 5px; }
+  .gauge .row span:first-child { color: var(--muted); letter-spacing: 0.16em; font-size: 10px; }
+  .bar { height: 5px; background: rgba(95, 225, 255, 0.1); overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--cyan-dim), var(--cyan)); transition: width 0.8s ease; box-shadow: 0 0 8px var(--cyan); }
+  .kv { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; border-top: 1px dashed rgba(95, 225, 255, 0.12); }
+  .kv span:first-child { color: var(--muted); font-size: 10px; letter-spacing: 0.14em; }
+  .kv span:last-child { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { border: 1px solid var(--line); padding: 3px 7px; font-size: 10px; letter-spacing: 0.08em; color: var(--cyan); border-radius: 2px; }
+  .note { color: var(--muted); font-size: 10.5px; line-height: 1.5; margin: 10px 0 0; }
+
+  .core { position: relative; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  #orb { width: 100%; height: 100%; display: block; }
+  .under { position: absolute; left: 6%; right: 6%; bottom: 3%; display: flex; flex-direction: column; align-items: center; gap: 12px; pointer-events: none; }
+  #caption { max-width: 720px; text-align: center; font-size: 15px; line-height: 1.55; color: var(--text); max-height: 4.7em; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; text-shadow: 0 0 18px rgba(3, 7, 13, 0.9); }
+  #caption:empty { display: none; }
+  #state { text-align: center; letter-spacing: 0.6em; font-size: 12px; color: var(--cyan); text-shadow: 0 0 12px var(--cyan); }
+  #live { text-align: center; color: var(--muted); min-height: 1.4em; font-size: 12px; }
+
+  /* transcript panel: hidden unless switched on */
+  body:not(.show-log) main { grid-template-columns: 250px 1fr; }
+  body:not(.show-log) .right { display: none; }
+  body.show-log #caption { display: none; }
+
+  /* inside the native window: no title bar, so the header leaves room for the window buttons and drags the window */
+  body.native header { padding-left: 92px; cursor: default; -webkit-user-select: none; user-select: none; }
+  body:not(.native) #mini, #expand { display: none; }
+
+  /* compact, always-on-top mode: just the core */
+  body.compact { grid-template-rows: 1fr; }
+  body.compact header, body.compact footer, body.compact .left, body.compact .right { display: none; }
+  body.compact main { grid-template-columns: 1fr; padding: 0; }
+  body.compact .under { bottom: 5%; gap: 6px; left: 4%; right: 4%; }
+  body.compact #caption { font-size: 11px; max-height: 3.1em; }
+  body.compact #state { font-size: 9px; letter-spacing: 0.4em; }
+  body.compact #live { display: none; }
+  body.compact #expand { display: block; position: absolute; top: 8px; right: 8px; padding: 5px 8px; font-size: 9px; opacity: 0.55; }
+  body.compact #expand:hover { opacity: 1; }
+  body.compact .core { cursor: default; -webkit-user-select: none; user-select: none; }
+
+  .right { display: flex; flex-direction: column; min-height: 0; }
+  #log { flex: 1; overflow-y: auto; min-height: 0; padding-right: 6px; scrollbar-width: thin; scrollbar-color: var(--cyan-dim) transparent; }
+  .msg { margin: 0 0 14px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg .who { display: block; font-size: 9.5px; letter-spacing: 0.3em; margin-bottom: 3px; color: var(--muted); }
+  .msg.jarvis .who { color: var(--cyan); }
+  .msg.user { color: #9fc3d1; }
+  .msg.tool { color: var(--amber); font-size: 11px; margin-bottom: 8px; }
+  .msg.error { color: var(--red); }
+  .empty { color: var(--muted); line-height: 1.7; }
+
+  footer { border-top: 1px solid var(--line); gap: 10px; }
+  #input {
+    flex: 1; background: rgba(8, 22, 34, 0.9); border: 1px solid var(--line); color: var(--text);
+    font: inherit; font-size: 14px; padding: 11px 14px; outline: none; border-radius: 3px;
+  }
+  #input:focus { border-color: var(--cyan); box-shadow: 0 0 0 1px var(--cyan), 0 0 18px rgba(95, 225, 255, 0.2); }
+  #input::placeholder { color: var(--muted); }
+  button {
+    background: transparent; border: 1px solid var(--line); color: var(--cyan); font: inherit;
+    font-size: 10.5px; letter-spacing: 0.2em; padding: 11px 13px; cursor: pointer; border-radius: 3px; text-transform: uppercase;
+  }
+  button:hover { border-color: var(--cyan); background: rgba(95, 225, 255, 0.08); }
+  button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+  button.on { background: var(--cyan); color: #012; border-color: var(--cyan); }
+  button.warn { color: var(--amber); border-color: rgba(255, 180, 84, 0.4); }
+  button[hidden] { display: none; }
+
+  @media (max-width: 980px) {
+    main, body:not(.show-log) main { grid-template-columns: 1fr; }
+    body.show-log main { grid-template-rows: 38vh 1fr; }
+    .left { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { .bar i { transition: none; } #pulse { animation: none; } }
+
+  /* full-window views: Settings and History */
+  .view { position: fixed; inset: 0; z-index: 10; display: grid; grid-template-rows: auto 1fr;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(20, 90, 120, 0.22), transparent 55%),
+      linear-gradient(rgba(80, 220, 255, 0.03) 1px, transparent 1px) 0 0 / 100% 44px,
+      linear-gradient(90deg, rgba(80, 220, 255, 0.03) 1px, transparent 1px) 0 0 / 44px 100%,
+      var(--bg); }
+  .view[hidden] { display: none; }
+  .view-head { display: flex; align-items: center; gap: 14px; padding: 12px 20px; border-bottom: 1px solid var(--line); }
+  body.native .view-head { padding-left: 92px; }
+  .view-head h1 { margin: 0; font-size: 15px; letter-spacing: 0.5em; color: var(--cyan); font-weight: 700; }
+  .view-head .grow { flex: 1; }
+  .view-body { overflow-y: auto; padding: 20px; scrollbar-width: thin; scrollbar-color: var(--cyan-dim) transparent; }
+  #sSaved { color: var(--cyan-dim); font-size: 10px; letter-spacing: 0.2em; min-width: 80px; text-align: right; }
+
+  /* settings: cards that fill the window, flowing into as many columns as fit */
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(370px, 1fr)); gap: 16px; align-items: start; max-width: 1560px; margin: 0 auto; }
+  .card { padding: 16px 18px 8px; backdrop-filter: none; }
+  .card h2 { margin: 0 0 6px; font-size: 11px; color: var(--cyan); }
+  .card > p { margin: 0 0 8px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+  .set { display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center; padding: 10px 0; border-top: 1px dashed rgba(95, 225, 255, 0.12); }
+  .set.stack { grid-template-columns: 1fr; gap: 8px; }
+  .set label, .set .name { color: var(--text); font-size: 12.5px; }
+  .set small { display: block; color: var(--muted); font-size: 10.5px; line-height: 1.45; margin-top: 3px; letter-spacing: 0; }
+  .set .ctl { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+  .set.stack .ctl { justify-content: flex-start; flex-wrap: wrap; gap: 8px 16px; }
+  .set select, .set input[type=text], .set input[type=number], .set textarea, .view-head input[type=text] {
+    background: rgba(8, 22, 34, 0.9); border: 1px solid var(--line); color: var(--text);
+    font: inherit; font-size: 12px; padding: 7px 8px; outline: none; border-radius: 3px;
+  }
+  .set select { min-width: 170px; max-width: 220px; appearance: none; -webkit-appearance: none; padding-right: 26px; cursor: pointer;
+    background-image: linear-gradient(45deg, transparent 50%, var(--cyan) 50%), linear-gradient(135deg, var(--cyan) 50%, transparent 50%);
+    background-position: calc(100% - 14px) 50%, calc(100% - 9px) 50%; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
+  .set input[type=text] { width: 170px; }
+  .set input[type=number] { width: 70px; text-align: right; }
+  .set.stack textarea, .set.stack input[type=text] { width: 100%; }
+  .set textarea { min-height: 64px; resize: vertical; }
+  .set select:focus, .set input:focus, .set textarea:focus, .view-head input:focus { border-color: var(--cyan); }
+  .set input[type=range] { width: 130px; accent-color: var(--cyan); }
+  .set input[type=checkbox] { width: 34px; height: 18px; flex: none; appearance: none; -webkit-appearance: none; background: rgba(95, 225, 255, 0.12); border: 1px solid var(--line); border-radius: 9px; position: relative; cursor: pointer; margin: 0; }
+  .set input[type=checkbox]::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--muted); transition: left 0.15s; }
+  .set input[type=checkbox]:checked { background: rgba(95, 225, 255, 0.35); border-color: var(--cyan); }
+  .set input[type=checkbox]:checked::after { left: 18px; background: var(--cyan); }
+  .set input:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+  .set button { padding: 7px 10px; white-space: nowrap; }
+  .set .ctl label { display: inline-flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--muted); }
+  .set .state { color: var(--muted); font-size: 10.5px; }
+  .keys { color: var(--muted); line-height: 2; padding: 6px 0 10px; border-top: 1px dashed rgba(95, 225, 255, 0.12); }
+  .keys b { color: var(--cyan); font-weight: 600; display: inline-block; min-width: 104px; }
+
+  /* history */
+  #hList { max-width: 900px; margin: 0 auto; }
+  .hday { margin: 22px 0 8px; font-size: 10px; letter-spacing: 0.3em; color: var(--cyan-dim); text-transform: uppercase; }
+  .hday:first-child { margin-top: 0; }
+  .hx { padding: 12px 14px; margin-bottom: 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); line-height: 1.55; }
+  .hx .t { float: right; color: var(--muted); font-size: 10px; letter-spacing: 0.1em; }
+  .hx .q { color: #9fc3d1; margin-bottom: 6px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .hx .a { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .hx .tools { color: var(--amber); font-size: 10.5px; margin-top: 6px; }
+  .hempty { color: var(--muted); text-align: center; margin-top: 60px; }
+</style></style>
+</head>
+<body>
+<header>
+  <div>
+    <div class="brand">JARVIS</div>
+    <div class="vital" id="vital" title="How JARVIS is doing"><i id="pulse"></i><span id="mood">CALM</span><span id="bpm"></span></div>
+  </div>
+  <div class="spacer"></div>
+  <button id="mini" title="Shrink to a small window that stays on top">Mini</button>
+  <button id="logBtn" title="Show or hide the transcript">Transcript</button>
+  <button id="histBtn" title="Past conversations">History</button>
+  <button id="gear" title="Settings">Settings</button>
+  <div>
+    <div id="clock">--:--:--</div>
+    <div id="date"></div>
+  </div>
+</header>
+
+<main>
+  <section class="left">
+    <div class="panel">
+      <h2>System</h2>
+      <div class="gauge"><div class="row"><span>CPU</span><span id="cpuV">--</span></div><div class="bar"><i id="cpuB"></i></div></div>
+      <div class="gauge"><div class="row"><span>MEMORY</span><span id="memV">--</span></div><div class="bar"><i id="memB"></i></div></div>
+      <div class="gauge"><div class="row"><span>POWER</span><span id="batV">--</span></div><div class="bar"><i id="batB"></i></div></div>
+      <div class="kv"><span>UPTIME</span><span id="up">--</span></div>
+    </div>
+    <div class="panel">
+      <h2>Weather</h2>
+      <div class="wx"><span id="wxTemp">--°</span><span id="wxText">loading…</span></div>
+      <div class="kv"><span>TOWN</span><span><button id="wxPlace" title="Change town">--</button><input id="wxEdit" hidden placeholder="Town, then Enter" autocomplete="off"></span></div>
+      <div class="kv"><span>TODAY</span><span id="wxToday">--</span></div>
+      <div class="kv"><span>RAIN</span><span id="wxRain">--</span></div>
+      <div class="kv"><span>WIND</span><span id="wxWind">--</span></div>
+    </div>
+    <div class="panel">
+      <h2>Agent</h2>
+      <div class="kv"><span>MODEL</span><span id="model">--</span></div>
+      <div class="kv"><span>SESSION</span><span id="sess">new</span></div>
+      <div class="kv"><span>CALENDAR</span><span id="cal">--</span></div>
+      <div class="kv"><span>LAST REPLY</span><span id="lat">--</span></div>
+      <div class="kv" style="border-bottom:0"><span>SPENT</span><span id="cost">$0.00</span></div>
+      <h2 style="margin-top:14px">Tools online</h2>
+      <div class="chips" id="tools"></div>
+      <p class="note">Read-only. It can look things up and read its workspace folder, but cannot send, edit or delete.</p>
+    </div>
+  </section>
+
+  <section class="core">
+    <canvas id="orb" aria-hidden="true"></canvas>
+    <button id="expand" title="Back to the full window">Expand</button>
+    <div class="under">
+      <div id="caption" aria-live="polite"></div>
+      <div id="state" role="status">STANDBY</div>
+      <div id="live"></div>
+    </div>
+  </section>
+
+  <section class="panel right">
+    <h2>Transcript</h2>
+    <div id="log">
+      <p class="empty" id="empty">Press Space and speak, or type below.<br>Try: &ldquo;Good morning. What can you do?&rdquo;</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <button id="mic" title="Speak — or hold Space">Mic</button>
+  <input id="input" autocomplete="off" placeholder="Type here, or hold Space to talk…" autofocus>
+  <button id="sendBtn">Send</button>
+  <button id="stopBtn" class="warn" hidden>Stop</button>
+  <button id="voice" class="on" title="Read replies aloud">Voice</button>
+  <button id="lang" title="Language for speech">EN</button>
+  <button id="reset" title="Forget this conversation">New</button>
+</footer>
+
+<div id="settings" class="view" hidden role="dialog" aria-modal="true" aria-labelledby="sTitle">
+  <div class="view-head">
+    <h1 id="sTitle">SETTINGS</h1>
+    <span class="grow"></span>
+    <span id="sSaved"></span>
+    <button id="sClose">Done</button>
+  </div>
+  <div class="view-body"><div class="cards">
+
+    <section class="panel card">
+      <h2>Voice</h2>
+      <div class="set"><label for="sVoiceOn">Speak replies<small>Read every reply aloud.</small></label><span class="ctl"><input type="checkbox" id="sVoiceOn"></span></div>
+      <div class="set"><label for="sVoice">Voice<small>Installed on this Mac for the speech language.</small></label><span class="ctl"><select id="sVoice"></select></span></div>
+      <div class="set"><label for="sRate">Speed<small><span id="sRateV">185</span> words per minute</small></label><span class="ctl"><input type="range" id="sRate" min="120" max="260" step="5"><button id="sTest">Test</button></span></div>
+    </section>
+
+    <section class="panel card">
+      <h2>Listening</h2>
+      <div class="set"><label for="sLang">Speech language<small>What you speak, and the voice it answers with.</small></label><span class="ctl"><select id="sLang"></select></span></div>
+      <div class="set"><label for="sMode">Talk mode<small>Hold the key while speaking, or tap and let it send on a pause.</small></label><span class="ctl"><select id="sMode"><option value="hold">Hold to talk</option><option value="toggle">Tap to start and stop</option></select></span></div>
+      <div class="set"><label for="sSounds">Sounds<small>A tone when listening starts and stops.</small></label><span class="ctl"><input type="checkbox" id="sSounds"></span></div>
+      <div class="set stack"><label for="sVocab">Vocabulary<small>Names and terms it should expect to hear, separated by commas. Used in the JARVIS app.</small></label><span class="ctl"><textarea id="sVocab" maxlength="2000" placeholder="e.g. names of people, projects and products"></textarea></span></div>
+    </section>
+
+    <section class="panel card">
+      <h2>Assistant</h2>
+      <div class="set"><label for="sModel">Model<small>Haiku is fastest, Sonnet balanced, Opus most thorough.</small></label><span class="ctl"><select id="sModel"></select></span></div>
+      <div class="set stack"><label for="sInstr">Standing instructions<small>Added to every conversation: how to address you, tone, what to always or never do.</small></label><span class="ctl"><textarea id="sInstr" maxlength="2000" placeholder="e.g. Keep answers under two sentences."></textarea></span></div>
+      <div class="set"><span class="name">Context file<small>Longer notes about you and your work.</small></span><span class="ctl"><button id="sContext">Open file</button></span></div>
+    </section>
+
+    <section class="panel card">
+      <h2>Opening briefing</h2>
+      <div class="set"><label for="sBootLaunch">At the first launch of the day<small>JARVIS speaks first when you open it.</small></label><span class="ctl"><input type="checkbox" id="sBootLaunch"></span></div>
+      <div class="set"><label for="sBootGreet">When greeted<small>Say “good morning” and it answers with the briefing.</small></label><span class="ctl"><input type="checkbox" id="sBootGreet"></span></div>
+      <div class="set"><label for="sBootFun">Boot-up humour<small>Opens with a dry, nerdy line about its systems.</small></label><span class="ctl"><input type="checkbox" id="sBootFun"></span></div>
+      <div class="set stack"><span class="name">Include</span><span class="ctl">
+        <label><input type="checkbox" id="sItDate"> Date</label>
+        <label><input type="checkbox" id="sItSystem"> System</label>
+        <label><input type="checkbox" id="sItWeather"> Weather</label>
+        <label><input type="checkbox" id="sItCalendar"> Calendar</label>
+      </span></div>
+      <div class="set"><span class="name">Try it<small>Plays the opening now.</small></span><span class="ctl"><button id="sBootNow">Play now</button></span></div>
+    </section>
+
+    <section class="panel card">
+      <h2>Tools and connections</h2>
+      <div class="set"><label for="sWeb">Web search<small>Search the web and read pages.</small></label><span class="ctl"><input type="checkbox" id="sWeb"></span></div>
+      <div class="set"><label for="sCal">Google Calendar<small>Read-only, through your Claude account. <span id="sCalState"></span></small></label><span class="ctl"><input type="checkbox" id="sCal"></span></div>
+      <div class="set"><label for="sTown">Weather town<small>Press Enter to save.</small></label><span class="ctl"><input type="text" id="sTown" autocomplete="off"></span></div>
+    </section>
+
+    <section class="panel card">
+      <h2>Other apps</h2>
+      <p>Lets JARVIS use the text you have selected in another app, and type its answer where your cursor is. Needs the macOS Accessibility permission. Only in the JARVIS app.</p>
+      <div class="set"><label for="sApps">Work with other apps<small>Selected text is sent with your question when you use the global shortcut.</small></label><span class="ctl"><input type="checkbox" id="sApps"></span></div>
+      <div class="set"><span class="name">Accessibility permission<small id="sAxState" class="state">—</small></span><span class="ctl"><button id="sAx">Request</button></span></div>
+    </section>
+
+    <section class="panel card">
+      <h2>Display and startup</h2>
+      <div class="set"><label for="sLog">Show transcript<small>The written conversation beside the core. Hidden means voice only.</small></label><span class="ctl"><input type="checkbox" id="sLog"></span></div>
+      <div class="set"><label for="sMenuBar">Menu bar icon<small>Closing the window keeps JARVIS running in the menu bar, ready for the global shortcut.</small></label><span class="ctl"><input type="checkbox" id="sMenuBar"></span></div>
+      <div class="set"><label for="sLogin">Open at login<small id="sLoginState">Start JARVIS when you log in to your Mac.</small></label><span class="ctl"><input type="checkbox" id="sLogin"></span></div>
+    </section>
+
+    <section class="panel card">
+      <h2>History</h2>
+      <div class="set"><label for="sHist">Keep history<small>Save each exchange so you can browse and search it.</small></label><span class="ctl"><input type="checkbox" id="sHist"></span></div>
+      <div class="set"><label for="sHistDays">Keep for<small>Older days are deleted when JARVIS starts.</small></label><span class="ctl"><input type="number" id="sHistDays" min="1" max="3650"> days</span></div>
+      <div class="set"><span class="name">Data folder<small id="sDir"></small></span><span class="ctl"><button id="sData">Open folder</button></span></div>
+    </section>
+
+    <section class="panel card">
+      <h2>Shortcuts</h2>
+      <div class="keys"><b>Space</b> talk, when the text box is empty<br><b>Enter</b> send typed text<br><b>Esc</b> stop listening, speaking or a reply<br><b>⌃⌥ Space</b> talk from any app<br><b>⌃⌥⇧ Space</b> write at the cursor of another app</div>
+    </section>
+
+  </div></div>
+</div>
+
+<div id="history" class="view" hidden role="dialog" aria-modal="true" aria-labelledby="hTitle">
+  <div class="view-head">
+    <h1 id="hTitle">HISTORY</h1>
+    <input type="text" id="hSearch" placeholder="Search…" autocomplete="off" style="width:240px">
+    <span class="grow"></span>
+    <button id="hClear" class="warn">Clear all</button>
+    <button id="hClose">Done</button>
+  </div>
+  <div class="view-body"><div id="hList"></div></div>
+</div>
+
+<script>
+const TOKEN = '__JARVIS_TOKEN__';
+const $ = (id) => document.getElementById(id);
+const api = (path, opts = {}) => fetch(path, {
+  ...opts,
+  headers: { 'Content-Type': 'application/json', 'X-Jarvis-Token': TOKEN, ...(opts.headers || {}) },
+});
+
+// ---------- native window bridge ----------
+// Present only inside the JARVIS app; in a plain browser these features are simply absent.
+const NATIVE = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.jarvis);
+const post = (msg) => { if (NATIVE) window.webkit.messageHandlers.jarvis.postMessage(msg); };
+document.body.classList.toggle('native', NATIVE);
+
+// ---------- state ----------
+let state = 'idle';            // idle | listening | thinking | speaking
+let busy = false;
+let spent = 0;
+const LANGS = [{ code: 'en-GB', label: 'EN', name: 'English (UK)', prefer: ['Daniel', 'Google UK English Male'] },
+               { code: 'fr-FR', label: 'FR', name: 'Français', prefer: ['Thomas', 'Google français'] }];
+// Settings live on the server (settings.json); these mirror them for quick use.
+let cfg = null;
+let voiceOn = true;
+let langIdx = 0;
+let soundsOn = true;
+
+const LABELS = { idle: 'STANDBY', listening: 'LISTENING', thinking: 'PROCESSING', speaking: 'SPEAKING' };
+function setState(s) { state = s; $('state').textContent = LABELS[s]; updateVital(); }
+
+// ---------- vital signs ----------
+// JARVIS's condition, read from what it is doing and how the Mac is faring.
+const TONES = {
+  calm: [95, 225, 255],      // cyan: at rest
+  listening: [110, 240, 170], // green: ears open
+  thinking: [255, 190, 90],   // amber: working
+  speaking: [190, 170, 255],  // violet: talking
+  strained: [255, 150, 90],   // orange: the Mac is struggling
+  unwell: [255, 107, 107],    // red: something is wrong
+};
+let vitals = { cpu: 0, battery: null, offline: false };
+let tone = TONES.calm;        // the colour the core eases towards
+function mood() {
+  if (vitals.offline) return ['UNWELL', 'unwell'];
+  if (state === 'listening') return ['LISTENING', 'listening'];
+  if (state === 'thinking') return ['THINKING', 'thinking'];
+  if (state === 'speaking') return ['SPEAKING', 'speaking'];
+  if (vitals.battery && vitals.battery.percent < 20 && !vitals.battery.charging) return ['HUNGRY', 'strained'];
+  if (vitals.cpu >= 85) return ['RUNNING HOT', 'strained'];
+  const h = new Date().getHours();
+  if (h < 6) return ['DROWSY', 'calm'];
+  return ['CALM', 'calm'];
+}
+function updateVital() {
+  const [word, key] = mood();
+  tone = TONES[key];
+  const css = `rgb(${tone.join(',')})`;
+  $('mood').textContent = word;
+  $('vital').style.setProperty('--tone', css);
+  $('state').style.color = css; $('state').style.textShadow = `0 0 12px ${css}`;
+  // heart rate follows the processor: resting around 55, racing near 130
+  const bpm = vitals.offline ? 0 : Math.round(55 + vitals.cpu * 0.75 + (state === 'idle' ? 0 : 12));
+  $('bpm').textContent = bpm ? bpm + ' BPM' : '';
+  $('vital').style.setProperty('--beat', bpm ? (60 / bpm).toFixed(2) + 's' : '0s');
+}
+const hint = () => (holdMode ? 'HOLD SPACE  talk' : 'SPACE  talk') + '   ·   ENTER  send   ·   ESC  stop';
+let holdMode = true;
+function setLive(t) { $('live').textContent = t || hint(); }
+// Shown under the core for problems only (for example, nothing heard). Replies are voice-only.
+function setCaption(t) { $('caption').textContent = t.length > 260 ? '…' + t.slice(-260) : t; }
+
+// ---------- clock ----------
+function tick() {
+  const d = new Date();
+  $('clock').textContent = d.toLocaleTimeString('en-GB');
+  $('date').textContent = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+}
+tick(); setInterval(tick, 1000);
+
+// ---------- system stats ----------
+function fmtUptime(s) {
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+  return (d ? d + 'd ' : '') + h + 'h ' + m + 'm';
+}
+async function stats() {
+  try {
+    const s = await (await api('/api/stats')).json();
+    $('cpuV').textContent = s.cpu + '%'; $('cpuB').style.width = s.cpu + '%';
+    $('memV').textContent = s.mem + '%'; $('memB').style.width = s.mem + '%';
+    if (s.battery) {
+      $('batV').textContent = s.battery.percent + '%' + (s.battery.charging ? ' AC' : '');
+      $('batB').style.width = s.battery.percent + '%';
+    } else { $('batV').textContent = 'AC'; $('batB').style.width = '100%'; }
+    $('up').textContent = fmtUptime(s.uptime);
+    vitals = { cpu: s.cpu, battery: s.battery, offline: false }; updateVital();
+    $('model').textContent = s.model;
+    $('sess').textContent = s.session ? 'active' : 'new';
+    $('cal').textContent = s.calendar ? 'connected' : 'not connected';
+    if ($('tools').dataset.list !== s.tools.join()) {
+      $('tools').dataset.list = s.tools.join(); $('tools').textContent = '';
+      for (const t of s.tools) { const c = document.createElement('span'); c.className = 'chip'; c.textContent = t; $('tools').appendChild(c); }
+    }
+  } catch { vitals.offline = true; updateVital(); $('state').textContent = 'SERVER OFFLINE'; }
+}
+stats(); setInterval(stats, 3000);
+// Tells the server this window is open; it shuts down when the Dock app's window closes.
+(function alive() { api('/api/alive').then((r) => r.body.getReader().read()).catch(() => {}); })();
+
+// ---------- weather ----------
+function paintWeather(w) {
+  $('wxTemp').textContent = w.temp + '°';
+  $('wxText').textContent = w.text;
+  $('wxPlace').textContent = w.location.name + (w.location.country ? ', ' + w.location.country : '');
+  $('wxToday').textContent = w.today.max + '° / ' + w.today.min + '°';
+  $('wxRain').textContent = w.today.rain + '%';
+  $('wxWind').textContent = w.wind + ' km/h';
+}
+async function loadWeather() {
+  try {
+    const r = await api('/api/weather'); const w = await r.json();
+    if (r.ok) paintWeather(w); else $('wxText').textContent = 'unavailable';
+  } catch { $('wxText').textContent = 'unavailable'; }
+}
+loadWeather(); setInterval(loadWeather, 10 * 60 * 1000);
+function closeTownEdit() { $('wxEdit').hidden = true; $('wxPlace').hidden = false; $('input').focus(); }
+$('wxPlace').addEventListener('click', () => {
+  $('wxPlace').hidden = true; $('wxEdit').hidden = false; $('wxEdit').value = '';
+  setTimeout(() => $('wxEdit').focus(), 0);
+});
+$('wxEdit').addEventListener('keydown', async (e) => {
+  e.stopPropagation();   // typing a town must not trigger the Space and Esc shortcuts
+  if (e.key === 'Escape') return closeTownEdit();
+  if (e.key !== 'Enter' || !$('wxEdit').value.trim()) return;
+  $('wxText').textContent = 'looking up…';
+  try {
+    const r = await api('/api/location', { method: 'POST', body: JSON.stringify({ name: $('wxEdit').value.trim() }) });
+    const w = await r.json();
+    if (r.ok) paintWeather(w); else { $('wxText').textContent = 'not found'; setTimeout(loadWeather, 2500); }
+  } catch { $('wxText').textContent = 'unavailable'; }
+  closeTownEdit();
+});
+$('wxEdit').addEventListener('blur', () => { if (!$('wxEdit').hidden) closeTownEdit(); });
+
+// ---------- transcript ----------
+function addMsg(kind, who, text) {
+  $('empty')?.remove();
+  const p = document.createElement('p');
+  p.className = 'msg ' + kind;
+  if (who) { const w = document.createElement('span'); w.className = 'who'; w.textContent = who; p.appendChild(w); }
+  const body = document.createElement('span'); body.textContent = text; p.appendChild(body);
+  $('log').appendChild(p);
+  $('log').scrollTop = $('log').scrollHeight;
+  return body;
+}
+
+// ---------- voice out ----------
+const synth = window.speechSynthesis;
+let voices = [];
+function loadVoices() { voices = synth ? synth.getVoices() : []; }
+loadVoices(); if (synth) synth.onvoiceschanged = loadVoices;
+function pickVoice() {
+  const L = LANGS[langIdx];
+  for (const name of L.prefer) { const v = voices.find((v) => v.name.startsWith(name)); if (v) return v; }
+  return voices.find((v) => v.lang === L.code) || voices.find((v) => v.lang.startsWith(L.code.slice(0, 2))) || null;
+}
+let speakBuf = '';
+let pending = 0;
+let speechGen = 0;          // bumps on every hush, so cancelled speech cannot change the state later
+let serverVoice = true;     // the Mac's own voice; falls back to the browser's if unavailable
+function clean(t) { return t.replace(/```[\s\S]*?```/g, ' ').replace(/[*_#`>]/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/https?:\/\/\S+/g, 'link').trim(); }
+function browserSay(text, finish) {
+  if (!synth) return finish();
+  const u = new SpeechSynthesisUtterance(text);
+  const v = pickVoice(); if (v) u.voice = v;
+  u.lang = LANGS[langIdx].code; u.rate = 1.05; u.pitch = 0.95;
+  u.onend = u.onerror = finish;
+  synth.speak(u);
+}
+function say(text) {
+  text = clean(text);
+  if (!voiceOn || !text) return;
+  const gen = speechGen;
+  pending++; setState('speaking');
+  const finish = () => {
+    if (gen !== speechGen) return;
+    pending = Math.max(0, pending - 1);
+    if (!pending && state === 'speaking') setState(busy ? 'thinking' : 'idle');
+  };
+  if (!serverVoice) return browserSay(text, finish);
+  api('/api/say', { method: 'POST', body: JSON.stringify({ text, lang: LANGS[langIdx].code.slice(0, 2) }) })
+    .then((r) => { if (r.status === 501) { serverVoice = false; browserSay(text, finish); } else finish(); })
+    .catch(finish);
+}
+function feedSpeech(delta, flush) {
+  speakBuf += delta;
+  let m;
+  while ((m = speakBuf.match(/^[\s\S]*?[.!?…](?=\s|$)/)) && (flush || m[0].length < speakBuf.length)) {
+    say(m[0]); speakBuf = speakBuf.slice(m[0].length);
+  }
+  if (flush && speakBuf.trim()) { say(speakBuf); speakBuf = ''; }
+}
+function hush() {
+  speechGen++;
+  if (pending && serverVoice) api('/api/hush', { method: 'POST' }).catch(() => {});
+  if (synth) synth.cancel();
+  pending = 0; speakBuf = '';
+}
+
+// ---------- talking to the agent ----------
+async function ask(text, opts = {}) {
+  text = text.trim();
+  if ((!text && !opts.boot) || busy) return;
+  busy = true; hush();
+  $('input').value = ''; setLive('');
+  $('sendBtn').hidden = true; $('stopBtn').hidden = false;
+  if (!opts.boot) addMsg('user', 'YOU', text);
+  setState('thinking');
+  const started = performance.now();
+  let out = null, full = '', written = '';
+  setCaption('');
+  try {
+    const res = opts.boot
+      ? await api('/api/boot' + (opts.boot === 'force' ? '?force=1' : ''), { method: 'POST' })
+      : await api('/api/chat', { method: 'POST', body: JSON.stringify({ message: text, selection: opts.selection || '', write: !!opts.write }) });
+    if (res.status === 204) throw null;   // no opening due today
+    if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+    const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, nl); buf = buf.slice(nl + 1);
+        if (!line) continue;
+        const ev = JSON.parse(line);
+        if (ev.type === 'delta') {
+          if (!out) { out = addMsg('jarvis', 'JARVIS', ''); $('lat').textContent = ((performance.now() - started) / 1000).toFixed(1) + 's'; }
+          full += ev.text; out.textContent = full; $('log').scrollTop = $('log').scrollHeight;
+          if (!opts.write) feedSpeech(ev.text, false);   // written answers are typed, not spoken
+          else written += ev.text;
+        } else if (ev.type === 'tool') {
+          addMsg('tool', '', '▸ ' + ev.name + (ev.detail ? '  ' + ev.detail : ''));
+          out = null; full = '';
+        } else if (ev.type === 'error') {
+          addMsg('error', 'ERROR', ev.message);
+        } else if (ev.type === 'stopped') {
+          addMsg('tool', '', '▸ stopped');
+        } else if (ev.type === 'done' && ev.cost != null) {
+          spent += ev.cost; $('cost').textContent = '$' + spent.toFixed(2);
+        }
+      }
+    }
+  } catch (err) {
+    if (err) addMsg('error', 'ERROR', String(err.message || err));
+  }
+  feedSpeech('', true);
+  if (opts.write && written.trim()) post({ type: 'paste', text: written.trim() });
+  busy = false;
+  $('sendBtn').hidden = false; $('stopBtn').hidden = true;
+  if (!pending) setState('idle');
+  $('input').focus();
+  stats();
+}
+$('sendBtn').onclick = () => ask($('input').value);
+$('input').addEventListener('keydown', (e) => { if (e.key === 'Enter') ask($('input').value); });
+$('stopBtn').onclick = () => { hush(); api('/api/stop', { method: 'POST' }); };
+$('reset').onclick = async () => {
+  hush(); await api('/api/reset', { method: 'POST' });
+  $('log').innerHTML = ''; addMsg('tool', '', '▸ new conversation'); stats();
+};
+
+// ---------- voice in ----------
+// Inside the app, Apple's speech recognition does the listening; in a browser, the browser's own.
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let listening = false;      // a listening session is open (or opening)
+let rec = null;             // browser recogniser, when used
+let heard = '';             // browser: final words so far
+let silenceTimer = null;    // sends after a pause, when not holding a key
+let heardFor = {};          // extras for the next question: selected text, write-at-cursor
+let autoStop = false;       // this session ends by itself on a pause
+
+function listenUi(on) {
+  listening = on;
+  $('mic').classList.toggle('on', on);
+  if (on) { setState('listening'); setLive('Listening…'); chime(520, 880); }
+  else { chime(880, 520); if (state === 'listening') setState('idle'); setLive(''); }
+}
+function startListening(auto = !holdMode) {
+  if (listening) return;
+  autoStop = auto;
+  hush();
+  if (busy) api('/api/stop', { method: 'POST' });   // talking over a reply cuts it short
+  if (NATIVE) { listening = true; post({ type: 'listenStart', lang: LANGS[langIdx].code, vocabulary: cfg ? cfg.listen.vocabulary.split(/[\n,]/).map((v) => v.trim()).filter(Boolean) : [] }); return; }
+  if (!SR) { addMsg('error', 'ERROR', 'Voice input is not available in this browser. Typing still works.'); return; }
+  rec = new SR(); heard = '';
+  rec.lang = LANGS[langIdx].code; rec.interimResults = true; rec.continuous = !autoStop;
+  rec.onstart = () => listenUi(true);
+  rec.onresult = (e) => {
+    let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) heard += e.results[i][0].transcript; else interim += e.results[i][0].transcript;
+    }
+    setLive(heard + interim);
+  };
+  rec.onerror = (e) => {
+    if (e.error === 'not-allowed') addMsg('error', 'ERROR', 'Microphone access was refused. Allow it for this window, then try again.');
+    else if (e.error !== 'no-speech' && e.error !== 'aborted') addMsg('error', 'ERROR', 'Voice input failed: ' + e.error);
+  };
+  rec.onend = () => { rec = null; listenUi(false); if (heard.trim()) ask(heard); };
+  listening = true;
+  rec.start();
+}
+// Finish listening and send what was heard.
+function stopListening() {
+  if (!listening) return;
+  clearTimeout(silenceTimer);
+  if (NATIVE) post({ type: 'listenStop' }); else if (rec) { try { rec.stop(); } catch {} }
+}
+// Stop listening and discard what was heard.
+function cancelListening() {
+  if (!listening) return;
+  clearTimeout(silenceTimer);
+  if (NATIVE) post({ type: 'listenCancel' }); else if (rec) { heard = ''; try { rec.abort(); } catch {} }
+}
+// Messages from the native app: speech results and the global shortcut.
+window.jarvisNative = (msg) => {
+  if (msg.speech) {
+    const ev = msg.speech;
+    if (ev.started) { listenUi(true); if (autoStop) silenceTimer = setTimeout(stopListening, 6000); }
+    else if (ev.partial != null) {
+      setLive(ev.partial);
+      if (autoStop) { clearTimeout(silenceTimer); silenceTimer = setTimeout(stopListening, 1600); }
+    } else if (ev.error) { listening = false; listenUi(false); addMsg('error', 'ERROR', ev.error); setCaption(ev.error); }
+    else if ('final' in ev) {
+      const wasOn = $('mic').classList.contains('on');
+      listening = false; if (wasOn) listenUi(false);
+      const extra = heardFor; heardFor = {};
+      if (ev.final.trim()) ask(ev.final, extra);
+      else if (wasOn && ev.peak < 0.02) setCaption('I could not hear anything. Check the microphone and its input level in System Settings → Sound.');
+    }
+  }
+  if (msg.status) { nativeStatus = msg.status; paintNative(); }
+  if (msg.notice) { addMsg('error', 'NOTICE', msg.notice); setCaption(msg.notice); }
+  if (msg.command === 'mini') setCompact(!document.body.classList.contains('compact'));
+  if (msg.hotkey) {
+    if (msg.hotkey === 'down' && !listening) {
+      // what was selected in the other app, and whether the answer should be typed there
+      heardFor = { selection: msg.selection || '', write: msg.mode === 'write' && msg.outside && cfg && cfg.apps.enabled };
+    }
+    if (holdMode) { if (msg.hotkey === 'down') startListening(false); else stopListening(); }
+    else if (msg.hotkey === 'down') { if (listening) stopListening(); else startListening(); }
+  }
+};
+$('mic').onclick = () => { if (listening) stopListening(); else startListening(true); };   // a click always ends on a pause
+
+function paintToggles() {
+  $('voice').classList.toggle('on', voiceOn);
+  $('lang').textContent = LANGS[langIdx].label;
+}
+
+// ---------- settings ----------
+let view = null;   // last answer from /api/settings: settings plus the choices on offer
+function applySettings(v) {
+  view = v; cfg = v.settings;
+  voiceOn = cfg.voice.enabled;
+  langIdx = Math.max(0, LANGS.findIndex((l) => l.code === cfg.listen.language));
+  soundsOn = cfg.listen.sounds;
+  holdMode = cfg.listen.mode === 'hold';
+  document.body.classList.toggle('show-log', cfg.ui.transcript);
+  $('logBtn').classList.toggle('on', cfg.ui.transcript);
+  if (!listening && !$('live').textContent.includes('…')) setLive('');
+  setTimeout(resize, 0);
+  paintToggles();
+  paintSettings();
+  post({ type: 'config', menuBar: cfg.ui.menuBar, apps: cfg.apps.enabled });
+}
+function fill(sel, options, value) {
+  sel.textContent = '';
+  for (const [val, label] of options) { const o = document.createElement('option'); o.value = val; o.textContent = label; sel.appendChild(o); }
+  sel.value = value;
+}
+function paintSettings() {
+  if (!view) return;
+  const lang = LANGS[langIdx].code.slice(0, 2);
+  $('sVoiceOn').checked = cfg.voice.enabled;
+  const auto = view.autoVoice[lang];
+  fill($('sVoice'), [['', 'Automatic' + (auto ? ' (' + auto + ')' : '')], ...view.voices[lang].map((n) => [n, n])], cfg.voice[lang]);
+  $('sRate').value = cfg.voice.rate; $('sRateV').textContent = cfg.voice.rate;
+  fill($('sLang'), LANGS.map((l) => [l.code, l.name]), cfg.listen.language);
+  $('sSounds').checked = cfg.listen.sounds;
+  $('sMode').value = cfg.listen.mode;
+  $('sLog').checked = cfg.ui.transcript;
+  if (document.activeElement !== $('sVocab')) $('sVocab').value = cfg.listen.vocabulary;
+  $('sApps').checked = cfg.apps.enabled;
+  $('sMenuBar').checked = cfg.ui.menuBar;
+  $('sHist').checked = cfg.history.enabled;
+  if (document.activeElement !== $('sHistDays')) $('sHistDays').value = cfg.history.retentionDays;
+  paintNative();
+  $('sBootLaunch').checked = cfg.briefing.atLaunch;
+  $('sBootGreet').checked = cfg.briefing.onGreeting;
+  $('sBootFun').checked = cfg.briefing.humour;
+  for (const k of ['date', 'system', 'weather', 'calendar']) $('sIt' + k[0].toUpperCase() + k.slice(1)).checked = cfg.briefing.items[k];
+
+  fill($('sModel'), view.models.map((m) => [m, m[0].toUpperCase() + m.slice(1)]), cfg.model);
+  if (document.activeElement !== $('sInstr')) $('sInstr').value = cfg.instructions;
+  $('sWeb').checked = cfg.tools.web;
+  $('sCal').checked = cfg.tools.calendar;
+  $('sCalState').textContent = !cfg.tools.calendar ? 'Off.' : view.calendarConnected ? 'Connected.' : 'Not connected on your Claude account yet.';
+  if (document.activeElement !== $('sTown')) $('sTown').value = cfg.location ? cfg.location.name : '';
+  $('sDir').textContent = view.dataDir;
+}
+let savedTimer = null;
+async function saveSetting(patch) {
+  try {
+    const r = await api('/api/settings', { method: 'POST', body: JSON.stringify({ patch }) });
+    if (!r.ok) throw new Error();
+    applySettings(await r.json());
+    $('sSaved').textContent = 'SAVED';
+  } catch { $('sSaved').textContent = 'NOT SAVED'; }
+  clearTimeout(savedTimer); savedTimer = setTimeout(() => { $('sSaved').textContent = ''; }, 1500);
+  stats();
+}
+async function loadSettings() {
+  try { applySettings(await (await api('/api/settings')).json()); } catch {}
+}
+loadSettings().then(() => setTimeout(() => ask('', { boot: true }), 5000));   // opening remarks, if one is due today
+
+function openSettings() { loadSettings(); post({ type: 'status' }); $('settings').hidden = false; $('sClose').focus(); }
+function closeSettings() { $('settings').hidden = true; $('input').focus(); }
+$('gear').onclick = openSettings;
+$('sClose').onclick = closeSettings;
+
+$('sVoiceOn').onchange = (e) => { if (!e.target.checked) hush(); saveSetting({ voice: { enabled: e.target.checked } }); };
+$('sVoice').onchange = (e) => saveSetting({ voice: { [LANGS[langIdx].code.slice(0, 2)]: e.target.value } });
+$('sRate').oninput = (e) => { $('sRateV').textContent = e.target.value; };
+$('sRate').onchange = (e) => saveSetting({ voice: { rate: Number(e.target.value) } });
+$('sTest').onclick = () => {
+  hush();
+  const text = langIdx === 1 ? 'Bonsoir. Tous les systèmes sont opérationnels.' : 'Good evening. All systems are online.';
+  api('/api/say', { method: 'POST', body: JSON.stringify({ text, lang: LANGS[langIdx].code.slice(0, 2) }) }).catch(() => {});
+};
+$('sLang').onchange = (e) => saveSetting({ listen: { language: e.target.value } });
+$('sSounds').onchange = (e) => saveSetting({ listen: { sounds: e.target.checked } });
+$('sMode').onchange = (e) => saveSetting({ listen: { mode: e.target.value } });
+$('sBootLaunch').onchange = (e) => saveSetting({ briefing: { atLaunch: e.target.checked } });
+$('sBootGreet').onchange = (e) => saveSetting({ briefing: { onGreeting: e.target.checked } });
+$('sBootFun').onchange = (e) => saveSetting({ briefing: { humour: e.target.checked } });
+for (const k of ['date', 'system', 'weather', 'calendar']) {
+  $('sIt' + k[0].toUpperCase() + k.slice(1)).onchange = (e) => saveSetting({ briefing: { items: { [k]: e.target.checked } } });
+}
+$('sBootNow').onclick = () => { closeSettings(); setTimeout(() => ask('', { boot: 'force' }), 1200); };  // the delay lets a settings change reach the agent
+$('sVocab').onchange = (e) => saveSetting({ listen: { vocabulary: e.target.value } });
+$('sApps').onchange = (e) => { saveSetting({ apps: { enabled: e.target.checked } }); if (e.target.checked && nativeStatus && !nativeStatus.accessibility) post({ type: 'accessibility' }); };
+$('sAx').onclick = () => post({ type: 'accessibility' });
+$('sMenuBar').onchange = (e) => saveSetting({ ui: { menuBar: e.target.checked } });
+$('sLogin').onchange = (e) => post({ type: 'loginItem', on: e.target.checked });
+$('sHist').onchange = (e) => saveSetting({ history: { enabled: e.target.checked } });
+$('sHistDays').onchange = (e) => saveSetting({ history: { retentionDays: Number(e.target.value) || 90 } });
+// What only the native app knows: permissions and the login item.
+let nativeStatus = null;
+function paintNative() {
+  const only = 'Only in the JARVIS app.';
+  for (const id of ['sApps', 'sAx', 'sMenuBar', 'sLogin']) $(id).disabled = !NATIVE;
+  if (!NATIVE) { $('sAxState').textContent = only; return; }
+  if (!nativeStatus) return;
+  $('sAxState').textContent = nativeStatus.accessibility ? 'Granted.' : 'Not granted yet. Press Request, then enable JARVIS in System Settings.';
+  $('sAx').hidden = nativeStatus.accessibility;
+  $('sLogin').checked = nativeStatus.loginItem;
+}
+$('sLog').onchange = (e) => saveSetting({ ui: { transcript: e.target.checked } });
+$('logBtn').onclick = () => saveSetting({ ui: { transcript: !cfg.ui.transcript } });
+$('sModel').onchange = (e) => saveSetting({ model: e.target.value });
+$('sInstr').onchange = (e) => saveSetting({ instructions: e.target.value });
+$('sContext').onclick = () => api('/api/open', { method: 'POST', body: JSON.stringify({ what: 'context' }) });
+$('sData').onclick = () => api('/api/open', { method: 'POST', body: JSON.stringify({ what: 'data' }) });
+$('sWeb').onchange = (e) => saveSetting({ tools: { web: e.target.checked } });
+$('sCal').onchange = (e) => saveSetting({ tools: { calendar: e.target.checked } });
+$('sTown').addEventListener('keydown', async (e) => {
+  if (e.key !== 'Enter' || !e.target.value.trim()) return;
+  const r = await api('/api/location', { method: 'POST', body: JSON.stringify({ name: e.target.value.trim() }) });
+  $('sSaved').textContent = r.ok ? 'SAVED' : 'NOT FOUND';
+  if (r.ok) paintWeather(await r.json());
+  e.target.blur(); loadSettings();
+  clearTimeout(savedTimer); savedTimer = setTimeout(() => { $('sSaved').textContent = ''; }, 2000);
+});
+
+// quick toggles in the footer write the same settings
+$('voice').onclick = () => {
+  voiceOn = !voiceOn; if (!voiceOn) { hush(); if (!busy) setState('idle'); }
+  paintToggles(); saveSetting({ voice: { enabled: voiceOn } });
+};
+$('lang').onclick = () => {
+  langIdx = (langIdx + 1) % LANGS.length;
+  paintToggles(); saveSetting({ listen: { language: LANGS[langIdx].code } });
+};
+paintToggles();
+
+// ---------- history ----------
+let hTimer = null;
+async function loadHistory() {
+  const list = $('hList'); list.textContent = '';
+  let data;
+  try { data = await (await api('/api/history?q=' + encodeURIComponent($('hSearch').value))).json(); } catch { return; }
+  if (!data.entries.length) {
+    const p = document.createElement('p'); p.className = 'hempty';
+    p.textContent = $('hSearch').value ? 'Nothing matches that search.' : 'No conversations saved yet.';
+    list.appendChild(p); return;
+  }
+  let day = '';
+  for (const e of data.entries) {
+    const d = new Date(e.t);
+    const label = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    if (label !== day) { day = label; const h = document.createElement('div'); h.className = 'hday'; h.textContent = label; list.appendChild(h); }
+    const box = document.createElement('div'); box.className = 'hx';
+    const add = (cls, text) => { const el = document.createElement('div'); el.className = cls; el.textContent = text; box.appendChild(el); };
+    add('t', d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
+    add('q', e.user); add('a', e.reply);
+    if (e.tools && e.tools.length) add('tools', '▸ ' + [...new Set(e.tools)].join(', '));
+    list.appendChild(box);
+  }
+}
+function openHistory() { $('hSearch').value = ''; $('history').hidden = false; loadHistory(); $('hSearch').focus(); }
+function closeHistory() { $('history').hidden = true; $('input').focus(); }
+$('histBtn').onclick = openHistory;
+$('hClose').onclick = closeHistory;
+$('hSearch').oninput = () => { clearTimeout(hTimer); hTimer = setTimeout(loadHistory, 250); };
+$('hClear').onclick = async () => {
+  if ($('hClear').dataset.sure !== '1') {      // second press confirms
+    $('hClear').dataset.sure = '1'; $('hClear').textContent = 'Delete everything?';
+    setTimeout(() => { $('hClear').dataset.sure = ''; $('hClear').textContent = 'Clear all'; }, 4000);
+    return;
+  }
+  await api('/api/history/clear', { method: 'POST' });
+  $('hClear').dataset.sure = ''; $('hClear').textContent = 'Clear all';
+  loadHistory();
+};
+
+// ---------- listening tones ----------
+let audioCtx = null;
+function chime(from, to) {
+  if (!soundsOn) return;
+  try {
+    audioCtx = audioCtx || new AudioContext();
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain(), t0 = audioCtx.currentTime;
+    o.type = 'sine'; o.frequency.setValueAtTime(from, t0); o.frequency.exponentialRampToValueAtTime(to, t0 + 0.12);
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.12, t0 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.16);
+    o.connect(g).connect(audioCtx.destination); o.start(t0); o.stop(t0 + 0.18);
+  } catch {}
+}
+setLive('');
+
+// ---------- keyboard ----------
+// Space talks (when the text box is empty): held down in hold mode, pressed once in tap mode.
+// Esc stops whatever is happening.
+let spaceHeld = false;
+addEventListener('keydown', (e) => {
+  if (!$('settings').hidden || !$('history').hidden) {   // while a view is open, keys belong to its controls
+    if (e.key === 'Escape') { e.preventDefault(); if ($('settings').hidden) closeHistory(); else closeSettings(); }
+    return;
+  }
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    cancelListening(); hush();
+    if (busy) api('/api/stop', { method: 'POST' }); else setState('idle');
+    return;
+  }
+  if (e.code === 'Space' && !e.metaKey && !e.ctrlKey && !e.altKey && $('input').value === '') {
+    e.preventDefault();
+    if (e.repeat) return;
+    if (holdMode) { spaceHeld = true; startListening(false); }
+    else if (listening) stopListening(); else startListening();
+  }
+});
+addEventListener('keyup', (e) => {
+  if (e.code === 'Space' && spaceHeld) { spaceHeld = false; stopListening(); }
+});
+addEventListener('blur', () => { if (spaceHeld) { spaceHeld = false; stopListening(); } });
+// Keep the keyboard on the text box, so Space and Enter never re-press a button.
+for (const b of document.querySelectorAll('footer button, header button')) b.addEventListener('click', () => { if ($('settings').hidden && $('history').hidden) $('input').focus(); });
+
+// ---------- window: drag, compact mode ----------
+function setCompact(on) {
+  document.body.classList.toggle('compact', on);
+  post({ type: 'compact', on });
+  setTimeout(resize, 50); setTimeout(resize, 400);
+}
+$('mini').onclick = () => setCompact(true);
+$('expand').onclick = () => setCompact(false);
+// With no title bar, the header (and the whole core when compact) moves the window.
+for (const bar of document.querySelectorAll('header, .view-head')) bar.addEventListener('mousedown', (e) => { if (!e.target.closest('button, input')) post({ type: 'drag' }); });
+document.querySelector('.core').addEventListener('mousedown', (e) => {
+  if (document.body.classList.contains('compact') && !e.target.closest('button')) post({ type: 'drag' });
+});
+
+// ---------- the core ----------
+const cv = $('orb'), cx = cv.getContext('2d');
+let W = 0, H = 0, energy = 0.15, t = 0;
+const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+function resize() {
+  const r = cv.getBoundingClientRect(), d = devicePixelRatio || 1;
+  W = r.width; H = r.height; cv.width = W * d; cv.height = H * d; cx.setTransform(d, 0, 0, d, 0, 0);
+}
+addEventListener('resize', resize); resize();
+const TARGET = { idle: 0.14, listening: 0.6, thinking: 0.42, speaking: 0.85 };
+const SPIN = { idle: 0.25, listening: 0.6, thinking: 2.4, speaking: 0.9 };
+let shade = [95, 225, 255];   // the core's current colour
+function arc(r, a0, a1, w, alpha) {
+  cx.beginPath(); cx.arc(0, 0, r, a0, a1);
+  cx.lineWidth = w; cx.strokeStyle = `rgba(${shade.map(Math.round).join(',')},${alpha})`; cx.stroke();
+}
+function draw() {
+  for (let i = 0; i < 3; i++) shade[i] += (tone[i] - shade[i]) * 0.06;   // ease towards the current mood colour
+  const C = shade.map(Math.round).join(',');
+  const dt = still ? 0 : 0.016;
+  let target = TARGET[state];
+  if (state === 'speaking') target *= 0.65 + 0.35 * Math.abs(Math.sin(t * 9) * Math.sin(t * 3.3));
+  energy += (target - energy) * 0.08;
+  t += dt * SPIN[state];
+  cx.clearRect(0, 0, W, H);
+  cx.save();
+  cx.translate(W / 2, H * (document.body.classList.contains('compact') ? 0.4 : 0.42));
+  const R = Math.min(W, H) * 0.3;
+  cx.shadowColor = `rgb(${C})`; cx.shadowBlur = 14;
+
+  // outer tick ring (no glow: 120 glowing strokes per frame is costly)
+  cx.shadowBlur = 0;
+  cx.save(); cx.rotate(t * 0.15);
+  for (let i = 0; i < 120; i++) {
+    const a = (i / 120) * Math.PI * 2, long = i % 10 === 0;
+    cx.beginPath();
+    cx.moveTo(Math.cos(a) * R * 1.18, Math.sin(a) * R * 1.18);
+    cx.lineTo(Math.cos(a) * R * (long ? 1.26 : 1.21), Math.sin(a) * R * (long ? 1.26 : 1.21));
+    cx.lineWidth = 1; cx.strokeStyle = `rgba(${C},${long ? 0.7 : 0.25})`; cx.stroke();
+  }
+  cx.restore();
+  cx.shadowBlur = 14;
+
+  // rotating arc segments
+  cx.save(); cx.rotate(t * 0.6); arc(R * 1.08, 0, 1.9, 3, 0.8); arc(R * 1.08, 2.6, 4.2, 3, 0.5); arc(R * 1.08, 4.8, 5.9, 1, 0.5); cx.restore();
+  cx.save(); cx.rotate(-t * 0.9); arc(R * 0.94, 0.4, 2.8, 1.5, 0.6); arc(R * 0.94, 3.6, 5.6, 6, 0.22); cx.restore();
+  cx.save(); cx.rotate(t * 1.4); arc(R * 0.8, 1, 1.8, 2, 0.9); arc(R * 0.8, 3, 5.4, 1, 0.4); cx.restore();
+
+  // voice waveform ring
+  cx.beginPath();
+  for (let i = 0; i <= 180; i++) {
+    const a = (i / 180) * Math.PI * 2;
+    const n = Math.sin(a * 7 + t * 5) * Math.sin(a * 3 - t * 3) + 0.5 * Math.sin(a * 13 + t * 8);
+    const r = R * (0.6 + energy * 0.12 * n);
+    i ? cx.lineTo(Math.cos(a) * r, Math.sin(a) * r) : cx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+  }
+  cx.closePath(); cx.lineWidth = 1.5; cx.strokeStyle = `rgba(${C},${0.45 + energy * 0.5})`; cx.stroke();
+
+  // glowing core
+  cx.shadowBlur = 0;
+  const cr = R * (0.3 + energy * 0.14 + (still ? 0 : 0.012 * Math.sin(t * 4)));
+  const g = cx.createRadialGradient(0, 0, 0, 0, 0, cr * 1.7);
+  g.addColorStop(0, `rgba(230,250,255,${0.55 + energy * 0.45})`);
+  g.addColorStop(0.35, `rgba(${C},${0.35 + energy * 0.4})`);
+  g.addColorStop(1, `rgba(${C},0)`);
+  cx.fillStyle = g; cx.beginPath(); cx.arc(0, 0, cr * 1.7, 0, Math.PI * 2); cx.fill();
+  arc(cr, 0, Math.PI * 2, 1.5, 0.9);
+  cx.restore();
+  requestAnimationFrame(draw);
+}
+draw();
+</script>
+</body>
+</html>
