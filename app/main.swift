@@ -133,9 +133,10 @@ final class SpeechIn {
 
 // MARK: - App
 
-final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavigationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMessageHandler, WKNavigationDelegate {
     var window: NSWindow!
     var web: WKWebView!
+    var readerWindow: NSWindow?      // the second window, for text to read; made the first time it is asked for
     var server: Process?
     var serverInput: Pipe?
     let speech = SpeechIn()
@@ -323,13 +324,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         window.minSize = NSSize(width: 760, height: 520)
         window.contentView = web
         window.isReleasedWhenClosed = false
+        window.delegate = self
         window.center()
         window.setFrameAutosaveName("JARVISMain")
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(web)
     }
 
+    // The reader: a plain window beside the main one, showing the page the server keeps at /reader.
+    // It is brought forward without taking the keyboard, so talking and typing carry on in the main window.
+    func showReader() {
+        if readerWindow == nil {
+            let config = WKWebViewConfiguration()
+            config.userContentController.add(self, name: "jarvis")
+            let page = WKWebView(frame: .zero, configuration: config)
+            page.navigationDelegate = self
+            page.setValue(false, forKey: "drawsBackground")
+            page.allowsMagnification = true
+            let size = NSSize(width: 720, height: 860)
+            let w = NSWindow(contentRect: NSRect(origin: .zero, size: size),
+                             styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                             backing: .buffered, defer: false)
+            w.titlebarAppearsTransparent = true
+            w.titleVisibility = .hidden
+            w.title = "JARVIS Reader"
+            w.backgroundColor = NSColor(red: 0.012, green: 0.027, blue: 0.051, alpha: 1)
+            w.minSize = NSSize(width: 420, height: 320)
+            w.contentView = page
+            w.isReleasedWhenClosed = false
+            // first time: at the right edge of the screen; afterwards wherever it was left
+            let screen = (window.screen ?? NSScreen.main!).visibleFrame
+            w.setFrame(NSRect(x: screen.maxX - size.width - 24, y: screen.maxY - min(size.height, screen.height - 48) - 24,
+                              width: size.width, height: min(size.height, screen.height - 48)), display: false)
+            w.setFrameAutosaveName("JARVISReader")
+            page.load(URLRequest(url: BASE.appendingPathComponent("reader")))
+            readerWindow = w
+        }
+        if readerWindow?.isMiniaturized == true { readerWindow?.deminiaturize(nil) }
+        readerWindow?.orderFront(nil)
+    }
+
+    // Closing the main window closes the reader with it, so the app is never left with the reader alone.
+    func windowWillClose(_ notification: Notification) {
+        if (notification.object as? NSWindow) === window { readerWindow?.close() }
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard webView === web else { return }   // the reader needs none of what follows
         window.makeFirstResponder(web)
         // Development aid: JARVIS_SNAPSHOT=/path.png saves a picture of the window a few seconds after loading.
         let env = ProcessInfo.processInfo.environment
@@ -418,6 +459,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             speech.stop()
         case "listenCancel":
             speech.cancel()
+        case "reader":
+            showReader()
+        case "readerClose":
+            readerWindow?.close()
         default:
             break
         }

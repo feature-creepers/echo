@@ -10,7 +10,7 @@ TMP="$(mktemp -d)"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/public" "$APP/Contents/Resources/workspace"
 cp "$SRC/server.mjs" "$APP/Contents/Resources/"
-cp "$SRC/public/index.html" "$APP/Contents/Resources/public/"
+cp "$SRC/public/index.html" "$SRC/public/reader.html" "$APP/Contents/Resources/public/"
 cp "$SRC/app/workspace-template.md" "$APP/Contents/Resources/workspace/CLAUDE.md"
 
 # Icon: render the SVG with headless Chrome, then pack it into an .icns.
@@ -41,7 +41,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleExecutable</key><string>JARVIS</string>
   <key>CFBundleIconFile</key><string>icon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.9.0</string>
+  <key>CFBundleShortVersionString</key><string>0.10.0</string>
   <key>LSMinimumSystemVersion</key><string>12.0</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSPrincipalClass</key><string>NSApplication</string>

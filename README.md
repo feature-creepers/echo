@@ -39,12 +39,22 @@ This opens JARVIS in a Chrome window. Voice input then uses Chrome's recogniser,
 | Key | What it does |
 |---|---|
 | Space | Talk, when the text box is empty (hold, or tap, depending on Settings) |
-| Enter | Send typed text |
-| Esc | Stop listening, speaking or a reply |
+| Enter | Start typing in the text box; Enter again sends |
+| Esc | Stop listening, speaking or a reply, and leave the text box |
+| N | Open today's news in the reader window |
+| D | Display the last answer in the reader window |
+| R | Play FIP radio |
+| P | Play or pause the music |
+| K | Skip to the next station or song |
+| T | Show or hide the transcript |
+| H, S | Open History, open Settings |
+| M | Switch Mini mode on or off |
 | Ctrl+Option+Space | Talk from any app |
 | Ctrl+Option+Shift+Space | Speak a request and have the result typed at your cursor |
 
-Everything else is in **Settings**: voice and speed, speech language, model, standing instructions, the opening briefing (including whether AI news is spoken as three top stories or shown as a full report), tools, history, startup options, and a Usage view with the estimated cost and token counts for this session, each day and in total.
+The letter shortcuts work whenever you are not typing, and each is shown on its button. Press Enter (or click the text box) to type; letters are then text until you press Esc. Everything else is in **Settings**: voice and speed, speech language, model, standing instructions, the opening briefing (including whether AI news is spoken as three top stories or shown as a full report), tools, history, startup options, and a Usage view with the estimated cost and token counts for this session, each day and in total.
+
+Say "show me" with a question, or press **Show** after a reply, and JARVIS speaks the gist while the full written answer, with its sources, opens in a separate reader window. The **News** button opens the day's AI news report there too.
 
 Tell JARVIS about yourself in the context file (Settings → Assistant → Context file). Set your town in Settings → Tools and connections.
 
@@ -55,6 +65,7 @@ Tell JARVIS about yourself in the context file (Settings → Assistant → Conte
 | `app/main.swift` | The native macOS window: frameless window, Mini mode, Apple speech recognition, global shortcuts, menu bar icon, reading the selection and pasting in other apps. |
 | `server.mjs` | The local server, with no dependencies. Keeps one Claude Code process running and passes questions to it, speaks replies with the Mac's `say` command, hands songs to the Player, and handles settings, weather and history. Listens on `127.0.0.1` only. |
 | `public/index.html` | The whole interface: layout, animation and logic in one file. |
+| `public/reader.html` | The reader: a second, plain window that shows the news report or a written answer. |
 | `build-app.sh` | Compiles the Swift shell, assembles `JARVIS.app` and signs it for this Mac. |
 | `setup-signing.sh` | Run once: creates a local signing certificate so macOS keeps the app's permissions across builds. |
 | `workspace/CLAUDE.md` | Template for the context file. |

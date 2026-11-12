@@ -165,6 +165,12 @@
   button:hover { border-color: var(--cyan); background: rgba(var(--glow), 0.08); }
   button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
   button.on { background: var(--cyan); color: #012; border-color: var(--cyan); }
+  /* shortcuts: every button that has one shows its key, except while the text box has the keyboard */
+  button[data-key] { position: relative; }
+  body:not(.typing) button[data-key]::after { content: attr(data-key); position: absolute; top: -7px; right: -5px; z-index: 5;
+    min-width: 15px; padding: 0 4px; border-radius: 3px; border: 1px solid var(--line); background: var(--bg); color: var(--cyan);
+    font-size: 9px; font-weight: 700; letter-spacing: 0; line-height: 13px; text-align: center; pointer-events: none; }
+  body.compact button[data-key]::after { display: none; }
   button.warn { color: var(--amber); border-color: rgba(255, 180, 84, 0.4); }
   button[hidden] { display: none; }
   button:disabled { opacity: 0.4; cursor: default; border-color: var(--line); background: transparent; }
@@ -263,17 +269,6 @@
   .unote { color: var(--muted); font-size: 10.5px; line-height: 1.5; margin: 0; }
   #cost { cursor: pointer; }
 
-  /* news: the day's report, one card per section, set a little larger because it is there to be read */
-  .news { max-width: 900px; }
-  .news .ntitle { margin: 0 0 6px; font-size: 16px; font-weight: 600; color: var(--text); letter-spacing: 0.04em; }
-  .news .card p { margin: 0 0 10px; color: var(--muted); font-size: 12.5px; line-height: 1.6; overflow-wrap: anywhere; }
-  .news .card p.unote { font-size: 10.5px; }
-  .news h3 { margin: 12px 0 8px; color: var(--text); font-size: 12px; letter-spacing: 0.06em; text-transform: none; }
-  .news li { font-size: 12.5px; line-height: 1.55; padding: 5px 0 5px 14px; overflow-wrap: anywhere; }
-  .news li::before { top: 13px; }
-  .news a { color: var(--text); text-decoration: none; border-bottom: 1px dotted var(--cyan-dim); }
-  .news a:hover, .news a:focus-visible { color: var(--cyan); border-bottom-color: var(--cyan); outline: none; }
-  #nState { color: var(--muted); font-size: 10.5px; }
   @media (max-width: 620px) { .view-head { flex-wrap: wrap; } }
 
   /* history */
@@ -308,7 +303,7 @@
   <div class="spacer"></div>
   <button id="mini" title="Shrink to a small window that stays on top">Mini</button>
   <button id="logBtn" title="Show or hide the transcript">Transcript</button>
-  <button id="newsBtn" title="Today's AI news report, and earlier days">News</button>
+  <button id="newsBtn" title="Today's AI news report, and earlier days, in the reader window">News</button>
   <button id="histBtn" title="Past conversations">History</button>
   <button id="gear" title="Settings">Settings</button>
   <button id="aboutBtn" title="What JARVIS is, and what each release brought">About</button>
@@ -399,9 +394,10 @@
 
 <footer>
   <button id="mic" title="Speak — or hold Space">Mic</button>
-  <input id="input" autocomplete="off" placeholder="Type here, or hold Space to talk…" autofocus>
+  <input id="input" autocomplete="off" placeholder="Press Enter to type, or hold Space to talk…">
   <button id="sendBtn">Send</button>
   <button id="stopBtn" class="warn" hidden>Stop</button>
+  <button id="showBtn" title="Put the last answer on screen, in full, in the reader window">Show</button>
   <button id="voice" class="on" title="Read replies aloud">Voice</button>
   <button id="lang" title="Language for speech">EN</button>
   <button id="reset" title="Forget this conversation">New</button>
@@ -451,7 +447,7 @@
         <label><input type="checkbox" id="sItWeather"> Weather</label>
         <label><input type="checkbox" id="sItCalendar"> Calendar</label>
       </span></div>
-      <div class="set"><label for="sNews">AI news<small>Gathered once a day from public sites and kept in <span id="sNewsDir"></span>. Spoken as three top stories, or shown as the full report on screen.</small></label><span class="ctl"><button id="sNewsOpen">View report</button><select id="sNews"><option value="off">Off</option><option value="top3">Speak the top three</option><option value="report">Show the report</option></select></span></div>
+      <div class="set"><label for="sNews">AI news<small>Gathered once a day from public sites and kept in <span id="sNewsDir"></span>. Spoken as three top stories, or shown as the full report in the reader window.</small></label><span class="ctl"><button id="sNewsOpen">View report</button><select id="sNews"><option value="off">Off</option><option value="top3">Speak the top three</option><option value="report">Show the report</option></select></span></div>
       <div class="set"><label for="sBootSong">Morning song<small>After the day's first briefing, the Player plays a random song from <span id="sSongDir"></span>.</small></label><span class="ctl"><button id="sSongs">Open folder</button><input type="checkbox" id="sBootSong"></span></div>
       <div class="set"><span class="name">Try it<small>Plays the opening now.</small></span><span class="ctl"><button id="sBootNow">Play now</button></span></div>
     </section>
@@ -498,7 +494,7 @@
 
     <section class="panel card">
       <h2>Shortcuts</h2>
-      <div class="keys"><b>Space</b><span>talk, when the text box is empty</span><b>Enter</b><span>send typed text</span><b>Esc</b><span>stop listening, speaking or a reply</span><b>⌃⌥ Space</b><span>talk from any app</span><b>⌃⌥⇧ Space</b><span>write at the cursor of another app</span></div>
+      <div class="keys" id="sKeys"><b>Space</b><span>talk, when the text box is empty</span><b>Enter</b><span>start typing in the text box, then send</span><b>Esc</b><span>stop listening, speaking or a reply, and leave the text box</span><b>⌃⌥ Space</b><span>talk from any app</span><b>⌃⌥⇧ Space</b><span>write at the cursor of another app</span></div>
     </section>
 
   </div></div>
@@ -535,6 +531,7 @@
             <li><b>Global shortcut:</b> talk from any app; optional writing at your cursor.</li>
             <li><b>Opening briefing:</b> date, system, weather, today's calendar and AI news.</li>
             <li><b>AI news:</b> a daily report from Hacker News, GitHub and the smol.ai digest, read on screen or summed up aloud, with every day kept.</li>
+            <li><b>Reader window:</b> say &ldquo;show me&rdquo; and the full written answer, with sources, opens in a plain second window.</li>
             <li><b>Google Calendar:</b> read-only, through your Claude account.</li>
             <li><b>Web search and files:</b> searches the web and reads its own workspace folder.</li>
             <li><b>Player:</b> FIP radio and your own songs, from its panel or by asking; it plays quietly while you talk.</li>
@@ -563,7 +560,16 @@
       <h2>Releases</h2>
       <!-- newest first; add each new release at the top, and keep VERSION in server.mjs and build-app.sh in step -->
       <div class="rel">
-        <div class="rhead"><b>v0.9.0</b><span>12 November 2026</span><em>CURRENT</em></div>
+        <div class="rhead"><b>v0.10.0</b><span>12 November 2026</span><em>CURRENT</em></div>
+        <ul>
+          <li><b>Reader window:</b> a second, plain window for what is better read than heard. It opens beside JARVIS and leaves the main window as it was.</li>
+          <li><b>Answers on screen:</b> say &ldquo;show me&rdquo; with any question, or press Show after a reply. JARVIS speaks the gist and writes the full answer, with its sources, in the reader.</li>
+          <li><b>News:</b> the day's report now opens in the reader, with the earlier days, Refresh and the folder there too.</li>
+          <li><b>Shortcuts:</b> a single letter for the news, the reader, the radio and the main views, shown on each button. Press Enter to type in the text box and Esc to leave it; while you type, letters are text again.</li>
+        </ul>
+      </div>
+      <div class="rel">
+        <div class="rhead"><b>v0.9.0</b><span>12 November 2026</span></div>
         <ul>
           <li><b>Player panel:</b> music now has its own panel beside Weather and System, apart from the assistant. It plays FIP radio, with its twelve stations and the track on air, or your own songs in random order.</li>
           <li><b>By voice:</b> ask for FIP, a station, your songs, a pause, the next one or a change of volume, and ask what is playing.</li>
@@ -652,19 +658,6 @@
   </div></div>
 </div>
 
-<div id="news" class="view" hidden role="dialog" aria-modal="true" aria-labelledby="nTitle">
-  <div class="view-head">
-    <h1 id="nTitle">NEWS</h1>
-    <select id="nDay" title="Reports on record" aria-label="Day"></select>
-    <span id="nState" role="status"></span>
-    <span class="grow"></span>
-    <button id="nRefresh" title="Gather today's news again">Refresh</button>
-    <button id="nFolder" title="Every report is kept as a text file in this folder">Open folder</button>
-    <button id="nClose">Done</button>
-  </div>
-  <div class="view-body"><div class="about news" id="nBody"></div></div>
-</div>
-
 <div id="history" class="view" hidden role="dialog" aria-modal="true" aria-labelledby="hTitle">
   <div class="view-head">
     <h1 id="hTitle">HISTORY</h1>
@@ -693,6 +686,7 @@ document.body.classList.toggle('native', NATIVE);
 // ---------- state ----------
 let state = 'idle';            // idle | listening | thinking | speaking
 let busy = false;
+let typing = false;             // the text box has the keyboard: letters are text and the shortcuts are off
 let lastConv = null;            // the server's conversation counter, to notice when it starts a new one
 const money = (n) => '$' + (n > 0 && n < 0.01 ? n.toFixed(4) : (n || 0).toFixed(2));
 const LANGS = [{ code: 'en-GB', label: 'EN', name: 'English (UK)', prefer: ['Daniel', 'Google UK English Male'] },
@@ -917,7 +911,7 @@ function updateVital() {
   $('bpm').textContent = bpm ? bpm + ' BPM' : '';
   $('vital').style.setProperty('--beat', bpm ? (60 / bpm).toFixed(2) + 's' : '0s');
 }
-const hint = () => (holdMode ? 'HOLD SPACE  talk' : 'SPACE  talk') + '   ·   ENTER  send   ·   ESC  stop';
+const hint = () => (holdMode ? 'HOLD SPACE  talk' : 'SPACE  talk') + (typing ? '   ·   ENTER  send   ·   ESC  leave the text box' : '   ·   ENTER  type   ·   ESC  stop');
 let holdMode = true;
 function setLive(t) { $('live').textContent = t || hint(); }
 // Shown under the core for problems only (for example, nothing heard). Replies are voice-only.
@@ -995,7 +989,7 @@ async function loadWeather() {
   } catch { $('wxText').textContent = 'unavailable'; }
 }
 loadWeather(); setInterval(loadWeather, 10 * 60 * 1000);
-function closeTownEdit() { $('wxEdit').hidden = true; $('wxPlace').hidden = false; $('input').focus(); }
+function closeTownEdit() { $('wxEdit').hidden = true; $('wxPlace').hidden = false; restFocus(); }
 $('wxPlace').addEventListener('click', () => {
   $('wxPlace').hidden = true; $('wxEdit').hidden = false; $('wxEdit').value = '';
   setTimeout(() => $('wxEdit').focus(), 0);
@@ -1128,6 +1122,8 @@ async function ask(text, opts = {}) {
         } else if (ev.type === 'tool') {
           addMsg('tool', '', '▸ ' + ev.name + (ev.detail ? '  ' + ev.detail : ''));
           out = null; full = '';
+        } else if (ev.type === 'screen') {
+          openReader(); addMsg('tool', '', '▸ shown in the reader window');   // the written part of the answer goes there, unspoken
         } else if (ev.type === 'error') {
           addMsg('error', 'ERROR', ev.message);
         } else if (ev.type === 'stopped') {
@@ -1146,10 +1142,10 @@ async function ask(text, opts = {}) {
   busy = false;
   $('sendBtn').hidden = false; $('stopBtn').hidden = true;
   if (!pending) setState('idle');
-  $('input').focus();
+  restFocus();
   stats();
   // the briefing announced the report rather than reading the news out: put it on screen
-  if (briefed && full && cfg && cfg.briefing.news === 'report' && !document.body.classList.contains('compact') && !viewOpen()) openNews();
+  if (briefed && full && cfg && cfg.briefing.news === 'report') openNews();
 }
 $('sendBtn').onclick = () => ask($('input').value);
 $('input').addEventListener('keydown', (e) => { if (e.key === 'Enter') ask($('input').value); });
@@ -1260,7 +1256,7 @@ function applySettings(v) {
   charName = (v.characters.find((c) => c.id === cfg.character) || { name: 'JARVIS' }).name;
   document.body.classList.toggle('hal', hal);
   $('brand').textContent = charName; document.title = charName;
-  $('input').placeholder = `Type here, or ${cfg.listen.mode === 'hold' ? 'hold' : 'press'} Space to talk to ${charName}…`;
+  $('input').placeholder = `Press Enter to type, or ${cfg.listen.mode === 'hold' ? 'hold' : 'press'} Space to talk to ${charName}…`;
   updateVital();
   holdMode = cfg.listen.mode === 'hold';
   document.body.classList.toggle('show-log', cfg.ui.transcript);
@@ -1353,7 +1349,7 @@ async function paintUsageLine() {
   } catch {}
 }
 function openSettings() { paintUsageLine(); loadSettings().then(layoutCards); post({ type: 'status' }); $('settings').hidden = false; layoutCards(); cardBox.parentElement.scrollTop = 0; $('sClose').focus(); }
-function closeSettings() { $('settings').hidden = true; $('input').focus(); }
+function closeSettings() { $('settings').hidden = true; restFocus(); }
 $('gear').onclick = openSettings;
 $('sClose').onclick = closeSettings;
 
@@ -1463,76 +1459,28 @@ async function loadHistory() {
   }
 }
 function openHistory() { $('hSearch').value = ''; $('history').hidden = false; loadHistory(); $('hSearch').focus(); }
-function closeHistory() { $('history').hidden = true; $('input').focus(); }
+function closeHistory() { $('history').hidden = true; restFocus(); }
 $('histBtn').onclick = openHistory;
 
-// ---------- news ----------
-// The report is Markdown written by the server in a fixed, simple shape: headings, list items, paragraphs
-// and links. It is drawn here piece by piece as text, so nothing in a headline can turn into markup.
-function inlineInto(el, text) {
-  const re = /\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g;
-  let at = 0, m;
-  while ((m = re.exec(text))) {
-    if (m.index > at) el.append(text.slice(at, m.index));
-    const a = document.createElement('a'); a.href = m[2]; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = m[1];
-    el.append(a); at = m.index + m[0].length;
-  }
-  if (at < text.length) el.append(text.slice(at));
+// ---------- reader ----------
+// A second window for what is better read than heard: the day's news report, or an answer asked for on screen.
+// The server holds the document; this page only asks for the window to be opened.
+function openReader() {
+  if (NATIVE) return post({ type: 'reader' });
+  const w = window.open('/reader', 'jarvis-reader', 'width=760,height=900');
+  if (!w) setCaption('Allow pop-up windows for this page to see the reader.');
 }
-function drawNews(md) {
-  const body = $('nBody'); body.textContent = '';
-  let card = null, list = null;
-  const newCard = () => { card = document.createElement('section'); card.className = 'panel card'; body.appendChild(card); list = null; return card; };
-  const add = (tag, text, cls) => { const el = document.createElement(tag); if (cls) el.className = cls; inlineInto(el, text); (card || newCard()).appendChild(el); list = null; return el; };
-  for (const raw of md.split('\n')) {
-    const line = raw.trim();
-    if (!line) { list = null; continue; }
-    if (line.startsWith('# ')) { newCard(); add('p', line.slice(2), 'ntitle'); }
-    else if (line.startsWith('## ')) { newCard(); add('h2', line.slice(3)); }
-    else if (line.startsWith('### ')) add('h3', line.slice(4));
-    else if (line.startsWith('- ')) {
-      if (!list) { list = document.createElement('ul'); (card || newCard()).appendChild(list); }
-      const li = document.createElement('li'); inlineInto(li, line.slice(2)); list.appendChild(li);
-    }
-    else if (/^_.*_$/.test(line)) add('p', line.slice(1, -1), 'unote');
-    else add('p', line);
-  }
+async function openNews() {
+  try { await api('/api/reader', { method: 'POST', body: JSON.stringify({ kind: 'news' }) }); } catch { return; }
+  openReader();
 }
-function newsMessage(text) { const p = document.createElement('p'); p.className = 'hempty'; p.textContent = text; $('nBody').textContent = ''; $('nBody').appendChild(p); }
-let newsLoad = 0;
-async function loadNews(day, refresh) {
-  const mine = ++newsLoad;
-  $('nState').textContent = day ? '' : 'GATHERING…'; $('nRefresh').disabled = true;
-  if (!day) newsMessage('Gathering today\'s news…');
-  let n;
-  try { n = await (await api('/api/news?' + (day ? 'day=' + day : refresh ? 'refresh=1' : ''))).json(); }
-  catch { if (mine === newsLoad) { $('nState').textContent = ''; $('nRefresh').disabled = false; newsMessage('The news could not be loaded.'); } return; }
-  if (mine !== newsLoad) return;   // a later request has taken over
-  $('nRefresh').disabled = false;
-  $('nState').textContent = n.error ? 'NOT UPDATED' : ''; $('nState').title = n.error || '';
-  const pick = $('nDay'); pick.textContent = '';
-  for (const d of n.days) {
-    const o = document.createElement('option'); o.value = d;
-    o.textContent = (d === n.today ? 'Today · ' : '') + fmtDay(keyDate(d), { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
-    pick.appendChild(o);
-  }
-  pick.hidden = !n.days.length; pick.value = n.day;
-  if (n.text) drawNews(n.text);
-  else newsMessage(n.error ? 'Today\'s news could not be gathered: ' + n.error : 'No report for that day.');
-  $('news').querySelector('.view-body').scrollTop = 0;
-}
-function openNews() { $('news').hidden = false; loadNews(); $('nClose').focus(); }
-function closeNews() { newsLoad++; $('news').hidden = true; if (!$('settings').hidden) $('sNewsOpen').focus(); else $('input').focus(); }
 $('newsBtn').onclick = openNews;
 $('sNewsOpen').onclick = openNews;
-$('nClose').onclick = closeNews;
-$('nRefresh').onclick = () => loadNews('', true);
-$('nDay').onchange = (e) => loadNews(e.target.value);
-$('nFolder').onclick = () => api('/api/open', { method: 'POST', body: JSON.stringify({ what: 'news' }) });
+$('showBtn').onclick = () => ask('Show me that on screen, in full.');
 
 // ---------- about ----------
 function openAbout() { loadSettings(); $('about').hidden = false; $('about').querySelector('.view-body').scrollTop = 0; $('aClose').focus(); }
-function closeAbout() { $('about').hidden = true; $('input').focus(); }
+function closeAbout() { $('about').hidden = true; restFocus(); }
 $('aboutBtn').onclick = openAbout;
 $('aClose').onclick = closeAbout;
 
@@ -1589,7 +1537,7 @@ async function loadUsage() {
     + (u.since ? ` Recorded since ${fmtDay(new Date(u.since), { day: 'numeric', month: 'long', year: 'numeric' })}.` : '') + ' Replies stopped midway are not counted.';
 }
 function openUsage() { $('usage').hidden = false; $('usage').querySelector('.view-body').scrollTop = 0; loadUsage(); $('uClose').focus(); }
-function closeUsage() { $('usage').hidden = true; if (!$('settings').hidden) { paintUsageLine(); $('sUsageBtn').focus(); } else $('input').focus(); }
+function closeUsage() { $('usage').hidden = true; if (!$('settings').hidden) { paintUsageLine(); $('sUsageBtn').focus(); } else restFocus(); }
 $('sUsageBtn').onclick = openUsage;
 $('cost').onclick = openUsage;
 $('uClose').onclick = closeUsage;
@@ -1625,19 +1573,57 @@ setLive('');
 // Space talks (when the text box is empty): held down in hold mode, pressed once in tap mode.
 // Esc stops whatever is happening.
 let spaceHeld = false;
-const viewOpen = () => !$('settings').hidden || !$('history').hidden || !$('about').hidden || !$('usage').hidden || !$('news').hidden;
+// A single letter, from the main screen, whenever the keyboard is not in a text box. Each entry names the
+// button it stands for, which shows the key as a small tag and in its tooltip. The same list fills the
+// Shortcuts card in Settings. Enter puts the keyboard in the text box; Esc takes it out again.
+const SHORTCUTS = [
+  { key: 'n', on: 'newsBtn', what: 'open today\'s news in the reader window' },
+  { key: 'd', on: 'showBtn', what: 'display the last answer in the reader window' },
+  { key: 'r', on: 'plFip', what: 'play FIP radio', run: () => { if (pl.source !== 'fip' || plAudio.paused) plTune(pl.station, true); } },
+  { key: 'p', on: 'plPlay', what: 'play or pause the music' },
+  { key: 'k', on: 'plNext', what: 'skip to the next station or song' },
+  { key: 't', on: 'logBtn', what: 'show or hide the transcript' },
+  { key: 'h', on: 'histBtn', what: 'open History' },
+  { key: 's', on: 'gear', what: 'open Settings' },
+  { key: 'm', on: 'mini', what: 'switch Mini mode on or off', run: () => setCompact(!document.body.classList.contains('compact')) },
+];
+for (const s of SHORTCUTS) {
+  const b = $(s.on), name = s.key.toUpperCase();
+  b.dataset.key = s.key.toUpperCase(); b.title = (b.title ? b.title + '  ' : '') + '(' + name + ')';
+  const k = document.createElement('b'), d = document.createElement('span');
+  k.textContent = name; d.textContent = s.what; $('sKeys').append(k, d);
+}
+const editing = () => !!document.activeElement && document.activeElement.matches('input, textarea, select');
+function setTyping(on) {
+  typing = on; document.body.classList.toggle('typing', on);
+  if (on) $('input').focus();
+  else if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+  if (state === 'idle') setLive('');
+}
+function restFocus() { setTyping(typing); }   // after a click or a closed view: back to the text box, or to no box at all
+for (const how of ['focus', 'pointerdown']) $('input').addEventListener(how, () => { if (!typing) setTyping(true); });   // a click in the box starts typing
+$('input').addEventListener('blur', () => setTimeout(() => { if (typing && document.activeElement === document.body) setTyping(false); }, 0));
+const viewOpen = () => !$('settings').hidden || !$('history').hidden || !$('about').hidden || !$('usage').hidden;
 addEventListener('keydown', (e) => {
   if (viewOpen()) {   // while a view is open, keys belong to its controls
-    if (e.key === 'Escape') { e.preventDefault(); if (!$('news').hidden) closeNews(); else if (!$('usage').hidden) closeUsage(); else if (!$('settings').hidden) closeSettings(); else if (!$('history').hidden) closeHistory(); else closeAbout(); }
+    if (e.key === 'Escape') { e.preventDefault(); if (!$('usage').hidden) closeUsage(); else if (!$('settings').hidden) closeSettings(); else if (!$('history').hidden) closeHistory(); else closeAbout(); }
     return;
   }
   if (e.key === 'Escape') {
     e.preventDefault();
+    setTyping(false);
     cancelListening(); hush();
     if (busy) api('/api/stop', { method: 'POST' }); else setState('idle');
     return;
   }
-  if (e.code === 'Space' && !e.metaKey && !e.ctrlKey && !e.altKey && $('input').value === '') {
+  const bare = !e.ctrlKey && !e.metaKey && !e.altKey;
+  if (bare && !editing()) {
+    if (e.key === 'Enter') { e.preventDefault(); setTyping(true); return; }
+    const s = !e.shiftKey && e.key.length === 1 && SHORTCUTS.find((x) => x.key === e.key.toLowerCase());
+    if (s) { e.preventDefault(); if (!e.repeat) { if (s.run) s.run(); else $(s.on).click(); } return; }
+  }
+  // Space talks unless something is being typed: an empty text box does not count
+  if (e.code === 'Space' && bare && (!editing() || (document.activeElement === $('input') && $('input').value === ''))) {
     e.preventDefault();
     if (e.repeat) return;
     if (holdMode) { spaceHeld = true; startListening(false); }
@@ -1648,8 +1634,8 @@ addEventListener('keyup', (e) => {
   if (e.code === 'Space' && spaceHeld) { spaceHeld = false; stopListening(); }
 });
 addEventListener('blur', () => { if (spaceHeld) { spaceHeld = false; stopListening(); } });
-// Keep the keyboard on the text box, so Space and Enter never re-press a button.
-for (const b of document.querySelectorAll('footer button, header button')) b.addEventListener('click', () => { if (!viewOpen()) $('input').focus(); });
+// Take the keyboard off a button once it is clicked, so Space and Enter never press it again.
+for (const b of document.querySelectorAll('footer button, header button, #plFip, #plSongs, #plPlay, #plNext')) b.addEventListener('click', () => { if (!viewOpen()) restFocus(); });
 
 // ---------- window: drag, compact mode ----------
 function setCompact(on) {
