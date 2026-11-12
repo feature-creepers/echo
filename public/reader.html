@@ -63,6 +63,7 @@
   <span id="note" role="status"></span>
   <span class="grow"></span>
   <select id="day" hidden title="Reports on record" aria-label="Day"></select>
+  <select id="past" hidden title="Answers shown before, kept with the conversation history" aria-label="Earlier answers"></select>
   <button id="refresh" hidden title="Gather today's news again">Refresh</button>
   <button id="folder" hidden title="Every report is kept as a text file in this folder">Folder</button>
 </div>
@@ -144,6 +145,26 @@ $('refresh').onclick = () => loadNews('', true);
 $('day').onchange = (e) => loadNews(e.target.value);
 $('folder').onclick = () => api('/api/open', { method: 'POST', body: JSON.stringify({ what: 'news' }) });
 
+// ---------- earlier answers ----------
+// Every answer shown here is kept with the conversation history. The list brings one back.
+async function loadPast() {
+  let answers = [];
+  try { answers = (await (await api('/api/reader/list')).json()).answers || []; } catch {}
+  const pick = $('past'); pick.textContent = '';
+  const first = document.createElement('option'); first.value = ''; first.textContent = 'Earlier · ' + answers.length;
+  pick.appendChild(first);
+  const today = new Date().toDateString();
+  for (const a of answers) {
+    const o = document.createElement('option'), d = new Date(a.t);
+    const when = d.toDateString() === today ? d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+      : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    o.value = a.t; o.textContent = when + ' · ' + a.title;
+    pick.appendChild(o);
+  }
+  pick.hidden = !answers.length;
+}
+$('past').onchange = (e) => { if (e.target.value) api('/api/reader', { method: 'POST', body: JSON.stringify({ kind: 'answer', t: e.target.value }) }); };
+
 // ---------- what is on show ----------
 let last = { n: -1, kind: '', at: '' };
 function show(doc) {
@@ -160,6 +181,7 @@ function show(doc) {
   }
   else message('Nothing to read yet. Ask JARVIS to show you something, or press News.');
   if (doc.kind !== last.kind || doc.at !== last.at) theme();   // the character may have changed since the last document
+  if (!doc.live) loadPast();   // a finished answer has just joined the list
   last = doc;
 }
 async function theme() {
@@ -185,9 +207,10 @@ async function listen() {
 }
 theme(); listen();
 
-// Esc closes the window.
+// Esc closes the window, and so do N and L, the keys that open it.
 addEventListener('keydown', (e) => {
-  if (e.key !== 'Escape') return;
+  const n = ['n', 'l'].includes(e.key.toLowerCase()) && !e.ctrlKey && !e.metaKey && !e.altKey && !(document.activeElement && document.activeElement.matches('input, textarea, select'));
+  if (e.key !== 'Escape' && !n) return;
   if (NATIVE) window.webkit.messageHandlers.jarvis.postMessage({ type: 'readerClose' }); else window.close();
 });
 </script>

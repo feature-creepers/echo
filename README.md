@@ -40,8 +40,9 @@ This opens JARVIS in a Chrome window. Voice input then uses Chrome's recogniser,
 |---|---|
 | Space | Talk, when the text box is empty (hold, or tap, depending on Settings) |
 | Enter | Start typing in the text box; Enter again sends |
-| Esc | Stop listening, speaking or a reply, and leave the text box |
-| N | Open today's news in the reader window |
+| Esc | Stop listening, speaking or a reply, and leave the text box; with nothing to stop, close the reader window |
+| N | Open today's news in the reader window, or close that window |
+| L | Bring back the reader window with what it last showed, or close it |
 | D | Display the last answer in the reader window |
 | R | Play FIP radio |
 | P | Play or pause the music |

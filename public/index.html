@@ -316,6 +316,7 @@
   <button id="mini" title="Shrink to a small window that stays on top">Mini</button>
   <button id="logBtn" title="Show or hide the transcript">Transcript</button>
   <button id="newsBtn" title="Today's AI news report, and earlier days, in the reader window">News</button>
+  <button id="lastBtn" title="Bring back the reader window with what it last showed; earlier answers are listed there">Last</button>
   <button id="histBtn" title="Past conversations">History</button>
   <button id="gear" title="Settings">Settings</button>
   <button id="aboutBtn" title="What JARVIS is, and what each release brought">About</button>
@@ -509,7 +510,7 @@
 
     <section class="panel card">
       <h2>Shortcuts</h2>
-      <div class="keys" id="sKeys"><b>Space</b><span>talk, when the text box is empty</span><b>Enter</b><span>start typing in the text box, then send</span><b>Esc</b><span>stop listening, speaking or a reply, and leave the text box</span><b>⌃⌥ Space</b><span>talk from any app</span><b>⌃⌥⇧ Space</b><span>write at the cursor of another app</span></div>
+      <div class="keys" id="sKeys"><b>Space</b><span>talk, when the text box is empty</span><b>Enter</b><span>start typing in the text box, then send</span><b>Esc</b><span>stop listening, speaking or a reply, leave the text box, or close the reader window</span><b>⌃⌥ Space</b><span>talk from any app</span><b>⌃⌥⇧ Space</b><span>write at the cursor of another app</span></div>
     </section>
 
   </div></div>
@@ -1233,6 +1234,7 @@ function cancelListening() {
 }
 // Messages from the native app: speech results and the global shortcut.
 window.jarvisNative = (msg) => {
+  if (msg.openReader) { if (msg.openReader === 'news') openNews(); else openLast(); }   // N or L was pressed and the reader was not showing
   if (msg.speech) {
     const ev = msg.speech;
     if (ev.started) { listenUi(true); if (autoStop) silenceTimer = setTimeout(stopListening, 6000); }
@@ -1487,11 +1489,31 @@ $('histBtn').onclick = openHistory;
 // ---------- reader ----------
 // A second window for what is better read than heard: the day's news report, or an answer asked for on screen.
 // The server holds the document; this page only asks for the window to be opened.
+let readerWin = null;   // in a browser: the reader's window, to tell whether it is open
 function openReader() {
   if (NATIVE) return post({ type: 'reader' });
-  const w = window.open('/reader', 'jarvis-reader', 'width=760,height=900');
-  if (!w) setCaption('Allow pop-up windows for this page to see the reader.');
+  readerWin = window.open('/reader', 'jarvis-reader', 'width=760,height=900');
+  if (!readerWin) setCaption('Allow pop-up windows for this page to see the reader.');
 }
+function closeReader() {
+  if (NATIVE) post({ type: 'readerClose' });
+  else if (readerWin) { readerWin.close(); readerWin = null; }
+}
+// N opens the news and L brings back what the reader last showed; either closes the reader when it is
+// already open. The app knows whether its window is showing, so it either closes it or asks this page to open it.
+function toggleReader(open) {
+  if (NATIVE) return post({ type: 'readerToggle', open: open === openNews ? 'news' : 'last' });
+  if (readerWin && !readerWin.closed) closeReader(); else open();
+}
+// The reader holds on to its last document after it is closed. Answers are also kept with the history,
+// so the newest of those comes back even after JARVIS has been restarted.
+async function openLast() {
+  let r;
+  try { r = await (await api('/api/reader', { method: 'POST', body: JSON.stringify({ kind: 'last' }) })).json(); } catch { return; }
+  if (r.kind === 'none') return setCaption('Nothing has been shown in the reader yet.');
+  openReader();
+}
+$('lastBtn').onclick = openLast;
 async function openNews() {
   try { await api('/api/reader', { method: 'POST', body: JSON.stringify({ kind: 'news' }) }); } catch { return; }
   openReader();
@@ -1599,7 +1621,8 @@ let spaceHeld = false;
 // button it stands for, which shows the key as a small tag and in its tooltip. The same list fills the
 // Shortcuts card in Settings. Enter puts the keyboard in the text box; Esc takes it out again.
 const SHORTCUTS = [
-  { key: 'n', on: 'newsBtn', what: 'open today\'s news in the reader window' },
+  { key: 'n', on: 'newsBtn', what: 'open today\'s news in the reader window, or close that window', run: () => toggleReader(openNews) },
+  { key: 'l', on: 'lastBtn', what: 'bring back the reader window with what it last showed, or close it', run: () => toggleReader(openLast) },
   { key: 'd', on: 'showBtn', what: 'display the last answer in the reader window' },
   { key: 'r', on: 'plFip', what: 'play FIP radio', run: () => { if (pl.source !== 'fip' || plAudio.paused) plTune(pl.station, true); } },
   { key: 'p', on: 'plPlay', what: 'play or pause the music' },
@@ -1634,6 +1657,7 @@ addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     e.preventDefault();
     setTyping(false);
+    if (!listening && !busy && !pending) closeReader();   // with nothing to stop, Esc closes the reader window
     cancelListening(); hush();
     if (busy) api('/api/stop', { method: 'POST' }); else setState('idle');
     return;

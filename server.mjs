@@ -891,6 +891,23 @@ function setReader(doc) {
   const line = JSON.stringify(readerDoc) + '\n';
   for (const client of readerClients) client.write(line);
 }
+// Answers shown in the reader are kept with the conversation history (the "screen" part of an exchange),
+// so one that was closed can be brought back. Newest first: [{ t, user, screen }].
+function savedScreens(limit) {
+  const out = [];
+  for (const f of historyFiles()) {
+    const lines = fs.readFileSync(path.join(HISTORY_DIR, f), 'utf8').split('\n').filter(Boolean).reverse();
+    for (const line of lines) {
+      let e; try { e = JSON.parse(line); } catch { continue; }
+      if (!e.screen) continue;
+      out.push(e);
+      if (out.length >= limit) return out;
+    }
+  }
+  return out;
+}
+const savedTitle = (e) => ((e.screen.match(/^#\s+(.+)$/m) || [])[1] || e.user || 'Answer').slice(0, 120);
+const showSaved = (e) => setReader({ kind: 'answer', md: e.screen.slice(0, 60000), live: false, ask: String(e.user || '').slice(0, 200), at: e.t });
 function showAnswer(t, live) {
   setReader({ kind: 'answer', md: t.screen.slice(0, 60000), live, ask: t.label.slice(0, 200), at: t.at });
 }
@@ -1107,10 +1124,25 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (req.method === 'POST' && url.pathname === '/api/reader') {
-      const { kind } = await readJson(req);
+      const { kind, t } = await readJson(req);
+      if (kind === 'last') {
+        // Bring back what was last on show. After a restart nothing is: fall back on the newest saved answer.
+        if (readerDoc.kind === 'none') { const e = savedScreens(1)[0]; if (e) showSaved(e); }
+        return send(res, 200, { ok: true, kind: readerDoc.kind });
+      }
+      if (kind === 'answer') {
+        const e = savedScreens(500).find((x) => x.t === t);
+        if (!e) return send(res, 404, { error: 'That answer is no longer on record.' });
+        showSaved(e);
+        return send(res, 200, { ok: true });
+      }
       if (kind !== 'news') return send(res, 400, { error: 'unknown kind' });
       setReader({ kind: 'news' });
       return send(res, 200, { ok: true });
+    }
+    if (req.method === 'GET' && url.pathname === '/api/reader/list') {
+      // The answers on record, newest first, for the reader's "Earlier" list.
+      return send(res, 200, { answers: savedScreens(60).map((e) => ({ t: e.t, title: savedTitle(e) })) });
     }
     if (req.method === 'GET' && url.pathname === '/api/news') {
       // The report of one day (today's by default, gathered now if need be), and the days on record.
