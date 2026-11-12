@@ -416,6 +416,13 @@
     </section>
 
     <section class="panel card">
+      <h2>Conversations and memory</h2>
+      <div class="set"><label for="sIdle">New conversation after<small>A pause this long starts a fresh conversation, which keeps each reply quick and cheap. 0 keeps one conversation going.</small></label><span class="ctl"><input type="number" id="sIdle" min="0" max="1440"> min</span></div>
+      <div class="set"><label for="sMem">Remember between conversations<small>When a conversation ends, its lasting facts are noted in a memory file and given to the next one.</small></label><span class="ctl"><input type="checkbox" id="sMem"></span></div>
+      <div class="set"><span class="name">Memory file<small>What JARVIS has noted. Read it, correct it or empty it as you like.</small></span><span class="ctl"><button id="sMemOpen">Open file</button></span></div>
+    </section>
+
+    <section class="panel card">
       <h2>Usage</h2>
       <div class="set"><span class="name">AI usage<small id="sUsage">What JARVIS has used: now, day by day and in total.</small></span><span class="ctl"><button id="sUsageBtn">View usage</button></span></div>
     </section>
@@ -438,7 +445,7 @@
 
     <section class="panel card">
       <h2>Overview <span id="aVersion" style="color:var(--muted);letter-spacing:0.1em"></span></h2>
-      <p class="lede">A personal voice assistant that runs on this Mac. You talk, it answers aloud, and it can look things up for you. It reads and reports. It never sends, edits or deletes anything on its own; the one thing it can write is text at your cursor, when you ask for that.</p>
+      <p class="lede">A personal voice assistant that runs on this Mac. You talk, it answers aloud, and it can look things up for you. It reads and reports. It never sends, edits or deletes anything on its own; the one thing it can write is text at your cursor, when you ask for that. The app itself keeps a short memory file of lasting facts, which you can read and edit.</p>
       <div class="cols">
         <div>
           <h3>How it is built</h3>
@@ -461,12 +468,14 @@
             <li><b>Web search and files:</b> searches the web and reads its own workspace folder.</li>
             <li><b>Mini mode:</b> a small always-on-top core.</li>
             <li><b>History:</b> past exchanges, searchable.</li>
+            <li><b>Memory:</b> a fresh conversation after a pause, with lasting facts carried over in a memory file.</li>
+            <li><b>Usage:</b> estimated cost and token counts, per day and in total.</li>
           </ul>
         </div>
         <div>
           <h3>Where things go</h3>
           <ul>
-            <li><b>On this Mac:</b> settings, history and your context file, in <span id="aDir">~/JARVIS</span>.</li>
+            <li><b>On this Mac:</b> settings, history, usage, memory notes and your context file, in <span id="aDir">~/JARVIS</span>.</li>
             <li><b>To Anthropic:</b> your questions and what JARVIS reads to answer them.</li>
             <li><b>To Apple:</b> your voice, when speech recognition is not on-device.</li>
             <li><b>To Open-Meteo:</b> the coordinates of your weather town.</li>
@@ -480,7 +489,14 @@
       <h2>Releases</h2>
       <!-- newest first; add each new release at the top, and keep VERSION in server.mjs and build-app.sh in step -->
       <div class="rel">
-        <div class="rhead"><b>v0.6.0</b><span>12 November 2026</span><em>CURRENT</em></div>
+        <div class="rhead"><b>v0.7.0</b><span>12 November 2026</span><em>CURRENT</em></div>
+        <ul>
+          <li><b>Fresh conversations:</b> after 30 minutes without a word, a new conversation starts, so replies stay quick and cheap. The pause is a setting.</li>
+          <li><b>Memory:</b> when a conversation ends, its lasting facts are noted in a short memory file, given to every new conversation. You can read and edit it from Settings, or switch it off.</li>
+        </ul>
+      </div>
+      <div class="rel">
+        <div class="rhead"><b>v0.6.0</b><span>12 November 2026</span></div>
         <ul>
           <li><b>Usage:</b> a view opened from Settings showing what JARVIS has used this session, today, this month and in total, with a bar per day and the full record by day and by model.</li>
           <li><b>Saved:</b> each reply's estimated cost and token counts are kept in the data folder, separately from the conversation history.</li>
@@ -574,6 +590,7 @@ document.body.classList.toggle('native', NATIVE);
 // ---------- state ----------
 let state = 'idle';            // idle | listening | thinking | speaking
 let busy = false;
+let lastConv = null;            // the server's conversation counter, to notice when it starts a new one
 const money = (n) => '$' + (n > 0 && n < 0.01 ? n.toFixed(4) : (n || 0).toFixed(2));
 const LANGS = [{ code: 'en-GB', label: 'EN', name: 'English (UK)', prefer: ['Daniel', 'Google UK English Male'] },
                { code: 'fr-FR', label: 'FR', name: 'Français', prefer: ['Thomas', 'Google français'] }];
@@ -662,6 +679,8 @@ async function stats() {
     $('sess').textContent = s.session ? 'active' : 'new';
     $('cal').textContent = s.calendar ? 'connected' : 'not connected';
     if (typeof s.spent === 'number') $('cost').textContent = money(s.spent);
+    if (lastConv !== null && s.conv !== lastConv && !busy) addMsg('tool', '', '▸ new conversation, after a pause');
+    lastConv = s.conv;
     if ($('tools').dataset.list !== s.tools.join()) {
       $('tools').dataset.list = s.tools.join(); $('tools').textContent = '';
       for (const t of s.tools) { const c = document.createElement('span'); c.className = 'chip'; c.textContent = t; $('tools').appendChild(c); }
@@ -850,6 +869,7 @@ $('input').addEventListener('keydown', (e) => { if (e.key === 'Enter') ask($('in
 $('stopBtn').onclick = () => { hush(); api('/api/stop', { method: 'POST' }); };
 $('reset').onclick = async () => {
   hush(); await api('/api/reset', { method: 'POST' });
+  lastConv = null;
   $('log').innerHTML = ''; addMsg('tool', '', '▸ new conversation'); stats();
 };
 
@@ -985,6 +1005,8 @@ function paintSettings() {
   $('sApps').checked = cfg.apps.enabled;
   $('sMenuBar').checked = cfg.ui.menuBar;
   $('sHist').checked = cfg.history.enabled;
+  $('sMem').checked = cfg.memory.enabled;
+  if (document.activeElement !== $('sIdle')) $('sIdle').value = cfg.memory.idleMinutes;
   if (document.activeElement !== $('sHistDays')) $('sHistDays').value = cfg.history.retentionDays;
   paintNative();
   $('sBootLaunch').checked = cfg.briefing.atLaunch;
@@ -1081,6 +1103,9 @@ $('sApps').onchange = (e) => { saveSetting({ apps: { enabled: e.target.checked }
 $('sAx').onclick = () => post({ type: 'accessibility' });
 $('sMenuBar').onchange = (e) => saveSetting({ ui: { menuBar: e.target.checked } });
 $('sLogin').onchange = (e) => post({ type: 'loginItem', on: e.target.checked });
+$('sMem').onchange = (e) => saveSetting({ memory: { enabled: e.target.checked } });
+$('sIdle').onchange = (e) => saveSetting({ memory: { idleMinutes: Math.max(0, Number(e.target.value) || 0) } });
+$('sMemOpen').onclick = () => api('/api/open', { method: 'POST', body: JSON.stringify({ what: 'memory' }) });
 $('sHist').onchange = (e) => saveSetting({ history: { enabled: e.target.checked } });
 $('sHistDays').onchange = (e) => saveSetting({ history: { retentionDays: Number(e.target.value) || 90 } });
 // What only the native app knows: permissions and the login item.
