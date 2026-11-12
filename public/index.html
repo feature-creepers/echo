@@ -148,7 +148,7 @@
   }
   @media (prefers-reduced-motion: reduce) { .bar i { transition: none; } #pulse { animation: none; } }
 
-  /* full-window views: Settings and History */
+  /* full-window views: Settings, History and About */
   .view { position: fixed; inset: 0; z-index: 10; display: grid; grid-template-rows: auto 1fr;
     background:
       radial-gradient(ellipse at 50% 0%, rgba(var(--haze), 0.22), transparent 55%),
@@ -171,8 +171,15 @@
   .card { padding: 16px 18px 8px; backdrop-filter: none; }
   .card h2 { margin: 0 0 6px; font-size: 11px; color: var(--cyan); }
   .card > p { margin: 0 0 8px; color: var(--muted); font-size: 11px; line-height: 1.5; }
-  /* about: one wide card with three columns of plain facts */
-  .card.about { flex: 0 0 100%; padding-bottom: 16px; }
+  /* about: its own view; an overview card with three columns of plain facts, then the releases, newest first */
+  .about { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+  .about .card { padding-bottom: 16px; }
+  .about .rel { border-top: 1px dashed rgba(var(--glow), 0.12); padding: 12px 0 2px; }
+  .about .rel ul { margin-bottom: 0; }
+  .about .rhead { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 6px; }
+  .about .rhead b { color: var(--text); font-size: 12.5px; font-weight: 600; letter-spacing: 0.06em; }
+  .about .rhead span { color: var(--muted); font-size: 10.5px; }
+  .about .rhead em { font-style: normal; font-size: 9px; letter-spacing: 0.2em; color: var(--cyan); border: 1px solid var(--line); border-radius: 3px; padding: 1px 6px; }
   .about .lede { color: var(--text); font-size: 12.5px; max-width: 900px; margin-bottom: 14px; }
   .about .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px 32px; border-top: 1px dashed rgba(var(--glow), 0.12); padding-top: 12px; }
   .about h3 { margin: 0 0 6px; font-size: 10px; letter-spacing: 0.26em; color: var(--cyan-dim); font-weight: 600; text-transform: uppercase; }
@@ -244,6 +251,7 @@
   <button id="logBtn" title="Show or hide the transcript">Transcript</button>
   <button id="histBtn" title="Past conversations">History</button>
   <button id="gear" title="Settings">Settings</button>
+  <button id="aboutBtn" title="What JARVIS is, and what each release brought">About</button>
   <div>
     <div id="clock">--:--:--</div>
     <div id="date"></div>
@@ -387,8 +395,19 @@
       <div class="keys"><b>Space</b><span>talk, when the text box is empty</span><b>Enter</b><span>send typed text</span><b>Esc</b><span>stop listening, speaking or a reply</span><b>⌃⌥ Space</b><span>talk from any app</span><b>⌃⌥⇧ Space</b><span>write at the cursor of another app</span></div>
     </section>
 
-    <section class="panel card about">
-      <h2>About JARVIS <span id="aVersion" style="color:var(--muted);letter-spacing:0.1em"></span></h2>
+  </div></div>
+</div>
+
+<div id="about" class="view" hidden role="dialog" aria-modal="true" aria-labelledby="aTitle">
+  <div class="view-head">
+    <h1 id="aTitle">ABOUT</h1>
+    <span class="grow"></span>
+    <button id="aClose">Done</button>
+  </div>
+  <div class="view-body"><div class="about">
+
+    <section class="panel card">
+      <h2>Overview <span id="aVersion" style="color:var(--muted);letter-spacing:0.1em"></span></h2>
       <p class="lede">A personal voice assistant that runs on this Mac. You talk, it answers aloud, and it can look things up for you. It reads and reports. It never sends, edits or deletes anything on its own; the one thing it can write is text at your cursor, when you ask for that.</p>
       <div class="cols">
         <div>
@@ -424,6 +443,37 @@
             <li><b>Not built in:</b> anything that sends email, changes your calendar or edits files.</li>
           </ul>
         </div>
+      </div>
+    </section>
+
+    <section class="panel card">
+      <h2>Releases</h2>
+      <!-- newest first; add each new release at the top, and keep VERSION in server.mjs and build-app.sh in step -->
+      <div class="rel">
+        <div class="rhead"><b>v0.5.0</b><span>12 November 2026</span><em>CURRENT</em></div>
+        <ul>
+          <li><b>About:</b> its own view, opened from the header, with the overview and this list of releases.</li>
+          <li><b>Characters:</b> choose JARVIS or HAL, which changes the look, name, manner of speaking and preferred voice.</li>
+          <li><b>HAL:</b> a red theme and an eye-shaped core, with one small surprise if you ask about the pod bay doors.</li>
+          <li><b>Fixed:</b> a question asked right after starting a new conversation was lost.</li>
+        </ul>
+      </div>
+      <div class="rel">
+        <div class="rhead"><b>v0.4.0</b><span>11 November 2026</span></div>
+        <ul>
+          <li><b>About:</b> a card in Settings covering how JARVIS is built, what it does and where data goes.</li>
+          <li><b>Settings layout:</b> cards packed into one to four columns by window width, with no gaps.</li>
+          <li><b>README:</b> requirements, install steps, structure and limits.</li>
+        </ul>
+      </div>
+      <div class="rel">
+        <div class="rhead"><b>v0.1</b><span>11 November 2026</span></div>
+        <ul>
+          <li><b>First release:</b> a native macOS window, a local server and a web interface, with Claude as the brain.</li>
+          <li><b>Voice:</b> Apple speech recognition with hold-to-talk, and spoken replies.</li>
+          <li><b>Looking things up:</b> weather, read-only Google Calendar and an opening briefing.</li>
+          <li><b>Also:</b> settings, conversation history and optional integration with other apps.</li>
+        </ul>
       </div>
     </section>
 
@@ -886,8 +936,7 @@ loadSettings().then(() => setTimeout(() => ask('', { boot: true }), 5000));   //
 
 // Pack the setting cards into as many columns as the window has room for.
 const cardBox = document.querySelector('#settings .cards');
-const cards = [...cardBox.querySelectorAll('.card:not(.about)')];   // in reading order
-const aboutCard = cardBox.querySelector('.card.about');
+const cards = [...cardBox.querySelectorAll('.card')];   // in reading order
 function layoutCards() {
   if ($('settings').hidden) return;
   const n = Math.max(1, Math.min(4, Math.floor((cardBox.clientWidth + 16) / 376)));
@@ -898,7 +947,6 @@ function layoutCards() {
     // the shortest column so far takes the next card
     cols.reduce((a, b) => (b.offsetHeight < a.offsetHeight ? b : a)).appendChild(card);
   }
-  cardBox.appendChild(aboutCard);
 }
 addEventListener('resize', layoutCards);
 function openSettings() { loadSettings().then(layoutCards); post({ type: 'status' }); $('settings').hidden = false; layoutCards(); cardBox.parentElement.scrollTop = 0; $('sClose').focus(); }
@@ -999,6 +1047,13 @@ async function loadHistory() {
 function openHistory() { $('hSearch').value = ''; $('history').hidden = false; loadHistory(); $('hSearch').focus(); }
 function closeHistory() { $('history').hidden = true; $('input').focus(); }
 $('histBtn').onclick = openHistory;
+
+// ---------- about ----------
+function openAbout() { loadSettings(); $('about').hidden = false; $('about').querySelector('.view-body').scrollTop = 0; $('aClose').focus(); }
+function closeAbout() { $('about').hidden = true; $('input').focus(); }
+$('aboutBtn').onclick = openAbout;
+$('aClose').onclick = closeAbout;
+
 $('hClose').onclick = closeHistory;
 $('hSearch').oninput = () => { clearTimeout(hTimer); hTimer = setTimeout(loadHistory, 250); };
 $('hClear').onclick = async () => {
@@ -1030,9 +1085,10 @@ setLive('');
 // Space talks (when the text box is empty): held down in hold mode, pressed once in tap mode.
 // Esc stops whatever is happening.
 let spaceHeld = false;
+const viewOpen = () => !$('settings').hidden || !$('history').hidden || !$('about').hidden;
 addEventListener('keydown', (e) => {
-  if (!$('settings').hidden || !$('history').hidden) {   // while a view is open, keys belong to its controls
-    if (e.key === 'Escape') { e.preventDefault(); if ($('settings').hidden) closeHistory(); else closeSettings(); }
+  if (viewOpen()) {   // while a view is open, keys belong to its controls
+    if (e.key === 'Escape') { e.preventDefault(); if (!$('settings').hidden) closeSettings(); else if (!$('history').hidden) closeHistory(); else closeAbout(); }
     return;
   }
   if (e.key === 'Escape') {
@@ -1053,7 +1109,7 @@ addEventListener('keyup', (e) => {
 });
 addEventListener('blur', () => { if (spaceHeld) { spaceHeld = false; stopListening(); } });
 // Keep the keyboard on the text box, so Space and Enter never re-press a button.
-for (const b of document.querySelectorAll('footer button, header button')) b.addEventListener('click', () => { if ($('settings').hidden && $('history').hidden) $('input').focus(); });
+for (const b of document.querySelectorAll('footer button, header button')) b.addEventListener('click', () => { if (!viewOpen()) $('input').focus(); });
 
 // ---------- window: drag, compact mode ----------
 function setCompact(on) {
