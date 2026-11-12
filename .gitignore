@@ -2,3 +2,7 @@
 .DS_Store
 app/.build/
 songs
+
+# market research, kept on this Mac only
+reports/
+research_notes/
