@@ -810,7 +810,26 @@ function startAgent() {
   child.on('close', (code) => endAgent(a, a.stopped ? null : (a.stderr.trim().slice(-400) || `The Claude CLI exited with code ${code}.`)));
   return a;
 }
-let calendarSeen = false; // whether the Google Calendar connection showed up
+// Whether the Google Calendar connection is there: null = not known yet, then true or false.
+// The agent only reports its connections after its first message, so at launch the Claude CLI is
+// asked directly. Whatever the agent reports later replaces this answer.
+let calendarSeen = null;
+let calendarChecking = false;
+function checkCalendar() {
+  if (calendarChecking || calendarSeen !== null || !settings.tools.calendar) return;
+  calendarChecking = true;
+  const env = { ...process.env };
+  delete env.CLAUDECODE;
+  execFile(CLAUDE, ['mcp', 'list'], { cwd: WORKSPACE, env, timeout: 30000 }, (err, out) => {
+    calendarChecking = false;
+    if (calendarSeen !== null) return;   // the agent answered first
+    const line = String(out || '').split('\n').find((l) => /google calendar/i.test(l));
+    // The check itself failed: assume connected until the agent says otherwise.
+    if (err && !line) { calendarSeen = true; return; }
+    calendarSeen = Boolean(line) && /connected/i.test(line) && !/needs auth|failed/i.test(line);
+  });
+}
+checkCalendar();
 // Music commands arrive in the reply as [[music: …]]. They are taken out of the text, so they are never
 // shown, spoken or saved, and passed to the page as events. Text from a "[[" is held back until it closes.
 function emitText(t, text, flush) {
@@ -1002,7 +1021,7 @@ const server = http.createServer(async (req, res) => {
         model: settings.model,
         tools: [...tools(), ...(settings.tools.calendar ? ['Calendar'] : [])],
         session: Boolean(sessionId),
-        calendar: calendarSeen,
+        calendar: settings.tools.calendar ? calendarSeen : false,   // null while still checking
         spent: sessionUsage.cost,
         conv: convCount,
       });
@@ -1070,6 +1089,7 @@ const server = http.createServer(async (req, res) => {
       // model, instructions and tools are fixed when the agent starts: restart it, keeping the conversation
       if (before !== JSON.stringify([settings.model, settings.instructions, settings.tools, settings.briefing, settings.character, settings.address, settings.memory.enabled])) stopAgent();
       if (!settings.memory.enabled) fs.rmSync(PENDING_FILE, { force: true });
+      checkCalendar();   // the calendar may just have been switched on
       if (!(agent && agent.turn)) armIdleTimer();
       return send(res, 200, settingsView());
     }
