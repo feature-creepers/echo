@@ -67,7 +67,14 @@
   .panel::after { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }
   h2 { margin: 0 0 12px; font-size: 10px; letter-spacing: 0.3em; color: var(--cyan-dim); font-weight: 600; text-transform: uppercase; }
 
-  .left, .right { display: flex; flex-direction: column; gap: 12px; min-height: 0; min-width: 0; overflow-y: auto; scrollbar-width: none; }
+  /* Building rule: a panel shows in full or not at all. The side columns never scroll: when the window is too short,
+     fitPanels() takes away optional details (.extra) first, then whole panels from the foot of the column. */
+  .left, .right { display: flex; flex-direction: column; gap: 10px; min-height: 0; min-width: 0; overflow: hidden; }
+  /* the side panels are set a little tighter than the cards in the views, so that three fit in one column */
+  .left .panel, .right .panel { padding: 12px 14px; }
+  .left h2, .right h2 { margin-bottom: 10px; }
+  .left .kv, .right .kv { padding: 3px 0; }
+  .shed { display: none !important; }
   .left .panel, .right .panel { flex-shrink: 0; }
   .left #agent .note { display: none; }   /* three panels share the left column: drop the footnote so they fit without scrolling */
   .wx { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 8px; }
@@ -75,17 +82,47 @@
   #wxText { text-transform: uppercase; letter-spacing: 0.12em; font-size: 11px; }
   #wxPlace { background: none; border: 0; border-bottom: 1px dashed var(--cyan-dim); border-radius: 0; padding: 0 0 1px; color: var(--text); letter-spacing: 0.06em; font-size: 12px; text-transform: none; }
   #wxEdit { width: 100px; max-width: 100%; background: var(--field); border: 1px solid var(--cyan); color: var(--text); font: inherit; font-size: 12px; padding: 2px 5px; outline: none; text-align: right; }
-  .gauge { margin-bottom: 9px; }
-  .gauge .row { display: flex; justify-content: space-between; margin-bottom: 5px; }
+  .gauges { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }   /* two abreast, so the left column still fits without scrolling */
+  .gauge { margin-bottom: 9px; min-width: 0; }
+  .gauge .row { display: flex; justify-content: space-between; gap: 6px; margin-bottom: 5px; white-space: nowrap; }
   .gauge .row span:first-child { color: var(--muted); letter-spacing: 0.16em; font-size: 10px; }
   .bar { height: 5px; background: rgba(var(--glow), 0.1); overflow: hidden; }
   .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--cyan-dim), var(--cyan)); transition: width 0.8s ease; box-shadow: 0 0 8px var(--cyan); }
   .kv { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; border-top: 1px dashed rgba(var(--glow), 0.12); }
   .kv span:first-child { color: var(--muted); font-size: 10px; letter-spacing: 0.14em; }
   .kv span:last-child { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .kv .unit { color: var(--muted); font-size: 10px; letter-spacing: 0.14em; }
+  .kv.top { border-top: 0; padding: 2px 0; }
+  .kv.top span:first-child { color: var(--text); font-size: inherit; letter-spacing: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .kv.top span:last-child { color: var(--cyan); flex-shrink: 0; overflow: visible; }
+  .kv.top.hot span:last-child { color: var(--amber); }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
   .chip { border: 1px solid var(--line); padding: 3px 7px; font-size: 10px; letter-spacing: 0.08em; color: var(--cyan); border-radius: 2px; }
   .note { color: var(--muted); font-size: 10.5px; line-height: 1.5; margin: 10px 0 0; }
+
+  /* the Player panel: FIP radio or the songs folder, apart from the assistant */
+  #player button { padding: 6px 9px; font-size: 10px; letter-spacing: 0.14em; }
+  #player [hidden] { display: none; }
+  .pl-src { display: flex; gap: 6px; margin-bottom: 8px; }
+  .pl-src button { flex: 1; }
+  .pl-ctl { display: flex; align-items: center; gap: 8px; }
+  #plPlay { min-width: 8ch; }
+  .pl-eq { flex: 1; min-width: 0; display: flex; align-items: flex-end; gap: 2px; height: 22px; }
+  .pl-eq span { flex: 1; height: 100%; background: linear-gradient(var(--cyan), var(--cyan-dim)); transform-origin: bottom; transform: scaleY(0.12); border-radius: 1px; }
+  #player.playing .pl-eq span { animation: pl-eq 1s ease-in-out infinite alternate; box-shadow: 0 0 6px rgba(var(--glow), 0.4); }
+  @keyframes pl-eq { from { transform: scaleY(0.15); } to { transform: scaleY(1); } }
+  #plStatus { margin: 9px 0 7px; font-size: 10px; letter-spacing: 0.14em; color: var(--muted); text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #player.playing #plStatus { color: var(--cyan); }
+  #plNow { margin-bottom: 8px; }
+  #plStations { margin-bottom: 9px; }
+  #player #plStations button { padding: 3px 6px; letter-spacing: 0.08em; border-radius: 2px; }
+  .pl-vol { display: flex; align-items: center; gap: 8px; font-size: 10px; letter-spacing: 0.14em; color: var(--muted); outline: none; }
+  .pl-vol:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
+  #plBar { flex: 1; display: flex; align-items: flex-end; gap: 2px; height: 16px; cursor: pointer; }
+  #plBar span { flex: 1; background: rgba(var(--glow), 0.14); border-radius: 1px; }
+  #plBar span.lit { background: var(--cyan); }
+  #plBar span.lit.hot { background: var(--amber); }
+  #plPct { min-width: 4ch; text-align: right; }
 
   .core { position: relative; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
   #orb { width: 100%; height: 100%; display: block; }
@@ -116,7 +153,7 @@
   body.compact #expand:hover { opacity: 1; }
   body.compact .core { cursor: default; -webkit-user-select: none; user-select: none; }
 
-  .right .logp { flex: 1 1 0; display: flex; flex-direction: column; }
+  .right .logp { flex: 1 1 0; min-height: 140px; display: flex; flex-direction: column; }
   #log { flex: 1; overflow-y: auto; min-height: 0; padding-right: 6px; scrollbar-width: thin; scrollbar-color: var(--cyan-dim) transparent; }
   .msg { margin: 0 0 14px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
   .msg .who { display: block; font-size: 9.5px; letter-spacing: 0.3em; margin-bottom: 3px; color: var(--muted); }
@@ -140,6 +177,12 @@
   button:hover { border-color: var(--cyan); background: rgba(var(--glow), 0.08); }
   button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
   button.on { background: var(--cyan); color: #012; border-color: var(--cyan); }
+  /* shortcuts: every button that has one shows its key, except while the text box has the keyboard */
+  button[data-key] { position: relative; }
+  body:not(.typing) button[data-key]::after { content: attr(data-key); position: absolute; top: -7px; right: -5px; z-index: 5;
+    min-width: 15px; padding: 0 4px; border-radius: 3px; border: 1px solid var(--line); background: var(--bg); color: var(--cyan);
+    font-size: 9px; font-weight: 700; letter-spacing: 0; line-height: 13px; text-align: center; pointer-events: none; }
+  body.compact button[data-key]::after { display: none; }
   button.warn { color: var(--amber); border-color: rgba(255, 180, 84, 0.4); }
   button[hidden] { display: none; }
   button:disabled { opacity: 0.4; cursor: default; border-color: var(--line); background: transparent; }
@@ -147,9 +190,9 @@
   @media (max-width: 980px) {
     main { grid-template-columns: 1fr; }
     body.show-log main { grid-template-rows: 38vh 1fr; }
-    .left, body:not(.show-log) .right, .right #agent { display: none; }
+    .left, body:not(.show-log) .right, .right #agent, .right #player { display: none; }
   }
-  @media (prefers-reduced-motion: reduce) { .bar i { transition: none; } #pulse { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .bar i { transition: none; } #pulse { animation: none; } #player.playing .pl-eq span { animation: none; transform: scaleY(0.6); } }
 
   /* full-window views: Settings, History, About and Usage */
   .view { position: fixed; inset: 0; z-index: 10; display: grid; grid-template-rows: auto 1fr;
@@ -196,18 +239,18 @@
   .set small { display: block; color: var(--muted); font-size: 10.5px; line-height: 1.45; margin-top: 3px; letter-spacing: 0; }
   .set .ctl { display: flex; align-items: center; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
   .set.stack .ctl { justify-content: flex-start; flex-wrap: wrap; gap: 8px 16px; }
-  .set select, .set input[type=text], .set input[type=number], .set textarea, .view-head input[type=text] {
+  .set select, .set input[type=text], .set input[type=number], .set textarea, .view-head input[type=text], .view-head select {
     background: var(--field); border: 1px solid var(--line); color: var(--text);
     font: inherit; font-size: 12px; padding: 7px 8px; outline: none; border-radius: 3px;
   }
-  .set select { min-width: 170px; max-width: 220px; appearance: none; -webkit-appearance: none; padding-right: 26px; cursor: pointer;
+  .set select, .view-head select { min-width: 170px; max-width: 220px; appearance: none; -webkit-appearance: none; padding-right: 26px; cursor: pointer;
     background-image: linear-gradient(45deg, transparent 50%, var(--cyan) 50%), linear-gradient(135deg, var(--cyan) 50%, transparent 50%);
     background-position: calc(100% - 14px) 50%, calc(100% - 9px) 50%; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
   .set input[type=text] { width: 170px; }
   .set input[type=number] { width: 70px; text-align: right; }
   .set.stack textarea, .set.stack input[type=text] { width: 100%; }
   .set textarea { min-height: 64px; resize: vertical; }
-  .set select:focus, .set input:focus, .set textarea:focus, .view-head input:focus { border-color: var(--cyan); }
+  .set select:focus, .set input:focus, .set textarea:focus, .view-head input:focus, .view-head select:focus { border-color: var(--cyan); }
   .set input[type=range] { width: 130px; accent-color: var(--cyan); }
   .set input[type=checkbox] { width: 34px; height: 18px; flex: none; appearance: none; -webkit-appearance: none; background: rgba(var(--glow), 0.12); border: 1px solid var(--line); border-radius: 9px; position: relative; cursor: pointer; margin: 0; }
   .set input[type=checkbox]::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--muted); transition: left 0.15s; }
@@ -237,6 +280,8 @@
   .utab td:first-child, .utab td:last-child { color: var(--text); }
   .unote { color: var(--muted); font-size: 10.5px; line-height: 1.5; margin: 0; }
   #cost { cursor: pointer; }
+
+  @media (max-width: 620px) { .view-head { flex-wrap: wrap; } }
 
   /* history */
   #hList { max-width: 900px; margin: 0 auto; }
@@ -270,6 +315,8 @@
   <div class="spacer"></div>
   <button id="mini" title="Shrink to a small window that stays on top">Mini</button>
   <button id="logBtn" title="Show or hide the transcript">Transcript</button>
+  <button id="newsBtn" title="Today's AI news report, and earlier days, in the reader window">News</button>
+  <button id="lastBtn" title="Bring back the reader window with what it last showed; earlier answers are listed there">Last</button>
   <button id="histBtn" title="Past conversations">History</button>
   <button id="gear" title="Settings">Settings</button>
   <button id="aboutBtn" title="What JARVIS is, and what each release brought">About</button>
@@ -291,9 +338,15 @@
     </div>
     <div class="panel">
       <h2>System</h2>
+      <div class="gauges">
       <div class="gauge"><div class="row"><span>CPU</span><span id="cpuV">--</span></div><div class="bar"><i id="cpuB"></i></div></div>
       <div class="gauge"><div class="row"><span>MEMORY</span><span id="memV">--</span></div><div class="bar"><i id="memB"></i></div></div>
       <div class="gauge"><div class="row"><span>POWER</span><span id="batV">--</span></div><div class="bar"><i id="batB"></i></div></div>
+      <div class="gauge"><div class="row"><span>DISK</span><span id="dskV">--</span></div><div class="bar"><i id="dskB"></i></div></div>
+      </div>
+      <div class="kv"><span>NETWORK</span><span id="netV">--</span></div>
+      <div class="kv"><span>BUSIEST</span><span class="unit" title="Share of one processor core, as Activity Monitor shows it">% CPU</span></div>
+      <div id="topList"></div>
       <div class="kv"><span>UPTIME</span><span id="up">--</span></div>
     </div>
     <div class="panel" id="agent">
@@ -303,9 +356,11 @@
       <div class="kv"><span>CALENDAR</span><span id="cal">--</span></div>
       <div class="kv"><span>LAST REPLY</span><span id="lat">--</span></div>
       <div class="kv" style="border-bottom:0"><span>SPENT</span><span id="cost" title="Estimated cost since JARVIS started. Click for the full usage.">$0.00</span></div>
-      <h2 style="margin-top:14px">Tools online</h2>
-      <div class="chips" id="tools"></div>
-      <p class="note">Read-only. It can look things up and read its workspace folder, but cannot send, edit or delete.</p>
+      <div class="extra">
+        <h2 style="margin-top:10px">Tools online</h2>
+        <div class="chips" id="tools"></div>
+      </div>
+      <p class="note extra">Read-only.</p>
     </div>
   </section>
 
@@ -326,14 +381,39 @@
         <p class="empty" id="empty">Press Space and speak, or type below.<br>Try: &ldquo;Good morning. What can you do?&rdquo;</p>
       </div>
     </div>
+    <div class="panel" id="player">
+      <h2>Player</h2>
+      <div class="pl-src" role="group" aria-label="What to play">
+        <button id="plFip" title="FIP radio, live from Paris">FIP</button>
+        <button id="plSongs" title="Your own songs, in random order">Songs</button>
+      </div>
+      <div class="pl-ctl">
+        <button id="plPlay" title="Play or pause">Play</button>
+        <div class="pl-eq" id="plEq" aria-hidden="true"></div>
+        <button id="plNext" title="Next station, or next song">Next</button>
+      </div>
+      <div id="plStatus" aria-live="polite">Stopped</div>
+      <div id="plNow" hidden>
+        <div class="kv"><span>TRACK</span><span id="plTitle"></span></div>
+        <div class="kv"><span>ARTIST</span><span id="plArtist"></span></div>
+        <div class="kv extra"><span>ALBUM</span><span id="plAlbum"></span></div>
+        <div class="kv extra"><span>YEAR</span><span id="plYear"></span></div>
+      </div>
+      <div class="chips extra" id="plStations" role="group" aria-label="FIP stations"></div>
+      <div class="pl-vol" id="plVol" role="slider" tabindex="0" aria-label="Music volume" aria-valuemin="0" aria-valuemax="100">
+        <span>VOL</span><span id="plBar"></span><span id="plPct"></span>
+      </div>
+      <audio id="plAudio" preload="none"></audio>
+    </div>
   </section>
 </main>
 
 <footer>
   <button id="mic" title="Speak — or hold Space">Mic</button>
-  <input id="input" autocomplete="off" placeholder="Type here, or hold Space to talk…" autofocus>
+  <input id="input" autocomplete="off" placeholder="Press Enter to type, or hold Space to talk…">
   <button id="sendBtn">Send</button>
   <button id="stopBtn" class="warn" hidden>Stop</button>
+  <button id="showBtn" title="Put the last answer on screen, in full, in the reader window">Show</button>
   <button id="voice" class="on" title="Read replies aloud">Voice</button>
   <button id="lang" title="Language for speech">EN</button>
   <button id="reset" title="Forget this conversation">New</button>
@@ -383,7 +463,8 @@
         <label><input type="checkbox" id="sItWeather"> Weather</label>
         <label><input type="checkbox" id="sItCalendar"> Calendar</label>
       </span></div>
-      <div class="set"><label for="sBootSong">Morning song<small>After the day's first briefing, plays a random song from <span id="sSongDir"></span>.</small></label><span class="ctl"><button id="sSongs">Open folder</button><input type="checkbox" id="sBootSong"></span></div>
+      <div class="set"><label for="sNews">AI news<small>Gathered once a day from public sites and kept in <span id="sNewsDir"></span>. Spoken as three top stories, or shown as the full report in the reader window.</small></label><span class="ctl"><button id="sNewsOpen">View report</button><select id="sNews"><option value="off">Off</option><option value="top3">Speak the top three</option><option value="report">Show the report</option></select></span></div>
+      <div class="set"><label for="sBootSong">Morning song<small>After the day's first briefing, the Player plays a random song from <span id="sSongDir"></span>.</small></label><span class="ctl"><button id="sSongs">Open folder</button><input type="checkbox" id="sBootSong"></span></div>
       <div class="set"><span class="name">Try it<small>Plays the opening now.</small></span><span class="ctl"><button id="sBootNow">Play now</button></span></div>
     </section>
 
@@ -429,7 +510,7 @@
 
     <section class="panel card">
       <h2>Shortcuts</h2>
-      <div class="keys"><b>Space</b><span>talk, when the text box is empty</span><b>Enter</b><span>send typed text</span><b>Esc</b><span>stop listening, speaking or a reply</span><b>⌃⌥ Space</b><span>talk from any app</span><b>⌃⌥⇧ Space</b><span>write at the cursor of another app</span></div>
+      <div class="keys" id="sKeys"><b>Space</b><span>talk, when the text box is empty</span><b>Enter</b><span>start typing in the text box, then send</span><b>Esc</b><span>stop listening, speaking or a reply, leave the text box, or close the reader window</span><b>⌃⌥ Space</b><span>talk from any app</span><b>⌃⌥⇧ Space</b><span>write at the cursor of another app</span></div>
     </section>
 
   </div></div>
@@ -456,6 +537,7 @@
             <li><b>Listening:</b> Apple's speech recognition, built into macOS.</li>
             <li><b>Speaking:</b> the Mac's own text-to-speech voices.</li>
             <li><b>Weather:</b> Open-Meteo, a free service needing no account.</li>
+            <li><b>Radio:</b> FIP's public streams from Radio France, needing no account.</li>
           </ul>
         </div>
         <div>
@@ -463,9 +545,12 @@
           <ul>
             <li><b>Voice conversation:</b> hold a key to talk, replies spoken sentence by sentence.</li>
             <li><b>Global shortcut:</b> talk from any app; optional writing at your cursor.</li>
-            <li><b>Opening briefing:</b> date, system, weather and today's calendar.</li>
+            <li><b>Opening briefing:</b> date, system, weather, today's calendar and AI news.</li>
+            <li><b>AI news:</b> a daily report from Hacker News, GitHub and the smol.ai digest, read on screen or summed up aloud, with every day kept.</li>
+            <li><b>Reader window:</b> say &ldquo;show me&rdquo; and the full written answer, with sources, opens in a plain second window.</li>
             <li><b>Google Calendar:</b> read-only, through your Claude account.</li>
             <li><b>Web search and files:</b> searches the web and reads its own workspace folder.</li>
+            <li><b>Player:</b> FIP radio and your own songs, from its panel or by asking; it plays quietly while you talk.</li>
             <li><b>Mini mode:</b> a small always-on-top core.</li>
             <li><b>History:</b> past exchanges, searchable.</li>
             <li><b>Memory:</b> a fresh conversation after a pause, with lasting facts carried over in a memory file.</li>
@@ -479,6 +564,8 @@
             <li><b>To Anthropic:</b> your questions and what JARVIS reads to answer them.</li>
             <li><b>To Apple:</b> your voice, when speech recognition is not on-device.</li>
             <li><b>To Open-Meteo:</b> the coordinates of your weather town.</li>
+            <li><b>To Radio France:</b> requests for the FIP stream and its track details, nothing about you.</li>
+            <li><b>To Hacker News, GitHub and smol.ai:</b> requests for public pages only, nothing about you.</li>
             <li><b>Not built in:</b> anything that sends email, changes your calendar or edits files.</li>
           </ul>
         </div>
@@ -489,7 +576,32 @@
       <h2>Releases</h2>
       <!-- newest first; add each new release at the top, and keep VERSION in server.mjs and build-app.sh in step -->
       <div class="rel">
-        <div class="rhead"><b>v0.7.0</b><span>12 November 2026</span><em>CURRENT</em></div>
+        <div class="rhead"><b>v0.10.0</b><span>12 November 2026</span><em>CURRENT</em></div>
+        <ul>
+          <li><b>Reader window:</b> a second, plain window for what is better read than heard. It opens beside JARVIS and leaves the main window as it was.</li>
+          <li><b>Answers on screen:</b> say &ldquo;show me&rdquo; with any question, or press Show after a reply. JARVIS speaks the gist and writes the full answer, with its sources, in the reader.</li>
+          <li><b>News:</b> the day's report now opens in the reader, with the earlier days, Refresh and the folder there too.</li>
+          <li><b>Shortcuts:</b> a single letter for the news, the reader, the radio and the main views, shown on each button. Press Enter to type in the text box and Esc to leave it; while you type, letters are text again.</li>
+        </ul>
+      </div>
+      <div class="rel">
+        <div class="rhead"><b>v0.9.0</b><span>12 November 2026</span></div>
+        <ul>
+          <li><b>Player panel:</b> music now has its own panel beside Weather and System, apart from the assistant. It plays FIP radio, with its twelve stations and the track on air, or your own songs in random order.</li>
+          <li><b>By voice:</b> ask for FIP, a station, your songs, a pause, the next one or a change of volume, and ask what is playing.</li>
+          <li><b>Music carries on:</b> it drops to a murmur while you talk or a reply is spoken, then comes back. Stop and Esc no longer end it, and the morning song plays in the panel.</li>
+        </ul>
+      </div>
+      <div class="rel">
+        <div class="rhead"><b>v0.8.0</b><span>12 November 2026</span></div>
+        <ul>
+          <li><b>AI news:</b> once a day JARVIS gathers a report from Hacker News, new projects and releases on GitHub, and the smol.ai digest. No account or key is needed.</li>
+          <li><b>In the briefing:</b> a setting chooses between hearing the three top stories and having the full report shown on screen.</li>
+          <li><b>News view:</b> opened from the header, with a report for every day on record. The reports are plain text files in the news folder of the workspace, so JARVIS can also answer questions about them.</li>
+        </ul>
+      </div>
+      <div class="rel">
+        <div class="rhead"><b>v0.7.0</b><span>12 November 2026</span></div>
         <ul>
           <li><b>Fresh conversations:</b> after 30 minutes without a word, a new conversation starts, so replies stay quick and cheap. The pause is a setting.</li>
           <li><b>Memory:</b> when a conversation ends, its lasting facts are noted in a short memory file, given to every new conversation. You can read and edit it from Settings, or switch it off.</li>
@@ -590,6 +702,7 @@ document.body.classList.toggle('native', NATIVE);
 // ---------- state ----------
 let state = 'idle';            // idle | listening | thinking | speaking
 let busy = false;
+let typing = false;             // the text box has the keyboard: letters are text and the shortcuts are off
 let lastConv = null;            // the server's conversation counter, to notice when it starts a new one
 const money = (n) => '$' + (n > 0 && n < 0.01 ? n.toFixed(4) : (n || 0).toFixed(2));
 const LANGS = [{ code: 'en-GB', label: 'EN', name: 'English (UK)', prefer: ['Daniel', 'Google UK English Male'] },
@@ -603,7 +716,176 @@ let charName = 'JARVIS';     // the character being played
 let hal = false;
 
 const LABELS = { idle: 'STANDBY', listening: 'LISTENING', thinking: 'PROCESSING', speaking: 'SPEAKING' };
-function setState(s) { state = s; $('state').textContent = LABELS[s]; updateVital(); }
+function setState(s) { state = s; $('state').textContent = LABELS[s]; updateVital(); plDuck(s === 'listening' || s === 'speaking'); }
+
+// ---------- the player ----------
+// Music is its own thing, apart from the assistant: FIP radio, or the songs folder, played by the page.
+// It can be worked from its panel or by asking. While you talk or a reply is spoken, it plays quietly.
+// Each station: name, Radio France stream name, and the number its track details are filed under (if any).
+const FIP = [['fip', 'fip', 7], ['groove', 'fipgroove', 66], ['jazz', 'fipjazz', 65], ['electro', 'fipelectro', 74],
+             ['world', 'fipworld', 69], ['rock', 'fiprock', 64], ['reggae', 'fipreggae', 71], ['new', 'fipnouveautes', 70],
+             ['hip-hop', 'fiphiphop', 0], ['pop', 'fippop', 0], ['cult', 'fipcultes', 0], ['metal', 'fipmetal', 77]];
+const FIP_ALIASES = { monde: 'world', nouveautes: 'new', 'nouveautés': 'new', hiphop: 'hip-hop', 'hip hop': 'hip-hop', cultes: 'cult', culte: 'cult' };
+const fipUrl = (i) => `https://icecast.radiofrance.fr/${FIP[i][1]}-hifi.aac?id=radiofrance`;   // the id skips the opening advert
+const plAudio = $('plAudio');
+const plStore = (k, v) => { try { if (v === undefined) return localStorage.getItem('player.' + k); localStorage.setItem('player.' + k, v); } catch {} return null; };
+const pl = {
+  source: plStore('source') === 'songs' ? 'songs' : 'fip',
+  station: Math.min(FIP.length - 1, Math.max(0, parseInt(plStore('station'), 10) || 0)),
+  vol: plStore('vol') === null ? 8 : Math.min(10, Math.max(0, parseInt(plStore('vol'), 10) || 0)),   // ten steps
+  ducked: false, once: false, blob: null, gen: 0, track: null,
+};
+function plName() { return pl.source === 'songs' ? 'Songs' : 'FIP' + (pl.station ? ' ' + FIP[pl.station][0] : ''); }
+function plShow(msg) {
+  const on = !plAudio.paused;
+  $('player').classList.toggle('playing', on && !msg);
+  $('plPlay').textContent = on ? 'Pause' : 'Play';
+  $('plPlay').classList.toggle('on', on);
+  $('plStatus').textContent = msg || (on ? (pl.source === 'fip' ? '● On air · ' : '● Playing · ') : 'Stopped · ') + plName();
+}
+function plTrack(t) {
+  pl.track = t;
+  for (const [id, v] of [['plTitle', t && t.title], ['plArtist', t && t.artist], ['plAlbum', t && t.album], ['plYear', t && t.year]]) {
+    $(id).textContent = $(id).title = v || '';
+    $(id).parentNode.hidden = !v;
+  }
+  $('plNow').hidden = !t;
+}
+function plSource(src) {
+  pl.source = src; plStore('source', src);
+  $('plFip').classList.toggle('on', src === 'fip');
+  $('plSongs').classList.toggle('on', src === 'songs');
+  $('plStations').hidden = src !== 'fip';
+  [...$('plStations').children].forEach((b, i) => b.classList.toggle('on', i === pl.station));
+}
+function plPlay() { plAudio.play().catch(() => plShow('Cannot play this right now')); }
+// FIP: tune to a station. The stream is opened afresh each time, so playing always joins the live broadcast.
+function plTune(i, play) {
+  pl.gen++; pl.once = false; pl.station = i; plStore('station', i);
+  plSource('fip'); plTrack(null);
+  if (play) { plAudio.src = fipUrl(i); plShow('Tuning…'); plPlay(); }
+  else { plAudio.pause(); plAudio.removeAttribute('src'); plShow(); }
+  plNowPlaying();
+}
+// What FIP is playing, from Radio France. Asked again a few seconds after the track is due to end.
+let plTimer = null;
+async function plNowPlaying() {
+  clearTimeout(plTimer);
+  const id = FIP[pl.station][2];
+  if (pl.source !== 'fip' || !id) return;
+  let wait = 60;
+  try {
+    const d = await (await fetch(`https://api.radiofrance.fr/livemeta/pull/${id}`)).json();
+    if (pl.source !== 'fip' || FIP[pl.station][2] !== id) return;   // the station changed meanwhile
+    // during a programme the song sits one level down: take the deepest one still on air
+    const s = d.levels.map((lv) => d.steps[lv.items[lv.position]]).reverse()
+      .find((st) => st && st.embedType === 'song' && st.end > Date.now() / 1000);
+    if (!s) throw new Error('no song');
+    plTrack({ title: s.title, artist: (s.highlightedArtists || []).join(', ') || s.authors, album: s.titreAlbum, year: s.anneeEditionMusique });
+    wait = Math.min(Math.max(s.end - Date.now() / 1000 + 3, 5), 120);
+  } catch { plTrack(null); }
+  plTimer = setTimeout(plNowPlaying, wait * 1000);
+}
+// Songs: a random one from the songs folder, then another, unless only one was asked for (the morning song).
+async function plSongs(opts = {}) {
+  const gen = ++pl.gen;
+  pl.once = !!opts.once;
+  clearTimeout(plTimer); plSource('songs'); plTrack(null);
+  plAudio.pause(); plShow('Loading…');
+  try {
+    const r = await api('/api/player/song');
+    if (!r.ok) throw new Error((await r.json()).error || 'No song to play');
+    const title = decodeURIComponent(r.headers.get('X-Song-Title') || '');
+    const blob = await r.blob();
+    if (gen !== pl.gen) return;   // something else was chosen meanwhile
+    if (pl.blob) URL.revokeObjectURL(pl.blob);
+    pl.blob = URL.createObjectURL(blob);
+    plAudio.src = pl.blob;
+    plTrack({ title });
+    plPlay();
+  } catch (err) { if (gen === pl.gen) plShow(String(err.message || err)); }
+}
+function plToggle() {
+  if (!plAudio.paused) return plAudio.pause();
+  if (pl.source === 'fip') return plTune(pl.station, true);
+  if (pl.blob && plAudio.src === pl.blob && !plAudio.ended) return plPlay();
+  plSongs();
+}
+function plNext() { if (pl.source === 'fip') plTune((pl.station + 1) % FIP.length, true); else plSongs(); }
+// Volume: ten steps. While you talk or a reply is spoken the music drops to a murmur, then comes back.
+let plRamp = null;
+function plLevel(smooth) {
+  const target = (pl.vol / 10) * (pl.ducked ? 0.15 : 1);
+  clearInterval(plRamp);
+  if (!smooth) { plAudio.volume = target; return; }
+  plRamp = setInterval(() => {
+    const gap = target - plAudio.volume;
+    if (Math.abs(gap) < 0.02) { plAudio.volume = target; clearInterval(plRamp); }
+    else plAudio.volume = Math.min(1, Math.max(0, plAudio.volume + gap * 0.3));
+  }, 40);
+}
+function plDuck(on) { if (pl.ducked === on) return; pl.ducked = on; plLevel(true); }
+function plVolume(v) {
+  pl.vol = Math.min(10, Math.max(0, v)); plStore('vol', pl.vol);
+  [...$('plBar').children].forEach((b, i) => { b.classList.toggle('lit', i < pl.vol); b.classList.toggle('hot', i >= 7); });
+  $('plPct').textContent = pl.vol * 10 + '%';
+  $('plVol').setAttribute('aria-valuenow', pl.vol * 10);
+  plLevel(false);
+}
+// A command from the assistant, such as "fip jazz", "songs", "pause", "next" or "volume up".
+function plCommand(c) {
+  c = String(c).trim().toLowerCase();
+  if (c === 'pause' || c === 'stop') return plAudio.pause();
+  if (c === 'resume' || c === 'play') { if (plAudio.paused) plToggle(); return; }
+  if (c === 'next') return plNext();
+  if (c === 'volume up') return plVolume(pl.vol + 2);
+  if (c === 'volume down') return plVolume(pl.vol - 2);
+  if (c === 'songs') return plSongs();
+  let name = c.replace(/^fip\b/, '').trim();
+  name = FIP_ALIASES[name] || name;
+  const i = name ? FIP.findIndex((s) => s[0] === name) : 0;
+  if (i >= 0) plTune(i, true);
+}
+// What the player is doing, in words, sent along with each question.
+function plDescribe() {
+  const t = pl.track;
+  const what = t && t.title ? `: "${t.title}"${t.artist ? ' by ' + t.artist : ''}${t.album ? ', from the album ' + t.album : ''}${t.year ? ' (' + t.year + ')' : ''}` : '';
+  if (plAudio.paused) return `stopped (set to ${plName()})`;
+  return `playing ${pl.source === 'fip' ? plName() + ' radio' : "the user's songs"}${what}, volume ${pl.vol * 10} percent`;
+}
+FIP.forEach((st, i) => {
+  const b = document.createElement('button');
+  b.textContent = st[0]; b.title = 'FIP ' + st[0];
+  b.onclick = () => plTune(i, true);
+  $('plStations').append(b);
+});
+for (let i = 0; i < 16; i++) {
+  const bar = document.createElement('span');
+  bar.style.animationDelay = -((i * 0.37) % 1) + 's';
+  bar.style.animationDuration = 0.6 + (i % 5) * 0.12 + 's';
+  $('plEq').append(bar);
+}
+for (let i = 0; i < 10; i++) {
+  const bar = document.createElement('span');
+  bar.style.height = 30 + i * 7.8 + '%';
+  bar.onclick = () => plVolume(i + 1 === pl.vol ? i : i + 1);   // the top lit bar steps down, so the first can mute
+  $('plBar').append(bar);
+}
+$('plVol').addEventListener('keydown', (e) => {
+  const step = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1 }[e.key];
+  if (step) { e.preventDefault(); plVolume(pl.vol + step); }
+});
+$('plFip').onclick = () => { if (pl.source !== 'fip') plTune(pl.station, !plAudio.paused); };
+$('plSongs').onclick = () => { if (pl.source !== 'songs') { if (plAudio.paused) { pl.gen++; plAudio.removeAttribute('src'); clearTimeout(plTimer); plSource('songs'); plTrack(null); plShow(); } else plSongs(); } };
+$('plPlay').onclick = plToggle;
+$('plNext').onclick = plNext;
+plAudio.addEventListener('playing', () => plShow());
+plAudio.addEventListener('pause', () => plShow());
+plAudio.addEventListener('waiting', () => plShow('Buffering…'));
+plAudio.addEventListener('error', () => { if (plAudio.getAttribute('src')) plShow(pl.source === 'fip' ? 'Stream unavailable' : 'That song would not play'); });
+plAudio.addEventListener('ended', () => { if (pl.source !== 'songs') return; if (pl.once) { pl.once = false; plShow(); } else plSongs(); });
+plSource(pl.source); plVolume(pl.vol); plShow();
+if (pl.source === 'fip') plNowPlaying();
 
 // ---------- vital signs ----------
 // JARVIS's condition, read from what it is doing and how the Mac is faring.
@@ -645,7 +927,7 @@ function updateVital() {
   $('bpm').textContent = bpm ? bpm + ' BPM' : '';
   $('vital').style.setProperty('--beat', bpm ? (60 / bpm).toFixed(2) + 's' : '0s');
 }
-const hint = () => (holdMode ? 'HOLD SPACE  talk' : 'SPACE  talk') + '   ·   ENTER  send   ·   ESC  stop';
+const hint = () => (holdMode ? 'HOLD SPACE  talk' : 'SPACE  talk') + (typing ? '   ·   ENTER  send   ·   ESC  leave the text box' : '   ·   ENTER  type   ·   ESC  stop');
 let holdMode = true;
 function setLive(t) { $('live').textContent = t || hint(); }
 // Shown under the core for problems only (for example, nothing heard). Replies are voice-only.
@@ -664,20 +946,42 @@ function fmtUptime(s) {
   const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
   return (d ? d + 'd ' : '') + h + 'h ' + m + 'm';
 }
+function fmtRate(b) {   // bytes per second, kept short: 0K, 185K, 1.2M, 34M
+  if (b >= 1e6) return (b / 1e6).toFixed(b >= 1e7 ? 0 : 1) + 'M';
+  return (b >= 1e3 ? Math.round(b / 1e3) : 0) + 'K';
+}
 async function stats() {
+  if (document.hidden) return;   // nothing to paint; the server then measures nothing either
   try {
     const s = await (await api('/api/stats')).json();
     $('cpuV').textContent = s.cpu + '%'; $('cpuB').style.width = s.cpu + '%';
     $('memV').textContent = s.mem + '%'; $('memB').style.width = s.mem + '%';
     if (s.battery) {
-      $('batV').textContent = s.battery.percent + '%' + (s.battery.charging ? ' AC' : '');
+      $('batV').textContent = s.battery.percent + '%' + (s.battery.charging ? ' ⚡' : '');
+      $('batV').title = s.battery.charging ? 'On mains power' : 'On battery';
       $('batB').style.width = s.battery.percent + '%';
     } else { $('batV').textContent = 'AC'; $('batB').style.width = '100%'; }
+    if (s.disk) {
+      const used = Math.round(100 * (1 - s.disk.free / s.disk.total));
+      $('dskV').textContent = used + '%'; $('dskB').style.width = used + '%';
+      $('dskV').parentElement.title = Math.round(s.disk.free / 1e9) + ' GB free of ' + Math.round(s.disk.total / 1e9) + ' GB';
+    }
+    $('netV').textContent = s.net ? '↓ ' + fmtRate(s.net.down) + '  ↑ ' + fmtRate(s.net.up) : '--';
+    $('netV').title = 'Download and upload, per second';
+    // the three busiest processes, each on a row of its own; the second and third give way first in a short window
+    $('topList').replaceChildren(...(s.top || []).map((p, i) => {
+      const row = document.createElement('div');
+      row.className = 'kv top' + (i ? ' extra' : '') + (p.cpu >= 80 ? ' hot' : '');
+      row.title = p.name + ', ' + p.cpu + '% of one core';
+      row.append(Object.assign(document.createElement('span'), { textContent: p.name }), Object.assign(document.createElement('span'), { textContent: p.cpu + '%' }));
+      return row;
+    }));
+    fitPanels();
     $('up').textContent = fmtUptime(s.uptime);
     vitals = { cpu: s.cpu, battery: s.battery, offline: false }; updateVital();
     $('model').textContent = s.model;
     $('sess').textContent = s.session ? 'active' : 'new';
-    $('cal').textContent = s.calendar ? 'connected' : 'not connected';
+    $('cal').textContent = s.calendar === null ? 'checking' : s.calendar ? 'connected' : 'not connected';
     if (typeof s.spent === 'number') $('cost').textContent = money(s.spent);
     if (lastConv !== null && s.conv !== lastConv && !busy) addMsg('tool', '', '▸ new conversation, after a pause');
     lastConv = s.conv;
@@ -688,6 +992,7 @@ async function stats() {
   } catch { vitals.offline = true; updateVital(); $('state').textContent = 'SERVER OFFLINE'; }
 }
 stats(); setInterval(stats, 3000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) stats(); });   // catch up at once when shown again
 // Tells the server this window is open; it shuts down when the Dock app's window closes.
 (function alive() { api('/api/alive').then((r) => r.body.getReader().read()).catch(() => {}); })();
 
@@ -707,7 +1012,7 @@ async function loadWeather() {
   } catch { $('wxText').textContent = 'unavailable'; }
 }
 loadWeather(); setInterval(loadWeather, 10 * 60 * 1000);
-function closeTownEdit() { $('wxEdit').hidden = true; $('wxPlace').hidden = false; $('input').focus(); }
+function closeTownEdit() { $('wxEdit').hidden = true; $('wxPlace').hidden = false; restFocus(); }
 $('wxPlace').addEventListener('click', () => {
   $('wxPlace').hidden = true; $('wxEdit').hidden = false; $('wxEdit').value = '';
   setTimeout(() => $('wxEdit').focus(), 0);
@@ -777,19 +1082,12 @@ function say(text) {
     .then((r) => { if (r.status === 501) { serverVoice = false; browserSay(text, finish); } else finish(); })
     .catch(finish);
 }
-// The morning song: played by the Mac once the opening briefing has been spoken. Talking or Stop cuts it short.
+// The morning song: one song from the songs folder, started in the Player panel once the opening briefing has been spoken.
 let songDue = false;
 function playSong() {
   songDue = false;
-  if (!voiceOn || !serverVoice || !cfg || !cfg.briefing.song) { if (!pending && state === 'speaking') setState('idle'); return; }
-  const gen = speechGen;
-  pending++; setState('speaking');
-  const finish = () => {
-    if (gen !== speechGen) return;
-    pending = Math.max(0, pending - 1);
-    if (!pending && state === 'speaking') setState('idle');
-  };
-  api('/api/song', { method: 'POST' }).then(finish, finish);
+  if (!pending && state === 'speaking') setState(busy ? 'thinking' : 'idle');
+  if (voiceOn && cfg && cfg.briefing.song && plAudio.paused) plSongs({ once: true });   // never over music already playing
 }
 function feedSpeech(delta, flush) {
   speakBuf += delta;
@@ -821,7 +1119,7 @@ async function ask(text, opts = {}) {
   try {
     const res = opts.boot
       ? await api('/api/boot' + (opts.boot === 'force' ? '?force=1' : ''), { method: 'POST' })
-      : await api('/api/chat', { method: 'POST', body: JSON.stringify({ message: text, selection: opts.selection || '', write: !!opts.write }) });
+      : await api('/api/chat', { method: 'POST', body: JSON.stringify({ message: text, selection: opts.selection || '', write: !!opts.write, player: plDescribe() }) });
     if (res.status === 204) throw null;   // no opening due today
     briefed = !!opts.boot;
     if (!res.ok) throw new Error((await res.json()).error || res.statusText);
@@ -840,9 +1138,15 @@ async function ask(text, opts = {}) {
           full += ev.text; out.textContent = full; $('log').scrollTop = $('log').scrollHeight;
           if (!opts.write) feedSpeech(ev.text, false);   // written answers are typed, not spoken
           else written += ev.text;
+        } else if (ev.type === 'music') {
+          plCommand(ev.command);
+          addMsg('tool', '', '▸ Player  ' + ev.command);
+          out = null; full = '';
         } else if (ev.type === 'tool') {
           addMsg('tool', '', '▸ ' + ev.name + (ev.detail ? '  ' + ev.detail : ''));
           out = null; full = '';
+        } else if (ev.type === 'screen') {
+          openReader(); addMsg('tool', '', '▸ shown in the reader window');   // the written part of the answer goes there, unspoken
         } else if (ev.type === 'error') {
           addMsg('error', 'ERROR', ev.message);
         } else if (ev.type === 'stopped') {
@@ -861,8 +1165,10 @@ async function ask(text, opts = {}) {
   busy = false;
   $('sendBtn').hidden = false; $('stopBtn').hidden = true;
   if (!pending) setState('idle');
-  $('input').focus();
+  restFocus();
   stats();
+  // the briefing announced the report rather than reading the news out: put it on screen
+  if (briefed && full && cfg && cfg.briefing.news === 'report') openNews();
 }
 $('sendBtn').onclick = () => ask($('input').value);
 $('input').addEventListener('keydown', (e) => { if (e.key === 'Enter') ask($('input').value); });
@@ -928,6 +1234,7 @@ function cancelListening() {
 }
 // Messages from the native app: speech results and the global shortcut.
 window.jarvisNative = (msg) => {
+  if (msg.openReader) { if (msg.openReader === 'news') openNews(); else openLast(); }   // N or L was pressed and the reader was not showing
   if (msg.speech) {
     const ev = msg.speech;
     if (ev.started) { listenUi(true); if (autoStop) silenceTimer = setTimeout(stopListening, 6000); }
@@ -973,7 +1280,7 @@ function applySettings(v) {
   charName = (v.characters.find((c) => c.id === cfg.character) || { name: 'JARVIS' }).name;
   document.body.classList.toggle('hal', hal);
   $('brand').textContent = charName; document.title = charName;
-  $('input').placeholder = `Type here, or ${cfg.listen.mode === 'hold' ? 'hold' : 'press'} Space to talk to ${charName}…`;
+  $('input').placeholder = `Press Enter to type, or ${cfg.listen.mode === 'hold' ? 'hold' : 'press'} Space to talk to ${charName}…`;
   updateVital();
   holdMode = cfg.listen.mode === 'hold';
   document.body.classList.toggle('show-log', cfg.ui.transcript);
@@ -1013,6 +1320,7 @@ function paintSettings() {
   $('sBootGreet').checked = cfg.briefing.onGreeting;
   $('sBootFun').checked = cfg.briefing.humour;
   $('sBootSong').checked = cfg.briefing.song; $('sSongDir').textContent = view.songsDir;
+  $('sNews').value = cfg.briefing.news; $('sNewsDir').textContent = view.newsDir;
   for (const k of ['date', 'system', 'weather', 'calendar']) $('sIt' + k[0].toUpperCase() + k.slice(1)).checked = cfg.briefing.items[k];
 
   fill($('sChar'), view.characters.map((c) => [c.id, c.name]), cfg.character);
@@ -1021,7 +1329,7 @@ function paintSettings() {
   if (document.activeElement !== $('sInstr')) $('sInstr').value = cfg.instructions;
   $('sWeb').checked = cfg.tools.web;
   $('sCal').checked = cfg.tools.calendar;
-  $('sCalState').textContent = !cfg.tools.calendar ? 'Off.' : view.calendarConnected ? 'Connected.' : 'Not connected on your Claude account yet.';
+  $('sCalState').textContent = !cfg.tools.calendar ? 'Off.' : view.calendarConnected === null ? 'Checking…' : view.calendarConnected ? 'Connected.' : 'Not connected on your Claude account yet.';
   if (document.activeElement !== $('sTown')) $('sTown').value = cfg.location ? cfg.location.name : '';
   $('sDir').textContent = view.dataDir;
   $('aDir').textContent = view.dataDir;
@@ -1065,7 +1373,7 @@ async function paintUsageLine() {
   } catch {}
 }
 function openSettings() { paintUsageLine(); loadSettings().then(layoutCards); post({ type: 'status' }); $('settings').hidden = false; layoutCards(); cardBox.parentElement.scrollTop = 0; $('sClose').focus(); }
-function closeSettings() { $('settings').hidden = true; $('input').focus(); }
+function closeSettings() { $('settings').hidden = true; restFocus(); }
 $('gear').onclick = openSettings;
 $('sClose').onclick = closeSettings;
 
@@ -1094,6 +1402,7 @@ $('sBootGreet').onchange = (e) => saveSetting({ briefing: { onGreeting: e.target
 $('sBootFun').onchange = (e) => saveSetting({ briefing: { humour: e.target.checked } });
 $('sBootSong').onchange = (e) => saveSetting({ briefing: { song: e.target.checked } });
 $('sSongs').onclick = () => api('/api/open', { method: 'POST', body: JSON.stringify({ what: 'songs' }) });
+$('sNews').onchange = (e) => saveSetting({ briefing: { news: e.target.value } });
 for (const k of ['date', 'system', 'weather', 'calendar']) {
   $('sIt' + k[0].toUpperCase() + k.slice(1)).onchange = (e) => saveSetting({ briefing: { items: { [k]: e.target.checked } } });
 }
@@ -1174,12 +1483,48 @@ async function loadHistory() {
   }
 }
 function openHistory() { $('hSearch').value = ''; $('history').hidden = false; loadHistory(); $('hSearch').focus(); }
-function closeHistory() { $('history').hidden = true; $('input').focus(); }
+function closeHistory() { $('history').hidden = true; restFocus(); }
 $('histBtn').onclick = openHistory;
+
+// ---------- reader ----------
+// A second window for what is better read than heard: the day's news report, or an answer asked for on screen.
+// The server holds the document; this page only asks for the window to be opened.
+let readerWin = null;   // in a browser: the reader's window, to tell whether it is open
+function openReader() {
+  if (NATIVE) return post({ type: 'reader' });
+  readerWin = window.open('/reader', 'jarvis-reader', 'width=760,height=900');
+  if (!readerWin) setCaption('Allow pop-up windows for this page to see the reader.');
+}
+function closeReader() {
+  if (NATIVE) post({ type: 'readerClose' });
+  else if (readerWin) { readerWin.close(); readerWin = null; }
+}
+// N opens the news and L brings back what the reader last showed; either closes the reader when it is
+// already open. The app knows whether its window is showing, so it either closes it or asks this page to open it.
+function toggleReader(open) {
+  if (NATIVE) return post({ type: 'readerToggle', open: open === openNews ? 'news' : 'last' });
+  if (readerWin && !readerWin.closed) closeReader(); else open();
+}
+// The reader holds on to its last document after it is closed. Answers are also kept with the history,
+// so the newest of those comes back even after JARVIS has been restarted.
+async function openLast() {
+  let r;
+  try { r = await (await api('/api/reader', { method: 'POST', body: JSON.stringify({ kind: 'last' }) })).json(); } catch { return; }
+  if (r.kind === 'none') return setCaption('Nothing has been shown in the reader yet.');
+  openReader();
+}
+$('lastBtn').onclick = openLast;
+async function openNews() {
+  try { await api('/api/reader', { method: 'POST', body: JSON.stringify({ kind: 'news' }) }); } catch { return; }
+  openReader();
+}
+$('newsBtn').onclick = openNews;
+$('sNewsOpen').onclick = openNews;
+$('showBtn').onclick = () => ask('Show me that on screen, in full.');
 
 // ---------- about ----------
 function openAbout() { loadSettings(); $('about').hidden = false; $('about').querySelector('.view-body').scrollTop = 0; $('aClose').focus(); }
-function closeAbout() { $('about').hidden = true; $('input').focus(); }
+function closeAbout() { $('about').hidden = true; restFocus(); }
 $('aboutBtn').onclick = openAbout;
 $('aClose').onclick = closeAbout;
 
@@ -1236,7 +1581,7 @@ async function loadUsage() {
     + (u.since ? ` Recorded since ${fmtDay(new Date(u.since), { day: 'numeric', month: 'long', year: 'numeric' })}.` : '') + ' Replies stopped midway are not counted.';
 }
 function openUsage() { $('usage').hidden = false; $('usage').querySelector('.view-body').scrollTop = 0; loadUsage(); $('uClose').focus(); }
-function closeUsage() { $('usage').hidden = true; if (!$('settings').hidden) { paintUsageLine(); $('sUsageBtn').focus(); } else $('input').focus(); }
+function closeUsage() { $('usage').hidden = true; if (!$('settings').hidden) { paintUsageLine(); $('sUsageBtn').focus(); } else restFocus(); }
 $('sUsageBtn').onclick = openUsage;
 $('cost').onclick = openUsage;
 $('uClose').onclick = closeUsage;
@@ -1272,6 +1617,37 @@ setLive('');
 // Space talks (when the text box is empty): held down in hold mode, pressed once in tap mode.
 // Esc stops whatever is happening.
 let spaceHeld = false;
+// A single letter, from the main screen, whenever the keyboard is not in a text box. Each entry names the
+// button it stands for, which shows the key as a small tag and in its tooltip. The same list fills the
+// Shortcuts card in Settings. Enter puts the keyboard in the text box; Esc takes it out again.
+const SHORTCUTS = [
+  { key: 'n', on: 'newsBtn', what: 'open today\'s news in the reader window, or close that window', run: () => toggleReader(openNews) },
+  { key: 'l', on: 'lastBtn', what: 'bring back the reader window with what it last showed, or close it', run: () => toggleReader(openLast) },
+  { key: 'd', on: 'showBtn', what: 'display the last answer in the reader window' },
+  { key: 'r', on: 'plFip', what: 'play FIP radio', run: () => { if (pl.source !== 'fip' || plAudio.paused) plTune(pl.station, true); } },
+  { key: 'p', on: 'plPlay', what: 'play or pause the music' },
+  { key: 'k', on: 'plNext', what: 'skip to the next station or song' },
+  { key: 't', on: 'logBtn', what: 'show or hide the transcript' },
+  { key: 'h', on: 'histBtn', what: 'open History' },
+  { key: 's', on: 'gear', what: 'open Settings' },
+  { key: 'm', on: 'mini', what: 'switch Mini mode on or off', run: () => setCompact(!document.body.classList.contains('compact')) },
+];
+for (const s of SHORTCUTS) {
+  const b = $(s.on), name = s.key.toUpperCase();
+  b.dataset.key = s.key.toUpperCase(); b.title = (b.title ? b.title + '  ' : '') + '(' + name + ')';
+  const k = document.createElement('b'), d = document.createElement('span');
+  k.textContent = name; d.textContent = s.what; $('sKeys').append(k, d);
+}
+const editing = () => !!document.activeElement && document.activeElement.matches('input, textarea, select');
+function setTyping(on) {
+  typing = on; document.body.classList.toggle('typing', on);
+  if (on) $('input').focus();
+  else if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+  if (state === 'idle') setLive('');
+}
+function restFocus() { setTyping(typing); }   // after a click or a closed view: back to the text box, or to no box at all
+for (const how of ['focus', 'pointerdown']) $('input').addEventListener(how, () => { if (!typing) setTyping(true); });   // a click in the box starts typing
+$('input').addEventListener('blur', () => setTimeout(() => { if (typing && document.activeElement === document.body) setTyping(false); }, 0));
 const viewOpen = () => !$('settings').hidden || !$('history').hidden || !$('about').hidden || !$('usage').hidden;
 addEventListener('keydown', (e) => {
   if (viewOpen()) {   // while a view is open, keys belong to its controls
@@ -1280,11 +1656,20 @@ addEventListener('keydown', (e) => {
   }
   if (e.key === 'Escape') {
     e.preventDefault();
+    setTyping(false);
+    if (!listening && !busy && !pending) closeReader();   // with nothing to stop, Esc closes the reader window
     cancelListening(); hush();
     if (busy) api('/api/stop', { method: 'POST' }); else setState('idle');
     return;
   }
-  if (e.code === 'Space' && !e.metaKey && !e.ctrlKey && !e.altKey && $('input').value === '') {
+  const bare = !e.ctrlKey && !e.metaKey && !e.altKey;
+  if (bare && !editing()) {
+    if (e.key === 'Enter') { e.preventDefault(); setTyping(true); return; }
+    const s = !e.shiftKey && e.key.length === 1 && SHORTCUTS.find((x) => x.key === e.key.toLowerCase());
+    if (s) { e.preventDefault(); if (!e.repeat) { if (s.run) s.run(); else $(s.on).click(); } return; }
+  }
+  // Space talks unless something is being typed: an empty text box does not count
+  if (e.code === 'Space' && bare && (!editing() || (document.activeElement === $('input') && $('input').value === ''))) {
     e.preventDefault();
     if (e.repeat) return;
     if (holdMode) { spaceHeld = true; startListening(false); }
@@ -1295,8 +1680,8 @@ addEventListener('keyup', (e) => {
   if (e.code === 'Space' && spaceHeld) { spaceHeld = false; stopListening(); }
 });
 addEventListener('blur', () => { if (spaceHeld) { spaceHeld = false; stopListening(); } });
-// Keep the keyboard on the text box, so Space and Enter never re-press a button.
-for (const b of document.querySelectorAll('footer button, header button')) b.addEventListener('click', () => { if (!viewOpen()) $('input').focus(); });
+// Take the keyboard off a button once it is clicked, so Space and Enter never press it again.
+for (const b of document.querySelectorAll('footer button, header button, #plFip, #plSongs, #plPlay, #plNext')) b.addEventListener('click', () => { if (!viewOpen()) restFocus(); });
 
 // ---------- window: drag, compact mode ----------
 function setCompact(on) {
@@ -1312,12 +1697,29 @@ document.querySelector('.core').addEventListener('mousedown', (e) => {
   if (document.body.classList.contains('compact') && !e.target.closest('button')) post({ type: 'drag' });
 });
 
-// The Agent panel sits under Weather and System on the left while the transcript fills the right column,
-// and takes the right column when the transcript is hidden, so neither side is left empty.
+// The Player always sits at the foot of the right column. The Agent panel sits under Weather and System on the
+// left while the transcript fills the space above the Player, and moves above the Player when the transcript is hidden.
+// Building rule: every panel must show in full. The side columns never scroll, so a new panel has to fit beside the others.
 function placePanels() {
-  const side = document.querySelector(document.body.classList.contains('show-log') ? '.left' : '.right');
-  if ($('agent').parentNode !== side) side.append($('agent'));
+  const log = document.body.classList.contains('show-log');
+  const side = document.querySelector(log ? '.left' : '.right');
+  if ($('agent').parentNode !== side) side[log ? 'append' : 'prepend']($('agent'));   // on the right it sits above the Player
+  fitPanels();
 }
+// Keeps the building rule: nothing in a side column is ever cut off or scrolled. Each column gives up its
+// optional details one by one, then whole panels from the foot, until what is left fits.
+function fitPanels() {
+  for (const col of document.querySelectorAll('.left, .right')) {
+    // the Agent panel's details go first, then the rest from the foot of the column upwards
+    const extras = [...col.querySelectorAll('.extra')].reverse();
+    const spare = [...extras.filter((el) => el.closest('#agent')).reverse(), ...extras.filter((el) => !el.closest('#agent')),
+                   ...[...col.querySelectorAll('.panel:not(.logp)')].reverse()];
+    for (const el of spare) el.classList.remove('shed');
+    for (const el of spare) { if (col.scrollHeight <= col.clientHeight) break; el.classList.add('shed'); }
+  }
+}
+const panelWatch = new ResizeObserver(fitPanels);
+for (const el of document.querySelectorAll('.left, .right, main .panel')) panelWatch.observe(el);
 placePanels();
 
 // ---------- the core ----------
