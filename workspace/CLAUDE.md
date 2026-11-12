@@ -3,7 +3,7 @@
 This file is what JARVIS knows about you. Edit it freely; it is read at the start of every conversation.
 
 ## Who I am
-- Name: (your name, and how JARVIS should address you)
+- Name: (your name; JARVIS says "sir" or "madam" as chosen in Settings, unless you ask for something else here)
 - Role: (what you do)
 - Languages: (which languages you speak with JARVIS)
 

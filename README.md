@@ -56,9 +56,10 @@ Tell JARVIS about yourself in the context file (Settings → Assistant → Conte
 | `server.mjs` | The local server, with no dependencies. Keeps one Claude Code process running and passes questions to it, speaks replies with the Mac's `say` command, and handles settings, weather and history. Listens on `127.0.0.1` only. |
 | `public/index.html` | The whole interface: layout, animation and logic in one file. |
 | `build-app.sh` | Compiles the Swift shell, assembles `JARVIS.app` and signs it for this Mac. |
+| `setup-signing.sh` | Run once: creates a local signing certificate so macOS keeps the app's permissions across builds. |
 | `workspace/CLAUDE.md` | Template for the context file. |
 
-Your own data lives outside the project, in `~/JARVIS`: `settings.json`, `history/`, `workspace/` (the context file, and the only folder JARVIS can read) and `jarvis.log`.
+Your own data lives outside the project, in `~/JARVIS`: `settings.json`, `history/`, `workspace/` (the context file, and the only folder JARVIS can read), `songs/` (drop audio files here: one is played at random after the day's first briefing) and `jarvis.log`.
 
 ### What the agent is allowed to do
 
@@ -67,7 +68,8 @@ The Claude process is started with a fixed list of tools: reading files in its w
 ## Changing it
 
 - **Interface or server:** edit `public/index.html` or `server.mjs`, run `./build-app.sh`, reopen the app.
-- **Native window:** edit `app/main.swift`, then `./build-app.sh`. This recompiles, and because the app is signed for this Mac only, macOS may ask again for microphone, speech and Accessibility permission.
+- **Native window:** edit `app/main.swift`, then `./build-app.sh`. This recompiles.
+- **Permissions:** without a signing certificate each build looks like a new app to macOS, which asks again for microphone, speech and Accessibility permission. Run `./setup-signing.sh` once to create a local certificate; from then on the permissions you grant stay granted across builds.
 - **Personality:** the `persona` function in `server.mjs`.
 - **Version:** `VERSION` in `server.mjs` and `CFBundleShortVersionString` in `build-app.sh`.
 

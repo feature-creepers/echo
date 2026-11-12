@@ -343,6 +343,7 @@
     <section class="panel card">
       <h2>Assistant</h2>
       <div class="set"><label for="sChar">Character<small>Who it is: the look, the name, the manner of speaking and the default voice.</small></label><span class="ctl"><select id="sChar"></select></span></div>
+      <div class="set"><label for="sAddr">Form of address<small>What it calls you. The context file can ask for something else.</small></label><span class="ctl"><select id="sAddr"></select></span></div>
       <div class="set"><label for="sModel">Model<small>Haiku is fastest, Sonnet balanced, Opus most thorough.</small></label><span class="ctl"><select id="sModel"></select></span></div>
       <div class="set stack"><label for="sInstr">Standing instructions<small>Added to every conversation: how to address you, tone, what to always or never do.</small></label><span class="ctl"><textarea id="sInstr" maxlength="2000" placeholder="e.g. Keep answers under two sentences."></textarea></span></div>
       <div class="set"><span class="name">Context file<small>Longer notes about you and your work.</small></span><span class="ctl"><button id="sContext">Open file</button></span></div>
@@ -359,6 +360,7 @@
         <label><input type="checkbox" id="sItWeather"> Weather</label>
         <label><input type="checkbox" id="sItCalendar"> Calendar</label>
       </span></div>
+      <div class="set"><label for="sBootSong">Morning song<small>After the day's first briefing, plays a random song from <span id="sSongDir"></span>.</small></label><span class="ctl"><button id="sSongs">Open folder</button><input type="checkbox" id="sBootSong"></span></div>
       <div class="set"><span class="name">Try it<small>Plays the opening now.</small></span><span class="ctl"><button id="sBootNow">Play now</button></span></div>
     </section>
 
@@ -683,12 +685,27 @@ function say(text) {
   const finish = () => {
     if (gen !== speechGen) return;
     pending = Math.max(0, pending - 1);
+    if (!pending && songDue) return playSong();
     if (!pending && state === 'speaking') setState(busy ? 'thinking' : 'idle');
   };
   if (!serverVoice) return browserSay(text, finish);
   api('/api/say', { method: 'POST', body: JSON.stringify({ text, lang: LANGS[langIdx].code.slice(0, 2) }) })
     .then((r) => { if (r.status === 501) { serverVoice = false; browserSay(text, finish); } else finish(); })
     .catch(finish);
+}
+// The morning song: played by the Mac once the opening briefing has been spoken. Talking or Stop cuts it short.
+let songDue = false;
+function playSong() {
+  songDue = false;
+  if (!voiceOn || !serverVoice || !cfg || !cfg.briefing.song) { if (!pending && state === 'speaking') setState('idle'); return; }
+  const gen = speechGen;
+  pending++; setState('speaking');
+  const finish = () => {
+    if (gen !== speechGen) return;
+    pending = Math.max(0, pending - 1);
+    if (!pending && state === 'speaking') setState('idle');
+  };
+  api('/api/song', { method: 'POST' }).then(finish, finish);
 }
 function feedSpeech(delta, flush) {
   speakBuf += delta;
@@ -702,7 +719,7 @@ function hush() {
   speechGen++;
   if (pending && serverVoice) api('/api/hush', { method: 'POST' }).catch(() => {});
   if (synth) synth.cancel();
-  pending = 0; speakBuf = '';
+  pending = 0; speakBuf = ''; songDue = false;
 }
 
 // ---------- talking to the agent ----------
@@ -715,13 +732,14 @@ async function ask(text, opts = {}) {
   if (!opts.boot) addMsg('user', 'YOU', text);
   setState('thinking');
   const started = performance.now();
-  let out = null, full = '', written = '';
+  let out = null, full = '', written = '', briefed = false;
   setCaption('');
   try {
     const res = opts.boot
       ? await api('/api/boot' + (opts.boot === 'force' ? '?force=1' : ''), { method: 'POST' })
       : await api('/api/chat', { method: 'POST', body: JSON.stringify({ message: text, selection: opts.selection || '', write: !!opts.write }) });
     if (res.status === 204) throw null;   // no opening due today
+    briefed = !!opts.boot;
     if (!res.ok) throw new Error((await res.json()).error || res.statusText);
     const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
     for (;;) {
@@ -754,6 +772,7 @@ async function ask(text, opts = {}) {
     if (err) addMsg('error', 'ERROR', String(err.message || err));
   }
   feedSpeech('', true);
+  if (briefed && full) { if (pending) songDue = true; else playSong(); }   // the song follows the last spoken sentence
   if (opts.write && written.trim()) post({ type: 'paste', text: written.trim() });
   busy = false;
   $('sendBtn').hidden = false; $('stopBtn').hidden = true;
@@ -905,9 +924,11 @@ function paintSettings() {
   $('sBootLaunch').checked = cfg.briefing.atLaunch;
   $('sBootGreet').checked = cfg.briefing.onGreeting;
   $('sBootFun').checked = cfg.briefing.humour;
+  $('sBootSong').checked = cfg.briefing.song; $('sSongDir').textContent = view.songsDir;
   for (const k of ['date', 'system', 'weather', 'calendar']) $('sIt' + k[0].toUpperCase() + k.slice(1)).checked = cfg.briefing.items[k];
 
   fill($('sChar'), view.characters.map((c) => [c.id, c.name]), cfg.character);
+  fill($('sAddr'), [['sir', 'Sir'], ['madam', 'Madam']], cfg.address);
   fill($('sModel'), view.models.map((m) => [m, m[0].toUpperCase() + m.slice(1)]), cfg.model);
   if (document.activeElement !== $('sInstr')) $('sInstr').value = cfg.instructions;
   $('sWeb').checked = cfg.tools.web;
@@ -969,6 +990,8 @@ $('sMode').onchange = (e) => saveSetting({ listen: { mode: e.target.value } });
 $('sBootLaunch').onchange = (e) => saveSetting({ briefing: { atLaunch: e.target.checked } });
 $('sBootGreet').onchange = (e) => saveSetting({ briefing: { onGreeting: e.target.checked } });
 $('sBootFun').onchange = (e) => saveSetting({ briefing: { humour: e.target.checked } });
+$('sBootSong').onchange = (e) => saveSetting({ briefing: { song: e.target.checked } });
+$('sSongs').onclick = () => api('/api/open', { method: 'POST', body: JSON.stringify({ what: 'songs' }) });
 for (const k of ['date', 'system', 'weather', 'calendar']) {
   $('sIt' + k[0].toUpperCase() + k.slice(1)).onchange = (e) => saveSetting({ briefing: { items: { [k]: e.target.checked } } });
 }
@@ -994,6 +1017,7 @@ function paintNative() {
 $('sLog').onchange = (e) => saveSetting({ ui: { transcript: e.target.checked } });
 $('logBtn').onclick = () => saveSetting({ ui: { transcript: !cfg.ui.transcript } });
 $('sModel').onchange = (e) => saveSetting({ model: e.target.value });
+$('sAddr').onchange = (e) => saveSetting({ address: e.target.value });
 $('sChar').onchange = (e) => saveSetting({ character: e.target.value });
 $('sInstr').onchange = (e) => saveSetting({ instructions: e.target.value });
 $('sContext').onclick = () => api('/api/open', { method: 'POST', body: JSON.stringify({ what: 'context' }) });

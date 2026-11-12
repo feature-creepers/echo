@@ -64,8 +64,17 @@ if [ ! -x "$BIN" ] || [ "$SRC/app/main.swift" -nt "$BIN" ]; then
 fi
 cp "$BIN" "$APP/Contents/MacOS/JARVIS"
 chmod +x "$APP/Contents/MacOS/JARVIS"
-# Sign it for this Mac only, so macOS can remember its microphone and speech permissions.
-codesign --force --sign - "$APP" >/dev/null 2>&1 || echo "Note: could not sign the app; macOS may ask for permissions more often."
+# Sign it, so macOS can remember its microphone and speech permissions.
+# With the local certificate from setup-signing.sh the app keeps the same identity across builds,
+# and the permissions granted once stay granted. Without it the signature is ad hoc: it changes with
+# every build, and macOS asks again after each one.
+SIGN_ID="JARVIS Local Signing"
+if security find-identity -p codesigning 2>/dev/null | grep -q "\"$SIGN_ID\""; then
+  codesign --force --sign "$SIGN_ID" "$APP" >/dev/null 2>&1 || { echo "Could not sign with \"$SIGN_ID\". If macOS asked to use the key, choose Always Allow and build again."; exit 1; }
+else
+  codesign --force --sign - "$APP" >/dev/null 2>&1 || echo "Note: could not sign the app; macOS may ask for permissions more often."
+  echo "Note: signed ad hoc, so macOS will ask for permissions again after each build. Run ./setup-signing.sh once to stop that."
+fi
 touch "$APP"
 rm -rf "$TMP"
 echo "Built $APP"

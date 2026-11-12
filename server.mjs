@@ -23,6 +23,10 @@ if (!fs.existsSync(path.join(WORKSPACE, 'CLAUDE.md'))) {
 }
 // ---------- settings (saved in settings.json in the data folder; edited from the Settings panel) ----------
 const SETTINGS_FILE = path.join(DATA, 'settings.json');
+// Drop audio files here: one is picked at random and played after the first briefing of the day.
+const SONGS = path.join(DATA, 'songs');
+const SONG_TYPES = ['.mp3', '.m4a', '.aac', '.wav', '.aif', '.aiff', '.flac', '.caf'];
+fs.mkdirSync(SONGS, { recursive: true });
 const MODELS = ['haiku', 'sonnet', 'opus'];
 // The characters JARVIS can play: a name, a manner of speaking and preferred voices. The look lives in the page.
 const CHARACTERS = {
@@ -41,8 +45,10 @@ const CHARACTERS = {
 };
 const character = () => CHARACTERS[settings.character] || CHARACTERS.jarvis;
 const SPEECH_LANGS = ['en-GB', 'fr-FR'];
+const ADDRESSES = ['sir', 'madam'];
 const DEFAULTS = {
   character: 'jarvis',                                // which character it plays: see CHARACTERS
+  address: 'sir',                                     // how it addresses the user: see ADDRESSES
   model: MODELS.includes(process.env.JARVIS_MODEL) ? process.env.JARVIS_MODEL : 'sonnet', // sonnet: quick enough for voice, careful with untrusted text
   instructions: '',                                   // standing instructions added to every conversation
   voice: { enabled: true, rate: 185, en: '', fr: '' }, // '' = best installed voice for that language
@@ -56,6 +62,7 @@ const DEFAULTS = {
     atLaunch: true,     // on the first launch of each day
     onGreeting: true,   // when you say good morning, hello and so on
     humour: true,       // a dry, nerdy line about its systems coming online
+    song: true,         // play a song from the songs folder after the day's first briefing
     items: { system: true, weather: true, calendar: true, date: true },
   },
   briefingLastDay: '',                             // transcript panel hidden by default
@@ -126,7 +133,7 @@ const persona = () => [
   'Use plain prose only: no markdown, lists, headings, code blocks or emoji.',
   character().tone + ' Reply in the language the user speaks.',
   character().extra || '',
-  'Address the user the way their context file says; if it does not say, use no title or honorific.',
+  `Address the user as "${settings.address}", or its equivalent in the language being spoken, used sparingly as a butler would; if their context file asks for a different form of address, use that instead.`,
   'You have read-only tools: reading files in your workspace folder, web search and web fetch.',
   'If Google Calendar tools are available you may read the user\'s calendars and events, but never change them.',
   'When reading out events, give the time and title in natural speech and skip IDs and links.',
@@ -232,11 +239,16 @@ let speakingProc = null;
 function speakNext() {
   if (speakingProc || !speechQueue.length) return;
   const job = speechQueue.shift();
-  const args = ['-r', String(settings.voice.rate)];
-  if (voiceFor(job.lang)) args.push('-v', voiceFor(job.lang));
-  const proc = spawn('say', args, { stdio: ['pipe', 'ignore', 'ignore'] });
+  let proc;
+  if (job.song) {
+    proc = spawn('afplay', [job.song], { stdio: 'ignore' });   // a song waits its turn like any sentence
+  } else {
+    const args = ['-r', String(settings.voice.rate)];
+    if (voiceFor(job.lang)) args.push('-v', voiceFor(job.lang));
+    proc = spawn('say', args, { stdio: ['pipe', 'ignore', 'ignore'] });
+    proc.stdin.end(job.text);
+  }
   speakingProc = proc;
-  proc.stdin.end(job.text);
   const finish = () => {
     if (speakingProc === proc) speakingProc = null;
     job.done();
@@ -250,6 +262,17 @@ function hush() {
   speechQueue = [];
   for (const job of waiting) job.done();
   if (speakingProc) speakingProc.kill();
+}
+// A random song from the songs folder, avoiding the one played last when there is a choice.
+let lastSong = '';
+function pickSong() {
+  let files = [];
+  // album folders inside the songs folder are searched too
+  try { files = fs.readdirSync(SONGS, { recursive: true }).filter((f) => !path.basename(f).startsWith('.') && SONG_TYPES.includes(path.extname(f).toLowerCase())); } catch {}
+  if (files.length > 1) files = files.filter((f) => f !== lastSong);
+  if (!files.length) return null;
+  lastSong = files[Math.floor(Math.random() * files.length)];
+  return lastSong;
 }
 process.on('exit', () => { if (speakingProc) speakingProc.kill(); if (agent) agent.child.kill('SIGKILL'); });
 
@@ -341,6 +364,7 @@ function settingsView() {
     calendarConnected: calendarSeen,
     version: VERSION,
     dataDir: DATA.replace(os.homedir(), '~'),
+    songsDir: SONGS.replace(os.homedir(), '~'),
   };
 }
 
@@ -609,7 +633,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'GET' && url.pathname === '/api/settings') return send(res, 200, settingsView());
     if (req.method === 'POST' && url.pathname === '/api/settings') {
-      const before = JSON.stringify([settings.model, settings.instructions, settings.tools, settings.briefing, settings.character]);
+      const before = JSON.stringify([settings.model, settings.instructions, settings.tools, settings.briefing, settings.character, settings.address]);
       const next = merge(settings, (await readJson(req)).patch);
       // keep every value within what the app can actually do
       if (!MODELS.includes(next.model)) next.model = settings.model;
@@ -625,10 +649,11 @@ const server = http.createServer(async (req, res) => {
       next.location = settings.location; // the town is changed through /api/location only
       next.briefingLastDay = settings.briefingLastDay;
       if (!CHARACTERS[next.character]) next.character = settings.character;
+      if (!ADDRESSES.includes(next.address)) next.address = settings.address;
       settings = next;
       saveSettings();
       // model, instructions and tools are fixed when the agent starts: restart it, keeping the conversation
-      if (before !== JSON.stringify([settings.model, settings.instructions, settings.tools, settings.briefing, settings.character])) stopAgent();
+      if (before !== JSON.stringify([settings.model, settings.instructions, settings.tools, settings.briefing, settings.character, settings.address])) stopAgent();
       return send(res, 200, settingsView());
     }
     if (req.method === 'GET' && url.pathname === '/api/history') {
@@ -643,6 +668,7 @@ const server = http.createServer(async (req, res) => {
       const { what } = await readJson(req);
       if (what === 'context') spawn('open', ['-t', path.join(WORKSPACE, 'CLAUDE.md')], { stdio: 'ignore' });
       else if (what === 'data') spawn('open', [DATA], { stdio: 'ignore' });
+      else if (what === 'songs') spawn('open', [SONGS], { stdio: 'ignore' });
       else return send(res, 400, { error: 'unknown target' });
       return send(res, 200, { ok: true });
     }
@@ -669,6 +695,18 @@ const server = http.createServer(async (req, res) => {
         text: text.slice(0, 3000),
         lang: lang === 'fr' ? 'fr' : 'en',
         done: () => { if (!answered) { answered = true; send(res, 200, { ok: true }); } },
+      });
+      return speakNext();
+    }
+    if (req.method === 'POST' && url.pathname === '/api/song') {
+      // Asked for by the page once the opening briefing has been spoken. Answers when the song ends or is cut short.
+      if (process.platform !== 'darwin') return send(res, 501, { error: 'no system player' });
+      const file = settings.briefing.song ? pickSong() : null;
+      if (!file) return send(res, 200, { ok: false });
+      let answered = false;
+      speechQueue.push({
+        song: path.join(SONGS, file),
+        done: () => { if (!answered) { answered = true; send(res, 200, { ok: true, title: path.parse(file).name }); } },
       });
       return speakNext();
     }
