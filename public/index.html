@@ -67,7 +67,14 @@
   .panel::after { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }
   h2 { margin: 0 0 12px; font-size: 10px; letter-spacing: 0.3em; color: var(--cyan-dim); font-weight: 600; text-transform: uppercase; }
 
-  .left, .right { display: flex; flex-direction: column; gap: 12px; min-height: 0; min-width: 0; overflow-y: auto; scrollbar-width: none; }
+  /* Building rule: a panel shows in full or not at all. The side columns never scroll: when the window is too short,
+     fitPanels() takes away optional details (.extra) first, then whole panels from the foot of the column. */
+  .left, .right { display: flex; flex-direction: column; gap: 10px; min-height: 0; min-width: 0; overflow: hidden; }
+  /* the side panels are set a little tighter than the cards in the views, so that three fit in one column */
+  .left .panel, .right .panel { padding: 12px 14px; }
+  .left h2, .right h2 { margin-bottom: 10px; }
+  .left .kv, .right .kv { padding: 3px 0; }
+  .shed { display: none !important; }
   .left .panel, .right .panel { flex-shrink: 0; }
   .left #agent .note { display: none; }   /* three panels share the left column: drop the footnote so they fit without scrolling */
   .wx { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 8px; }
@@ -84,6 +91,11 @@
   .kv { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; border-top: 1px dashed rgba(var(--glow), 0.12); }
   .kv span:first-child { color: var(--muted); font-size: 10px; letter-spacing: 0.14em; }
   .kv span:last-child { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .kv .unit { color: var(--muted); font-size: 10px; letter-spacing: 0.14em; }
+  .kv.top { border-top: 0; padding: 2px 0; }
+  .kv.top span:first-child { color: var(--text); font-size: inherit; letter-spacing: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .kv.top span:last-child { color: var(--cyan); flex-shrink: 0; overflow: visible; }
+  .kv.top.hot span:last-child { color: var(--amber); }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
   .chip { border: 1px solid var(--line); padding: 3px 7px; font-size: 10px; letter-spacing: 0.08em; color: var(--cyan); border-radius: 2px; }
   .note { color: var(--muted); font-size: 10.5px; line-height: 1.5; margin: 10px 0 0; }
@@ -141,7 +153,7 @@
   body.compact #expand:hover { opacity: 1; }
   body.compact .core { cursor: default; -webkit-user-select: none; user-select: none; }
 
-  .right .logp { flex: 1 1 0; display: flex; flex-direction: column; }
+  .right .logp { flex: 1 1 0; min-height: 140px; display: flex; flex-direction: column; }
   #log { flex: 1; overflow-y: auto; min-height: 0; padding-right: 6px; scrollbar-width: thin; scrollbar-color: var(--cyan-dim) transparent; }
   .msg { margin: 0 0 14px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
   .msg .who { display: block; font-size: 9.5px; letter-spacing: 0.3em; margin-bottom: 3px; color: var(--muted); }
@@ -178,7 +190,7 @@
   @media (max-width: 980px) {
     main { grid-template-columns: 1fr; }
     body.show-log main { grid-template-rows: 38vh 1fr; }
-    .left, body:not(.show-log) .right, .right #agent { display: none; }
+    .left, body:not(.show-log) .right, .right #agent, .right #player { display: none; }
   }
   @media (prefers-reduced-motion: reduce) { .bar i { transition: none; } #pulse { animation: none; } #player.playing .pl-eq span { animation: none; transform: scaleY(0.6); } }
 
@@ -332,32 +344,9 @@
       <div class="gauge"><div class="row"><span>DISK</span><span id="dskV">--</span></div><div class="bar"><i id="dskB"></i></div></div>
       </div>
       <div class="kv"><span>NETWORK</span><span id="netV">--</span></div>
-      <div class="kv"><span>BUSIEST</span><span id="topV">--</span></div>
+      <div class="kv"><span>BUSIEST</span><span class="unit" title="Share of one processor core, as Activity Monitor shows it">% CPU</span></div>
+      <div id="topList"></div>
       <div class="kv"><span>UPTIME</span><span id="up">--</span></div>
-    </div>
-    <div class="panel" id="player">
-      <h2>Player</h2>
-      <div class="pl-src" role="group" aria-label="What to play">
-        <button id="plFip" title="FIP radio, live from Paris">FIP</button>
-        <button id="plSongs" title="Your own songs, in random order">Songs</button>
-      </div>
-      <div class="pl-ctl">
-        <button id="plPlay" title="Play or pause">Play</button>
-        <div class="pl-eq" id="plEq" aria-hidden="true"></div>
-        <button id="plNext" title="Next station, or next song">Next</button>
-      </div>
-      <div id="plStatus" aria-live="polite">Stopped</div>
-      <div id="plNow" hidden>
-        <div class="kv"><span>TRACK</span><span id="plTitle"></span></div>
-        <div class="kv"><span>ARTIST</span><span id="plArtist"></span></div>
-        <div class="kv"><span>ALBUM</span><span id="plAlbum"></span></div>
-        <div class="kv"><span>YEAR</span><span id="plYear"></span></div>
-      </div>
-      <div class="chips" id="plStations" role="group" aria-label="FIP stations"></div>
-      <div class="pl-vol" id="plVol" role="slider" tabindex="0" aria-label="Music volume" aria-valuemin="0" aria-valuemax="100">
-        <span>VOL</span><span id="plBar"></span><span id="plPct"></span>
-      </div>
-      <audio id="plAudio" preload="none"></audio>
     </div>
     <div class="panel" id="agent">
       <h2>Agent</h2>
@@ -366,9 +355,11 @@
       <div class="kv"><span>CALENDAR</span><span id="cal">--</span></div>
       <div class="kv"><span>LAST REPLY</span><span id="lat">--</span></div>
       <div class="kv" style="border-bottom:0"><span>SPENT</span><span id="cost" title="Estimated cost since JARVIS started. Click for the full usage.">$0.00</span></div>
-      <h2 style="margin-top:14px">Tools online</h2>
-      <div class="chips" id="tools"></div>
-      <p class="note">Read-only. It can look things up and read its workspace folder, but cannot send, edit or delete.</p>
+      <div class="extra">
+        <h2 style="margin-top:10px">Tools online</h2>
+        <div class="chips" id="tools"></div>
+      </div>
+      <p class="note extra">Read-only.</p>
     </div>
   </section>
 
@@ -388,6 +379,30 @@
       <div id="log">
         <p class="empty" id="empty">Press Space and speak, or type below.<br>Try: &ldquo;Good morning. What can you do?&rdquo;</p>
       </div>
+    </div>
+    <div class="panel" id="player">
+      <h2>Player</h2>
+      <div class="pl-src" role="group" aria-label="What to play">
+        <button id="plFip" title="FIP radio, live from Paris">FIP</button>
+        <button id="plSongs" title="Your own songs, in random order">Songs</button>
+      </div>
+      <div class="pl-ctl">
+        <button id="plPlay" title="Play or pause">Play</button>
+        <div class="pl-eq" id="plEq" aria-hidden="true"></div>
+        <button id="plNext" title="Next station, or next song">Next</button>
+      </div>
+      <div id="plStatus" aria-live="polite">Stopped</div>
+      <div id="plNow" hidden>
+        <div class="kv"><span>TRACK</span><span id="plTitle"></span></div>
+        <div class="kv"><span>ARTIST</span><span id="plArtist"></span></div>
+        <div class="kv extra"><span>ALBUM</span><span id="plAlbum"></span></div>
+        <div class="kv extra"><span>YEAR</span><span id="plYear"></span></div>
+      </div>
+      <div class="chips extra" id="plStations" role="group" aria-label="FIP stations"></div>
+      <div class="pl-vol" id="plVol" role="slider" tabindex="0" aria-label="Music volume" aria-valuemin="0" aria-valuemax="100">
+        <span>VOL</span><span id="plBar"></span><span id="plPct"></span>
+      </div>
+      <audio id="plAudio" preload="none"></audio>
     </div>
   </section>
 </main>
@@ -952,13 +967,20 @@ async function stats() {
     }
     $('netV').textContent = s.net ? '↓ ' + fmtRate(s.net.down) + '  ↑ ' + fmtRate(s.net.up) : '--';
     $('netV').title = 'Download and upload, per second';
-    $('topV').textContent = s.top ? s.top.cpu + '% ' + s.top.name : '--';   // figure first: a long name is cut at the end
-    $('topV').title = s.top ? s.top.name + ', ' + s.top.cpu + '% of one core' : '';
+    // the three busiest processes, each on a row of its own; the second and third give way first in a short window
+    $('topList').replaceChildren(...(s.top || []).map((p, i) => {
+      const row = document.createElement('div');
+      row.className = 'kv top' + (i ? ' extra' : '') + (p.cpu >= 80 ? ' hot' : '');
+      row.title = p.name + ', ' + p.cpu + '% of one core';
+      row.append(Object.assign(document.createElement('span'), { textContent: p.name }), Object.assign(document.createElement('span'), { textContent: p.cpu + '%' }));
+      return row;
+    }));
+    fitPanels();
     $('up').textContent = fmtUptime(s.uptime);
     vitals = { cpu: s.cpu, battery: s.battery, offline: false }; updateVital();
     $('model').textContent = s.model;
     $('sess').textContent = s.session ? 'active' : 'new';
-    $('cal').textContent = s.calendar ? 'connected' : 'not connected';
+    $('cal').textContent = s.calendar === null ? 'checking' : s.calendar ? 'connected' : 'not connected';
     if (typeof s.spent === 'number') $('cost').textContent = money(s.spent);
     if (lastConv !== null && s.conv !== lastConv && !busy) addMsg('tool', '', '▸ new conversation, after a pause');
     lastConv = s.conv;
@@ -1305,7 +1327,7 @@ function paintSettings() {
   if (document.activeElement !== $('sInstr')) $('sInstr').value = cfg.instructions;
   $('sWeb').checked = cfg.tools.web;
   $('sCal').checked = cfg.tools.calendar;
-  $('sCalState').textContent = !cfg.tools.calendar ? 'Off.' : view.calendarConnected ? 'Connected.' : 'Not connected on your Claude account yet.';
+  $('sCalState').textContent = !cfg.tools.calendar ? 'Off.' : view.calendarConnected === null ? 'Checking…' : view.calendarConnected ? 'Connected.' : 'Not connected on your Claude account yet.';
   if (document.activeElement !== $('sTown')) $('sTown').value = cfg.location ? cfg.location.name : '';
   $('sDir').textContent = view.dataDir;
   $('aDir').textContent = view.dataDir;
@@ -1651,12 +1673,29 @@ document.querySelector('.core').addEventListener('mousedown', (e) => {
   if (document.body.classList.contains('compact') && !e.target.closest('button')) post({ type: 'drag' });
 });
 
-// The Agent panel sits under Weather and System on the left while the transcript fills the right column,
-// and takes the right column when the transcript is hidden, so neither side is left empty.
+// The Player always sits at the foot of the right column. The Agent panel sits under Weather and System on the
+// left while the transcript fills the space above the Player, and moves above the Player when the transcript is hidden.
+// Building rule: every panel must show in full. The side columns never scroll, so a new panel has to fit beside the others.
 function placePanels() {
-  const side = document.querySelector(document.body.classList.contains('show-log') ? '.left' : '.right');
-  if ($('agent').parentNode !== side) side.append($('agent'));
+  const log = document.body.classList.contains('show-log');
+  const side = document.querySelector(log ? '.left' : '.right');
+  if ($('agent').parentNode !== side) side[log ? 'append' : 'prepend']($('agent'));   // on the right it sits above the Player
+  fitPanels();
 }
+// Keeps the building rule: nothing in a side column is ever cut off or scrolled. Each column gives up its
+// optional details one by one, then whole panels from the foot, until what is left fits.
+function fitPanels() {
+  for (const col of document.querySelectorAll('.left, .right')) {
+    // the Agent panel's details go first, then the rest from the foot of the column upwards
+    const extras = [...col.querySelectorAll('.extra')].reverse();
+    const spare = [...extras.filter((el) => el.closest('#agent')).reverse(), ...extras.filter((el) => !el.closest('#agent')),
+                   ...[...col.querySelectorAll('.panel:not(.logp)')].reverse()];
+    for (const el of spare) el.classList.remove('shed');
+    for (const el of spare) { if (col.scrollHeight <= col.clientHeight) break; el.classList.add('shed'); }
+  }
+}
+const panelWatch = new ResizeObserver(fitPanels);
+for (const el of document.querySelectorAll('.left, .right, main .panel')) panelWatch.observe(el);
 placePanels();
 
 // ---------- the core ----------

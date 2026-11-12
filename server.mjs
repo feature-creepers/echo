@@ -255,12 +255,15 @@ const network = cached(2500, async () => {
   const secs = (now.at - prev.at) / 1000;
   return { down: Math.max(0, Math.round((rx - prev.rx) / secs)), up: Math.max(0, Math.round((tx - prev.tx) / secs)) };
 });
-// The busiest process: { name, cpu }, cpu as a percentage of one core, as Activity Monitor shows it.
-const topProcess = cached(10000, async () => {
+// The three busiest processes, busiest first: [{ name, cpu }], cpu as a percentage of one core, as Activity Monitor shows it.
+const topProcesses = cached(10000, async () => {
   const out = await run('ps', ['-Aceo', 'pcpu=,comm=', '-r']);
-  const m = out.match(/^\s*([\d.]+)\s+(.+)$/m);
-  return m ? { name: m[2].trim(), cpu: Math.round(Number(m[1])) } : null;
+  return out.split('\n').slice(0, 3)
+    .map((line) => line.match(/^\s*([\d.]+)\s+(.+)$/))
+    .filter(Boolean)
+    .map((m) => ({ name: m[2].trim(), cpu: Math.round(Number(m[1])) }));
 });
+const topProcess = async () => (await topProcesses())[0] || null;
 
 // ---------- voice out, through the Mac's own speech (`say`) ----------
 // Spoken by macOS rather than the browser, so it does not depend on the browser's audio rules.
@@ -986,7 +989,7 @@ const server = http.createServer(async (req, res) => {
     if (!authorised(req)) return send(res, 403, { error: 'forbidden' });
 
     if (req.method === 'GET' && url.pathname === '/api/stats') {
-      const [cpu, mem, batt, dsk, net, top] = await Promise.all([cpuPercent(), memPercent(), battery(), disk(), network(), topProcess()]);
+      const [cpu, mem, batt, dsk, net, top] = await Promise.all([cpuPercent(), memPercent(), battery(), disk(), network(), topProcesses()]);
       return send(res, 200, {
         cpu,
         mem,
