@@ -46,12 +46,15 @@ const CHARACTERS = {
 const character = () => CHARACTERS[settings.character] || CHARACTERS.jarvis;
 const SPEECH_LANGS = ['en-GB', 'fr-FR'];
 const ADDRESSES = ['sir', 'madam'];
+// The recommended speaking speed: the pace the Mac's voices are tuned for, and a natural one for conversation.
+// Faster starts to clip words with the premium voices; slower drags on long replies.
+const DEFAULT_RATE = 175;
 const DEFAULTS = {
   character: 'jarvis',                                // which character it plays: see CHARACTERS
   address: 'sir',                                     // how it addresses the user: see ADDRESSES
   model: MODELS.includes(process.env.JARVIS_MODEL) ? process.env.JARVIS_MODEL : 'sonnet', // sonnet: quick enough for voice, careful with untrusted text
   instructions: '',                                   // standing instructions added to every conversation
-  voice: { enabled: true, rate: 185, en: '', fr: '' }, // '' = best installed voice for that language
+  voice: { enabled: true, rate: DEFAULT_RATE, en: '', fr: '' }, // '' = best installed voice for that language
   // mode: hold = hold the key to talk, toggle = press to start and stop. vocabulary: names and terms to expect.
   listen: { language: 'en-GB', sounds: true, mode: 'hold', vocabulary: '' },
   ui: { transcript: false, menuBar: false },     // menuBar: keep running in the menu bar when the window is closed
@@ -356,6 +359,7 @@ function settingsView() {
   return {
     settings,
     models: MODELS,
+    defaultRate: DEFAULT_RATE,
     characters: Object.entries(CHARACTERS).map(([id, c]) => ({ id, name: c.name })),
     activeVoice: { en: voiceFor('en'), fr: voiceFor('fr') },
     languages: SPEECH_LANGS,
@@ -639,7 +643,7 @@ const server = http.createServer(async (req, res) => {
       if (!MODELS.includes(next.model)) next.model = settings.model;
       if (!SPEECH_LANGS.includes(next.listen.language)) next.listen.language = settings.listen.language;
       if (!['hold', 'toggle'].includes(next.listen.mode)) next.listen.mode = settings.listen.mode;
-      next.voice.rate = Math.min(260, Math.max(120, Math.round(next.voice.rate) || 185));
+      next.voice.rate = Math.min(260, Math.max(120, Math.round(next.voice.rate) || DEFAULT_RATE));
       next.instructions = next.instructions.slice(0, 2000);
       next.listen.vocabulary = next.listen.vocabulary.slice(0, 2000);
       next.history.retentionDays = Math.min(3650, Math.max(1, Math.round(next.history.retentionDays) || 90));

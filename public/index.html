@@ -49,7 +49,8 @@
   #clock { font-size: 20px; letter-spacing: 0.12em; color: var(--cyan); }
   #date { color: var(--muted); letter-spacing: 0.14em; font-size: 10px; text-transform: uppercase; text-align: right; }
 
-  main { display: grid; grid-template-columns: 250px 1fr 380px; gap: 16px; padding: 16px 20px; min-height: 0; }
+  /* two side columns of equal width, so the core between them sits on the window's centre line whatever is showing */
+  main { --side: clamp(210px, 17vw, 240px); display: grid; grid-template-columns: var(--side) minmax(0, 1fr) var(--side); gap: 16px; padding: 16px 20px; min-height: 0; }
   .panel {
     background: var(--panel);
     border: 1px solid var(--line);
@@ -66,14 +67,15 @@
   .panel::after { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }
   h2 { margin: 0 0 12px; font-size: 10px; letter-spacing: 0.3em; color: var(--cyan-dim); font-weight: 600; text-transform: uppercase; }
 
-  .left { display: flex; flex-direction: column; gap: 16px; min-height: 0; overflow-y: auto; scrollbar-width: none; }
-  .left .panel { flex-shrink: 0; }
-  .wx { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
-  #wxTemp { font-size: 34px; color: var(--cyan); text-shadow: 0 0 14px rgba(var(--glow), 0.5); line-height: 1; }
+  .left, .right { display: flex; flex-direction: column; gap: 12px; min-height: 0; min-width: 0; overflow-y: auto; scrollbar-width: none; }
+  .left .panel, .right .panel { flex-shrink: 0; }
+  .left #agent .note { display: none; }   /* three panels share the left column: drop the footnote so they fit without scrolling */
+  .wx { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 8px; }
+  #wxTemp { font-size: 30px; color: var(--cyan); text-shadow: 0 0 14px rgba(var(--glow), 0.5); line-height: 1; }
   #wxText { text-transform: uppercase; letter-spacing: 0.12em; font-size: 11px; }
   #wxPlace { background: none; border: 0; border-bottom: 1px dashed var(--cyan-dim); border-radius: 0; padding: 0 0 1px; color: var(--text); letter-spacing: 0.06em; font-size: 12px; text-transform: none; }
-  #wxEdit { width: 120px; background: var(--field); border: 1px solid var(--cyan); color: var(--text); font: inherit; font-size: 12px; padding: 2px 5px; outline: none; text-align: right; }
-  .gauge { margin-bottom: 12px; }
+  #wxEdit { width: 100px; max-width: 100%; background: var(--field); border: 1px solid var(--cyan); color: var(--text); font: inherit; font-size: 12px; padding: 2px 5px; outline: none; text-align: right; }
+  .gauge { margin-bottom: 9px; }
   .gauge .row { display: flex; justify-content: space-between; margin-bottom: 5px; }
   .gauge .row span:first-child { color: var(--muted); letter-spacing: 0.16em; font-size: 10px; }
   .bar { height: 5px; background: rgba(var(--glow), 0.1); overflow: hidden; }
@@ -93,9 +95,9 @@
   #state { text-align: center; letter-spacing: 0.6em; font-size: 12px; color: var(--cyan); text-shadow: 0 0 12px var(--cyan); }
   #live { text-align: center; color: var(--muted); min-height: 1.4em; font-size: 12px; }
 
-  /* transcript panel: hidden unless switched on */
-  body:not(.show-log) main { grid-template-columns: 250px 1fr; }
-  body:not(.show-log) .right { display: none; }
+  /* transcript panel: hidden unless switched on. The right column stays either way: it holds the transcript,
+     or the Agent panel when the transcript is off (placePanels() moves it), keeping the two sides balanced. */
+  body:not(.show-log) .logp { display: none; }
   body.show-log #caption { display: none; }
 
   /* inside the native window: no title bar, so the header leaves room for the window buttons and drags the window */
@@ -114,7 +116,7 @@
   body.compact #expand:hover { opacity: 1; }
   body.compact .core { cursor: default; -webkit-user-select: none; user-select: none; }
 
-  .right { display: flex; flex-direction: column; min-height: 0; }
+  .right .logp { flex: 1 1 0; display: flex; flex-direction: column; }
   #log { flex: 1; overflow-y: auto; min-height: 0; padding-right: 6px; scrollbar-width: thin; scrollbar-color: var(--cyan-dim) transparent; }
   .msg { margin: 0 0 14px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
   .msg .who { display: block; font-size: 9.5px; letter-spacing: 0.3em; margin-bottom: 3px; color: var(--muted); }
@@ -140,11 +142,12 @@
   button.on { background: var(--cyan); color: #012; border-color: var(--cyan); }
   button.warn { color: var(--amber); border-color: rgba(255, 180, 84, 0.4); }
   button[hidden] { display: none; }
+  button:disabled { opacity: 0.4; cursor: default; border-color: var(--line); background: transparent; }
 
   @media (max-width: 980px) {
-    main, body:not(.show-log) main { grid-template-columns: 1fr; }
+    main { grid-template-columns: 1fr; }
     body.show-log main { grid-template-rows: 38vh 1fr; }
-    .left { display: none; }
+    .left, body:not(.show-log) .right, .right #agent { display: none; }
   }
   @media (prefers-reduced-motion: reduce) { .bar i { transition: none; } #pulse { animation: none; } }
 
@@ -191,7 +194,7 @@
   .set.stack { grid-template-columns: 1fr; gap: 8px; }
   .set label, .set .name { color: var(--text); font-size: 12.5px; }
   .set small { display: block; color: var(--muted); font-size: 10.5px; line-height: 1.45; margin-top: 3px; letter-spacing: 0; }
-  .set .ctl { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+  .set .ctl { display: flex; align-items: center; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
   .set.stack .ctl { justify-content: flex-start; flex-wrap: wrap; gap: 8px 16px; }
   .set select, .set input[type=text], .set input[type=number], .set textarea, .view-head input[type=text] {
     background: var(--field); border: 1px solid var(--line); color: var(--text);
@@ -261,13 +264,6 @@
 <main>
   <section class="left">
     <div class="panel">
-      <h2>System</h2>
-      <div class="gauge"><div class="row"><span>CPU</span><span id="cpuV">--</span></div><div class="bar"><i id="cpuB"></i></div></div>
-      <div class="gauge"><div class="row"><span>MEMORY</span><span id="memV">--</span></div><div class="bar"><i id="memB"></i></div></div>
-      <div class="gauge"><div class="row"><span>POWER</span><span id="batV">--</span></div><div class="bar"><i id="batB"></i></div></div>
-      <div class="kv"><span>UPTIME</span><span id="up">--</span></div>
-    </div>
-    <div class="panel">
       <h2>Weather</h2>
       <div class="wx"><span id="wxTemp">--°</span><span id="wxText">loading…</span></div>
       <div class="kv"><span>TOWN</span><span><button id="wxPlace" title="Change town">--</button><input id="wxEdit" hidden placeholder="Town, then Enter" autocomplete="off"></span></div>
@@ -276,6 +272,13 @@
       <div class="kv"><span>WIND</span><span id="wxWind">--</span></div>
     </div>
     <div class="panel">
+      <h2>System</h2>
+      <div class="gauge"><div class="row"><span>CPU</span><span id="cpuV">--</span></div><div class="bar"><i id="cpuB"></i></div></div>
+      <div class="gauge"><div class="row"><span>MEMORY</span><span id="memV">--</span></div><div class="bar"><i id="memB"></i></div></div>
+      <div class="gauge"><div class="row"><span>POWER</span><span id="batV">--</span></div><div class="bar"><i id="batB"></i></div></div>
+      <div class="kv"><span>UPTIME</span><span id="up">--</span></div>
+    </div>
+    <div class="panel" id="agent">
       <h2>Agent</h2>
       <div class="kv"><span>MODEL</span><span id="model">--</span></div>
       <div class="kv"><span>SESSION</span><span id="sess">new</span></div>
@@ -298,10 +301,12 @@
     </div>
   </section>
 
-  <section class="panel right">
-    <h2>Transcript</h2>
-    <div id="log">
-      <p class="empty" id="empty">Press Space and speak, or type below.<br>Try: &ldquo;Good morning. What can you do?&rdquo;</p>
+  <section class="right">
+    <div class="panel logp">
+      <h2>Transcript</h2>
+      <div id="log">
+        <p class="empty" id="empty">Press Space and speak, or type below.<br>Try: &ldquo;Good morning. What can you do?&rdquo;</p>
+      </div>
     </div>
   </section>
 </main>
@@ -329,7 +334,7 @@
       <h2>Voice</h2>
       <div class="set"><label for="sVoiceOn">Speak replies<small>Read every reply aloud.</small></label><span class="ctl"><input type="checkbox" id="sVoiceOn"></span></div>
       <div class="set"><label for="sVoice">Voice<small>Installed on this Mac for the speech language.</small></label><span class="ctl"><select id="sVoice"></select></span></div>
-      <div class="set"><label for="sRate">Speed<small><span id="sRateV">185</span> words per minute</small></label><span class="ctl"><input type="range" id="sRate" min="120" max="260" step="5"><button id="sTest">Test</button></span></div>
+      <div class="set"><label for="sRate">Speed<small><span id="sRateV">175</span> words per minute<span id="sRateNote"></span></small></label><span class="ctl"><input type="range" id="sRate" min="120" max="260" step="5"><button id="sRateDef" title="Back to the recommended speed">Default</button><button id="sTest">Test</button></span></div>
     </section>
 
     <section class="panel card">
@@ -893,6 +898,7 @@ function applySettings(v) {
   holdMode = cfg.listen.mode === 'hold';
   document.body.classList.toggle('show-log', cfg.ui.transcript);
   $('logBtn').classList.toggle('on', cfg.ui.transcript);
+  placePanels();
   if (!listening && !$('live').textContent.includes('…')) setLive('');
   setTimeout(resize, 0);
   paintToggles();
@@ -910,7 +916,7 @@ function paintSettings() {
   $('sVoiceOn').checked = cfg.voice.enabled;
   const auto = view.activeVoice[lang] || view.autoVoice[lang];
   fill($('sVoice'), [['', 'Automatic' + (auto ? ' (' + auto + ')' : '')], ...view.voices[lang].map((n) => [n, n])], cfg.voice[lang]);
-  $('sRate').value = cfg.voice.rate; $('sRateV').textContent = cfg.voice.rate;
+  $('sRate').value = cfg.voice.rate; paintRate(cfg.voice.rate);
   fill($('sLang'), LANGS.map((l) => [l.code, l.name]), cfg.listen.language);
   $('sSounds').checked = cfg.listen.sounds;
   $('sMode').value = cfg.listen.mode;
@@ -977,7 +983,15 @@ $('sClose').onclick = closeSettings;
 
 $('sVoiceOn').onchange = (e) => { if (!e.target.checked) hush(); saveSetting({ voice: { enabled: e.target.checked } }); };
 $('sVoice').onchange = (e) => saveSetting({ voice: { [LANGS[langIdx].code.slice(0, 2)]: e.target.value } });
-$('sRate').oninput = (e) => { $('sRateV').textContent = e.target.value; };
+// the speed readout, and the Default button that returns to the recommended speed (view.defaultRate, set by the server)
+function paintRate(n) {
+  const def = view.defaultRate, at = Number(n) === def;
+  $('sRateV').textContent = n;
+  $('sRateNote').textContent = at ? ', the recommended speed' : ` (recommended: ${def})`;
+  $('sRateDef').disabled = at;
+}
+$('sRate').oninput = (e) => paintRate(e.target.value);
+$('sRateDef').onclick = () => { $('sRate').value = view.defaultRate; paintRate(view.defaultRate); saveSetting({ voice: { rate: view.defaultRate } }); };
 $('sRate').onchange = (e) => saveSetting({ voice: { rate: Number(e.target.value) } });
 $('sTest').onclick = () => {
   hush();
@@ -1148,6 +1162,14 @@ for (const bar of document.querySelectorAll('header, .view-head')) bar.addEventL
 document.querySelector('.core').addEventListener('mousedown', (e) => {
   if (document.body.classList.contains('compact') && !e.target.closest('button')) post({ type: 'drag' });
 });
+
+// The Agent panel sits under Weather and System on the left while the transcript fills the right column,
+// and takes the right column when the transcript is hidden, so neither side is left empty.
+function placePanels() {
+  const side = document.querySelector(document.body.classList.contains('show-log') ? '.left' : '.right');
+  if ($('agent').parentNode !== side) side.append($('agent'));
+}
+placePanels();
 
 // ---------- the core ----------
 const cv = $('orb'), cx = cv.getContext('2d');
