@@ -151,7 +151,7 @@
   }
   @media (prefers-reduced-motion: reduce) { .bar i { transition: none; } #pulse { animation: none; } }
 
-  /* full-window views: Settings, History and About */
+  /* full-window views: Settings, History, About and Usage */
   .view { position: fixed; inset: 0; z-index: 10; display: grid; grid-template-rows: auto 1fr;
     background:
       radial-gradient(ellipse at 50% 0%, rgba(var(--haze), 0.22), transparent 55%),
@@ -220,6 +220,24 @@
   .keys { color: var(--muted); display: grid; grid-template-columns: auto 1fr; gap: 9px 18px; line-height: 1.45; padding: 12px 0 10px; border-top: 1px dashed rgba(var(--glow), 0.12); }
   .keys b { color: var(--cyan); font-weight: 600; white-space: nowrap; }
 
+  /* usage: spend figures, a bar per day, then the full record by day and by model */
+  .usage .cols { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+  .ufig b { display: block; color: var(--text); font-size: 22px; font-weight: 600; margin-bottom: 4px; font-variant-numeric: tabular-nums; }
+  .ufig span { display: block; color: var(--muted); font-size: 10.5px; line-height: 1.5; margin-bottom: 8px; }
+  .ubars { display: flex; align-items: flex-end; gap: 3px; height: 132px; border-top: 1px dashed rgba(var(--glow), 0.12); padding-top: 12px; }
+  .ubars i { flex: 1; min-height: 1px; background: var(--cyan); opacity: 0.8; border-radius: 2px 2px 0 0; }
+  .ubars i.zero { background: rgba(var(--glow), 0.25); }
+  .ubars i:hover { opacity: 1; }
+  .uaxis { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 10px; margin-top: 6px; }
+  .uwrap { overflow-x: auto; border-top: 1px dashed rgba(var(--glow), 0.12); }
+  .utab { width: 100%; border-collapse: collapse; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+  .utab th { text-align: right; color: var(--cyan-dim); font-size: 10px; letter-spacing: 0.2em; font-weight: 600; text-transform: uppercase; padding: 10px 0 6px 16px; white-space: nowrap; }
+  .utab td { text-align: right; color: var(--muted); padding: 5px 0 5px 16px; border-top: 1px dashed rgba(var(--glow), 0.08); white-space: nowrap; }
+  .utab th:first-child, .utab td:first-child { text-align: left; padding-left: 0; }
+  .utab td:first-child, .utab td:last-child { color: var(--text); }
+  .unote { color: var(--muted); font-size: 10.5px; line-height: 1.5; margin: 0; }
+  #cost { cursor: pointer; }
+
   /* history */
   #hList { max-width: 900px; margin: 0 auto; }
   .hday { margin: 22px 0 8px; font-size: 10px; letter-spacing: 0.3em; color: var(--cyan-dim); text-transform: uppercase; }
@@ -284,7 +302,7 @@
       <div class="kv"><span>SESSION</span><span id="sess">new</span></div>
       <div class="kv"><span>CALENDAR</span><span id="cal">--</span></div>
       <div class="kv"><span>LAST REPLY</span><span id="lat">--</span></div>
-      <div class="kv" style="border-bottom:0"><span>SPENT</span><span id="cost">$0.00</span></div>
+      <div class="kv" style="border-bottom:0"><span>SPENT</span><span id="cost" title="Estimated cost since JARVIS started. Click for the full usage.">$0.00</span></div>
       <h2 style="margin-top:14px">Tools online</h2>
       <div class="chips" id="tools"></div>
       <p class="note">Read-only. It can look things up and read its workspace folder, but cannot send, edit or delete.</p>
@@ -398,6 +416,11 @@
     </section>
 
     <section class="panel card">
+      <h2>Usage</h2>
+      <div class="set"><span class="name">AI usage<small id="sUsage">What JARVIS has used: now, day by day and in total.</small></span><span class="ctl"><button id="sUsageBtn">View usage</button></span></div>
+    </section>
+
+    <section class="panel card">
       <h2>Shortcuts</h2>
       <div class="keys"><b>Space</b><span>talk, when the text box is empty</span><b>Enter</b><span>send typed text</span><b>Esc</b><span>stop listening, speaking or a reply</span><b>⌃⌥ Space</b><span>talk from any app</span><b>⌃⌥⇧ Space</b><span>write at the cursor of another app</span></div>
     </section>
@@ -457,7 +480,15 @@
       <h2>Releases</h2>
       <!-- newest first; add each new release at the top, and keep VERSION in server.mjs and build-app.sh in step -->
       <div class="rel">
-        <div class="rhead"><b>v0.5.0</b><span>12 November 2026</span><em>CURRENT</em></div>
+        <div class="rhead"><b>v0.6.0</b><span>12 November 2026</span><em>CURRENT</em></div>
+        <ul>
+          <li><b>Usage:</b> a view opened from Settings showing what JARVIS has used this session, today, this month and in total, with a bar per day and the full record by day and by model.</li>
+          <li><b>Saved:</b> each reply's estimated cost and token counts are kept in the data folder, separately from the conversation history.</li>
+          <li><b>Spent:</b> the counter on the main screen no longer resets when the window reloads, and opens the Usage view when clicked.</li>
+        </ul>
+      </div>
+      <div class="rel">
+        <div class="rhead"><b>v0.5.0</b><span>12 November 2026</span></div>
         <ul>
           <li><b>About:</b> its own view, opened from the header, with the overview and this list of releases.</li>
           <li><b>Characters:</b> choose JARVIS or HAL, which changes the look, name, manner of speaking and preferred voice.</li>
@@ -484,6 +515,34 @@
       </div>
     </section>
 
+  </div></div>
+</div>
+
+<div id="usage" class="view" hidden role="dialog" aria-modal="true" aria-labelledby="uTitle">
+  <div class="view-head">
+    <h1 id="uTitle">USAGE</h1>
+    <span class="grow"></span>
+    <button id="uClose">Done</button>
+  </div>
+  <div class="view-body"><div class="about usage">
+    <section class="panel card">
+      <h2>Estimated spend</h2>
+      <div class="cols" id="uSum"></div>
+    </section>
+    <section class="panel card" id="uChart">
+      <h2>Last 30 days</h2>
+      <div class="ubars" id="uBars"></div>
+      <div class="uaxis"><span id="uFrom"></span><span id="uPeak"></span><span id="uTo"></span></div>
+    </section>
+    <section class="panel card">
+      <h2>By day</h2>
+      <div class="uwrap" id="uDays"></div>
+    </section>
+    <section class="panel card" id="uModelCard">
+      <h2>By model</h2>
+      <div class="uwrap" id="uModels"></div>
+    </section>
+    <p class="unote" id="uNote"></p>
   </div></div>
 </div>
 
@@ -515,7 +574,7 @@ document.body.classList.toggle('native', NATIVE);
 // ---------- state ----------
 let state = 'idle';            // idle | listening | thinking | speaking
 let busy = false;
-let spent = 0;
+const money = (n) => '$' + (n > 0 && n < 0.01 ? n.toFixed(4) : (n || 0).toFixed(2));
 const LANGS = [{ code: 'en-GB', label: 'EN', name: 'English (UK)', prefer: ['Daniel', 'Google UK English Male'] },
                { code: 'fr-FR', label: 'FR', name: 'Français', prefer: ['Thomas', 'Google français'] }];
 // Settings live on the server (settings.json); these mirror them for quick use.
@@ -602,6 +661,7 @@ async function stats() {
     $('model').textContent = s.model;
     $('sess').textContent = s.session ? 'active' : 'new';
     $('cal').textContent = s.calendar ? 'connected' : 'not connected';
+    if (typeof s.spent === 'number') $('cost').textContent = money(s.spent);
     if ($('tools').dataset.list !== s.tools.join()) {
       $('tools').dataset.list = s.tools.join(); $('tools').textContent = '';
       for (const t of s.tools) { const c = document.createElement('span'); c.className = 'chip'; c.textContent = t; $('tools').appendChild(c); }
@@ -768,8 +828,8 @@ async function ask(text, opts = {}) {
           addMsg('error', 'ERROR', ev.message);
         } else if (ev.type === 'stopped') {
           addMsg('tool', '', '▸ stopped');
-        } else if (ev.type === 'done' && ev.cost != null) {
-          spent += ev.cost; $('cost').textContent = '$' + spent.toFixed(2);
+        } else if (ev.type === 'done') {
+          stats();   // the server keeps the running total; fetch it now rather than at the next tick
         }
       }
     }
@@ -976,7 +1036,13 @@ function layoutCards() {
   }
 }
 addEventListener('resize', layoutCards);
-function openSettings() { loadSettings().then(layoutCards); post({ type: 'status' }); $('settings').hidden = false; layoutCards(); cardBox.parentElement.scrollTop = 0; $('sClose').focus(); }
+async function paintUsageLine() {
+  try {
+    const u = await (await api('/api/usage')).json();
+    $('sUsage').textContent = u.total.replies ? `${money(u.today.cost)} today · ${money(u.total.cost)} in total, at API rates.` : 'Nothing recorded yet.';
+  } catch {}
+}
+function openSettings() { paintUsageLine(); loadSettings().then(layoutCards); post({ type: 'status' }); $('settings').hidden = false; layoutCards(); cardBox.parentElement.scrollTop = 0; $('sClose').focus(); }
 function closeSettings() { $('settings').hidden = true; $('input').focus(); }
 $('gear').onclick = openSettings;
 $('sClose').onclick = closeSettings;
@@ -1092,6 +1158,64 @@ function closeAbout() { $('about').hidden = true; $('input').focus(); }
 $('aboutBtn').onclick = openAbout;
 $('aClose').onclick = closeAbout;
 
+// ---------- usage ----------
+const fmtTok = (n) => (n >= 1e6 ? (n / 1e6).toFixed(2) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'k' : String(n || 0));
+const dayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const keyDate = (k) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d); };
+const fmtDay = (d, opts) => d.toLocaleDateString('en-GB', opts || { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+function usageTable(box, first, rows, label) {
+  box.textContent = '';
+  const table = document.createElement('table'); table.className = 'utab';
+  const line = (tag, cells) => { const tr = document.createElement('tr'); for (const c of cells) { const el = document.createElement(tag); el.textContent = c; tr.appendChild(el); } return tr; };
+  const head = document.createElement('thead'); head.appendChild(line('th', [first, 'Replies', 'In', 'Out', 'Cached', 'Cost']));
+  const body = document.createElement('tbody');
+  for (const r of rows) body.appendChild(line('td', [label(r), r.replies, fmtTok(r.in), fmtTok(r.out), fmtTok(r.cacheRead + r.cacheWrite), money(r.cost)]));
+  table.append(head, body); box.appendChild(table);
+}
+async function loadUsage() {
+  let u;
+  try { u = await (await api('/api/usage')).json(); } catch { return; }
+  const empty = !u.total.replies;
+  // the four figures
+  $('uSum').textContent = '';
+  for (const [name, x] of [['This session', u.session], ['Today', u.today], ['This month', u.month], ['All time', u.total]]) {
+    const box = document.createElement('div'); box.className = 'ufig';
+    const h = document.createElement('h3'); h.textContent = name;
+    const b = document.createElement('b'); b.textContent = money(x.cost);
+    const sp = document.createElement('span'); sp.textContent = `${x.replies} ${x.replies === 1 ? 'reply' : 'replies'} · ${fmtTok(x.in + x.cacheRead + x.cacheWrite)} tokens in · ${fmtTok(x.out)} out`;
+    box.append(h, b, sp); $('uSum').appendChild(box);
+  }
+  // a bar for each of the last 30 days, quiet days included
+  $('uChart').hidden = empty; $('uModelCard').hidden = empty;
+  const byDay = new Map(u.days.map((d) => [d.day, d]));
+  const span = [];
+  for (let i = 29; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); span.push({ date: d, row: byDay.get(dayKey(d)) }); }
+  const peak = Math.max(0, ...span.map((x) => (x.row ? x.row.cost : 0)));
+  $('uBars').textContent = '';
+  for (const x of span) {
+    const bar = document.createElement('i'), cost = x.row ? x.row.cost : 0;
+    if (cost > 0) bar.style.height = Math.max(2, (cost / peak) * 100) + '%'; else bar.className = 'zero';
+    bar.title = `${fmtDay(x.date)}: ${money(cost)}${x.row ? `, ${x.row.replies} ${x.row.replies === 1 ? 'reply' : 'replies'}` : ''}`;
+    $('uBars').appendChild(bar);
+  }
+  $('uFrom').textContent = fmtDay(span[0].date, { day: 'numeric', month: 'short' });
+  $('uPeak').textContent = 'busiest day ' + money(peak);
+  $('uTo').textContent = 'today';
+  // the full record
+  if (empty) { $('uDays').textContent = ''; const p = document.createElement('p'); p.className = 'unote'; p.style.padding = '12px 0 0'; p.textContent = 'No usage recorded yet.'; $('uDays').appendChild(p); }
+  else {
+    usageTable($('uDays'), 'Day', u.days, (r) => fmtDay(keyDate(r.day)));
+    usageTable($('uModels'), 'Model', u.models, (r) => r.model);
+  }
+  $('uNote').textContent = 'Cost is Claude Code\'s estimate at API rates. JARVIS runs on your Claude subscription, so this is not a charge. "In" on the tables is new input; "Cached" is input reused from or saved to the cache.'
+    + (u.since ? ` Recorded since ${fmtDay(new Date(u.since), { day: 'numeric', month: 'long', year: 'numeric' })}.` : '') + ' Replies stopped midway are not counted.';
+}
+function openUsage() { $('usage').hidden = false; $('usage').querySelector('.view-body').scrollTop = 0; loadUsage(); $('uClose').focus(); }
+function closeUsage() { $('usage').hidden = true; if (!$('settings').hidden) { paintUsageLine(); $('sUsageBtn').focus(); } else $('input').focus(); }
+$('sUsageBtn').onclick = openUsage;
+$('cost').onclick = openUsage;
+$('uClose').onclick = closeUsage;
+
 $('hClose').onclick = closeHistory;
 $('hSearch').oninput = () => { clearTimeout(hTimer); hTimer = setTimeout(loadHistory, 250); };
 $('hClear').onclick = async () => {
@@ -1123,10 +1247,10 @@ setLive('');
 // Space talks (when the text box is empty): held down in hold mode, pressed once in tap mode.
 // Esc stops whatever is happening.
 let spaceHeld = false;
-const viewOpen = () => !$('settings').hidden || !$('history').hidden || !$('about').hidden;
+const viewOpen = () => !$('settings').hidden || !$('history').hidden || !$('about').hidden || !$('usage').hidden;
 addEventListener('keydown', (e) => {
   if (viewOpen()) {   // while a view is open, keys belong to its controls
-    if (e.key === 'Escape') { e.preventDefault(); if (!$('settings').hidden) closeSettings(); else if (!$('history').hidden) closeHistory(); else closeAbout(); }
+    if (e.key === 'Escape') { e.preventDefault(); if (!$('usage').hidden) closeUsage(); else if (!$('settings').hidden) closeSettings(); else if (!$('history').hidden) closeHistory(); else closeAbout(); }
     return;
   }
   if (e.key === 'Escape') {

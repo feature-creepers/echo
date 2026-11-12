@@ -44,7 +44,7 @@ This opens JARVIS in a Chrome window. Voice input then uses Chrome's recogniser,
 | Ctrl+Option+Space | Talk from any app |
 | Ctrl+Option+Shift+Space | Speak a request and have the result typed at your cursor |
 
-Everything else is in **Settings**: voice and speed, speech language, model, standing instructions, the opening briefing, tools, history and startup options.
+Everything else is in **Settings**: voice and speed, speech language, model, standing instructions, the opening briefing, tools, history, startup options, and a Usage view with the estimated cost and token counts for this session, each day and in total.
 
 Tell JARVIS about yourself in the context file (Settings → Assistant → Context file). Set your town in Settings → Tools and connections.
 
@@ -59,7 +59,7 @@ Tell JARVIS about yourself in the context file (Settings → Assistant → Conte
 | `setup-signing.sh` | Run once: creates a local signing certificate so macOS keeps the app's permissions across builds. |
 | `workspace/CLAUDE.md` | Template for the context file. |
 
-Your own data lives outside the project, in `~/JARVIS`: `settings.json`, `history/`, `workspace/` (the context file, and the only folder JARVIS can read), `songs/` (drop audio files here: one is played at random after the day's first briefing) and `jarvis.log`.
+Your own data lives outside the project, in `~/JARVIS`: `settings.json`, `history/`, `usage.jsonl` (the estimated cost and token counts of each reply), `workspace/` (the context file, and the only folder JARVIS can read), `songs/` (drop audio files here: one is played at random after the day's first briefing) and `jarvis.log`.
 
 ### What the agent is allowed to do
 

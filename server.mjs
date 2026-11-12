@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.JARVIS_PORT || 4317);
 const HOST = '127.0.0.1'; // never exposed to the network
-const VERSION = '0.5.0';   // keep in step with the version in build-app.sh
+const VERSION = '0.6.0';   // keep in step with the version in build-app.sh
 // Where the user's own files live. The Dock app points this at ~/JARVIS so they survive app rebuilds.
 const DATA = process.env.JARVIS_DATA || ROOT;
 const WORKSPACE = path.join(DATA, 'workspace'); // the only folder the agent can read
@@ -407,6 +407,55 @@ function readHistory(query, limit) {
 }
 pruneHistory();
 
+// ---------- AI usage (one line per reply in usage.jsonl in the data folder) ----------
+// Numbers only, no conversation text, so it is kept whatever the history settings say.
+// The cost is Claude Code's own estimate at API rates, not a charge on the user's subscription.
+const USAGE_FILE = path.join(DATA, 'usage.jsonl');
+const USAGE_COUNTS = ['in', 'out', 'cacheRead', 'cacheWrite'];
+const blankUsage = () => ({ cost: 0, replies: 0, in: 0, out: 0, cacheRead: 0, cacheWrite: 0 });
+function tally(sum, e) {
+  sum.cost += Number(e.cost) || 0;
+  sum.replies++;
+  for (const k of USAGE_COUNTS) sum[k] += Number(e[k]) || 0;
+  return sum;
+}
+const sessionUsage = blankUsage(); // since this server started
+function recordUsage(kind, cost, ms, usage) {
+  const u = usage || {};
+  const e = {
+    t: new Date().toISOString(), model: settings.model, kind, cost: cost || 0, ms: ms || 0,
+    in: u.input_tokens || 0, out: u.output_tokens || 0,
+    cacheRead: u.cache_read_input_tokens || 0, cacheWrite: u.cache_creation_input_tokens || 0,
+  };
+  tally(sessionUsage, e);
+  try { fs.appendFileSync(USAGE_FILE, JSON.stringify(e) + '\n'); } catch {}
+}
+function readUsage() {
+  const today = dayName(new Date());
+  const out = { session: sessionUsage, today: blankUsage(), month: blankUsage(), total: blankUsage(), days: [], models: [], since: null };
+  const days = new Map(), models = new Map();
+  let lines = [];
+  try { lines = fs.readFileSync(USAGE_FILE, 'utf8').split('\n'); } catch {}
+  for (const line of lines) {
+    if (!line) continue;
+    let e; try { e = JSON.parse(line); } catch { continue; }
+    const d = new Date(e.t);
+    if (Number.isNaN(d.getTime())) continue;
+    const day = dayName(d), model = String(e.model || 'unknown');
+    if (!out.since || e.t < out.since) out.since = e.t;
+    tally(out.total, e);
+    if (day === today) tally(out.today, e);
+    if (day.slice(0, 7) === today.slice(0, 7)) tally(out.month, e);
+    if (!days.has(day)) days.set(day, { day, ...blankUsage() });
+    tally(days.get(day), e);
+    if (!models.has(model)) models.set(model, { model, ...blankUsage() });
+    tally(models.get(model), e);
+  }
+  out.days = [...days.values()].sort((a, b) => b.day.localeCompare(a.day)); // newest first
+  out.models = [...models.values()].sort((a, b) => b.cost - a.cost);
+  return out;
+}
+
 // ---------- http helpers ----------
 function send(res, status, body, type = 'application/json') {
   res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store' });
@@ -519,6 +568,7 @@ function handleLine(a, line) {
     if (total != null) a.costSeen = total;
     t.emit({ type: 'done', cost, ms: ev.duration_ms ?? null });
     recordExchange(t.label, t.text, t.tools);
+    recordUsage(t.kind, cost, ev.duration_ms, ev.usage);
     clearTimeout(t.watch);
     a.turn = null;
     t.res.end();
@@ -570,7 +620,7 @@ async function chat(message, res, extra = {}) {
   if (extra.write) parts.push('<write_request>The user is in another app and wants text inserted at their cursor. Reply with only the text to insert: no preamble, no explanation, no quotation marks around it, plain text, as long as the request needs. If text is selected, it is the material to rewrite or answer.</write_request>');
   parts.push(message);
   const turn = {
-    res, emit, text: '', tools: [], tries: 0, label: extra.label || message,
+    res, emit, text: '', tools: [], tries: 0, label: extra.label || message, kind: extra.kind || 'chat',
     payload: JSON.stringify({ type: 'user', message: { role: 'user', content: parts.join('\n\n') } }) + '\n',
   };
   deliver(turn);
@@ -600,6 +650,7 @@ const server = http.createServer(async (req, res) => {
         tools: [...tools(), ...(settings.tools.calendar ? ['Calendar'] : [])],
         session: Boolean(sessionId),
         calendar: calendarSeen,
+        spent: sessionUsage.cost,
       });
     }
     if (req.method === 'GET' && url.pathname === '/api/alive') {
@@ -623,7 +674,7 @@ const server = http.createServer(async (req, res) => {
       if (!due || (agent && agent.turn)) return send(res, 204, '');
       settings.briefingLastDay = today;
       saveSettings();
-      return chat(bootPrompt(), res, { label: '(opening briefing)' });
+      return chat(bootPrompt(), res, { label: '(opening briefing)', kind: 'briefing' });
     }
     if (req.method === 'POST' && url.pathname === '/api/chat') {
       const { message, selection, write } = await readJson(req);
@@ -664,6 +715,7 @@ const server = http.createServer(async (req, res) => {
       const limit = Math.min(500, Number(url.searchParams.get('limit')) || 200);
       return send(res, 200, { entries: readHistory(url.searchParams.get('q') || '', limit), days: historyFiles().length });
     }
+    if (req.method === 'GET' && url.pathname === '/api/usage') return send(res, 200, readUsage());
     if (req.method === 'POST' && url.pathname === '/api/history/clear') {
       fs.rmSync(HISTORY_DIR, { recursive: true, force: true });
       return send(res, 200, { ok: true });
