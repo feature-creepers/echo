@@ -184,7 +184,24 @@ let sessionId = null; // conversation continuity across turns
 let agent = null; // the long-lived claude process: { child, buffer, stderr, turn, stopped }
 
 // ---------- system stats for the HUD ----------
-let lastCpu = cpuTotals();
+// Every reading is taken at most once per its own interval, however many callers ask (the HUD
+// poll, a second window, the briefing): fast-moving ones often, slow ones rarely. Nothing is
+// measured while nobody asks, and callers that arrive mid-measurement share the one in flight.
+function cached(ttl, fn) {
+  let at = 0, value = null, pending = null;
+  return () => {
+    if (pending) return pending;
+    if (at && Date.now() - at < ttl) return Promise.resolve(value);
+    pending = Promise.resolve().then(fn).then((v) => { value = v; }, () => {})
+      .then(() => { at = Date.now(); pending = null; return value; });
+    return pending;
+  };
+}
+function run(cmd, args) {
+  return new Promise((resolve) => {
+    execFile(cmd, args, { timeout: 3000 }, (err, out) => resolve(err ? '' : String(out)));
+  });
+}
 function cpuTotals() {
   let idle = 0, total = 0;
   for (const c of os.cpus()) {
@@ -193,35 +210,56 @@ function cpuTotals() {
   }
   return { idle, total };
 }
-function cpuPercent() {
+let lastCpu = cpuTotals();
+const cpuPercent = cached(2500, () => {
   const now = cpuTotals();
   const dIdle = now.idle - lastCpu.idle;
   const dTotal = now.total - lastCpu.total;
   lastCpu = now;
   return dTotal > 0 ? Math.round(100 * (1 - dIdle / dTotal)) : 0;
-}
-function run(cmd, args) {
-  return new Promise((resolve) => {
-    execFile(cmd, args, { timeout: 3000 }, (err, out) => resolve(err ? '' : String(out)));
-  });
-}
-async function memPercent() {
+});
+const memPercent = cached(10000, async () => {
   const out = await run('vm_stat', []);
   const page = Number((out.match(/page size of (\d+)/) || [])[1]);
   const get = (label) => Number((out.match(new RegExp(label + ':\\s+(\\d+)')) || [])[1] || 0);
   if (!page) return Math.round(100 * (1 - os.freemem() / os.totalmem()));
   const used = (get('Pages active') + get('Pages wired down') + get('Pages occupied by compressor')) * page;
   return Math.min(100, Math.round((100 * used) / os.totalmem()));
-}
-let battCache = { at: 0, value: null };
-async function battery() {
-  if (Date.now() - battCache.at < 30000) return battCache.value;
+});
+const battery = cached(30000, async () => {
   const out = await run('pmset', ['-g', 'batt']);
   const pct = out.match(/(\d+)%/);
-  const value = pct ? { percent: Number(pct[1]), charging: /AC Power/.test(out) } : null;
-  battCache = { at: Date.now(), value };
-  return value;
-}
+  return pct ? { percent: Number(pct[1]), charging: /AC Power/.test(out) } : null;
+});
+// Space on the disk that holds the home folder: { free, total } in bytes.
+const disk = cached(60000, async () => {
+  const s = await fs.promises.statfs(os.homedir());
+  return { free: s.bavail * s.bsize, total: s.blocks * s.bsize };
+});
+// Network speed: { down, up } in bytes per second, from the byte counters of the Mac's own
+// network ports (en*). Tunnels and bridges are left out, as their traffic crosses a port too.
+let lastNet = null;
+const network = cached(2500, async () => {
+  const out = await run('netstat', ['-ibn']);
+  let rx = 0, tx = 0, seen = false;
+  for (const line of out.split('\n')) {
+    if (!/^en\d+\*?\s/.test(line) || !line.includes('<Link#')) continue;
+    const f = line.trim().split(/\s+/);   // the address column may be empty, so count from the end
+    rx += Number(f[f.length - 5]) || 0; tx += Number(f[f.length - 2]) || 0; seen = true;
+  }
+  if (!seen) return null;
+  const now = { at: Date.now(), rx, tx }, prev = lastNet;
+  lastNet = now;
+  if (!prev || now.at <= prev.at) return null;
+  const secs = (now.at - prev.at) / 1000;
+  return { down: Math.max(0, Math.round((rx - prev.rx) / secs)), up: Math.max(0, Math.round((tx - prev.tx) / secs)) };
+});
+// The busiest process: { name, cpu }, cpu as a percentage of one core, as Activity Monitor shows it.
+const topProcess = cached(10000, async () => {
+  const out = await run('ps', ['-Aceo', 'pcpu=,comm=', '-r']);
+  const m = out.match(/^\s*([\d.]+)\s+(.+)$/m);
+  return m ? { name: m[2].trim(), cpu: Math.round(Number(m[1])) } : null;
+});
 
 // ---------- voice out, through the Mac's own speech (`say`) ----------
 // Spoken by macOS rather than the browser, so it does not depend on the browser's audio rules.
@@ -352,10 +390,12 @@ async function weather() {
 // A sentence handed to the agent with every question, so weather needs no web search.
 async function briefing() {
   const now = new Date().toLocaleString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-  const batt = await battery();
+  const [cpu, mem, batt, dsk, top] = await Promise.all([cpuPercent(), memPercent(), battery(), disk(), topProcess()]);
   let line = `It is ${now} local time.`
-    + ` System readings: processor load ${cpuPercent()} percent, memory in use ${await memPercent()} percent,`
+    + ` System readings: processor load ${cpu} percent, memory in use ${mem} percent,`
     + ` ${batt ? `battery ${batt.percent} percent${batt.charging ? ' on mains power' : ''}` : 'on mains power'},`
+    + (dsk ? ` ${Math.round(dsk.free / 1e9)} gigabytes of disk free,` : '')
+    + (top ? ` busiest process ${top.name} at ${top.cpu} percent of one core,` : '')
     + ` uptime ${Math.round(os.uptime() / 3600)} hours.`;
   try {
     const w = await weather();
@@ -899,10 +939,14 @@ const server = http.createServer(async (req, res) => {
     if (!authorised(req)) return send(res, 403, { error: 'forbidden' });
 
     if (req.method === 'GET' && url.pathname === '/api/stats') {
+      const [cpu, mem, batt, dsk, net, top] = await Promise.all([cpuPercent(), memPercent(), battery(), disk(), network(), topProcess()]);
       return send(res, 200, {
-        cpu: cpuPercent(),
-        mem: await memPercent(),
-        battery: await battery(),
+        cpu,
+        mem,
+        battery: batt,
+        disk: dsk,
+        net,
+        top,
         uptime: os.uptime(),
         host: os.hostname().replace(/\.local$/, ''),
         model: settings.model,

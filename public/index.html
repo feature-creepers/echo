@@ -75,8 +75,9 @@
   #wxText { text-transform: uppercase; letter-spacing: 0.12em; font-size: 11px; }
   #wxPlace { background: none; border: 0; border-bottom: 1px dashed var(--cyan-dim); border-radius: 0; padding: 0 0 1px; color: var(--text); letter-spacing: 0.06em; font-size: 12px; text-transform: none; }
   #wxEdit { width: 100px; max-width: 100%; background: var(--field); border: 1px solid var(--cyan); color: var(--text); font: inherit; font-size: 12px; padding: 2px 5px; outline: none; text-align: right; }
-  .gauge { margin-bottom: 9px; }
-  .gauge .row { display: flex; justify-content: space-between; margin-bottom: 5px; }
+  .gauges { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }   /* two abreast, so the left column still fits without scrolling */
+  .gauge { margin-bottom: 9px; min-width: 0; }
+  .gauge .row { display: flex; justify-content: space-between; gap: 6px; margin-bottom: 5px; white-space: nowrap; }
   .gauge .row span:first-child { color: var(--muted); letter-spacing: 0.16em; font-size: 10px; }
   .bar { height: 5px; background: rgba(var(--glow), 0.1); overflow: hidden; }
   .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--cyan-dim), var(--cyan)); transition: width 0.8s ease; box-shadow: 0 0 8px var(--cyan); }
@@ -329,9 +330,14 @@
     </div>
     <div class="panel">
       <h2>System</h2>
+      <div class="gauges">
       <div class="gauge"><div class="row"><span>CPU</span><span id="cpuV">--</span></div><div class="bar"><i id="cpuB"></i></div></div>
       <div class="gauge"><div class="row"><span>MEMORY</span><span id="memV">--</span></div><div class="bar"><i id="memB"></i></div></div>
       <div class="gauge"><div class="row"><span>POWER</span><span id="batV">--</span></div><div class="bar"><i id="batB"></i></div></div>
+      <div class="gauge"><div class="row"><span>DISK</span><span id="dskV">--</span></div><div class="bar"><i id="dskB"></i></div></div>
+      </div>
+      <div class="kv"><span>NETWORK</span><span id="netV">--</span></div>
+      <div class="kv"><span>BUSIEST</span><span id="topV">--</span></div>
       <div class="kv"><span>UPTIME</span><span id="up">--</span></div>
     </div>
     <div class="panel" id="player">
@@ -930,15 +936,30 @@ function fmtUptime(s) {
   const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
   return (d ? d + 'd ' : '') + h + 'h ' + m + 'm';
 }
+function fmtRate(b) {   // bytes per second, kept short: 0K, 185K, 1.2M, 34M
+  if (b >= 1e6) return (b / 1e6).toFixed(b >= 1e7 ? 0 : 1) + 'M';
+  return (b >= 1e3 ? Math.round(b / 1e3) : 0) + 'K';
+}
 async function stats() {
+  if (document.hidden) return;   // nothing to paint; the server then measures nothing either
   try {
     const s = await (await api('/api/stats')).json();
     $('cpuV').textContent = s.cpu + '%'; $('cpuB').style.width = s.cpu + '%';
     $('memV').textContent = s.mem + '%'; $('memB').style.width = s.mem + '%';
     if (s.battery) {
-      $('batV').textContent = s.battery.percent + '%' + (s.battery.charging ? ' AC' : '');
+      $('batV').textContent = s.battery.percent + '%' + (s.battery.charging ? ' ⚡' : '');
+      $('batV').title = s.battery.charging ? 'On mains power' : 'On battery';
       $('batB').style.width = s.battery.percent + '%';
     } else { $('batV').textContent = 'AC'; $('batB').style.width = '100%'; }
+    if (s.disk) {
+      const used = Math.round(100 * (1 - s.disk.free / s.disk.total));
+      $('dskV').textContent = used + '%'; $('dskB').style.width = used + '%';
+      $('dskV').parentElement.title = Math.round(s.disk.free / 1e9) + ' GB free of ' + Math.round(s.disk.total / 1e9) + ' GB';
+    }
+    $('netV').textContent = s.net ? '↓ ' + fmtRate(s.net.down) + '  ↑ ' + fmtRate(s.net.up) : '--';
+    $('netV').title = 'Download and upload, per second';
+    $('topV').textContent = s.top ? s.top.cpu + '% ' + s.top.name : '--';   // figure first: a long name is cut at the end
+    $('topV').title = s.top ? s.top.name + ', ' + s.top.cpu + '% of one core' : '';
     $('up').textContent = fmtUptime(s.uptime);
     vitals = { cpu: s.cpu, battery: s.battery, offline: false }; updateVital();
     $('model').textContent = s.model;
@@ -954,6 +975,7 @@ async function stats() {
   } catch { vitals.offline = true; updateVital(); $('state').textContent = 'SERVER OFFLINE'; }
 }
 stats(); setInterval(stats, 3000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) stats(); });   // catch up at once when shown again
 // Tells the server this window is open; it shuts down when the Dock app's window closes.
 (function alive() { api('/api/alive').then((r) => r.body.getReader().read()).catch(() => {}); })();
 
