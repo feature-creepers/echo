@@ -24,7 +24,7 @@ if (!fs.existsSync(path.join(WORKSPACE, 'CLAUDE.md'))) {
 }
 // ---------- settings (saved in settings.json in the data folder; edited from the Settings panel) ----------
 const SETTINGS_FILE = path.join(DATA, 'settings.json');
-// Drop audio files here: one is picked at random and played after the first briefing of the day.
+// Drop audio files here: one is picked at random and played after the opening briefing, or under it.
 const SONGS = path.join(DATA, 'songs');
 const SONG_TYPES = ['.mp3', '.m4a', '.aac', '.wav', '.aif', '.aiff', '.flac', '.caf'];
 const SONG_MIME = { '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.aac': 'audio/aac', '.wav': 'audio/wav', '.aif': 'audio/aiff', '.aiff': 'audio/aiff', '.flac': 'audio/flac', '.caf': 'audio/x-caf' };
@@ -71,7 +71,8 @@ const DEFAULTS = {
     atLaunch: true,     // on the first launch of each day
     onGreeting: true,   // when you say good morning, hello and so on
     humour: true,       // a dry, nerdy line about its systems coming online
-    song: true,         // play a song from the songs folder after the day's first briefing
+    song: true,         // play a song from the songs folder with the opening briefing
+    songWhen: 'after',  // after = once the briefing has been spoken, during = under it, quietly while JARVIS talks
     items: { system: true, weather: true, calendar: true, date: true },
     news: 'top3',       // AI news: off, top3 = speak the three top stories, report = show the day's report on screen
   },
@@ -1109,6 +1110,7 @@ const server = http.createServer(async (req, res) => {
       if (!CHARACTERS[next.character]) next.character = settings.character;
       if (!ADDRESSES.includes(next.address)) next.address = settings.address;
       if (!NEWS_MODES.includes(next.briefing.news)) next.briefing.news = settings.briefing.news;
+      if (!['after', 'during'].includes(next.briefing.songWhen)) next.briefing.songWhen = settings.briefing.songWhen;
       settings = next;
       saveSettings();
       // model, instructions and tools are fixed when the agent starts: restart it, keeping the conversation

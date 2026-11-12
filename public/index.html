@@ -464,7 +464,7 @@
         <label><input type="checkbox" id="sItCalendar"> Calendar</label>
       </span></div>
       <div class="set"><label for="sNews">AI news<small>Gathered once a day from public sites and kept in <span id="sNewsDir"></span>. Spoken as three top stories, or shown as the full report in the reader window.</small></label><span class="ctl"><button id="sNewsOpen">View report</button><select id="sNews"><option value="off">Off</option><option value="top3">Speak the top three</option><option value="report">Show the report</option></select></span></div>
-      <div class="set"><label for="sBootSong">Morning song<small>After the day's first briefing, the Player plays a random song from <span id="sSongDir"></span>.</small></label><span class="ctl"><button id="sSongs">Open folder</button><input type="checkbox" id="sBootSong"></span></div>
+      <div class="set"><label for="sBootSong">Morning song<small>The Player plays a random song from <span id="sSongDir"></span>: once the briefing has been spoken, or under it, quietly while JARVIS talks.</small></label><span class="ctl"><button id="sSongs">Open folder</button><select id="sBootSong"><option value="off">Off</option><option value="after">After the briefing</option><option value="during">During the briefing</option></select></span></div>
       <div class="set"><span class="name">Try it<small>Plays the opening now.</small></span><span class="ctl"><button id="sBootNow">Play now</button></span></div>
     </section>
 
@@ -716,7 +716,8 @@ let charName = 'JARVIS';     // the character being played
 let hal = false;
 
 const LABELS = { idle: 'STANDBY', listening: 'LISTENING', thinking: 'PROCESSING', speaking: 'SPEAKING' };
-function setState(s) { state = s; $('state').textContent = LABELS[s]; updateVital(); plDuck(s === 'listening' || s === 'speaking'); }
+let briefHold = false;   // a briefing with its song under it is being spoken: the music stays low between sentences
+function setState(s) { state = s; $('state').textContent = LABELS[s]; updateVital(); plDuck(s === 'listening' || s === 'speaking' || (briefHold && s === 'thinking')); }
 
 // ---------- the player ----------
 // Music is its own thing, apart from the assistant: FIP radio, or the songs folder, played by the page.
@@ -1082,8 +1083,10 @@ function say(text) {
     .then((r) => { if (r.status === 501) { serverVoice = false; browserSay(text, finish); } else finish(); })
     .catch(finish);
 }
-// The morning song: one song from the songs folder, started in the Player panel once the opening briefing has been spoken.
+// The morning song: one song from the songs folder, started in the Player panel once the opening briefing has been
+// spoken, or as the briefing starts when the setting asks for it under the briefing.
 let songDue = false;
+function songDuring() { return !!(cfg && cfg.briefing.song && cfg.briefing.songWhen === 'during'); }
 function playSong() {
   songDue = false;
   if (!pending && state === 'speaking') setState(busy ? 'thinking' : 'idle');
@@ -1123,6 +1126,7 @@ async function ask(text, opts = {}) {
     if (res.status === 204) throw null;   // no opening due today
     briefed = !!opts.boot;
     if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+    if (briefed && songDuring()) playSong();   // the song starts with the briefing and drops once JARVIS talks
     const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
     for (;;) {
       const { value, done } = await reader.read();
@@ -1136,6 +1140,7 @@ async function ask(text, opts = {}) {
         if (ev.type === 'delta') {
           if (!out) { out = addMsg('jarvis', charName, ''); $('lat').textContent = ((performance.now() - started) / 1000).toFixed(1) + 's'; }
           full += ev.text; out.textContent = full; $('log').scrollTop = $('log').scrollHeight;
+          if (briefed && voiceOn && songDuring() && !briefHold) { briefHold = true; plDuck(true); }
           if (!opts.write) feedSpeech(ev.text, false);   // written answers are typed, not spoken
           else written += ev.text;
         } else if (ev.type === 'music') {
@@ -1162,7 +1167,8 @@ async function ask(text, opts = {}) {
     if (err) addMsg('error', 'ERROR', String(err.message || err));
   }
   feedSpeech('', true);
-  if (briefed && full) { if (pending) songDue = true; else playSong(); }   // the song follows the last spoken sentence
+  briefHold = false;
+  if (briefed && full && !songDuring()) { if (pending) songDue = true; else playSong(); }   // the song follows the last spoken sentence
   if (opts.write && written.trim()) post({ type: 'paste', text: written.trim() });
   busy = false;
   $('sendBtn').hidden = false; $('stopBtn').hidden = true;
@@ -1321,7 +1327,7 @@ function paintSettings() {
   $('sBootLaunch').checked = cfg.briefing.atLaunch;
   $('sBootGreet').checked = cfg.briefing.onGreeting;
   $('sBootFun').checked = cfg.briefing.humour;
-  $('sBootSong').checked = cfg.briefing.song; $('sSongDir').textContent = view.songsDir;
+  $('sBootSong').value = cfg.briefing.song ? cfg.briefing.songWhen : 'off'; $('sSongDir').textContent = view.songsDir;
   $('sNews').value = cfg.briefing.news; $('sNewsDir').textContent = view.newsDir;
   for (const k of ['date', 'system', 'weather', 'calendar']) $('sIt' + k[0].toUpperCase() + k.slice(1)).checked = cfg.briefing.items[k];
 
@@ -1402,7 +1408,7 @@ $('sMode').onchange = (e) => saveSetting({ listen: { mode: e.target.value } });
 $('sBootLaunch').onchange = (e) => saveSetting({ briefing: { atLaunch: e.target.checked } });
 $('sBootGreet').onchange = (e) => saveSetting({ briefing: { onGreeting: e.target.checked } });
 $('sBootFun').onchange = (e) => saveSetting({ briefing: { humour: e.target.checked } });
-$('sBootSong').onchange = (e) => saveSetting({ briefing: { song: e.target.checked } });
+$('sBootSong').onchange = (e) => saveSetting({ briefing: e.target.value === 'off' ? { song: false } : { song: true, songWhen: e.target.value } });
 $('sSongs').onclick = () => api('/api/open', { method: 'POST', body: JSON.stringify({ what: 'songs' }) });
 $('sNews').onchange = (e) => saveSetting({ briefing: { news: e.target.value } });
 for (const k of ['date', 'system', 'weather', 'calendar']) {

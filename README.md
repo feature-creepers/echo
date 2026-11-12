@@ -71,7 +71,7 @@ Tell JARVIS about yourself in the context file (Settings → Assistant → Conte
 | `setup-signing.sh` | Run once: creates a local signing certificate so macOS keeps the app's permissions across builds. |
 | `workspace/CLAUDE.md` | Template for the context file. |
 
-Your own data lives outside the project, in `~/JARVIS`: `settings.json`, `history/`, `usage.jsonl` (the estimated cost and token counts of each reply), `workspace/memory.md` (lasting facts noted when a conversation ends), `workspace/news/` (the AI news report of each day, one Markdown file per day, opened with the News button), `workspace/` (the context file, and the only folder JARVIS can read), `songs/` (drop audio files here: the Player panel plays them in random order, and one is played after the day's first briefing) and `jarvis.log`.
+Your own data lives outside the project, in `~/JARVIS`: `settings.json`, `history/`, `usage.jsonl` (the estimated cost and token counts of each reply), `workspace/memory.md` (lasting facts noted when a conversation ends), `workspace/news/` (the AI news report of each day, one Markdown file per day, opened with the News button), `workspace/` (the context file, and the only folder JARVIS can read), `songs/` (drop audio files here: the Player panel plays them in random order, and one is played after the opening briefing, or under it if you choose that in Settings) and `jarvis.log`.
 
 ### What the agent is allowed to do
 
