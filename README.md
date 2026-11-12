@@ -1,6 +1,6 @@
 # JARVIS
 
-A personal voice assistant that runs on your Mac. Hold a key and talk; it answers aloud. It can search the web, read your Google Calendar, tell you the weather and brief you in the morning. It reads and reports: nothing in it sends email, changes your calendar or edits files. The one thing it can write is text at your cursor, when you ask for that with its own shortcut.
+A personal voice assistant that runs on your Mac. Hold a key and talk; it answers aloud. It can search the web, read your Google Calendar, tell you the weather, brief you in the morning and gather a daily AI news report. It reads and reports: nothing in it sends email, changes your calendar or edits files. The one thing it can write is text at your cursor, when you ask for that with its own shortcut.
 
 It uses Claude as its brain through the Claude Code command-line tool, on your own Claude subscription. There is no API key to set up.
 
@@ -44,7 +44,7 @@ This opens JARVIS in a Chrome window. Voice input then uses Chrome's recogniser,
 | Ctrl+Option+Space | Talk from any app |
 | Ctrl+Option+Shift+Space | Speak a request and have the result typed at your cursor |
 
-Everything else is in **Settings**: voice and speed, speech language, model, standing instructions, the opening briefing, tools, history, startup options, and a Usage view with the estimated cost and token counts for this session, each day and in total.
+Everything else is in **Settings**: voice and speed, speech language, model, standing instructions, the opening briefing (including whether AI news is spoken as three top stories or shown as a full report), tools, history, startup options, and a Usage view with the estimated cost and token counts for this session, each day and in total.
 
 Tell JARVIS about yourself in the context file (Settings → Assistant → Context file). Set your town in Settings → Tools and connections.
 
@@ -59,7 +59,7 @@ Tell JARVIS about yourself in the context file (Settings → Assistant → Conte
 | `setup-signing.sh` | Run once: creates a local signing certificate so macOS keeps the app's permissions across builds. |
 | `workspace/CLAUDE.md` | Template for the context file. |
 
-Your own data lives outside the project, in `~/JARVIS`: `settings.json`, `history/`, `usage.jsonl` (the estimated cost and token counts of each reply), `workspace/memory.md` (lasting facts noted when a conversation ends), `workspace/` (the context file, and the only folder JARVIS can read), `songs/` (drop audio files here: one is played at random after the day's first briefing) and `jarvis.log`.
+Your own data lives outside the project, in `~/JARVIS`: `settings.json`, `history/`, `usage.jsonl` (the estimated cost and token counts of each reply), `workspace/memory.md` (lasting facts noted when a conversation ends), `workspace/news/` (the AI news report of each day, one Markdown file per day, opened with the News button), `workspace/` (the context file, and the only folder JARVIS can read), `songs/` (drop audio files here: one is played at random after the day's first briefing) and `jarvis.log`.
 
 ### What the agent is allowed to do
 
@@ -81,6 +81,7 @@ For a detailed trace of what the Claude process is doing, start the app with `op
 - **Anthropic:** your questions and whatever JARVIS reads to answer them, through Claude Code.
 - **Apple:** your voice, when speech recognition is not running on-device.
 - **Open-Meteo:** the coordinates of your weather town.
+- **Hacker News, GitHub and smol.ai:** requests for public pages when the AI news is gathered. Nothing about you is sent.
 
 ## Known limits
 

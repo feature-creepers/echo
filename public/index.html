@@ -196,18 +196,18 @@
   .set small { display: block; color: var(--muted); font-size: 10.5px; line-height: 1.45; margin-top: 3px; letter-spacing: 0; }
   .set .ctl { display: flex; align-items: center; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
   .set.stack .ctl { justify-content: flex-start; flex-wrap: wrap; gap: 8px 16px; }
-  .set select, .set input[type=text], .set input[type=number], .set textarea, .view-head input[type=text] {
+  .set select, .set input[type=text], .set input[type=number], .set textarea, .view-head input[type=text], .view-head select {
     background: var(--field); border: 1px solid var(--line); color: var(--text);
     font: inherit; font-size: 12px; padding: 7px 8px; outline: none; border-radius: 3px;
   }
-  .set select { min-width: 170px; max-width: 220px; appearance: none; -webkit-appearance: none; padding-right: 26px; cursor: pointer;
+  .set select, .view-head select { min-width: 170px; max-width: 220px; appearance: none; -webkit-appearance: none; padding-right: 26px; cursor: pointer;
     background-image: linear-gradient(45deg, transparent 50%, var(--cyan) 50%), linear-gradient(135deg, var(--cyan) 50%, transparent 50%);
     background-position: calc(100% - 14px) 50%, calc(100% - 9px) 50%; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
   .set input[type=text] { width: 170px; }
   .set input[type=number] { width: 70px; text-align: right; }
   .set.stack textarea, .set.stack input[type=text] { width: 100%; }
   .set textarea { min-height: 64px; resize: vertical; }
-  .set select:focus, .set input:focus, .set textarea:focus, .view-head input:focus { border-color: var(--cyan); }
+  .set select:focus, .set input:focus, .set textarea:focus, .view-head input:focus, .view-head select:focus { border-color: var(--cyan); }
   .set input[type=range] { width: 130px; accent-color: var(--cyan); }
   .set input[type=checkbox] { width: 34px; height: 18px; flex: none; appearance: none; -webkit-appearance: none; background: rgba(var(--glow), 0.12); border: 1px solid var(--line); border-radius: 9px; position: relative; cursor: pointer; margin: 0; }
   .set input[type=checkbox]::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--muted); transition: left 0.15s; }
@@ -237,6 +237,19 @@
   .utab td:first-child, .utab td:last-child { color: var(--text); }
   .unote { color: var(--muted); font-size: 10.5px; line-height: 1.5; margin: 0; }
   #cost { cursor: pointer; }
+
+  /* news: the day's report, one card per section, set a little larger because it is there to be read */
+  .news { max-width: 900px; }
+  .news .ntitle { margin: 0 0 6px; font-size: 16px; font-weight: 600; color: var(--text); letter-spacing: 0.04em; }
+  .news .card p { margin: 0 0 10px; color: var(--muted); font-size: 12.5px; line-height: 1.6; overflow-wrap: anywhere; }
+  .news .card p.unote { font-size: 10.5px; }
+  .news h3 { margin: 12px 0 8px; color: var(--text); font-size: 12px; letter-spacing: 0.06em; text-transform: none; }
+  .news li { font-size: 12.5px; line-height: 1.55; padding: 5px 0 5px 14px; overflow-wrap: anywhere; }
+  .news li::before { top: 13px; }
+  .news a { color: var(--text); text-decoration: none; border-bottom: 1px dotted var(--cyan-dim); }
+  .news a:hover, .news a:focus-visible { color: var(--cyan); border-bottom-color: var(--cyan); outline: none; }
+  #nState { color: var(--muted); font-size: 10.5px; }
+  @media (max-width: 620px) { .view-head { flex-wrap: wrap; } }
 
   /* history */
   #hList { max-width: 900px; margin: 0 auto; }
@@ -270,6 +283,7 @@
   <div class="spacer"></div>
   <button id="mini" title="Shrink to a small window that stays on top">Mini</button>
   <button id="logBtn" title="Show or hide the transcript">Transcript</button>
+  <button id="newsBtn" title="Today's AI news report, and earlier days">News</button>
   <button id="histBtn" title="Past conversations">History</button>
   <button id="gear" title="Settings">Settings</button>
   <button id="aboutBtn" title="What JARVIS is, and what each release brought">About</button>
@@ -383,6 +397,7 @@
         <label><input type="checkbox" id="sItWeather"> Weather</label>
         <label><input type="checkbox" id="sItCalendar"> Calendar</label>
       </span></div>
+      <div class="set"><label for="sNews">AI news<small>Gathered once a day from public sites and kept in <span id="sNewsDir"></span>. Spoken as three top stories, or shown as the full report on screen.</small></label><span class="ctl"><button id="sNewsOpen">View report</button><select id="sNews"><option value="off">Off</option><option value="top3">Speak the top three</option><option value="report">Show the report</option></select></span></div>
       <div class="set"><label for="sBootSong">Morning song<small>After the day's first briefing, plays a random song from <span id="sSongDir"></span>.</small></label><span class="ctl"><button id="sSongs">Open folder</button><input type="checkbox" id="sBootSong"></span></div>
       <div class="set"><span class="name">Try it<small>Plays the opening now.</small></span><span class="ctl"><button id="sBootNow">Play now</button></span></div>
     </section>
@@ -463,7 +478,8 @@
           <ul>
             <li><b>Voice conversation:</b> hold a key to talk, replies spoken sentence by sentence.</li>
             <li><b>Global shortcut:</b> talk from any app; optional writing at your cursor.</li>
-            <li><b>Opening briefing:</b> date, system, weather and today's calendar.</li>
+            <li><b>Opening briefing:</b> date, system, weather, today's calendar and AI news.</li>
+            <li><b>AI news:</b> a daily report from Hacker News, GitHub and the smol.ai digest, read on screen or summed up aloud, with every day kept.</li>
             <li><b>Google Calendar:</b> read-only, through your Claude account.</li>
             <li><b>Web search and files:</b> searches the web and reads its own workspace folder.</li>
             <li><b>Mini mode:</b> a small always-on-top core.</li>
@@ -479,6 +495,7 @@
             <li><b>To Anthropic:</b> your questions and what JARVIS reads to answer them.</li>
             <li><b>To Apple:</b> your voice, when speech recognition is not on-device.</li>
             <li><b>To Open-Meteo:</b> the coordinates of your weather town.</li>
+            <li><b>To Hacker News, GitHub and smol.ai:</b> requests for public pages only, nothing about you.</li>
             <li><b>Not built in:</b> anything that sends email, changes your calendar or edits files.</li>
           </ul>
         </div>
@@ -489,7 +506,15 @@
       <h2>Releases</h2>
       <!-- newest first; add each new release at the top, and keep VERSION in server.mjs and build-app.sh in step -->
       <div class="rel">
-        <div class="rhead"><b>v0.7.0</b><span>12 November 2026</span><em>CURRENT</em></div>
+        <div class="rhead"><b>v0.8.0</b><span>12 November 2026</span><em>CURRENT</em></div>
+        <ul>
+          <li><b>AI news:</b> once a day JARVIS gathers a report from Hacker News, new projects and releases on GitHub, and the smol.ai digest. No account or key is needed.</li>
+          <li><b>In the briefing:</b> a setting chooses between hearing the three top stories and having the full report shown on screen.</li>
+          <li><b>News view:</b> opened from the header, with a report for every day on record. The reports are plain text files in the news folder of the workspace, so JARVIS can also answer questions about them.</li>
+        </ul>
+      </div>
+      <div class="rel">
+        <div class="rhead"><b>v0.7.0</b><span>12 November 2026</span></div>
         <ul>
           <li><b>Fresh conversations:</b> after 30 minutes without a word, a new conversation starts, so replies stay quick and cheap. The pause is a setting.</li>
           <li><b>Memory:</b> when a conversation ends, its lasting facts are noted in a short memory file, given to every new conversation. You can read and edit it from Settings, or switch it off.</li>
@@ -560,6 +585,19 @@
     </section>
     <p class="unote" id="uNote"></p>
   </div></div>
+</div>
+
+<div id="news" class="view" hidden role="dialog" aria-modal="true" aria-labelledby="nTitle">
+  <div class="view-head">
+    <h1 id="nTitle">NEWS</h1>
+    <select id="nDay" title="Reports on record" aria-label="Day"></select>
+    <span id="nState" role="status"></span>
+    <span class="grow"></span>
+    <button id="nRefresh" title="Gather today's news again">Refresh</button>
+    <button id="nFolder" title="Every report is kept as a text file in this folder">Open folder</button>
+    <button id="nClose">Done</button>
+  </div>
+  <div class="view-body"><div class="about news" id="nBody"></div></div>
 </div>
 
 <div id="history" class="view" hidden role="dialog" aria-modal="true" aria-labelledby="hTitle">
@@ -863,6 +901,8 @@ async function ask(text, opts = {}) {
   if (!pending) setState('idle');
   $('input').focus();
   stats();
+  // the briefing announced the report rather than reading the news out: put it on screen
+  if (briefed && full && cfg && cfg.briefing.news === 'report' && !document.body.classList.contains('compact') && !viewOpen()) openNews();
 }
 $('sendBtn').onclick = () => ask($('input').value);
 $('input').addEventListener('keydown', (e) => { if (e.key === 'Enter') ask($('input').value); });
@@ -1013,6 +1053,7 @@ function paintSettings() {
   $('sBootGreet').checked = cfg.briefing.onGreeting;
   $('sBootFun').checked = cfg.briefing.humour;
   $('sBootSong').checked = cfg.briefing.song; $('sSongDir').textContent = view.songsDir;
+  $('sNews').value = cfg.briefing.news; $('sNewsDir').textContent = view.newsDir;
   for (const k of ['date', 'system', 'weather', 'calendar']) $('sIt' + k[0].toUpperCase() + k.slice(1)).checked = cfg.briefing.items[k];
 
   fill($('sChar'), view.characters.map((c) => [c.id, c.name]), cfg.character);
@@ -1094,6 +1135,7 @@ $('sBootGreet').onchange = (e) => saveSetting({ briefing: { onGreeting: e.target
 $('sBootFun').onchange = (e) => saveSetting({ briefing: { humour: e.target.checked } });
 $('sBootSong').onchange = (e) => saveSetting({ briefing: { song: e.target.checked } });
 $('sSongs').onclick = () => api('/api/open', { method: 'POST', body: JSON.stringify({ what: 'songs' }) });
+$('sNews').onchange = (e) => saveSetting({ briefing: { news: e.target.value } });
 for (const k of ['date', 'system', 'weather', 'calendar']) {
   $('sIt' + k[0].toUpperCase() + k.slice(1)).onchange = (e) => saveSetting({ briefing: { items: { [k]: e.target.checked } } });
 }
@@ -1176,6 +1218,70 @@ async function loadHistory() {
 function openHistory() { $('hSearch').value = ''; $('history').hidden = false; loadHistory(); $('hSearch').focus(); }
 function closeHistory() { $('history').hidden = true; $('input').focus(); }
 $('histBtn').onclick = openHistory;
+
+// ---------- news ----------
+// The report is Markdown written by the server in a fixed, simple shape: headings, list items, paragraphs
+// and links. It is drawn here piece by piece as text, so nothing in a headline can turn into markup.
+function inlineInto(el, text) {
+  const re = /\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g;
+  let at = 0, m;
+  while ((m = re.exec(text))) {
+    if (m.index > at) el.append(text.slice(at, m.index));
+    const a = document.createElement('a'); a.href = m[2]; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = m[1];
+    el.append(a); at = m.index + m[0].length;
+  }
+  if (at < text.length) el.append(text.slice(at));
+}
+function drawNews(md) {
+  const body = $('nBody'); body.textContent = '';
+  let card = null, list = null;
+  const newCard = () => { card = document.createElement('section'); card.className = 'panel card'; body.appendChild(card); list = null; return card; };
+  const add = (tag, text, cls) => { const el = document.createElement(tag); if (cls) el.className = cls; inlineInto(el, text); (card || newCard()).appendChild(el); list = null; return el; };
+  for (const raw of md.split('\n')) {
+    const line = raw.trim();
+    if (!line) { list = null; continue; }
+    if (line.startsWith('# ')) { newCard(); add('p', line.slice(2), 'ntitle'); }
+    else if (line.startsWith('## ')) { newCard(); add('h2', line.slice(3)); }
+    else if (line.startsWith('### ')) add('h3', line.slice(4));
+    else if (line.startsWith('- ')) {
+      if (!list) { list = document.createElement('ul'); (card || newCard()).appendChild(list); }
+      const li = document.createElement('li'); inlineInto(li, line.slice(2)); list.appendChild(li);
+    }
+    else if (/^_.*_$/.test(line)) add('p', line.slice(1, -1), 'unote');
+    else add('p', line);
+  }
+}
+function newsMessage(text) { const p = document.createElement('p'); p.className = 'hempty'; p.textContent = text; $('nBody').textContent = ''; $('nBody').appendChild(p); }
+let newsLoad = 0;
+async function loadNews(day, refresh) {
+  const mine = ++newsLoad;
+  $('nState').textContent = day ? '' : 'GATHERING…'; $('nRefresh').disabled = true;
+  if (!day) newsMessage('Gathering today\'s news…');
+  let n;
+  try { n = await (await api('/api/news?' + (day ? 'day=' + day : refresh ? 'refresh=1' : ''))).json(); }
+  catch { if (mine === newsLoad) { $('nState').textContent = ''; $('nRefresh').disabled = false; newsMessage('The news could not be loaded.'); } return; }
+  if (mine !== newsLoad) return;   // a later request has taken over
+  $('nRefresh').disabled = false;
+  $('nState').textContent = n.error ? 'NOT UPDATED' : ''; $('nState').title = n.error || '';
+  const pick = $('nDay'); pick.textContent = '';
+  for (const d of n.days) {
+    const o = document.createElement('option'); o.value = d;
+    o.textContent = (d === n.today ? 'Today · ' : '') + fmtDay(keyDate(d), { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+    pick.appendChild(o);
+  }
+  pick.hidden = !n.days.length; pick.value = n.day;
+  if (n.text) drawNews(n.text);
+  else newsMessage(n.error ? 'Today\'s news could not be gathered: ' + n.error : 'No report for that day.');
+  $('news').querySelector('.view-body').scrollTop = 0;
+}
+function openNews() { $('news').hidden = false; loadNews(); $('nClose').focus(); }
+function closeNews() { newsLoad++; $('news').hidden = true; if (!$('settings').hidden) $('sNewsOpen').focus(); else $('input').focus(); }
+$('newsBtn').onclick = openNews;
+$('sNewsOpen').onclick = openNews;
+$('nClose').onclick = closeNews;
+$('nRefresh').onclick = () => loadNews('', true);
+$('nDay').onchange = (e) => loadNews(e.target.value);
+$('nFolder').onclick = () => api('/api/open', { method: 'POST', body: JSON.stringify({ what: 'news' }) });
 
 // ---------- about ----------
 function openAbout() { loadSettings(); $('about').hidden = false; $('about').querySelector('.view-body').scrollTop = 0; $('aClose').focus(); }
@@ -1272,10 +1378,10 @@ setLive('');
 // Space talks (when the text box is empty): held down in hold mode, pressed once in tap mode.
 // Esc stops whatever is happening.
 let spaceHeld = false;
-const viewOpen = () => !$('settings').hidden || !$('history').hidden || !$('about').hidden || !$('usage').hidden;
+const viewOpen = () => !$('settings').hidden || !$('history').hidden || !$('about').hidden || !$('usage').hidden || !$('news').hidden;
 addEventListener('keydown', (e) => {
   if (viewOpen()) {   // while a view is open, keys belong to its controls
-    if (e.key === 'Escape') { e.preventDefault(); if (!$('usage').hidden) closeUsage(); else if (!$('settings').hidden) closeSettings(); else if (!$('history').hidden) closeHistory(); else closeAbout(); }
+    if (e.key === 'Escape') { e.preventDefault(); if (!$('news').hidden) closeNews(); else if (!$('usage').hidden) closeUsage(); else if (!$('settings').hidden) closeSettings(); else if (!$('history').hidden) closeHistory(); else closeAbout(); }
     return;
   }
   if (e.key === 'Escape') {
