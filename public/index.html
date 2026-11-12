@@ -316,7 +316,7 @@
   <button id="mini" title="Shrink to a small window that stays on top">Mini</button>
   <button id="logBtn" title="Show or hide the transcript">Transcript</button>
   <button id="newsBtn" title="Today's AI news report, and earlier days, in the reader window">News</button>
-  <button id="lastBtn" title="Bring back the reader window with what it last showed; earlier answers are listed there">Last</button>
+  <button id="lastBtn" title="Bring back the last answer shown in the reader window; earlier answers are listed there">Last</button>
   <button id="histBtn" title="Past conversations">History</button>
   <button id="gear" title="Settings">Settings</button>
   <button id="aboutBtn" title="What JARVIS is, and what each release brought">About</button>
@@ -1499,18 +1499,18 @@ function closeReader() {
   if (NATIVE) post({ type: 'readerClose' });
   else if (readerWin) { readerWin.close(); readerWin = null; }
 }
-// N opens the news and L brings back what the reader last showed; either closes the reader when it is
+// N opens the news and L brings back the last answer the reader showed; either closes the reader when it is
 // already open. The app knows whether its window is showing, so it either closes it or asks this page to open it.
 function toggleReader(open) {
   if (NATIVE) return post({ type: 'readerToggle', open: open === openNews ? 'news' : 'last' });
   if (readerWin && !readerWin.closed) closeReader(); else open();
 }
-// The reader holds on to its last document after it is closed. Answers are also kept with the history,
-// so the newest of those comes back even after JARVIS has been restarted.
+// Last is for answers only; the news reports have their own view. Answers are kept with the history,
+// so the newest comes back even after JARVIS has been restarted.
 async function openLast() {
   let r;
   try { r = await (await api('/api/reader', { method: 'POST', body: JSON.stringify({ kind: 'last' }) })).json(); } catch { return; }
-  if (r.kind === 'none') return setCaption('Nothing has been shown in the reader yet.');
+  if (r.kind === 'none') return setCaption('No answer has been shown in the reader yet.');
   openReader();
 }
 $('lastBtn').onclick = openLast;
@@ -1622,7 +1622,7 @@ let spaceHeld = false;
 // Shortcuts card in Settings. Enter puts the keyboard in the text box; Esc takes it out again.
 const SHORTCUTS = [
   { key: 'n', on: 'newsBtn', what: 'open today\'s news in the reader window, or close that window', run: () => toggleReader(openNews) },
-  { key: 'l', on: 'lastBtn', what: 'bring back the reader window with what it last showed, or close it', run: () => toggleReader(openLast) },
+  { key: 'l', on: 'lastBtn', what: 'bring back the last answer in the reader window, or close it', run: () => toggleReader(openLast) },
   { key: 'd', on: 'showBtn', what: 'display the last answer in the reader window' },
   { key: 'r', on: 'plFip', what: 'play FIP radio', run: () => { if (pl.source !== 'fip' || plAudio.paused) plTune(pl.station, true); } },
   { key: 'p', on: 'plPlay', what: 'play or pause the music' },

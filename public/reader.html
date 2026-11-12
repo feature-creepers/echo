@@ -147,6 +147,7 @@ $('folder').onclick = () => api('/api/open', { method: 'POST', body: JSON.string
 
 // ---------- earlier answers ----------
 // Every answer shown here is kept with the conversation history. The list brings one back.
+// It belongs to the answers: the news view lists only its own reports, by day.
 async function loadPast() {
   let answers = [];
   try { answers = (await (await api('/api/reader/list')).json()).answers || []; } catch {}
@@ -161,7 +162,7 @@ async function loadPast() {
     o.value = a.t; o.textContent = when + ' · ' + a.title;
     pick.appendChild(o);
   }
-  pick.hidden = !answers.length;
+  pick.hidden = !answers.length || last.kind === 'news';
 }
 $('past').onchange = (e) => { if (e.target.value) api('/api/reader', { method: 'POST', body: JSON.stringify({ kind: 'answer', t: e.target.value }) }); };
 
@@ -172,6 +173,7 @@ function show(doc) {
   $('kind').textContent = news ? 'News' : doc.kind === 'answer' ? 'Answer' : 'Reader';
   for (const id of ['refresh', 'folder']) $(id).hidden = !news;
   if (!news) { $('day').hidden = true; $('note').textContent = ''; newsLoad++; }
+  else $('past').hidden = true;
   $('live').hidden = !(doc.kind === 'answer' && doc.live);
   if (news) loadNews();
   else if (doc.kind === 'answer') {
@@ -181,8 +183,8 @@ function show(doc) {
   }
   else message('Nothing to read yet. Ask JARVIS to show you something, or press News.');
   if (doc.kind !== last.kind || doc.at !== last.at) theme();   // the character may have changed since the last document
-  if (!doc.live) loadPast();   // a finished answer has just joined the list
   last = doc;
+  if (!news && !doc.live) loadPast();   // a finished answer has just joined the list
 }
 async function theme() {
   try { document.body.classList.toggle('hal', (await (await api('/api/settings')).json()).settings.character === 'hal'); } catch {}

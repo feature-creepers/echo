@@ -463,7 +463,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKSc
             showReader()
         case "readerClose":
             readerWindow?.close()
-        case "readerToggle":       // N or L: close the reader if it is showing, otherwise have the page open it with the news or its last document
+        case "readerToggle":       // N or L: close the reader if it is showing, otherwise have the page open it with the news or the last answer
             if readerWindow?.isVisible == true { readerWindow?.close() } else { toPage(["openReader": body["open"] as? String ?? "last"]) }
         default:
             break

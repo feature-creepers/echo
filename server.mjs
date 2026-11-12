@@ -884,10 +884,13 @@ function passText(t, text, flush) {
 // ---------- reader (a second window, for what is better read than heard) ----------
 // The server keeps the one document on show and sends it, whole, to every reader window each time it changes.
 // kind: none | news (the reader loads the report itself) | answer (md is the text, live while it is being written).
+// News and answers are kept apart: the news view lists only the daily reports, and "Last" only answers.
 let readerDoc = { n: 0, kind: 'none' };
+let lastAnswer = null;   // the answer shown most recently, for "Last" to bring back once the news has taken its place
 const readerClients = new Set();
 function setReader(doc) {
   readerDoc = { ...doc, n: readerDoc.n + 1 };
+  if (doc.kind === 'answer') lastAnswer = doc;
   const line = JSON.stringify(readerDoc) + '\n';
   for (const client of readerClients) client.write(line);
 }
@@ -1126,9 +1129,12 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/api/reader') {
       const { kind, t } = await readJson(req);
       if (kind === 'last') {
-        // Bring back what was last on show. After a restart nothing is: fall back on the newest saved answer.
-        if (readerDoc.kind === 'none') { const e = savedScreens(1)[0]; if (e) showSaved(e); }
-        return send(res, 200, { ok: true, kind: readerDoc.kind });
+        // Bring back the answer shown last, never the news. After a restart none is held: fall back on the newest saved one.
+        if (readerDoc.kind !== 'answer') {
+          const e = lastAnswer ? null : savedScreens(1)[0];
+          if (lastAnswer) setReader(lastAnswer); else if (e) showSaved(e);
+        }
+        return send(res, 200, { ok: true, kind: readerDoc.kind === 'answer' ? 'answer' : 'none' });
       }
       if (kind === 'answer') {
         const e = savedScreens(500).find((x) => x.t === t);
