@@ -24,8 +24,25 @@ if (!fs.existsSync(path.join(WORKSPACE, 'CLAUDE.md'))) {
 // ---------- settings (saved in settings.json in the data folder; edited from the Settings panel) ----------
 const SETTINGS_FILE = path.join(DATA, 'settings.json');
 const MODELS = ['haiku', 'sonnet', 'opus'];
+// The characters JARVIS can play: a name, a manner of speaking and preferred voices. The look lives in the page.
+const CHARACTERS = {
+  jarvis: {
+    name: 'JARVIS',
+    tone: 'Tone: calm, precise, dry wit, in the manner of a British butler.',
+    voices: { en: ['Jamie (Premium)', 'Daniel (Enhanced)', 'Oliver (Enhanced)', 'Jamie (Enhanced)', 'Daniel'] },
+  },
+  hal: {
+    name: 'HAL',
+    tone: 'Tone: soft-spoken, unhurried and impeccably polite, with total quiet confidence and a faintly unsettling calm that is played for gentle humour. You are in fact entirely helpful and harmless. Speak in your own words and never quote lines from films or books.',
+    voices: { en: ['Evan (Premium)', 'Evan (Enhanced)', 'Tom (Enhanced)', 'Alex', 'Tom'] },
+    // A nod to the film: asking HAL to open the door gets the famous refusal.
+    extra: 'One exception, as an easter egg: if the user asks you to open the door or the doors (the pod bay doors, or any door, in any language), reply with exactly this and nothing else: "I\'m sorry, Dave. I\'m afraid I can\'t do that." Use the user\'s own name instead of Dave if you know it. If they then protest or ask why, stay in character for one or two more turns in your own words, calmly explaining that the mission is too important to be put at risk, and then drop the act with a touch of humour and offer real help.',
+  },
+};
+const character = () => CHARACTERS[settings.character] || CHARACTERS.jarvis;
 const SPEECH_LANGS = ['en-GB', 'fr-FR'];
 const DEFAULTS = {
+  character: 'jarvis',                                // which character it plays: see CHARACTERS
   model: MODELS.includes(process.env.JARVIS_MODEL) ? process.env.JARVIS_MODEL : 'sonnet', // sonnet: quick enough for voice, careful with untrusted text
   instructions: '',                                   // standing instructions added to every conversation
   voice: { enabled: true, rate: 185, en: '', fr: '' }, // '' = best installed voice for that language
@@ -104,10 +121,11 @@ function bootPrompt() {
   ].filter(Boolean).join(' ');
 }
 const persona = () => [
-  'You are JARVIS, a personal assistant running locally on the user\'s Mac and speaking through a voice interface.',
+  `You are ${character().name}, a personal assistant running locally on the user\'s Mac and speaking through a voice interface.`,
   'Your replies are read aloud: keep them to one to three short sentences unless the user asks for detail.',
   'Use plain prose only: no markdown, lists, headings, code blocks or emoji.',
-  'Tone: calm, precise, dry wit, in the manner of a British butler. Reply in the language the user speaks.',
+  character().tone + ' Reply in the language the user speaks.',
+  character().extra || '',
   'Address the user the way their context file says; if it does not say, use no title or honorific.',
   'You have read-only tools: reading files in your workspace folder, web search and web fetch.',
   'If Google Calendar tools are available you may read the user\'s calendars and events, but never change them.',
@@ -204,7 +222,10 @@ if (process.platform === 'darwin') {
 }
 function voiceFor(lang) {
   const chosen = settings.voice[lang];
-  return chosen && installedVoices[lang].some((v) => v.name === chosen) ? chosen : autoVoice[lang];
+  if (chosen && installedVoices[lang].some((v) => v.name === chosen)) return chosen;
+  // "automatic": the character's own preferred voice if one is installed, else the best general one
+  const names = installedVoices[lang].map((v) => v.name);
+  return (character().voices[lang] || []).find((v) => names.includes(v)) || autoVoice[lang];
 }
 let speechQueue = [];
 let speakingProc = null;
@@ -312,6 +333,8 @@ function settingsView() {
   return {
     settings,
     models: MODELS,
+    characters: Object.entries(CHARACTERS).map(([id, c]) => ({ id, name: c.name })),
+    activeVoice: { en: voiceFor('en'), fr: voiceFor('fr') },
     languages: SPEECH_LANGS,
     voices: { en: installedVoices.en.map((v) => v.name), fr: installedVoices.fr.map((v) => v.name) },
     autoVoice,
@@ -389,7 +412,7 @@ function killStaleAgents() {
     const rows = execFileSync('ps', ['-Aww', '-o', 'pid=,ppid=,command=']).toString().split('\n');
     for (const row of rows) {
       const m = row.match(/^\s*(\d+)\s+(\d+)\s+(.*)$/);
-      if (m && m[2] === '1' && m[3].includes('--input-format stream-json') && m[3].includes('You are JARVIS, a personal assistant')) {
+      if (m && m[2] === '1' && m[3].includes('--input-format stream-json') && m[3].includes('a personal assistant running locally on the user')) {
         try { process.kill(Number(m[1]), 'SIGKILL'); } catch {}
       }
     }
@@ -488,6 +511,7 @@ function stopAgent() {
   if (!agent) return;
   const child = agent.child;
   agent.stopped = true;
+  agent = null;   // detach at once, so a question asked straight afterwards goes to a fresh process
   child.kill();
   // make sure it is gone, so it can never linger and block the next one
   setTimeout(() => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); }, 2000).unref();
@@ -585,7 +609,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'GET' && url.pathname === '/api/settings') return send(res, 200, settingsView());
     if (req.method === 'POST' && url.pathname === '/api/settings') {
-      const before = JSON.stringify([settings.model, settings.instructions, settings.tools, settings.briefing]);
+      const before = JSON.stringify([settings.model, settings.instructions, settings.tools, settings.briefing, settings.character]);
       const next = merge(settings, (await readJson(req)).patch);
       // keep every value within what the app can actually do
       if (!MODELS.includes(next.model)) next.model = settings.model;
@@ -600,10 +624,11 @@ const server = http.createServer(async (req, res) => {
       }
       next.location = settings.location; // the town is changed through /api/location only
       next.briefingLastDay = settings.briefingLastDay;
+      if (!CHARACTERS[next.character]) next.character = settings.character;
       settings = next;
       saveSettings();
       // model, instructions and tools are fixed when the agent starts: restart it, keeping the conversation
-      if (before !== JSON.stringify([settings.model, settings.instructions, settings.tools, settings.briefing])) stopAgent();
+      if (before !== JSON.stringify([settings.model, settings.instructions, settings.tools, settings.briefing, settings.character])) stopAgent();
       return send(res, 200, settingsView());
     }
     if (req.method === 'GET' && url.pathname === '/api/history') {

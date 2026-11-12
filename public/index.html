@@ -6,9 +6,12 @@
 <title>JARVIS</title>
 <style>
   :root {
+    --glow: 95, 225, 255;      /* accent colour as numbers, for translucent uses */
+    --haze: 20, 90, 120;        /* the soft light behind the core */
+    --field: rgba(8, 22, 34, 0.9);   /* text boxes and dropdowns */
     --bg: #03070d;
     --panel: rgba(8, 22, 34, 0.72);
-    --line: rgba(80, 220, 255, 0.22);
+    --line: rgba(var(--glow), 0.22);
     --cyan: #5fe1ff;
     --cyan-dim: #2b8aa6;
     --text: #d6f4ff;
@@ -21,9 +24,9 @@
   html, body { height: 100%; margin: 0; }
   body {
     background:
-      radial-gradient(ellipse at 50% 42%, rgba(20, 90, 120, 0.28), transparent 60%),
-      linear-gradient(rgba(80, 220, 255, 0.035) 1px, transparent 1px) 0 0 / 100% 44px,
-      linear-gradient(90deg, rgba(80, 220, 255, 0.035) 1px, transparent 1px) 0 0 / 44px 100%,
+      radial-gradient(ellipse at 50% 42%, rgba(var(--haze), 0.28), transparent 60%),
+      linear-gradient(rgba(var(--glow), 0.035) 1px, transparent 1px) 0 0 / 100% 44px,
+      linear-gradient(90deg, rgba(var(--glow), 0.035) 1px, transparent 1px) 0 0 / 44px 100%,
       var(--bg);
     color: var(--text);
     font-family: var(--mono);
@@ -66,16 +69,16 @@
   .left { display: flex; flex-direction: column; gap: 16px; min-height: 0; overflow-y: auto; scrollbar-width: none; }
   .left .panel { flex-shrink: 0; }
   .wx { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
-  #wxTemp { font-size: 34px; color: var(--cyan); text-shadow: 0 0 14px rgba(95, 225, 255, 0.5); line-height: 1; }
+  #wxTemp { font-size: 34px; color: var(--cyan); text-shadow: 0 0 14px rgba(var(--glow), 0.5); line-height: 1; }
   #wxText { text-transform: uppercase; letter-spacing: 0.12em; font-size: 11px; }
   #wxPlace { background: none; border: 0; border-bottom: 1px dashed var(--cyan-dim); border-radius: 0; padding: 0 0 1px; color: var(--text); letter-spacing: 0.06em; font-size: 12px; text-transform: none; }
-  #wxEdit { width: 120px; background: rgba(8, 22, 34, 0.9); border: 1px solid var(--cyan); color: var(--text); font: inherit; font-size: 12px; padding: 2px 5px; outline: none; text-align: right; }
+  #wxEdit { width: 120px; background: var(--field); border: 1px solid var(--cyan); color: var(--text); font: inherit; font-size: 12px; padding: 2px 5px; outline: none; text-align: right; }
   .gauge { margin-bottom: 12px; }
   .gauge .row { display: flex; justify-content: space-between; margin-bottom: 5px; }
   .gauge .row span:first-child { color: var(--muted); letter-spacing: 0.16em; font-size: 10px; }
-  .bar { height: 5px; background: rgba(95, 225, 255, 0.1); overflow: hidden; }
+  .bar { height: 5px; background: rgba(var(--glow), 0.1); overflow: hidden; }
   .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--cyan-dim), var(--cyan)); transition: width 0.8s ease; box-shadow: 0 0 8px var(--cyan); }
-  .kv { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; border-top: 1px dashed rgba(95, 225, 255, 0.12); }
+  .kv { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; border-top: 1px dashed rgba(var(--glow), 0.12); }
   .kv span:first-child { color: var(--muted); font-size: 10px; letter-spacing: 0.14em; }
   .kv span:last-child { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -123,16 +126,16 @@
 
   footer { border-top: 1px solid var(--line); gap: 10px; }
   #input {
-    flex: 1; background: rgba(8, 22, 34, 0.9); border: 1px solid var(--line); color: var(--text);
+    flex: 1; background: var(--field); border: 1px solid var(--line); color: var(--text);
     font: inherit; font-size: 14px; padding: 11px 14px; outline: none; border-radius: 3px;
   }
-  #input:focus { border-color: var(--cyan); box-shadow: 0 0 0 1px var(--cyan), 0 0 18px rgba(95, 225, 255, 0.2); }
+  #input:focus { border-color: var(--cyan); box-shadow: 0 0 0 1px var(--cyan), 0 0 18px rgba(var(--glow), 0.2); }
   #input::placeholder { color: var(--muted); }
   button {
     background: transparent; border: 1px solid var(--line); color: var(--cyan); font: inherit;
     font-size: 10.5px; letter-spacing: 0.2em; padding: 11px 13px; cursor: pointer; border-radius: 3px; text-transform: uppercase;
   }
-  button:hover { border-color: var(--cyan); background: rgba(95, 225, 255, 0.08); }
+  button:hover { border-color: var(--cyan); background: rgba(var(--glow), 0.08); }
   button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
   button.on { background: var(--cyan); color: #012; border-color: var(--cyan); }
   button.warn { color: var(--amber); border-color: rgba(255, 180, 84, 0.4); }
@@ -148,9 +151,9 @@
   /* full-window views: Settings and History */
   .view { position: fixed; inset: 0; z-index: 10; display: grid; grid-template-rows: auto 1fr;
     background:
-      radial-gradient(ellipse at 50% 0%, rgba(20, 90, 120, 0.22), transparent 55%),
-      linear-gradient(rgba(80, 220, 255, 0.03) 1px, transparent 1px) 0 0 / 100% 44px,
-      linear-gradient(90deg, rgba(80, 220, 255, 0.03) 1px, transparent 1px) 0 0 / 44px 100%,
+      radial-gradient(ellipse at 50% 0%, rgba(var(--haze), 0.22), transparent 55%),
+      linear-gradient(rgba(var(--glow), 0.03) 1px, transparent 1px) 0 0 / 100% 44px,
+      linear-gradient(90deg, rgba(var(--glow), 0.03) 1px, transparent 1px) 0 0 / 44px 100%,
       var(--bg); }
   .view[hidden] { display: none; }
   .view-head { display: flex; align-items: center; gap: 14px; padding: 12px 20px; border-bottom: 1px solid var(--line); }
@@ -171,20 +174,20 @@
   /* about: one wide card with three columns of plain facts */
   .card.about { flex: 0 0 100%; padding-bottom: 16px; }
   .about .lede { color: var(--text); font-size: 12.5px; max-width: 900px; margin-bottom: 14px; }
-  .about .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px 32px; border-top: 1px dashed rgba(95, 225, 255, 0.12); padding-top: 12px; }
+  .about .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px 32px; border-top: 1px dashed rgba(var(--glow), 0.12); padding-top: 12px; }
   .about h3 { margin: 0 0 6px; font-size: 10px; letter-spacing: 0.26em; color: var(--cyan-dim); font-weight: 600; text-transform: uppercase; }
   .about ul { margin: 0 0 12px; padding: 0; list-style: none; }
   .about li { color: var(--muted); font-size: 11.5px; line-height: 1.5; padding: 3px 0 3px 14px; position: relative; }
   .about li::before { content: ""; position: absolute; left: 0; top: 10px; width: 5px; height: 1px; background: var(--cyan); }
   .about li b { color: var(--text); font-weight: 500; }
-  .set { display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center; padding: 10px 0; border-top: 1px dashed rgba(95, 225, 255, 0.12); }
+  .set { display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center; padding: 10px 0; border-top: 1px dashed rgba(var(--glow), 0.12); }
   .set.stack { grid-template-columns: 1fr; gap: 8px; }
   .set label, .set .name { color: var(--text); font-size: 12.5px; }
   .set small { display: block; color: var(--muted); font-size: 10.5px; line-height: 1.45; margin-top: 3px; letter-spacing: 0; }
   .set .ctl { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
   .set.stack .ctl { justify-content: flex-start; flex-wrap: wrap; gap: 8px 16px; }
   .set select, .set input[type=text], .set input[type=number], .set textarea, .view-head input[type=text] {
-    background: rgba(8, 22, 34, 0.9); border: 1px solid var(--line); color: var(--text);
+    background: var(--field); border: 1px solid var(--line); color: var(--text);
     font: inherit; font-size: 12px; padding: 7px 8px; outline: none; border-radius: 3px;
   }
   .set select { min-width: 170px; max-width: 220px; appearance: none; -webkit-appearance: none; padding-right: 26px; cursor: pointer;
@@ -196,15 +199,15 @@
   .set textarea { min-height: 64px; resize: vertical; }
   .set select:focus, .set input:focus, .set textarea:focus, .view-head input:focus { border-color: var(--cyan); }
   .set input[type=range] { width: 130px; accent-color: var(--cyan); }
-  .set input[type=checkbox] { width: 34px; height: 18px; flex: none; appearance: none; -webkit-appearance: none; background: rgba(95, 225, 255, 0.12); border: 1px solid var(--line); border-radius: 9px; position: relative; cursor: pointer; margin: 0; }
+  .set input[type=checkbox] { width: 34px; height: 18px; flex: none; appearance: none; -webkit-appearance: none; background: rgba(var(--glow), 0.12); border: 1px solid var(--line); border-radius: 9px; position: relative; cursor: pointer; margin: 0; }
   .set input[type=checkbox]::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--muted); transition: left 0.15s; }
-  .set input[type=checkbox]:checked { background: rgba(95, 225, 255, 0.35); border-color: var(--cyan); }
+  .set input[type=checkbox]:checked { background: rgba(var(--glow), 0.35); border-color: var(--cyan); }
   .set input[type=checkbox]:checked::after { left: 18px; background: var(--cyan); }
   .set input:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
   .set button { padding: 7px 10px; white-space: nowrap; }
   .set .ctl label { display: inline-flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--muted); }
   .set .state { color: var(--muted); font-size: 10.5px; }
-  .keys { color: var(--muted); display: grid; grid-template-columns: auto 1fr; gap: 9px 18px; line-height: 1.45; padding: 12px 0 10px; border-top: 1px dashed rgba(95, 225, 255, 0.12); }
+  .keys { color: var(--muted); display: grid; grid-template-columns: auto 1fr; gap: 9px 18px; line-height: 1.45; padding: 12px 0 10px; border-top: 1px dashed rgba(var(--glow), 0.12); }
   .keys b { color: var(--cyan); font-weight: 600; white-space: nowrap; }
 
   /* history */
@@ -217,12 +220,23 @@
   .hx .a { white-space: pre-wrap; overflow-wrap: anywhere; }
   .hx .tools { color: var(--amber); font-size: 10.5px; margin-top: 6px; }
   .hempty { color: var(--muted); text-align: center; margin-top: 60px; }
+
+  /* the HAL character: the same interface in red */
+  body.hal {
+    --glow: 255, 74, 61; --haze: 120, 18, 12;
+    --line: rgba(255, 74, 61, 0.24); --field: rgba(24, 8, 7, 0.92);
+    --bg: #090303; --panel: rgba(26, 9, 8, 0.74);
+    --cyan: #ff4a3d; --cyan-dim: #a3362d; --text: #ffe9e5; --muted: #a8837d;
+  }
+  body.hal .msg.user { color: #d6aea8; }
+  body.hal button.on { color: #1a0403; }
+  body.hal #wxTemp { text-shadow: 0 0 14px rgba(var(--glow), 0.5); }
 </style></style>
 </head>
 <body>
 <header>
   <div>
-    <div class="brand">JARVIS</div>
+    <div class="brand" id="brand">JARVIS</div>
     <div class="vital" id="vital" title="How JARVIS is doing"><i id="pulse"></i><span id="mood">CALM</span><span id="bpm"></span></div>
   </div>
   <div class="spacer"></div>
@@ -320,6 +334,7 @@
 
     <section class="panel card">
       <h2>Assistant</h2>
+      <div class="set"><label for="sChar">Character<small>Who it is: the look, the name, the manner of speaking and the default voice.</small></label><span class="ctl"><select id="sChar"></select></span></div>
       <div class="set"><label for="sModel">Model<small>Haiku is fastest, Sonnet balanced, Opus most thorough.</small></label><span class="ctl"><select id="sModel"></select></span></div>
       <div class="set stack"><label for="sInstr">Standing instructions<small>Added to every conversation: how to address you, tone, what to always or never do.</small></label><span class="ctl"><textarea id="sInstr" maxlength="2000" placeholder="e.g. Keep answers under two sentences."></textarea></span></div>
       <div class="set"><span class="name">Context file<small>Longer notes about you and your work.</small></span><span class="ctl"><button id="sContext">Open file</button></span></div>
@@ -451,6 +466,8 @@ let cfg = null;
 let voiceOn = true;
 let langIdx = 0;
 let soundsOn = true;
+let charName = 'JARVIS';     // the character being played
+let hal = false;
 
 const LABELS = { idle: 'STANDBY', listening: 'LISTENING', thinking: 'PROCESSING', speaking: 'SPEAKING' };
 function setState(s) { state = s; $('state').textContent = LABELS[s]; updateVital(); }
@@ -464,6 +481,11 @@ const TONES = {
   speaking: [190, 170, 255],  // violet: talking
   strained: [255, 150, 90],   // orange: the Mac is struggling
   unwell: [255, 107, 107],    // red: something is wrong
+};
+// HAL keeps to red: the eye brightens and warms instead of changing colour.
+const TONES_HAL = {
+  calm: [226, 38, 30], listening: [255, 96, 60], thinking: [255, 140, 56], speaking: [255, 58, 44],
+  strained: [255, 150, 90], unwell: [150, 150, 160],
 };
 let vitals = { cpu: 0, battery: null, offline: false };
 let tone = TONES.calm;        // the colour the core eases towards
@@ -480,7 +502,7 @@ function mood() {
 }
 function updateVital() {
   const [word, key] = mood();
-  tone = TONES[key];
+  tone = (hal ? TONES_HAL : TONES)[key];
   const css = `rgb(${tone.join(',')})`;
   $('mood').textContent = word;
   $('vital').style.setProperty('--tone', css);
@@ -662,7 +684,7 @@ async function ask(text, opts = {}) {
         if (!line) continue;
         const ev = JSON.parse(line);
         if (ev.type === 'delta') {
-          if (!out) { out = addMsg('jarvis', 'JARVIS', ''); $('lat').textContent = ((performance.now() - started) / 1000).toFixed(1) + 's'; }
+          if (!out) { out = addMsg('jarvis', charName, ''); $('lat').textContent = ((performance.now() - started) / 1000).toFixed(1) + 's'; }
           full += ev.text; out.textContent = full; $('log').scrollTop = $('log').scrollHeight;
           if (!opts.write) feedSpeech(ev.text, false);   // written answers are typed, not spoken
           else written += ev.text;
@@ -793,6 +815,12 @@ function applySettings(v) {
   voiceOn = cfg.voice.enabled;
   langIdx = Math.max(0, LANGS.findIndex((l) => l.code === cfg.listen.language));
   soundsOn = cfg.listen.sounds;
+  hal = cfg.character === 'hal';
+  charName = (v.characters.find((c) => c.id === cfg.character) || { name: 'JARVIS' }).name;
+  document.body.classList.toggle('hal', hal);
+  $('brand').textContent = charName; document.title = charName;
+  $('input').placeholder = `Type here, or ${cfg.listen.mode === 'hold' ? 'hold' : 'press'} Space to talk to ${charName}…`;
+  updateVital();
   holdMode = cfg.listen.mode === 'hold';
   document.body.classList.toggle('show-log', cfg.ui.transcript);
   $('logBtn').classList.toggle('on', cfg.ui.transcript);
@@ -811,7 +839,7 @@ function paintSettings() {
   if (!view) return;
   const lang = LANGS[langIdx].code.slice(0, 2);
   $('sVoiceOn').checked = cfg.voice.enabled;
-  const auto = view.autoVoice[lang];
+  const auto = view.activeVoice[lang] || view.autoVoice[lang];
   fill($('sVoice'), [['', 'Automatic' + (auto ? ' (' + auto + ')' : '')], ...view.voices[lang].map((n) => [n, n])], cfg.voice[lang]);
   $('sRate').value = cfg.voice.rate; $('sRateV').textContent = cfg.voice.rate;
   fill($('sLang'), LANGS.map((l) => [l.code, l.name]), cfg.listen.language);
@@ -829,6 +857,7 @@ function paintSettings() {
   $('sBootFun').checked = cfg.briefing.humour;
   for (const k of ['date', 'system', 'weather', 'calendar']) $('sIt' + k[0].toUpperCase() + k.slice(1)).checked = cfg.briefing.items[k];
 
+  fill($('sChar'), view.characters.map((c) => [c.id, c.name]), cfg.character);
   fill($('sModel'), view.models.map((m) => [m, m[0].toUpperCase() + m.slice(1)]), cfg.model);
   if (document.activeElement !== $('sInstr')) $('sInstr').value = cfg.instructions;
   $('sWeb').checked = cfg.tools.web;
@@ -917,6 +946,7 @@ function paintNative() {
 $('sLog').onchange = (e) => saveSetting({ ui: { transcript: e.target.checked } });
 $('logBtn').onclick = () => saveSetting({ ui: { transcript: !cfg.ui.transcript } });
 $('sModel').onchange = (e) => saveSetting({ model: e.target.value });
+$('sChar').onchange = (e) => saveSetting({ character: e.target.value });
 $('sInstr').onchange = (e) => saveSetting({ instructions: e.target.value });
 $('sContext').onclick = () => api('/api/open', { method: 'POST', body: JSON.stringify({ what: 'context' }) });
 $('sData').onclick = () => api('/api/open', { method: 'POST', body: JSON.stringify({ what: 'data' }) });
@@ -1055,6 +1085,39 @@ function arc(r, a0, a1, w, alpha) {
   cx.beginPath(); cx.arc(0, 0, r, a0, a1);
   cx.lineWidth = w; cx.strokeStyle = `rgba(${shade.map(Math.round).join(',')},${alpha})`; cx.stroke();
 }
+// HAL's core: a lens in a metal ring, with a red glow that swells as it listens and speaks.
+function drawEye(R, C) {
+  cx.shadowBlur = 0;
+  const breath = still ? 0 : 0.02 * Math.sin(t * 2.2);
+  // metal ring
+  const ring = cx.createLinearGradient(0, -R * 1.2, 0, R * 1.2);
+  ring.addColorStop(0, '#9aa1a6'); ring.addColorStop(0.45, '#2b2e31'); ring.addColorStop(0.55, '#1c1e20'); ring.addColorStop(1, '#727a80');
+  cx.beginPath(); cx.arc(0, 0, R * 1.1, 0, Math.PI * 2); cx.lineWidth = R * 0.12; cx.strokeStyle = ring; cx.stroke();
+  cx.beginPath(); cx.arc(0, 0, R * 1.165, 0, Math.PI * 2); cx.lineWidth = 1; cx.strokeStyle = 'rgba(255,255,255,0.18)'; cx.stroke();
+  // dark glass
+  cx.beginPath(); cx.arc(0, 0, R * 1.04, 0, Math.PI * 2); cx.fillStyle = '#050101'; cx.fill();
+  cx.save();
+  cx.beginPath(); cx.arc(0, 0, R * 1.04, 0, Math.PI * 2); cx.clip();
+  // the glow
+  const reach = R * (0.62 + energy * 0.5 + breath);
+  const g = cx.createRadialGradient(0, 0, 0, 0, 0, reach);
+  g.addColorStop(0, 'rgba(255,240,190,0.98)');
+  g.addColorStop(0.07, 'rgba(255,196,96,0.95)');
+  g.addColorStop(0.2, `rgba(${C},0.92)`);
+  g.addColorStop(0.5, `rgba(${C},${0.28 + energy * 0.35})`);
+  g.addColorStop(1, `rgba(${C},0)`);
+  cx.fillStyle = g; cx.fillRect(-R * 1.1, -R * 1.1, R * 2.2, R * 2.2);
+  // faint rings in the glass
+  for (const r of [0.3, 0.5, 0.72, 0.92]) {
+    cx.beginPath(); cx.arc(0, 0, R * r, 0, Math.PI * 2);
+    cx.lineWidth = 1; cx.strokeStyle = `rgba(${C},${0.1 + energy * 0.18})`; cx.stroke();
+  }
+  // a reflection across the top of the lens
+  const shine = cx.createLinearGradient(0, -R, 0, -R * 0.2);
+  shine.addColorStop(0, 'rgba(255,255,255,0.13)'); shine.addColorStop(1, 'rgba(255,255,255,0)');
+  cx.beginPath(); cx.ellipse(0, -R * 0.62, R * 0.72, R * 0.34, 0, 0, Math.PI * 2); cx.fillStyle = shine; cx.fill();
+  cx.restore();
+}
 function draw() {
   for (let i = 0; i < 3; i++) shade[i] += (tone[i] - shade[i]) * 0.06;   // ease towards the current mood colour
   const C = shade.map(Math.round).join(',');
@@ -1067,6 +1130,7 @@ function draw() {
   cx.save();
   cx.translate(W / 2, H * (document.body.classList.contains('compact') ? 0.4 : 0.42));
   const R = Math.min(W, H) * 0.3;
+  if (hal) { drawEye(R * 0.92, C); cx.restore(); requestAnimationFrame(draw); return; }
   cx.shadowColor = `rgb(${C})`; cx.shadowBlur = 14;
 
   // outer tick ring (no glow: 120 glowing strokes per frame is costly)
