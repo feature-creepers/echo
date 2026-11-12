@@ -1142,6 +1142,8 @@ async function ask(text, opts = {}) {
           plCommand(ev.command);
           addMsg('tool', '', '▸ Player  ' + ev.command);
           out = null; full = '';
+        } else if (ev.type === 'news') {
+          openNews(); addMsg('tool', '', '▸ news opened in the reader window');
         } else if (ev.type === 'tool') {
           addMsg('tool', '', '▸ ' + ev.name + (ev.detail ? '  ' + ev.detail : ''));
           out = null; full = '';
