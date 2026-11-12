@@ -24,7 +24,7 @@ if (!fs.existsSync(path.join(WORKSPACE, 'CLAUDE.md'))) {
 }
 // ---------- settings (saved in settings.json in the data folder; edited from the Settings panel) ----------
 const SETTINGS_FILE = path.join(DATA, 'settings.json');
-// Drop audio files here: one is picked at random and played after the opening briefing, or under it.
+// Drop audio files here: one is picked at random and played after each briefing, or under it.
 const SONGS = path.join(DATA, 'songs');
 const SONG_TYPES = ['.mp3', '.m4a', '.aac', '.wav', '.aif', '.aiff', '.flac', '.caf'];
 const SONG_MIME = { '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.aac': 'audio/aac', '.wav': 'audio/wav', '.aif': 'audio/aiff', '.aiff': 'audio/aiff', '.flac': 'audio/flac', '.caf': 'audio/x-caf' };
@@ -66,17 +66,16 @@ const DEFAULTS = {
   // idleMinutes: a new conversation starts after this long without a word (0 = never). enabled: keep notes between conversations.
   memory: { enabled: true, idleMinutes: 30 },
   apps: { enabled: false },                      // use the selection in other apps and write at their cursor
-  // Opening briefing: what JARVIS volunteers when it starts up or when you greet it.
+  // Briefings: what JARVIS volunteers when it starts up or when you greet it, at any hour and as often as that happens.
   briefing: {
-    atLaunch: true,     // on the first launch of each day
-    onGreeting: true,   // when you say good morning, hello and so on
+    atLaunch: true,     // each time the app is opened
+    onGreeting: true,   // when you say hello, good morning and so on
     humour: true,       // a dry, nerdy line about its systems coming online
-    song: true,         // play a song from the songs folder with the opening briefing
+    song: true,         // play a song from the songs folder with every briefing
     songWhen: 'after',  // after = once the briefing has been spoken, during = under it, quietly while JARVIS talks
     items: { system: true, weather: true, calendar: true, date: true },
     news: 'top3',       // AI news: off, top3 = speak the three top stories, report = show the day's report on screen
   },
-  briefingLastDay: '',                             // transcript panel hidden by default
   tools: { web: true, calendar: process.env.JARVIS_CONNECTORS !== 'off' },
   location: null,
 };
@@ -131,16 +130,31 @@ function briefingItems() {
   const on = Object.keys(ITEM_TEXT).filter((k) => settings.briefing.items[k] && (k !== 'calendar' || settings.tools.calendar));
   return [...on.map((k) => ITEM_TEXT[k]), NEWS_TEXT[settings.briefing.news]].filter(Boolean).join('; ');
 }
-function bootPrompt() {
+// The same briefing whenever it is given: when the app is opened, or in answer to a greeting (the user's words are passed in).
+function bootPrompt(greeting) {
   const items = briefingItems();
+  const length = 'spoken aloud, in at most ' + (settings.briefing.news === 'top3' ? 'eight' : 'five') + ' short sentences.';
   return [
-    '<startup>You have just been switched on. Give your opening remarks, spoken aloud, in at most ' + (settings.briefing.news === 'top3' ? 'eight' : 'five') + ' short sentences.',
+    greeting
+      ? '<startup>The user has just greeted you with: "' + greeting.replace(/[<>"]/g, '') + '". Answer with your full briefing, in the language of the greeting, ' + length + ' Give it in full even if you have already given one in this conversation, with the readings as they are now.'
+      : '<startup>You have just been switched on. Give your opening remarks, ' + length,
     settings.briefing.humour
-      ? 'Begin with one original line of dry, nerdy humour about your own systems coming online, built on the real readings in the context block (processor load, memory, power, uptime). Invent it fresh each time; never quote films, books or other fictional machines.'
+      ? 'Begin with ' + (greeting ? 'a short greeting in return, then ' : '') + 'one original line of dry, nerdy humour about ' + (greeting ? 'the state of your own systems' : 'your own systems coming online') + ', built on the real readings in the context block (processor load, memory, power, uptime). Invent it fresh each time; never quote films, books or other fictional machines.'
       : 'Begin with a short greeting suited to the time of day.',
     items ? 'Then brief the user on: ' + items + '.' : '',
     'End by offering help in a few words.</startup>',
   ].filter(Boolean).join(' ');
+}
+// A message that is a greeting and nothing more, in English or French, with or without a name: it is answered with the briefing.
+function isGreeting(message) {
+  const names = [...Object.values(CHARACTERS).map((c) => c.name), ...ADDRESSES, 'there', 'again', 'monsieur', 'madame']
+    .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  return new RegExp('^\\s*(?:hey|hi|hello|good\\s+(?:morning|afternoon|evening|day)|morning|afternoon|evening|bonjour|bonsoir|salut|coucou)(?:[\\s,]+(?:' + names + '))*[\\s.!,]*$', 'i').test(message);
+}
+// Have today's news gathered before a briefing starts, without holding it up for long.
+function newsForBriefing() {
+  if (settings.briefing.news === 'off') return Promise.resolve();
+  return Promise.race([refreshNews().catch(() => {}), new Promise((r) => setTimeout(r, 12000))]);
 }
 const persona = () => [
   `You are ${character().name}, a personal assistant running locally on the user\'s Mac and speaking through a voice interface.`,
@@ -166,9 +180,6 @@ const persona = () => [
   'You can also put text on the user\'s screen, in a reader window beside you. Do this only when the user asks to see something: "show me", "put it on screen", "write it out", "display" and the like. Then say one or two spoken sentences giving the gist, and after them add a <screen> block holding the full written answer. Inside the block write simple Markdown: a first line starting with "# " as the title, "## " for section headings, short paragraphs, "- " or "1. " lists, **bold** for the few words that matter, and [links](https://…). When the answer draws on web pages, end the block with a "## Sources" section listing them as a numbered list of links. No tables, images or code fences. The block is shown, never read aloud: do not repeat its content in speech, never mention the tags, and never use it in a write_request reply.',
   'The daily AI news report has its own view in the reader window, with every day on record. When the user asks to see, show, open or display the news or the news report, never copy it into a <screen> block: give a brief spoken confirmation and end your reply with [[show: news]], which opens that view on today\'s report. The command is acted on and never read aloud. A <screen> block is for a written answer of your own, such as more detail on one story.',
   'You can control the music player on screen, which plays FIP radio or the user\'s own songs. To do so, end your reply with one command in double square brackets, after a brief spoken confirmation: [[music: fip]] for FIP radio, [[music: fip jazz]] for one of its stations (' + STATIONS.slice(1).join(', ') + '), [[music: songs]] for the user\'s songs, [[music: pause]], [[music: resume]], [[music: next]], [[music: volume up]] or [[music: volume down]]. The command is acted on and never read aloud. Use it only when the user asks for music or for a change to it. The context block says what the player is doing.',
-  settings.briefing.onGreeting && briefingItems()
-    ? 'When the user opens with a greeting such as good morning or hello, greet them back and then brief them on: ' + briefingItems() + '. Keep the briefing to a few sentences.'
-    : '',
   settings.instructions.trim() ? 'Standing instructions from the user: ' + settings.instructions.trim() : '',
 ].filter(Boolean).join(' ');
 
@@ -1004,6 +1015,7 @@ async function chat(message, res, extra = {}) {
   const context = await briefing();
   res.writeHead(200, { 'Content-Type': 'application/x-ndjson', 'Cache-Control': 'no-store' });
   const emit = (obj) => res.write(JSON.stringify(obj) + '\n');
+  if (extra.kind === 'briefing') emit({ type: 'briefing' });   // the page treats the reply as a briefing: song, news report
   const parts = [`<context>${context}${extra.player ? ' Music player: ' + extra.player + '.' : ''}</context>`];
   if (extra.selection) parts.push(`<selected_text>${extra.selection}</selected_text>`);
   if (extra.write) parts.push('<write_request>The user is in another app and wants text inserted at their cursor. Reply with only the text to insert: no preamble, no explanation, no quotation marks around it, plain text, as long as the request needs. If text is selected, it is the material to rewrite or answer.</write_request>');
@@ -1067,14 +1079,10 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (req.method === 'POST' && url.pathname === '/api/boot') {
-      // Opening remarks: once per day at launch, or whenever asked for with ?force=1.
-      const today = new Date().toDateString();
-      const due = url.searchParams.has('force') || (settings.briefing.atLaunch && settings.briefingLastDay !== today);
+      // Opening remarks: each time the app is opened, or whenever asked for with ?force=1.
+      const due = url.searchParams.has('force') || settings.briefing.atLaunch;
       if (!due || (agent && agent.turn)) return send(res, 204, '');
-      settings.briefingLastDay = today;
-      saveSettings();
-      // have today's news gathered before the briefing starts, without holding it up for long
-      if (settings.briefing.news !== 'off') await Promise.race([refreshNews().catch(() => {}), new Promise((r) => setTimeout(r, 12000))]);
+      await newsForBriefing();
       if (agent && agent.turn) return send(res, 204, '');
       return chat(bootPrompt(), res, { label: '(opening briefing)', kind: 'briefing' });
     }
@@ -1082,6 +1090,12 @@ const server = http.createServer(async (req, res) => {
       const { message, selection, write, player } = await readJson(req);
       if (!message || typeof message !== 'string') return send(res, 400, { error: 'message required' });
       if (agent && agent.turn) return send(res, 409, { error: 'busy' });
+      // a greeting is answered with the full briefing, whatever the hour and however often
+      if (settings.briefing.onGreeting && write !== true && !selection && isGreeting(message)) {
+        await newsForBriefing();
+        if (agent && agent.turn) return send(res, 409, { error: 'busy' });
+        return chat(bootPrompt(message.trim().slice(0, 80)), res, { label: message.trim().slice(0, 80), kind: 'briefing', player: typeof player === 'string' ? player.replace(/[<>]/g, '').slice(0, 300) : '' });
+      }
       return chat(message.slice(0, 20000), res, {
         selection: settings.apps.enabled && typeof selection === 'string' ? selection.slice(0, 8000) : '',
         write: settings.apps.enabled && write === true,
@@ -1106,7 +1120,6 @@ const server = http.createServer(async (req, res) => {
         if (next.voice[lang] && !installedVoices[lang].some((v) => v.name === next.voice[lang])) next.voice[lang] = '';
       }
       next.location = settings.location; // the town is changed through /api/location only
-      next.briefingLastDay = settings.briefingLastDay;
       if (!CHARACTERS[next.character]) next.character = settings.character;
       if (!ADDRESSES.includes(next.address)) next.address = settings.address;
       if (!NEWS_MODES.includes(next.briefing.news)) next.briefing.news = settings.briefing.news;

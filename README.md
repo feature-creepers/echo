@@ -1,6 +1,6 @@
 # JARVIS
 
-A personal voice assistant that runs on your Mac. Hold a key and talk; it answers aloud. It can search the web, read your Google Calendar, tell you the weather, brief you in the morning, gather a daily AI news report and play music: FIP radio or your own songs, from a Player panel or by asking. It reads and reports: nothing in it sends email, changes your calendar or edits files. The one thing it can write is text at your cursor, when you ask for that with its own shortcut.
+A personal voice assistant that runs on your Mac. Hold a key and talk; it answers aloud. It can search the web, read your Google Calendar, tell you the weather, brief you when you open it or greet it, gather a daily AI news report and play music: FIP radio or your own songs, from a Player panel or by asking. It reads and reports: nothing in it sends email, changes your calendar or edits files. The one thing it can write is text at your cursor, when you ask for that with its own shortcut.
 
 It uses Claude as its brain through the Claude Code command-line tool, on your own Claude subscription. There is no API key to set up.
 
@@ -71,7 +71,7 @@ Tell JARVIS about yourself in the context file (Settings → Assistant → Conte
 | `setup-signing.sh` | Run once: creates a local signing certificate so macOS keeps the app's permissions across builds. |
 | `workspace/CLAUDE.md` | Template for the context file. |
 
-Your own data lives outside the project, in `~/JARVIS`: `settings.json`, `history/`, `usage.jsonl` (the estimated cost and token counts of each reply), `workspace/memory.md` (lasting facts noted when a conversation ends), `workspace/news/` (the AI news report of each day, one Markdown file per day, opened with the News button), `workspace/` (the context file, and the only folder JARVIS can read), `songs/` (drop audio files here: the Player panel plays them in random order, and one is played after the opening briefing, or under it if you choose that in Settings) and `jarvis.log`.
+Your own data lives outside the project, in `~/JARVIS`: `settings.json`, `history/`, `usage.jsonl` (the estimated cost and token counts of each reply), `workspace/memory.md` (lasting facts noted when a conversation ends), `workspace/news/` (the AI news report of each day, one Markdown file per day, opened with the News button), `workspace/` (the context file, and the only folder JARVIS can read), `songs/` (drop audio files here: the Player panel plays them in random order, and one is played after each briefing, or under it if you choose that in Settings) and `jarvis.log`.
 
 ### What the agent is allowed to do
 

@@ -453,9 +453,9 @@
     </section>
 
     <section class="panel card">
-      <h2>Opening briefing</h2>
-      <div class="set"><label for="sBootLaunch">At the first launch of the day<small>JARVIS speaks first when you open it.</small></label><span class="ctl"><input type="checkbox" id="sBootLaunch"></span></div>
-      <div class="set"><label for="sBootGreet">When greeted<small>Say “good morning” and it answers with the briefing.</small></label><span class="ctl"><input type="checkbox" id="sBootGreet"></span></div>
+      <h2>Briefings</h2>
+      <div class="set"><label for="sBootLaunch">At launch<small>JARVIS speaks first each time you open it.</small></label><span class="ctl"><input type="checkbox" id="sBootLaunch"></span></div>
+      <div class="set"><label for="sBootGreet">When greeted<small>Say “hello” or “good morning”, at any hour and as often as you like, and it answers with the full briefing.</small></label><span class="ctl"><input type="checkbox" id="sBootGreet"></span></div>
       <div class="set"><label for="sBootFun">Boot-up humour<small>Opens with a dry, nerdy line about its systems.</small></label><span class="ctl"><input type="checkbox" id="sBootFun"></span></div>
       <div class="set stack"><span class="name">Include</span><span class="ctl">
         <label><input type="checkbox" id="sItDate"> Date</label>
@@ -464,8 +464,8 @@
         <label><input type="checkbox" id="sItCalendar"> Calendar</label>
       </span></div>
       <div class="set"><label for="sNews">AI news<small>Gathered once a day from public sites and kept in <span id="sNewsDir"></span>. Spoken as three top stories, or shown as the full report in the reader window.</small></label><span class="ctl"><button id="sNewsOpen">View report</button><select id="sNews"><option value="off">Off</option><option value="top3">Speak the top three</option><option value="report">Show the report</option></select></span></div>
-      <div class="set"><label for="sBootSong">Morning song<small>The Player plays a random song from <span id="sSongDir"></span>: once the briefing has been spoken, or under it, quietly while JARVIS talks.</small></label><span class="ctl"><button id="sSongs">Open folder</button><select id="sBootSong"><option value="off">Off</option><option value="after">After the briefing</option><option value="during">During the briefing</option></select></span></div>
-      <div class="set"><span class="name">Try it<small>Plays the opening now.</small></span><span class="ctl"><button id="sBootNow">Play now</button></span></div>
+      <div class="set"><label for="sBootSong">Briefing song<small>With every briefing, the Player plays a random song from <span id="sSongDir"></span>: once the briefing has been spoken, or under it, quietly while JARVIS talks.</small></label><span class="ctl"><button id="sSongs">Open folder</button><select id="sBootSong"><option value="off">Off</option><option value="after">After the briefing</option><option value="during">During the briefing</option></select></span></div>
+      <div class="set"><span class="name">Try it<small>Plays a briefing now.</small></span><span class="ctl"><button id="sBootNow">Play now</button></span></div>
     </section>
 
     <section class="panel card">
@@ -787,7 +787,7 @@ async function plNowPlaying() {
   } catch { plTrack(null); }
   plTimer = setTimeout(plNowPlaying, wait * 1000);
 }
-// Songs: a random one from the songs folder, then another, unless only one was asked for (the morning song).
+// Songs: a random one from the songs folder, then another, unless only one was asked for (the briefing song).
 async function plSongs(opts = {}) {
   const gen = ++pl.gen;
   pl.once = !!opts.once;
@@ -1083,7 +1083,7 @@ function say(text) {
     .then((r) => { if (r.status === 501) { serverVoice = false; browserSay(text, finish); } else finish(); })
     .catch(finish);
 }
-// The morning song: one song from the songs folder, started in the Player panel once the opening briefing has been
+// The briefing song: one song from the songs folder, started in the Player panel once a briefing has been
 // spoken, or as the briefing starts when the setting asks for it under the briefing.
 let songDue = false;
 function songDuring() { return !!(cfg && cfg.briefing.song && cfg.briefing.songWhen === 'during'); }
@@ -1124,9 +1124,7 @@ async function ask(text, opts = {}) {
       ? await api('/api/boot' + (opts.boot === 'force' ? '?force=1' : ''), { method: 'POST' })
       : await api('/api/chat', { method: 'POST', body: JSON.stringify({ message: text, selection: opts.selection || '', write: !!opts.write, player: plDescribe() }) });
     if (res.status === 204) throw null;   // no opening due today
-    briefed = !!opts.boot;
     if (!res.ok) throw new Error((await res.json()).error || res.statusText);
-    if (briefed && songDuring()) playSong();   // the song starts with the briefing and drops once JARVIS talks
     const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
     for (;;) {
       const { value, done } = await reader.read();
@@ -1137,7 +1135,10 @@ async function ask(text, opts = {}) {
         const line = buf.slice(0, nl); buf = buf.slice(nl + 1);
         if (!line) continue;
         const ev = JSON.parse(line);
-        if (ev.type === 'delta') {
+        if (ev.type === 'briefing') {   // a briefing, at launch or in answer to a greeting: every briefing setting applies
+          briefed = true;
+          if (songDuring()) playSong();   // the song starts with the briefing and drops once JARVIS talks
+        } else if (ev.type === 'delta') {
           if (!out) { out = addMsg('jarvis', charName, ''); $('lat').textContent = ((performance.now() - started) / 1000).toFixed(1) + 's'; }
           full += ev.text; out.textContent = full; $('log').scrollTop = $('log').scrollHeight;
           if (briefed && voiceOn && songDuring() && !briefHold) { briefHold = true; plDuck(true); }
