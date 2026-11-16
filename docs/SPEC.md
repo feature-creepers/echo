@@ -710,7 +710,7 @@ Easter eggs come later: Speak's seasonal themes and secret theme, and the pod-ba
 2. **A package exists for a stated reason**: it is a contract shared by two sides, a boundary between runtimes (Node, browser, phone), a part that can be swapped, or a part that both the core's side and the client's side use. There is no package per noun. Section 14.3 gives each package's reason.
 3. **Dependencies point inward**: applications, then adapters, then the core, then contracts. Never the reverse. Lint enforces this in CI.
 4. **Composition happens in one file.** Only `apps/server` knows both the core and its adapters.
-5. **Per-system code is contained.** A concern that differs by system is a folder with `darwin.ts`, `win32.ts`, `linux.ts` and an `index.ts` that picks one. No test of the running system appears anywhere else.
+5. **Per-system code is contained.** A concern that differs by system is a folder with one file per system (`darwin.ts`, `win32.ts`, `linux.ts`, or `unix.ts` when macOS and Linux behave the same) and an `index.ts` that picks one. No other product code tests which system is running.
 6. **A package exposes its entry points and nothing else.** Nothing imports another package's internal files.
 7. **Folders are named for what the code does.** No `utils`, `helpers`, `common` or `types` catch-alls.
 
@@ -833,6 +833,7 @@ packages/protocol/src/
 │   ├── request.ts
 │   └── files.ts  media.ts  system.ts  cursor.ts  screen.ts  notify.ts
 ├── replication/            exchange of records between cores (reserved for sync)
+├── launch.ts               the agreement between a core and the program that starts it on the same machine
 └── codec.ts                JSON messages and binary audio frames
 ```
 
@@ -1027,7 +1028,8 @@ apps/server/
 │   ├── compose.ts          wires the adapters into the core: the only file that knows both
 │   ├── config.ts           data folder, hardware tier, harnesses, listeners
 │   ├── listeners/
-│   │   ├── local.ts        Unix socket or Windows named pipe, for a client on this machine
+│   │   ├── local/          Unix socket or Windows named pipe, for a client on this machine
+│   │   │   └── endpoint/   where the core listens, per system: unix.ts · win32.ts · index.ts
 │   │   └── websocket.ts    remote clients (later)
 │   └── auth/               a local token now; account credentials later
 └── Dockerfile              the hosted form (later)

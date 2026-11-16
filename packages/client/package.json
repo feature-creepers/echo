@@ -5,13 +5,19 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./transports/local": "./src/transports/local.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
   },
   "dependencies": {
-    "@repo/protocol": "workspace:*",
-    "@repo/catalog": "workspace:*"
+    "@repo/catalog": "workspace:*",
+    "@repo/protocol": "workspace:*"
   },
   "devDependencies": {
-    "@repo/tsconfig": "workspace:*"
+    "@repo/tsconfig": "workspace:*",
+    "@types/node": "catalog:",
+    "vitest": "catalog:"
   }
 }

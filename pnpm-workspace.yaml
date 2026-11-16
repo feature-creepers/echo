@@ -3,11 +3,16 @@ packages:
   - packages/*
   - tooling/*
 
+# Install scripts of dependencies run only when allowed here. esbuild works without its script.
+allowBuilds:
+  esbuild: false
+
 # One version of each shared dependency for the whole workspace.
 # A package asks for it with "catalog:" instead of a version.
 catalog:
   '@eslint/js': ^10.0.1
   '@types/node': ^24.0.0
+  esbuild: ^0.28.2
   eslint: ^10.15.0
   prettier: ^3.10.1
   turbo: ^2.11.11

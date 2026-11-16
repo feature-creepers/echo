@@ -31,7 +31,13 @@ export const workspace = {
   models: { dir: 'packages/models', runtime: 'node', side: 'either', imports: [] },
 
   // Client side: never imports the core or an adapter.
-  client: { dir: 'packages/client', runtime: 'any', side: 'client', imports: ['protocol', 'catalog'], nodeOnly: ['src/transports/local/**'] },
+  client: {
+    dir: 'packages/client',
+    runtime: 'any',
+    side: 'client',
+    imports: ['protocol', 'catalog'],
+    nodeOnly: ['src/transports/local.ts', 'src/transports/local.test.ts']
+  },
   'ui-web': { dir: 'packages/ui-web', runtime: 'browser', side: 'client', imports: ['client', 'catalog', 'tokens'] },
 
   // Test doubles for the core's ports.

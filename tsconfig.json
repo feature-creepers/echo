@@ -39,6 +39,12 @@
     },
     {
       "path": "packages/testing"
+    },
+    {
+      "path": "packages/client/tsconfig.node.json"
+    },
+    {
+      "path": "apps/server"
     }
   ]
 }
