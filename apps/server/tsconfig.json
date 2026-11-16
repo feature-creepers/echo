@@ -5,6 +5,6 @@
     "outDir": "dist/types",
     "resolveJsonModule": true
   },
-  "include": ["src", "test", "package.json"],
+  "include": ["src", "test", "package.json", "vitest.config.ts"],
   "references": [{ "path": "../../packages/core" }, { "path": "../../packages/protocol" }]
 }

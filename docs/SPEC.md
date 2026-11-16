@@ -1112,28 +1112,30 @@ Not created yet: `native/`, `scripts/` and `e2e/` appear with their first conten
 
 ### 15.1 Taken on 16 November 2026
 
-| #   | Question                                | Decision                                                                                                                  |
-| --- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Generated interface                     | json-render, with UI SDK underneath for component behaviours                                                              |
-| 2   | Desktop shell                           | Electron                                                                                                                  |
-| 3   | Systems in version 1                    | Windows, macOS and Linux, all three. Later: a paid service for sync and a hosted core, and a native phone app (section 5) |
-| 4   | Input in version 1                      | Push to talk. Open conversation later                                                                                     |
-| 5   | Proof-of-concept features               | Briefing and music player early; the rest after the core works                                                            |
-| 6   | Speak                                   | Stays a separate product. Packages are shared; merging is decided later                                                   |
-| 7   | Product and persona names               | Working names, decided before distribution                                                                                |
-| 8   | The proof-of-concept files              | Removed from this branch; kept on `main`                                                                                  |
-| 9   | Import of the proof of concept's memory | Yes, as a one-off import, low priority                                                                                    |
-| 10  | Repository structure                    | Section 14, as written                                                                                                    |
-| 11  | Licence                                 | MIT                                                                                                                       |
+| #   | Question                                | Decision                                                                                                                                   |
+| --- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | Generated interface                     | json-render, with UI SDK underneath for component behaviours                                                                               |
+| 2   | Desktop shell                           | Electron                                                                                                                                   |
+| 3   | Systems in version 1                    | Windows, macOS and Linux, all three. Later: a paid service for sync and a hosted core, and a native phone app (section 5)                  |
+| 4   | Input in version 1                      | Push to talk. Open conversation later                                                                                                      |
+| 5   | Proof-of-concept features               | Briefing and music player early; the rest after the core works                                                                             |
+| 6   | Speak                                   | Stays a separate product. Packages are shared; merging is decided later                                                                    |
+| 7   | Product and persona names               | JARVIS is the repository's code name and the default persona, not the product's name. The product gets a name of its own, to choose (15.2) |
+| 8   | The proof-of-concept files              | Removed from this branch; kept on `main`                                                                                                   |
+| 9   | Import of the proof of concept's memory | Yes, as a one-off import, low priority                                                                                                     |
+| 10  | Repository structure                    | Section 14, as written                                                                                                                     |
+| 11  | Licence                                 | MIT                                                                                                                                        |
+| 12  | Credits                                 | Tommy Sendra and Rodolphe Barbanneau are co-authors and joint copyright holders, named in that order                                       |
 
 ### 15.2 Still open
 
-| Question                            | Recommendation                                                                 | Needed by                                              |
-| ----------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------ |
-| Where the paid service's code lives | A private repository, since this one is MIT                                    | The service design                                     |
-| Phone stack                         | React Native                                                                   | Before `ui-native`; nothing in version 1 depends on it |
-| Model access on a hosted core       | API adapter, unless both vendors' terms allow subscription sign-in on a server | The service design                                     |
-| Light-tier voice on Linux           | Measure Piper against Kokoro, after a licence check                            | Build step 0                                           |
+| Question                            | Recommendation                                                                                              | Needed by                                              |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| The product's name                  | A short word that is not a person's name, since personas carry the names; easy to say in French and English | Before the first public build                          |
+| Where the paid service's code lives | A private repository, since this one is MIT                                                                 | The service design                                     |
+| Phone stack                         | React Native                                                                                                | Before `ui-native`; nothing in version 1 depends on it |
+| Model access on a hosted core       | API adapter, unless both vendors' terms allow subscription sign-in on a server                              | The service design                                     |
+| Light-tier voice on Linux           | Measure Piper against Kokoro, after a licence check                                                         | Build step 0                                           |
 
 ## 16. Risks
 
