@@ -431,7 +431,7 @@
     <section class="panel card">
       <h2>Voice</h2>
       <div class="set"><label for="sVoiceOn">Speak replies<small>Read every reply aloud.</small></label><span class="ctl"><input type="checkbox" id="sVoiceOn"></span></div>
-      <div class="set"><label for="sVoice">Voice<small>Installed on this Mac for the speech language.</small></label><span class="ctl"><select id="sVoice"></select></span></div>
+      <div class="set"><label for="sVoice">Voice<small id="sVoiceNote">Installed on this Mac for the speech language.</small></label><span class="ctl"><select id="sVoice"></select></span></div>
       <div class="set"><label for="sRate">Speed<small><span id="sRateV">175</span> words per minute<span id="sRateNote"></span></small></label><span class="ctl"><input type="range" id="sRate" min="120" max="260" step="5"><button id="sRateDef" title="Back to the recommended speed">Default</button><button id="sTest">Test</button></span></div>
     </section>
 
@@ -535,7 +535,7 @@
             <li><b>Server:</b> a local Node.js program with no dependencies, reachable only from this Mac.</li>
             <li><b>Brain:</b> Claude, through the Claude Code command-line tool and your own Claude subscription. No API key.</li>
             <li><b>Listening:</b> Apple's speech recognition, built into macOS.</li>
-            <li><b>Speaking:</b> the Mac's own text-to-speech voices.</li>
+            <li><b>Speaking:</b> the Mac's own text-to-speech voices, or the optional Kokoro voices, which also run on this Mac.</li>
             <li><b>Weather:</b> Open-Meteo, a free service needing no account.</li>
             <li><b>Radio:</b> FIP's public streams from Radio France, needing no account.</li>
           </ul>
@@ -1311,7 +1311,20 @@ function paintSettings() {
   const lang = LANGS[langIdx].code.slice(0, 2);
   $('sVoiceOn').checked = cfg.voice.enabled;
   const auto = view.activeVoice[lang] || view.autoVoice[lang];
-  fill($('sVoice'), [['', 'Automatic' + (auto ? ' (' + auto + ')' : '')], ...view.voices[lang].map((n) => [n, n])], cfg.voice[lang]);
+  // The Mac's voices, then the Kokoro ones (English only, and only once Kokoro is set up)
+  const kokoro = lang === 'en' ? view.kokoroVoices : [];
+  const sel = $('sVoice');
+  sel.textContent = '';
+  const group = (label, options) => {
+    const g = label ? document.createElement('optgroup') : sel;
+    if (label) { g.label = label; sel.appendChild(g); }
+    for (const [val, text] of options) { const o = document.createElement('option'); o.value = val; o.textContent = text; g.appendChild(o); }
+  };
+  group('', [['', 'Automatic' + (auto ? ' (' + auto + ')' : '')]]);
+  group(kokoro.length ? 'Apple' : '', view.voices[lang].map((n) => [n, n]));
+  if (kokoro.length) group('Kokoro (British)', kokoro.map((v) => [v.id, v.name]));
+  sel.value = cfg.voice[lang];
+  $('sVoiceNote').textContent = kokoro.length ? 'Apple voices installed on this Mac, or Kokoro: more natural, with a short pause before it starts.' : 'Installed on this Mac for the speech language.';
   $('sRate').value = cfg.voice.rate; paintRate(cfg.voice.rate);
   fill($('sLang'), LANGS.map((l) => [l.code, l.name]), cfg.listen.language);
   $('sSounds').checked = cfg.listen.sounds;

@@ -9,7 +9,7 @@ TMP="$(mktemp -d)"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/public" "$APP/Contents/Resources/workspace"
-cp "$SRC/server.mjs" "$APP/Contents/Resources/"
+cp "$SRC/server.mjs" "$SRC/kokoro-tts.mjs" "$APP/Contents/Resources/"
 cp "$SRC/public/index.html" "$SRC/public/reader.html" "$APP/Contents/Resources/public/"
 cp "$SRC/app/workspace-template.md" "$APP/Contents/Resources/workspace/CLAUDE.md"
 

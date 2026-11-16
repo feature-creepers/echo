@@ -6,3 +6,6 @@ songs
 # market research, kept on this Mac only
 reports/
 research_notes/
+
+# the optional Kokoro voices, when JARVIS runs from this folder
+kokoro/

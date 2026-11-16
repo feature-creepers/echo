@@ -310,28 +310,129 @@ function voiceFor(lang) {
   const names = installedVoices[lang].map((v) => v.name);
   return (character().voices[lang] || []).find((v) => names.includes(v)) || autoVoice[lang];
 }
+
+// ---------- optional voice out through Kokoro, a speech model that runs on this Mac ----------
+// More natural than the Mac's voices, English only here. It is not part of the app: setup-kokoro.sh
+// installs it into the data folder, and until then Settings only offers the Mac's voices.
+// A helper process (kokoro-tts.mjs) keeps the model loaded and writes one sound file per sentence;
+// sentences are prepared as soon as they are queued, so the next one is ready while the current one plays.
+const KOKORO_DIR = process.env.JARVIS_KOKORO || path.join(DATA, 'kokoro');
+const KOKORO_VOICES = [
+  ['bm_george', 'George'], ['bm_lewis', 'Lewis'], ['bm_daniel', 'Daniel'], ['bm_fable', 'Fable'],
+  ['bf_emma', 'Emma'], ['bf_alice', 'Alice'], ['bf_isabella', 'Isabella'], ['bf_lily', 'Lily'],
+];
+const kokoroInstalled = () => fs.existsSync(path.join(KOKORO_DIR, 'node_modules', 'kokoro-js')) && fs.existsSync(path.join(KOKORO_DIR, 'models'));
+// The Kokoro voice chosen for a language, or null when the Mac's own voice speaks. Saved as "kokoro:<voice>".
+function kokoroVoice(lang) {
+  const m = /^kokoro:(\w+)$/.exec(settings.voice[lang] || '');
+  return m && lang === 'en' && KOKORO_VOICES.some(([id]) => id === m[1]) && kokoroInstalled() ? m[1] : null;
+}
+const KOKORO_TMP = path.join(os.tmpdir(), 'jarvis-kokoro-' + process.pid);
+let kokoro = null;      // { proc, ready, waiting: Map(id -> resolve) } while the helper runs
+let kokoroSeq = 0;
+let speechGen = 0;      // bumps on every hush, so sentences prepared for cancelled speech are dropped
+function kokoroStart() {
+  if (kokoro || !kokoroInstalled()) return;
+  fs.mkdirSync(KOKORO_TMP, { recursive: true });
+  const proc = spawn(process.execPath, [path.join(ROOT, 'kokoro-tts.mjs'), KOKORO_DIR], { stdio: ['pipe', 'pipe', 'ignore'] });
+  const me = kokoro = { proc, ready: false, waiting: new Map() };
+  let buf = '';
+  proc.stdout.on('data', (d) => {
+    buf += d;
+    let i;
+    while ((i = buf.indexOf('\n')) >= 0) {
+      let msg = null;
+      try { msg = JSON.parse(buf.slice(0, i)); } catch {}
+      buf = buf.slice(i + 1);
+      if (!msg) continue;
+      if (msg.ready) me.ready = true;
+      const resolve = me.waiting.get(msg.id);
+      if (resolve) { me.waiting.delete(msg.id); resolve(msg.ok === true); }
+    }
+  });
+  const gone = () => {
+    if (kokoro === me) kokoro = null;
+    for (const resolve of me.waiting.values()) resolve(false);
+    me.waiting.clear();
+  };
+  proc.on('error', gone);
+  proc.on('close', gone);
+  proc.stdin.on('error', () => {});
+}
+function kokoroStop() {
+  if (kokoro) kokoro.proc.kill();
+  kokoro = null;
+  fs.rmSync(KOKORO_TMP, { recursive: true, force: true });
+}
+// Keep the helper running only while a Kokoro voice is the one that would speak.
+function kokoroSync() {
+  if (settings.voice.enabled && kokoroVoice('en')) kokoroStart(); else kokoroStop();
+}
+// Start preparing a sentence. Resolves to the sound file, or null if Kokoro could not do it.
+function kokoroPrepare(text, voice) {
+  kokoroStart();
+  if (!kokoro) return Promise.resolve(null);
+  const id = ++kokoroSeq;
+  const out = path.join(KOKORO_TMP, id + '.wav');
+  const speed = Math.min(1.5, Math.max(0.6, settings.voice.rate / DEFAULT_RATE));
+  const me = kokoro;
+  return new Promise((resolve) => {
+    // the first sentence after a start also waits for the model to load, hence the generous limit
+    const timer = setTimeout(() => { me.waiting.delete(id); resolve(null); }, 45000);
+    me.waiting.set(id, (ok) => { clearTimeout(timer); resolve(ok ? out : null); });
+    me.proc.stdin.write(JSON.stringify({ id, gen: speechGen, text, voice, speed, out }) + '\n');
+  });
+}
+
 let speechQueue = [];
 let speakingProc = null;
-function speakNext() {
-  if (speakingProc || !speechQueue.length) return;
+let speaking = false;   // a sentence is being spoken, or its Kokoro sound is being awaited
+// Add a sentence to the queue. Kokoro starts on it at once, while earlier sentences are still playing.
+function enqueueSpeech(job) {
+  const voice = kokoroVoice(job.lang);
+  if (voice) job.wav = kokoroPrepare(job.text, voice);
+  speechQueue.push(job);
+  speakNext();
+}
+async function speakNext() {
+  if (speaking || !speechQueue.length) return;
+  speaking = true;
   const job = speechQueue.shift();
-  const args = ['-r', String(settings.voice.rate)];
-  if (voiceFor(job.lang)) args.push('-v', voiceFor(job.lang));
-  const proc = spawn('say', args, { stdio: ['pipe', 'ignore', 'ignore'] });
-  proc.stdin.end(job.text);
-  speakingProc = proc;
+  const gen = speechGen;
+  const file = job.wav ? await job.wav : null;
+  let proc = null;
+  if (gen === speechGen) {   // not hushed while the sound was being prepared
+    if (file) proc = spawn('afplay', [file], { stdio: 'ignore' });
+    else {
+      // the Mac's own voice; also the fallback when Kokoro fails
+      const args = ['-r', String(settings.voice.rate)];
+      if (voiceFor(job.lang)) args.push('-v', voiceFor(job.lang));
+      proc = spawn('say', args, { stdio: ['pipe', 'ignore', 'ignore'] });
+      proc.stdin.on('error', () => {});
+      proc.stdin.end(job.text);
+    }
+  }
+  let finished = false;
   const finish = () => {
+    if (finished) return;
+    finished = true;
+    if (file) fs.rm(file, { force: true }, () => {});
     if (speakingProc === proc) speakingProc = null;
+    speaking = false;
     job.done();
     speakNext();
   };
+  if (!proc) return finish();
+  speakingProc = proc;
   proc.on('error', finish);
   proc.on('close', finish);
 }
 function hush() {
+  speechGen++;
+  if (kokoro) kokoro.proc.stdin.write(JSON.stringify({ flush: speechGen }) + '\n');
   const waiting = speechQueue;
   speechQueue = [];
-  for (const job of waiting) job.done();
+  for (const job of waiting) { job.done(); if (job.wav) job.wav.then((f) => { if (f) fs.rm(f, { force: true }, () => {}); }); }
   if (speakingProc) speakingProc.kill();
 }
 // A random song from the songs folder, avoiding the one played last when there is a choice.
@@ -345,7 +446,7 @@ function pickSong() {
   lastSong = files[Math.floor(Math.random() * files.length)];
   return lastSong;
 }
-process.on('exit', () => { if (speakingProc) speakingProc.kill(); if (agent) agent.child.kill('SIGKILL'); });
+process.on('exit', () => { if (speakingProc) speakingProc.kill(); kokoroStop(); if (agent) agent.child.kill('SIGKILL'); });
 
 // ---------- weather (Open-Meteo: free, no account, no key) ----------
 // Only the town's coordinates are sent. The town is saved in settings.json in the data folder.
@@ -440,6 +541,8 @@ function settingsView() {
     languages: SPEECH_LANGS,
     voices: { en: installedVoices.en.map((v) => v.name), fr: installedVoices.fr.map((v) => v.name) },
     autoVoice,
+    // Kokoro voices on offer (English only); empty until setup-kokoro.sh has been run
+    kokoroVoices: kokoroInstalled() ? KOKORO_VOICES.map(([id, name]) => ({ id: 'kokoro:' + id, name })) : [],
     calendarConnected: calendarSeen,
     version: VERSION,
     dataDir: DATA.replace(os.homedir(), '~'),
@@ -1117,7 +1220,8 @@ const server = http.createServer(async (req, res) => {
       next.history.retentionDays = Math.min(3650, Math.max(1, Math.round(next.history.retentionDays) || 90));
       next.memory.idleMinutes = Math.min(1440, Math.max(0, Math.round(next.memory.idleMinutes) || 0));
       for (const lang of ['en', 'fr']) {
-        if (next.voice[lang] && !installedVoices[lang].some((v) => v.name === next.voice[lang])) next.voice[lang] = '';
+        const kokoroOk = lang === 'en' && kokoroInstalled() && KOKORO_VOICES.some(([id]) => 'kokoro:' + id === next.voice[lang]);
+        if (next.voice[lang] && !kokoroOk && !installedVoices[lang].some((v) => v.name === next.voice[lang])) next.voice[lang] = '';
       }
       next.location = settings.location; // the town is changed through /api/location only
       if (!CHARACTERS[next.character]) next.character = settings.character;
@@ -1126,6 +1230,7 @@ const server = http.createServer(async (req, res) => {
       if (!['after', 'during'].includes(next.briefing.songWhen)) next.briefing.songWhen = settings.briefing.songWhen;
       settings = next;
       saveSettings();
+      kokoroSync();
       // model, instructions and tools are fixed when the agent starts: restart it, keeping the conversation
       if (before !== JSON.stringify([settings.model, settings.instructions, settings.tools, settings.briefing, settings.character, settings.address, settings.memory.enabled])) stopAgent();
       if (!settings.memory.enabled) fs.rmSync(PENDING_FILE, { force: true });
@@ -1217,12 +1322,11 @@ const server = http.createServer(async (req, res) => {
       const { text, lang } = await readJson(req);
       if (!text || typeof text !== 'string') return send(res, 400, { error: 'text required' });
       let answered = false;
-      speechQueue.push({
+      return enqueueSpeech({
         text: text.slice(0, 3000),
         lang: lang === 'fr' ? 'fr' : 'en',
         done: () => { if (!answered) { answered = true; send(res, 200, { ok: true }); } },
       });
-      return speakNext();
     }
     if (req.method === 'GET' && url.pathname === '/api/player/song') {
       // A random song from the songs folder, for the Player panel. The page plays it; the server only hands it over.
@@ -1291,6 +1395,7 @@ server.on('error', (err) => {
   }
 });
 server.listen(PORT, HOST, () => {
+  kokoroSync();   // load the Kokoro voice now if it is the chosen one, so the first reply does not wait for it
   console.log(`JARVIS online at http://${HOST}:${PORT}  (model: ${settings.model}, brain: ${CLAUDE})`);
   console.log('Close this terminal or press Ctrl+C to shut it down.');
   startAgent(); // warm up, so the first question is answered quickly

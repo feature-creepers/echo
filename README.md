@@ -69,6 +69,8 @@ Tell JARVIS about yourself in the context file (Settings → Assistant → Conte
 | `public/reader.html` | The reader: a second, plain window that shows the news report or a written answer. |
 | `build-app.sh` | Compiles the Swift shell, assembles `JARVIS.app` and signs it for this Mac. |
 | `setup-signing.sh` | Run once: creates a local signing certificate so macOS keeps the app's permissions across builds. |
+| `setup-kokoro.sh` | Optional, run once: installs the Kokoro voices into `~/JARVIS/kokoro` (the `kokoro-js` package and a 310 MB speech model, about 750 MB in all). They then appear in Settings under Voice, for English. |
+| `kokoro-tts.mjs` | The helper the server starts when a Kokoro voice is chosen: keeps the speech model loaded (about 750 MB of memory) and turns each sentence into sound, on this Mac. |
 | `workspace/CLAUDE.md` | Template for the context file. |
 
 Your own data lives outside the project, in `~/JARVIS`: `settings.json`, `history/`, `usage.jsonl` (the estimated cost and token counts of each reply), `workspace/memory.md` (lasting facts noted when a conversation ends), `workspace/news/` (the AI news report of each day, one Markdown file per day, opened with the News button), `workspace/` (the context file, and the only folder JARVIS can read), `songs/` (drop audio files here: the Player panel plays them in random order, and one is played after each briefing, or under it if you choose that in Settings) and `jarvis.log`.
