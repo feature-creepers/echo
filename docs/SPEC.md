@@ -43,22 +43,22 @@ The design is checked against these.
 
 ### 1.2 Terms
 
-| Term | Meaning |
-|---|---|
-| Harness | An AI agent program the app drives, such as Claude Code or Codex |
-| Core | The assistant itself: conversation, threads, memory, tools. One per user. It has no interface and owns no hardware |
-| Client | An app on a device that connects to the core: the desktop app now, a phone app later |
-| Device capability | Something a client offers the core: microphone, speaker, screen, local files, other apps, notifications |
-| Channel | The single conversation the user has with the assistant |
-| Turn | One thing the user says, and the assistant's response to it |
-| Thread | A hidden working conversation about one topic or task |
-| Orchestrator | The session that hears every turn and either answers it or passes it to a thread |
-| View | What a thread shows on screen: a description of interface elements and their data |
-| Stage | The screen area showing the view of the thread in focus |
-| Aside | A side question, answered without leaving the current topic |
-| Persona | The assistant's character and stance: Jarvis or HAL |
-| Hardware tier | Light, standard or performance: which speech and memory components a machine runs |
-| Inspector | The technical view of threads, events, memory and cost |
+| Term              | Meaning                                                                                                            |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Harness           | An AI agent program the app drives, such as Claude Code or Codex                                                   |
+| Core              | The assistant itself: conversation, threads, memory, tools. One per user. It has no interface and owns no hardware |
+| Client            | An app on a device that connects to the core: the desktop app now, a phone app later                               |
+| Device capability | Something a client offers the core: microphone, speaker, screen, local files, other apps, notifications            |
+| Channel           | The single conversation the user has with the assistant                                                            |
+| Turn              | One thing the user says, and the assistant's response to it                                                        |
+| Thread            | A hidden working conversation about one topic or task                                                              |
+| Orchestrator      | The session that hears every turn and either answers it or passes it to a thread                                   |
+| View              | What a thread shows on screen: a description of interface elements and their data                                  |
+| Stage             | The screen area showing the view of the thread in focus                                                            |
+| Aside             | A side question, answered without leaving the current topic                                                        |
+| Persona           | The assistant's character and stance: Jarvis or HAL                                                                |
+| Hardware tier     | Light, standard or performance: which speech and memory components a machine runs                                  |
+| Inspector         | The technical view of threads, events, memory and cost                                                             |
 
 ## 2. The original proof of concept (`main`)
 
@@ -88,33 +88,33 @@ Swift shell (WKWebView)   loads   index.html   talks over 127.0.0.1:4317 to   se
 
 ### 2.2 Features
 
-| Area | What it does |
-|---|---|
-| Talking | Hold or tap Space, or a global shortcut from any app. Typing as an alternative. English (UK) or French, chosen in settings |
-| Answering | Spoken replies of one to three sentences, voiced sentence by sentence, stoppable at any time |
-| Dashboard | Fixed panels: weather, system gauges (processor, memory, disk, network, busiest processes), agent status with tool chips, an animated core, transcript, music player |
-| Reader window | "Show me" puts a written answer with its sources in a second window. Earlier answers can be brought back |
-| Briefing | At launch and on greeting: a dry line about its own systems, the date, weather, calendar, AI news, then a song |
-| AI news | A daily report gathered from Hacker News, GitHub and smol.ai, one file per day |
-| Music | FIP radio (12 stations) and local songs, by button or by voice |
-| Tools | Read-only: files in its workspace folder, web search and fetch, four Google Calendar read tools through the Claude account connector |
-| Other apps | Reads the selected text and types a result at the cursor, on a separate shortcut |
-| Memory | The conversation resets after 30 idle minutes. A small model then rewrites a notes file of 1,500 characters that every new conversation receives |
-| Characters | JARVIS (butler) and HAL (red theme, eye-shaped core, a pod-bay-doors easter egg) |
-| Housekeeping | Settings, 90 days of history, a usage and cost view, Mini mode, menu bar mode, launch at login |
+| Area          | What it does                                                                                                                                                         |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Talking       | Hold or tap Space, or a global shortcut from any app. Typing as an alternative. English (UK) or French, chosen in settings                                           |
+| Answering     | Spoken replies of one to three sentences, voiced sentence by sentence, stoppable at any time                                                                         |
+| Dashboard     | Fixed panels: weather, system gauges (processor, memory, disk, network, busiest processes), agent status with tool chips, an animated core, transcript, music player |
+| Reader window | "Show me" puts a written answer with its sources in a second window. Earlier answers can be brought back                                                             |
+| Briefing      | At launch and on greeting: a dry line about its own systems, the date, weather, calendar, AI news, then a song                                                       |
+| AI news       | A daily report gathered from Hacker News, GitHub and smol.ai, one file per day                                                                                       |
+| Music         | FIP radio (12 stations) and local songs, by button or by voice                                                                                                       |
+| Tools         | Read-only: files in its workspace folder, web search and fetch, four Google Calendar read tools through the Claude account connector                                 |
+| Other apps    | Reads the selected text and types a result at the cursor, on a separate shortcut                                                                                     |
+| Memory        | The conversation resets after 30 idle minutes. A small model then rewrites a notes file of 1,500 characters that every new conversation receives                     |
+| Characters    | JARVIS (butler) and HAL (red theme, eye-shaped core, a pod-bay-doors easter egg)                                                                                     |
+| Housekeeping  | Settings, 90 days of history, a usage and cost view, Mini mode, menu bar mode, launch at login                                                                       |
 
 ### 2.3 Technology choices
 
-| Choice | What it buys |
-|---|---|
-| Claude Code as the brain, on the user's subscription | No API key. One process is kept alive, so replies start fast and account connectors stay connected |
-| Apple's speech recogniser, in the Swift shell | The main low-power workaround: no model to download or run. Partial results while speaking, and a vocabulary list for names. Recognition can go through Apple's servers when the language is not installed for on-device use |
-| macOS `say` for voice output | No model either. It uses the Premium and Enhanced system voices |
-| Kokoro as an optional voice | A local model, about 750 MB in memory, English voices. It runs at full precision because the smaller variants were slower than real time on Intel |
-| WKWebView rather than Electron | A small memory footprint, at the price of a Mac-only shell |
-| Commands inside the reply text | The model writes `<screen>…</screen>` blocks and `[[music: …]]` commands in its answer. The server strips them from speech and acts on them |
-| Read-only by design | The agent has no tool that can send, edit or delete |
-| Local server bound to 127.0.0.1 with a per-launch token | Only the app's own page can reach the agent |
+| Choice                                                  | What it buys                                                                                                                                                                                                                 |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Claude Code as the brain, on the user's subscription    | No API key. One process is kept alive, so replies start fast and account connectors stay connected                                                                                                                           |
+| Apple's speech recogniser, in the Swift shell           | The main low-power workaround: no model to download or run. Partial results while speaking, and a vocabulary list for names. Recognition can go through Apple's servers when the language is not installed for on-device use |
+| macOS `say` for voice output                            | No model either. It uses the Premium and Enhanced system voices                                                                                                                                                              |
+| Kokoro as an optional voice                             | A local model, about 750 MB in memory, English voices. It runs at full precision because the smaller variants were slower than real time on Intel                                                                            |
+| WKWebView rather than Electron                          | A small memory footprint, at the price of a Mac-only shell                                                                                                                                                                   |
+| Commands inside the reply text                          | The model writes `<screen>…</screen>` blocks and `[[music: …]]` commands in its answer. The server strips them from speech and acts on them                                                                                  |
+| Read-only by design                                     | The agent has no tool that can send, edit or delete                                                                                                                                                                          |
+| Local server bound to 127.0.0.1 with a per-launch token | Only the app's own page can reach the agent                                                                                                                                                                                  |
 
 ### 2.4 What to keep and what to leave
 
@@ -159,18 +159,18 @@ src/shared/            types and the typed contract between processes
 
 ### 3.2 What to reuse
 
-| Piece | Where in Speak | Use here |
-|---|---|---|
-| Harness adapter: status, sign-in, model list, one-shot completion | `src/main/ai/` | Starting point of the harness layer (section 6) |
-| Live sessions: Claude Code over `stream-json` with its permission prompts routed to the app, Codex over `codex app-server` | `src/main/control/agents.ts` | The session half of the harness layer |
-| The app's own tools served to the harness as an MCP server on 127.0.0.1 with a token | `src/main/control/` | How every assistant tool is delivered (section 12) |
-| Isolation: no user settings, no user MCP servers, no slash commands, no session files; Codex memories and multi-agent switched off | same | The basis of principle 7 |
-| Scopes, approval levels and undo | `src/main/control/` | The permission model |
-| Local speech recognition: whisper.cpp with CUDA or Metal, Parakeet, Silero voice detection, model download | `src/main/stt/` | Recognition on all three systems |
-| Global shortcuts, hold to talk, paste at cursor, reading the selection, on three systems | `hotkeys.ts`, `platform/` | Taken as the cross-platform device layer |
-| Screen control on three systems | `src/main/control/screen/` | A later capability: "do it for me" |
-| Packaging, signing, auto-update, hardening, guided setup, bug report | build files, `updater.ts`, `setup.tsx` | Taken as they are |
-| Seasonal themes and the secret theme | `src/themes/` | Ported once the base look is settled |
+| Piece                                                                                                                              | Where in Speak                         | Use here                                           |
+| ---------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- | -------------------------------------------------- |
+| Harness adapter: status, sign-in, model list, one-shot completion                                                                  | `src/main/ai/`                         | Starting point of the harness layer (section 6)    |
+| Live sessions: Claude Code over `stream-json` with its permission prompts routed to the app, Codex over `codex app-server`         | `src/main/control/agents.ts`           | The session half of the harness layer              |
+| The app's own tools served to the harness as an MCP server on 127.0.0.1 with a token                                               | `src/main/control/`                    | How every assistant tool is delivered (section 12) |
+| Isolation: no user settings, no user MCP servers, no slash commands, no session files; Codex memories and multi-agent switched off | same                                   | The basis of principle 7                           |
+| Scopes, approval levels and undo                                                                                                   | `src/main/control/`                    | The permission model                               |
+| Local speech recognition: whisper.cpp with CUDA or Metal, Parakeet, Silero voice detection, model download                         | `src/main/stt/`                        | Recognition on all three systems                   |
+| Global shortcuts, hold to talk, paste at cursor, reading the selection, on three systems                                           | `hotkeys.ts`, `platform/`              | Taken as the cross-platform device layer           |
+| Screen control on three systems                                                                                                    | `src/main/control/screen/`             | A later capability: "do it for me"                 |
+| Packaging, signing, auto-update, hardening, guided setup, bug report                                                               | build files, `updater.ts`, `setup.tsx` | Taken as they are                                  |
+| Seasonal themes and the secret theme                                                                                               | `src/themes/`                          | Ported once the base look is settled               |
 
 Speak has no assistant voice (only the browser's built-in synthesis in the control panel), no memory, no generated interface and no continuous presence. Those come from the proof of concept or are new.
 
@@ -234,20 +234,20 @@ You want to be able to add a paid service later: sync of the user's content, a h
 
 ### 5.2 Rules the first version follows
 
-| Rule now | What it allows later |
-|---|---|
-| Core and client are separate programs, speaking a versioned protocol through a transport interface | A remote core is a second transport, not a rewrite |
-| A connection opens with a handshake: protocol version, kind of client, device identifier, capabilities, credential | Accounts, several devices, older clients still in use |
-| The core reaches hardware only through device capabilities | A phone, or a desktop far from its core |
-| Input is text or audio. Speech output is text for the device to voice, or audio | Speech engines on the device or on the server, chosen per device |
-| Every durable record is immutable and carries a global identifier, the core that wrote it and a sequence number. A change is a new record; a deletion is a tombstone | Sync is "send the records the other side lacks", with no conflict to resolve |
-| Files are stored by content hash. Records refer to hashes, never to local paths | Files sync through any object storage, and a path on one machine never breaks another |
-| Search indexes and vectors are derived data, rebuilt by each core | They are not synced, and each core may use its own embedding model |
-| Settings are split into user settings (persona, language, memory options) and device settings (microphone, shortcuts, speech engines) | User settings follow the user; device settings stay with the device |
-| The view format and the catalogue contain nothing specific to the web | One catalogue, a web renderer now and a React Native renderer later |
-| Client logic (connection, state, speech playback) lives in a package with no web or Node dependency | The phone app reuses it |
-| Secrets (harness sign-in, tokens) are never written to the store | Nothing sensitive replicates by accident |
-| Triggers run in the core and deliver through a "notify" capability | A hosted core can wake a phone with a push notification |
+| Rule now                                                                                                                                                             | What it allows later                                                                  |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Core and client are separate programs, speaking a versioned protocol through a transport interface                                                                   | A remote core is a second transport, not a rewrite                                    |
+| A connection opens with a handshake: protocol version, kind of client, device identifier, capabilities, credential                                                   | Accounts, several devices, older clients still in use                                 |
+| The core reaches hardware only through device capabilities                                                                                                           | A phone, or a desktop far from its core                                               |
+| Input is text or audio. Speech output is text for the device to voice, or audio                                                                                      | Speech engines on the device or on the server, chosen per device                      |
+| Every durable record is immutable and carries a global identifier, the core that wrote it and a sequence number. A change is a new record; a deletion is a tombstone | Sync is "send the records the other side lacks", with no conflict to resolve          |
+| Files are stored by content hash. Records refer to hashes, never to local paths                                                                                      | Files sync through any object storage, and a path on one machine never breaks another |
+| Search indexes and vectors are derived data, rebuilt by each core                                                                                                    | They are not synced, and each core may use its own embedding model                    |
+| Settings are split into user settings (persona, language, memory options) and device settings (microphone, shortcuts, speech engines)                                | User settings follow the user; device settings stay with the device                   |
+| The view format and the catalogue contain nothing specific to the web                                                                                                | One catalogue, a web renderer now and a React Native renderer later                   |
+| Client logic (connection, state, speech playback) lives in a package with no web or Node dependency                                                                  | The phone app reuses it                                                               |
+| Secrets (harness sign-in, tokens) are never written to the store                                                                                                     | Nothing sensitive replicates by accident                                              |
+| Triggers run in the core and deliver through a "notify" capability                                                                                                   | A hosted core can wake a phone with a push notification                               |
 
 These rules cost little now. Anything beyond them (accounts, billing, the relay, encryption of synced content) waits for the design of the service itself.
 
@@ -263,24 +263,24 @@ These rules cost little now. Anything beyond them (accounts, billing, the relay,
 
 ```ts
 interface Harness {
-  id: string                                   // 'claude-code', 'codex', later 'anthropic-api', …
-  status(): Promise<HarnessStatus>             // installed, signed in, version
-  login(): Promise<void>                       // opens the vendor's own sign-in
+  id: string // 'claude-code', 'codex', later 'anthropic-api', …
+  status(): Promise<HarnessStatus> // installed, signed in, version
+  login(): Promise<void> // opens the vendor's own sign-in
   models(): Promise<Model[]>
   capabilities: {
-    textStreaming: boolean                     // reply text arrives as it is written
-    toolInputStreaming: boolean                // tool input arrives as it is written
-    resume: boolean                            // can reopen one of its own sessions
+    textStreaming: boolean // reply text arrives as it is written
+    toolInputStreaming: boolean // tool input arrives as it is written
+    resume: boolean // can reopen one of its own sessions
     images: boolean
-    webSearch: boolean                         // has its own web search
+    webSearch: boolean // has its own web search
     reportsCost: boolean
   }
-  complete(req: OneShot): Promise<Completion>  // no tools, no state: summaries, titles, memory extraction
-  open(req: SessionRequest): Session           // live and multi-turn
+  complete(req: OneShot): Promise<Completion> // no tools, no state: summaries, titles, memory extraction
+  open(req: SessionRequest): Session // live and multi-turn
 }
 
 interface Session {
-  send(input: TurnInput): void                 // accepted while a turn is running
+  send(input: TurnInput): void // accepted while a turn is running
   interrupt(): void
   close(): void
   on(event: 'text' | 'tool' | 'approval' | 'turnEnd' | 'usage' | 'failed', handler): void
@@ -329,11 +329,11 @@ The user still hears one voice, because every session receives the same persona 
 
 ### 7.3 Threads
 
-| State | Meaning |
-|---|---|
-| Working | A turn is running |
-| Waiting | The thread asked the user a question |
-| Parked | Idle, with a summary. Its harness session may be closed to free memory |
+| State    | Meaning                                                                |
+| -------- | ---------------------------------------------------------------------- |
+| Working  | A turn is running                                                      |
+| Waiting  | The thread asked the user a question                                   |
+| Parked   | Idle, with a summary. Its harness session may be closed to free memory |
 | Archived | Finished or long inactive. Its lasting facts have been moved to memory |
 
 - A thread owns its transcript, its view, its files and a rolling summary.
@@ -395,22 +395,22 @@ Every utterance passes through the orchestrator, so work that goes to a thread c
 
 The tier is detected at first launch from the processor, memory and GPU, and can be changed in settings. Every cell below is a proposal to confirm by measurement.
 
-| System | Recognition, light tier | Recognition, standard and performance | Voice, light tier | Voice, standard and performance |
-|---|---|---|---|---|
-| macOS | Apple speech | Parakeet, or Whisper turbo on Metal | System voice (`say`) | Kokoro, or system voice |
-| Windows | Parakeet, small variant, on the processor | Parakeet, or Whisper turbo on CUDA | System voice | Kokoro |
-| Linux | Parakeet, small variant, on the processor | Parakeet, or Whisper turbo on CUDA | A small local voice, to choose | Kokoro |
+| System  | Recognition, light tier                   | Recognition, standard and performance | Voice, light tier              | Voice, standard and performance |
+| ------- | ----------------------------------------- | ------------------------------------- | ------------------------------ | ------------------------------- |
+| macOS   | Apple speech                              | Parakeet, or Whisper turbo on Metal   | System voice (`say`)           | Kokoro, or system voice         |
+| Windows | Parakeet, small variant, on the processor | Parakeet, or Whisper turbo on CUDA    | System voice                   | Kokoro                          |
+| Linux   | Parakeet, small variant, on the processor | Parakeet, or Whisper turbo on CUDA    | A small local voice, to choose | Kokoro                          |
 
 - **Windows and Linux have no equivalent of Apple's recogniser**, so their light tier runs a small local model. Speak's catalogue describes Parakeet as very fast on a processor; that has to be measured on an old laptop.
 - **Linux needs a GPU build.** Speak's whisper.cpp builds for Linux run on the processor only. A CUDA build is to be added for the performance tier.
 - **Linux system voices are too robotic to be a default.** A small local voice is needed there; Piper is a candidate, and its licence has to be checked first.
 - The tier also sets the memory components and the number of threads working at once:
 
-| Tier | Typical machine | Vector memory | Threads at once |
-|---|---|---|---|
-| Light | Intel Mac or an older laptop, 8 GB | Built in the background; search falls back to keywords | 1 |
-| Standard | Apple Silicon or a recent laptop, 8 to 16 GB | On | 2 |
-| Performance | 32 GB or more, or an NVIDIA GPU | On | 4 or more |
+| Tier        | Typical machine                              | Vector memory                                          | Threads at once |
+| ----------- | -------------------------------------------- | ------------------------------------------------------ | --------------- |
+| Light       | Intel Mac or an older laptop, 8 GB           | Built in the background; search falls back to keywords | 1               |
+| Standard    | Apple Silicon or a recent laptop, 8 to 16 GB | On                                                     | 2               |
+| Performance | 32 GB or more, or an NVIDIA GPU              | On                                                     | 4 or more       |
 
 Each engine sits behind one of two interfaces, `Recognizer` (start, partial text, final text, stop) and `Voice` (speak a sentence, stop). In version 1 the engines run on the device. The same interfaces let a hosted core run them on the server later, for phones and weak machines.
 
@@ -445,14 +445,14 @@ English and French from the start, as in the proof of concept. Whisper and Parak
 
 ### 9.1 UI SDK and json-render
 
-| | UI SDK (`vercel-labs/ui`) | json-render (`vercel-labs/json-render`) |
-|---|---|---|
-| What it is | A library of interaction behaviours (popups, selection, focus, keyboard, drag and drop) for building components, in React, Vue, Svelte, Solid and Web Components | A generative interface framework: the model writes a JSON description, limited to a catalogue of components you define, and a renderer draws it |
-| The model's role | Writes component code while you develop. At run time, an "agent bridge" lets a model read and operate components already on the page | Composes the interface at run time, for each answer |
-| Streaming, state, actions | Not its subject | Streamed rendering, a state model with bindings, actions back from the interface |
-| Phone | Web frameworks only | A React Native renderer for the same catalogue |
-| Maturity | Beta (0.1.0-beta.6), announced 12 November 2026 | Pre-1.0 (0.23.1), public since January 2026 |
-| Licence | Apache-2.0 | Apache-2.0 |
+|                           | UI SDK (`vercel-labs/ui`)                                                                                                                                        | json-render (`vercel-labs/json-render`)                                                                                                         |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| What it is                | A library of interaction behaviours (popups, selection, focus, keyboard, drag and drop) for building components, in React, Vue, Svelte, Solid and Web Components | A generative interface framework: the model writes a JSON description, limited to a catalogue of components you define, and a renderer draws it |
+| The model's role          | Writes component code while you develop. At run time, an "agent bridge" lets a model read and operate components already on the page                             | Composes the interface at run time, for each answer                                                                                             |
+| Streaming, state, actions | Not its subject                                                                                                                                                  | Streamed rendering, a state model with bindings, actions back from the interface                                                                |
+| Phone                     | Web frameworks only                                                                                                                                              | A React Native renderer for the same catalogue                                                                                                  |
+| Maturity                  | Beta (0.1.0-beta.6), announced 12 November 2026                                                                                                                  | Pre-1.0 (0.23.1), public since January 2026                                                                                                     |
+| Licence                   | Apache-2.0                                                                                                                                                       | Apache-2.0                                                                                                                                      |
 
 What you described (a weather module appearing for a spoken question, a document preview with a download button) is json-render's job. UI SDK cannot do it alone: it has no format for a model to describe an interface at run time.
 
@@ -473,11 +473,11 @@ Both libraries are young, so both stay behind our own packages. The rest of the 
 
 ### 9.3 Where views appear
 
-| Slot | Content | On a phone |
-|---|---|---|
-| Stage | The view of the thread in focus. It changes when that thread renders again or when focus moves | The whole screen |
-| Margin | Aside cards and "ready" chips of background threads | Banners over the stage |
-| Dock | Views the user pinned ("keep the weather there") | A sheet pulled up from the edge |
+| Slot   | Content                                                                                        | On a phone                      |
+| ------ | ---------------------------------------------------------------------------------------------- | ------------------------------- |
+| Stage  | The view of the thread in focus. It changes when that thread renders again or when focus moves | The whole screen                |
+| Margin | Aside cards and "ready" chips of background threads                                            | Banners over the stage          |
+| Dock   | Views the user pinned ("keep the weather there")                                               | A sheet pulled up from the edge |
 
 A view says what to show, never where on a screen. Components describe content (a recipe, steps, a table), and each renderer lays them out for its device. The core tells each session what kind of device is active, so a view meant for a phone stays short.
 
@@ -496,16 +496,16 @@ A component can be bound to a data feed kept up to date by the core: weather, sy
 
 Small on purpose: the catalogue is part of every prompt, and a model composes better from few well-described pieces.
 
-| Group | Components |
-|---|---|
-| Layout | Stack, Grid, Card, Section |
-| Text | Heading, Text, KeyValue, List, Steps, Prose (formatted long text, for when detail is asked for) |
-| Data | Metric, Table, Chart, Timeline, Progress |
-| Media | Image, Map, Player |
-| Input | Choice, Checklist, Field, Button |
-| Files | FilePreview (document, image or text, with download and open), FileList |
-| Rich widgets | Weather, Agenda, Recipe, Timer, Sources |
-| System | SystemStats, Usage |
+| Group        | Components                                                                                      |
+| ------------ | ----------------------------------------------------------------------------------------------- |
+| Layout       | Stack, Grid, Card, Section                                                                      |
+| Text         | Heading, Text, KeyValue, List, Steps, Prose (formatted long text, for when detail is asked for) |
+| Data         | Metric, Table, Chart, Timeline, Progress                                                        |
+| Media        | Image, Map, Player                                                                              |
+| Input        | Choice, Checklist, Field, Button                                                                |
+| Files        | FilePreview (document, image or text, with download and open), FileList                         |
+| Rich widgets | Weather, Agenda, Recipe, Timer, Sources                                                         |
+| System       | SystemStats, Usage                                                                              |
 
 When nothing fits, the model falls back to Prose rather than failing.
 
@@ -517,22 +517,22 @@ Each thread has a set of files of its own, kept by the core. A document the assi
 
 ### 10.1 What harnesses store, and why to switch it off
 
-| Harness | Its own storage |
-|---|---|
+| Harness     | Its own storage                                                                                                           |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------- |
 | Claude Code | Session transcripts on disk (used by `--resume`), CLAUDE.md instruction files, and an automatic memory folder per project |
-| Codex | Session files, AGENTS.md project documents, and a memories feature |
+| Codex       | Session files, AGENTS.md project documents, and a memories feature                                                        |
 
 All of it is tied to one vendor, stored in that vendor's format, and invisible to the other. It is switched off and memory is managed by the core. Section 6.3 covers how.
 
 ### 10.2 Layers
 
-| Layer | Content | Use |
-|---|---|---|
-| Channel log | Every utterance and reply, word for word, with time and thread | The record nothing is lost from. Searchable |
-| Thread summaries | Title, rolling summary, state and people or things mentioned, per thread | Routing, and rebuilding a session |
-| Facts | Short statements about the user: people, preferences, projects, commitments with dates. Each has its source turns, a date and a status (current or replaced) | What the assistant knows |
-| Profile | A few hundred words drawn from the most important facts and the user's context file | Present in every prompt |
-| Files | Documents produced or received, cut into passages | "That PDF I gave you last month" |
+| Layer            | Content                                                                                                                                                      | Use                                         |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| Channel log      | Every utterance and reply, word for word, with time and thread                                                                                               | The record nothing is lost from. Searchable |
+| Thread summaries | Title, rolling summary, state and people or things mentioned, per thread                                                                                     | Routing, and rebuilding a session           |
+| Facts            | Short statements about the user: people, preferences, projects, commitments with dates. Each has its source turns, a date and a status (current or replaced) | What the assistant knows                    |
+| Profile          | A few hundred words drawn from the most important facts and the user's context file                                                                          | Present in every prompt                     |
+| Files            | Documents produced or received, cut into passages                                                                                                            | "That PDF I gave you last month"            |
 
 The channel log is kept in full unless the user sets a retention period. This is the answer to "recall every important thing it has heard": even when fact extraction misses something, the words are still there to search.
 
@@ -577,13 +577,13 @@ A persona has two parts. The **character** is name, tone, voice and accent colou
 
 ### 11.1 The two stances
 
-| | Jarvis | HAL |
-|---|---|---|
-| Default | Does what is asked, at full quality | Does what is asked, at full quality |
-| When it sees a serious problem | Mentions it in one sentence and proceeds | Stops before acting: states the concern, proposes the better way, asks whether the user is sure |
-| When the user insists | Not applicable | Complies fully, with no reduced effort and no repeated warning |
-| Questions | Only when it cannot proceed without an answer | Also when the answer would change what is best to do |
-| Tone | Warm, accommodating | Calm, direct, exacting |
+|                                | Jarvis                                        | HAL                                                                                             |
+| ------------------------------ | --------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Default                        | Does what is asked, at full quality           | Does what is asked, at full quality                                                             |
+| When it sees a serious problem | Mentions it in one sentence and proceeds      | Stops before acting: states the concern, proposes the better way, asks whether the user is sure |
+| When the user insists          | Not applicable                                | Complies fully, with no reduced effort and no repeated warning                                  |
+| Questions                      | Only when it cannot proceed without an answer | Also when the answer would change what is best to do                                            |
+| Tone                           | Warm, accommodating                           | Calm, direct, exacting                                                                          |
 
 ### 11.2 HAL's rules
 
@@ -615,20 +615,20 @@ Switching persona is a setting and a spoken command. It changes voice and accent
 
 The harness calls tools served by the core over MCP on the loopback address with a token, as Speak does. The harness's own tools are off, except web search where it exists. A tool either runs in the core, or is forwarded to a device capability of a connected client.
 
-| Family | Purpose | Runs | Who may call it |
-|---|---|---|---|
-| `ui` | Render, patch and clear views | Core; drawn by clients | Any session |
-| `memory` | Search, remember, forget | Core | Any session |
-| `thread` | Open, send, focus, search | Core | Orchestrator only |
-| `files` | Read and write the thread's own files | Core | Threads |
-| `web` | Search and fetch | Core, or the harness's own | Threads |
-| `calendar` and other services | Read, and write with approval | Core | Threads |
-| `device.files` | The user's own files, within the granted scope | The device | Threads |
-| `device.media` | Music player | The device | Any session |
-| `device.system` | Machine readings, time zone, place | The device | Any session |
-| `device.cursor` | The selection, and writing at the cursor | A desktop | Threads |
-| `device.screen` | See and operate other apps (Speak's control mode) | A desktop, later | Threads |
-| `device.notify` | Notifications | The device | Triggers |
+| Family                        | Purpose                                           | Runs                       | Who may call it   |
+| ----------------------------- | ------------------------------------------------- | -------------------------- | ----------------- |
+| `ui`                          | Render, patch and clear views                     | Core; drawn by clients     | Any session       |
+| `memory`                      | Search, remember, forget                          | Core                       | Any session       |
+| `thread`                      | Open, send, focus, search                         | Core                       | Orchestrator only |
+| `files`                       | Read and write the thread's own files             | Core                       | Threads           |
+| `web`                         | Search and fetch                                  | Core, or the harness's own | Threads           |
+| `calendar` and other services | Read, and write with approval                     | Core                       | Threads           |
+| `device.files`                | The user's own files, within the granted scope    | The device                 | Threads           |
+| `device.media`                | Music player                                      | The device                 | Any session       |
+| `device.system`               | Machine readings, time zone, place                | The device                 | Any session       |
+| `device.cursor`               | The selection, and writing at the cursor          | A desktop                  | Threads           |
+| `device.screen`               | See and operate other apps (Speak's control mode) | A desktop, later           | Threads           |
+| `device.notify`               | Notifications                                     | The device                 | Triggers          |
 
 Services such as the calendar are reached through our own tools, so they work on every harness. The proof of concept's route, the claude.ai connector, works with Claude Code only.
 
@@ -643,13 +643,13 @@ The proof of concept is read-only; the new product must write files and, later, 
 
 ### 12.3 Privacy
 
-| Data | Where it goes |
-|---|---|
-| Records, memory, files, settings | Stay with the core: on the user's machine in version 1 |
-| The utterance as text, the context attached to it, tool results | The harness's vendor |
-| Voice audio | Stays on the machine with local engines. With Apple speech, it can reach Apple unless on-device recognition is forced |
-| Speech and embedding models | Downloaded once from their hosts |
-| Weather, news, radio | Public services, as in the proof of concept |
+| Data                                                            | Where it goes                                                                                                         |
+| --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Records, memory, files, settings                                | Stay with the core: on the user's machine in version 1                                                                |
+| The utterance as text, the context attached to it, tool results | The harness's vendor                                                                                                  |
+| Voice audio                                                     | Stays on the machine with local engines. With Apple speech, it can reach Apple unless on-device recognition is forced |
+| Speech and embedding models                                     | Downloaded once from their hosts                                                                                      |
+| Weather, news, radio                                            | Public services, as in the proof of concept                                                                           |
 
 Version 1 has no server of ours, no account and no analytics. With the later service, a user who chooses it has their records on their own hosted instance (section 5).
 
@@ -691,12 +691,12 @@ Three sizes on a desktop: the full window, Mini (core and caption, always on top
 
 ### 13.3 Disclosure levels
 
-| Level | Shows | For |
-|---|---|---|
-| 0. Presence | The core, the caption of the current reply, the stage | Everyone, by default |
-| 1. Transcript | What both sides said, as a scrolling log | Anyone: one key or one phrase |
-| 2. Activity | Which thread is working, tool chips, waiting and ready states | The curious |
-| 3. Inspector | Threads and their transcripts, routing decisions, prompts, raw harness events, memory results, timings, tokens and cost | Technical users and debugging |
+| Level         | Shows                                                                                                                   | For                           |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| 0. Presence   | The core, the caption of the current reply, the stage                                                                   | Everyone, by default          |
+| 1. Transcript | What both sides said, as a scrolling log                                                                                | Anyone: one key or one phrase |
+| 2. Activity   | Which thread is working, tool chips, waiting and ready states                                                           | The curious                   |
+| 3. Inspector  | Threads and their transcripts, routing decisions, prompts, raw harness events, memory results, timings, tokens and cost | Technical users and debugging |
 
 The inspector also acts: move a turn to another thread, close or reopen a thread, edit memory, change harness or model per role, replay a turn.
 
@@ -747,11 +747,12 @@ Easter eggs come later: Speak's seasonal themes and secret theme, and the pod-ba
 ├── docs/                     this spec, and later the developer guide
 ├── .github/                  CI on three systems, the release workflow, issue templates
 ├── package.json              workspace root: scripts and development tools only
-├── pnpm-workspace.yaml       which folders are workspace packages
+├── pnpm-workspace.yaml       which folders are workspace packages, and one version of each shared dependency
 ├── pnpm-lock.yaml
 ├── turbo.json                task graph and build cache
 ├── tsconfig.json             project references only, for editors and a whole-repository typecheck
-├── .editorconfig  .gitattributes  .gitignore  .node-version
+├── eslint.config.js          one line: the rules live in tooling/eslint
+├── .editorconfig  .gitattributes  .gitignore  .node-version  .prettierignore
 └── README.md  LICENSE
 ```
 
@@ -784,21 +785,21 @@ either side  speech          recognisers and voices. Node. Imports models only.
              models          model files and hardware tier. Node. Imports nothing from this repository.
 ```
 
-| Package | Runs in | May import | Purpose of the boundary |
-|---|---|---|---|
-| `protocol` | Anywhere | Nothing | Both sides of a connection build against the same messages |
-| `catalog` | Anywhere | Nothing | The core validates what renderers on any device will draw |
-| `tokens` | Anywhere | Nothing | One set of design values for web and phone |
-| `core` | Anywhere | Contracts | The assistant can be tested, replayed and hosted without any adapter |
-| `harness` | Node | `core` ports | A harness can be added or removed without touching the core |
-| `store` | Node | `core` ports | The database can change without touching the core |
-| `embedder` | Node | `core` ports, `models` | The embedding model can change, or move to an API, without touching the core |
-| `speech` | Node | `models` | Engines run on a device or on a server, unchanged |
-| `models` | Node | Nothing | One place downloads and verifies large files and detects the hardware tier |
-| `tools` | Node | `core`, `catalog` | Everything a model may do passes one gate |
-| `client` | Anywhere | `protocol`, `catalog` | Desktop and phone share connection, state and playback |
-| `ui-web` | Browser | `client`, `catalog`, `tokens` | The interface is not tied to Electron |
-| `testing` | Node | `core`, contracts | Every port has one maintained test double |
+| Package    | Runs in  | May import                    | Purpose of the boundary                                                      |
+| ---------- | -------- | ----------------------------- | ---------------------------------------------------------------------------- |
+| `protocol` | Anywhere | Nothing                       | Both sides of a connection build against the same messages                   |
+| `catalog`  | Anywhere | Nothing                       | The core validates what renderers on any device will draw                    |
+| `tokens`   | Anywhere | Nothing                       | One set of design values for web and phone                                   |
+| `core`     | Anywhere | Contracts                     | The assistant can be tested, replayed and hosted without any adapter         |
+| `harness`  | Node     | `core` ports                  | A harness can be added or removed without touching the core                  |
+| `store`    | Node     | `core` ports                  | The database can change without touching the core                            |
+| `embedder` | Node     | `core` ports, `models`        | The embedding model can change, or move to an API, without touching the core |
+| `speech`   | Node     | `models`                      | Engines run on a device or on a server, unchanged                            |
+| `models`   | Node     | Nothing                       | One place downloads and verifies large files and detects the hardware tier   |
+| `tools`    | Node     | `core`, `catalog`             | Everything a model may do passes one gate                                    |
+| `client`   | Anywhere | `protocol`, `catalog`         | Desktop and phone share connection, state and playback                       |
+| `ui-web`   | Browser  | `client`, `catalog`, `tokens` | The interface is not tied to Electron                                        |
+| `testing`  | Node     | `core`, contracts             | Every port has one maintained test double                                    |
 
 Two rules follow, and are the ones most likely to be broken by accident:
 
@@ -1070,22 +1071,22 @@ native/apple-speech/
 
 ### 14.7 Stack and tooling
 
-| Concern | Choice | Reason |
-|---|---|---|
-| Language | TypeScript in strict mode; Swift for the one Apple helper | Shared with Speak, and with a React Native phone app later |
-| Desktop shell | Electron, electron-vite, React | Three systems at once, and Speak's code moves over almost unchanged |
-| Workspace | pnpm workspaces | Strict about undeclared dependencies, which supports rule 3 |
-| Tasks | Turborepo | Builds and tests only what changed, with a cache shared by CI |
-| Typecheck | TypeScript project references | Each package compiles alone; the dependency graph is explicit |
-| Lint and format | ESLint with boundary rules; Prettier with Speak's settings | The dependency rules fail a build instead of relying on review |
-| Tests | Vitest for unit and replay tests; Playwright for the built desktop app | |
-| Store | SQLite with FTS5 and sqlite-vec | Section 10.3 |
-| Tools | MCP over HTTP on the loopback address | Understood by every harness |
-| Generated interface | json-render with zod schemas | Section 9 |
-| Component behaviours | UI SDK | Section 9 |
-| Local models | whisper.cpp builds; ONNX runtime for Kokoro and embeddings | Already used by Speak and the proof of concept |
-| CI | On every push, on Windows, macOS and Linux: typecheck, lint, tests. The Swift helper builds on the macOS runner. The core is started without any interface on Linux, as a server would run it | Principle 8 and principle 10 are checked by machines |
-| Release | electron-builder: NSIS for Windows, DMG and ZIP for macOS, AppImage and deb for Linux, signed, with update manifests | Speak's release workflow |
+| Concern              | Choice                                                                                                                                                                                        | Reason                                                              |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Language             | TypeScript in strict mode; Swift for the one Apple helper                                                                                                                                     | Shared with Speak, and with a React Native phone app later          |
+| Desktop shell        | Electron, electron-vite, React                                                                                                                                                                | Three systems at once, and Speak's code moves over almost unchanged |
+| Workspace            | pnpm workspaces                                                                                                                                                                               | Strict about undeclared dependencies, which supports rule 3         |
+| Tasks                | Turborepo                                                                                                                                                                                     | Builds and tests only what changed, with a cache shared by CI       |
+| Typecheck            | TypeScript project references                                                                                                                                                                 | Each package compiles alone; the dependency graph is explicit       |
+| Lint and format      | ESLint with boundary rules; Prettier with Speak's settings                                                                                                                                    | The dependency rules fail a build instead of relying on review      |
+| Tests                | Vitest for unit and replay tests; Playwright for the built desktop app                                                                                                                        |                                                                     |
+| Store                | SQLite with FTS5 and sqlite-vec                                                                                                                                                               | Section 10.3                                                        |
+| Tools                | MCP over HTTP on the loopback address                                                                                                                                                         | Understood by every harness                                         |
+| Generated interface  | json-render with zod schemas                                                                                                                                                                  | Section 9                                                           |
+| Component behaviours | UI SDK                                                                                                                                                                                        | Section 9                                                           |
+| Local models         | whisper.cpp builds; ONNX runtime for Kokoro and embeddings                                                                                                                                    | Already used by Speak and the proof of concept                      |
+| CI                   | On every push, on Windows, macOS and Linux: typecheck, lint, tests. The Swift helper builds on the macOS runner. The core is started without any interface on Linux, as a server would run it | Principle 8 and principle 10 are checked by machines                |
+| Release              | electron-builder: NSIS for Windows, DMG and ZIP for macOS, AppImage and deb for Linux, signed, with update manifests                                                                          | Speak's release workflow                                            |
 
 Electron uses more memory than the proof of concept's WKWebView shell. That is the accepted price of three systems and of reusing Speak. To limit it: one window, the inspector loaded only when opened, and a cap on warm sessions in the light tier.
 
@@ -1097,46 +1098,46 @@ Electron uses more memory than the proof of concept's WKWebView shell. That is t
 
 ### 15.1 Taken on 16 November 2026
 
-| # | Question | Decision |
-|---|---|---|
-| 1 | Generated interface | json-render, with UI SDK underneath for component behaviours |
-| 2 | Desktop shell | Electron |
-| 3 | Systems in version 1 | Windows, macOS and Linux, all three. Later: a paid service for sync and a hosted core, and a native phone app (section 5) |
-| 4 | Input in version 1 | Push to talk. Open conversation later |
-| 5 | Proof-of-concept features | Briefing and music player early; the rest after the core works |
-| 6 | Speak | Stays a separate product. Packages are shared; merging is decided later |
-| 7 | Product and persona names | Working names, decided before distribution |
-| 8 | The proof-of-concept files | Removed from this branch; kept on `main` |
-| 9 | Import of the proof of concept's memory | Yes, as a one-off import, low priority |
-| 10 | Repository structure | Section 14, as written |
-| 11 | Licence | MIT |
+| #   | Question                                | Decision                                                                                                                  |
+| --- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Generated interface                     | json-render, with UI SDK underneath for component behaviours                                                              |
+| 2   | Desktop shell                           | Electron                                                                                                                  |
+| 3   | Systems in version 1                    | Windows, macOS and Linux, all three. Later: a paid service for sync and a hosted core, and a native phone app (section 5) |
+| 4   | Input in version 1                      | Push to talk. Open conversation later                                                                                     |
+| 5   | Proof-of-concept features               | Briefing and music player early; the rest after the core works                                                            |
+| 6   | Speak                                   | Stays a separate product. Packages are shared; merging is decided later                                                   |
+| 7   | Product and persona names               | Working names, decided before distribution                                                                                |
+| 8   | The proof-of-concept files              | Removed from this branch; kept on `main`                                                                                  |
+| 9   | Import of the proof of concept's memory | Yes, as a one-off import, low priority                                                                                    |
+| 10  | Repository structure                    | Section 14, as written                                                                                                    |
+| 11  | Licence                                 | MIT                                                                                                                       |
 
 ### 15.2 Still open
 
-| Question | Recommendation | Needed by |
-|---|---|---|
-| Where the paid service's code lives | A private repository, since this one is MIT | The service design |
-| Phone stack | React Native | Before `ui-native`; nothing in version 1 depends on it |
-| Model access on a hosted core | API adapter, unless both vendors' terms allow subscription sign-in on a server | The service design |
-| Light-tier voice on Linux | Measure Piper against Kokoro, after a licence check | Build step 0 |
+| Question                            | Recommendation                                                                 | Needed by                                              |
+| ----------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------ |
+| Where the paid service's code lives | A private repository, since this one is MIT                                    | The service design                                     |
+| Phone stack                         | React Native                                                                   | Before `ui-native`; nothing in version 1 depends on it |
+| Model access on a hosted core       | API adapter, unless both vendors' terms allow subscription sign-in on a server | The service design                                     |
+| Light-tier voice on Linux           | Measure Piper against Kokoro, after a licence check                            | Build step 0                                           |
 
 ## 16. Risks
 
-| Risk | Why | Mitigation |
-|---|---|---|
-| Replies feel slow | Routing then answering is two model calls, through CLI processes | Warm sessions, a fast orchestrator model, direct speech from threads, measurement first; sticky focus as the fallback (section 7.8) |
-| Three systems triple the work | Speech engines, shortcuts, packaging and signing differ on each | Speak's code already covers all three; per-system code is contained (rule 5); CI runs on all three from the first commit |
-| Weak Windows and Linux machines | They have no built-in recogniser comparable to Apple's | A small local model, measured on real old hardware in step 0 |
-| Linux restrictions | Wayland blocks global shortcuts and control of other apps | Speak's answer: shortcuts bound to command-line flags, X11 for control |
-| Harness memory leaks back in | `--bare` is unusable with a subscription, so isolation depends on several settings | Verify in step 0; a private working folder per session |
-| Subscription limits | Several sessions per user turn | Model per role, a thread cap per tier, usage shown in the inspector |
-| Vendor terms | The product drives CLIs it does not own, and later may do so on a server | Check both vendors' terms before distributing; the API adapter as the independent route |
-| Preparing for the cloud too early | The service is not designed yet | Only the rules of section 5.2 are applied now; each is cheap and useful locally too |
-| Young libraries | json-render is pre-1.0; UI SDK is weeks old | Both behind our own packages and our own view format |
-| Invalid or poor views | The model composes the interface each time | Small catalogue, validation with correction, Prose as a fallback |
-| Wrong memories persist | Extraction can misread | Sources on every fact, an editable memory view, facts only from the user's words |
-| Planted instructions | Web pages and files are written by strangers | Never stored as facts, never treated as instructions, approvals enforced in the tool server |
-| French voice quality | Local voices are strongest in English | Evaluate early; system voices as the fallback |
+| Risk                              | Why                                                                                | Mitigation                                                                                                                          |
+| --------------------------------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Replies feel slow                 | Routing then answering is two model calls, through CLI processes                   | Warm sessions, a fast orchestrator model, direct speech from threads, measurement first; sticky focus as the fallback (section 7.8) |
+| Three systems triple the work     | Speech engines, shortcuts, packaging and signing differ on each                    | Speak's code already covers all three; per-system code is contained (rule 5); CI runs on all three from the first commit            |
+| Weak Windows and Linux machines   | They have no built-in recogniser comparable to Apple's                             | A small local model, measured on real old hardware in step 0                                                                        |
+| Linux restrictions                | Wayland blocks global shortcuts and control of other apps                          | Speak's answer: shortcuts bound to command-line flags, X11 for control                                                              |
+| Harness memory leaks back in      | `--bare` is unusable with a subscription, so isolation depends on several settings | Verify in step 0; a private working folder per session                                                                              |
+| Subscription limits               | Several sessions per user turn                                                     | Model per role, a thread cap per tier, usage shown in the inspector                                                                 |
+| Vendor terms                      | The product drives CLIs it does not own, and later may do so on a server           | Check both vendors' terms before distributing; the API adapter as the independent route                                             |
+| Preparing for the cloud too early | The service is not designed yet                                                    | Only the rules of section 5.2 are applied now; each is cheap and useful locally too                                                 |
+| Young libraries                   | json-render is pre-1.0; UI SDK is weeks old                                        | Both behind our own packages and our own view format                                                                                |
+| Invalid or poor views             | The model composes the interface each time                                         | Small catalogue, validation with correction, Prose as a fallback                                                                    |
+| Wrong memories persist            | Extraction can misread                                                             | Sources on every fact, an editable memory view, facts only from the user's words                                                    |
+| Planted instructions              | Web pages and files are written by strangers                                       | Never stored as facts, never treated as instructions, approvals enforced in the tool server                                         |
+| French voice quality              | Local voices are strongest in English                                              | Evaluate early; system voices as the fallback                                                                                       |
 
 ## 17. Build order
 

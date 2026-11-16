@@ -1,0 +1,44 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "packages/protocol"
+    },
+    {
+      "path": "packages/catalog"
+    },
+    {
+      "path": "packages/tokens"
+    },
+    {
+      "path": "packages/core"
+    },
+    {
+      "path": "packages/harness"
+    },
+    {
+      "path": "packages/store"
+    },
+    {
+      "path": "packages/embedder"
+    },
+    {
+      "path": "packages/tools"
+    },
+    {
+      "path": "packages/speech"
+    },
+    {
+      "path": "packages/models"
+    },
+    {
+      "path": "packages/client"
+    },
+    {
+      "path": "packages/ui-web"
+    },
+    {
+      "path": "packages/testing"
+    }
+  ]
+}

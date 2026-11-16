@@ -1,0 +1,19 @@
+{
+  "extends": "@repo/tsconfig/dom.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": ["src"],
+  "references": [
+    {
+      "path": "../client"
+    },
+    {
+      "path": "../catalog"
+    },
+    {
+      "path": "../tokens"
+    }
+  ]
+}
