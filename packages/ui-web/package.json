@@ -8,11 +8,16 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@repo/client": "workspace:*",
     "@repo/catalog": "workspace:*",
+    "@repo/client": "workspace:*",
     "@repo/tokens": "workspace:*"
   },
   "devDependencies": {
-    "@repo/tsconfig": "workspace:*"
+    "@repo/tsconfig": "workspace:*",
+    "@types/react": "catalog:",
+    "react": "catalog:"
+  },
+  "peerDependencies": {
+    "react": "catalog:"
   }
 }

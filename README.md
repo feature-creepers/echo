@@ -6,7 +6,7 @@ A personal assistant you talk to. It answers with a short spoken sentence and wi
 
 ## Status
 
-Early build. The workspace, its dependency rules and continuous integration are in place; the assistant itself is not built yet.
+Early build. The workspace, its dependency rules and continuous integration are in place. The desktop app starts the core as a separate program and connects to it. The assistant itself (voice, threads, memory, generated interface) is not built yet.
 
 - [docs/SPEC.md](docs/SPEC.md) is the product and architecture spec. Section 14 explains the repository layout, section 17 the build order.
 - The original proof of concept, by Tommy Sendra, is on the `main` branch.
@@ -17,9 +17,12 @@ You need Node 24 or later and pnpm.
 
 ```bash
 pnpm install
-pnpm check        # typecheck, lint (including the dependency rules), formatting, tests
+pnpm check                           # typecheck, lint (including the dependency rules), formatting, tests
 pnpm build
+pnpm --filter @repo/desktop dev      # run the desktop app
 ```
+
+Each app and package has a README of its own.
 
 ## Layout
 

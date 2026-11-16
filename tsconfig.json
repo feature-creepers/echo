@@ -45,6 +45,12 @@
     },
     {
       "path": "apps/server"
+    },
+    {
+      "path": "apps/desktop"
+    },
+    {
+      "path": "apps/desktop/tsconfig.web.json"
     }
   ]
 }

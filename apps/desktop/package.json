@@ -1,0 +1,29 @@
+{
+  "name": "@repo/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "self-check": "electron . --self-check"
+  },
+  "devDependencies": {
+    "@repo/client": "workspace:*",
+    "@repo/protocol": "workspace:*",
+    "@repo/server": "workspace:*",
+    "@repo/tsconfig": "workspace:*",
+    "@repo/ui-web": "workspace:*",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "electron": "catalog:",
+    "electron-vite": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "vite": "catalog:"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  // The window: a browser page, bundled.
+  "extends": "@repo/tsconfig/dom.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist/web"
+  },
+  "include": ["src/renderer", "src/preload/bridge.ts"],
+  "references": [{ "path": "../../packages/client" }, { "path": "../../packages/ui-web" }]
+}

@@ -36,3 +36,13 @@ jobs:
       - run: pnpm check
 
       - run: pnpm build
+
+      # Start the built desktop app, let it start the core and connect to it, and fail if it cannot.
+      - name: Desktop self-check
+        if: runner.os != 'Linux'
+        run: pnpm --filter @repo/desktop self-check
+
+      # A Linux runner has no display, and its Chromium sandbox helper is not set up.
+      - name: Desktop self-check (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a pnpm --filter @repo/desktop exec electron . --self-check --no-sandbox

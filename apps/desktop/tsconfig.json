@@ -1,0 +1,11 @@
+{
+  // The main process, the preload script and the build configuration: Node and Electron.
+  // The window is its own project: tsconfig.web.json.
+  "extends": "@repo/tsconfig/node.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist/node"
+  },
+  "include": ["src/main", "src/preload", "electron.vite.config.ts"],
+  "references": [{ "path": "../../packages/client" }, { "path": "../../packages/client/tsconfig.node.json" }, { "path": "../../packages/protocol" }]
+}

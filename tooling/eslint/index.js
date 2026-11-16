@@ -17,5 +17,11 @@ export default tseslint.config(
       'no-restricted-syntax': ['error', { selector: 'ExportDefaultDeclaration', message: 'Use a named export.' }]
     }
   },
+  {
+    // Build tools read their configuration from a default export.
+    name: 'conventions/config-files',
+    files: ['**/*.config.ts'],
+    rules: { 'no-restricted-syntax': 'off' }
+  },
   ...boundaries
 )
