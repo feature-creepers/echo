@@ -1,0 +1,15 @@
+# The repository is built on Windows, macOS and Linux: text is LF everywhere.
+* text=auto eol=lf
+
+# Windows scripts need CRLF to run.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Never treated as text.
+*.png  binary
+*.ico  binary
+*.icns binary
+*.wav  binary
+*.ogg  binary
+*.woff2 binary
