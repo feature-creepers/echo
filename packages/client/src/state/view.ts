@@ -6,6 +6,11 @@ import { cell, type Followed } from './followed.ts'
 export interface Shown {
   stage: ShownView | undefined
   margin: readonly ShownView[]
+  /**
+   * The views that arrived while this client was connected, as opposed to ones read when it connected: only
+   * these may start playing by themselves, so the app never bursts into sound on opening.
+   */
+  arrived: readonly string[]
 }
 
 export interface ViewState extends Followed<Shown> {
@@ -16,26 +21,30 @@ export interface ViewState extends Followed<Shown> {
 
 /** How many cards the margin shows; the core keeps the same number. */
 const MARGIN = 3
+/** How many arrived views are remembered: more than can be on screen at once. */
+const ARRIVED = 12
 
 export function followView(session: Session): ViewState {
-  const state = cell<Shown>({ stage: undefined, margin: [] })
+  const state = cell<Shown>({ stage: undefined, margin: [], arrived: [] })
   let heard = false
   const stopEvents = session.onEvent((event) => {
-    const { stage, margin } = state.current()
+    const { stage, margin, arrived } = state.current()
     if (event.name === 'view.shown') {
       heard = true
-      if (event.view.slot === 'margin') state.set({ stage, margin: [...margin.filter((card) => card.id !== event.view.id), event.view].slice(-MARGIN) })
-      else state.set({ stage: event.view, margin })
+      const now = [...arrived.filter((id) => id !== event.view.id), event.view.id].slice(-ARRIVED)
+      if (event.view.slot === 'margin')
+        state.set({ stage, margin: [...margin.filter((card) => card.id !== event.view.id), event.view].slice(-MARGIN), arrived: now })
+      else state.set({ stage: event.view, margin, arrived: now })
     } else if (event.name === 'view.cleared') {
       heard = true
       const id = event.view
-      state.set({ stage: id === undefined || stage?.id === id ? undefined : stage, margin: margin.filter((card) => card.id !== id) })
+      state.set({ stage: id === undefined || stage?.id === id ? undefined : stage, margin: margin.filter((card) => card.id !== id), arrived })
     }
   })
   session.run('view.read', {}).then(
     ({ view, margin }) => {
       // An event that arrived while the read was on its way is newer than what the read returns.
-      if (!heard) state.set({ stage: view, margin })
+      if (!heard) state.set({ stage: view, margin, arrived: [] })
     },
     () => undefined
   )

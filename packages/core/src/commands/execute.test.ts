@@ -1,8 +1,10 @@
-import type { MemoryView, Settings } from '@repo/protocol'
+import type { LibraryView, MemoryView, Settings } from '@repo/protocol'
 import { describe, expect, it, vi } from 'vitest'
 import { createExecutor, type Handlers } from './execute.ts'
 
 const memory: MemoryView = { revision: 0, groups: [], sleep: { when: 'quiet', quietMinutes: 10, time: '03:00' } }
+
+const library: LibraryView = { revision: 0, widgets: [] }
 
 const settings: Settings = {
   revision: 0,
@@ -30,6 +32,11 @@ function setup(overrides: Partial<Handlers> = {}) {
     'memory.forget': () => ({ ok: true, output: { memory } }),
     'memory.sleep-settings.set': () => ({ ok: true, output: { memory } }),
     'memory.sleep-now': () => ({ ok: true, output: {} }),
+    'library.read': () => ({ ok: true, output: { library } }),
+    'library.save': () => ({ ok: false, error: { code: 'unknown-widget', message: 'none' } }),
+    'library.update': () => ({ ok: true, output: { library } }),
+    'library.delete': () => ({ ok: true, output: { library } }),
+    'library.show': () => ({ ok: true, output: {} }),
     ...overrides
   }
   return { execute: createExecutor(handlers, log), log }

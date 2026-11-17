@@ -1,16 +1,18 @@
 import type { Client } from '@repo/client'
 import { useFollowed } from '@repo/client/react'
-import type { PersonaId, Settings } from '@repo/protocol'
+import type { PersonaId, Settings, ShownView } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { SpeechEngine } from '../audio/engine.ts'
 import { useTalk } from '../audio/use-talk.ts'
+import { usePlayer } from '../media/player-provider.tsx'
 import { refusalCopy } from '../personas/copy.ts'
 import { Orb } from '../presence/orb.tsx'
 import type { Mood } from '../presence/painter.ts'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
-import { Margin } from '../view/margin.tsx'
+import { Asides } from '../view/asides.tsx'
+import type { ViewActions } from '../view/context.ts'
 import { ViewPanel } from '../view/view-panel.tsx'
 import { InputLine } from './input-line.tsx'
 import { Suggestions } from './suggestions.tsx'
@@ -76,6 +78,16 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
     [client]
   )
   const actions = useMemo(() => ({ say, readFile: (file: string) => client.session.run('file.read', { file }) }), [say, client])
+  /**
+   * Only a view shown in answer to what the person just asked may start what it plays. One read on opening,
+   * or an earlier topic's view brought back on screen, never does: the person may have stopped it.
+   */
+  const answering = channel.running ?? channel.exchanges.at(-1)?.turn
+  const actionsFor = useCallback(
+    (shownView: ShownView): ViewActions =>
+      shownView.turn !== undefined && shownView.turn === answering && shown.arrived.includes(shownView.id) ? { ...actions, autoplay: shownView.id } : actions,
+    [actions, shown.arrived, answering]
+  )
   const stop = useCallback(() => {
     client.speech.stop()
     client.channel.stop().catch(() => undefined)
@@ -94,6 +106,13 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
     client.channel.say(text, language).catch(() => setProblem(refusalCopy('failed')))
   })
   const listening = talk.is === 'listening'
+
+  // What plays goes quiet while the person talks, so the music does not drown what they say.
+  const player = usePlayer()
+  useEffect(() => {
+    player.duck('listening', listening)
+    return () => player.duck('listening', false)
+  }, [player, listening])
   const mood: Mood =
     asleep && !listening && !running && !speaking.sentence
       ? 'asleep'
@@ -204,65 +223,63 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
     </AnimatePresence>
   )
 
-  const margin = shown.margin.length > 0 || ready.length > 0
+  const asides =
+    shown.margin.length > 0 || ready.length > 0 ? (
+      <Asides
+        cards={shown.margin}
+        ready={ready}
+        onFocus={(thread) => void client.threads.focus(thread).catch(() => undefined)}
+        onClose={(id) => void client.view.clear(id).catch(() => undefined)}
+        actions={actionsFor}
+      />
+    ) : undefined
 
+  // Everything the assistant shows stays in one centred column: the core and its caption never move aside.
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col">
-      <div className="flex min-h-0 flex-1">
-        <div className="flex min-w-0 flex-1 flex-col">
-          {view ? (
-            <div className="flex min-h-0 flex-1 flex-col">
-              <motion.div layout className="mx-auto flex w-full max-w-5xl items-center gap-5 px-8 pt-5 pb-3">
-                <Orb size={84} mood={mood} level={level.current} className="-m-3 shrink-0" />
-                <div className="grid min-w-0 flex-1 gap-1">
-                  <div className="flex items-baseline gap-3">
-                    <span className="font-medium text-lg">{active.name}</span>
-                    <Eyebrow accent={mood !== 'idle'}>{MOODS[mood]}</Eyebrow>
-                  </div>
-                  <div className="min-h-7" aria-live="polite">
-                    {caption}
-                  </div>
-                </div>
-              </motion.div>
-              <ViewPanel view={view} actions={actions} onClose={() => void client.view.clear().catch(() => undefined)} />
-            </div>
-          ) : (
-            <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-8">
-              <Orb size={300} mood={mood} level={level.current} className="-my-6" />
-              <div className="grid justify-items-center gap-1.5">
-                <h1 className="font-medium text-4xl tracking-tight">{active.name}</h1>
-                <Eyebrow accent={mood !== 'idle'} className="transition-colors duration-300">
-                  {MOODS[mood]}
-                </Eyebrow>
+      {view ? (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <motion.div layout className="mx-auto flex w-full max-w-5xl items-center gap-5 px-8 pt-5 pb-3">
+            <Orb size={84} mood={mood} level={level.current} className="-m-3 shrink-0" />
+            <div className="grid min-w-0 flex-1 gap-1">
+              <div className="flex items-baseline gap-3">
+                <span className="font-medium text-lg">{active.name}</span>
+                <Eyebrow accent={mood !== 'idle'}>{MOODS[mood]}</Eyebrow>
               </div>
-              <div className="mt-8 flex h-28 w-full max-w-2xl items-start justify-center text-center" aria-live="polite">
+              <div className="min-h-7" aria-live="polite">
                 {caption}
               </div>
-              {/* Until the user has said anything, a few things to try. */}
-              {!noEngine && !running && !speaking.sentence && channel.exchanges.every((line) => line.trigger !== undefined) && <Suggestions onSay={say} />}
             </div>
-          )}
+          </motion.div>
+          <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto px-8 pb-6">
+            <div className="mx-auto grid w-full max-w-5xl gap-4">
+              {asides}
+              <ViewPanel view={view} actions={actionsFor(view)} onClose={() => void client.view.clear().catch(() => undefined)} />
+            </div>
+          </div>
         </div>
-        <AnimatePresence initial={false}>
-          {margin && (
-            <motion.div
-              key="margin"
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 'auto', opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              className="h-full overflow-hidden"
-            >
-              <Margin
-                cards={shown.margin}
-                ready={ready}
-                onFocus={(thread) => void client.threads.focus(thread).catch(() => undefined)}
-                onClose={(id) => void client.view.clear(id).catch(() => undefined)}
-                actions={actions}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+      ) : (
+        <div className="scroll-quiet flex min-h-0 flex-1 flex-col overflow-y-auto px-8">
+          <div className="my-auto flex w-full flex-col items-center py-4">
+            <Orb size={asides ? 210 : 300} mood={mood} level={level.current} className="-my-6" />
+            <div className="grid justify-items-center gap-1.5">
+              <h1 className="font-medium text-4xl tracking-tight">{active.name}</h1>
+              <Eyebrow accent={mood !== 'idle'} className="transition-colors duration-300">
+                {MOODS[mood]}
+              </Eyebrow>
+            </div>
+            <div className={cn('mt-8 flex w-full max-w-2xl items-start justify-center text-center', asides ? 'min-h-10' : 'h-28')} aria-live="polite">
+              {caption}
+            </div>
+            {asides ? (
+              <div className="mt-4 w-full max-w-3xl">{asides}</div>
+            ) : (
+              // Until the user has said anything, a few things to try.
+              !noEngine && !running && !speaking.sentence && channel.exchanges.every((line) => line.trigger !== undefined) && <Suggestions onSay={say} />
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="mx-auto grid w-full max-w-3xl gap-3 px-8 pb-7">
         <InputLine

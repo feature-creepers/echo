@@ -1,4 +1,4 @@
-import { validateView } from '@repo/catalog'
+import { type ViewSpec, validateView } from '@repo/catalog'
 import { type Event, type ShownView, type TurnId, viewSchema } from '@repo/protocol'
 import { z } from 'zod'
 import type { Records } from '../ports/records.ts'
@@ -28,6 +28,14 @@ export interface Showing {
   focused: boolean
 }
 
+/** A view already checked against the catalogue, to show as it is: a saved widget brought back. */
+export interface Checked {
+  title: string
+  spec: ViewSpec
+  /** The saved widget of the library it shows again. */
+  widget?: string
+}
+
 /** What the assistant shows: each thread's view, the one of the topic in focus on the stage, and aside cards in the margin. */
 export interface Screen {
   /** What is on the stage now. */
@@ -36,6 +44,12 @@ export interface Screen {
   margin(): ShownView[]
   /** Show what a session asked to show. The answer says "shown", or lists what to correct. */
   show(asked: unknown, showing: Showing): ToolResult
+  /** Show a view that was checked already, as it is. */
+  present(view: Checked, showing: Showing): ToolResult
+  /** A view shown now or earlier, by its identifier. */
+  find(view: string): ShownView | undefined
+  /** The latest view a thread showed, or, left out, the one on the stage. */
+  latest(thread: string | undefined): ShownView | undefined
   /** The focus moved to this thread: the stage shows its view, or nothing. */
   focus(thread: string | undefined): void
   /** Remove the view given, or, left out, what is on the stage. */
@@ -75,6 +89,26 @@ export function createScreen({ records, newId }: ScreenOptions): Screen {
     }
   }
 
+  const present = (checked: Checked, showing: Showing): ToolResult => {
+    const view: ShownView = {
+      id: newId(),
+      title: checked.title,
+      slot: showing.slot,
+      spec: checked.spec,
+      ...(checked.widget === undefined ? {} : { widget: checked.widget }),
+      ...(showing.turn === undefined ? {} : { turn: showing.turn }),
+      ...(showing.thread === undefined ? {} : { thread: showing.thread })
+    }
+    records.append([{ type: VIEW_SHOWN, payload: view }])
+    if (view.slot === 'stage' && !showing.focused && showing.thread !== undefined) {
+      byThread.set(showing.thread, view)
+      return { ok: true, text: 'Kept for when this topic is back on screen.' }
+    }
+    place(view)
+    emit({ type: 'event', name: 'view.shown', view })
+    return { ok: true, text: 'Shown.' }
+  }
+
   return {
     current: () => stage,
     margin: () => [...margin],
@@ -84,24 +118,22 @@ export function createScreen({ records, newId }: ScreenOptions): Screen {
       if (!read.success) return { ok: false, text: 'Give a title, in a few words, and a view.' }
       const checked = validateView(read.data.view)
       if (!checked.ok) return { ok: false, text: `The view was not shown. Correct this and show it again:\n- ${checked.problems.join('\n- ')}` }
-
-      const view: ShownView = {
-        id: newId(),
-        title: read.data.title,
-        slot: showing.slot,
-        spec: checked.spec,
-        ...(showing.turn === undefined ? {} : { turn: showing.turn }),
-        ...(showing.thread === undefined ? {} : { thread: showing.thread })
-      }
-      records.append([{ type: VIEW_SHOWN, payload: view }])
-      if (view.slot === 'stage' && !showing.focused && showing.thread !== undefined) {
-        byThread.set(showing.thread, view)
-        return { ok: true, text: 'Kept for when this topic is back on screen.' }
-      }
-      place(view)
-      emit({ type: 'event', name: 'view.shown', view })
-      return { ok: true, text: 'Shown.' }
+      return present({ title: read.data.title, spec: checked.spec }, showing)
     },
+
+    present,
+
+    find(id) {
+      for (const view of [stage, ...margin, ...byThread.values()]) if (view?.id === id) return view
+      // An older view is in the records: they are read only for this, which is rare.
+      for (const record of records.read([VIEW_SHOWN]).reverse()) {
+        const view = viewSchema.safeParse(record.payload)
+        if (view.success && view.data.id === id) return view.data
+      }
+      return undefined
+    },
+
+    latest: (thread) => (thread === undefined ? stage : byThread.get(thread)),
 
     focus(thread) {
       const view = byThread.get(thread ?? '')

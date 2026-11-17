@@ -5,6 +5,7 @@ import { createExecutor } from './commands/execute.ts'
 import { type Admission, admit } from './devices/admission.ts'
 import { createEngineRoom } from './engines/engines.ts'
 import { createFiles } from './files/files.ts'
+import { createLibrary } from './library/library.ts'
 import { createMemory } from './memory/memory.ts'
 import { createObjections } from './personas/objection.ts'
 import type { Blobs } from './ports/blobs.ts'
@@ -97,6 +98,7 @@ export function createCore(options: CoreOptions): Core {
     }
   ]
 
+  const library = createLibrary({ records: options.records, screen, now, newId: options.newId })
   const objections = createObjections({ records: options.records, screen, now })
   const files = createFiles({ records: options.records, blobs: options.blobs, now, newId: options.newId })
 
@@ -131,10 +133,11 @@ export function createCore(options: CoreOptions): Core {
         ...screenTools(showing),
         ...files.tools(() => showing().thread),
         ...memory.tools,
+        ...library.tools(showing),
         ...(stance === 'critical' ? objections.tools(showing) : [])
       ],
-      instructions: `${describeCatalog()}\n\n${memory.instructions}`,
-      standing: () => objections.standing()
+      instructions: `${describeCatalog()}\n\n${library.instructions}\n\n${memory.instructions}`,
+      standing: (role) => [objections.standing(), library.standing(role)].filter(Boolean).join('\n\n') || undefined
     },
     memory
   })
@@ -144,6 +147,7 @@ export function createCore(options: CoreOptions): Core {
   engines.onChange((changed) => emit({ type: 'event', name: 'engines.changed', engines: changed }))
   channel.onEvent(emit)
   screen.onEvent(emit)
+  library.onEvent(emit)
 
   const execute = createExecutor(
     {
@@ -191,6 +195,24 @@ export function createCore(options: CoreOptions): Core {
         return file
           ? { ok: true, output: { name: file.name, mime: file.mime, format: file.format, version: file.version, text: file.text } }
           : { ok: false, error: { code: 'invalid-input', message: `There is no file "${input.file}".` } }
+      },
+      'library.read': () => ({ ok: true, output: { library: library.read() } }),
+      'library.save': (input) => {
+        const saved = library.save(input)
+        return saved.ok ? { ok: true, output: { widget: saved.widget, library: saved.library } } : saved
+      },
+      'library.update': (input) => {
+        const change = library.update(input)
+        return change.ok ? { ok: true, output: { library: change.library } } : change
+      },
+      'library.delete': (input) => {
+        const change = library.remove(input.widget)
+        return change.ok ? { ok: true, output: { library: change.library } } : change
+      },
+      'library.show': (input) => {
+        // Brought back by the user, it is shown on the stage over whatever topic is there, and starts nothing by itself.
+        const shown = library.show(input.widget, { thread: undefined, turn: undefined, slot: 'stage', focused: true })
+        return shown.ok ? { ok: true, output: {} } : { ok: false, error: { code: 'unknown-widget', message: shown.text } }
       },
       'thread.focus': (input) =>
         channel.focus(input.thread)

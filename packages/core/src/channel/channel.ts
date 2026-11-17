@@ -37,8 +37,8 @@ export interface Abilities {
   threadTools(showing: () => Showing, stance: Persona['stance']): Tool[]
   /** What a thread is told about its tools, added to its instructions. */
   instructions: string
-  /** What every session must keep in mind, such as decisions already made. Read each time a session opens. */
-  standing?(): string | undefined
+  /** What every session must keep in mind, such as decisions already made and widgets saved. Read each time a session opens. */
+  standing?(role: 'orchestrator' | 'thread'): string | undefined
 }
 
 export interface ChannelOptions {
@@ -262,7 +262,7 @@ export function createChannel(options: ChannelOptions): Channel {
       profile: profile?.text,
       title: thread?.title ?? 'A topic',
       kind,
-      ...(abilities ? { abilities: [abilities.instructions, abilities.standing?.()].filter(Boolean).join('\n\n') } : {})
+      ...(abilities ? { abilities: [abilities.instructions, abilities.standing?.('thread')].filter(Boolean).join('\n\n') } : {})
     })
     // A thread may search the web and read pages with the harness's own tools.
     const session = engine.open(
@@ -420,6 +420,7 @@ export function createChannel(options: ChannelOptions): Channel {
     if (orchestrator?.key === key) return orchestrator.session
     end(orchestrator)
     const routing = abilities !== undefined && server !== undefined
+    const standing = abilities?.standing?.('orchestrator')
     const grant = routing ? abilities.grant(orchestratorTools()) : undefined
     const session = grant
       ? engine.open({
@@ -428,7 +429,7 @@ export function createChannel(options: ChannelOptions): Channel {
             persona,
             earlier: recapFor(undefined),
             profile: profile?.text,
-            ...(abilities?.standing?.() ? { abilities: abilities.standing() as string } : {})
+            ...(standing ? { abilities: standing } : {})
           }),
           tools: { url: server as string, token: grant.token }
         })

@@ -30,7 +30,7 @@ export function Badge({ props }: { props: BlockProps<'Badge'> }) {
 
 export function KeyValue({ props }: { props: BlockProps<'KeyValue'> }) {
   return (
-    <dl className="grid grid-cols-[minmax(6rem,max-content)_1fr] gap-x-6 gap-y-2.5">
+    <dl className="grid grid-cols-[fit-content(45%)_minmax(0,1fr)] gap-x-6 gap-y-2.5">
       {props.items.map((item, index) => (
         <div key={index} className="contents">
           <dt className="pt-0.5 font-mono text-label text-text-faint uppercase">{item.label}</dt>

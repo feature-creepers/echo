@@ -4,6 +4,7 @@ import { type ChannelState, followChannel } from './state/channel.ts'
 import { type EnginesState, followEngines } from './state/engines.ts'
 import type { Followed } from './state/followed.ts'
 import { followEvents, type Logged } from './state/inspector.ts'
+import { followLibrary, type LibraryState } from './state/library.ts'
 import { followMemory, type MemoryState } from './state/memory.ts'
 import { followSettings, type SettingsState } from './state/settings.ts'
 import { followThreads, type ThreadsState } from './state/threads.ts'
@@ -21,6 +22,8 @@ export interface Client {
   events: Followed<readonly Logged[]>
   /** What the assistant knows about the user, and whether it is asleep. */
   memory: MemoryState
+  /** The widgets the user saved, and the ones pinned beside the conversation. */
+  library: LibraryState
   speech: SpeechPlayer
   /** Let go of all of it. The link under the session is left as it is. */
   close(): void
@@ -39,6 +42,7 @@ export function openClient(link: SessionLink, voice: DeviceVoice): Client {
   const threads = followThreads(session)
   const events = followEvents(session)
   const memory = followMemory(session)
+  const library = followLibrary(session)
   const speech = playSpeech(channel, voice)
   return {
     session,
@@ -49,9 +53,11 @@ export function openClient(link: SessionLink, voice: DeviceVoice): Client {
     threads,
     events,
     memory,
+    library,
     speech,
     close() {
       speech.close()
+      library.unfollow()
       memory.unfollow()
       view.unfollow()
       threads.unfollow()
