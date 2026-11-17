@@ -28,11 +28,12 @@ export const libraryCommands = {
   },
 
   /**
-   * Put the pinned widgets in this order, from the top of the stack. Widgets that are not pinned are ignored;
-   * pinned ones left out keep their order, after those listed.
+   * Put the pinned widgets in these docks, each in this order from its top. Widgets that are not pinned are
+   * ignored, and one named twice goes where it is first named; pinned ones left out keep their dock and their
+   * order there, after those listed.
    */
   'library.arrange': {
-    input: z.object({ pinned: z.array(widgetIdSchema).max(200) }),
+    input: z.object({ left: z.array(widgetIdSchema).max(200), right: z.array(widgetIdSchema).max(200) }),
     output: libraryOutput
   },
 

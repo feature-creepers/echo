@@ -20,7 +20,7 @@ export interface WidgetDialogProps {
   actions: ViewActions
   /** Ask the assistant to change the widget, in these words. */
   onAsk(text: string): void
-  /** It was put on the stage: the library closes to show it. */
+  /** It was put on the stage: the settings close to show it. */
   onShown(): void
   onClose(): void
 }
@@ -39,12 +39,15 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
   const [problem, setProblem] = useState<string>()
   const ids = useId()
 
+  // Escape closes the dialog and nothing under it: heard first, and marked as handled for the settings around it.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      onClose()
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
   }, [onClose])
 
   const act = (work: Promise<unknown>) => {
@@ -69,8 +72,9 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
   }
 
   return (
+    // The dimming reaches up over the title row too, so the window darkens as one surface with no bar left bright.
     <motion.div
-      className="absolute inset-0 z-40 flex items-center justify-center bg-black/55 p-6"
+      className="absolute inset-x-0 top-[calc(-1*env(titlebar-area-height,var(--frame-title-bar)))] bottom-0 z-40 flex items-center justify-center bg-black/55 p-6"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1, transition: { duration: DURATION.calm, ease: EASE } }}
       exit={{ opacity: 0, transition: { duration: DURATION.quick, ease: EASE } }}
@@ -144,7 +148,7 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
             <div className="flex items-center justify-between gap-3 rounded-md bg-white/[0.04] px-2.5 py-2 shadow-[inset_0_0_0_1px_rgb(255_255_255/0.05)]">
               <span className="grid gap-px">
                 <span className="text-[0.8125rem]">Pin to the main screen</span>
-                <span className="text-[0.6875rem] text-text-faint">Kept live on the right, in your order</span>
+                <span className="text-[0.6875rem] text-text-faint">Kept live beside the conversation, in your order</span>
               </span>
               <Switch label="Pin to the main screen" on={widget.pinned} onChange={(pinned) => act(controls.library.update({ widget: widget.id, pinned }))} />
             </div>

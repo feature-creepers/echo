@@ -2,9 +2,11 @@ import { type ViewSpec, validateView } from '@repo/catalog'
 import {
   type CommandError,
   type CommandInput,
+  DOCK_SIDES,
+  type DockSide,
   type Event,
   type LibraryView,
-  pinnedInOrder,
+  pinnedBySide,
   type SavedWidget,
   type ShownView,
   savedWidgetSchema,
@@ -20,7 +22,7 @@ import { LIBRARY_INSTRUCTIONS, type LibraryEdit, libraryTools } from './tools.ts
 
 /**
  * The library (docs/SPEC.md, section 9.8): views the user bookmarked, kept to be sorted, pinned on the main
- * screen in an order of the user's own, and brought back as they are when asked for again.
+ * screen in docks and an order of the user's own, and brought back as they are when asked for again.
  *
  * A widget is never changed in place. Each version is a record of type `library.widget` carrying the
  * widget's own identifier and its whole state: a later record with the same identifier replaces it. Deleting
@@ -60,7 +62,7 @@ export interface Library {
   /** Save a view shown now or earlier. Saving one already saved gives back the widget it became. */
   save(input: CommandInput<'library.save'>): { ok: true; widget: SavedWidget; library: LibraryView } | { ok: false; error: CommandError }
   update(input: CommandInput<'library.update'>): LibraryChange
-  /** Put the pinned widgets in an order, from the top of the stack. */
+  /** Put the pinned widgets in docks, each in an order from its top. */
   arrange(input: CommandInput<'library.arrange'>): LibraryChange
   remove(widget: string): LibraryChange
   /** Show a saved widget as it is, where `showing` says. */
@@ -90,8 +92,10 @@ export function createLibrary({ records, screen, now, newId }: LibraryOptions): 
   const take = (record: StoredRecord) => {
     const read = widgetRecordSchema.safeParse(record.payload)
     if (!read.success) return
-    const { widget: id, ...rest } = read.data
-    const widget: SavedWidget = { id, ...rest, at: record.at }
+    const { widget: id, side, ...rest } = read.data
+    // A widget pinned before there were two docks has no side: it stood on the right, and stays there in its order.
+    const docked = rest.pinned ? { side: side ?? 'right' } : {}
+    const widget: SavedWidget = { id, ...rest, ...docked, at: record.at }
     kept.set(id, { widget, versions: [...(kept.get(id)?.versions ?? []), record.id] })
   }
   for (const record of records.read([WIDGET])) take(record)
@@ -139,43 +143,60 @@ export function createLibrary({ records, screen, now, newId }: LibraryOptions): 
   const update: Library['update'] = (input) => {
     const before = kept.get(input.widget)?.widget
     if (!before) return unknown(input.widget)
-    const { at: _at, collection, pinnedAt, place, ...rest } = before
+    const { at: _at, collection, pinnedAt, side, place, ...rest } = before
     const filed = input.collection === undefined ? collection : (input.collection ?? undefined)
     const pinned = input.pinned ?? before.pinned
     const pinnedSince = pinned ? (before.pinned ? pinnedAt : now().toISOString()) : undefined
-    // A widget just pinned goes on top of the stack, where the user sees it; unpinned, it has no place.
-    const placed = pinned ? (before.pinned ? place : top()) : undefined
+    // A widget just pinned goes on top of the dock that holds fewer, the right one when both hold as many, where the
+    // user sees it and the two docks stay balanced. Unpinned, it has no dock and no place.
+    const docked = pinned ? (before.pinned ? side : emptier()) : undefined
+    const placed = docked === undefined ? undefined : before.pinned ? place : top(docked)
     write({
       ...rest,
       ...(input.title === undefined ? {} : { title: input.title }),
       ...(filed === undefined ? {} : { collection: filed }),
       pinned,
       ...(pinnedSince === undefined ? {} : { pinnedAt: pinnedSince }),
+      ...(docked === undefined ? {} : { side: docked }),
       ...(placed === undefined ? {} : { place: placed })
     })
     return { ok: true, library: changed() }
   }
 
-  /** A place above every pinned widget. */
-  const top = () => Math.min(0, ...stacked().map((widget, index) => widget.place ?? index)) - 1
+  /** The dock holding fewer pinned widgets: the right one when both hold as many. */
+  const emptier = (): DockSide => {
+    const docks = pinnedBySide(read().widgets)
+    return docks.left.length < docks.right.length ? 'left' : 'right'
+  }
+  /** A place above every pinned widget of a dock. */
+  const top = (side: DockSide) => Math.min(0, ...pinnedBySide(read().widgets)[side].map((widget, index) => widget.place ?? index)) - 1
 
   const arrange: Library['arrange'] = (input) => {
-    const stack = stacked()
-    const byId = new Map(stack.map((widget) => [widget.id, widget]))
-    const listed = [...new Set(input.pinned)].flatMap((id) => byId.get(id) ?? [])
-    const order = [...listed, ...stack.filter((widget) => !listed.includes(widget))]
-    // Only the widgets whose place changes get a new version.
+    const docks = pinnedBySide(read().widgets)
+    const pinned = new Map([...docks.left, ...docks.right].map((widget) => [widget.id, widget]))
+    // A widget named in both lists goes where it is first named, the left one being read first.
+    const named = new Set<string>()
+    const listed = (ids: readonly string[]) =>
+      ids.flatMap((id) => {
+        const widget = pinned.get(id)
+        if (!widget || named.has(id)) return []
+        named.add(id)
+        return [widget]
+      })
+    const order: Record<DockSide, SavedWidget[]> = { left: listed(input.left), right: listed(input.right) }
+    for (const side of DOCK_SIDES) order[side].push(...docks[side].filter((widget) => !named.has(widget.id)))
+    // Only the widgets whose dock or place changes get a new version.
     let moved = 0
-    order.forEach((widget, place) => {
-      if (widget.place === place) return
-      const { at: _at, ...rest } = widget
-      write({ ...rest, place })
-      moved++
-    })
+    for (const side of DOCK_SIDES) {
+      order[side].forEach((widget, place) => {
+        if (widget.side === side && widget.place === place) return
+        const { at: _at, ...rest } = widget
+        write({ ...rest, side, place })
+        moved++
+      })
+    }
     return { ok: true, library: moved > 0 ? changed() : read() }
   }
-
-  const stacked = () => pinnedInOrder(read().widgets)
 
   const replace = (id: string, spec: ViewSpec, title?: string): SavedWidget | undefined => {
     const before = kept.get(id)?.widget

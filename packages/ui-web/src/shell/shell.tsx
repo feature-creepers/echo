@@ -11,19 +11,16 @@ import { Stage } from '../conversation/stage.tsx'
 import { DeviceProvider, keyPress, useDevice } from '../device/device.tsx'
 import type { DeviceHost } from '../device/host.ts'
 import { LibraryContext, type LibraryControls } from '../library/library-context.ts'
-import { LibraryScreen } from '../library/library-screen.tsx'
-import { DOCKED_SHIFT, PinnedStack, usePinnedDock } from '../library/pinned-stack.tsx'
-import { NowPlaying } from '../media/now-playing.tsx'
+import { PinnedDocksView, usePinnedDocks } from '../library/pinned-docks.tsx'
 import { PlayerProvider, usePlayer } from '../media/player-provider.tsx'
 import { Onboarding } from '../onboarding/onboarding.tsx'
 import { Orb } from '../presence/orb.tsx'
-import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { IconButton } from '../primitives/icon-button.tsx'
-import { LibraryGlyph, PinnedGlyph, SettingsGlyph, SheetGlyph } from '../primitives/icons.tsx'
+import { SettingsGlyph, SheetGlyph, WidgetsGlyph } from '../primitives/icons.tsx'
 import { SettingsScreen, type SettingsSection } from '../settings/settings-screen.tsx'
 import { accentStyle } from '../styles/accent.ts'
-import { DURATION, EASE, glide } from '../styles/motion.ts'
+import { DURATION, EASE } from '../styles/motion.ts'
 import type { ViewActions } from '../view/context.ts'
 import { type SheetTab, SideSheet } from './side-sheet.tsx'
 
@@ -77,7 +74,7 @@ function Screens({ productName, link, client, speech }: Omit<ShellProps, 'device
   )
 }
 
-type Screen = { is: 'main' } | { is: 'onboarding' } | { is: 'settings'; section: SettingsSection } | { is: 'library'; widget?: string | undefined }
+type Screen = { is: 'main' } | { is: 'onboarding' } | { is: 'settings'; section: SettingsSection; widget?: string | undefined }
 
 function Connected({ productName, client, engine }: { productName: string; client: Client; engine: SpeechEngine | undefined }) {
   const snapshot = useFollowed(client.settings)
@@ -133,11 +130,15 @@ function Connected({ productName, client, engine }: { productName: string; clien
     [client, player]
   )
 
-  // The pinned widgets: docked beside the conversation in a wide window, behind a toggle in a narrow one.
+  // The pinned widgets: docked on both sides of the conversation in a wide window, behind a toggle in a narrow one.
   const library = useFollowed(client.library)
-  const dock = usePinnedDock(pinnedOf(library).length)
+  const docks = usePinnedDocks(pinnedOf(library).length)
 
-  const controls = useMemo<LibraryControls>(() => ({ library: client.library, open: (widget) => setScreen({ is: 'library', widget }) }), [client])
+  // A saved widget opens in the settings, in their widgets section.
+  const controls = useMemo<LibraryControls>(
+    () => ({ library: client.library, open: (widget) => setScreen({ is: 'settings', section: 'widgets', widget }) }),
+    [client]
+  )
   const say = useCallback(
     (text: string) => {
       client.speech.stop()
@@ -208,7 +209,6 @@ function Connected({ productName, client, engine }: { productName: string; clien
   if (showing.is === 'onboarding') {
     return (
       <Frame productName={productName} accent={accent}>
-        <Ground />
         <Onboarding
           productName={productName}
           personas={personas}
@@ -222,45 +222,54 @@ function Connected({ productName, client, engine }: { productName: string; clien
     )
   }
 
+  // Three buttons at most, from the left: the settings, the sidebar, and, while any is pinned, the pinned widgets.
+  // Pressed from the settings, the widgets' button goes back to the main screen to show them.
+  const widgetsShown = showing.is === 'main' && docks.shown
   const titleActions = (
     <>
-      <NowPlaying />
-      {showing.is === 'main' && dock.count > 0 && (
-        <IconButton
-          label={dock.shown ? `Hide the pinned widgets (${dock.count})` : `Show the pinned widgets (${dock.count})`}
-          active={dock.shown}
-          onClick={dock.toggle}
-        >
-          <PinnedGlyph />
-        </IconButton>
-      )}
-      <IconButton label="Library" active={showing.is === 'library'} onClick={() => (showing.is === 'library' ? toMain() : setScreen({ is: 'library' }))}>
-        <LibraryGlyph />
-      </IconButton>
       <IconButton
-        label={
-          transcriptKey
-            ? `Side sheet: transcript, threads, inspector (${describeShortcut(transcriptKey, device.mac)})`
-            : 'Side sheet: transcript, threads, inspector'
-        }
-        active={sheet !== undefined}
-        onClick={() => openSheet(sheet ? undefined : lastTab.current)}
-      >
-        <SheetGlyph />
-      </IconButton>
-      <IconButton
-        label="Settings"
+        label={showing.is === 'settings' ? 'Close settings' : 'Settings'}
         active={showing.is === 'settings'}
         onClick={() => (showing.is === 'settings' ? toMain() : setScreen({ is: 'settings', section: 'general' }))}
       >
         <SettingsGlyph />
       </IconButton>
+      <IconButton
+        label={sheet ? 'Hide the sidebar' : transcriptKey ? `Show the sidebar (${describeShortcut(transcriptKey, device.mac)})` : 'Show the sidebar'}
+        active={sheet !== undefined}
+        onClick={() => openSheet(sheet ? undefined : lastTab.current)}
+      >
+        <SheetGlyph />
+      </IconButton>
+      <AnimatePresence initial={false}>
+        {docks.count > 0 && (
+          <motion.span
+            key="widgets"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: DURATION.calm, ease: EASE }}
+          >
+            <IconButton
+              label={widgetsShown ? 'Hide pinned widgets' : 'Show pinned widgets'}
+              active={widgetsShown}
+              onClick={() => {
+                if (showing.is === 'main') return docks.toggle()
+                toMain()
+                docks.show()
+              }}
+            >
+              <WidgetsGlyph />
+            </IconButton>
+          </motion.span>
+        )}
+      </AnimatePresence>
     </>
   )
 
   return (
     <LibraryContext.Provider value={controls}>
-      <Frame productName={productName} accent={accent} actions={titleActions} split={showing.is !== 'main'}>
+      <Frame productName={productName} accent={accent} actions={titleActions}>
         <div className="relative h-full">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
@@ -278,37 +287,33 @@ function Connected({ productName, client, engine }: { productName: string; clien
                   memory={client.memory}
                   speech={engine ? speech : undefined}
                   section={showing.section}
+                  widgets={{
+                    controls,
+                    actions,
+                    selected: showing.widget,
+                    onAsk: (text) => {
+                      toMain()
+                      say(text)
+                    }
+                  }}
                   setPersonas={setPersonas}
                   onPick={setPicked}
                   onClose={toMain}
                 />
-              ) : showing.is === 'library' ? (
-                <LibraryScreen
-                  controls={controls}
-                  actions={actions}
-                  selected={showing.widget}
-                  onAsk={(text) => {
-                    toMain()
-                    say(text)
-                  }}
-                  onClose={toMain}
-                />
               ) : (
-                <div className="relative h-full overflow-hidden">
-                  <Ground />
-                  {/* With the pinned widgets docked, the conversation is centred in the space left of them. Moved, not laid out again. */}
-                  <motion.div className="relative h-full" initial={false} animate={{ x: dock.shown && dock.wide ? DOCKED_SHIFT : 0 }} transition={glide}>
-                    <Stage
-                      client={client}
-                      personas={personas}
-                      onSwitch={(persona) => setPersonas({ names: [], active: persona })}
-                      onSetUpEngine={() => setScreen({ is: 'settings', section: 'models' })}
-                      speech={speech.ready}
-                      voiceLevel={speech.ready ? speech.level : undefined}
-                      onSetUpVoice={engine ? () => setScreen({ is: 'settings', section: 'voice' }) : undefined}
-                    />
-                  </motion.div>
-                  <PinnedStack controls={controls} actions={actions} dock={dock} />
+                // The conversation stays centred in the window whatever is pinned: the docks sit in the room on its sides.
+                // Nothing clips here, so the light around the core runs on into the title row, which is the same ground.
+                <div className="relative h-full">
+                  <Stage
+                    client={client}
+                    personas={personas}
+                    onSwitch={(persona) => setPersonas({ names: [], active: persona })}
+                    onSetUpEngine={() => setScreen({ is: 'settings', section: 'models' })}
+                    speech={speech.ready}
+                    voiceLevel={speech.ready ? speech.level : undefined}
+                    onSetUpVoice={engine ? () => setScreen({ is: 'settings', section: 'voice' }) : undefined}
+                  />
+                  <PinnedDocksView controls={controls} actions={actions} docks={docks} />
                 </div>
               )}
             </motion.div>
@@ -331,33 +336,37 @@ interface FrameProps {
   accent?: Accent | undefined
   /** What the title row offers on the right. */
   actions?: ReactNode
-  /** The screen paints its own panes (a sidebar and its content), so the window's material shows in the sidebar. */
-  split?: boolean
   children: ReactNode
 }
 
 /**
- * The window: the title row, and the screen under it.
+ * The window: the title row, and the screen under it, on one ground.
  *
- * The title row is the window's own bar, as in a native app with a unified toolbar. The window is dragged by it,
- * and the system draws its buttons (close, minimise, maximise) over it: the titlebar-area values say which part
- * of the row those leave free. Where the system draws a material behind the page, the row and the screens tint it.
+ * The title row is no bar of its own: it is the top of the window, on the same ground as the rest, as in a
+ * native app whose toolbar is part of its content. The window is dragged by it, and the system draws its buttons
+ * (close, minimise, maximise) over it, on no colour of their own: the titlebar-area values say which part of the
+ * row those leave free. Where the system draws a material behind the page, the ground tints it.
  */
-function Frame({ productName, accent, actions, split = false, children }: FrameProps) {
+function Frame({ productName, accent, actions, children }: FrameProps) {
   return (
-    <div className="accent-shift relative flex h-screen flex-col overflow-hidden" style={accentStyle(accent)}>
-      <header className="drag relative h-[calc(env(titlebar-area-height,var(--frame-title-bar))+1px)] shrink-0 border-black/50 border-b bg-(--window) shadow-[0_1px_0_rgb(255_255_255/0.035)]">
+    <div className="accent-shift relative flex h-screen flex-col overflow-hidden bg-(--window)" style={accentStyle(accent)}>
+      <Ground />
+      <header className="drag relative h-[env(titlebar-area-height,var(--frame-title-bar))] shrink-0">
         <div className="absolute top-[env(titlebar-area-y,0px)] left-[env(titlebar-area-x,0px)] flex h-[env(titlebar-area-height,var(--frame-title-bar))] w-[env(titlebar-area-width,100%)] items-center justify-between pr-2 pl-4">
-          <span className="font-semibold text-[0.8125rem] text-text-soft tracking-[-0.005em]">{productName}</span>
+          {/* The product's name, written small as a wordmark: lowercase here only, by its style, so it is still read as a name. */}
+          <span className="font-semibold text-[0.8125rem] text-text-soft lowercase tracking-[-0.01em]">{productName}</span>
           <span className="no-drag flex items-center gap-0.5">{actions}</span>
         </div>
       </header>
-      <main className={cn('relative min-h-0 flex-1', !split && 'bg-(--window)')}>{children}</main>
+      <main className="relative min-h-0 flex-1">{children}</main>
     </div>
   )
 }
 
-/** The ground of the main screen and of first launch: dense, faint dots, and a little of the accent's light from above. */
+/**
+ * The ground of every screen, title row included: fine, faint dots, and a little of the accent's light from the
+ * top of the window.
+ */
 function Ground() {
   return (
     <>

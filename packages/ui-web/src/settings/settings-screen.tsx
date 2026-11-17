@@ -3,6 +3,7 @@ import type { CommandInput, PersonaId, Settings } from '@repo/protocol'
 import { type ReactNode, useEffect, useState } from 'react'
 import { AccessSection } from '../access/access-section.tsx'
 import type { DeviceSpeech } from '../audio/use-speech.ts'
+import { WidgetsSection, type WidgetsSectionProps } from '../library/widgets-section.tsx'
 import { MemorySection } from '../memory/memory-section.tsx'
 import { PersonasForm } from '../personas/personas-form.tsx'
 import { ScreenHeader } from '../primitives/screen-header.tsx'
@@ -14,7 +15,7 @@ import { ModelsSection } from './models-section.tsx'
 import { ShortcutsSection } from './shortcuts-section.tsx'
 import { VoiceSection } from './voice-section.tsx'
 
-export const SETTINGS_SECTIONS = ['general', 'voice', 'microphone', 'shortcuts', 'personalities', 'models', 'access', 'memory', 'about'] as const
+export const SETTINGS_SECTIONS = ['general', 'voice', 'microphone', 'shortcuts', 'personalities', 'models', 'access', 'memory', 'widgets', 'about'] as const
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number]
 
 const TITLES: Record<SettingsSection, string> = {
@@ -26,6 +27,7 @@ const TITLES: Record<SettingsSection, string> = {
   models: 'Models',
   access: 'Access',
   memory: 'Memory',
+  widgets: 'Widgets',
   about: 'Updates & about'
 }
 
@@ -35,7 +37,7 @@ const TITLES: Record<SettingsSection, string> = {
  */
 const GROUPS: { title?: string; sections: SettingsSection[] }[] = [
   { title: 'This computer', sections: ['general', 'voice', 'microphone', 'shortcuts'] },
-  { title: 'Your assistant', sections: ['personalities', 'models', 'access', 'memory'] },
+  { title: 'Your assistant', sections: ['personalities', 'models', 'access', 'memory', 'widgets'] },
   { sections: ['about'] }
 ]
 
@@ -50,13 +52,15 @@ export interface SettingsScreenProps {
   speech?: DeviceSpeech | undefined
   /** The section to open on. */
   section: SettingsSection
+  /** The widget library, for its section, and the widget to open there. */
+  widgets: Omit<WidgetsSectionProps, 'onShown'>
   setPersonas(choice: CommandInput<'personas.set'>): Promise<void>
   onPick(persona: PersonaId): void
   onClose(): void
 }
 
 /** The settings, one section at a time, with the sections listed on the left. Escape goes back. */
-export function SettingsScreen({ productName, client, settings, memory, speech, section: first, setPersonas, onPick, onClose }: SettingsScreenProps) {
+export function SettingsScreen({ productName, client, settings, memory, speech, section: first, widgets, setPersonas, onPick, onClose }: SettingsScreenProps) {
   const [section, setSection] = useState<SettingsSection>(first)
   const { personas } = settings
   const active = personas.available.find((persona) => persona.id === personas.active)
@@ -80,12 +84,13 @@ export function SettingsScreen({ productName, client, settings, memory, speech, 
     models: `${productName} runs on an AI program you already have, signed in with your own account. Choose the model it answers with: these choices follow you, not this computer.`,
     access: `What ${productName} may reach on this computer: its own folder, the folders and files you give it, or everything. It is held to this on every use, whatever it is asked.`,
     memory: `${productName} keeps every word of your conversations, and while it sleeps it works out what is worth remembering about you. Here is what it knows, where it learned it, and when it sleeps.`,
+    widgets: `The views you saved from what ${productName} showed you. Pin them beside the conversation, sort them into collections, or ask for a change.`,
     about: `The version of ${productName} on this computer, and its updates.`
   }
 
   return (
     // A split view, as native settings are: the sections in a sidebar on the left, the one open beside it.
-    <section aria-label="Settings" className="flex h-full w-full">
+    <section aria-label="Settings" className="relative flex h-full w-full">
       <Sidebar title="Settings" label="Sections">
         {GROUPS.map((group) => (
           <div key={group.title ?? 'more'} className="grid gap-px">
@@ -99,7 +104,7 @@ export function SettingsScreen({ productName, client, settings, memory, speech, 
         ))}
       </Sidebar>
 
-      <div className="scroll-quiet min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-(--window)">
+      <div className="scroll-quiet min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
         <div className="mx-auto w-full max-w-3xl px-10 pt-7 pb-16">
           <div className="mb-6">
             <ScreenHeader title={TITLES[section]} closeLabel="Close settings" onClose={onClose} />
@@ -124,6 +129,7 @@ export function SettingsScreen({ productName, client, settings, memory, speech, 
             {section === 'models' && <ModelsSection client={client} settings={settings} />}
             {section === 'access' && <AccessSection client={client} settings={settings} productName={productName} />}
             {section === 'memory' && <MemorySection memory={memory} productName={productName} />}
+            {section === 'widgets' && <WidgetsSection {...widgets} onShown={onClose} />}
             {section === 'about' && <AboutSection productName={productName} />}
           </Block>
         </div>

@@ -2,9 +2,7 @@ import type { BrowserWindowConstructorOptions } from 'electron'
 
 /** How the title row looks, so the buttons the system draws over it match. */
 export interface TitleRow {
-  /** The colour behind the system's buttons. */
-  background: string
-  /** The colour of the buttons themselves. */
+  /** The colour of the buttons' symbols. */
   symbols: string
   /** The height of the row, in pixels. */
   height: number
@@ -15,7 +13,7 @@ export interface WindowChrome {
   options: Partial<BrowserWindowConstructorOptions>
   /**
    * The system blurs what is behind the window under the page (macOS vibrancy, Windows 11 Mica). The page then
-   * leaves its ground transparent and only tints it, lighter in its side panes, as native apps do.
+   * leaves its ground transparent and only tints it, as native apps do.
    */
   vibrant: boolean
 }
@@ -26,5 +24,5 @@ export interface WindowChrome {
  */
 export type Chrome = (row: TitleRow) => WindowChrome
 
-/** No colour at all: what the page shows through where the system draws a material. */
+/** No colour at all: what the page shows through where the system draws a material, or its buttons. */
 export const CLEAR = '#00000000'

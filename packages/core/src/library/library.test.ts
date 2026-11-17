@@ -1,10 +1,10 @@
 import { EXAMPLE_VIEW } from '@repo/catalog'
-import { type Event, pinnedInOrder } from '@repo/protocol'
+import { type Event, pinnedBySide, pinnedInOrder } from '@repo/protocol'
 import { describe, expect, it } from 'vitest'
 import { ERASURE } from '../ports/records.ts'
 import { memoryRecords } from '../records/memory.ts'
 import { createScreen, type Showing } from '../views/screen.ts'
-import { createLibrary, summary, WIDGET } from './library.ts'
+import { createLibrary, type Library, summary, WIDGET } from './library.ts'
 
 const onStage: Showing = { thread: 'a', turn: 't1', slot: 'stage', focused: true }
 
@@ -35,6 +35,20 @@ function setup(records = memoryRecords()) {
     return screen.current()?.id ?? ''
   }
   return { records, screen, library, events, shown }
+}
+
+/** A way to save a view and pin it in one step, giving back the widget's identifier. */
+const pinner = (library: Library, shown: (title: string) => string) => (title: string) => {
+  const saved = library.save({ view: shown(title) })
+  if (!saved.ok) throw new Error('Not saved.')
+  library.update({ widget: saved.widget.id, pinned: true })
+  return saved.widget.id
+}
+
+/** The identifiers of the pinned widgets in each dock, from its top. */
+const docks = (library: Library) => {
+  const { left, right } = pinnedBySide(library.read().widgets)
+  return { left: left.map((widget) => widget.id), right: right.map((widget) => widget.id) }
 }
 
 describe('the library', () => {
@@ -80,40 +94,73 @@ describe('the library', () => {
     expect(library.get(saved.widget.id)?.pinnedAt).toBeUndefined()
   })
 
-  it('puts a widget just pinned on top of the stack, and keeps the order the user drags them into', () => {
-    const { records, library, shown, events } = setup()
-    const pin = (title: string) => {
-      const saved = library.save({ view: shown(title) })
-      if (!saved.ok) throw new Error('Not saved.')
-      library.update({ widget: saved.widget.id, pinned: true })
-      return saved.widget.id
-    }
+  it('puts a widget just pinned on top of the dock that holds fewer, the right one when both hold as many', () => {
+    const { library, shown } = setup()
+    const pin = pinner(library, shown)
     const radio = pin('Radio')
     const weather = pin('Weather')
     const plan = pin('Plan')
-    const order = () => pinnedInOrder(library.read().widgets).map((widget) => widget.id)
-    expect(order()).toEqual([plan, weather, radio])
+    const map = pin('Map')
+    expect(docks(library)).toEqual({ left: [map, weather], right: [plan, radio] })
+    expect(pinnedInOrder(library.read().widgets).map((widget) => widget.id)).toEqual([map, weather, plan, radio])
+
+    // Unpinned, a widget leaves its dock; pinned again, it goes on top of the dock that now holds fewer.
+    library.update({ widget: radio, pinned: false })
+    expect(library.get(radio)).toMatchObject({ pinned: false })
+    expect(library.get(radio)?.side).toBeUndefined()
+    expect(library.get(radio)?.place).toBeUndefined()
+    library.update({ widget: map, pinned: false })
+    library.update({ widget: radio, pinned: true })
+    expect(docks(library)).toEqual({ left: [weather], right: [radio, plan] })
+  })
+
+  it('keeps the docks and the order the user drags widgets into, across a restart', () => {
+    const { records, library, shown, events } = setup()
+    const pin = pinner(library, shown)
+    const [radio, weather, plan, map] = [pin('Radio'), pin('Weather'), pin('Plan'), pin('Map')]
+    expect(docks(library)).toEqual({ left: [map, weather], right: [plan, radio] })
 
     const before = records.read([WIDGET]).length
     const told = events.length
-    expect(library.arrange({ pinned: [radio, plan, weather] })).toMatchObject({ ok: true })
-    expect(order()).toEqual([radio, plan, weather])
+    // The radio crosses to the top of the left dock, the map goes under the weather.
+    expect(library.arrange({ left: [radio, weather, map], right: [plan] })).toMatchObject({ ok: true })
+    expect(docks(library)).toEqual({ left: [radio, weather, map], right: [plan] })
+    expect(library.get(radio)).toMatchObject({ side: 'left', place: 0 })
     // Every place changed, so each got a version, and clients were told once.
-    expect(records.read([WIDGET]).length - before).toBe(3)
+    expect(records.read([WIDGET]).length - before).toBe(4)
     expect(events.length - told).toBe(1)
 
-    // The same order again writes nothing; a widget left out keeps its place after those listed; an unknown one is ignored.
-    library.arrange({ pinned: [radio, plan, weather] })
-    expect(records.read([WIDGET]).length - before).toBe(3)
-    library.arrange({ pinned: [plan, 'nothing'] })
-    expect(order()).toEqual([plan, radio, weather])
+    // The same docks again write nothing.
+    library.arrange({ left: [radio, weather, map], right: [plan] })
+    expect(records.read([WIDGET]).length - before).toBe(4)
+    expect(events.length - told).toBe(1)
 
-    // Unpinned, a widget leaves the stack; pinned again, it comes back on top. The order outlives a restart.
-    library.update({ widget: weather, pinned: false })
-    expect(library.get(weather)?.place).toBeUndefined()
-    library.update({ widget: weather, pinned: true })
-    expect(order()).toEqual([weather, plan, radio])
-    expect(pinnedInOrder(setup(records).library.read().widgets).map((widget) => widget.id)).toEqual([weather, plan, radio])
+    // A widget left out keeps its dock, after those listed there; an unknown one is ignored, and one named twice
+    // goes where it is first named.
+    library.arrange({ left: [map, 'nothing'], right: [weather, plan, map] })
+    expect(docks(library)).toEqual({ left: [map, radio], right: [weather, plan] })
+
+    expect(docks(setup(records).library)).toEqual({ left: [map, radio], right: [weather, plan] })
+  })
+
+  it('reads widgets pinned before there were two docks on the right, in the order they had', () => {
+    const { records } = setup()
+    const spec = { root: 'all', elements: { all: { type: 'Divider', props: {}, children: [] } } }
+    const old = (widget: string, more: object) => ({ widget, title: widget, since: '2026-11-01T00:00:00Z', spec, ...more })
+    // As the previous version kept them: a place from dragging, or none and only the moment they were pinned.
+    records.append([
+      { type: WIDGET, payload: old('radio', { pinned: true, pinnedAt: '2026-11-02T00:00:00Z', place: 1 }) },
+      { type: WIDGET, payload: old('plan', { pinned: true, pinnedAt: '2026-11-03T00:00:00Z', place: 0 }) },
+      { type: WIDGET, payload: old('news', { pinned: true, pinnedAt: '2026-11-04T00:00:00Z' }) },
+      { type: WIDGET, payload: old('song', { pinned: false }) }
+    ])
+    const { library } = setup(records)
+    expect(docks(library)).toEqual({ left: [], right: ['plan', 'radio', 'news'] })
+    expect(library.get('radio')?.side).toBe('right')
+    expect(library.get('song')?.side).toBeUndefined()
+    // The next widget pinned balances the docks.
+    library.update({ widget: 'song', pinned: true })
+    expect(docks(library)).toEqual({ left: ['song'], right: ['plan', 'radio', 'news'] })
   })
 
   it('erases every version of a deleted widget', () => {
