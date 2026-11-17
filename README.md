@@ -35,13 +35,3 @@ docs/        the spec
 ```
 
 Which package may import which is declared in `tooling/eslint/boundaries.js` and enforced by `pnpm lint`.
-
-## Credits
-
-Created by Tommy Sendra and Rodolphe Barbanneau.
-
-Tommy wrote the original proof of concept, which this rewrite grows from.
-
-## Licence
-
-MIT. Copyright Tommy Sendra and Rodolphe Barbanneau.
