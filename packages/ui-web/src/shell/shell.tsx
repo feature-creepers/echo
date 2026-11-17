@@ -4,6 +4,7 @@ import { useFollowed } from '@repo/client/react'
 import type { Accent, CommandInput, PersonaId } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { OPEN_ACCESS_EVENT } from '../access/access-indicator.tsx'
 import type { SpeechEngine } from '../audio/engine.ts'
 import { useDeviceSpeech } from '../audio/use-speech.ts'
 import { Stage } from '../conversation/stage.tsx'
@@ -126,7 +127,14 @@ function Connected({ productName, client, engine }: { productName: string; clien
     [client]
   )
   /** What the blocks of a pinned or saved widget can do. Nothing there starts playing by itself. */
-  const actions = useMemo<ViewActions>(() => ({ say, readFile: (file: string) => client.session.run('file.read', { file }) }), [say, client])
+  const actions = useMemo<ViewActions>(
+    () => ({
+      say,
+      readFile: (file: string) => client.session.run('file.read', { file }),
+      readShapes: (url: string) => client.session.run('shapes.read', { url }).then((read) => read.shapes)
+    }),
+    [say, client]
+  )
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -146,8 +154,14 @@ function Connected({ productName, client, engine }: { productName: string; clien
   // The app asks for the settings: its tray's menu.
   useEffect(() => {
     const onOpen = () => setScreen({ is: 'settings', section: 'general' })
+    // The bottom bar's access indicator opens its own section.
+    const onAccess = () => setScreen({ is: 'settings', section: 'access' })
     window.addEventListener(OPEN_SETTINGS_EVENT, onOpen)
-    return () => window.removeEventListener(OPEN_SETTINGS_EVENT, onOpen)
+    window.addEventListener(OPEN_ACCESS_EVENT, onAccess)
+    return () => {
+      window.removeEventListener(OPEN_SETTINGS_EVENT, onOpen)
+      window.removeEventListener(OPEN_ACCESS_EVENT, onAccess)
+    }
   }, [])
 
   if (snapshot.state === 'loading') {

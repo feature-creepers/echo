@@ -4,6 +4,7 @@ import { useFollowed } from '@repo/client/react'
 import type { PersonaId, Settings, ShownView } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AccessIndicator } from '../access/access-indicator.tsx'
 import type { SpeechEngine } from '../audio/engine.ts'
 import { useTalk } from '../audio/use-talk.ts'
 import { keyPress, useDevice } from '../device/device.tsx'
@@ -79,7 +80,14 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
     },
     [client]
   )
-  const actions = useMemo(() => ({ say, readFile: (file: string) => client.session.run('file.read', { file }) }), [say, client])
+  const actions = useMemo(
+    () => ({
+      say,
+      readFile: (file: string) => client.session.run('file.read', { file }),
+      readShapes: (url: string) => client.session.run('shapes.read', { url }).then((read) => read.shapes)
+    }),
+    [say, client]
+  )
   /**
    * Only a view shown in answer to what the person just asked may start what it plays. One read on opening,
    * or an earlier topic's view brought back on screen, never does: the person may have stopped it.
@@ -308,6 +316,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
         />
         {/* Which AI program answers: there to read, rarely to press. */}
         <div className="-mt-1 flex justify-end px-1">
+          <AccessIndicator client={client} />
           <button
             type="button"
             onClick={onSetUpEngine}

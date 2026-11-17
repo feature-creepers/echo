@@ -37,6 +37,13 @@ export interface DeviceHost {
   about(): Promise<About>
   openDataFolder(): Promise<void>
   openReleases(): Promise<void>
+  /** The files of this computer, picked by the user for the assistant. Left out, folders cannot be picked here. */
+  files?: {
+    /** The system's own picker, for folders or files. Nothing when the user cancels. */
+    pick(kind: 'folder' | 'file'): Promise<string[]>
+    /** Show a folder or a file in the system's file manager. */
+    reveal(path: string): Promise<void>
+  }
   updates: {
     state(): Promise<UpdateState>
     onState(listener: (state: UpdateState) => void): () => void

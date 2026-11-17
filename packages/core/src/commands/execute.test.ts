@@ -1,4 +1,4 @@
-import type { LibraryView, MemoryView, Settings } from '@repo/protocol'
+import { DEFAULT_ACCESS, type LibraryView, type MemoryView, type Settings } from '@repo/protocol'
 import { describe, expect, it, vi } from 'vitest'
 import { createExecutor, type Handlers } from './execute.ts'
 
@@ -9,7 +9,8 @@ const library: LibraryView = { revision: 0, widgets: [] }
 const settings: Settings = {
   revision: 0,
   personas: { available: [{ id: 'first', name: 'Ada', stance: 'accommodating', accent: 'cyan' }], active: 'first', confirmed: false },
-  engines: { models: {} }
+  engines: { models: {} },
+  access: DEFAULT_ACCESS
 }
 
 function setup(overrides: Partial<Handlers> = {}) {
@@ -27,6 +28,8 @@ function setup(overrides: Partial<Handlers> = {}) {
     'engines.model.set': async () => ({ ok: true, output: { settings } }),
     'view.read': () => ({ ok: true, output: { margin: [] } }),
     'view.clear': () => ({ ok: true, output: {} }),
+    'shapes.read': () => ({ ok: true, output: { shapes: {} } }),
+    'access.set': async () => ({ ok: true, output: { settings } }),
     'threads.read': () => ({ ok: true, output: { threads: [] } }),
     'thread.focus': () => ({ ok: true, output: {} }),
     'file.read': () => ({ ok: false, error: { code: 'invalid-input', message: 'none' } }),

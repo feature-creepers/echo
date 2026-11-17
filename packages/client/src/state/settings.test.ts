@@ -1,4 +1,4 @@
-import type { Event, Settings } from '@repo/protocol'
+import { DEFAULT_ACCESS, type Event, type Settings } from '@repo/protocol'
 import { describe, expect, it, vi } from 'vitest'
 import { CommandFailed, type Session } from '../session.ts'
 import { followSettings } from './settings.ts'
@@ -7,7 +7,8 @@ function at(revision: number): Settings {
   return {
     revision,
     personas: { available: [{ id: 'first', name: 'Ada', stance: 'accommodating', accent: 'cyan' }], active: 'first', confirmed: revision > 0 },
-    engines: { models: {} }
+    engines: { models: {} },
+    access: DEFAULT_ACCESS
   }
 }
 

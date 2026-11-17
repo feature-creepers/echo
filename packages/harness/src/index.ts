@@ -1,4 +1,5 @@
 export { CLAUDE_CODE_ID, createClaudeCode } from './claude-code/adapter.ts'
 export { CODEX_ID, createCodex } from './codex/adapter.ts'
+export { createComputer } from './computer/computer.ts'
 export { createHarnesses, type HarnessesOptions } from './harnesses.ts'
 export type { HarnessOptions } from './options.ts'

@@ -1,4 +1,4 @@
-import type { Persona, Settings } from '@repo/protocol'
+import { DEFAULT_ACCESS, type Persona, type Settings } from '@repo/protocol'
 import { describe, expect, it, vi } from 'vitest'
 import { PERSONAS_SET } from '../personas/choice.ts'
 import { memoryRecords } from '../records/memory.ts'
@@ -11,7 +11,12 @@ const defaults: readonly [Persona, ...Persona[]] = [first, second]
 describe('the settings of a new user', () => {
   it('are the defaults, with the first persona answering, not yet confirmed', () => {
     const settings = createUserSettings(memoryRecords(), defaults)
-    expect(settings.read()).toEqual({ revision: 0, personas: { available: [first, second], active: 'first', confirmed: false }, engines: { models: {} } })
+    expect(settings.read()).toEqual({
+      revision: 0,
+      personas: { available: [first, second], active: 'first', confirmed: false },
+      engines: { models: {} },
+      access: DEFAULT_ACCESS
+    })
   })
 })
 
@@ -24,7 +29,7 @@ describe('setPersonas', () => {
 
     expect(change).toEqual({
       ok: true,
-      settings: { revision: 1, personas: { available: [first, second], active: 'first', confirmed: true }, engines: { models: {} } }
+      settings: { revision: 1, personas: { available: [first, second], active: 'first', confirmed: true }, engines: { models: {} }, access: DEFAULT_ACCESS }
     })
     expect(records.read([PERSONAS_SET])).toHaveLength(1)
   })
@@ -39,7 +44,8 @@ describe('setPersonas', () => {
     const expected: Settings = {
       revision: 1,
       personas: { available: [first, { ...second, name: 'Marvin' }], active: 'second', confirmed: true },
-      engines: { models: {} }
+      engines: { models: {} },
+      access: DEFAULT_ACCESS
     }
     expect(settings.read()).toEqual(expected)
     expect(heard).toHaveBeenCalledExactlyOnceWith(expected)
@@ -117,7 +123,12 @@ describe('settings read back from the records', () => {
 
     const settings = createUserSettings(records, defaults)
 
-    expect(settings.read()).toEqual({ revision: 1, personas: { available: [first, second], active: 'second', confirmed: true }, engines: { models: {} } })
+    expect(settings.read()).toEqual({
+      revision: 1,
+      personas: { available: [first, second], active: 'second', confirmed: true },
+      engines: { models: {} },
+      access: DEFAULT_ACCESS
+    })
   })
 })
 

@@ -1,8 +1,11 @@
-import type { CommandError, CommandInput, Persona, Settings } from '@repo/protocol'
+import { type Access, accessSchema, type CommandError, type CommandInput, type Persona, type Settings } from '@repo/protocol'
 import { z } from 'zod'
 import { applyChoice, checkChoice, PERSONAS_SET, type PersonaChoice, readChoice } from '../personas/choice.ts'
 import { DEFAULT_PERSONAS } from '../personas/defaults.ts'
 import type { Records } from '../ports/records.ts'
+
+/** A change of access: what is left out, or undefined, keeps its value. */
+export type AccessChange = { [Name in Exclude<keyof Access, 'folder'>]?: Access[Name] | undefined }
 
 export type SettingsChange = { ok: true; settings: Settings } | { ok: false; error: CommandError }
 
@@ -10,6 +13,8 @@ export type SettingsChange = { ok: true; settings: Settings } | { ok: false; err
 export const ENGINES_PREFERRED = 'engines.preferred'
 /** The type of the record written when the user picks the model a harness answers with, or goes back to its default. */
 export const ENGINES_MODEL = 'engines.model'
+/** The type of the record written when the user changes what the assistant may reach on the computer. It carries the whole of it. */
+export const ACCESS_SET = 'access.set'
 
 const preferredSchema = z.object({ harness: z.string().min(1).nullable() })
 const modelSchema = z.object({ harness: z.string().min(1), model: z.string().min(1).nullable() })
@@ -23,6 +28,8 @@ export interface UserSettings {
   prefer(harness: string | null): Settings
   /** The model a harness answers with, or its default (`null`). Neither is checked here. */
   chooseModel(harness: string, model: string | null): Settings
+  /** What the assistant may reach on the computer. What is left out keeps its value. The places are not checked here. */
+  setAccess(change: AccessChange): Settings
   /** Be told each time the settings change. Returns a function that stops the telling. */
   onChange(listener: (settings: Settings) => void): () => void
 }
@@ -34,17 +41,26 @@ export interface UserSettings {
  * as each version of the product defines it, and one who never chose a model gets the default model of
  * each version.
  */
-export function createUserSettings(records: Records, defaults: readonly [Persona, ...Persona[]] = DEFAULT_PERSONAS): UserSettings {
+export function createUserSettings(
+  records: Records,
+  defaults: readonly [Persona, ...Persona[]] = DEFAULT_PERSONAS,
+  /** Where the assistant's own folder is on this computer, told with the settings. */
+  folder?: string
+): UserSettings {
   let settings: Settings = {
     revision: 0,
     personas: { available: [...defaults], active: defaults[0].id, confirmed: false },
-    engines: { models: {} }
+    engines: { models: {} },
+    access: accessSchema.parse(folder === undefined ? {} : { folder })
   }
   const listeners = new Set<(settings: Settings) => void>()
 
   // A record this version cannot read is skipped, so one written by another version never breaks this one.
-  for (const record of records.read([PERSONAS_SET, ENGINES_PREFERRED, ENGINES_MODEL])) {
-    if (record.type === PERSONAS_SET) {
+  for (const record of records.read([PERSONAS_SET, ENGINES_PREFERRED, ENGINES_MODEL, ACCESS_SET])) {
+    if (record.type === ACCESS_SET) {
+      const read = accessSchema.omit({ folder: true }).safeParse(record.payload)
+      if (read.success) settings = withAccess(settings, read.data)
+    } else if (record.type === PERSONAS_SET) {
       const choice = readChoice(record.payload)
       if (choice) settings = choose(settings, choice)
     } else if (record.type === ENGINES_PREFERRED) {
@@ -85,6 +101,12 @@ export function createUserSettings(records: Records, defaults: readonly [Persona
       return change(withModel(settings, harness, model), { type: ENGINES_MODEL, payload: { harness, model } })
     },
 
+    setAccess(asked) {
+      const next = withAccess(settings, asked)
+      if (JSON.stringify(chosen(next.access)) === JSON.stringify(chosen(settings.access))) return settings
+      return change(next, { type: ACCESS_SET, payload: chosen(next.access) })
+    },
+
     onChange(listener) {
       listeners.add(listener)
       return () => void listeners.delete(listener)
@@ -105,6 +127,14 @@ function withPreferred(settings: Settings, harness: string | null): Settings {
 function withModel(settings: Settings, harness: string, model: string | null): Settings {
   const { [harness]: _, ...others } = settings.engines.models
   return { ...settings, revision: settings.revision + 1, engines: { ...settings.engines, models: model === null ? others : { ...others, [harness]: model } } }
+}
+
+/** What the user chose about access: all of it but where the assistant's folder is, which the core tells. */
+const chosen = ({ folder: _, ...choices }: Access) => choices
+
+function withAccess(settings: Settings, asked: AccessChange): Settings {
+  const defined = Object.fromEntries(Object.entries(asked).filter(([, value]) => value !== undefined))
+  return { ...settings, revision: settings.revision + 1, access: { ...settings.access, ...defined } }
 }
 
 function sameCast(one: Settings, other: Settings): boolean {

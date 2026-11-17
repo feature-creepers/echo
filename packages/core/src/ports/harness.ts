@@ -36,6 +36,48 @@ export interface ToolServer {
   token: string
 }
 
+/** What a session may reach on the computer the harness runs on. Read at each use: the person may grant more during a turn. */
+export interface Scope {
+  /** Folders and files, by absolute path, and whether each may be changed. The assistant's own folder is one, when it is on. */
+  places: readonly { path: string; kind: 'folder' | 'file'; write: boolean }[]
+  /** Beyond the places: nothing, reading anywhere, or reading and changing anywhere. */
+  computer: 'off' | 'read' | 'write'
+  /** The folder a session works in: the assistant's own folder. Left out when it is off. */
+  home?: string | undefined
+}
+
+/** One use of a harness's own tool on the computer, within the scope, as the core is asked about it. */
+export interface ComputerUse {
+  /** What it does: `create` a file, `change` one, `delete` one, `run` a command, or `read`. */
+  action: 'read' | 'create' | 'change' | 'delete' | 'run'
+  /** The tool, as the harness names it: Read, Write, Bash. */
+  tool: string
+  /** What it touches, absolute. For a command, the folder it runs in. */
+  paths: string[]
+  /** For a command, the command line. */
+  command?: string | undefined
+}
+
+export type Verdict = { allow: true } | { allow: false; reason: string }
+
+/** Told when what was asked is no longer wanted: the turn stopped. A standard AbortSignal is one. */
+export interface Signal {
+  readonly aborted: boolean
+  addEventListener(type: 'abort', listener: () => void, options?: { once?: boolean }): void
+  removeEventListener(type: 'abort', listener: () => void): void
+}
+
+/**
+ * The computer as a session may reach it. The harness checks every use of its own tools against the scope,
+ * refusing what falls outside it, and asks the core about the rest; the core decides whether the person
+ * approves it first. Nothing is left to the model (docs/SPEC.md, section 12.2).
+ */
+export interface Reach {
+  scope(): Scope
+  /** Resolves when the use may go ahead, or why not, in words the model can tell the person. Aborted when the turn stops. */
+  approve(use: ComputerUse, signal: Signal): Promise<Verdict>
+}
+
 export interface SessionRequest {
   role: Role
   /** The system prompt, whole. Nothing of the harness's own is added to it. */
@@ -49,6 +91,8 @@ export interface SessionRequest {
   web?: boolean
   /** The model to run on, as the harness names it, in place of the one it gives the role. */
   model?: string
+  /** The person's files and commands, within what they granted. Left out, the session reaches nothing of the computer. */
+  computer?: Reach
 }
 
 export type SessionEvent =

@@ -1,11 +1,12 @@
-import type { Event, Settings } from '@repo/protocol'
+import { DEFAULT_ACCESS, type Event, type Settings } from '@repo/protocol'
 import { describe, expect, it, vi } from 'vitest'
 import { CommandFailed, openSession, type SessionLink } from './session.ts'
 
 const settings: Settings = {
   revision: 2,
   personas: { available: [{ id: 'first', name: 'Ada', stance: 'accommodating', accent: 'cyan' }], active: 'first', confirmed: true },
-  engines: { models: {} }
+  engines: { models: {} },
+  access: DEFAULT_ACCESS
 }
 
 /** A link whose other end is the test. */

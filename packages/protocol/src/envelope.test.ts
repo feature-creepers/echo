@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { DEFAULT_ACCESS } from './access.ts'
 import { COMMANDS, isCommandName } from './commands.ts'
 import { commandSchema, resultSchema } from './envelope.ts'
 import { eventSchema } from './events.ts'
@@ -14,7 +15,8 @@ const settings: Settings = {
     active: 'one',
     confirmed: true
   },
-  engines: { models: {} }
+  engines: { models: {} },
+  access: DEFAULT_ACCESS
 }
 
 describe('commands', () => {

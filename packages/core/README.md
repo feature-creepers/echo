@@ -8,6 +8,8 @@ The memory (`src/memory`, docs/SPEC.md section 10) has one entry point, `createM
 
 The library (`src/library`, docs/SPEC.md section 9.8) keeps the views the user saved as records, a version per change and an erasure to delete. It tells every session what is saved and gives threads `library_search`, `library_show`, `library_save`, `library_update` and `library_delete`, so a saved widget comes back as it is when asked for again.
 
+Access to the computer (`src/access`, docs/SPEC.md section 12.2) keeps what the user grants (the assistant's own folder, folders and files, or everything), gives each thread a `Reach` for its harness to check every use against, shows approval cards composed from the catalogue, hears a yes or a no to them before any turn starts, and gives threads `computer_grant` for a folder named aloud. Paths and files are reached through ports (`src/ports/computer.ts`), as are the public addresses the core reads to check a map's shapes (`src/ports/web.ts`).
+
 A persona is data. `src/personas/defaults.ts` is the only file that contains the default names, and nothing else in the repository names a persona: behaviour depends on a persona's stance, never on which one it is.
 
 - **Runs in:** Anywhere: Node, a browser, a phone. No Node API, no DOM
