@@ -11,11 +11,12 @@ The assistant has personalities, and you call it by the name of the one in use. 
 - **One conversation, hidden threads.** Topics are worked on in threads you never have to manage. "By the way" questions open asides beside the current topic. An answer that finishes while you moved on waits, marked ready.
 - **Two personalities, named by you.** One goes along with you; the other questions a risky move with a decision card, and complies if you insist.
 - **Your own AI.** It runs on Claude Code or Codex, signed in with your own account. Speech runs on your computer: your voice never leaves it.
+- **It remembers.** Every word is kept, and while it sleeps it works out what matters about you; settings show what it knows, to correct or forget.
 - **For the curious.** A side panel shows the transcript, the threads, and every raw event (Ctrl+T).
 
 ## Status
 
-Early, and working. See [docs/SPEC.md](docs/SPEC.md), section 14.8, for what is built and what is not yet (memory beyond the transcript is in progress). The original proof of concept, called JARVIS, is on the `main` branch.
+Early, and working. See [docs/SPEC.md](docs/SPEC.md), section 14.8, for what is built and what is not yet . The original proof of concept, called JARVIS, is on the `main` branch.
 
 Packages for Windows, macOS and Linux are built by CI on every push: open the latest run under Actions and download the one for your system from its Artifacts. Nothing is signed yet, so your system will warn before the first start.
 

@@ -1207,11 +1207,13 @@ Built, and checked against the real Claude Code on 17 November 2026:
 - **Voice.** Local recognition and voice (section 8.2), downloaded once from first launch or settings.
 - **Harnesses.** Claude Code, verified for real, isolation included; Codex, written from Speak's proven code and tested against a stand-in, never run against the real CLI.
 - **Interface.** First launch in steps, the main screen around the living core, settings (personalities, voice, engine), and a side panel with the transcript, the threads and an inspector of raw events.
+- **Memory.** Every word kept and searchable at once (SQLite FTS5); facts extracted, reconciled and summarised into a profile while the assistant sleeps, at times the user sets; recalled into each request; shown, editable, forgettable and exportable in settings. Verified with the real Claude Code: facts learned in one session answered a question in the next.
+- **Files, web and briefing.** Documents written as versioned files, previewed with a download button; web search and page reading through the harness's own tools; a greeting and briefing when the app opens.
 - **Packaging.** Windows, macOS and Linux packages, made in CI on each system and downloadable from the run's page; a Windows package can also be made on Linux.
 
 Three checks guard the rules of this section: the compiler presets (code that must run anywhere cannot name a Node or DOM API, and a package's internal files cannot be imported from outside), the table in `biome.jsonc` (a forbidden import fails), and pnpm (a package cannot import what its `package.json` does not declare).
 
-Not built yet: memory beyond the transcript (in progress), vector search, files and their previews (section 9.7), permissions and approvals for actions (section 12.2), proactive turns such as the briefing (section 7.7), live data feeds (section 9.4), the phone app and the paid service. Nothing is signed yet.
+Not built yet: vector search and thread summaries (section 10), permissions and approvals for actions (section 12.2), proactive turns other than the briefing (section 7.7), live data feeds (section 9.4), the phone app and the paid service. Nothing is signed yet.
 
 ## 15. Decisions
 
