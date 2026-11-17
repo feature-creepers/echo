@@ -3,7 +3,7 @@ import type { HarnessOptions } from '../options.ts'
 import { createCli } from '../process/cli.ts'
 import { openTerminal } from '../process/terminal/index.ts'
 import { installLocations } from './install/index.ts'
-import { CLAUDE_CODE_MODELS } from './models.ts'
+import { CLAUDE_CODE_CHOICES, CLAUDE_CODE_MODELS } from './models.ts'
 import { complete } from './one-shot.ts'
 import { openSession } from './session.ts'
 import { NOT_INSTALLED, status } from './status.ts'
@@ -23,6 +23,7 @@ export function createClaudeCode(options: HarnessOptions): Harness {
     id: CLAUDE_CODE_ID,
     name: 'Claude Code',
     status: () => status(cli),
+    models: async () => CLAUDE_CODE_CHOICES,
     async signIn() {
       const { command, env } = await cli.launch()
       const home = env[HOME_VARIABLE]
@@ -34,7 +35,7 @@ export function createClaudeCode(options: HarnessOptions): Harness {
         env
       })
     },
-    open: (request) => openSession(request, { cli, folder, model: models[request.role], log }),
-    complete: (request) => complete(request, { cli, folder, model: models[request.role], log })
+    open: (request) => openSession(request, { cli, folder, model: request.model ?? models[request.role], log }),
+    complete: (request) => complete(request, { cli, folder, model: request.model ?? models[request.role], log })
   }
 }

@@ -1,3 +1,5 @@
+import type { AudioDevice } from '@repo/client'
+import { openMicrophone } from './devices.ts'
 import type { Sound } from './engine.ts'
 
 /** A take from the microphone, under way. */
@@ -22,13 +24,11 @@ export function loudness(samples: Float32Array): number {
 }
 
 /**
- * Start recording from the default microphone. The system asks the user's permission the first time.
- * Echo cancellation keeps the assistant's own voice out of what is heard.
+ * Start recording from the microphone chosen for this device, or the system's when it is gone. The system
+ * asks the user's permission the first time.
  */
-export async function record(): Promise<Take> {
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-  })
+export async function record(microphone: AudioDevice = { id: '', label: '' }): Promise<Take> {
+  const stream = await openMicrophone(microphone)
   const context = new AudioContext()
   try {
     await context.audioWorklet.addModule(CAPTURE)

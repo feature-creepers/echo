@@ -9,7 +9,7 @@ import { createClaudeCode } from './adapter.ts'
 
 /**
  * The adapter against the real Claude Code, signed in with the account of whoever runs this. It spends a
- * little of that account's allowance (about eight short requests to the smallest model), so it runs only
+ * little of that account's allowance (about nine short requests to the smallest model), so it runs only
  * when asked:
  *
  *   REAL_HARNESS=1 pnpm --filter @repo/harness test
@@ -113,6 +113,24 @@ describe.runIf(real)('the real Claude Code', () => {
       const answer = await claude.complete({ role: 'utility', instructions: 'You answer with one word, in lower case.', input: 'What is the opposite of hot?' })
       expect(answer.toLowerCase()).toContain('cold')
       expect(unmarked(answer)).toBe(true)
+    },
+    TIMEOUT_MS
+  )
+
+  it(
+    'runs on the model a request asks for: the user’s choice reaches the CLI',
+    async () => {
+      // Told to answer with Opus, asked for Haiku: only the request's model can make the answer come from Haiku.
+      // One short question to the smallest model.
+      const told = createClaudeCode({ folder: workingFolder(), log, models: { thread: 'opus' } })
+      const answer = await told.complete({
+        role: 'thread',
+        model: 'haiku',
+        instructions: 'You answer with one word.',
+        input: 'Which family of Claude model are you running as: Haiku, Sonnet or Opus? Reply with that word only.'
+      })
+      expect(answer.toLowerCase()).toContain('haiku')
+      expect(answer.toLowerCase()).not.toMatch(/opus|sonnet/)
     },
     TIMEOUT_MS
   )

@@ -22,5 +22,23 @@ export const settingsCommands = {
       active: personaIdSchema
     }),
     output: settingsOutput
+  },
+
+  /**
+   * Run on this harness whenever it is ready; the others are used only when it is not. `null` goes back to
+   * the first one ready. Takes effect for the next conversation the assistant opens.
+   */
+  'engines.prefer': {
+    input: z.object({ harness: z.string().min(1).max(64).nullable() }),
+    output: settingsOutput
+  },
+
+  /**
+   * The model a harness answers with, from those it offers. `null` goes back to its default.
+   * Takes effect for the next conversation the assistant opens; the one under way keeps its model.
+   */
+  'engines.model.set': {
+    input: z.object({ harness: z.string().min(1).max(64), model: z.string().min(1).max(100).nullable() }),
+    output: settingsOutput
   }
 }

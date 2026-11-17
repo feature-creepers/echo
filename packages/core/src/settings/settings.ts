@@ -1,15 +1,28 @@
 import type { CommandError, CommandInput, Persona, Settings } from '@repo/protocol'
+import { z } from 'zod'
 import { applyChoice, checkChoice, PERSONAS_SET, type PersonaChoice, readChoice } from '../personas/choice.ts'
 import { DEFAULT_PERSONAS } from '../personas/defaults.ts'
 import type { Records } from '../ports/records.ts'
 
 export type SettingsChange = { ok: true; settings: Settings } | { ok: false; error: CommandError }
 
+/** The type of the record written when the user picks the harness to run on, or lets the core pick. */
+export const ENGINES_PREFERRED = 'engines.preferred'
+/** The type of the record written when the user picks the model a harness answers with, or goes back to its default. */
+export const ENGINES_MODEL = 'engines.model'
+
+const preferredSchema = z.object({ harness: z.string().min(1).nullable() })
+const modelSchema = z.object({ harness: z.string().min(1), model: z.string().min(1).nullable() })
+
 /** The user's settings, as the rest of the core reads and changes them. */
 export interface UserSettings {
   read(): Settings
   /** Name the personas and pick the one that answers. This also marks them as confirmed by the user. */
   setPersonas(asked: CommandInput<'personas.set'>): SettingsChange
+  /** Run on this harness whenever it is ready, or on the first one ready (`null`). The harness is not checked here. */
+  prefer(harness: string | null): Settings
+  /** The model a harness answers with, or its default (`null`). Neither is checked here. */
+  chooseModel(harness: string, model: string | null): Settings
   /** Be told each time the settings change. Returns a function that stops the telling. */
   onChange(listener: (settings: Settings) => void): () => void
 }
@@ -18,15 +31,36 @@ export interface UserSettings {
  * The user's settings: the defaults, then every choice the user recorded, in order.
  *
  * Only choices are kept, never the defaults, so a user who never renamed a persona gets its default name
- * as each version of the product defines it.
+ * as each version of the product defines it, and one who never chose a model gets the default model of
+ * each version.
  */
 export function createUserSettings(records: Records, defaults: readonly [Persona, ...Persona[]] = DEFAULT_PERSONAS): UserSettings {
-  let settings: Settings = { revision: 0, personas: { available: [...defaults], active: defaults[0].id, confirmed: false } }
+  let settings: Settings = {
+    revision: 0,
+    personas: { available: [...defaults], active: defaults[0].id, confirmed: false },
+    engines: { models: {} }
+  }
   const listeners = new Set<(settings: Settings) => void>()
 
-  for (const record of records.read([PERSONAS_SET])) {
-    const choice = readChoice(record.payload)
-    if (choice) settings = choose(settings, choice)
+  // A record this version cannot read is skipped, so one written by another version never breaks this one.
+  for (const record of records.read([PERSONAS_SET, ENGINES_PREFERRED, ENGINES_MODEL])) {
+    if (record.type === PERSONAS_SET) {
+      const choice = readChoice(record.payload)
+      if (choice) settings = choose(settings, choice)
+    } else if (record.type === ENGINES_PREFERRED) {
+      const read = preferredSchema.safeParse(record.payload)
+      if (read.success) settings = withPreferred(settings, read.data.harness)
+    } else {
+      const read = modelSchema.safeParse(record.payload)
+      if (read.success) settings = withModel(settings, read.data.harness, read.data.model)
+    }
+  }
+
+  const change = (next: Settings, record: { type: string; payload: unknown }) => {
+    records.append([record])
+    settings = next
+    for (const listener of listeners) listener(settings)
+    return settings
   }
 
   return {
@@ -38,11 +72,17 @@ export function createUserSettings(records: Records, defaults: readonly [Persona
 
       const next = choose(settings, check.choice)
       if (settings.personas.confirmed && sameCast(settings, next)) return { ok: true, settings }
+      return { ok: true, settings: change(next, { type: PERSONAS_SET, payload: check.choice }) }
+    },
 
-      records.append([{ type: PERSONAS_SET, payload: check.choice }])
-      settings = next
-      for (const listener of listeners) listener(settings)
-      return { ok: true, settings }
+    prefer(harness) {
+      if ((settings.engines.preferred ?? null) === harness) return settings
+      return change(withPreferred(settings, harness), { type: ENGINES_PREFERRED, payload: { harness } })
+    },
+
+    chooseModel(harness, model) {
+      if ((settings.engines.models[harness] ?? null) === model) return settings
+      return change(withModel(settings, harness, model), { type: ENGINES_MODEL, payload: { harness, model } })
     },
 
     onChange(listener) {
@@ -54,7 +94,17 @@ export function createUserSettings(records: Records, defaults: readonly [Persona
 
 function choose(settings: Settings, choice: PersonaChoice): Settings {
   const cast = applyChoice(settings.personas, choice)
-  return { revision: settings.revision + 1, personas: { available: [...cast.available], active: cast.active, confirmed: true } }
+  return { ...settings, revision: settings.revision + 1, personas: { available: [...cast.available], active: cast.active, confirmed: true } }
+}
+
+function withPreferred(settings: Settings, harness: string | null): Settings {
+  const { preferred: _, ...rest } = settings.engines
+  return { ...settings, revision: settings.revision + 1, engines: harness === null ? rest : { ...rest, preferred: harness } }
+}
+
+function withModel(settings: Settings, harness: string, model: string | null): Settings {
+  const { [harness]: _, ...others } = settings.engines.models
+  return { ...settings, revision: settings.revision + 1, engines: { ...settings.engines, models: model === null ? others : { ...others, [harness]: model } } }
 }
 
 function sameCast(one: Settings, other: Settings): boolean {

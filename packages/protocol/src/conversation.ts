@@ -48,6 +48,16 @@ export const exchangeSchema = z.object({
 })
 export type Exchange = z.infer<typeof exchangeSchema>
 
+/** A model the user can choose for the assistant's answers, described in plain words. */
+export const harnessModelSchema = z.object({
+  /** What the harness's program is given to run on it. */
+  id: z.string().min(1).max(100),
+  name: z.string(),
+  /** What it is good for, in a few words for someone who does not follow AI news. */
+  description: z.string()
+})
+export type HarnessModel = z.infer<typeof harnessModelSchema>
+
 /** An AI agent program the assistant can run on, and whether it can be used. */
 export const harnessStateSchema = z.object({
   /** Identifies it: 'claude-code', 'codex'. */
@@ -59,7 +69,13 @@ export const harnessStateSchema = z.object({
   version: z.string().optional(),
   account: z.string().optional(),
   /** Why it cannot be used, in words for the user. */
-  problem: z.string().optional()
+  problem: z.string().optional(),
+  /** The models the user can choose from for the answers. */
+  models: z.array(harnessModelSchema).default([]),
+  /** The one the answers use when the user has not chosen. */
+  defaultModel: z.string().optional(),
+  /** The one the answers use now: the user's choice, or the default. */
+  model: z.string().optional()
 })
 export type HarnessState = z.infer<typeof harnessStateSchema>
 

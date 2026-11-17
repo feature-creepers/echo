@@ -47,6 +47,8 @@ export interface SessionRequest {
    * user's subscription (docs/SPEC.md, section 6.2). They are reported as the tools `web_search` and `web_read`.
    */
   web?: boolean
+  /** The model to run on, as the harness names it, in place of the one it gives the role. */
+  model?: string
 }
 
 export type SessionEvent =
@@ -78,6 +80,24 @@ export interface OneShot {
   input: string
   /** Give up after this long. Left out, two minutes. */
   timeoutMs?: number
+  /** The model to run on, as the harness names it, in place of the one it gives the role. */
+  model?: string
+}
+
+/** A model the user can choose for the assistant, described for someone who does not follow AI news. */
+export interface HarnessModel {
+  /** What the harness's program is given to run on it. */
+  id: string
+  name: string
+  /** What it is good for, in a few plain words. */
+  description: string
+}
+
+/** The models a harness offers for the assistant's answers, and the one it uses unless told otherwise. */
+export interface HarnessModels {
+  models: HarnessModel[]
+  /** The `id` of the one used when the user has not chosen. It is among `models`. */
+  default: string
 }
 
 export interface Harness {
@@ -88,6 +108,8 @@ export interface Harness {
   status(): Promise<HarnessStatus>
   /** Open the vendor's own sign-in, in a terminal. The core never sees the credentials. */
   signIn(): Promise<void>
+  /** The models the user can choose from for the assistant's answers (the `thread` role). Never rejects. */
+  models(): Promise<HarnessModels>
   open(request: SessionRequest): Session
   /** Resolves with the answer. Rejects with an error whose message is written for the user. */
   complete(request: OneShot): Promise<string>

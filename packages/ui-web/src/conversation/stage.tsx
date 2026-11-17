@@ -1,10 +1,12 @@
 import type { Client } from '@repo/client'
+import { matchesShortcut } from '@repo/client'
 import { useFollowed } from '@repo/client/react'
 import type { PersonaId, Settings } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { SpeechEngine } from '../audio/engine.ts'
 import { useTalk } from '../audio/use-talk.ts'
+import { keyPress, useDevice } from '../device/device.tsx'
 import { refusalCopy } from '../personas/copy.ts'
 import { Orb } from '../presence/orb.tsx'
 import type { Mood } from '../presence/painter.ts'
@@ -114,7 +116,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
   moods.current = { listening, voiceLevel }
   const level = useRef(() => (moods.current.listening ? heardLevel() : (moods.current.voiceLevel?.() ?? syllables())))
 
-  // Starting to talk stops the assistant. Ctrl+Space (or Cmd+Space on a Mac) starts listening, and again sends.
+  // Starting to talk stops the assistant. The talk key (Ctrl+Space by default) starts listening, and again sends.
   const toggle = useCallback(() => {
     if (listening) return void finish()
     stop()
@@ -135,16 +137,19 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
     window.addEventListener(TALK_EVENT, onTalk)
     return () => window.removeEventListener(TALK_EVENT, onTalk)
   }, [toggle])
+  // The key to talk inside the window is a setting of this device.
+  const device = useDevice()
+  const talkKey = device.settings.shortcuts.talkInWindow
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.code === 'Space' && (event.ctrlKey || event.metaKey)) {
+      if (talkKey !== '' && matchesShortcut(keyPress(event), talkKey, device.mac)) {
         event.preventDefault()
         toggle()
       } else if (event.key === 'Escape' && listening) cancel()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [toggle, listening, cancel])
+  }, [toggle, listening, cancel, talkKey, device.mac])
 
   if (!active) return null
 

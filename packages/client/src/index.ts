@@ -1,5 +1,29 @@
 export { type Client, openClient } from './client.ts'
 export { type Connection, ConnectionRefused, connect, HandshakeFailed, type Identity } from './connection.ts'
+export {
+  type AudioDevice,
+  changeDeviceSettings,
+  DEFAULT_DEVICE_SETTINGS,
+  type DeviceSettings,
+  type DeviceSettingsChange,
+  PAUSES,
+  type Pause,
+  pauseMs,
+  readDeviceSettings,
+  SPEEDS,
+  shortcutClash
+} from './device/settings.ts'
+export {
+  describeShortcut,
+  isShortcut,
+  type KeyPress,
+  matchesShortcut,
+  type Recorded,
+  recordShortcut,
+  sameShortcut,
+  shortcutKeys
+} from './device/shortcuts.ts'
+export type { UpdateState } from './device/updates.ts'
 export { FACT_KIND_TITLES, memoryMarkdown } from './export/memory-markdown.ts'
 export { CommandFailed, type CommandFailure, openSession, type Session, type SessionLink } from './session.ts'
 export { type DeviceVoice, playSpeech, type Speaking, type SpeechPlayer } from './speech-player.ts'

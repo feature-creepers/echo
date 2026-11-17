@@ -354,6 +354,16 @@ describe('a Claude Code session', () => {
     expect(models).toEqual(['haiku', 'opus', 'haiku'])
   })
 
+  it('runs on the model a session asks for, in place of its role’s', async () => {
+    const session = harness().harness.open({ role: 'thread', instructions: '', model: 'sonnet' })
+    open.push(session)
+    const followed = follow(session)
+    session.send('argv')
+    await followed.until('turn-end')
+    const args: string[] = JSON.parse(followed.text())
+    expect(args[args.indexOf('--model') + 1]).toBe('sonnet')
+  })
+
   it('starts the CLI without the marks of a surrounding agent session, and with its memory off', async () => {
     const session = harness({
       env: {

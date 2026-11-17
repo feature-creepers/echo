@@ -1,0 +1,72 @@
+name: Release
+
+# Pushing a tag such as v0.2.0 builds the app on each system and uploads the packages, with the update
+# manifests (latest.yml, latest-mac.yml, latest-linux.yml), to a draft GitHub release of that version.
+# Nothing reaches users until the draft is published by hand: installed copies read only published releases.
+# The tag must be the version in apps/desktop/package.json, with a "v" in front.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: package (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            stage: --os win32 --arch x64
+            targets: --win nsis zip --x64
+          - os: macos-latest
+            stage: --os darwin --arch arm64
+            targets: --mac dmg zip --arm64
+          - os: ubuntu-latest
+            stage: --os linux --arch x64
+            targets: --linux AppImage --x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # A release of a version other than the one built would give every installed copy a wrong number to compare.
+      - name: Check the tag against the version
+        shell: bash
+        run: |
+          version=$(node -p "require('./apps/desktop/package.json').version")
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::The tag $GITHUB_REF_NAME is not v$version, the version in apps/desktop/package.json."
+            exit 1
+          fi
+
+      - run: pnpm check
+
+      - run: pnpm build
+
+      # electron-builder creates the draft release of this version the first time, and adds to it from the
+      # other systems. The packages are not signed yet: Windows installs and updates them after a warning,
+      # macOS opens them with a right click then Open but cannot update them by itself, Linux needs nothing.
+      - name: Package and upload to the draft release
+        working-directory: apps/desktop
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node build/stage.ts ${{ matrix.stage }}
+          pnpm exec electron-builder --projectDir stage --config ../build/electron-builder.yml ${{ matrix.targets }} --publish always

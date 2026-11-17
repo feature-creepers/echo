@@ -6,7 +6,8 @@ const memory: MemoryView = { revision: 0, groups: [], sleep: { when: 'quiet', qu
 
 const settings: Settings = {
   revision: 0,
-  personas: { available: [{ id: 'first', name: 'Ada', stance: 'accommodating', accent: 'cyan' }], active: 'first', confirmed: false }
+  personas: { available: [{ id: 'first', name: 'Ada', stance: 'accommodating', accent: 'cyan' }], active: 'first', confirmed: false },
+  engines: { models: {} }
 }
 
 function setup(overrides: Partial<Handlers> = {}) {
@@ -20,6 +21,8 @@ function setup(overrides: Partial<Handlers> = {}) {
     'channel.read': () => ({ ok: true, output: { exchanges: [] } }),
     'engines.read': async () => ({ ok: true, output: { engines: { harnesses: [] } } }),
     'engines.sign-in': async () => ({ ok: true, output: {} }),
+    'engines.prefer': async () => ({ ok: true, output: { settings } }),
+    'engines.model.set': async () => ({ ok: true, output: { settings } }),
     'view.read': () => ({ ok: true, output: { margin: [] } }),
     'view.clear': () => ({ ok: true, output: {} }),
     'threads.read': () => ({ ok: true, output: { threads: [] } }),

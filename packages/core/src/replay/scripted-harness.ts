@@ -1,4 +1,4 @@
-import type { Harness, HarnessStatus, OneShot, Session, SessionEvent, SessionRequest } from '../ports/harness.ts'
+import type { Harness, HarnessModels, HarnessStatus, OneShot, Session, SessionEvent, SessionRequest } from '../ports/harness.ts'
 
 /**
  * A harness that plays a script instead of running a model. For tests, and for replaying a recorded
@@ -32,6 +32,16 @@ export interface ScriptOptions {
   status?: HarnessStatus
   /** Answers one-shot questions. Left out, they are answered with an empty text. */
   complete?: (request: OneShot) => string
+  /** The models it offers. Left out, a fast one by default and a strong one. */
+  models?: HarnessModels
+}
+
+const SCRIPTED_MODELS: HarnessModels = {
+  models: [
+    { id: 'quick', name: 'Quick', description: 'Fast and inexpensive.' },
+    { id: 'deep', name: 'Deep', description: 'Slower, for harder questions.' }
+  ],
+  default: 'quick'
 }
 
 export function scriptedHarness(options: ScriptOptions = {}): ScriptedHarness {
@@ -46,6 +56,7 @@ export function scriptedHarness(options: ScriptOptions = {}): ScriptedHarness {
       status = next
     },
     status: async () => status,
+    models: async () => options.models ?? SCRIPTED_MODELS,
     signIn: async () => {
       harness.signIns++
     },

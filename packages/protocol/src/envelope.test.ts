@@ -13,7 +13,8 @@ const settings: Settings = {
     ],
     active: 'one',
     confirmed: true
-  }
+  },
+  engines: { models: {} }
 }
 
 describe('commands', () => {
