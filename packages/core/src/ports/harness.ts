@@ -42,6 +42,11 @@ export interface SessionRequest {
   instructions: string
   /** The tools the session may call. Left out, the session has none and can only write text. */
   tools?: ToolServer
+  /**
+   * Whether the session may search the web and read pages with the harness's own tools, which come with the
+   * user's subscription (docs/SPEC.md, section 6.2). They are reported as the tools `web_search` and `web_read`.
+   */
+  web?: boolean
 }
 
 export type SessionEvent =

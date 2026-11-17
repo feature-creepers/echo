@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { coreToolName, isolationLeaks } from './isolation.ts'
+import { coreToolName, isolationArguments, isolationLeaks, reportedToolName } from './isolation.ts'
 
 describe('the isolation of Claude Code', () => {
   it('gives a tool of the core its own name back', () => {
@@ -32,5 +32,24 @@ describe('the isolation of Claude Code', () => {
       'skills',
       'its own memory'
     ])
+  })
+
+  it('keeps the CLI’s own web tools only for a session given the web, and reports them by neutral names', () => {
+    const files = { instructions: 'i.txt', settings: 's.json' }
+    const tools = (args: string[]) => args[args.indexOf('--tools') + 1]
+    expect(tools(isolationArguments('haiku', files))).toBe('')
+    expect(tools(isolationArguments('haiku', { ...files, web: true }))).toBe('WebSearch,WebFetch')
+
+    expect(reportedToolName('WebSearch', true)).toBe('web_search')
+    expect(reportedToolName('WebFetch', true)).toBe('web_read')
+    expect(reportedToolName('WebSearch', false)).toBeUndefined()
+    expect(reportedToolName('Bash', true)).toBeUndefined()
+    expect(reportedToolName('mcp__core__ui_render', true)).toBe('ui_render')
+  })
+
+  it('takes the web tools for a leak only when the session was not given the web', () => {
+    const init = { tools: ['WebSearch', 'WebFetch', 'mcp__core__ui_render'] }
+    expect(isolationLeaks(init, true)).toEqual([])
+    expect(isolationLeaks(init)).toEqual(['its own tools (WebSearch, WebFetch)'])
   })
 })

@@ -23,9 +23,18 @@ export const TOOL_SERVER = 'core'
 
 const TOOL_PREFIX = `mcp__${TOOL_SERVER}__`
 
+/** The CLI's own tools a session may be given: searching the web and reading a page. Nothing else of its own. */
+export const WEB_TOOLS: Record<string, string> = { WebSearch: 'web_search', WebFetch: 'web_read' }
+
 /** A tool's name as the core serves it, given the name the CLI uses. Nothing when the tool is not one of the core's. */
 export function coreToolName(name: unknown): string | undefined {
   return typeof name === 'string' && name.startsWith(TOOL_PREFIX) && name.length > TOOL_PREFIX.length ? name.slice(TOOL_PREFIX.length) : undefined
+}
+
+/** A tool's name as the core reports it: its own name for the core's tools, `web_search` or `web_read` for the CLI's web tools. */
+export function reportedToolName(name: unknown, web: boolean): string | undefined {
+  if (web && typeof name === 'string' && Object.hasOwn(WEB_TOOLS, name)) return WEB_TOOLS[name]
+  return coreToolName(name)
 }
 
 /** Settings handed to the CLI as a file. The user's own settings files are not read at all. */
@@ -41,6 +50,8 @@ export interface IsolationFiles {
   settings: string
   /** The tool server's address, as `toolServerConfig` writes it. Left out, the session has no tool. */
   tools?: string | undefined
+  /** Whether the CLI's own web tools are kept. */
+  web?: boolean
 }
 
 /** The arguments every call shares, live session or single question. */
@@ -49,8 +60,8 @@ export function isolationArguments(model: string, files: IsolationFiles): string
     ['--model', model],
     // Replaces the CLI's own system prompt instead of adding to it.
     ['--system-prompt-file', files.instructions],
-    // None of its own tools: no file, no command, no web, no sub-agent.
-    ['--tools', ''],
+    // None of its own tools: no file, no command, no sub-agent; the web only when the session is given it.
+    ['--tools', files.web ? Object.keys(WEB_TOOLS).join(',') : ''],
     // Neither the user's settings nor the folder's, and with them no CLAUDE.md, no hook, no plugin.
     ['--setting-sources', ''],
     ['--settings', files.settings],
@@ -76,9 +87,9 @@ const names = (value: unknown): string[] => (Array.isArray(value) ? value.filter
  * A new version of the CLI may rename a flag or add a feature of its own. This says so the day it happens,
  * instead of an assistant that quietly knows more, or can do more, than the core gave it.
  */
-export function isolationLeaks(init: Record<string, unknown>): string[] {
+export function isolationLeaks(init: Record<string, unknown>, web = false): string[] {
   const leaks: string[] = []
-  const tools = names(init.tools).filter((tool) => coreToolName(tool) === undefined)
+  const tools = names(init.tools).filter((tool) => reportedToolName(tool, web) === undefined)
   if (tools.length > 0) leaks.push(`its own tools (${tools.join(', ')})`)
   const servers = Array.isArray(init.mcp_servers) ? init.mcp_servers.map((server: { name?: unknown }) => String(server?.name)) : []
   const others = servers.filter((server) => server !== TOOL_SERVER)

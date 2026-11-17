@@ -233,7 +233,10 @@ export function createChannel(options: ChannelOptions): Channel {
       kind,
       ...(abilities ? { abilities: [abilities.instructions, abilities.standing?.()].filter(Boolean).join('\n\n') } : {})
     })
-    const session = engine.open(grant ? { role: 'thread', instructions, tools: { url: server, token: grant.token } } : { role: 'thread', instructions })
+    // A thread may search the web and read pages with the harness's own tools.
+    const session = engine.open(
+      grant ? { role: 'thread', instructions, tools: { url: server, token: grant.token }, web: true } : { role: 'thread', instructions, web: true }
+    )
     const live: Live = { session, key, grant }
     runtime.live = live
     session.onEvent((event) => hearThread(runtime, live, event))

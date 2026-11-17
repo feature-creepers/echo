@@ -9,7 +9,7 @@ import { KEPT_OUTPUT, lastLines, saysSignedOut } from '../process/output.ts'
 import { platform } from '../process/platform/index.ts'
 import { start } from '../process/run.ts'
 import { createWorkingFiles } from '../process/working-files.ts'
-import { coreToolName, ISOLATION_SETTINGS, ISOLATION_VARIABLES, isolationArguments, isolationLeaks, TOOL_SERVER, toolServerConfig } from './isolation.ts'
+import { ISOLATION_SETTINGS, ISOLATION_VARIABLES, isolationArguments, isolationLeaks, reportedToolName, TOOL_SERVER, toolServerConfig } from './isolation.ts'
 import { SIGNED_OUT } from './status.ts'
 
 export interface SessionContext {
@@ -80,7 +80,8 @@ export function openSession(request: SessionRequest, context: SessionContext): S
       const paths = {
         instructions: await files.write('instructions.txt', request.instructions),
         settings: await files.write('settings.json', JSON.stringify(ISOLATION_SETTINGS)),
-        tools: request.tools ? await files.write('tools.json', toolServerConfig(request.tools)) : undefined
+        tools: request.tools ? await files.write('tools.json', toolServerConfig(request.tools)) : undefined,
+        web: request.web === true
       }
       if (closed) return void files.remove()
       running = start(launch.command, [...SESSION_ARGUMENTS, ...isolationArguments(context.model, paths)], {
@@ -158,7 +159,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
   function check(init: JsonObject): void {
     if (checked) return
     checked = true
-    const leaks = isolationLeaks(init)
+    const leaks = isolationLeaks(init, request.web === true)
     if (leaks.length > 0) log.error(`A Claude Code session started with ${leaks.join(', ')}, which should all be switched off.`)
     if (!request.tools) return
     const server = asArray(init.mcp_servers)
@@ -211,7 +212,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
 
   function toolStarted(id: unknown, name: unknown): void {
     const call = asString(id)
-    const tool = coreToolName(name)
+    const tool = reportedToolName(name, request.web === true)
     if (call === undefined || tool === undefined || calls.has(call)) return
     calls.set(call, tool)
     events.emit({ type: 'tool', name: tool, phase: 'started' })
@@ -270,7 +271,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
     }
     // The core decides for itself whether one of its tools may run, when it is called. Nothing else may run at all.
     const response =
-      coreToolName(question.tool_name) === undefined
+      reportedToolName(question.tool_name, request.web === true) === undefined
         ? { behavior: 'deny', message: 'This tool is not available in this session.' }
         : { behavior: 'allow', updatedInput: asObject(question.input) ?? {} }
     write({ type: 'control_response', response: { subtype: 'success', request_id, response } })

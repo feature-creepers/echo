@@ -104,6 +104,8 @@ describe('threads', () => {
 
     const thread = harness.sessions[1]
     expect(thread?.request.role).toBe('thread')
+    expect(thread?.request.web).toBe(true)
+    expect(harness.sessions[0]?.request.web).toBeUndefined()
     expect(thread?.request.instructions).toContain('"Dinner tonight"')
     expect(thread?.request.instructions).toContain('THE SCREEN')
     expect(thread?.sent).toEqual(['(Now: Tuesday, 17 November 2026, 09:00 (Europe/Paris))\nWhat should I cook tonight?'])
