@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "sideEffects": [
-    "**/*.css"
+    "**/*.css",
+    "./src/index.ts"
   ],
   "exports": {
     ".": "./src/index.ts"
@@ -13,10 +14,17 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@fontsource-variable/geist": "catalog:",
+    "@fontsource-variable/geist-mono": "catalog:",
     "@repo/catalog": "workspace:*",
     "@repo/client": "workspace:*",
     "@repo/protocol": "workspace:*",
-    "@repo/tokens": "workspace:*"
+    "@repo/tokens": "workspace:*",
+    "class-variance-authority": "catalog:",
+    "clsx": "catalog:",
+    "motion": "catalog:",
+    "tailwind-merge": "catalog:",
+    "tailwindcss": "catalog:"
   },
   "devDependencies": {
     "@repo/tsconfig": "workspace:*",

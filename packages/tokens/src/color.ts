@@ -1,22 +1,31 @@
-/** The colours of the interface: a near-black ground, flat surfaces, thin rules. */
+/**
+ * The colours of the interface: a near-black ground with a hint of blue, flat layers that rise from it,
+ * hairlines between them, and three weights of text.
+ */
 export const color = {
   /** Behind everything. */
-  ground: '#07090c',
+  ground: '#05070a',
   /** A panel resting on the ground. */
-  surface: '#0d1117',
-  /** Something resting on a panel. */
-  raised: '#141b24',
-  /** A line between two areas. */
-  rule: '#1e2733',
+  surface: '#0a0d12',
+  /** Something resting on a panel: a field, a row under the pointer. */
+  raised: '#10141b',
+  /** Something floating over the rest: a sheet, a menu. */
+  overlay: '#161b24',
+  /** A hairline between two areas. A wash of white, so it reads on every layer. */
+  line: 'rgb(255 255 255 / 0.07)',
   /** The edge of something that can be typed in or pressed. */
-  ruleStrong: '#334052',
-  text: '#e9eef4',
+  lineStrong: 'rgb(255 255 255 / 0.14)',
+  text: '#edf0f5',
   /** Secondary sentences. */
-  textSoft: '#a3afbf',
-  /** Labels and hints. The dimmest text that still reads on the ground and on a surface. */
-  textFaint: '#7c8898',
+  textSoft: '#a4adbb',
+  /** Labels and hints: the dimmest text that still reads on every layer. */
+  textFaint: '#7a8496',
   /** Something is wrong and needs attention. */
-  danger: '#ff7b72'
+  danger: '#ff7a70',
+  /** Something went through. */
+  ok: '#5fd39b',
+  /** Something to keep an eye on. */
+  warn: '#f0c05a'
 } as const
 
 export type ColorName = keyof typeof color

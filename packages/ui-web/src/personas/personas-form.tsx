@@ -1,20 +1,21 @@
 import { CommandFailed } from '@repo/client'
 import { type CommandInput, PERSONA_NAME_MAX_LENGTH, type Persona, type PersonaId } from '@repo/protocol'
-import { type FormEvent, useId, useState } from 'react'
+import { type FormEvent, type ReactNode, useId, useState } from 'react'
+import { Orb } from '../presence/orb.tsx'
 import { Button } from '../primitives/button.tsx'
+import { cn } from '../primitives/cn.ts'
+import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { TextField } from '../primitives/text-field.tsx'
-import { accentStyle } from '../styles/theme.ts'
+import { accentStyle } from '../styles/accent.ts'
 import { nameProblemCopy, refusalCopy, stanceCopy } from './copy.ts'
 import { activeIn, choiceOf, NO_EDITS, nameIn, type PersonaDraft, problemsOf } from './draft.ts'
-import { PersonaMark } from './persona-mark.tsx'
-import styles from './personas-form.module.css'
 
 export interface PersonasFormProps {
   personas: readonly Persona[]
   /** The persona that answers now. */
   active: PersonaId
   /** What the button says, and what it says while the choice is on its way. */
-  submitLabel: string
+  submitLabel: ReactNode
   busyLabel: string
   /** Said beside the button once the core has kept the choice. Left out, nothing is said. */
   doneLabel?: string
@@ -60,28 +61,37 @@ export function PersonasForm({ personas, active, submitLabel, busyLabel, doneLab
   }
 
   return (
-    <form className={styles.form} onSubmit={(event) => void submit(event)} noValidate>
-      <fieldset className={styles.cards}>
-        <legend className={styles.legend}>Personalities</legend>
+    <form className="grid gap-6" onSubmit={(event) => void submit(event)} noValidate>
+      <fieldset className="grid gap-4 md:grid-cols-2">
+        <legend className="sr-only">Personalities</legend>
         {personas.map((persona, index) => {
           const problem = problems[persona.id]
           const answers = activeIn(draft, active) === persona.id
           return (
-            <div key={persona.id} className={styles.card} data-active={answers} style={accentStyle(persona.accent)}>
-              <div className={styles.heading}>
-                <PersonaMark size="small" />
-                <span className={styles.stance}>{stanceCopy[persona.stance].label}</span>
+            <div
+              key={persona.id}
+              style={accentStyle(persona.accent)}
+              className={cn(
+                'relative grid gap-5 rounded-lg border bg-surface/80 p-6 backdrop-blur-sm transition duration-300 ease-soft',
+                answers ? 'border-accent/55 shadow-[0_0_80px_-28px_var(--accent)]' : 'border-line hover:border-line-strong'
+              )}
+            >
+              <div className="flex items-center gap-4">
+                <Orb size={64} mood={answers ? 'idle' : 'asleep'} className="-m-2 shrink-0" />
+                <div className="grid gap-1">
+                  <Eyebrow accent>{stanceCopy[persona.stance].label}</Eyebrow>
+                  <p className="text-sm text-text-soft leading-relaxed">{stanceCopy[persona.stance].summary}</p>
+                </div>
               </div>
-              <p className={styles.summary}>{stanceCopy[persona.stance].summary}</p>
               <TextField
                 label="Name"
                 value={nameIn(draft, persona)}
                 maxLength={PERSONA_NAME_MAX_LENGTH * 2}
-                autoFocus={index === 0}
+                first={index === 0}
                 problem={problem && nameProblemCopy[problem]}
                 onChange={(name) => change({ ...draft, names: { ...draft.names, [persona.id]: name } })}
               />
-              <label className={styles.choice}>
+              <label className="-mt-1 flex cursor-pointer items-center gap-2.5 border-line border-t pt-4 font-mono text-text-soft text-xs has-checked:text-text">
                 <input
                   type="radio"
                   name={group}
@@ -90,6 +100,7 @@ export function PersonasForm({ personas, active, submitLabel, busyLabel, doneLab
                     change({ ...draft, active: persona.id })
                     onPick?.(persona.id)
                   }}
+                  className="grid size-4 cursor-pointer appearance-none place-content-center rounded-full border border-line-strong transition before:size-2 before:scale-0 before:rounded-full before:bg-accent before:transition before:content-[''] checked:border-accent checked:before:scale-100"
                 />
                 Answers by default
               </label>
@@ -98,11 +109,11 @@ export function PersonasForm({ personas, active, submitLabel, busyLabel, doneLab
         })}
       </fieldset>
 
-      <div className={styles.footer}>
-        <Button kind="primary" type="submit" disabled={state.is === 'busy'}>
+      <div className="flex items-center gap-4">
+        <Button kind="primary" size="lg" type="submit" disabled={state.is === 'busy'}>
           {state.is === 'busy' ? busyLabel : submitLabel}
         </Button>
-        <span role="status" className={state.is === 'refused' ? styles.failure : styles.done}>
+        <span role="status" className={cn('text-sm', state.is === 'refused' ? 'text-danger' : 'font-mono text-text-soft text-xs')}>
           {state.is === 'refused' ? state.why : state.is === 'done' ? doneLabel : undefined}
         </span>
       </div>

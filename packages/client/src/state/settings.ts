@@ -1,5 +1,6 @@
 import type { Settings } from '@repo/protocol'
 import type { Session } from '../session.ts'
+import type { Followed } from './followed.ts'
 
 /** What a client knows of the user's settings. */
 export type SettingsSnapshot =
@@ -10,11 +11,7 @@ export type SettingsSnapshot =
   | { state: 'failed'; reason: string }
 
 /** The user's settings, kept current for as long as the session lasts. */
-export interface SettingsState {
-  /** The same object until something changes, so it can be compared by identity. */
-  current(): SettingsSnapshot
-  /** Be told each time `current()` changes. Returns a function that stops the telling. */
-  subscribe(listener: () => void): () => void
+export interface SettingsState extends Followed<SettingsSnapshot> {
   stop(): void
 }
 

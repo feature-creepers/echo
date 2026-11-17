@@ -1,5 +1,5 @@
-import { type CoreLink, followSettings, openSession, type Session, type SettingsState } from '@repo/client'
-import { applyTheme, Shell } from '@repo/ui-web'
+import { type Client, type CoreLink, openClient } from '@repo/client'
+import { Shell, silentVoice } from '@repo/ui-web'
 import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import manifest from '../../package.json'
@@ -16,17 +16,15 @@ function useCoreLink(): CoreLink {
   return link
 }
 
-/** The exchange with the core, for as long as the app is connected to it. */
-function useClient(connected: boolean): { session: Session; settings: SettingsState } | undefined {
-  const [client, setClient] = useState<{ session: Session; settings: SettingsState }>()
+/** What the window holds for as long as the app is connected to its core. */
+function useClient(connected: boolean): Client | undefined {
+  const [client, setClient] = useState<Client>()
   useEffect(() => {
     if (!connected) return
-    const session = openSession(window.desktop.core)
-    const settings = followSettings(session)
-    setClient({ session, settings })
+    const opened = openClient(window.desktop.core, silentVoice())
+    setClient(opened)
     return () => {
-      settings.stop()
-      session.close()
+      opened.close()
       setClient(undefined)
     }
   }, [connected])
@@ -41,7 +39,6 @@ function App() {
 
 const root = document.getElementById('root')
 if (!root) throw new Error('The page has no #root element.')
-applyTheme(document.documentElement)
 createRoot(root).render(
   <StrictMode>
     <App />

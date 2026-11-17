@@ -1,0 +1,74 @@
+/*
+ * The one stylesheet of the interface. Everything else is utility classes on the components.
+ * Colours, typefaces and radii come from @repo/tokens, as a Tailwind theme.
+ */
+@import "tailwindcss";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+@import "@repo/tokens/theme.css";
+
+/* The components of this package are where the classes are written. */
+@source "..";
+
+/*
+ * Declared as a colour so that a change of accent can be animated. The initial value is never seen:
+ * the theme sets the real one at the root.
+ */
+@property --accent {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
+@layer base {
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    background: var(--color-ground);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "cv11";
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--accent) 35%, transparent);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: default;
+  }
+}
+
+/* What the window is dragged by, and what can be pressed inside it. */
+@utility drag {
+  -webkit-app-region: drag;
+}
+
+@utility no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Everything inside follows a change of accent smoothly. */
+@utility accent-shift {
+  transition: --accent var(--duration-calm) var(--ease-soft);
+}
+
+/* A scroll area whose bar stays out of the way until it is used. */
+@utility scroll-quiet {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-strong) transparent;
+}

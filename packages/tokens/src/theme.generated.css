@@ -1,0 +1,46 @@
+/* Generated from the values in @repo/tokens by `pnpm theme`. Do not edit. */
+
+@theme {
+  --color-*: initial;
+  --color-ground: #05070a;
+  --color-surface: #0a0d12;
+  --color-raised: #10141b;
+  --color-overlay: #161b24;
+  --color-line: rgb(255 255 255 / 0.07);
+  --color-line-strong: rgb(255 255 255 / 0.14);
+  --color-text: #edf0f5;
+  --color-text-soft: #a4adbb;
+  --color-text-faint: #7a8496;
+  --color-danger: #ff7a70;
+  --color-ok: #5fd39b;
+  --color-warn: #f0c05a;
+
+  --font-sans: "Geist Variable", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif;
+  --font-mono: "Geist Mono Variable", "Cascadia Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+
+  --radius-*: initial;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 18px;
+
+  --text-label: 0.6875rem;
+  --text-label--line-height: 1rem;
+  --text-label--letter-spacing: 0.12em;
+
+  --ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@theme inline {
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+}
+
+:root {
+  --accent: #a4adbb;
+  --accent-ink: #05070a;
+  --duration-quick: 140ms;
+  --duration-calm: 320ms;
+  --duration-slow: 640ms;
+  --frame-title-bar: 32px;
+}

@@ -1,32 +1,136 @@
+import type { EnginesState } from '@repo/client'
 import type { CommandInput, PersonaId, Settings } from '@repo/protocol'
+import { AnimatePresence, motion } from 'motion/react'
+import { type ReactNode, useEffect, useState } from 'react'
+import { EngineRows } from '../conversation/engine-rows.tsx'
 import { PersonasForm } from '../personas/personas-form.tsx'
-import styles from './onboarding.module.css'
+import { Orb } from '../presence/orb.tsx'
+import { Button } from '../primitives/button.tsx'
+import { Eyebrow } from '../primitives/eyebrow.tsx'
+import { Kbd } from '../primitives/kbd.tsx'
 
 export interface OnboardingProps {
   productName: string
   personas: Settings['personas']
-  onSubmit(choice: CommandInput<'personas.set'>): Promise<void>
+  engines: EnginesState
+  setPersonas(choice: CommandInput<'personas.set'>): Promise<void>
   onPick(persona: PersonaId): void
+  /** The user went through every step. */
+  onDone(): void
 }
 
+const STEPS = ['welcome', 'personalities', 'engine'] as const
+type Step = (typeof STEPS)[number]
+
 /**
- * First launch: the user meets the personas, keeps their names or types their own, and picks the one that answers.
- * It is shown until the core says the personas are confirmed, on whichever device the user does it.
+ * First launch, one thing at a time: what this is, who the user will be talking to and what to call them,
+ * and what the assistant thinks with.
  */
-export function Onboarding({ productName, personas, onSubmit, onPick }: OnboardingProps) {
+export function Onboarding({ productName, personas, engines, setPersonas, onPick, onDone }: OnboardingProps) {
+  // Someone who already named the personas, on this device or another, starts after that step.
+  const [step, setStep] = useState<Step>(personas.confirmed ? 'engine' : 'welcome')
+  const at = STEPS.indexOf(step)
+
   return (
-    <section className={styles.onboarding} aria-labelledby="onboarding-title">
-      <div className={styles.intro}>
-        <p className={styles.eyebrow}>Welcome to {productName}</p>
-        <h1 id="onboarding-title" className={styles.title}>
-          Meet your assistant.
-        </h1>
-        <p className={styles.lead}>
-          It has more than one personality, and you call it by the name of the one in use. Keep these names or type your own. You can change them later in
-          settings.
-        </p>
+    <div className="flex h-full flex-col">
+      <div className="mx-auto flex w-full max-w-4xl items-center gap-4 px-8 pt-8">
+        <Eyebrow>
+          {String(at + 1).padStart(2, '0')} <span className="text-text-faint/50">/ {String(STEPS.length).padStart(2, '0')}</span>
+        </Eyebrow>
+        <div className="h-px flex-1 bg-line">
+          <motion.div
+            className="h-px bg-accent"
+            animate={{ width: `${((at + 1) / STEPS.length) * 100}%` }}
+            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+          />
+        </div>
       </div>
-      <PersonasForm personas={personas.available} active={personas.active} submitLabel="Start" busyLabel="Starting…" onSubmit={onSubmit} onPick={onPick} />
+
+      <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={step}
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+            className="mx-auto flex min-h-full w-full max-w-4xl flex-col justify-center px-8 py-10"
+          >
+            {step === 'welcome' && <Welcome productName={productName} onNext={() => setStep('personalities')} />}
+            {step === 'personalities' && (
+              <Section
+                eyebrow="Personalities"
+                title="One assistant. Two ways to answer."
+                lead="You call it by the name of the personality in use. Keep these names or type your own; you can change them later."
+              >
+                <PersonasForm
+                  personas={personas.available}
+                  active={personas.active}
+                  submitLabel="Continue"
+                  busyLabel="Saving…"
+                  onPick={onPick}
+                  onSubmit={async (choice) => {
+                    await setPersonas(choice)
+                    setStep('engine')
+                  }}
+                />
+              </Section>
+            )}
+            {step === 'engine' && (
+              <Section
+                eyebrow="Engine"
+                title="What it thinks with."
+                lead={`${productName} runs on an AI program you already have, signed in with your own account. It adds no account of its own.`}
+              >
+                <EngineRows engines={engines} />
+                <div className="mt-8 flex items-center gap-4">
+                  <Button kind="primary" size="lg" onClick={onDone}>
+                    Start
+                  </Button>
+                  <span className="text-text-soft text-xs">You can set this up later. Until one is ready, {productName} cannot answer.</span>
+                </div>
+              </Section>
+            )}
+          </motion.div>
+        </AnimatePresence>
+      </div>
+    </div>
+  )
+}
+
+function Welcome({ productName, onNext }: { productName: string; onNext(): void }) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Enter') onNext()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onNext])
+
+  return (
+    <div className="flex flex-col items-center text-center">
+      <Orb size={260} mood="idle" />
+      <h1 className="mt-2 font-mono font-medium text-5xl lowercase tracking-[0.3em] [margin-right:-0.3em]">{productName}</h1>
+      <p className="mt-5 max-w-md text-lg text-text-soft leading-relaxed">A personal assistant you talk to. It answers aloud, and shows the rest.</p>
+      <div className="mt-10 flex items-center gap-3">
+        <Button kind="primary" size="lg" onClick={onNext}>
+          Begin
+        </Button>
+        <Kbd>↵</Kbd>
+      </div>
+    </div>
+  )
+}
+
+function Section({ eyebrow, title, lead, children }: { eyebrow: string; title: string; lead: string; children: ReactNode }) {
+  return (
+    <section className="grid gap-8">
+      <div className="grid max-w-2xl gap-3">
+        <Eyebrow accent>{eyebrow}</Eyebrow>
+        <h1 className="font-medium text-4xl tracking-tight">{title}</h1>
+        <p className="text-lg text-text-soft leading-relaxed">{lead}</p>
+      </div>
+      <div>{children}</div>
     </section>
   )
 }

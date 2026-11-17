@@ -1,1 +1,1 @@
-export { useSettings } from './use-settings.ts'
+export { useFollowed } from './use-followed.ts'
