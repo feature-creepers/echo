@@ -2,13 +2,16 @@ import { z } from 'zod'
 import { eventPrefixSchema } from '../envelope.ts'
 import { viewSchema } from '../views.ts'
 
-/** The assistant shows a view. It replaces the one shown before. */
+/** The assistant shows a view. It goes on top of the stream; on the stage, it takes the place of the one shown before. */
 export const viewShownSchema = eventPrefixSchema.extend({
   name: z.literal('view.shown'),
   view: viewSchema
 })
 
-/** A view is no longer shown: the one given, or, left out, whatever is on the stage. */
+/**
+ * A view is no longer shown. Given, that view leaves the stream. Left out, the topic in focus has nothing to show:
+ * the stage is empty, and the views already in the stream stay there.
+ */
 export const viewClearedSchema = eventPrefixSchema.extend({
   name: z.literal('view.cleared'),
   view: z.string().min(1).max(64).optional()

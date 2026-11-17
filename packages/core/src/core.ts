@@ -213,7 +213,8 @@ export function createCore(options: CoreOptions): Core {
       'engines.read': async () => ({ ok: true, output: { engines: await engines.read(true) } }),
       'view.read': () => {
         const view = screen.current()
-        return { ok: true, output: view ? { view, margin: screen.margin() } : { margin: screen.margin() } }
+        const shown = { margin: screen.margin(), stream: screen.stream() }
+        return { ok: true, output: view ? { view, ...shown } : shown }
       },
       'view.clear': (input) => {
         screen.clear(input.view)

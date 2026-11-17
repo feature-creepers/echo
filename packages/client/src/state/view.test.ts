@@ -12,13 +12,16 @@ const view = (id: string, slot: 'stage' | 'margin' = 'stage'): ShownView => ({
 
 function fakeSession() {
   const listeners = new Set<(event: Event) => void>()
-  let answer: (shown: ShownView | undefined) => void = () => undefined
+  let answer: (shown: ShownView | undefined, stream?: ShownView[]) => void = () => undefined
   const ran: string[] = []
   const session: Session = {
     run: (name) => {
       ran.push(name)
       if (name === 'view.read')
-        return new Promise<never>((resolve) => (answer = (shown) => resolve((shown ? { view: shown, margin: [] } : { margin: [] }) as never)))
+        return new Promise<never>(
+          (resolve) =>
+            (answer = (shown, stream = shown ? [shown] : []) => resolve((shown ? { view: shown, margin: [], stream } : { margin: [], stream }) as never))
+        )
       return Promise.resolve({} as never)
     },
     onEvent: (listener) => {
@@ -30,7 +33,7 @@ function fakeSession() {
   const emit = (event: Event) => {
     for (const listener of listeners) listener(event)
   }
-  return { session, emit, ran, answer: (shown: ShownView | undefined) => answer(shown) }
+  return { session, emit, ran, answer: (shown: ShownView | undefined, stream?: ShownView[]) => answer(shown, stream) }
 }
 
 const settled = async () => {
@@ -85,6 +88,27 @@ describe('followView', () => {
     core.emit({ type: 'event', name: 'view.shown', view: view('new') })
     core.emit({ type: 'event', name: 'view.shown', view: view('aside', 'margin') })
     expect(state.current().arrived).toEqual(['new', 'aside'])
+  })
+
+  it('opens on the stream the core keeps, then puts each new view on top', async () => {
+    const core = fakeSession()
+    const state = followView(core.session)
+    core.answer(view('b'), [view('b'), view('a')])
+    await settled()
+    core.emit({ type: 'event', name: 'view.shown', view: view('aside', 'margin') })
+    core.emit({ type: 'event', name: 'view.shown', view: view('c') })
+    expect(state.current().stream.map((one) => one.id)).toEqual(['c', 'aside', 'b', 'a'])
+  })
+
+  it('takes a closed view out of the stream, and keeps the stream when only the stage empties', () => {
+    const core = fakeSession()
+    const state = followView(core.session)
+    for (const id of ['a', 'b', 'c']) core.emit({ type: 'event', name: 'view.shown', view: view(id) })
+    core.emit({ type: 'event', name: 'view.cleared', view: 'b' })
+    expect(state.current().stream.map((one) => one.id)).toEqual(['c', 'a'])
+    core.emit({ type: 'event', name: 'view.cleared' })
+    expect(state.current().stage).toBeUndefined()
+    expect(state.current().stream.map((one) => one.id)).toEqual(['c', 'a'])
   })
 
   it('asks the core to clear the screen', async () => {

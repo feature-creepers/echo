@@ -113,4 +113,4 @@ export {
 export { type Settings, settingsSchema } from './settings.ts'
 export { THREAD_KINDS, THREAD_STATES, type Thread, type Threads, threadIdSchema, threadSchema, threadsSchema } from './threads.ts'
 export { isCompatible, PROTOCOL_VERSION } from './version.ts'
-export { type ShownView, viewSchema, viewSpecShape } from './views.ts'
+export { onTop, type ShownView, STREAM_LENGTH, viewSchema, viewSpecShape } from './views.ts'

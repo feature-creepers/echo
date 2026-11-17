@@ -16,12 +16,12 @@ import type { Mood } from '../presence/painter.ts'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { DURATION, EASE, glide, settle } from '../styles/motion.ts'
-import { Asides } from '../view/asides.tsx'
 import type { ViewActions } from '../view/context.ts'
-import { ViewPanel } from '../view/view-panel.tsx'
+import { ViewStream } from '../view/view-stream.tsx'
 import { doing } from './activity.ts'
 import { EngineIndicator } from './engine-indicator.tsx'
 import { InputLine } from './input-line.tsx'
+import { ReadyChips } from './ready-chips.tsx'
 import { type ScrollEdges, useScrollEdges } from './scroll-edges.ts'
 import { SpokenLine } from './spoken-line.tsx'
 import { Suggestions } from './suggestions.tsx'
@@ -48,10 +48,10 @@ export const TALK_EVENT = 'echo:talk'
 const COLUMN = 'max-w-[45rem]'
 
 /**
- * How what scrolls fades out where it is cut: under the header when scrolled, and just above the composer, which
- * floats over the bottom of the screen, when there is more below. Nothing is painted behind the composer, so the
- * window's ground runs under it as everywhere else. The fade above the composer starts over the room the content
- * keeps under it (pb-32), so what rests at the bottom is whole.
+ * How the empty stage fades out where it is cut, in a window too short for it: at the top when scrolled, and just
+ * above the composer, which floats over the bottom of the screen, when there is more below. Nothing is painted
+ * behind the composer, so the window's ground runs under it as everywhere else. The fade above the composer starts
+ * over the room the content keeps under it (pb-32), so what rests at the bottom is whole.
  */
 const FADES = {
   none: '',
@@ -86,6 +86,45 @@ function Core({ size, mood, level }: { size: number; mood: Mood; level: () => nu
 }
 
 /**
+ * The core's size over the stream: large enough to read as the presence at the top of the screen, small enough to
+ * leave the stream its room in a short window.
+ */
+const topCoreSize = (height: number) => Math.round(Math.min(136, Math.max(96, height * 0.12)))
+
+function useTopCoreSize(): number {
+  const [size, setSize] = useState(() => topCoreSize(window.innerHeight))
+  useEffect(() => {
+    const onResize = () => setSize(topCoreSize(window.innerHeight))
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  return size
+}
+
+/**
+ * Where the floating composer sits, kept current: the stream's box ends behind the middle of the composer, so the
+ * edge where it cuts the cards is under the composer's material, and the top half of the composer is what the
+ * cards sink under. Measured on the block that holds the composer and the row under it.
+ */
+function useComposerRoom(): [(element: HTMLElement | null) => void, { end: number; under: number }] {
+  const [element, setElement] = useState<HTMLElement | null>(null)
+  const [room, setRoom] = useState({ end: 66, under: 24 })
+  useEffect(() => {
+    if (!element) return
+    const measure = () => {
+      const composer = element.querySelector('form')
+      const half = Math.round((composer?.offsetHeight ?? 48) / 2)
+      const end = Math.round(element.offsetHeight) - half
+      setRoom((was) => (was.end === end && was.under === half ? was : { end, under: half }))
+    }
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [element])
+  return [setElement, room]
+}
+
+/**
  * A voice's loudness when there is no sound to measure: the rise and fall of syllables, made from a few
  * waves that never line up the same way twice. It keeps the core alive while sentences are shown, not played.
  */
@@ -105,7 +144,8 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
   const activity = useFollowed(client.activity)
   const engines = useFollowed(client.engines)
   const shown = useFollowed(client.view)
-  const view = shown.stage
+  const stream = shown.stream
+  const streaming = stream.length > 0
   const threads = useFollowed(client.threads)
   const asleep = useFollowed(client.memory.asleep)
   const ready = threads.threads.filter((thread) => thread.state === 'ready')
@@ -146,6 +186,8 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
       shownView.turn !== undefined && shownView.turn === answering && shown.arrived.includes(shownView.id) ? { ...actions, autoplay: shownView.id } : actions,
     [actions, shown.arrived, answering]
   )
+  // Closing a card takes it out of the stream, and off the stage when it is the one there.
+  const close = useCallback((view: ShownView) => void client.view.clear(view.id).catch(() => undefined), [client])
   const stop = useCallback(() => {
     client.speech.stop()
     client.channel.stop().catch(() => undefined)
@@ -164,8 +206,9 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
     client.channel.say(text, language).catch(() => setProblem(refusalCopy('failed')))
   })
   const listening = talk.is === 'listening'
-  const [viewScroll, viewEdges] = useScrollEdges()
   const [stageScroll, stageEdges] = useScrollEdges()
+  const coreSize = useTopCoreSize()
+  const [composerBox, composerRoom] = useComposerRoom()
 
   // What plays goes quiet while the person talks, so the music does not drown what they say.
   const player = usePlayer()
@@ -243,7 +286,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
           // A sentence leaves quickly, so the next one is shown as its sound starts.
           exit={{ opacity: 0, y: -3, transition: { duration: 0.12 } }}
           transition={settle}
-          className={cn('text-balance', view ? 'text-[0.9375rem] leading-relaxed' : 'text-xl leading-snug tracking-[-0.01em]')}
+          className={cn('text-balance', streaming ? 'text-[0.9375rem] leading-relaxed' : 'text-xl leading-snug tracking-[-0.01em]')}
         >
           <SpokenLine text={speaking.sentence.text} since={speaking.since} seconds={speaking.seconds} paused={speaking.paused} />
         </motion.p>
@@ -253,7 +296,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0, transition: { duration: 0.12 } }}
-          className={cn('text-balance text-text-faint', view ? 'text-[0.9375rem] leading-relaxed' : 'text-lg leading-snug')}
+          className={cn('text-balance text-text-faint', streaming ? 'line-clamp-2 text-[0.9375rem] leading-relaxed' : 'text-lg leading-snug')}
         >
           “{last.said}”
         </motion.p>
@@ -272,7 +315,8 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className={cn('line-clamp-3 text-balance text-text-soft', view ? 'text-[0.9375rem] leading-relaxed' : 'text-lg leading-snug')}
+          // Over the stream, two lines at most: the room kept for the caption, so it never runs onto the cards.
+          className={cn('text-balance text-text-soft', streaming ? 'line-clamp-2 text-[0.9375rem] leading-relaxed' : 'line-clamp-3 text-lg leading-snug')}
         >
           {last.replied}
         </motion.p>
@@ -280,16 +324,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
     </AnimatePresence>
   )
 
-  const asides =
-    shown.margin.length > 0 || ready.length > 0 ? (
-      <Asides
-        cards={shown.margin}
-        ready={ready}
-        onFocus={(thread) => void client.threads.focus(thread).catch(() => undefined)}
-        onClose={(id) => void client.view.clear(id).catch(() => undefined)}
-        actions={actionsFor}
-      />
-    ) : undefined
+  const chips = ready.length > 0 ? <ReadyChips ready={ready} onFocus={(thread) => void client.threads.focus(thread).catch(() => undefined)} /> : undefined
 
   const composer = (
     <InputLine
@@ -315,75 +350,85 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
   )
 
   // Everything the assistant shows stays in one column, centred in the window: the core and its caption never move
-  // aside. With a view on the stage, the core only shrinks and rises to the top of the column, its name, state and
-  // spoken line centred under it. The sides of the window are left to the pinned widgets' docks.
+  // aside. With views to show, the core rises to the top of the column, its name, state and spoken line centred under
+  // it, and the stream of views turns under them. The sides of the window are left to the pinned widgets' docks.
   return (
     <div className="relative flex h-full min-w-0 flex-col">
-      {view ? (
-        <>
-          <header className="relative z-10 shrink-0 px-8 pt-1.5 pb-2">
-            <div className={cn('mx-auto grid w-full justify-items-center text-center', COLUMN)}>
-              <motion.div layoutId="stage-core" transition={glide} className="-my-1.5">
-                <Core size={64} mood={mood} level={level.current} />
-              </motion.div>
-              <motion.span layoutId="stage-name" transition={glide} className="mt-1 font-semibold text-[0.9375rem] leading-tight tracking-tight">
-                {active.name}
-              </motion.span>
-              <motion.span layoutId="stage-mood" transition={glide} className="mt-0.5">
-                <Eyebrow accent={mood !== 'idle'} className="transition-colors duration-(--duration-calm)">
-                  {moodWord}
-                </Eyebrow>
-              </motion.span>
-              <div className="mt-1.5 min-h-6 max-w-[38rem] text-text" aria-live="polite">
+      {streaming && (
+        <header className="relative z-10 shrink-0 px-8 pt-1">
+          <div className={cn('mx-auto grid w-full justify-items-center text-center', COLUMN)}>
+            <motion.div layoutId="stage-core" transition={glide} style={{ marginBlock: -Math.round(coreSize * 0.1) }}>
+              <Core size={coreSize} mood={mood} level={level.current} />
+            </motion.div>
+            <motion.span layoutId="stage-name" transition={glide} className="mt-1.5 font-semibold text-[1.0625rem] leading-tight tracking-[-0.015em]">
+              {active.name}
+            </motion.span>
+            <motion.span layoutId="stage-mood" transition={glide} className="mt-1">
+              <Eyebrow accent={mood !== 'idle'} className="transition-colors duration-(--duration-calm)">
+                {moodWord}
+              </Eyebrow>
+            </motion.span>
+            {/* Two lines are kept for what is said, so a longer sentence never moves the stream under it. They come in
+                once the core, rising from the middle of the screen, has passed where they are. */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: DURATION.calm, delay: 0.18, ease: EASE }}
+              className="mt-3 grid w-full justify-items-center gap-1"
+            >
+              <div className="h-[3.25rem] w-full max-w-[38rem] text-text" aria-live="polite">
                 {caption}
               </div>
-            </div>
-          </header>
-          <div className="relative min-h-0 flex-1">
-            <div ref={viewScroll} className={cn('scroll-none h-full overflow-y-auto px-8 pt-2 pb-32', fade(viewEdges))}>
-              <motion.div
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: DURATION.slow, ease: EASE }}
-                className={cn('mx-auto grid w-full gap-3', COLUMN)}
-              >
-                {asides}
-                <ViewPanel view={view} actions={actionsFor(view)} onClose={() => void client.view.clear().catch(() => undefined)} />
-              </motion.div>
-            </div>
-          </div>
-        </>
-      ) : (
-        <div ref={stageScroll} className={cn('scroll-none min-h-0 flex-1 overflow-y-auto px-8', fade(stageEdges))}>
-          <div className="flex min-h-full w-full flex-col items-center justify-center pt-6 pb-32">
-            <motion.div layoutId="stage-core" transition={glide} className={asides ? '-my-4' : '-my-7'}>
-              <Core size={asides ? 200 : 280} mood={mood} level={level.current} />
+              {chips}
             </motion.div>
-            <div className="grid justify-items-center gap-2">
-              <motion.h1 layoutId="stage-name" transition={glide} className="font-semibold text-[1.875rem] leading-none tracking-[-0.025em]">
-                {active.name}
-              </motion.h1>
-              <motion.span layoutId="stage-mood" transition={glide}>
-                <Eyebrow accent={mood !== 'idle'} className="transition-colors duration-(--duration-calm)">
-                  {moodWord}
-                </Eyebrow>
-              </motion.span>
-            </div>
-            <div className={cn('mt-7 flex w-full items-start justify-center text-center', COLUMN, asides ? 'min-h-8' : 'min-h-24')} aria-live="polite">
-              {caption}
-            </div>
-            {asides ? (
-              <div className={cn('mt-4 w-full', COLUMN)}>{asides}</div>
-            ) : (
-              // Until the user has said anything, a few things to try.
-              !noEngine && !running && !speaking.sentence && channel.exchanges.every((line) => line.trigger !== undefined) && <Suggestions onSay={say} />
-            )}
           </div>
-        </div>
+        </header>
       )}
+      <div className="relative min-h-0 flex-1">
+        <AnimatePresence initial={false}>
+          {streaming && (
+            <motion.div
+              key="stream"
+              className="absolute inset-x-0 top-0"
+              style={{ bottom: composerRoom.end }}
+              exit={{ opacity: 0, transition: { duration: DURATION.quick, ease: EASE } }}
+            >
+              <ViewStream className="h-full" views={stream} arrived={shown.arrived} actions={actionsFor} onClose={close} under={composerRoom.under} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+        {!streaming && (
+          <div ref={stageScroll} className={cn('scroll-none h-full overflow-y-auto px-8', fade(stageEdges))}>
+            <div className="flex min-h-full w-full flex-col items-center justify-center pt-6 pb-32">
+              <motion.div layoutId="stage-core" transition={glide} className="-my-7">
+                <Core size={280} mood={mood} level={level.current} />
+              </motion.div>
+              <div className="grid justify-items-center gap-2">
+                <motion.h1 layoutId="stage-name" transition={glide} className="font-semibold text-[1.875rem] leading-none tracking-[-0.025em]">
+                  {active.name}
+                </motion.h1>
+                <motion.span layoutId="stage-mood" transition={glide}>
+                  <Eyebrow accent={mood !== 'idle'} className="transition-colors duration-(--duration-calm)">
+                    {moodWord}
+                  </Eyebrow>
+                </motion.span>
+              </div>
+              <div className={cn('mt-7 flex min-h-24 w-full items-start justify-center text-center', COLUMN)} aria-live="polite">
+                {caption}
+              </div>
+              {chips ? (
+                <div className={cn('mt-2 w-full', COLUMN)}>{chips}</div>
+              ) : (
+                // Until the user has said anything, a few things to try.
+                !noEngine && !running && !speaking.sentence && channel.exchanges.every((line) => line.trigger !== undefined) && <Suggestions onSay={say} />
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
-      {/* The composer floats over the bottom of the screen; what scrolls fades out above it. */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-8 pb-4">
+      {/* The composer floats over the bottom of the screen; the stream turns under it, and what sinks fades out there. */}
+      <div ref={composerBox} className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-8 pb-4">
         <div className={cn('pointer-events-auto mx-auto grid w-full gap-1.5', COLUMN)}>
           {composer}
           {/* What it may reach and what it thinks with: there to read, and changed on the spot from their menus. */}

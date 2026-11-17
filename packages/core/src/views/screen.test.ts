@@ -72,13 +72,47 @@ describe('the screen', () => {
     expect(events.map((event) => event.name)).toEqual(['view.shown', 'view.shown', 'view.cleared', 'view.cleared'])
   })
 
+  it('keeps every view still open in the stream, newest first, asides among them', () => {
+    const { screen } = setup()
+    screen.show(shown('Weather'), onStage('a'))
+    screen.show(shown('Cities'), onStage('b'))
+    screen.show(shown('Montreal'), { thread: 'c', turn: 't3', slot: 'margin', focused: false })
+    screen.show(shown('Rates'), onStage('b'))
+    expect(screen.current()?.title).toBe('Rates')
+    expect(screen.stream().map((view) => view.title)).toEqual(['Rates', 'Montreal', 'Cities', 'Weather'])
+  })
+
+  it('closes any view of the stream, not only the one on the stage', () => {
+    const { screen, events } = setup()
+    screen.show(shown('Weather'), onStage('a'))
+    screen.show(shown('Cities'), onStage('b'))
+    screen.clear('view-1')
+    expect(screen.current()?.title).toBe('Cities')
+    expect(screen.stream().map((view) => view.title)).toEqual(['Cities'])
+    expect(events.at(-1)).toEqual({ type: 'event', name: 'view.cleared', view: 'view-1' })
+  })
+
+  it('keeps the stream when the focus moves to a topic with nothing to show, and puts a topic brought back on top', () => {
+    const { screen } = setup()
+    screen.show(shown('Weather'), onStage('a'))
+    screen.show(shown('Cities'), onStage('b'))
+    screen.focus('elsewhere')
+    expect(screen.current()).toBeUndefined()
+    expect(screen.stream().map((view) => view.title)).toEqual(['Cities', 'Weather'])
+    screen.focus('a')
+    expect(screen.stream().map((view) => view.title)).toEqual(['Weather', 'Cities'])
+  })
+
   it('is as it was after a restart', () => {
     const records = memoryRecords()
     const before = setup(records).screen
+    before.show(shown('Closed'), onStage('c'))
     before.show(shown('Kept'), onStage())
     before.show(shown('Card'), { thread: 'b', turn: 't2', slot: 'margin', focused: false })
+    before.clear('view-1')
     const after = setup(records).screen
     expect(after.current()?.title).toBe('Kept')
     expect(after.margin().map((view) => view.title)).toEqual(['Card'])
+    expect(after.stream().map((view) => view.title)).toEqual(['Card', 'Kept'])
   })
 })
