@@ -1,10 +1,10 @@
 import type { LibraryState } from '@repo/client'
 import { createContext, useContext } from 'react'
 
-/** What a view's controls need to save it, pin it, and open it in the library. */
+/** What a view's controls need to save it, pin it, and open it among the widgets in the settings. */
 export interface LibraryControls {
   library: LibraryState
-  /** Open the library, on a widget if one is given. */
+  /** Open the widgets section of the settings, on a widget if one is given. */
   open(widget?: string): void
 }
 

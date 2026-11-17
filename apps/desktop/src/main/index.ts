@@ -55,7 +55,8 @@ const DEVICE_SETTINGS_FILE = 'settings.json'
 const built = (path: string) => join(import.meta.dirname, path)
 
 function openWindow(core: CoreProcess, visible: boolean): BrowserWindow {
-  const look = chrome({ background: color.ground, symbols: color.text, height: frame.titleBar })
+  // The system's buttons take the soft text colour of the row's own buttons, on no ground of their own.
+  const look = chrome({ symbols: color.textSoft, height: frame.titleBar })
   const window = new BrowserWindow({
     title: app.getName(),
     width: 1320,

@@ -1,4 +1,4 @@
-import { type CommandInput, type LibraryView, pinnedInOrder, type SavedWidget } from '@repo/protocol'
+import { type CommandInput, type DockSide, type LibraryView, pinnedBySide, pinnedInOrder, type SavedWidget } from '@repo/protocol'
 import type { Session } from '../session.ts'
 import { cell, type Followed } from './followed.ts'
 
@@ -8,8 +8,8 @@ export interface LibraryState extends Followed<LibraryView | undefined> {
   save(view: string, title?: string): Promise<SavedWidget>
   /** Rename, file, pin or unpin a widget. */
   update(change: CommandInput<'library.update'>): Promise<void>
-  /** Put the pinned widgets in this order, from the top of the stack. */
-  arrange(pinned: readonly string[]): Promise<void>
+  /** Put the pinned widgets in these docks, each in this order from its top. */
+  arrange(docks: Record<DockSide, readonly string[]>): Promise<void>
   remove(widget: string): Promise<void>
   /** Show a saved widget on the stage. */
   show(widget: string): Promise<void>
@@ -45,8 +45,8 @@ export function followLibrary(session: Session): LibraryState {
     async update(change) {
       accept((await session.run('library.update', change)).library)
     },
-    async arrange(pinned) {
-      accept((await session.run('library.arrange', { pinned: [...pinned] })).library)
+    async arrange(docks) {
+      accept((await session.run('library.arrange', { left: [...docks.left], right: [...docks.right] })).library)
     },
     async remove(widget) {
       accept((await session.run('library.delete', { widget })).library)
@@ -63,9 +63,14 @@ export function savedAs(library: LibraryView | undefined, view: { id: string; wi
   return library?.widgets.find((widget) => widget.id === view.widget || widget.from === view.id)
 }
 
-/** The pinned widgets, from the top of the stack. */
+/** Every pinned widget in one list: the left dock's from its top, then the right dock's. */
 export function pinnedOf(library: LibraryView | undefined): SavedWidget[] {
   return pinnedInOrder(library?.widgets ?? [])
+}
+
+/** The pinned widgets of each dock, from its top. */
+export function dockedOf(library: LibraryView | undefined): Record<DockSide, SavedWidget[]> {
+  return pinnedBySide(library?.widgets ?? [])
 }
 
 /** The collections the user made, by name, each with how many widgets it holds. */

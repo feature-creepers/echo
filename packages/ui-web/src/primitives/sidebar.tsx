@@ -11,13 +11,13 @@ export interface SidebarProps {
 
 /**
  * The pane down the left of a screen that covers the main one, as in native split views: the screen's name,
- * then its list. Where the window has the system's material behind the page, it shows through here.
+ * then its list. It has no fill of its own: the window's ground runs under it, and a hairline sets it apart.
  */
 export function Sidebar({ title, label, children }: SidebarProps) {
   return (
     <nav
       aria-label={label}
-      className="sidebar scroll-quiet grid w-56 shrink-0 content-start gap-5 overflow-y-auto border-black/45 border-r px-2.5 pt-5 pb-8 shadow-[1px_0_0_rgb(255_255_255/0.035)]"
+      className="scroll-quiet grid w-56 shrink-0 content-start gap-5 overflow-y-auto border-black/45 border-r px-2.5 pt-5 pb-8 shadow-[1px_0_0_rgb(255_255_255/0.035)]"
     >
       <h2 className="px-2.5 font-semibold text-[0.9375rem] tracking-[-0.01em]">{title}</h2>
       {children}

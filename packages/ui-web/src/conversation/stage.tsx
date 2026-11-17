@@ -20,6 +20,7 @@ import type { ViewActions } from '../view/context.ts'
 import { ViewPanel } from '../view/view-panel.tsx'
 import { doing } from './activity.ts'
 import { InputLine } from './input-line.tsx'
+import { type ScrollEdges, useScrollEdges } from './scroll-edges.ts'
 import { SpokenLine } from './spoken-line.tsx'
 import { Suggestions } from './suggestions.tsx'
 
@@ -43,6 +44,20 @@ export const TALK_EVENT = 'echo:talk'
 
 /** The width of the centred column, for everything the assistant shows and for the composer. */
 const COLUMN = 'max-w-[45rem]'
+
+/**
+ * How what scrolls fades out where it is cut: under the header when scrolled, and just above the composer, which
+ * floats over the bottom of the screen, when there is more below. Nothing is painted behind the composer, so the
+ * window's ground runs under it as everywhere else. The fade above the composer starts over the room the content
+ * keeps under it (pb-32), so what rests at the bottom is whole.
+ */
+const FADES = {
+  none: '',
+  above: '[mask-image:linear-gradient(to_bottom,transparent,black_20px)]',
+  below: '[mask-image:linear-gradient(to_bottom,black_calc(100%-7.75rem),transparent_calc(100%-5.75rem))]',
+  both: '[mask-image:linear-gradient(to_bottom,transparent,black_20px,black_calc(100%-7.75rem),transparent_calc(100%-5.75rem))]'
+} as const
+const fade = ({ above, below }: ScrollEdges) => FADES[above ? (below ? 'both' : 'above') : below ? 'below' : 'none']
 
 const MOODS: Record<Mood, string> = { idle: 'Ready', listening: 'Listening', thinking: 'Thinking', speaking: 'Speaking', asleep: 'Asleep' }
 
@@ -147,6 +162,8 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
     client.channel.say(text, language).catch(() => setProblem(refusalCopy('failed')))
   })
   const listening = talk.is === 'listening'
+  const [viewScroll, viewEdges] = useScrollEdges()
+  const [stageScroll, stageEdges] = useScrollEdges()
 
   // What plays goes quiet while the person talks, so the music does not drown what they say.
   const player = usePlayer()
@@ -238,13 +255,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
           “{last.said}”
         </motion.p>
       ) : failed || problem ? (
-        <motion.div
-          key="problem"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className={cn('grid gap-3', !view && 'justify-items-center')}
-        >
+        <motion.div key="problem" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="grid justify-items-center gap-3">
           <p className="text-balance text-danger text-sm leading-relaxed">{failed ?? problem}</p>
           {noEngine && (
             <button type="button" onClick={onSetUpEngine} className="w-fit text-accent text-xs hover:underline hover:underline-offset-4">
@@ -300,36 +311,33 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
     />
   )
 
-  // Everything the assistant shows stays in one centred column: the core and its caption never move aside.
-  // The column leaves the right margin free for the pinned widgets, and everything scrolls behind the composer,
-  // which floats over the bottom of the screen.
+  // Everything the assistant shows stays in one column, centred in the window: the core and its caption never move
+  // aside. With a view on the stage, the core only shrinks and rises to the top of the column, its name, state and
+  // spoken line centred under it. The sides of the window are left to the pinned widgets' docks.
   return (
     <div className="relative flex h-full min-w-0 flex-col">
       {view ? (
         <>
-          <header className="relative z-10 shrink-0 px-8 pt-5 pb-3">
-            <div className={cn('mx-auto flex w-full items-start gap-4', COLUMN)}>
-              <motion.div layoutId="stage-core" transition={glide} className="-m-2.5 shrink-0">
-                <Core size={60} mood={mood} level={level.current} />
+          <header className="relative z-10 shrink-0 px-8 pt-1.5 pb-2">
+            <div className={cn('mx-auto grid w-full justify-items-center text-center', COLUMN)}>
+              <motion.div layoutId="stage-core" transition={glide} className="-my-1.5">
+                <Core size={64} mood={mood} level={level.current} />
               </motion.div>
-              <div className="grid min-w-0 flex-1 gap-0.5 pt-1">
-                <div className="flex items-baseline gap-2.5">
-                  <motion.span layoutId="stage-name" transition={glide} className="font-semibold text-[0.9375rem] tracking-tight">
-                    {active.name}
-                  </motion.span>
-                  <Eyebrow accent={mood !== 'idle'} className="transition-colors duration-(--duration-calm)">
-                    {moodWord}
-                  </Eyebrow>
-                </div>
-                <div className="min-h-6 text-text" aria-live="polite">
-                  {caption}
-                </div>
+              <motion.span layoutId="stage-name" transition={glide} className="mt-1 font-semibold text-[0.9375rem] leading-tight tracking-tight">
+                {active.name}
+              </motion.span>
+              <motion.span layoutId="stage-mood" transition={glide} className="mt-0.5">
+                <Eyebrow accent={mood !== 'idle'} className="transition-colors duration-(--duration-calm)">
+                  {moodWord}
+                </Eyebrow>
+              </motion.span>
+              <div className="mt-1.5 min-h-6 max-w-[38rem] text-text" aria-live="polite">
+                {caption}
               </div>
             </div>
           </header>
           <div className="relative min-h-0 flex-1">
-            {/* What scrolls fades out under the header rather than being cut by a hard edge, whatever the ground behind. */}
-            <div className="scroll-none h-full overflow-y-auto px-8 pt-2 pb-32 [mask-image:linear-gradient(to_bottom,transparent,black_20px)]">
+            <div ref={viewScroll} className={cn('scroll-none h-full overflow-y-auto px-8 pt-2 pb-32', fade(viewEdges))}>
               <motion.div
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -343,7 +351,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
           </div>
         </>
       ) : (
-        <div className="scroll-none min-h-0 flex-1 overflow-y-auto px-8">
+        <div ref={stageScroll} className={cn('scroll-none min-h-0 flex-1 overflow-y-auto px-8', fade(stageEdges))}>
           <div className="flex min-h-full w-full flex-col items-center justify-center pt-6 pb-32">
             <motion.div layoutId="stage-core" transition={glide} className={asides ? '-my-4' : '-my-7'}>
               <Core size={asides ? 200 : 280} mood={mood} level={level.current} />
@@ -352,9 +360,11 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
               <motion.h1 layoutId="stage-name" transition={glide} className="font-semibold text-[1.875rem] leading-none tracking-[-0.025em]">
                 {active.name}
               </motion.h1>
-              <Eyebrow accent={mood !== 'idle'} className="transition-colors duration-(--duration-calm)">
-                {moodWord}
-              </Eyebrow>
+              <motion.span layoutId="stage-mood" transition={glide}>
+                <Eyebrow accent={mood !== 'idle'} className="transition-colors duration-(--duration-calm)">
+                  {moodWord}
+                </Eyebrow>
+              </motion.span>
             </div>
             <div className={cn('mt-7 flex w-full items-start justify-center text-center', COLUMN, asides ? 'min-h-8' : 'min-h-24')} aria-live="polite">
               {caption}
@@ -369,8 +379,8 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
         </div>
       )}
 
-      {/* The composer floats over the bottom of the screen; what scrolls passes behind it and fades out. */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-8 pt-10 pb-4 [background:linear-gradient(to_top,var(--color-ground)_22%,color-mix(in_srgb,var(--color-ground)_55%,transparent)_60%,transparent)]">
+      {/* The composer floats over the bottom of the screen; what scrolls fades out above it. */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-8 pb-4">
         <div className={cn('pointer-events-auto mx-auto grid w-full gap-1.5', COLUMN)}>
           {composer}
           {/* Which AI program answers: there to read, rarely to press. */}

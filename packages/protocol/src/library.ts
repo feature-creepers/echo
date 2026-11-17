@@ -16,18 +16,28 @@ export const COLLECTION_MAX_LENGTH = 60
 export const widgetTitleSchema = z.string().trim().min(1).max(WIDGET_TITLE_MAX_LENGTH)
 export const collectionSchema = z.string().trim().min(1).max(COLLECTION_MAX_LENGTH)
 
+/** The two docks of the main screen, on either side of the conversation, where pinned widgets sit. */
+export const DOCK_SIDES = ['left', 'right'] as const
+export const dockSideSchema = z.enum(DOCK_SIDES)
+export type DockSide = z.infer<typeof dockSideSchema>
+
 /** A view the user saved. */
 export const savedWidgetSchema = z.object({
   id: widgetIdSchema,
   title: widgetTitleSchema,
   /** The collection the user filed it in. Left out, it is unfiled. */
   collection: collectionSchema.optional(),
-  /** Pinned widgets float on the main screen, live, stacked on its right side. */
+  /** Pinned widgets float on the main screen, live, docked on either side of the conversation. */
   pinned: z.boolean(),
   /** When it was last pinned. */
   pinnedAt: z.string().optional(),
   /**
-   * Where a pinned widget sits in the stack, from the top: the lowest first. The user sets it by dragging; a
+   * The dock a pinned widget sits in. The user moves it by dragging; a widget just pinned goes to the dock that
+   * holds fewer. Left out on a pinned widget, the right: before there were two docks, every pinned widget stood there.
+   */
+  side: dockSideSchema.optional(),
+  /**
+   * Where a pinned widget sits in its dock, from the top: the lowest first. The user sets it by dragging; a
    * widget just pinned goes on top. Left out, the widget follows those that have one, in the order they were pinned.
    */
   place: z.number().int().optional(),
@@ -41,13 +51,25 @@ export const savedWidgetSchema = z.object({
 })
 export type SavedWidget = z.infer<typeof savedWidgetSchema>
 
+/** The dock a pinned widget sits in. */
+export const sideOf = (widget: Pick<SavedWidget, 'side'>): DockSide => widget.side ?? 'right'
+
 /**
- * The pinned widgets, from the top of the stack: by the place the user dragged them to, then, for those with
+ * The pinned widgets of each dock, from its top: by the place the user dragged them to, then, for those with
  * none, in the order they were pinned. The core and every client sort them this one way.
  */
-export function pinnedInOrder(widgets: readonly SavedWidget[]): SavedWidget[] {
+export function pinnedBySide(widgets: readonly SavedWidget[]): Record<DockSide, SavedWidget[]> {
   const place = (widget: SavedWidget) => widget.place ?? Number.POSITIVE_INFINITY
-  return widgets.filter((widget) => widget.pinned).sort((one, other) => place(one) - place(other) || (one.pinnedAt ?? '').localeCompare(other.pinnedAt ?? ''))
+  const pinned = widgets
+    .filter((widget) => widget.pinned)
+    .sort((one, other) => place(one) - place(other) || (one.pinnedAt ?? '').localeCompare(other.pinnedAt ?? ''))
+  return { left: pinned.filter((widget) => sideOf(widget) === 'left'), right: pinned.filter((widget) => sideOf(widget) === 'right') }
+}
+
+/** Every pinned widget in one list, as a narrow window shows them: the left dock's from its top, then the right dock's. */
+export function pinnedInOrder(widgets: readonly SavedWidget[]): SavedWidget[] {
+  const { left, right } = pinnedBySide(widgets)
+  return [...left, ...right]
 }
 
 /** The whole library, as a client shows it. */

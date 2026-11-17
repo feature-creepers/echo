@@ -58,11 +58,16 @@ export { CORE_TOKEN_VARIABLE, DATA_OPTION, EXIT_WITH_PARENT_FLAG, EXIT_WITH_PARE
 export {
   COLLECTION_MAX_LENGTH,
   collectionSchema,
+  DOCK_SIDES,
+  type DockSide,
+  dockSideSchema,
   type LibraryView,
   libraryViewSchema,
+  pinnedBySide,
   pinnedInOrder,
   type SavedWidget,
   savedWidgetSchema,
+  sideOf,
   WIDGET_TITLE_MAX_LENGTH,
   widgetIdSchema,
   widgetTitleSchema

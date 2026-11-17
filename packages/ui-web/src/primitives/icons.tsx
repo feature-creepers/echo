@@ -106,16 +106,6 @@ export const SheetGlyph = () => (
   </Glyph>
 )
 
-/** The library: tiles of saved widgets. */
-export const LibraryGlyph = () => (
-  <Glyph>
-    <rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1" />
-    <rect x="9" y="2.5" width="4.5" height="4.5" rx="1" />
-    <rect x="2.5" y="9" width="4.5" height="4.5" rx="1" />
-    <path d="M9 11.25h4.5M11.25 9v4.5" />
-  </Glyph>
-)
-
 export const MoreGlyph = () => (
   <Glyph>
     <circle cx="3.5" cy="8" r="0.6" fill="currentColor" />
@@ -184,11 +174,11 @@ export const CollapseGlyph = () => (
   </Glyph>
 )
 
-/** The pinned widgets: a window with two small tiles stacked down its right side. */
-export const PinnedGlyph = () => (
+/** The pinned widgets: a window with a panel down each side of its content, as the docks stand beside the conversation. */
+export const WidgetsGlyph = () => (
   <Glyph>
     <rect x="2" y="3" width="12" height="10" rx="1.5" />
-    <rect x="9.25" y="5" width="2.75" height="2.5" rx="0.5" />
-    <rect x="9.25" y="8.75" width="2.75" height="2.5" rx="0.5" />
+    <rect x="4" y="5.25" width="2" height="5.5" rx="0.5" />
+    <rect x="10" y="5.25" width="2" height="5.5" rx="0.5" />
   </Glyph>
 )

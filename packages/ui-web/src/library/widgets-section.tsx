@@ -3,20 +3,19 @@ import { collectionsOf } from '@repo/client'
 import { useFollowed } from '@repo/client/react'
 import type { SavedWidget } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { cn } from '../primitives/cn.ts'
 import { BookmarkGlyph, PinGlyph, SearchGlyph } from '../primitives/icons.tsx'
-import { ScreenHeader } from '../primitives/screen-header.tsx'
-import { Sidebar, SidebarItem } from '../primitives/sidebar.tsx'
 import { EASE } from '../styles/motion.ts'
 import type { ViewActions } from '../view/context.ts'
 import { ViewRenderer } from '../view/view-renderer.tsx'
 import type { LibraryControls } from './library-context.ts'
 import { WidgetDialog } from './widget-dialog.tsx'
 
-/** Which widgets the screen lists. */
+/** Which widgets the section lists. */
 type Shelf = { is: 'all' } | { is: 'pinned' } | { is: 'unfiled' } | { is: 'collection'; name: string }
 
-export interface LibraryScreenProps {
+export interface WidgetsSectionProps {
   controls: LibraryControls
   /** What the blocks of a widget can do. Nothing starts by itself here. */
   actions: ViewActions
@@ -24,7 +23,8 @@ export interface LibraryScreenProps {
   selected?: string | undefined
   /** Ask the assistant something, from the main screen: to change a widget. */
   onAsk(text: string): void
-  onClose(): void
+  /** A widget was put on the stage: the settings close to show it. */
+  onShown(): void
 }
 
 const day = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' })
@@ -42,10 +42,11 @@ function wordsOf(widget: SavedWidget): string {
 }
 
 /**
- * The views the user bookmarked: to find again, sort into their own collections, rename, pin to the main
- * screen, or delete. Each one is drawn live, as it was saved.
+ * The widgets section of the settings: the views the user bookmarked, to find again, sort into their own
+ * collections, rename, pin to the main screen, or delete. Each one is drawn live, as it was saved. Opened, a
+ * widget covers the settings in a dialog, which Escape closes before the settings.
  */
-export function LibraryScreen({ controls, actions, selected, onAsk, onClose }: LibraryScreenProps) {
+export function WidgetsSection({ controls, actions, selected, onAsk, onShown }: WidgetsSectionProps) {
   const library = useFollowed(controls.library)
   const [shelf, setShelf] = useState<Shelf>({ is: 'all' })
   const [query, setQuery] = useState('')
@@ -54,13 +55,7 @@ export function LibraryScreen({ controls, actions, selected, onAsk, onClose }: L
   const collections = collectionsOf(library)
   const openWidget = widgets.find((widget) => widget.id === open)
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !open) onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose, open])
+  useEffect(() => setOpen(selected), [selected])
 
   const shown = useMemo(() => {
     const words = query.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().split(/\s+/).filter(Boolean)
@@ -74,87 +69,69 @@ export function LibraryScreen({ controls, actions, selected, onAsk, onClose }: L
     })
   }, [widgets, shelf, query])
 
-  const title = shelf.is === 'all' ? 'All widgets' : shelf.is === 'pinned' ? 'Pinned' : shelf.is === 'unfiled' ? 'Unfiled' : shelf.name
+  if (widgets.length === 0) return <Empty />
+
   const counts = { all: widgets.length, pinned: widgets.filter((one) => one.pinned).length, unfiled: widgets.filter((one) => !one.collection).length }
+  const on = (other: Shelf) => shelf.is === other.is && (shelf.is !== 'collection' || (other.is === 'collection' && shelf.name === other.name))
 
   return (
-    <section aria-label="Library" className="relative flex h-full w-full">
-      <Sidebar title="Library" label="Shelves">
-        <div className="grid gap-px">
-          <SidebarItem detail={counts.all} on={shelf.is === 'all'} onClick={() => setShelf({ is: 'all' })}>
-            All widgets
-          </SidebarItem>
-          <SidebarItem detail={counts.pinned} on={shelf.is === 'pinned'} onClick={() => setShelf({ is: 'pinned' })}>
-            Pinned
-          </SidebarItem>
-          <SidebarItem detail={counts.unfiled} on={shelf.is === 'unfiled'} onClick={() => setShelf({ is: 'unfiled' })}>
-            Unfiled
-          </SidebarItem>
-        </div>
-        <div className="grid gap-px">
-          <span className="mb-0.5 px-2.5 font-semibold text-[0.6875rem] text-text-faint">Collections</span>
-          {collections.length === 0 ? (
-            <p className="px-2.5 text-text-faint text-xs leading-relaxed">Open a widget and give it a collection to start one.</p>
-          ) : (
-            collections.map((collection) => (
-              <SidebarItem
-                key={collection.name}
-                detail={collection.count}
-                on={shelf.is === 'collection' && shelf.name === collection.name}
-                onClick={() => setShelf({ is: 'collection', name: collection.name })}
-              >
-                {collection.name}
-              </SidebarItem>
-            ))
-          )}
-        </div>
-      </Sidebar>
-
-      <div className="scroll-quiet min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-(--window) px-10 pt-7 pb-16">
-        <ScreenHeader
-          title={title}
-          detail={widgets.length === 0 ? 'Nothing saved yet.' : `${shown.length} of ${widgets.length} ${widgets.length === 1 ? 'widget' : 'widgets'}`}
-          closeLabel="Close the library"
-          onClose={onClose}
+    <div className="grid gap-4">
+      <label className="flex h-8 items-center gap-2 rounded-md bg-white/[0.06] px-2.5 text-text-faint shadow-[inset_0_0_0_0.5px_rgb(255_255_255/0.08)] transition-shadow duration-(--duration-quick) focus-within:text-text-soft focus-within:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_55%,transparent)] [&_svg]:size-3.5">
+        <SearchGlyph />
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search by title, collection or anything a widget shows"
+          aria-label="Search the widgets"
+          className="min-w-0 flex-1 bg-transparent text-[0.8125rem] text-text outline-none placeholder:text-text-faint focus-visible:outline-none [&::-webkit-search-cancel-button]:hidden"
         />
-        {/* The search spans the column under the title, where the eye goes next; the close button keeps its corner. */}
-        {widgets.length > 0 && (
-          <label className="mt-5 mb-5 flex h-8 items-center gap-2 rounded-md bg-white/[0.06] px-2.5 text-text-faint shadow-[inset_0_0_0_0.5px_rgb(255_255_255/0.08)] transition-shadow duration-(--duration-quick) focus-within:text-text-soft focus-within:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_55%,transparent)] [&_svg]:size-3.5">
-            <SearchGlyph />
-            <input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search by title, collection or anything a widget shows"
-              aria-label="Search the library"
-              className="min-w-0 flex-1 bg-transparent text-[0.8125rem] text-text outline-none placeholder:text-text-faint focus-visible:outline-none [&::-webkit-search-cancel-button]:hidden"
-            />
-          </label>
-        )}
+      </label>
 
-        {widgets.length === 0 ? (
-          <Empty />
-        ) : shown.length === 0 ? (
-          <p className="py-16 text-center text-sm text-text-soft">No widget here{query ? ` matches “${query}”` : ''}.</p>
-        ) : (
-          <ul className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(15rem,1fr))]">
-            <AnimatePresence initial={false}>
-              {shown.map((widget) => (
-                <motion.li
-                  key={widget.id}
-                  layout
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.98, transition: { duration: 0.14 } }}
-                  transition={{ duration: 0.28, ease: EASE }}
-                >
-                  <Tile widget={widget} actions={actions} onOpen={() => setOpen(widget.id)} />
-                </motion.li>
-              ))}
-            </AnimatePresence>
-          </ul>
-        )}
+      {/* A scope bar, as in a native browser of files: every shelf in sight, the chosen one raised. */}
+      <div role="toolbar" aria-label="Shelves" className="flex flex-wrap items-center gap-1">
+        <ShelfButton on={on({ is: 'all' })} count={counts.all} onClick={() => setShelf({ is: 'all' })}>
+          All
+        </ShelfButton>
+        <ShelfButton on={on({ is: 'pinned' })} count={counts.pinned} onClick={() => setShelf({ is: 'pinned' })}>
+          Pinned
+        </ShelfButton>
+        <ShelfButton on={on({ is: 'unfiled' })} count={counts.unfiled} onClick={() => setShelf({ is: 'unfiled' })}>
+          Unfiled
+        </ShelfButton>
+        {collections.length > 0 && <span aria-hidden="true" className="mx-1 h-3.5 w-px bg-white/[0.1]" />}
+        {collections.map((collection) => (
+          <ShelfButton
+            key={collection.name}
+            on={on({ is: 'collection', name: collection.name })}
+            count={collection.count}
+            onClick={() => setShelf({ is: 'collection', name: collection.name })}
+          >
+            {collection.name}
+          </ShelfButton>
+        ))}
       </div>
+
+      {shown.length === 0 ? (
+        <p className="py-16 text-center text-sm text-text-soft">No widget here{query ? ` matches “${query}”` : ''}.</p>
+      ) : (
+        <ul className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(14rem,1fr))]">
+          <AnimatePresence initial={false}>
+            {shown.map((widget) => (
+              <motion.li
+                key={widget.id}
+                layout
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.98, transition: { duration: 0.14 } }}
+                transition={{ duration: 0.28, ease: EASE }}
+              >
+                <Tile widget={widget} actions={actions} onOpen={() => setOpen(widget.id)} />
+              </motion.li>
+            ))}
+          </AnimatePresence>
+        </ul>
+      )}
 
       <AnimatePresence>
         {openWidget && (
@@ -168,12 +145,29 @@ export function LibraryScreen({ controls, actions, selected, onAsk, onClose }: L
               setOpen(undefined)
               onAsk(text)
             }}
-            onShown={onClose}
+            onShown={onShown}
             onClose={() => setOpen(undefined)}
           />
         )}
       </AnimatePresence>
-    </section>
+    </div>
+  )
+}
+
+function ShelfButton({ on, count, onClick, children }: { on: boolean; count: number; onClick(): void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      onClick={onClick}
+      className={cn(
+        'flex h-6 max-w-48 items-center gap-1.5 rounded-md px-2 text-xs transition-colors duration-(--duration-quick) ease-soft',
+        on ? 'bg-white/[0.1] text-text' : 'text-text-soft hover:bg-white/[0.05] hover:text-text'
+      )}
+    >
+      <span className="truncate">{children}</span>
+      <span className={cn('tabular-nums', on ? 'text-text-soft' : 'text-text-faint')}>{count}</span>
+    </button>
   )
 }
 
@@ -215,15 +209,15 @@ function Tile({ widget, actions, onOpen }: { widget: SavedWidget; actions: ViewA
 
 function Empty() {
   return (
-    <div className="mt-6 grid justify-items-center gap-3 rounded-lg border border-line border-dashed px-8 py-16 text-center">
+    <div className="grid justify-items-center gap-3 rounded-lg border border-line border-dashed px-8 py-16 text-center">
       <span className="flex size-9 items-center justify-center rounded-md border border-line-strong bg-raised text-text-soft [&_svg]:size-4">
         <BookmarkGlyph />
       </span>
       <div className="grid max-w-md gap-1.5">
         <p className="font-medium text-sm">Keep the views you like</p>
         <p className="text-balance text-[0.8125rem] text-text-soft leading-relaxed">
-          Press the bookmark on anything the assistant shows. It lands here, to sort into collections, pin to the main screen, and ask for again: the assistant
-          brings back the same one.
+          Press the bookmark on anything the assistant shows. It lands here, to sort into collections, pin beside the conversation, and ask for again: the
+          assistant brings back the same one.
         </p>
       </div>
     </div>

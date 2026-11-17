@@ -133,16 +133,14 @@
   }
 
   /*
-   * The window's own ground. Where the system draws a translucent material behind the page, the page is
-   * transparent and only tints it: nearly opaque for content, lighter for side panes, as native apps do.
+   * The window's own ground, under every screen and the title row alike. Where the system draws a translucent
+   * material behind the page, the page is transparent and only tints it, nearly opaque, as native apps do.
    */
   :root {
     --window: var(--color-ground);
-    --sidebar: color-mix(in srgb, var(--color-surface) 100%, transparent);
   }
   :root[data-material="vibrant"] {
     --window: color-mix(in srgb, var(--color-ground) 90%, transparent);
-    --sidebar: color-mix(in srgb, var(--color-surface) 62%, transparent);
   }
   :root[data-material="vibrant"] body {
     background: transparent;
@@ -155,6 +153,15 @@
   button:disabled {
     cursor: default;
   }
+}
+
+/*
+ * While a pinned widget is dragged, the pointer is a closed hand wherever it goes, and nothing gets selected.
+ * Outside any layer, so it wins over the cursor every control sets for itself.
+ */
+:root[data-dragging] * {
+  cursor: grabbing;
+  user-select: none;
 }
 
 /* What the window is dragged by, and what can be pressed inside it. */
@@ -172,14 +179,16 @@
 }
 
 /*
- * The main screen's ground: small dots on a regular pitch, very faint, fading out towards the edges of the
- * window. It is texture, not content: it stays under everything and never competes with what is on it.
- * Each dot is a soft circle a little over one pixel wide, so it stays round on every screen density.
+ * The window's ground: fine dots on a regular pitch, very faint, fading out towards the edges of the window. It is
+ * texture, not content: it stays under everything and never competes with what is on it.
+ * Each dot is one pixel, centred on the middle of a pixel of a tile that starts on a whole pixel, so it lands on
+ * whole device pixels: one at a density of 1, a square of four at 2. Its edge is soft over a fraction of a pixel,
+ * which keeps it even at the densities between, such as 1.25 and 1.5.
  */
 @utility dot-ground {
-  background-image: radial-gradient(circle at center, var(--color-dot) 0.8px, transparent 1.3px);
+  background-image: radial-gradient(circle at 9.5px 9.5px, var(--color-dot) 0.5px, transparent 0.8px);
   background-size: 18px 18px;
-  background-position: center 9px;
+  background-position: 0 0;
   mask-image: radial-gradient(ellipse 72% 70% at 50% 42%, black 35%, transparent 100%);
 }
 
@@ -201,15 +210,6 @@
     0 0 0 1px rgb(0 0 0 / 0.35),
     0 10px 30px -8px rgb(0 0 0 / 0.55),
     0 2px 6px -2px rgb(0 0 0 / 0.4);
-}
-
-/*
- * The pane down the side of a screen, such as the settings' sections. Where the window has the system's
- * translucent material behind the page (macOS, Windows 11), it lets it through; elsewhere it is a flat pane a
- * shade above the ground.
- */
-@utility sidebar {
-  background: var(--sidebar);
 }
 
 /* A scroll area that shows no bar at all, for a screen whose edges already fade to say there is more. */

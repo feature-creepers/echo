@@ -1,7 +1,7 @@
 import type { Event, LibraryView, SavedWidget } from '@repo/protocol'
 import { describe, expect, it } from 'vitest'
 import type { Session } from '../session.ts'
-import { collectionsOf, followLibrary, pinnedOf, savedAs } from './library.ts'
+import { collectionsOf, dockedOf, followLibrary, pinnedOf, savedAs } from './library.ts'
 
 const widget = (id: string, more: Partial<SavedWidget> = {}): SavedWidget => ({
   id,
@@ -55,8 +55,8 @@ describe('followLibrary', () => {
     expect((await state.save('view-1')).id).toBe('saved')
     expect(core.ran.at(-1)).toEqual({ name: 'library.save', input: { view: 'view-1' } })
     expect(state.current()?.revision).toBe(9)
-    await state.arrange(['saved'])
-    expect(core.ran.at(-1)).toEqual({ name: 'library.arrange', input: { pinned: ['saved'] } })
+    await state.arrange({ left: ['saved'], right: [] })
+    expect(core.ran.at(-1)).toEqual({ name: 'library.arrange', input: { left: ['saved'], right: [] } })
     await state.remove('saved')
     expect(state.current()?.widgets).toEqual([])
   })
@@ -83,6 +83,11 @@ describe('reading the library', () => {
     // Once the user has dragged them, the places they were given come first.
     const dragged: LibraryView = { revision: 2, widgets: library.widgets.map((one) => (one.id === 'radio' ? { ...one, place: 0 } : one)) }
     expect(pinnedOf(dragged).map((one) => one.id)).toEqual(['radio', 'plan'])
+    // A widget with no dock is on the right; one list shows the left dock first.
+    const docked: LibraryView = { revision: 3, widgets: library.widgets.map((one) => (one.id === 'radio' ? { ...one, side: 'left' } : one)) }
+    expect(dockedOf(docked)).toMatchObject({ left: [{ id: 'radio' }], right: [{ id: 'plan' }] })
+    expect(pinnedOf(docked).map((one) => one.id)).toEqual(['radio', 'plan'])
+    expect(dockedOf(undefined)).toEqual({ left: [], right: [] })
     expect(collectionsOf(library)).toEqual([
       { name: 'Music', count: 2 },
       { name: 'Work', count: 1 }

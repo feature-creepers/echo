@@ -13,8 +13,8 @@ export const color = {
   overlay: '#161b24',
   /** A hairline between two areas. A wash of white, so it reads on every layer. */
   line: 'rgb(255 255 255 / 0.07)',
-  /** The dots of the main screen's ground: dense, and barely there. */
-  dot: 'rgb(255 255 255 / 0.075)',
+  /** The dots of the window's ground: dense, one pixel each, and barely there. */
+  dot: 'rgb(255 255 255 / 0.1)',
   /** The edge of something that can be typed in or pressed. */
   lineStrong: 'rgb(255 255 255 / 0.14)',
   text: '#edf0f5',
