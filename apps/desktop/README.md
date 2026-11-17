@@ -51,9 +51,9 @@ CI packages the app on each system on every push, with the Windows installer, an
 
 ## How it is put together
 
-| Part               | Role                                                                                            |
-| ------------------ | ----------------------------------------------------------------------------------------------- |
-| `src/main`         | The main process: starts the core (`core-process.ts`), opens the window, answers the bridge     |
-| `src/preload`      | The bridge: the only things the window may ask of the app (`bridge.ts`)                         |
-| `src/renderer`     | The window: opens a session with the core through the bridge and mounts `@repo/ui-web`          |
-| `out/main/core.js` | The core's program (`@repo/server`), built beside the main process and run as a utility process |
+| Part               | Role                                                                                                                                                                                                      |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/main`         | The main process: starts the core (`core-process.ts`), opens the window, answers the bridge                                                                                                               |
+| `src/preload`      | The bridge: the only things the window may ask of the app (`bridge.ts`)                                                                                                                                   |
+| `src/renderer`     | The window: opens a session with the core through the bridge and mounts `@repo/ui-web`. Its security policy runs the app's scripts only, and lets views load pictures and play media from https addresses |
+| `out/main/core.js` | The core's program (`@repo/server`), built beside the main process and run as a utility process                                                                                                           |
