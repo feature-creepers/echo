@@ -4,6 +4,7 @@ import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { parseArgs } from 'node:util'
+import { appIcon, appIconPixels, icns, ico } from '../src/main/mark.ts'
 
 /**
  * Lays out what the packager turns into an app, in `stage/`: the built program, a manifest with no
@@ -23,6 +24,17 @@ mkdirSync(join(stage, 'node_modules'), { recursive: true })
 
 // The program, as electron-vite built it.
 cpSync(here('out'), join(stage, 'out'), { recursive: true })
+
+// The app's icons, drawn at each size each system asks for, where the packager looks for them (stage/build):
+// round for Windows and Linux, a tile with its margin for macOS.
+const resources = join(stage, 'build')
+mkdirSync(join(resources, 'icons'), { recursive: true })
+writeFileSync(join(resources, 'icon.ico'), ico([16, 20, 24, 32, 40, 48, 64, 96, 128, 256].map((size) => ({ size, pixels: appIconPixels(size, 'round') }))))
+writeFileSync(
+  join(resources, 'icon.icns'),
+  icns((size) => appIcon(size, 'tile'))
+)
+for (const size of [16, 24, 32, 48, 64, 128, 256, 512]) writeFileSync(join(resources, 'icons', `${size}x${size}.png`), appIcon(size, 'round'))
 
 /**
  * The GitHub repository whose releases are the update feed: the one a GitHub Actions run belongs to, else the

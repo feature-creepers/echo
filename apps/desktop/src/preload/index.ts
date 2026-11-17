@@ -39,7 +39,8 @@ const bridge: DesktopBridge = {
   app: {
     about: () => ipcRenderer.invoke(APP_CHANNELS.about),
     openDataFolder: () => ipcRenderer.invoke(APP_CHANNELS.openDataFolder),
-    openReleases: () => ipcRenderer.invoke(APP_CHANNELS.openReleases)
+    openReleases: () => ipcRenderer.invoke(APP_CHANNELS.openReleases),
+    showPresence: (presence) => ipcRenderer.send(APP_CHANNELS.presence, presence)
   },
   updates: {
     state: () => ipcRenderer.invoke(APP_CHANNELS.updateState),

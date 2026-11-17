@@ -2,8 +2,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { type DeviceSettingsChange, isShortcut, shortcutClash } from '@repo/client'
-import { color, frame } from '@repo/tokens'
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, session, shell } from 'electron'
+import { type AccentName, accents, color, frame } from '@repo/tokens'
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, nativeTheme, session, shell } from 'electron'
 import {
   type About,
   APP_CHANNELS,
@@ -21,9 +21,10 @@ import { type CoreProcess, startCore } from './core-process.ts'
 import { deviceId } from './device.ts'
 import { openDeviceSettings } from './device-settings.ts'
 import { createGlobalShortcut } from './global-shortcut.ts'
+import { appIcon } from './mark.ts'
 import { checkSettings } from './self-check.ts'
 import { type SpeechProcess, startSpeech } from './speech-process.ts'
-import { createTray, type TrayActions } from './tray.ts'
+import { createTray, type TrayActions, type TrayLook } from './tray.ts'
 import { createUpdater, releasesPage } from './updater.ts'
 
 /**
@@ -48,6 +49,12 @@ else if (!app.isPackaged) app.setPath('userData', `${app.getPath('userData')} (d
 /** Started with this while running, the app starts listening: what a desktop shortcut runs where global shortcuts are refused. */
 const TALK_FLAG = '--talk'
 
+/**
+ * The app's identity for Windows, the one its installer gives the shortcuts it makes (the `appId` of
+ * build/electron-builder.yml). Said by the app too, its window is the shortcut's on the taskbar, with its icon.
+ */
+const WINDOWS_APP_ID = 'io.github.feature-creepers.echo'
+
 /** The file of this device's settings, in the app's data folder. */
 const DEVICE_SETTINGS_FILE = 'settings.json'
 
@@ -65,6 +72,8 @@ function openWindow(core: CoreProcess, visible: boolean): BrowserWindow {
     show: false,
     backgroundColor: color.ground,
     autoHideMenuBar: true,
+    // Windows and macOS show the icon the package carries; a Linux desktop shows the one the window gives.
+    ...(process.platform === 'linux' ? { icon: nativeImage.createFromBuffer(appIcon(256, 'round')) } : {}),
     // No title bar above the page: the page's own title row is the bar, with the system's buttons drawn over it.
     ...look.options,
     webPreferences: { preload: built('../preload/index.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false }
@@ -95,6 +104,15 @@ function openWindow(core: CoreProcess, visible: boolean): BrowserWindow {
   if (served) void window.loadURL(`${served}?${new URLSearchParams(query)}`)
   else void window.loadFile(built('../renderer/index.html'), { query })
   return window
+}
+
+/** What the tray shows of the assistant, from what the window says of it. */
+function trayLook(presence: unknown): TrayLook {
+  const { accent, mood } = typeof presence === 'object' && presence !== null ? (presence as Record<string, unknown>) : {}
+  return {
+    accent: typeof accent === 'string' && Object.hasOwn(accents, accent) ? (accent as AccentName) : undefined,
+    state: mood === 'listening' ? 'listening' : mood === 'asleep' ? 'asleep' : 'awake'
+  }
 }
 
 async function selfCheck(core: CoreProcess): Promise<void> {
@@ -130,6 +148,7 @@ function serveSpeech(speech: SpeechProcess): void {
 }
 
 function start(): void {
+  if (process.platform === 'win32') app.setAppUserModelId(WINDOWS_APP_ID)
   // The interface is dark. The window's frame follows, whatever the system's own setting.
   nativeTheme.themeSource = 'dark'
   // The window may use the microphone, to hear the user, and choose the speakers its voice plays on, and nothing else of the kind.
@@ -238,6 +257,9 @@ function start(): void {
     }
     return { ok: true, settings: device.change({ shortcuts: { [name]: accelerator } }) }
   })
+  // The tray's mark shows the persona's accent, and whether the assistant listens or sleeps. Whatever else the
+  // window says is ignored: the mark changes only between the looks it has.
+  ipcMain.on(APP_CHANNELS.presence, (_event, presence: unknown) => tray.look(trayLook(presence)))
   ipcMain.on(APP_CHANNELS.shortcutsSuspend, (_event, suspended: boolean) => shortcut.suspend(suspended === true))
   ipcMain.handle(APP_CHANNELS.shortcutProblem, () => shortcutProblem)
   ipcMain.handle(

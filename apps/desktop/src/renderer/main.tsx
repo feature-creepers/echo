@@ -49,6 +49,7 @@ const device: DeviceHost = {
   about: () => window.desktop.app.about(),
   openDataFolder: () => window.desktop.app.openDataFolder(),
   openReleases: () => window.desktop.app.openReleases(),
+  showPresence: (presence) => window.desktop.app.showPresence(presence),
   updates: window.desktop.updates,
   files: window.desktop.files
 }

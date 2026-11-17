@@ -1,4 +1,6 @@
 import type { DeviceSettings, DeviceSettingsChange, UpdateState } from '@repo/client'
+import type { Accent } from '@repo/protocol'
+import type { Mood } from '../presence/painter.ts'
 
 export type ShortcutName = keyof DeviceSettings['shortcuts']
 
@@ -37,6 +39,8 @@ export interface DeviceHost {
   about(): Promise<About>
   openDataFolder(): Promise<void>
   openReleases(): Promise<void>
+  /** Show how the assistant is outside the window: the desktop app's tray. Left out, nothing does. */
+  showPresence?(presence: { accent: Accent | undefined; mood: Mood }): void
   /** The files of this computer, picked by the user for the assistant. Left out, folders cannot be picked here. */
   files?: {
     /** The system's own picker, for folders or files. Nothing when the user cancels. */

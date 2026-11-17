@@ -8,6 +8,7 @@ import { AccessIndicator } from '../access/access-indicator.tsx'
 import type { SpeechEngine } from '../audio/engine.ts'
 import { useTalk } from '../audio/use-talk.ts'
 import { keyPress, useDevice } from '../device/device.tsx'
+import { useShownPresence } from '../device/presence.ts'
 import { usePlayer } from '../media/player-provider.tsx'
 import { refusalCopy } from '../personas/copy.ts'
 import { Orb } from '../presence/orb.tsx'
@@ -166,6 +167,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
             : running || voicing
               ? 'thinking'
               : 'idle'
+  useShownPresence(active?.accent, mood)
   // While it thinks, the word under the core says what it is doing: searching the web, preparing the view.
   const moodWord = (mood === 'thinking' ? doing(activity.running.at(-1)?.tool) : undefined) ?? MOODS[mood]
   const failed =

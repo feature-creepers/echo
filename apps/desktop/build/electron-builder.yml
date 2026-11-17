@@ -6,6 +6,8 @@ copyright: Copyright © 2026 Tommy Sendra and Rodolphe Barbanneau
 
 directories:
   output: ../release
+  # Where build/stage.ts draws the icons.
+  buildResources: build
 electronVersion: 45.3.2
 
 # The app is bundled by electron-vite into out/. The one thing read from node_modules at run time is the
@@ -30,6 +32,7 @@ electronFuses:
   onlyLoadAppFromAsar: true
 
 win:
+  icon: build/icon.ico
   target:
     - target: nsis
       arch: [x64]
@@ -49,6 +52,7 @@ mac:
     - target: zip
       arch: [arm64]
   category: public.app-category.productivity
+  icon: build/icon.icns
   # Unsigned for now: the user opens it the first time with a right click, then Open.
   identity: null
   extendInfo:
@@ -57,6 +61,7 @@ dmg:
   artifactName: ${productName}-${version}-${arch}.${ext}
 
 linux:
+  icon: build/icons
   target:
     - AppImage
   category: Utility

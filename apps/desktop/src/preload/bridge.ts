@@ -74,6 +74,14 @@ export interface AppBridge {
   openDataFolder(): Promise<void>
   /** Open the page of the app's releases in the browser. */
   openReleases(): Promise<void>
+  /** Tell the app how the assistant is now, for its mark in the tray. */
+  showPresence(presence: Presence): void
+}
+
+/** How the assistant is, as the window shows it: the accent of the persona that answers, and its mood. */
+export interface Presence {
+  accent: string | undefined
+  mood: string
 }
 
 export interface UpdatesBridge {
@@ -97,6 +105,7 @@ export const APP_CHANNELS = {
   openDataFolder: 'app:open-data-folder',
   openReleases: 'app:open-releases',
   openSettings: 'app:open-settings',
+  presence: 'app:presence',
   updateState: 'updates:state',
   updateChanged: 'updates:changed',
   updateCheck: 'updates:check',
