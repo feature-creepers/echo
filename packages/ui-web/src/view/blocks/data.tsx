@@ -56,10 +56,11 @@ export function Table({ props }: { props: BlockProps<'Table'> }) {
 }
 
 export function Timeline({ props }: { props: BlockProps<'Timeline'> }) {
+  // One grid for every moment, so the times line up in one column whatever their length.
   return (
-    <ol className="grid">
+    <ol className="grid grid-cols-[max-content_1rem_1fr] gap-x-3">
       {props.items.map((item, index) => (
-        <li key={index} className="grid grid-cols-[minmax(4.5rem,max-content)_1rem_1fr] gap-x-3">
+        <li key={index} className="contents">
           <span className="pt-0.5 text-right font-mono text-text-soft text-xs tabular-nums">{item.time}</span>
           <div className="flex flex-col items-center">
             <span className="mt-1.5 size-2 shrink-0 rounded-full" style={{ background: item.tone === 'normal' ? 'var(--accent)' : TONE_COLOR[item.tone] }} />

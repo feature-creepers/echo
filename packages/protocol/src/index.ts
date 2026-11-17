@@ -67,5 +67,6 @@ export {
   stanceSchema
 } from './personas.ts'
 export { type Settings, settingsSchema } from './settings.ts'
+export { THREAD_KINDS, THREAD_STATES, type Thread, type Threads, threadIdSchema, threadSchema, threadsSchema } from './threads.ts'
 export { isCompatible, PROTOCOL_VERSION } from './version.ts'
 export { type ShownView, viewSchema } from './views.ts'

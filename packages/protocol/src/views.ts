@@ -13,6 +13,10 @@ export const viewSchema = z.object({
   title: z.string(),
   /** The turn it was shown in. */
   turn: turnIdSchema.optional(),
+  /** The thread it belongs to. */
+  thread: z.string().min(1).max(64).optional(),
+  /** Where it goes: the stage, or the margin for an aside. */
+  slot: z.enum(['stage', 'margin']).default('stage'),
   spec: z.object({
     root: z.string(),
     elements: z.record(z.string(), z.object({ type: z.string(), props: z.record(z.string(), z.unknown()), children: z.array(z.string()) }))

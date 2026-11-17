@@ -77,6 +77,11 @@ async function open(address: string, { hello = true } = {}) {
 
 const soon = () => new Promise((resolve) => setTimeout(resolve, 60))
 
+/** Resolves once `check` holds, so a slow machine is waited for instead of failing. A test that never gets there is stopped by its time limit. */
+async function eventually(check: () => boolean): Promise<void> {
+  while (!check()) await new Promise((resolve) => setTimeout(resolve, 20))
+}
+
 describe('listenLocal', () => {
   it('disconnects a client that stays silent', async () => {
     listener = await listenLocal(welcoming().core, { handshakeTimeoutMs: 50 })
@@ -111,6 +116,7 @@ describe('listenLocal', () => {
 
     one.say({ id: 'c1', ask: 'first' })
     one.say({ id: 'c2', ask: 'second' })
+    await eventually(() => one.received.length >= 3)
     await soon()
 
     expect(one.received).toEqual([
@@ -125,9 +131,11 @@ describe('listenLocal', () => {
     listener = await listenLocal(welcoming().core)
     const client = await open(listener.address)
 
+    await eventually(() => client.received.length >= 1)
     client.socket.write('this is not JSON\n')
     client.say({ no: 'identifier' })
     client.say({ id: 'c1' })
+    await eventually(() => client.received.length >= 2)
     await soon()
 
     expect(client.received.slice(1)).toEqual([{ type: 'result', id: 'c1', ok: true, output: { id: 'c1' } }])
@@ -137,9 +145,10 @@ describe('listenLocal', () => {
     const { core, emit } = welcoming()
     listener = await listenLocal(core)
     const [one, other, stranger] = await Promise.all([open(listener.address), open(listener.address), open(listener.address, { hello: false })])
-    await soon()
+    await eventually(() => one.received.length >= 1 && other.received.length >= 1)
 
     emit(changed)
+    await eventually(() => one.received.length >= 2 && other.received.length >= 2)
     await soon()
 
     expect(one.received.at(-1)).toEqual(changed)
@@ -151,13 +160,13 @@ describe('listenLocal', () => {
     const { core, emit } = welcoming()
     listener = await listenLocal(core)
     const [stays, leaves] = await Promise.all([open(listener.address), open(listener.address)])
-    await soon()
+    await eventually(() => stays.received.length >= 1 && leaves.received.length >= 1)
     leaves.socket.destroy()
     await leaves.closed
     await soon()
 
     emit(changed)
-    await soon()
+    await eventually(() => stays.received.length >= 2)
 
     expect(stays.received.at(-1)).toEqual(changed)
   })
@@ -165,7 +174,7 @@ describe('listenLocal', () => {
   it('hangs up on an admitted client that sends a line too long to be a message', async () => {
     listener = await listenLocal(welcoming().core)
     const client = await open(listener.address)
-    await soon()
+    await eventually(() => client.received.length >= 1)
 
     client.socket.write('x'.repeat(MAX_LINE_LENGTH + 1))
 

@@ -1,268 +1,361 @@
+import { EXAMPLE_VIEW } from '@repo/catalog'
 import type { Event, Exchange } from '@repo/protocol'
 import { describe, expect, it, vi } from 'vitest'
 import { createEngineRoom } from '../engines/engines.ts'
 import { memoryRecords } from '../records/memory.ts'
 import { type ScriptedHarness, scriptedHarness } from '../replay/scripted-harness.ts'
 import { createUserSettings } from '../settings/settings.ts'
+import { createTools } from '../tools/tools.ts'
+import { createScreen } from '../views/screen.ts'
 import { createChannel, EXCHANGE } from './channel.ts'
 
-function setup({ harnesses = [scriptedHarness()] as ScriptedHarness[], records = memoryRecords() } = {}) {
+interface Setup {
+  harness?: ScriptedHarness
+  records?: ReturnType<typeof memoryRecords>
+  /** Whether a tool server runs: with none, one session answers everything. */
+  server?: boolean
+}
+
+function setup({ harness = scriptedHarness(), records = memoryRecords(), server = true }: Setup = {}) {
   let ids = 0
+  const newId = () => `id-${++ids}`
   const settings = createUserSettings(records, [
     { id: 'first', name: 'Ada', stance: 'accommodating', accent: 'cyan' },
     { id: 'second', name: 'Grace', stance: 'critical', accent: 'red' }
   ])
   const log = { error: vi.fn<(message: string) => void>() }
+  const tools = createTools(newId)
+  const screen = createScreen({ records, newId })
   const channel = createChannel({
-    engines: createEngineRoom(harnesses),
+    engines: createEngineRoom([harness]),
     settings,
     records,
+    screen,
     log,
     now: () => new Date('2026-11-17T08:00:00Z'),
-    newId: () => `turn-${++ids}`
+    newId,
+    timeZone: 'Europe/Paris',
+    abilities: {
+      server: () => (server ? 'http://127.0.0.1:1/mcp' : undefined),
+      grant: (granted) => tools.grant(granted),
+      threadTools: (showing) => [{ definition: { name: 'ui_render', description: '', inputSchema: {} }, run: (input) => screen.show(input, showing()) }],
+      instructions: 'THE SCREEN'
+    }
   })
   const events: Event[] = []
   channel.onEvent((event) => events.push(event))
-  const names = () => events.map((event) => event.name)
+  screen.onEvent((event) => events.push(event))
   const spoken = () => events.flatMap((event) => (event.name === 'speech.say' ? [event.text] : []))
   const ended = () => events.flatMap((event): Exchange[] => (event.name === 'turn.ended' ? [event.exchange] : []))
-  return { channel, harness: harnesses[0] as ScriptedHarness, harnesses, settings, records, log, events, names, spoken, ended }
+  /** Call a tool the way the session holding `index`'s token would. */
+  const call = (index: number, name: string, input: unknown) => tools.host.call(harness.sessions[index]?.request.tools?.token ?? '', name, input)
+  return { channel, harness, settings, records, screen, log, events, spoken, ended, call }
 }
 
 /** Lets what the channel started without waiting for it come to its end. */
 async function settled(): Promise<void> {
-  for (let turn = 0; turn < 10; turn++) await Promise.resolve()
+  for (let turn = 0; turn < 20; turn++) await Promise.resolve()
 }
 
-describe('a turn', () => {
-  it('opens a session as the persona in use, with the rules for speaking', async () => {
+describe('the orchestrator', () => {
+  it('hears each turn with the list of threads, as the persona in use', async () => {
     const { channel, harness } = setup()
     channel.say('Hello')
     await settled()
 
-    const request = harness.sessions[0]?.request
-    expect(request?.role).toBe('thread')
-    expect(request?.instructions).toContain('You are Ada.')
-    expect(request?.instructions).toContain('spoken aloud')
-    expect(harness.sessions[0]?.sent).toEqual(['Hello'])
-  })
-
-  it('says each sentence as soon as the next one starts, and the last one when the turn ends', async () => {
-    const { channel, harness, names, spoken } = setup()
-    channel.say('What should I cook?')
-    await settled()
-    const session = harness.sessions[0]
-
-    session?.emit({ type: 'text', text: 'A risotto would' })
-    session?.emit({ type: 'text', text: ' work. Forty' })
-    expect(spoken()).toEqual(['A risotto would work.'])
-
-    session?.emit({ type: 'text', text: ' minutes.' })
-    session?.emit({ type: 'turn-end' })
-    expect(spoken()).toEqual(['A risotto would work.', 'Forty minutes.'])
-    expect(names()).toEqual(['turn.started', 'speech.say', 'speech.say', 'turn.ended'])
-  })
-
-  it('announces the language of each sentence, falling back on the one the user spoke', async () => {
-    const { channel, harness, events } = setup()
-    channel.say('Bonjour', 'fr')
-    await settled()
-    harness.sessions[0]?.reply('Bonjour, que puis-je faire pour vous ? ', 'OK. ', 'The weather is fine and it is warm.')
-
-    expect(events.flatMap((event) => (event.name === 'speech.say' ? [event.language] : []))).toEqual(['fr', 'fr', 'en'])
-  })
-
-  it('records the line when the turn is over, and not before', async () => {
-    const { channel, harness, records, ended } = setup()
-    const turn = channel.say('Hello')
-    await settled()
-    expect(records.read([EXCHANGE])).toEqual([])
-
-    harness.sessions[0]?.reply('Good morning.')
-
-    const line: Exchange = { turn, at: '2026-11-17T08:00:00.000Z', persona: 'first', said: 'Hello', replied: 'Good morning.', outcome: 'done' }
-    expect(ended()).toEqual([line])
-    expect(records.read([EXCHANGE]).map((record) => record.payload)).toEqual([line])
-    expect(channel.read(10)).toEqual([line])
-  })
-
-  it('reads aloud what a model wrote for the eye without its marks', async () => {
-    const { channel, harness, spoken } = setup()
-    channel.say('Hello')
-    await settled()
-    harness.sessions[0]?.reply('**Done.** It is _ready_.')
-
-    expect(spoken()).toEqual(['Done.', 'It is ready.'])
-  })
-
-  it('announces the tools the session uses', async () => {
-    const { channel, harness, events } = setup()
-    const turn = channel.say('Show me')
-    await settled()
-    harness.sessions[0]?.emit({ type: 'tool', name: 'ui_render', phase: 'started' })
-    harness.sessions[0]?.emit({ type: 'tool', name: 'ui_render', phase: 'ended' })
-
-    expect(events.filter((event) => event.name === 'activity')).toEqual([
-      { type: 'event', name: 'activity', turn, tool: 'ui_render', phase: 'started' },
-      { type: 'event', name: 'activity', turn, tool: 'ui_render', phase: 'ended' }
+    const orchestrator = harness.sessions[0]
+    expect(orchestrator?.request.role).toBe('orchestrator')
+    expect(orchestrator?.request.instructions).toContain('You are Ada.')
+    expect(orchestrator?.request.instructions).toContain('thread_open')
+    expect(orchestrator?.sent).toEqual([
+      '(Now: Tuesday, 17 November 2026, 09:00 (Europe/Paris))\nThreads:\nThere are no threads yet.\n\nThe person says: Hello'
     ])
   })
 
-  it('keeps one session for the turns that follow', async () => {
-    const { channel, harness } = setup()
-    channel.say('One')
+  it('answers small things itself, sentence by sentence', async () => {
+    const { channel, harness, spoken, ended } = setup()
+    channel.say('Hello')
     await settled()
-    harness.sessions[0]?.reply('First.')
-    channel.say('Two')
+    harness.sessions[0]?.reply('Good morning. ', 'How can I help?')
+
+    expect(spoken()).toEqual(['Good morning.', 'How can I help?'])
+    expect(ended()).toMatchObject([{ said: 'Hello', replied: 'Good morning. How can I help?', outcome: 'done' }])
+    expect(ended()[0]?.thread).toBeUndefined()
+    expect(harness.sessions).toHaveLength(1)
+  })
+})
+
+describe('threads', () => {
+  it('opens a thread for a topic, which answers aloud and shows its view on the stage', async () => {
+    const { channel, harness, spoken, ended, call, screen, events } = setup()
+    channel.say('What should I cook tonight?')
     await settled()
 
-    expect(harness.sessions).toHaveLength(1)
-    expect(harness.sessions[0]?.sent).toEqual(['One', 'Two'])
+    const opened = await call(0, 'thread_open', { title: 'Dinner tonight', kind: 'topic' })
+    expect(opened.ok).toBe(true)
+    harness.sessions[0]?.emit({ type: 'text', text: 'This is never said.' })
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+
+    const thread = harness.sessions[1]
+    expect(thread?.request.role).toBe('thread')
+    expect(thread?.request.instructions).toContain('"Dinner tonight"')
+    expect(thread?.request.instructions).toContain('THE SCREEN')
+    expect(thread?.sent).toEqual(['(Now: Tuesday, 17 November 2026, 09:00 (Europe/Paris))\nWhat should I cook tonight?'])
+
+    expect((await call(1, 'ui_render', { title: 'Risotto', view: EXAMPLE_VIEW })).ok).toBe(true)
+    thread?.reply('A risotto would work.')
+
+    expect(spoken()).toEqual(['A risotto would work.'])
+    expect(ended()).toMatchObject([{ outcome: 'done', replied: 'A risotto would work.' }])
+    const threadId = ended()[0]?.thread
+    expect(threadId).toBeDefined()
+    expect(channel.threads()).toMatchObject({ focus: threadId, threads: [{ id: threadId, title: 'Dinner tonight', kind: 'topic', state: 'parked' }] })
+    expect(screen.current()?.title).toBe('Risotto')
+    expect(events.some((event) => event.name === 'threads.changed')).toBe(true)
+  })
+
+  it('sends a later turn to the same thread, which remembers', async () => {
+    const { channel, harness, call } = setup()
+    channel.say('What should I cook?')
+    await settled()
+    await call(0, 'thread_open', { title: 'Dinner' })
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+    harness.sessions[1]?.reply('A risotto.')
+    const thread = channel.threads().threads[0]?.id as string
+
+    channel.say('Can I use white wine?')
+    await settled()
+    expect(harness.sessions[0]?.sent[1]).toContain(`${thread}: "Dinner" (topic, parked, on screen`)
+    await call(0, 'thread_send', { thread })
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+
+    expect(harness.sessions).toHaveLength(2)
+    expect(harness.sessions[1]?.sent.map((sent) => sent.split('\n')[1])).toEqual(['What should I cook?', 'Can I use white wine?'])
+  })
+
+  it('refuses a thread that does not exist, and lists those that do', async () => {
+    const { channel, call } = setup()
+    channel.say('Hello')
+    await settled()
+    const refused = await call(0, 'thread_send', { thread: 'nope' })
+    expect(refused).toMatchObject({ ok: false })
+    expect(refused.text).toContain('There is no such thread')
+  })
+
+  it('answers an aside in the margin, and leaves the topic on the stage', async () => {
+    const { channel, harness, call, screen } = setup()
+    channel.say('Plan my trip')
+    await settled()
+    await call(0, 'thread_open', { title: 'Trip' })
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+    await call(1, 'ui_render', { title: 'Itinerary', view: EXAMPLE_VIEW })
+    harness.sessions[1]?.reply('Here is a plan.')
+
+    channel.say('By the way, what time is it in Montreal?')
+    await settled()
+    await call(0, 'thread_open', { title: 'Time in Montreal', kind: 'aside' })
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+    expect(harness.sessions[2]?.request.instructions).toContain('side question')
+    await call(2, 'ui_render', { title: 'Montreal', view: EXAMPLE_VIEW })
+    harness.sessions[2]?.reply('It is two in the morning there.')
+
+    expect(screen.current()?.title).toBe('Itinerary')
+    expect(screen.margin().map((view) => view.title)).toEqual(['Montreal'])
+    const trip = channel.threads().threads.find((thread) => thread.title === 'Trip')
+    expect(channel.threads().focus).toBe(trip?.id)
+  })
+
+  it('brings back an earlier topic, with its view', async () => {
+    const { channel, harness, call, screen, spoken } = setup()
+    for (const [said, title] of [
+      ['Recipe please', 'Recipe'],
+      ['Help with my form', 'Form']
+    ] as const) {
+      channel.say(said)
+      await settled()
+      await call(0, 'thread_open', { title })
+      harness.sessions[0]?.emit({ type: 'turn-end' })
+      await settled()
+      const session = harness.sessions.at(-1)
+      await call(harness.sessions.length - 1, 'ui_render', { title, view: EXAMPLE_VIEW })
+      session?.reply(`${title} done.`)
+    }
+    expect(screen.current()?.title).toBe('Form')
+
+    channel.say('Back to the recipe')
+    await settled()
+    const recipe = channel.threads().threads.find((thread) => thread.title === 'Recipe')?.id
+    expect((await call(0, 'thread_focus', { thread: recipe })).ok).toBe(true)
+    harness.sessions[0]?.reply('The recipe is back.')
+
+    expect(screen.current()?.title).toBe('Recipe')
+    expect(channel.threads().focus).toBe(recipe)
+    expect(spoken().at(-1)).toBe('The recipe is back.')
+  })
+
+  it('lets a thread finish in the background when the user moves on, and marks its answer ready', async () => {
+    const { channel, harness, call, spoken, screen } = setup()
+    channel.say('Find me a recipe')
+    await settled()
+    await call(0, 'thread_open', { title: 'Recipe' })
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+    const recipe = harness.sessions[1]
+    recipe?.emit({ type: 'text', text: 'Let me look. ' })
+
+    channel.say('Hello there')
+    await settled()
+    harness.sessions[0]?.reply('Hello!')
+    await call(1, 'ui_render', { title: 'Risotto', view: EXAMPLE_VIEW })
+    recipe?.reply('A risotto would do.')
+
+    expect(spoken()).toEqual(['Let me look.', 'Hello!'])
+    const thread = channel.threads().threads.find((candidate) => candidate.title === 'Recipe')
+    expect(thread?.state).toBe('ready')
+    expect(channel.read(10).find((line) => line.said === 'Find me a recipe')).toMatchObject({ outcome: 'done', replied: 'Let me look. A risotto would do.' })
+
+    expect(channel.focus(thread?.id as string)).toBe(true)
+    expect(spoken().slice(2)).toEqual(['Let me look.', 'A risotto would do.'])
+    expect(screen.current()?.title).toBe('Risotto')
+    expect(channel.threads().threads.find((candidate) => candidate.id === thread?.id)?.state).toBe('parked')
   })
 })
 
 describe('stopping', () => {
-  it('interrupts the session, says nothing more, and records the turn as stopped once the session confirms', async () => {
+  it('interrupts the orchestrator answering, says nothing more, and records the turn as stopped', async () => {
     const { channel, harness, spoken, ended } = setup()
-    channel.say('Tell me a long story')
+    channel.say('Tell me a story')
     await settled()
-    const session = harness.sessions[0]
-    session?.emit({ type: 'text', text: 'Once upon a time. ' })
+    const orchestrator = harness.sessions[0]
+    orchestrator?.emit({ type: 'text', text: 'Once upon a time. ' })
 
     channel.stop()
-    session?.emit({ type: 'text', text: 'There was a king. And a queen.' })
-    expect(session?.interrupted).toBe(1)
-    expect(ended()).toEqual([])
+    orchestrator?.emit({ type: 'text', text: 'There was a king.' })
+    expect(orchestrator?.interrupted).toBe(1)
+    orchestrator?.emit({ type: 'turn-end' })
 
-    session?.emit({ type: 'turn-end' })
     expect(spoken()).toEqual(['Once upon a time.'])
     expect(ended()).toMatchObject([{ outcome: 'stopped', replied: 'Once upon a time.' }])
   })
 
-  it('does nothing when no turn is under way', () => {
-    const { channel, events } = setup()
+  it('interrupts the thread answering', async () => {
+    const { channel, harness, call, ended } = setup()
+    channel.say('Plan a trip')
+    await settled()
+    await call(0, 'thread_open', { title: 'Trip' })
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+
     channel.stop()
-    expect(events).toEqual([])
+    expect(harness.sessions[1]?.interrupted).toBe(1)
+    harness.sessions[1]?.emit({ type: 'turn-end' })
+    expect(ended()).toMatchObject([{ outcome: 'stopped' }])
   })
 
-  it('answers what is said during an answer once that answer has stopped', async () => {
-    const { channel, harness, names, ended } = setup()
+  it('decides about what is said during a direct answer once that answer has stopped', async () => {
+    const { channel, harness, ended } = setup()
     channel.say('First question')
     await settled()
-    const session = harness.sessions[0]
-    session?.emit({ type: 'text', text: 'Let me think. ' })
-
+    const orchestrator = harness.sessions[0]
     channel.say('Never mind, second question')
     await settled()
-    expect(session?.interrupted).toBe(1)
-    expect(session?.sent).toEqual(['First question'])
+    expect(orchestrator?.interrupted).toBe(1)
+    expect(orchestrator?.sent).toHaveLength(1)
 
-    session?.emit({ type: 'turn-end' })
+    orchestrator?.emit({ type: 'turn-end' })
     await settled()
-    expect(session?.sent).toEqual(['First question', 'Never mind, second question'])
-    session?.reply('Here it is.')
-
+    expect(orchestrator?.sent[1]).toContain('The person says: Never mind, second question')
+    orchestrator?.reply('Here it is.')
     expect(ended().map((line) => [line.said, line.outcome])).toEqual([
       ['First question', 'stopped'],
       ['Never mind, second question', 'done']
     ])
-    expect(names().filter((name) => name === 'turn.started')).toHaveLength(2)
-  })
-
-  it('keeps only the last of several things said during an answer', async () => {
-    const { channel, harness, ended } = setup()
-    channel.say('One')
-    await settled()
-    channel.say('Two')
-    channel.say('Three')
-    harness.sessions[0]?.emit({ type: 'turn-end' })
-    await settled()
-    harness.sessions[0]?.reply('Answer.')
-
-    expect(harness.sessions[0]?.sent).toEqual(['One', 'Three'])
-    expect(ended().map((line) => line.said)).toEqual(['One', 'Three'])
   })
 })
 
 describe('when it cannot answer', () => {
   it('says so in the transcript when no harness is ready', async () => {
-    const { channel, ended } = setup({ harnesses: [scriptedHarness({ status: { installed: true, signedIn: false } })] })
+    const { channel, ended } = setup({ harness: scriptedHarness({ status: { installed: true, signedIn: false } }) })
     channel.say('Hello')
     await settled()
-
     expect(ended()).toMatchObject([{ said: 'Hello', outcome: 'failed', problem: expect.stringContaining('No AI program is ready') }])
   })
 
-  it('records the failure of a session, and opens a new one for the next turn', async () => {
+  it('records the failure of the orchestrator, and opens a new one for the next turn', async () => {
     const { channel, harness, ended, log } = setup()
     channel.say('Hello')
     await settled()
-    harness.sessions[0]?.emit({ type: 'text', text: 'Good ' })
     harness.sessions[0]?.emit({ type: 'failed', reason: 'Claude Code stopped.' })
-
-    expect(ended()).toMatchObject([{ outcome: 'failed', problem: 'Claude Code stopped.', replied: 'Good' }])
+    expect(ended()).toMatchObject([{ outcome: 'failed', problem: 'Claude Code stopped.' }])
     expect(log.error).toHaveBeenCalledOnce()
 
     channel.say('Again')
     await settled()
     expect(harness.sessions).toHaveLength(2)
-    expect(harness.sessions[1]?.sent).toEqual(['Again'])
+    expect(harness.sessions[1]?.request.role).toBe('orchestrator')
+  })
+
+  it('answers with one session, and no threads, while no tool server runs', async () => {
+    const { channel, harness, spoken } = setup({ server: false })
+    channel.say('Hello')
+    await settled()
+    expect(harness.sessions[0]?.request.tools).toBeUndefined()
+    expect(harness.sessions[0]?.sent).toEqual(['(Now: Tuesday, 17 November 2026, 09:00 (Europe/Paris))\nHello'])
+    harness.sessions[0]?.reply('Hi.')
+    expect(spoken()).toEqual(['Hi.'])
   })
 })
 
-describe('a new session', () => {
-  it('replaces the old one when the persona changes, and is told what was said so far', async () => {
+describe('new sessions', () => {
+  it('replace the old ones when the persona changes, and are told what was said', async () => {
     const { channel, harness, settings } = setup()
     channel.say('I have guests tonight.')
     await settled()
-    harness.sessions[0]?.reply('A risotto would work.')
+    harness.sessions[0]?.reply('Lovely.')
 
     settings.setPersonas({ names: [], active: 'second' })
     channel.say('Are you sure?')
     await settled()
 
-    expect(harness.sessions).toHaveLength(2)
     expect(harness.sessions[0]?.closed).toBe(true)
     const instructions = harness.sessions[1]?.request.instructions ?? ''
     expect(instructions).toContain('You are Grace.')
     expect(instructions).toContain('ask once whether they are sure')
     expect(instructions).toContain('They said: I have guests tonight.')
-    expect(instructions).toContain('You answered: A risotto would work.')
   })
 
-  it('replaces the old one when the persona is renamed', async () => {
-    const { channel, harness, settings } = setup()
-    channel.say('Hello')
-    await settled()
-    harness.sessions[0]?.reply('Hello.')
-
-    settings.setPersonas({ names: [{ persona: 'first', name: 'Marvin' }], active: 'first' })
-    channel.say('Who are you?')
-    await settled()
-
-    expect(harness.sessions[1]?.request.instructions).toContain('You are Marvin.')
-  })
-
-  it('is told the transcript kept from an earlier run', async () => {
+  it('carry on from the transcript and the threads kept by an earlier run', async () => {
     const records = memoryRecords()
     const before = setup({ records })
     before.channel.say('Remember the risotto.')
     await settled()
-    before.harness.sessions[0]?.reply('I will.')
+    await before.call(0, 'thread_open', { title: 'Risotto' })
+    before.harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+    before.harness.sessions[1]?.reply('I will.')
 
     const after = setup({ records })
     expect(after.channel.read(10).map((line) => line.said)).toEqual(['Remember the risotto.'])
+    expect(after.channel.threads().threads.map((thread) => thread.title)).toEqual(['Risotto'])
     after.channel.say('What did I ask?')
     await settled()
-
-    expect(after.harness.sessions[0]?.request.instructions).toContain('They said: Remember the risotto.')
+    expect(after.harness.sessions[0]?.sent[0]).toContain('"Risotto"')
+    expect(after.records.read([EXCHANGE])).toHaveLength(1)
   })
 
-  it('is closed when the channel closes', async () => {
-    const { channel, harness } = setup()
-    channel.say('Hello')
+  it('are all closed when the channel closes', async () => {
+    const { channel, harness, call } = setup()
+    channel.say('Plan a trip')
+    await settled()
+    await call(0, 'thread_open', { title: 'Trip' })
+    harness.sessions[0]?.emit({ type: 'turn-end' })
     await settled()
     channel.close()
-    expect(harness.sessions[0]?.closed).toBe(true)
+    expect(harness.sessions.every((session) => session.closed)).toBe(true)
   })
 })

@@ -11,6 +11,7 @@ import type { Mood } from '../presence/painter.ts'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { accentStyle } from '../styles/accent.ts'
+import { Margin } from '../view/margin.tsx'
 import { ViewPanel } from '../view/view-panel.tsx'
 import { InputLine } from './input-line.tsx'
 
@@ -49,7 +50,10 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
   const channel = useFollowed(client.channel)
   const speaking = useFollowed(client.speech)
   const engines = useFollowed(client.engines)
-  const view = useFollowed(client.view)
+  const shown = useFollowed(client.view)
+  const view = shown.stage
+  const threads = useFollowed(client.threads)
+  const ready = threads.threads.filter((thread) => thread.state === 'ready')
   const [problem, setProblem] = useState<string>()
 
   const active = personas.available.find((persona) => persona.id === personas.active) ?? personas.available[0]
@@ -167,38 +171,63 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
     </AnimatePresence>
   )
 
+  const margin = shown.margin.length > 0 || ready.length > 0
+
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col">
-      {view ? (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <motion.div layout className="mx-auto flex w-full max-w-5xl items-center gap-5 px-8 pt-5 pb-3">
-            <Orb size={84} mood={mood} level={level.current} className="-m-3 shrink-0" />
-            <div className="grid min-w-0 flex-1 gap-1">
-              <div className="flex items-baseline gap-3">
-                <span className="font-medium text-lg">{active.name}</span>
-                <Eyebrow accent={mood !== 'idle'}>{MOODS[mood]}</Eyebrow>
+      <div className="flex min-h-0 flex-1">
+        <div className="flex min-w-0 flex-1 flex-col">
+          {view ? (
+            <div className="flex min-h-0 flex-1 flex-col">
+              <motion.div layout className="mx-auto flex w-full max-w-5xl items-center gap-5 px-8 pt-5 pb-3">
+                <Orb size={84} mood={mood} level={level.current} className="-m-3 shrink-0" />
+                <div className="grid min-w-0 flex-1 gap-1">
+                  <div className="flex items-baseline gap-3">
+                    <span className="font-medium text-lg">{active.name}</span>
+                    <Eyebrow accent={mood !== 'idle'}>{MOODS[mood]}</Eyebrow>
+                  </div>
+                  <div className="min-h-7" aria-live="polite">
+                    {caption}
+                  </div>
+                </div>
+              </motion.div>
+              <ViewPanel view={view} onSay={say} onClose={() => void client.view.clear().catch(() => undefined)} />
+            </div>
+          ) : (
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-8">
+              <Orb size={300} mood={mood} level={level.current} className="-my-6" />
+              <div className="grid justify-items-center gap-1.5">
+                <h1 className="font-medium text-4xl tracking-tight">{active.name}</h1>
+                <Eyebrow accent={mood !== 'idle'} className="transition-colors duration-300">
+                  {MOODS[mood]}
+                </Eyebrow>
               </div>
-              <div className="min-h-7" aria-live="polite">
+              <div className="mt-8 flex h-28 w-full max-w-2xl items-start justify-center text-center" aria-live="polite">
                 {caption}
               </div>
             </div>
-          </motion.div>
-          <ViewPanel view={view} onSay={say} onClose={() => void client.view.clear().catch(() => undefined)} />
+          )}
         </div>
-      ) : (
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-8">
-          <Orb size={300} mood={mood} level={level.current} className="-my-6" />
-          <div className="grid justify-items-center gap-1.5">
-            <h1 className="font-medium text-4xl tracking-tight">{active.name}</h1>
-            <Eyebrow accent={mood !== 'idle'} className="transition-colors duration-300">
-              {MOODS[mood]}
-            </Eyebrow>
-          </div>
-          <div className="mt-8 flex h-28 w-full max-w-2xl items-start justify-center text-center" aria-live="polite">
-            {caption}
-          </div>
-        </div>
-      )}
+        <AnimatePresence initial={false}>
+          {margin && (
+            <motion.div
+              key="margin"
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 'auto', opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              className="h-full overflow-hidden"
+            >
+              <Margin
+                cards={shown.margin}
+                ready={ready}
+                onFocus={(thread) => void client.threads.focus(thread).catch(() => undefined)}
+                onClose={(id) => void client.view.clear(id).catch(() => undefined)}
+                onSay={say}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
 
       <div className="mx-auto grid w-full max-w-3xl gap-3 px-8 pb-7">
         <InputLine

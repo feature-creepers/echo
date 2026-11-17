@@ -53,6 +53,7 @@ type Screen = { is: 'main' } | { is: 'onboarding' } | { is: 'settings'; section:
 function Connected({ productName, client, engine }: { productName: string; client: Client; engine: SpeechEngine | undefined }) {
   const snapshot = useFollowed(client.settings)
   const channel = useFollowed(client.channel)
+  const threads = useFollowed(client.threads)
   const [screen, setScreen] = useState<Screen>()
   /** The screen the app opened on, decided once, when the settings first arrive. */
   const entered = useRef<Screen>(undefined)
@@ -192,7 +193,13 @@ function Connected({ productName, client, engine }: { productName: string; clien
               transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
               className="h-full overflow-hidden"
             >
-              <Transcript exchanges={channel.exchanges} personas={personas.available} onClose={() => setTranscript(false)} />
+              <Transcript
+                exchanges={channel.exchanges}
+                personas={personas.available}
+                threads={threads}
+                onFocus={(thread) => void client.threads.focus(thread).catch(() => undefined)}
+                onClose={() => setTranscript(false)}
+              />
             </motion.div>
           )}
         </AnimatePresence>

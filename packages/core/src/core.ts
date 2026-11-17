@@ -10,7 +10,7 @@ import type { Records } from './ports/records.ts'
 import type { ToolHost } from './ports/tools.ts'
 import { createUserSettings } from './settings/settings.ts'
 import { createTools, type Tool } from './tools/tools.ts'
-import { createScreen } from './views/screen.ts'
+import { createScreen, type Showing } from './views/screen.ts'
 
 /** What a core is given by the program that hosts it. */
 export interface CoreOptions {
@@ -58,11 +58,10 @@ export function createCore(options: CoreOptions): Core {
   const engines = createEngineRoom(options.harnesses)
   const tools = createTools(options.newId)
   let toolServer: string | undefined
-  // The screen needs the turn under way, which the channel knows; the channel needs the screen's tools.
-  let currentTurn: () => string | undefined = () => undefined
-  const screen = createScreen({ records: options.records, newId: options.newId, turn: () => currentTurn() })
+  const screen = createScreen({ records: options.records, newId: options.newId })
 
-  const screenTools: Tool[] = [
+  /** The screen's tools, for one thread: its views go where `showing` says. */
+  const screenTools = (showing: () => Showing): Tool[] => [
     {
       definition: {
         name: SHOW_TOOL,
@@ -70,7 +69,7 @@ export function createCore(options: CoreOptions): Core {
           'Show a view on the screen, composed from the blocks of the catalogue. It replaces what was shown. Answers with the problems to correct when the view is not valid.',
         inputSchema: SHOW_TOOL_INPUT
       },
-      run: (input) => screen.show(input)
+      run: (input) => screen.show(input, showing())
     },
     {
       definition: {
@@ -89,12 +88,12 @@ export function createCore(options: CoreOptions): Core {
     engines,
     settings,
     records: options.records,
+    screen,
     log: options.log,
     now,
     newId: options.newId,
-    abilities: { server: () => toolServer, grant: () => tools.grant(screenTools), instructions: describeCatalog() }
+    abilities: { server: () => toolServer, grant: (granted) => tools.grant(granted), threadTools: screenTools, instructions: describeCatalog() }
   })
-  currentTurn = channel.turn
 
   settings.onChange((changed) => emit({ type: 'event', name: 'settings.changed', settings: changed }))
   engines.onChange((changed) => emit({ type: 'event', name: 'engines.changed', engines: changed }))
@@ -117,12 +116,17 @@ export function createCore(options: CoreOptions): Core {
       'engines.read': async () => ({ ok: true, output: { engines: await engines.read(true) } }),
       'view.read': () => {
         const view = screen.current()
-        return { ok: true, output: view ? { view } : {} }
+        return { ok: true, output: view ? { view, margin: screen.margin() } : { margin: screen.margin() } }
       },
-      'view.clear': () => {
-        screen.clear()
+      'view.clear': (input) => {
+        screen.clear(input.view)
         return { ok: true, output: {} }
       },
+      'threads.read': () => ({ ok: true, output: channel.threads() }),
+      'thread.focus': (input) =>
+        channel.focus(input.thread)
+          ? { ok: true, output: {} }
+          : { ok: false, error: { code: 'invalid-input', message: `There is no topic "${input.thread}".` } },
       'engines.sign-in': async (input) => {
         const known = (await engines.read()).harnesses.some((harness) => harness.id === input.harness)
         if (!known) return { ok: false, error: { code: 'unknown-harness', message: `There is no harness "${input.harness}".` } }

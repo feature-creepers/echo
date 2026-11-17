@@ -1,6 +1,7 @@
 import type { z } from 'zod'
 import { conversationCommands } from './commands/conversation.ts'
 import { settingsCommands } from './commands/settings.ts'
+import { threadCommands } from './commands/threads.ts'
 import { viewCommands } from './commands/views.ts'
 
 /** A command: what it takes and what it gives back. */
@@ -10,7 +11,7 @@ export interface CommandDefinition {
 }
 
 /** Every command a client can send, assembled from the groups in `commands/`. */
-export const COMMANDS = { ...settingsCommands, ...conversationCommands, ...viewCommands } satisfies Record<string, CommandDefinition>
+export const COMMANDS = { ...settingsCommands, ...conversationCommands, ...viewCommands, ...threadCommands } satisfies Record<string, CommandDefinition>
 
 export type CommandName = keyof typeof COMMANDS
 /** What a client sends: defaults may be left out. */

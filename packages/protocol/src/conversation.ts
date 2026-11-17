@@ -34,6 +34,8 @@ export const exchangeSchema = z.object({
   at: z.string(),
   /** The persona that answered. */
   persona: personaIdSchema,
+  /** The thread that answered. Left out when the assistant answered at once, without one. */
+  thread: z.string().min(1).max(64).optional(),
   said: z.string(),
   /** What the assistant said aloud, so far. */
   replied: z.string(),

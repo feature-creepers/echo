@@ -3,7 +3,12 @@ import { describe, expect, it } from 'vitest'
 import type { Session } from '../session.ts'
 import { followView } from './view.ts'
 
-const view = (id: string): ShownView => ({ id, title: id, spec: { root: 'a', elements: { a: { type: 'Divider', props: {}, children: [] } } } })
+const view = (id: string, slot: 'stage' | 'margin' = 'stage'): ShownView => ({
+  id,
+  title: id,
+  slot,
+  spec: { root: 'a', elements: { a: { type: 'Divider', props: {}, children: [] } } }
+})
 
 function fakeSession() {
   const listeners = new Set<(event: Event) => void>()
@@ -12,7 +17,8 @@ function fakeSession() {
   const session: Session = {
     run: (name) => {
       ran.push(name)
-      if (name === 'view.read') return new Promise<never>((resolve) => (answer = (shown) => resolve((shown ? { view: shown } : {}) as never)))
+      if (name === 'view.read')
+        return new Promise<never>((resolve) => (answer = (shown) => resolve((shown ? { view: shown, margin: [] } : { margin: [] }) as never)))
       return Promise.resolve({} as never)
     },
     onEvent: (listener) => {
@@ -37,16 +43,16 @@ describe('followView', () => {
     const state = followView(core.session)
     core.answer(view('a'))
     await settled()
-    expect(state.current()?.id).toBe('a')
+    expect(state.current().stage?.id).toBe('a')
   })
 
   it('follows what is shown and cleared', () => {
     const core = fakeSession()
     const state = followView(core.session)
     core.emit({ type: 'event', name: 'view.shown', view: view('b') })
-    expect(state.current()?.id).toBe('b')
+    expect(state.current().stage?.id).toBe('b')
     core.emit({ type: 'event', name: 'view.cleared' })
-    expect(state.current()).toBeUndefined()
+    expect(state.current().stage).toBeUndefined()
   })
 
   it('keeps an event that overtook the read', async () => {
@@ -55,7 +61,19 @@ describe('followView', () => {
     core.emit({ type: 'event', name: 'view.shown', view: view('new') })
     core.answer(view('old'))
     await settled()
-    expect(state.current()?.id).toBe('new')
+    expect(state.current().stage?.id).toBe('new')
+  })
+
+  it('keeps aside cards in the margin, apart from the stage', () => {
+    const core = fakeSession()
+    const state = followView(core.session)
+    core.emit({ type: 'event', name: 'view.shown', view: view('topic') })
+    for (const id of ['m1', 'm2', 'm3', 'm4']) core.emit({ type: 'event', name: 'view.shown', view: view(id, 'margin') })
+    expect(state.current().stage?.id).toBe('topic')
+    expect(state.current().margin.map((card) => card.id)).toEqual(['m2', 'm3', 'm4'])
+    core.emit({ type: 'event', name: 'view.cleared', view: 'm3' })
+    expect(state.current().margin.map((card) => card.id)).toEqual(['m2', 'm4'])
+    expect(state.current().stage?.id).toBe('topic')
   })
 
   it('asks the core to clear the screen', async () => {

@@ -8,7 +8,8 @@ export const viewShownSchema = eventPrefixSchema.extend({
   view: viewSchema
 })
 
-/** Nothing is shown any more. */
+/** A view is no longer shown: the one given, or, left out, whatever is on the stage. */
 export const viewClearedSchema = eventPrefixSchema.extend({
-  name: z.literal('view.cleared')
+  name: z.literal('view.cleared'),
+  view: z.string().min(1).max(64).optional()
 })
