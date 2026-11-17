@@ -33,6 +33,8 @@ export const COMMAND_ERRORS = [
   'invalid-name',
   /** Two personas would be called the same. */
   'name-taken',
+  /** The command names a harness that does not exist. */
+  'unknown-harness',
   /** The core could not carry the command out, for a reason that is not the client's doing. */
   'failed'
 ] as const

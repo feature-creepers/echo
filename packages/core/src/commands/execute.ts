@@ -2,9 +2,9 @@ import {
   COMMANDS,
   type CommandError,
   type CommandErrorCode,
-  type CommandInput,
   type CommandName,
   type CommandOutput,
+  type CommandRequest,
   commandSchema,
   isCommandName,
   type Result
@@ -13,8 +13,8 @@ import type { Log } from '../ports/log.ts'
 
 export type Outcome<Output> = { ok: true; output: Output } | { ok: false; error: CommandError }
 
-/** What carries out each command. Leaving one out is a compile error. */
-export type Handlers = { [Name in CommandName]: (input: CommandInput<Name>) => Outcome<CommandOutput<Name>> }
+/** What carries out each command, at once or after a wait. Leaving one out is a compile error. */
+export type Handlers = { [Name in CommandName]: (input: CommandRequest<Name>) => Outcome<CommandOutput<Name>> | Promise<Outcome<CommandOutput<Name>>> }
 
 /**
  * Carry out the commands of admitted clients.
@@ -22,8 +22,8 @@ export type Handlers = { [Name in CommandName]: (input: CommandInput<Name>) => O
  * Every command that can be read gets a result, including one that is unknown, badly formed, or that
  * fails for a reason of the core's own. A message that is not a command gets nothing: there is no identifier to answer to.
  */
-export function createExecutor(handlers: Handlers, log: Log): (message: unknown) => Result | undefined {
-  return (message) => {
+export function createExecutor(handlers: Handlers, log: Log): (message: unknown) => Promise<Result | undefined> {
+  return async (message) => {
     const command = commandSchema.safeParse(message)
     if (!command.success) return undefined
     const { id, name } = command.data
@@ -35,8 +35,8 @@ export function createExecutor(handlers: Handlers, log: Log): (message: unknown)
 
     try {
       // The handler of a command takes that command's input: checked above, but beyond what the compiler can follow.
-      const handler = handlers[name] as (input: unknown) => Outcome<unknown>
-      const outcome = handler(input.data)
+      const handler = handlers[name] as (input: unknown) => Outcome<unknown> | Promise<Outcome<unknown>>
+      const outcome = await handler(input.data)
       return outcome.ok ? { type: 'result', id, ok: true, output: outcome.output } : { type: 'result', id, ok: false, error: outcome.error }
     } catch (error) {
       const why = error instanceof Error ? error.message : String(error)

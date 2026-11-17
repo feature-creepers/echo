@@ -56,8 +56,9 @@ export function listenLocal(core: Core, options: LocalListenerOptions = {}): Pro
         if (admitted.has(socket)) {
           // A line too long to be a message ends the connection: nothing after it can be trusted to be whole.
           if (!line.ok && line.error === 'too-long') return void socket.destroy()
-          const result = core.execute(line.ok ? line.message : undefined)
-          if (result) socket.write(encodeLine(result))
+          void core.execute(line.ok ? line.message : undefined).then((result) => {
+            if (result && !socket.destroyed) socket.write(encodeLine(result))
+          })
           continue
         }
 

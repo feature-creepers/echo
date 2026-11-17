@@ -1,6 +1,27 @@
 export { CAPABILITIES, type Capability, capabilitySchema } from './capabilities.ts'
 export { createLineDecoder, type DecodedLine, encodeLine, type LineDecoder, MAX_LINE_LENGTH } from './codec.ts'
-export { COMMANDS, type CommandDefinition, type CommandInput, type CommandName, type CommandOutput, isCommandName } from './commands.ts'
+export {
+  COMMANDS,
+  type CommandDefinition,
+  type CommandInput,
+  type CommandName,
+  type CommandOutput,
+  type CommandRequest,
+  isCommandName
+} from './commands.ts'
+export {
+  type Engines,
+  type Exchange,
+  enginesSchema,
+  exchangeSchema,
+  type HarnessState,
+  harnessStateSchema,
+  languageSchema,
+  TURN_OUTCOMES,
+  type TurnId,
+  turnIdSchema,
+  UTTERANCE_MAX_LENGTH
+} from './conversation.ts'
 export {
   COMMAND_ERRORS,
   type Command,
@@ -12,7 +33,7 @@ export {
   type Result,
   resultSchema
 } from './envelope.ts'
-export { type Event, type EventName, eventSchema } from './events.ts'
+export { type Event, type EventName, type EventOf, eventSchema } from './events.ts'
 export {
   CLIENT_KINDS,
   type HandshakeReply,

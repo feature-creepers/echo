@@ -1,4 +1,5 @@
 import type { z } from 'zod'
+import { conversationCommands } from './commands/conversation.ts'
 import { settingsCommands } from './commands/settings.ts'
 
 /** A command: what it takes and what it gives back. */
@@ -8,10 +9,13 @@ export interface CommandDefinition {
 }
 
 /** Every command a client can send, assembled from the groups in `commands/`. */
-export const COMMANDS = { ...settingsCommands } satisfies Record<string, CommandDefinition>
+export const COMMANDS = { ...settingsCommands, ...conversationCommands } satisfies Record<string, CommandDefinition>
 
 export type CommandName = keyof typeof COMMANDS
-export type CommandInput<Name extends CommandName> = z.infer<(typeof COMMANDS)[Name]['input']>
+/** What a client sends: defaults may be left out. */
+export type CommandInput<Name extends CommandName> = z.input<(typeof COMMANDS)[Name]['input']>
+/** What a handler receives: defaults filled in. */
+export type CommandRequest<Name extends CommandName> = z.output<(typeof COMMANDS)[Name]['input']>
 export type CommandOutput<Name extends CommandName> = z.infer<(typeof COMMANDS)[Name]['output']>
 
 export function isCommandName(name: string): name is CommandName {

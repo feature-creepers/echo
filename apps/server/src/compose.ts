@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { type Core, createCore } from '@repo/core'
 import { openStore } from '@repo/store'
 import manifest from '../package.json' with { type: 'json' }
@@ -21,7 +22,15 @@ export function compose(config: Config): Composition {
     version: manifest.version,
     acceptsCredential: localToken(config.token),
     records: store.records,
-    log: { error: (message) => void process.stderr.write(`${message}\n`) }
+    log: { error: (message) => void process.stderr.write(`${message}\n`) },
+    harnesses: [],
+    newId: randomUUID
   })
-  return { core, close: () => store.close() }
+  return {
+    core,
+    close: () => {
+      core.close()
+      store.close()
+    }
+  }
 }

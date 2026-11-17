@@ -12,20 +12,25 @@ function setup(overrides: Partial<Handlers> = {}) {
   const handlers: Handlers = {
     'settings.read': () => ({ ok: true, output: { settings } }),
     'personas.set': () => ({ ok: false, error: { code: 'name-taken', message: 'taken' } }),
+    'utterance.send': () => ({ ok: true, output: { turn: 't1' } }),
+    'turn.stop': () => ({ ok: true, output: {} }),
+    'channel.read': () => ({ ok: true, output: { exchanges: [] } }),
+    'engines.read': async () => ({ ok: true, output: { engines: { harnesses: [] } } }),
+    'engines.sign-in': async () => ({ ok: true, output: {} }),
     ...overrides
   }
   return { execute: createExecutor(handlers, log), log }
 }
 
 describe('the executor', () => {
-  it('answers a command with its output, under the same identifier', () => {
+  it('answers a command with its output, under the same identifier', async () => {
     const { execute } = setup()
-    expect(execute({ type: 'command', id: 'c7', name: 'settings.read', input: {} })).toEqual({ type: 'result', id: 'c7', ok: true, output: { settings } })
+    expect(await execute({ type: 'command', id: 'c7', name: 'settings.read', input: {} })).toEqual({ type: 'result', id: 'c7', ok: true, output: { settings } })
   })
 
-  it('passes on the refusal of a handler', () => {
+  it('passes on the refusal of a handler', async () => {
     const { execute } = setup()
-    expect(execute({ type: 'command', id: 'c1', name: 'personas.set', input: { names: [], active: 'first' } })).toEqual({
+    expect(await execute({ type: 'command', id: 'c1', name: 'personas.set', input: { names: [], active: 'first' } })).toEqual({
       type: 'result',
       id: 'c1',
       ok: false,
@@ -33,11 +38,11 @@ describe('the executor', () => {
     })
   })
 
-  it('gives the handler the input as the definition reads it', () => {
+  it('gives the handler the input as the definition reads it', async () => {
     const handler = vi.fn<Handlers['personas.set']>(() => ({ ok: true, output: { settings } }))
     const { execute } = setup({ 'personas.set': handler })
 
-    execute({ type: 'command', id: 'c1', name: 'personas.set', input: { names: [], active: 'first', extra: true } })
+    await execute({ type: 'command', id: 'c1', name: 'personas.set', input: { names: [], active: 'first', extra: true } })
 
     expect(handler).toHaveBeenCalledExactlyOnceWith({ names: [], active: 'first' })
   })
@@ -47,32 +52,45 @@ describe('the executor', () => {
     ['a name every object has', { type: 'command', id: 'c1', name: 'constructor', input: {} }, 'unknown-command'],
     ['an input the command does not take', { type: 'command', id: 'c1', name: 'personas.set', input: { names: 'Ada' } }, 'invalid-input'],
     ['no input at all', { type: 'command', id: 'c1', name: 'personas.set' }, 'invalid-input']
-  ])('refuses %s', (_what, message, code) => {
+  ])('refuses %s', async (_what, message, code) => {
     const { execute } = setup()
-    expect(execute(message)).toMatchObject({ type: 'result', id: 'c1', ok: false, error: { code } })
+    expect(await execute(message)).toMatchObject({ type: 'result', id: 'c1', ok: false, error: { code } })
   })
 
   it.each([undefined, null, 'settings.read', [], {}, { type: 'hello' }, { type: 'command', name: 'settings.read', input: {} }])(
     'gives nothing for what is not a command (%j)',
-    (message) => {
+    async (message) => {
       const { execute } = setup()
-      expect(execute(message)).toBeUndefined()
+      expect(await execute(message)).toBeUndefined()
     }
   )
 
-  it('answers and reports when a handler throws, instead of taking the core down', () => {
+  it('answers and reports when a handler throws, instead of taking the core down', async () => {
     const { execute, log } = setup({
       'settings.read': () => {
         throw new Error('the disk is full')
       }
     })
 
-    expect(execute({ type: 'command', id: 'c1', name: 'settings.read', input: {} })).toEqual({
+    expect(await execute({ type: 'command', id: 'c1', name: 'settings.read', input: {} })).toEqual({
       type: 'result',
       id: 'c1',
       ok: false,
       error: { code: 'failed', message: 'the disk is full' }
     })
     expect(log.error).toHaveBeenCalledExactlyOnceWith('The command "settings.read" failed: the disk is full')
+  })
+
+  it('waits for a handler that answers later', async () => {
+    const { execute } = setup({ 'engines.read': async () => ({ ok: true, output: { engines: { harnesses: [], active: 'later' } } }) })
+    expect(await execute({ type: 'command', id: 'c1', name: 'engines.read', input: {} })).toMatchObject({ ok: true, output: { engines: { active: 'later' } } })
+  })
+
+  it('answers when a handler that answers later rejects', async () => {
+    const { execute } = setup({ 'engines.read': () => Promise.reject(new Error('no answer')) })
+    expect(await execute({ type: 'command', id: 'c1', name: 'engines.read', input: {} })).toMatchObject({
+      ok: false,
+      error: { code: 'failed', message: 'no answer' }
+    })
   })
 })

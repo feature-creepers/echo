@@ -19,10 +19,11 @@ function welcoming() {
       hello: { type: 'hello', protocol: PROTOCOL_VERSION, client: { kind: 'desktop', version: '1', device: 'd' }, capabilities: [], credential: 'c' },
       reply: { type: 'welcome', protocol: PROTOCOL_VERSION, core: { version: '1' } }
     }),
-    execute: (message) => {
+    execute: async (message) => {
       if (typeof message !== 'object' || message === null || !('id' in message) || typeof message.id !== 'string') return undefined
       return { type: 'result', id: message.id, ok: true, output: message }
     },
+    close: () => undefined,
     onEvent: (listener) => {
       listeners.add(listener)
       return () => void listeners.delete(listener)
