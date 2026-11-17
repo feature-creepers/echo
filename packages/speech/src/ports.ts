@@ -1,5 +1,5 @@
 /**
- * The two things a speech engine does, in the same shape wherever it runs: on a device now, on a server later.
+ * The things a speech engine does, in the same shape wherever it runs: on a device now, on a server later.
  * An engine is an adapter behind one of these interfaces. Nothing outside this package names an engine.
  */
 
@@ -47,6 +47,30 @@ export interface Voice {
   languages(): string[]
   /** Speak one sentence and resolve with its sound, whole. */
   speak(text: string, how: Speaking): Promise<Sound>
+  /** Let go of the model. */
+  close(): void
+}
+
+/** What a speech detector noticed. Times are in seconds, counted from the first sample it was fed. */
+export type SpeechEvent =
+  /** Someone started to speak, at about that time. */
+  | { type: 'started'; at: number }
+  /** They stopped: the silence that followed lasted long enough. `speech` is what was said, with the silence around it cut off. */
+  | { type: 'ended'; start: number; end: number; speech: Sound }
+
+export interface Listening {
+  /** How long a silence must last for the speech before it to be over, in seconds. */
+  silence?: number
+}
+
+export interface SpeechDetector {
+  /**
+   * Hear the next piece of sound, as it comes from a microphone, and say what happened in it.
+   * Any sample rate is accepted, the same one for every piece.
+   */
+  feed(sound: Sound): Promise<SpeechEvent[]>
+  /** The sound is over: speech still going on ends here. The detector is then ready for another sound. */
+  end(): Promise<SpeechEvent[]>
   /** Let go of the model. */
   close(): void
 }
