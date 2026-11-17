@@ -60,8 +60,12 @@ export function useTalk(engine: SpeechEngine | undefined, onHeard: (text: string
     }
   }, [engine, cue])
 
+  /** The microphone is being opened: a second press meanwhile must not open another one. */
+  const opening = useRef(false)
+
   const start = useCallback(async () => {
-    if (!engine || take.current) return
+    if (!engine || take.current || opening.current) return
+    opening.current = true
     try {
       cue('open')
       const opened = await record(device.current.microphone)
@@ -70,6 +74,8 @@ export function useTalk(engine: SpeechEngine | undefined, onHeard: (text: string
     } catch (error) {
       const denied = error instanceof DOMException && error.name === 'NotAllowedError'
       setTalk({ is: 'failed', reason: denied ? 'The microphone is not allowed. Allow it in the system settings.' : 'No microphone could be opened.' })
+    } finally {
+      opening.current = false
     }
   }, [engine, cue])
 

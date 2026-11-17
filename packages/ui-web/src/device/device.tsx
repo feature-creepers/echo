@@ -24,7 +24,7 @@ export function useDevice(): Device {
 
 /** A key press as the shortcuts read it. */
 export function keyPress(event: KeyboardEvent): KeyPress {
-  return { code: event.code, ctrl: event.ctrlKey, meta: event.metaKey, alt: event.altKey, shift: event.shiftKey }
+  return { code: event.code, ctrl: event.ctrlKey, meta: event.metaKey, alt: event.altKey, shift: event.shiftKey, repeat: event.repeat }
 }
 
 /** Holds the settings of this device for everything inside: read from the app, and kept current as they change anywhere. */

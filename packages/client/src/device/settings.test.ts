@@ -23,6 +23,13 @@ describe('device settings read back', () => {
     expect(read).not.toHaveProperty('unknown')
   })
 
+  it('let go of the shortcut to talk from any app that earlier versions took by default, and keep one chosen since', () => {
+    expect(readDeviceSettings({ shortcuts: { talk: 'CommandOrControl+Shift+Space' } }).shortcuts.talk).toBe('')
+    expect(readDeviceSettings({ shortcuts: { talk: 'Alt+Space' } }).shortcuts.talk).toBe('Alt+Space')
+    expect(readDeviceSettings({ revision: 2, shortcuts: { talk: 'CommandOrControl+Shift+Space' } }).shortcuts.talk).toBe('CommandOrControl+Shift+Space')
+    expect(DEFAULT_DEVICE_SETTINGS.shortcuts.talk).toBe('')
+  })
+
   it('never share their objects with the defaults', () => {
     const read = readDeviceSettings({})
     read.voice.speed = 1.3
