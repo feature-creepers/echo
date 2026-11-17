@@ -28,7 +28,7 @@ describe.runIf(real)('the real Claude Code on the computer', () => {
   it(
     'reads what was granted, cannot read beside it, and creates a file only once approved',
     async () => {
-      const root = realpathSync(folder())
+      const root = realpathSync.native(folder())
       const workspace = join(root, 'workspace')
       const granted = join(root, 'granted')
       const secret = join(root, 'private')

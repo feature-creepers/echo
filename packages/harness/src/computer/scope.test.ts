@@ -12,7 +12,8 @@ afterEach(removeFolders)
 
 /** A computer in a temporary folder: a granted folder, a private one beside it, and a link from one to the other. */
 function machine() {
-  const root = realpathSync(folder())
+  // The native call gives the long form of a Windows path (RUNNER~1 becomes runneradmin), as the code under test does.
+  const root = realpathSync.native(folder())
   const granted = join(root, 'granted')
   const secret = join(root, 'private')
   mkdirSync(granted)

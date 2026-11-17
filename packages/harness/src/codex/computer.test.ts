@@ -53,7 +53,7 @@ describe('Codex’s sandbox, from what the person granted', () => {
 
 describe('Codex asking to act', () => {
   it('puts a command to the core, and declines a change whose files it was not told', async () => {
-    const root = realpathSync(folder())
+    const root = realpathSync.native(folder())
     const workspace = join(root, 'workspace')
     mkdirSync(workspace)
     const asked: ComputerUse[] = []

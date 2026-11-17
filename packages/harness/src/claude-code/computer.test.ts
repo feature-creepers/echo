@@ -14,7 +14,7 @@ afterEach(() => {
 
 /** A session given the computer: a home folder, a granted folder, and a reach that records what it is asked. */
 function setup(options: { write?: boolean; refuse?: string } = {}) {
-  const root = realpathSync(folder())
+  const root = realpathSync.native(folder())
   const home = join(root, 'workspace')
   const granted = join(root, 'granted')
   mkdirSync(home)
@@ -129,16 +129,16 @@ describe('the tools on the computer', () => {
   })
 
   it('name every folder a search reaches, so a pattern cannot climb out of its folder', async () => {
-    const base = realpathSync(folder())
+    const base = realpathSync.native(folder())
     const use = await useOf('Glob', { pattern: '../../**/*.key' }, base)
     expect(use?.paths).toEqual([base, join(base, '..', '..')])
-    const elsewhere = realpathSync(folder())
+    const elsewhere = realpathSync.native(folder())
     const anywhere = await useOf('Glob', { pattern: `${elsewhere}/**/*.conf`, path: base }, base)
     expect(anywhere?.paths).toEqual([base, elsewhere])
   })
 
   it('tell a new file from a change to one', async () => {
-    const base = realpathSync(folder())
+    const base = realpathSync.native(folder())
     writeFileSync(join(base, 'there.md'), 'x')
     expect((await useOf('Write', { file_path: join(base, 'new.md') }, base))?.action).toBe('create')
     expect((await useOf('Write', { file_path: join(base, 'there.md') }, base))?.action).toBe('change')
