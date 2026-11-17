@@ -27,10 +27,12 @@ export interface Abilities {
   server(): string | undefined
   /** Give a session the right to call these tools, under a token of its own. */
   grant(tools: readonly Tool[]): Grant
-  /** The tools a thread works with: the screen, bound to where its views go. */
-  threadTools(showing: () => Showing): Tool[]
+  /** The tools a thread works with, for the persona's stance: the screen, bound to where its views go, and more. */
+  threadTools(showing: () => Showing, stance: Persona['stance']): Tool[]
   /** What a thread is told about its tools, added to its instructions. */
   instructions: string
+  /** What every session must keep in mind, such as decisions already made. Read each time a session opens. */
+  standing?(): string | undefined
 }
 
 export interface ChannelOptions {
@@ -214,19 +216,22 @@ export function createChannel(options: ChannelOptions): Channel {
     end(runtime.live)
     const kind = thread?.kind ?? 'topic'
     const grant = abilities?.grant(
-      abilities.threadTools(() => ({
-        thread: runtime.thread,
-        turn: runtime.answering?.exchange.turn,
-        slot: kind === 'aside' ? 'margin' : 'stage',
-        focused: registry.focused()?.id === runtime.thread
-      }))
+      abilities.threadTools(
+        () => ({
+          thread: runtime.thread,
+          turn: runtime.answering?.exchange.turn,
+          slot: kind === 'aside' ? 'margin' : 'stage',
+          focused: registry.focused()?.id === runtime.thread
+        }),
+        persona.stance
+      )
     )
     const instructions = threadInstructions({
       persona,
       earlier: recapFor(runtime.thread),
       title: thread?.title ?? 'A topic',
       kind,
-      ...(abilities ? { abilities: abilities.instructions } : {})
+      ...(abilities ? { abilities: [abilities.instructions, abilities.standing?.()].filter(Boolean).join('\n\n') } : {})
     })
     const session = engine.open(grant ? { role: 'thread', instructions, tools: { url: server, token: grant.token } } : { role: 'thread', instructions })
     const live: Live = { session, key, grant }

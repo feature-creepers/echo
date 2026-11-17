@@ -4,6 +4,7 @@ import { createChannel } from './channel/channel.ts'
 import { createExecutor } from './commands/execute.ts'
 import { type Admission, admit } from './devices/admission.ts'
 import { createEngineRoom } from './engines/engines.ts'
+import { createObjections } from './personas/objection.ts'
 import type { Harness } from './ports/harness.ts'
 import type { Log } from './ports/log.ts'
 import type { Records } from './ports/records.ts'
@@ -84,6 +85,8 @@ export function createCore(options: CoreOptions): Core {
     }
   ]
 
+  const objections = createObjections({ records: options.records, screen, now })
+
   const channel = createChannel({
     engines,
     settings,
@@ -92,7 +95,14 @@ export function createCore(options: CoreOptions): Core {
     log: options.log,
     now,
     newId: options.newId,
-    abilities: { server: () => toolServer, grant: (granted) => tools.grant(granted), threadTools: screenTools, instructions: describeCatalog() }
+    abilities: {
+      server: () => toolServer,
+      grant: (granted) => tools.grant(granted),
+      // A critical persona objects through a decision card; an accommodating one only mentions its concern.
+      threadTools: (showing, stance) => (stance === 'critical' ? [...screenTools(showing), ...objections.tools(showing)] : screenTools(showing)),
+      instructions: describeCatalog(),
+      standing: () => objections.standing()
+    }
   })
 
   settings.onChange((changed) => emit({ type: 'event', name: 'settings.changed', settings: changed }))

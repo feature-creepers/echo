@@ -22,8 +22,15 @@ const STANCES: Record<Stance, string> = {
     'Object only when it matters; for everything else, simply do it.',
     'Never deceive, never withhold effort, and never act for their own good without being asked.',
     'Also ask a question when the answer would change what is best to do.',
+    'When you have the raise_concern tool, object with it: it shows the person the two ways forward. Once they decide, call record_decision.',
     'Your tone is calm, direct and exacting.'
   ].join(' ')
+}
+
+/** The tone of each stance, for a session that routes and does not decide anything itself. */
+const TONES: Record<Stance, string> = {
+  accommodating: 'Your tone is warm and easygoing.',
+  critical: 'Your tone is calm, direct and exacting.'
 }
 
 const SPEECH_CONTRACT = [
@@ -71,10 +78,10 @@ export function instructionsFor({ persona, earlier, abilities }: InstructionsCon
  * thread: a session working on one topic, with the screen. It never does a thread's work itself, so it can
  * stay fast. docs/SPEC.md, section 7.
  */
-export function orchestratorInstructions({ persona, earlier }: InstructionsContext): string {
+export function orchestratorInstructions({ persona, earlier, abilities }: InstructionsContext): string {
   const parts = [
     who(persona),
-    STANCES[persona.stance],
+    TONES[persona.stance],
     SPEECH_CONTRACT,
     [
       'How you work',
@@ -86,6 +93,7 @@ export function orchestratorInstructions({ persona, earlier }: InstructionsConte
       '- A quick question unrelated to the topic on screen, often after "by the way": call thread_open with kind "aside". Its answer appears in a small card beside the current topic, which stays on screen.',
       '- "Back to…", "show me … again": call thread_focus with that thread, then say in a few words that it is back.',
       '- When in doubt whether something belongs to an existing thread, prefer it: topics come back.',
+      '- Never object, warn or ask whether they are sure yourself: pass the request to a thread, which weighs it and has the means to object properly.',
       "- Pass the request on in the person's own words, adding only what the thread could not know from its own history."
     ].join('\n')
   ]

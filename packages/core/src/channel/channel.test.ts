@@ -38,7 +38,12 @@ function setup({ harness = scriptedHarness(), records = memoryRecords(), server 
     abilities: {
       server: () => (server ? 'http://127.0.0.1:1/mcp' : undefined),
       grant: (granted) => tools.grant(granted),
-      threadTools: (showing) => [{ definition: { name: 'ui_render', description: '', inputSchema: {} }, run: (input) => screen.show(input, showing()) }],
+      threadTools: (showing, stance) => [
+        ...(stance === 'critical'
+          ? [{ definition: { name: 'raise_concern', description: '', inputSchema: {} }, run: () => ({ ok: true, text: 'Shown.' }) }]
+          : []),
+        { definition: { name: 'ui_render', description: '', inputSchema: {} }, run: (input) => screen.show(input, showing()) }
+      ],
       instructions: 'THE SCREEN'
     }
   })
@@ -312,6 +317,30 @@ describe('when it cannot answer', () => {
 })
 
 describe('new sessions', () => {
+  it('give a thread of the critical stance the tools to object with, and an accommodating one none', async () => {
+    const { channel, harness, settings, call } = setup()
+    const tools = (index: number) => harness.sessions[index]?.request.tools?.token
+    channel.say('Send the letter')
+    await settled()
+    await call(0, 'thread_open', { title: 'Letter' })
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+    harness.sessions[1]?.reply('Sent.')
+    expect(tools(1)).toBeDefined()
+
+    settings.setPersonas({ names: [], active: 'second' })
+    channel.say('Send the other letter')
+    await settled()
+    const orchestrator = harness.sessions.length - 1
+    await call(orchestrator, 'thread_open', { title: 'Other letter' })
+    harness.sessions[orchestrator]?.emit({ type: 'turn-end' })
+    await settled()
+    const critical = harness.sessions.at(-1)
+    expect(critical?.request.instructions).toContain('raise_concern')
+    expect((await call(harness.sessions.length - 1, 'raise_concern', {})).ok).toBe(true)
+    expect((await call(1, 'raise_concern', {})).ok).toBe(false)
+  })
+
   it('replace the old ones when the persona changes, and are told what was said', async () => {
     const { channel, harness, settings } = setup()
     channel.say('I have guests tonight.')
@@ -325,7 +354,7 @@ describe('new sessions', () => {
     expect(harness.sessions[0]?.closed).toBe(true)
     const instructions = harness.sessions[1]?.request.instructions ?? ''
     expect(instructions).toContain('You are Grace.')
-    expect(instructions).toContain('ask once whether they are sure')
+    expect(instructions).toContain('Your tone is calm, direct and exacting.')
     expect(instructions).toContain('They said: I have guests tonight.')
   })
 
