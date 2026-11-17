@@ -220,7 +220,11 @@ export function createLibrary({ records, screen, now, newId }: LibraryOptions): 
             ...(input.pinned === undefined ? {} : { pinned: input.pinned })
           }
           if (Object.keys(rest).length > 1) update(rest)
-          return { ok: true, text: `Saved. Show it with library_show to see it.` }
+          if (input.view === undefined) return { ok: true, text: 'Saved.' }
+          // The person asked for the change to see it: the new version is shown at once, where this thread shows things.
+          // Shown outside the turn, it starts nothing by itself: changing a radio's words is not asking to hear it.
+          const shown = show(input.widget, { ...showing(), turn: undefined })
+          return shown.ok ? { ok: true, text: 'Saved as a new version, and shown.' } : { ok: true, text: `Saved as a new version. ${shown.text}` }
         },
         remove(id) {
           const title = kept.get(id)?.widget.title

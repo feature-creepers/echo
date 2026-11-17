@@ -96,7 +96,7 @@ export function libraryTools(library: LibraryActions): Tool[] {
       definition: {
         name: LIBRARY_UPDATE_TOOL,
         description:
-          'Change a saved widget, because the person asked: its title, its collection (null to take it out of one), whether it is pinned beside the conversation, or its content, given as a whole new view in the format of ui_render.',
+          'Change a saved widget, because the person asked: its title, its collection (null to take it out of one), whether it is pinned beside the conversation, or its content, given as a whole new view in the format of ui_render. New content is saved as a new version and shown at once, without starting what it plays.',
         inputSchema: {
           type: 'object',
           properties: {

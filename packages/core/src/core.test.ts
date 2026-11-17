@@ -272,6 +272,17 @@ describe('the library through the core', () => {
     expect((await run(core, 'library.read', {})).library.widgets).toMatchObject([{ id, title: 'My jazz', pinned: true, collection: 'Music' }])
     expect(events.filter((event) => event.name === 'library.changed')).toHaveLength(2)
 
+    // A change of content is saved as a new version and shown at once, as the person asked for it to see it.
+    const annotated = {
+      ...radio,
+      elements: { ...radio.elements, all: { type: 'Stack', props: {}, children: ['player', 'note'] }, note: { type: 'Text', props: { text: 'From Paris' } } }
+    }
+    expect(await core.toolHost.call(token, 'library_update', { widget: id, view: annotated })).toEqual({ ok: true, text: 'Saved as a new version, and shown.' })
+    const changed = (await run(core, 'view.read', {})).view
+    expect(changed).toMatchObject({ widget: id, spec: { elements: { note: { type: 'Text' } } } })
+    expect(changed?.turn).toBeUndefined()
+    expect((await core.toolHost.call(token, 'library_update', { widget: id, view: { root: 'x', elements: {} } })).ok).toBe(false)
+
     await core.toolHost.call(token, 'library_delete', { widget: id })
     expect((await run(core, 'library.read', {})).library.widgets).toEqual([])
   })
