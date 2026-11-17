@@ -17,6 +17,8 @@ function setup(overrides: Partial<Handlers> = {}) {
     'channel.read': () => ({ ok: true, output: { exchanges: [] } }),
     'engines.read': async () => ({ ok: true, output: { engines: { harnesses: [] } } }),
     'engines.sign-in': async () => ({ ok: true, output: {} }),
+    'view.read': () => ({ ok: true, output: {} }),
+    'view.clear': () => ({ ok: true, output: {} }),
     ...overrides
   }
   return { execute: createExecutor(handlers, log), log }

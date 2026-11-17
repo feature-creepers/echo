@@ -1,11 +1,12 @@
 import { type Event, type Exchange, exchangeSchema, type Persona, type TurnId } from '@repo/protocol'
 import type { EngineRoom } from '../engines/engines.ts'
-import type { Session, SessionEvent, ToolServer } from '../ports/harness.ts'
+import type { Session, SessionEvent } from '../ports/harness.ts'
 import type { Log } from '../ports/log.ts'
 import type { Records } from '../ports/records.ts'
 import type { UserSettings } from '../settings/settings.ts'
 import { languageOf } from '../speech/language.ts'
 import { createSentenceCutter, type SentenceCutter, speakable } from '../speech/sentences.ts'
+import type { Grant } from '../tools/tools.ts'
 import { instructionsFor } from './instructions.ts'
 
 /** The type of the record written when a turn is over: one line of the channel log, word for word. */
@@ -25,8 +26,18 @@ export interface ChannelOptions {
   now: () => Date
   /** A new identifier, unique for good. */
   newId: () => string
-  /** The tools a session may call, for the session about to be opened. Left out, sessions have none. */
-  toolsFor?: (session: { turn: () => TurnId | undefined }) => ToolServer | undefined
+  /** What sessions can do besides speak. Left out, they can only speak. */
+  abilities?: Abilities
+}
+
+/** The tools sessions are given, and what they are told about them. */
+export interface Abilities {
+  /** Where the tool server listens. Nothing while it is not running, and sessions then only speak. */
+  server(): string | undefined
+  /** Give the session about to open the right to call the tools, under a token of its own. */
+  grant(): Grant
+  /** What a session is told about the tools, added to its instructions. */
+  instructions: string
 }
 
 /** The single conversation: it takes what the user says, one turn at a time, and announces the answer as it comes. */
@@ -37,6 +48,8 @@ export interface Channel {
   stop(): void
   /** The latest lines of the transcript, oldest first. */
   read(limit: number): Exchange[]
+  /** The turn the assistant is answering, if any. */
+  turn(): TurnId | undefined
   /** Be told each event of the conversation. Returns a function that stops the telling. */
   onEvent(listener: (event: Event) => void): () => void
   /** End the session in use. The next thing said opens a new one. */
@@ -55,6 +68,8 @@ interface Open {
   session: Session
   /** What the session was opened for. When any of it changes, the session is replaced. */
   key: string
+  /** Its right to call tools, which ends with it. */
+  grant: Grant | undefined
 }
 
 /**
@@ -134,24 +149,39 @@ export function createChannel(options: ChannelOptions): Channel {
         return
       case 'failed':
         log.error(`The session failed: ${event.reason}`)
-        open = undefined
+        end()
         if (turn) finish(turn, 'failed', event.reason)
         return
     }
+  }
+
+  /** End the session in use and its right to call tools. */
+  const end = () => {
+    open?.session.close()
+    open?.grant?.revoke()
+    open = undefined
   }
 
   /** The session for this persona on the harness in use, opened when there is none or when either changed. */
   const sessionFor = async (persona: Persona): Promise<Session | string> => {
     const harness = await engines.active()
     if (!harness) return 'No AI program is ready. Install Claude Code or Codex and sign in, then try again.'
-    const key = JSON.stringify([harness.id, persona.id, persona.name, persona.stance])
+    const server = options.abilities?.server()
+    const key = JSON.stringify([harness.id, persona.id, persona.name, persona.stance, server ?? null])
     if (open?.key === key) return open.session
-    open?.session.close()
+    end()
     const earlier = transcript.filter((line) => line.outcome !== 'running').slice(-RECAP_EXCHANGES)
-    const tools = options.toolsFor?.({ turn: () => current?.exchange.turn })
-    const instructions = instructionsFor({ persona, earlier })
-    const session = harness.open(tools ? { role: 'thread', instructions, tools } : { role: 'thread', instructions })
-    open = { session, key }
+    const abilities = options.abilities
+    if (abilities && server !== undefined) {
+      const grant = abilities.grant()
+      const instructions = instructionsFor({ persona, earlier, abilities: abilities.instructions })
+      const session = harness.open({ role: 'thread', instructions, tools: { url: server, token: grant.token } })
+      open = { session, key, grant }
+    } else {
+      const session = harness.open({ role: 'thread', instructions: instructionsFor({ persona, earlier }) })
+      open = { session, key, grant: undefined }
+    }
+    const session = open.session
     session.onEvent((event) => hear(session, event))
     return session
   }
@@ -206,9 +236,7 @@ export function createChannel(options: ChannelOptions): Channel {
       listeners.add(listener)
       return () => void listeners.delete(listener)
     },
-    close() {
-      open?.session.close()
-      open = undefined
-    }
+    turn: () => current?.exchange.turn,
+    close: end
   }
 }

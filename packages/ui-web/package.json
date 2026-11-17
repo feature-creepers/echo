@@ -16,6 +16,8 @@
   "dependencies": {
     "@fontsource-variable/geist": "catalog:",
     "@fontsource-variable/geist-mono": "catalog:",
+    "@json-render/core": "catalog:",
+    "@json-render/react": "catalog:",
     "@repo/catalog": "workspace:*",
     "@repo/client": "workspace:*",
     "@repo/protocol": "workspace:*",

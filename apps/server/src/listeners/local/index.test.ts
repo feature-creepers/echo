@@ -24,6 +24,8 @@ function welcoming() {
       return { type: 'result', id: message.id, ok: true, output: message }
     },
     close: () => undefined,
+    toolHost: { list: () => undefined, call: async () => ({ ok: false, text: '' }) },
+    serveToolsAt: () => undefined,
     onEvent: (listener) => {
       listeners.add(listener)
       return () => void listeners.delete(listener)

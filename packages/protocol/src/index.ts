@@ -68,3 +68,4 @@ export {
 } from './personas.ts'
 export { type Settings, settingsSchema } from './settings.ts'
 export { isCompatible, PROTOCOL_VERSION } from './version.ts'
+export { type ShownView, viewSchema } from './views.ts'

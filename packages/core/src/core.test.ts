@@ -146,3 +146,45 @@ describe('a conversation through the core', () => {
     })
   })
 })
+
+describe('the screen through the core', () => {
+  it('gives sessions the screen tools once a tool server is running, and shows what they compose', async () => {
+    const { core, harness } = start()
+    const events: Event[] = []
+    core.onEvent((event) => events.push(event))
+
+    await run(core, 'utterance.send', { text: 'Before the server' })
+    await settled()
+    expect(harness.sessions[0]?.request.tools).toBeUndefined()
+    harness.sessions[0]?.reply('Fine.')
+
+    core.serveToolsAt('http://127.0.0.1:5000/mcp')
+    await run(core, 'utterance.send', { text: 'Show me the week' })
+    await settled()
+    const session = harness.sessions[1]
+    const token = session?.request.tools?.token ?? ''
+    expect(session?.request.tools?.url).toBe('http://127.0.0.1:5000/mcp')
+    expect(session?.request.instructions).toContain('ui_render')
+    expect(core.toolHost.list(token)?.map((tool) => tool.name)).toEqual(['ui_render', 'ui_clear'])
+
+    const { EXAMPLE_VIEW } = await import('@repo/catalog')
+    expect(await core.toolHost.call(token, 'ui_render', { title: 'The week', view: EXAMPLE_VIEW })).toEqual({ ok: true, text: 'Shown.' })
+    const shown = events.find((event) => event.name === 'view.shown')
+    expect(shown).toMatchObject({ view: { title: 'The week', turn: expect.any(String) } })
+    expect((await run(core, 'view.read', {})).view?.title).toBe('The week')
+
+    await run(core, 'view.clear', {})
+    expect((await run(core, 'view.read', {})).view).toBeUndefined()
+  })
+
+  it('ends the right to call tools when the session is replaced', async () => {
+    const { core, harness } = start()
+    core.serveToolsAt('http://127.0.0.1:5000/mcp')
+    await run(core, 'utterance.send', { text: 'One' })
+    await settled()
+    const token = harness.sessions[0]?.request.tools?.token ?? ''
+    harness.sessions[0]?.emit({ type: 'failed', reason: 'Gone.' })
+
+    expect(core.toolHost.list(token)).toBeUndefined()
+  })
+})

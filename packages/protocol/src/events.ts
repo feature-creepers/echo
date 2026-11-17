@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { activitySchema, enginesChangedSchema, speechSaySchema, turnEndedSchema, turnStartedSchema } from './events/conversation.ts'
 import { settingsChangedSchema } from './events/settings.ts'
+import { viewClearedSchema, viewShownSchema } from './events/views.ts'
 
 /** Every event a core can send, assembled from the groups in `events/`. */
 export const eventSchema = z.discriminatedUnion('name', [
@@ -9,7 +10,9 @@ export const eventSchema = z.discriminatedUnion('name', [
   speechSaySchema,
   turnEndedSchema,
   activitySchema,
-  enginesChangedSchema
+  enginesChangedSchema,
+  viewShownSchema,
+  viewClearedSchema
 ])
 export type Event = z.infer<typeof eventSchema>
 export type EventName = Event['name']
