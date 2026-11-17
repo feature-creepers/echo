@@ -1,6 +1,7 @@
 import { COMMANDS, type CommandInput, type CommandName, type CommandOutput, type Event, PROTOCOL_VERSION } from '@repo/protocol'
 import { describe, expect, it, vi } from 'vitest'
 import { createCore } from './core.ts'
+import type { OneShot } from './ports/harness.ts'
 import { memoryRecords } from './records/memory.ts'
 import { scriptedHarness } from './replay/scripted-harness.ts'
 
@@ -165,7 +166,8 @@ describe('the screen through the core', () => {
     const token = session?.request.tools?.token ?? ''
     expect(session?.request.tools?.url).toBe('http://127.0.0.1:5000/mcp')
     expect(session?.request.instructions).toContain('ui_render')
-    expect(core.toolHost.list(token)?.map((tool) => tool.name)).toEqual(['ui_render', 'ui_clear'])
+    expect(core.toolHost.list(token)?.map((tool) => tool.name)).toEqual(['ui_render', 'ui_clear', 'memory_search', 'memory_remember', 'memory_forget'])
+    expect(session?.request.instructions).toContain('memory_remember')
 
     const { EXAMPLE_VIEW } = await import('@repo/catalog')
     expect(await core.toolHost.call(token, 'ui_render', { title: 'The week', view: EXAMPLE_VIEW })).toEqual({ ok: true, text: 'Shown.' })
@@ -186,5 +188,78 @@ describe('the screen through the core', () => {
     harness.sessions[0]?.emit({ type: 'failed', reason: 'Gone.' })
 
     expect(core.toolHost.list(token)).toBeUndefined()
+  })
+})
+
+describe('the memory through the core', () => {
+  const extraction = (request: OneShot) => {
+    if (request.instructions.includes('pick out what is worth remembering')) {
+      return JSON.stringify({ facts: [{ text: 'The user keeps bees on the roof.', kind: 'preference', turns: [1] }] })
+    }
+    return 'The user keeps bees on the roof of their building.'
+  }
+
+  it('learns while asleep, tells every client, and recalls it into a later turn', async () => {
+    const harness = scriptedHarness({ complete: extraction })
+    const { core } = start(memoryRecords(), harness)
+    const events: Event[] = []
+    core.onEvent((event) => events.push(event))
+
+    await run(core, 'utterance.send', { text: 'I keep bees on the roof.' })
+    await settled()
+    harness.sessions[0]?.reply('Lovely.')
+    await run(core, 'memory.sleep-now', {})
+    await vi.waitFor(() => expect(events.some((event) => event.name === 'assistant.state' && event.state.asleep && event.state.lastSlept)).toBe(true))
+
+    const { memory, state } = await run(core, 'memory.read', {})
+    expect(state.asleep).toBe(true)
+    const fact = memory.groups[0]?.facts[0]
+    expect(memory.groups.map((group) => group.kind)).toEqual(['preference'])
+    expect(fact).toMatchObject({ text: 'The user keeps bees on the roof.', origin: 'conversation', sources: [{ said: 'I keep bees on the roof.' }] })
+    expect(memory.profile).toBe('The user keeps bees on the roof of their building.')
+    expect(events.some((event) => event.name === 'memory.changed')).toBe(true)
+
+    // Speaking wakes it, and what it learned comes with the question.
+    await run(core, 'utterance.send', { text: 'How are the bees doing?' })
+    await settled()
+    expect(events.at(-2)).toMatchObject({ name: 'assistant.state', state: { asleep: false } })
+    const session = harness.sessions.at(-1)
+    expect(session?.sent.at(-1)).toContain('The user keeps bees on the roof.')
+    expect(session?.sent.at(-1)).toMatch(/How are the bees doing\?$/)
+    expect(session?.request.instructions).toContain('of their building')
+  })
+
+  it('remembers on request through its tool, then corrects and forgets the fact', async () => {
+    const { core, harness } = start()
+    core.serveToolsAt('http://127.0.0.1:5000/mcp')
+    await run(core, 'utterance.send', { text: 'Remember that my locker code is 4512' })
+    await settled()
+    const token = harness.sessions[0]?.request.tools?.token ?? ''
+    const turn = (await run(core, 'channel.read', { limit: 1 })).exchanges[0]?.turn
+
+    expect(await core.toolHost.call(token, 'memory_remember', { text: "The user's locker code is 4512.", kind: 'other' })).toEqual({
+      ok: true,
+      text: "Remembered: The user's locker code is 4512."
+    })
+    const fact = (await run(core, 'memory.read', {})).memory.groups[0]?.facts[0]
+    expect(fact).toMatchObject({ kind: 'other', origin: 'told', sources: [{ turn }] })
+
+    const edited = await run(core, 'memory.edit', { fact: fact?.id ?? '', text: "The user's locker code is 4521.", kind: 'project' })
+    expect(edited.memory.groups).toMatchObject([{ kind: 'project', facts: [{ id: fact?.id, text: "The user's locker code is 4521.", origin: 'edited' }] }])
+
+    expect((await run(core, 'memory.forget', { fact: fact?.id ?? '' })).memory.groups).toEqual([])
+    const again = await core.execute({ type: 'command', id: 'c2', name: 'memory.forget', input: { fact: fact?.id } })
+    expect(again).toMatchObject({ ok: false, error: { code: 'unknown-fact' } })
+  })
+
+  it('keeps the sleep setting, and refuses to sleep when told never to', async () => {
+    const records = memoryRecords()
+    const { core } = start(records)
+    const { memory } = await run(core, 'memory.sleep-settings.set', { when: 'never' })
+    expect(memory.sleep).toEqual({ when: 'never', quietMinutes: 10, time: '03:00' })
+
+    const refused = await core.execute({ type: 'command', id: 'c3', name: 'memory.sleep-now', input: {} })
+    expect(refused).toMatchObject({ ok: false, error: { code: 'sleep-off' } })
+    expect((await run(start(records).core, 'memory.read', {})).memory.sleep.when).toBe('never')
   })
 })

@@ -26,9 +26,17 @@ export async function compose(config: Config): Promise<Composition> {
     version: manifest.version,
     acceptsCredential: localToken(config.token),
     records: store.records,
+    search: store.search,
     log,
     harnesses: createHarnesses({ folder: join(config.data, 'harness'), log }),
-    newId: randomUUID
+    newId: randomUUID,
+    timers: {
+      after(ms, work) {
+        // A timer of the core never keeps the process alive on its own.
+        const timer = setTimeout(work, ms).unref()
+        return () => clearTimeout(timer)
+      }
+    }
   })
   // Sessions can show things once the tool server listens: it carries their calls to the core.
   const tools = await serveTools(core.toolHost, { version: manifest.version, log })

@@ -44,16 +44,19 @@ export interface InstructionsContext {
   /** The latest lines of the transcript, oldest first, so a new session carries on where the last one stopped. */
   earlier: readonly Exchange[]
   /** What the session can do besides speak, and how: the screen and its blocks. Left out, it can only speak. */
-  abilities?: string
+  abilities?: string | undefined
+  /** What the assistant knows about the person, from its memory. Left out while it knows nothing. */
+  profile?: string | undefined
 }
 
-export function instructionsFor({ persona, earlier, abilities }: InstructionsContext): string {
+export function instructionsFor({ persona, earlier, abilities, profile }: InstructionsContext): string {
   const parts = [
     `You are ${persona.name}. That is the name the person you talk with gave you, and the one you answer to. You are their personal assistant, in one continuous conversation held aloud.`,
     STANCES[persona.stance],
     SPEECH_CONTRACT
   ]
   if (abilities) parts.push(abilities)
+  if (profile) parts.push(`What you know about the person, from your memory. Use it naturally; do not recite it.\n\n${profile}`)
   const said = earlier.filter((exchange) => exchange.replied.trim() !== '')
   if (said.length > 0) {
     const lines = said.map((exchange) => `They said: ${shorten(exchange.said)}\nYou answered: ${shorten(exchange.replied)}`)

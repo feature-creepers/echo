@@ -28,6 +28,21 @@ export interface ChannelOptions {
   newId: () => string
   /** What sessions can do besides speak. Left out, they can only speak. */
   abilities?: Abilities
+  /** What the assistant remembers. Left out, it knows only the latest lines of the transcript. */
+  memory?: Remembering
+}
+
+/** What the channel asks of the memory (docs/SPEC.md, section 10.5). */
+export interface Remembering {
+  /** Something was said or answered: the assistant wakes if it was asleep, and the quiet period starts again. */
+  wake(): void
+  /** What to add ahead of what the user said. Lines of the log written from `knownSince` on are known to the session already. */
+  recall(said: string, knownSince?: string): string | undefined
+  /**
+   * What every session is told about the user. `version` changes only when sleep writes a new profile: the
+   * session is then opened again with it. Facts learned in between reach the next session opened for another reason.
+   */
+  profile(): { text: string; version?: string | undefined } | undefined
 }
 
 /** The tools sessions are given, and what they are told about them. */
@@ -70,6 +85,8 @@ interface Open {
   key: string
   /** Its right to call tools, which ends with it. */
   grant: Grant | undefined
+  /** Lines of the log from this date on are known to it: told when it opened, or said since. */
+  knownSince: string
 }
 
 /**
@@ -107,6 +124,7 @@ export function createChannel(options: ChannelOptions): Channel {
     turn.exchange = problem === undefined ? { ...turn.exchange, outcome } : { ...turn.exchange, outcome, problem }
     replace(turn.exchange)
     records.append([{ type: EXCHANGE, payload: turn.exchange }])
+    options.memory?.wake()
     if (current === turn) current = undefined
     emit({ type: 'event', name: 'turn.ended', exchange: turn.exchange })
     const waiting = next
@@ -167,19 +185,21 @@ export function createChannel(options: ChannelOptions): Channel {
     const harness = await engines.active()
     if (!harness) return 'No AI program is ready. Install Claude Code or Codex and sign in, then try again.'
     const server = options.abilities?.server()
-    const key = JSON.stringify([harness.id, persona.id, persona.name, persona.stance, server ?? null])
+    const profile = options.memory?.profile()
+    const key = JSON.stringify([harness.id, persona.id, persona.name, persona.stance, server ?? null, profile?.version ?? null])
     if (open?.key === key) return open.session
     end()
     const earlier = transcript.filter((line) => line.outcome !== 'running').slice(-RECAP_EXCHANGES)
+    const knownSince = earlier[0]?.at ?? now().toISOString()
     const abilities = options.abilities
     if (abilities && server !== undefined) {
       const grant = abilities.grant()
-      const instructions = instructionsFor({ persona, earlier, abilities: abilities.instructions })
+      const instructions = instructionsFor({ persona, earlier, abilities: abilities.instructions, profile: profile?.text })
       const session = harness.open({ role: 'thread', instructions, tools: { url: server, token: grant.token } })
-      open = { session, key, grant }
+      open = { session, key, grant, knownSince }
     } else {
-      const session = harness.open({ role: 'thread', instructions: instructionsFor({ persona, earlier }) })
-      open = { session, key, grant: undefined }
+      const session = harness.open({ role: 'thread', instructions: instructionsFor({ persona, earlier, profile: profile?.text }) })
+      open = { session, key, grant: undefined, knownSince }
     }
     const session = open.session
     session.onEvent((event) => hear(session, event))
@@ -198,7 +218,8 @@ export function createChannel(options: ChannelOptions): Channel {
     if (current !== turn) return // Stopped or replaced while the harness was being looked up.
     if (typeof session === 'string') return finish(turn, 'failed', session)
     if (turn.stopped) return finish(turn, 'stopped')
-    session.send(turn.exchange.said)
+    const recalled = options.memory?.recall(turn.exchange.said, open?.knownSince)
+    session.send(recalled === undefined ? turn.exchange.said : `${recalled}\n\n${turn.exchange.said}`)
   }
 
   const stop = () => {
@@ -213,6 +234,7 @@ export function createChannel(options: ChannelOptions): Channel {
 
   return {
     say(text, language) {
+      options.memory?.wake()
       const persona = activePersona()
       const exchange: Exchange = { turn: newId(), at: now().toISOString(), persona: persona.id, said: text, replied: '', outcome: 'running' }
       const turn: Turn = { exchange, language, cutter: createSentenceCutter(), stopped: false }

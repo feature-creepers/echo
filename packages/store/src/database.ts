@@ -1,11 +1,12 @@
 import { DatabaseSync } from 'node:sqlite'
 import { records } from './migrations/0001-records.ts'
+import { search } from './migrations/0002-search.ts'
 
 /**
  * The changes to the layout of the file, in the order they apply. One that was released is never edited:
  * a later one corrects it. The file remembers how many it has had.
  */
-const MIGRATIONS: readonly string[] = [records]
+const MIGRATIONS: readonly string[] = [records, search]
 
 /** The file was written by a later version of the product, which this one must not touch. */
 export class StoreTooRecent extends Error {

@@ -1,6 +1,8 @@
-import type { Settings } from '@repo/protocol'
+import type { MemoryView, Settings } from '@repo/protocol'
 import { describe, expect, it, vi } from 'vitest'
 import { createExecutor, type Handlers } from './execute.ts'
+
+const memory: MemoryView = { revision: 0, groups: [], sleep: { when: 'quiet', quietMinutes: 10, time: '03:00' } }
 
 const settings: Settings = {
   revision: 0,
@@ -19,6 +21,11 @@ function setup(overrides: Partial<Handlers> = {}) {
     'engines.sign-in': async () => ({ ok: true, output: {} }),
     'view.read': () => ({ ok: true, output: {} }),
     'view.clear': () => ({ ok: true, output: {} }),
+    'memory.read': () => ({ ok: true, output: { memory, state: { asleep: false } } }),
+    'memory.edit': () => ({ ok: true, output: { memory } }),
+    'memory.forget': () => ({ ok: true, output: { memory } }),
+    'memory.sleep-settings.set': () => ({ ok: true, output: { memory } }),
+    'memory.sleep-now': () => ({ ok: true, output: {} }),
     ...overrides
   }
   return { execute: createExecutor(handlers, log), log }

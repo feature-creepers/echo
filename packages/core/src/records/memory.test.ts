@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { ERASURE } from '../ports/records.ts'
 import { memoryRecords } from './memory.ts'
 
 describe('records kept in memory', () => {
@@ -37,5 +38,16 @@ describe('records kept in memory', () => {
     payload.names.push('changed afterwards')
 
     expect(records.read(['a'])[0]?.payload).toEqual({ names: ['Ada'] })
+  })
+
+  it('empty the records an erasure names, and keep their place', () => {
+    const records = memoryRecords()
+    const [kept, forgotten] = records.append([
+      { type: 'a', payload: 'kept' },
+      { type: 'a', payload: 'secret' }
+    ])
+    records.append([{ type: ERASURE, payload: { records: [forgotten?.id, 'unknown'] } }])
+
+    expect(records.read(['a'])).toEqual([kept, { ...forgotten, payload: null }])
   })
 })

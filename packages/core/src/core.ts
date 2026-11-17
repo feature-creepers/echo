@@ -4,10 +4,14 @@ import { createChannel } from './channel/channel.ts'
 import { createExecutor } from './commands/execute.ts'
 import { type Admission, admit } from './devices/admission.ts'
 import { createEngineRoom } from './engines/engines.ts'
+import { createMemory } from './memory/memory.ts'
+import type { Timers } from './ports/clock.ts'
 import type { Harness } from './ports/harness.ts'
 import type { Log } from './ports/log.ts'
 import type { Records } from './ports/records.ts'
+import type { Search } from './ports/search.ts'
 import type { ToolHost } from './ports/tools.ts'
+import { memorySearch } from './records/memory-search.ts'
 import { createUserSettings } from './settings/settings.ts'
 import { createTools, type Tool } from './tools/tools.ts'
 import { createScreen } from './views/screen.ts'
@@ -19,6 +23,8 @@ export interface CoreOptions {
   /** Whether a credential is one this core accepts. How it is checked depends on where the core runs. */
   acceptsCredential: (credential: string) => boolean
   records: Records
+  /** Search over the text of the records. Left out, they are searched in memory: for tests and small logs. */
+  search?: Search
   log: Log
   /** The harnesses the assistant can run on, in order of preference. */
   harnesses: readonly Harness[]
@@ -26,6 +32,8 @@ export interface CoreOptions {
   newId: () => string
   /** The time now. Left out, the machine's clock. */
   now?: () => Date
+  /** To do things later, such as falling asleep after a quiet period. Left out, the assistant sleeps only when told. */
+  timers?: Timers
 }
 
 /** The core as the listeners see it. */
@@ -85,6 +93,20 @@ export function createCore(options: CoreOptions): Core {
     }
   ]
 
+  // Memory (docs/SPEC.md, section 10): recalled into each turn, written while the assistant sleeps, and its tools.
+  const memory = createMemory({
+    records: options.records,
+    search: options.search ?? memorySearch(options.records),
+    engines,
+    log: options.log,
+    now,
+    newId: options.newId,
+    turn: () => currentTurn(),
+    busy: () => currentTurn() !== undefined,
+    timers: options.timers
+  })
+  memory.onEvent(emit)
+
   const channel = createChannel({
     engines,
     settings,
@@ -92,7 +114,12 @@ export function createCore(options: CoreOptions): Core {
     log: options.log,
     now,
     newId: options.newId,
-    abilities: { server: () => toolServer, grant: () => tools.grant(screenTools), instructions: describeCatalog() }
+    abilities: {
+      server: () => toolServer,
+      grant: () => tools.grant([...screenTools, ...memory.tools]),
+      instructions: `${describeCatalog()}\n\n${memory.instructions}`
+    },
+    memory
   })
   currentTurn = channel.turn
 
@@ -123,6 +150,20 @@ export function createCore(options: CoreOptions): Core {
         screen.clear()
         return { ok: true, output: {} }
       },
+      'memory.read': () => ({ ok: true, output: { memory: memory.read(), state: memory.state() } }),
+      'memory.edit': (input) => {
+        const change = memory.edit(input)
+        return change.ok ? { ok: true, output: { memory: change.memory } } : change
+      },
+      'memory.forget': (input) => {
+        const change = memory.forget(input.fact)
+        return change.ok ? { ok: true, output: { memory: change.memory } } : change
+      },
+      'memory.sleep-settings.set': (input) => ({ ok: true, output: { memory: memory.setSleep(input) } }),
+      'memory.sleep-now': () => {
+        const asked = memory.sleepNow()
+        return asked.ok ? { ok: true, output: {} } : asked
+      },
       'engines.sign-in': async (input) => {
         const known = (await engines.read()).harnesses.some((harness) => harness.id === input.harness)
         if (!known) return { ok: false, error: { code: 'unknown-harness', message: `There is no harness "${input.harness}".` } }
@@ -144,6 +185,9 @@ export function createCore(options: CoreOptions): Core {
     serveToolsAt(url) {
       toolServer = url
     },
-    close: () => channel.close()
+    close() {
+      channel.close()
+      memory.close()
+    }
   }
 }

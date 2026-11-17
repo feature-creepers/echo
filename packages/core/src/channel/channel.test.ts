@@ -4,9 +4,9 @@ import { createEngineRoom } from '../engines/engines.ts'
 import { memoryRecords } from '../records/memory.ts'
 import { type ScriptedHarness, scriptedHarness } from '../replay/scripted-harness.ts'
 import { createUserSettings } from '../settings/settings.ts'
-import { createChannel, EXCHANGE } from './channel.ts'
+import { createChannel, EXCHANGE, type Remembering } from './channel.ts'
 
-function setup({ harnesses = [scriptedHarness()] as ScriptedHarness[], records = memoryRecords() } = {}) {
+function setup({ harnesses = [scriptedHarness()] as ScriptedHarness[], records = memoryRecords(), memory = undefined as Remembering | undefined } = {}) {
   let ids = 0
   const settings = createUserSettings(records, [
     { id: 'first', name: 'Ada', stance: 'accommodating', accent: 'cyan' },
@@ -19,7 +19,8 @@ function setup({ harnesses = [scriptedHarness()] as ScriptedHarness[], records =
     records,
     log,
     now: () => new Date('2026-11-17T08:00:00Z'),
-    newId: () => `turn-${++ids}`
+    newId: () => `turn-${++ids}`,
+    ...(memory ? { memory } : {})
   })
   const events: Event[] = []
   channel.onEvent((event) => events.push(event))
@@ -264,5 +265,69 @@ describe('a new session', () => {
     await settled()
     channel.close()
     expect(harness.sessions[0]?.closed).toBe(true)
+  })
+})
+
+describe('memory in the channel', () => {
+  function remembering(profile?: { text: string; version?: string }) {
+    const calls: string[] = []
+    const memory: Remembering & { calls: string[]; profileNow: typeof profile } = {
+      calls,
+      profileNow: profile,
+      wake: () => void calls.push('wake'),
+      recall: (said, knownSince) => {
+        calls.push(`recall:${said}:${knownSince}`)
+        return said.includes('plumber') ? '[From your memory]\n- The plumber is Marco.' : undefined
+      },
+      profile: () => memory.profileNow
+    }
+    return memory
+  }
+
+  it('wakes the memory when something is said and when it is answered', async () => {
+    const memory = remembering()
+    const { channel, harness } = setup({ memory })
+    channel.say('Hello')
+    expect(memory.calls[0]).toBe('wake')
+    await settled()
+    harness.sessions[0]?.reply('Hi.')
+    expect(memory.calls.filter((call) => call === 'wake')).toHaveLength(2)
+  })
+
+  it('sends what it recalls ahead of what was said, and keeps the words as said', async () => {
+    const memory = remembering()
+    const { channel, harness, ended } = setup({ memory })
+    channel.say('Has the plumber called?')
+    await settled()
+    expect(harness.sessions[0]?.sent).toEqual(['[From your memory]\n- The plumber is Marco.\n\nHas the plumber called?'])
+    expect(memory.calls).toContain('recall:Has the plumber called?:2026-11-17T08:00:00.000Z')
+    harness.sessions[0]?.reply('Not yet.')
+    expect(ended()[0]?.said).toBe('Has the plumber called?')
+
+    channel.say('Hello')
+    await settled()
+    expect(harness.sessions[0]?.sent.at(-1)).toBe('Hello')
+  })
+
+  it('gives the profile to the session, and opens a new one only when sleep wrote a new profile', async () => {
+    const memory = remembering({ text: 'The user keeps bees.', version: 'p1' })
+    const { channel, harness } = setup({ memory })
+    channel.say('One')
+    await settled()
+    expect(harness.sessions[0]?.request.instructions).toContain('What you know about the person, from your memory.')
+    expect(harness.sessions[0]?.request.instructions).toContain('The user keeps bees.')
+    harness.sessions[0]?.reply('Fine.')
+
+    memory.profileNow = { text: 'The user keeps bees.\n\nLearned since:\n- Likes tea.', version: 'p1' }
+    channel.say('Two')
+    await settled()
+    expect(harness.sessions).toHaveLength(1)
+    harness.sessions[0]?.reply('Fine.')
+
+    memory.profileNow = { text: 'The user keeps bees and likes tea.', version: 'p2' }
+    channel.say('Three')
+    await settled()
+    expect(harness.sessions).toHaveLength(2)
+    expect(harness.sessions[1]?.request.instructions).toContain('The user keeps bees and likes tea.')
   })
 })
