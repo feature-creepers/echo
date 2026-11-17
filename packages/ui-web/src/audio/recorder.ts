@@ -10,17 +10,8 @@ export interface Take {
   cancel(): void
 }
 
-/** The worklet that hands the samples it hears to the page, a block at a time. Written here so it ships inside the app. */
-const CAPTURE = `
-class Capture extends AudioWorkletProcessor {
-  process(inputs) {
-    const channel = inputs[0] && inputs[0][0]
-    if (channel) this.port.postMessage(channel.slice(0))
-    return true
-  }
-}
-registerProcessor('capture', Capture)
-`
+/** The worklet that hands the samples it hears to the page. The bundler ships it as a file of the app. */
+const CAPTURE = new URL('./capture-worklet.js', import.meta.url).href
 
 /** Loudness of a block of samples, scaled so ordinary speech fills most of 0 to 1. */
 export function loudness(samples: Float32Array): number {
@@ -39,11 +30,12 @@ export async function record(): Promise<Take> {
     audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
   })
   const context = new AudioContext()
-  const url = URL.createObjectURL(new Blob([CAPTURE], { type: 'application/javascript' }))
   try {
-    await context.audioWorklet.addModule(url)
-  } finally {
-    URL.revokeObjectURL(url)
+    await context.audioWorklet.addModule(CAPTURE)
+  } catch (error) {
+    for (const track of stream.getTracks()) track.stop()
+    void context.close()
+    throw error
   }
   const source = context.createMediaStreamSource(stream)
   const node = new AudioWorkletNode(context, 'capture')

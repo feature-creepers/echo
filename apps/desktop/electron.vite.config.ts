@@ -30,6 +30,9 @@ export default defineConfig({
     root: here('src/renderer'),
     plugins: [react(), tailwindcss()],
     build: {
+      // Every asset stays a file of the app: the page's security policy loads nothing from a data: address,
+      // which is what small assets would otherwise become (the microphone's audio worklet among them).
+      assetsInlineLimit: 0,
       rollupOptions: { input: { index: here('src/renderer/index.html') } }
     }
   }
