@@ -33,8 +33,11 @@ const LANGUAGES: readonly string[] = [
   'ja', 'ko', 'lt', 'lv', 'nl', 'pl', 'pt', 'ro', 'ru', 'sk', 'sl', 'sv', 'tr', 'uk', 'vi'
 ]
 
-/** The pace Supertone's own programs speak at by default: what this voice calls 1. */
-const NATURAL_PACE = 1.05
+/**
+ * What this voice calls 1: a little quicker than the pace Supertone's own programs default to (1.05), which
+ * sounds like a recording slowed down when heard in conversation.
+ */
+const NATURAL_PACE = 1.25
 
 /** A speed beyond these no longer sounds like speech. */
 const SLOWEST = 0.5

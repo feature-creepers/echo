@@ -10,7 +10,7 @@ export function SettingGroup({ title, note, children, className }: { title: stri
         <Eyebrow className="font-semibold text-text-soft">{title}</Eyebrow>
         {note && <span className="text-right text-text-faint text-xs">{note}</span>}
       </div>
-      <div className="divide-y divide-white/[0.06] overflow-hidden rounded-lg bg-white/[0.035] shadow-[inset_0_0_0_1px_rgb(255_255_255/0.06)]">{children}</div>
+      <div className="divide-y divide-white/[0.06] overflow-hidden rounded-lg bg-raised/95 shadow-[inset_0_0_0_1px_rgb(255_255_255/0.06)]">{children}</div>
     </section>
   )
 }

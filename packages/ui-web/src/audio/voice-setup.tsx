@@ -24,7 +24,7 @@ export function VoiceSetup({ speech }: { speech: DeviceSpeech }) {
     <div className="grid gap-4">
       <ul className="grid gap-2">
         {readiness.models.map((model) => (
-          <li key={model.id} className="flex items-center gap-4 rounded-md border border-line bg-surface/80 px-4 py-3.5">
+          <li key={model.id} className="flex items-center gap-4 rounded-md border border-line bg-raised/95 px-4 py-3.5">
             <span className={cn('size-2 shrink-0 rounded-full', model.installed ? 'bg-ok shadow-[0_0_10px_var(--color-ok)]' : 'bg-text-faint/50')} />
             <span className="flex-1 text-sm">{model.name}</span>
             <span className="text-text-soft text-xs">{model.installed ? 'Installed' : megabytes(model.bytes)}</span>

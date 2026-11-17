@@ -112,7 +112,7 @@ function HarnessCard({ harness, inUse, onSignIn, onModel }: HarnessCardProps) {
     <section
       aria-label={harness.name}
       className={cn(
-        'divide-y divide-white/[0.06] overflow-hidden rounded-lg bg-white/[0.035] transition-shadow duration-(--duration-calm)',
+        'divide-y divide-white/[0.06] overflow-hidden rounded-lg bg-raised/95 transition-shadow duration-(--duration-calm)',
         inUse ? 'shadow-[inset_0_0_0_1px_rgb(255_255_255/0.11)]' : 'shadow-[inset_0_0_0_1px_rgb(255_255_255/0.06)]'
       )}
     >

@@ -79,7 +79,9 @@ type Screen = { is: 'main' } | { is: 'onboarding' } | { is: 'settings'; section:
 function Connected({ productName, client, engine }: { productName: string; client: Client; engine: SpeechEngine | undefined }) {
   const snapshot = useFollowed(client.settings)
   const speaking = useFollowed(client.speech)
-  const [screen, setScreen] = useState<Screen>()
+  const [screen, setScreenState] = useState<Screen>()
+  /** The screen showing, for the keys, which are listened to once. */
+  const onScreen = useRef<Screen['is']>('main')
   /** The screen the app opened on, decided once, when the settings first arrive. */
   const entered = useRef<Screen>(undefined)
   /** The side sheet, open on a tab, and the tab it opens on next. */
@@ -89,6 +91,27 @@ function Connected({ productName, client, engine }: { productName: string; clien
     if (tab) lastTab.current = tab
     setSheet(tab)
   }, [])
+  // The side sheet belongs to the conversation: the settings close it, and it opens over the main screen
+  // only, so opening it from the settings goes back to the conversation first.
+  const setScreen = useCallback((next: Screen) => {
+    if (next.is !== 'main') setSheet(undefined)
+    setScreenState(next)
+  }, [])
+  /** The sheet as it is now, for the keys, which are listened to once. */
+  const sheetNow = useRef<SheetTab>(undefined)
+  sheetNow.current = sheet
+  const toggleSheet = useCallback(
+    (tab?: SheetTab) => {
+      const wanted = tab ?? lastTab.current
+      if (onScreen.current !== 'main') {
+        setScreenState({ is: 'main' })
+        return openSheet(wanted)
+      }
+      const open = sheetNow.current
+      openSheet(open !== undefined && (tab === undefined || open === tab) ? undefined : wanted)
+    },
+    [openSheet]
+  )
   /** The persona the user is about to pick in a form, shown in its accent before anything is sent. */
   const [picked, setPicked] = useState<PersonaId>()
 
@@ -109,7 +132,7 @@ function Connected({ productName, client, engine }: { productName: string; clien
   const toMain = useCallback(() => {
     setPicked(undefined)
     setScreen({ is: 'main' })
-  }, [])
+  }, [setScreen])
 
   // A key of this device's settings opens and closes the transcript: Control or Command with T, unless changed.
   const device = useDevice()
@@ -160,16 +183,12 @@ function Connected({ productName, client, engine }: { productName: string; clien
     const onKey = (event: KeyboardEvent) => {
       if (transcriptKey !== '' && matchesShortcut(keyPress(event), transcriptKey, device.mac)) {
         event.preventDefault()
-        setSheet((open) => {
-          if (open === 'transcript') return undefined
-          lastTab.current = 'transcript'
-          return 'transcript'
-        })
+        toggleSheet('transcript')
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [transcriptKey, device.mac])
+  }, [transcriptKey, device.mac, toggleSheet])
 
   // The app asks for the settings: its tray's menu.
   useEffect(() => {
@@ -205,6 +224,7 @@ function Connected({ productName, client, engine }: { productName: string; clien
   // stays in it until its last step, although the personas are confirmed halfway through.
   entered.current ??= personas.confirmed ? { is: 'main' } : { is: 'onboarding' }
   const showing: Screen = screen ?? entered.current
+  onScreen.current = showing.is
 
   if (showing.is === 'onboarding') {
     return (
@@ -237,7 +257,7 @@ function Connected({ productName, client, engine }: { productName: string; clien
       <IconButton
         label={sheet ? 'Hide the sidebar' : transcriptKey ? `Show the sidebar (${describeShortcut(transcriptKey, device.mac)})` : 'Show the sidebar'}
         active={sheet !== undefined}
-        onClick={() => openSheet(sheet ? undefined : lastTab.current)}
+        onClick={() => toggleSheet()}
       >
         <SheetGlyph />
       </IconButton>

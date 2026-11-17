@@ -52,7 +52,7 @@ export function AboutSection({ productName }: { productName: string }) {
 
   return (
     <div className="grid gap-10">
-      <div className="flex items-center gap-6 rounded-lg border border-line bg-surface/85 p-5">
+      <div className="flex items-center gap-6 rounded-lg border border-line bg-raised/95 p-5">
         <Orb size={72} mood={updates?.is === 'checking' || updates?.is === 'downloading' ? 'thinking' : 'idle'} className="-m-2 shrink-0" />
         <div className="grid min-w-0 flex-1 gap-1.5">
           <div className="flex items-baseline gap-3">

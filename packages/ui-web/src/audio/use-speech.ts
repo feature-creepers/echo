@@ -17,7 +17,7 @@ import { engineVoice, type SpeakingVoice } from './voice.ts'
 const STYLE_OF_STANCE: Record<Persona['stance'], string> = { accommodating: 'm3', critical: 'm2' }
 
 /** How each stance's pace compares with the pace set: the one that questions takes its time. */
-const PACE_OF_STANCE: Record<Persona['stance'], number> = { accommodating: 1, critical: 0.92 }
+const PACE_OF_STANCE: Record<Persona['stance'], number> = { accommodating: 1, critical: 0.95 }
 
 /** The pace a persona speaks at, from the pace set. */
 export function paceOf(persona: Persona | undefined, speed: number): number {

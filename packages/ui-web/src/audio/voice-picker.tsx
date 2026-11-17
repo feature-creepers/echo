@@ -11,7 +11,7 @@ export function VoicePicker({ speech, personas }: { speech: DeviceSpeech; person
   return (
     <div className="grid gap-3">
       <Eyebrow className="px-0.5 font-semibold text-text-soft">Voices</Eyebrow>
-      <ul className="divide-y divide-white/[0.06] overflow-hidden rounded-lg bg-white/[0.035] shadow-[inset_0_0_0_1px_rgb(255_255_255/0.06)]">
+      <ul className="divide-y divide-white/[0.06] overflow-hidden rounded-lg bg-raised/95 shadow-[inset_0_0_0_1px_rgb(255_255_255/0.06)]">
         {personas.map((persona) => (
           <li key={persona.id} style={accentStyle(persona.accent)} className="flex items-center gap-4 px-4 py-2.5">
             <span className="size-2 shrink-0 rounded-full bg-accent" />

@@ -95,7 +95,7 @@ export function FactRow({ fact, onEdit, onForget }: FactRowProps) {
   return (
     <li
       className={cn(
-        'group flex items-start gap-4 rounded-md border bg-surface/80 px-4 py-3.5 transition duration-150 ease-soft',
+        'group flex items-start gap-4 rounded-md border bg-raised/95 px-4 py-3.5 transition duration-150 ease-soft',
         mode.is === 'forgetting' ? 'border-danger/40' : 'border-line hover:border-line-strong'
       )}
     >
