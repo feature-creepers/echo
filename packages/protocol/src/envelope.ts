@@ -35,6 +35,8 @@ export const COMMAND_ERRORS = [
   'name-taken',
   /** The command names a harness that does not exist. */
   'unknown-harness',
+  /** The command names a model the harness does not offer. */
+  'unknown-model',
   /** The command names a fact the assistant does not know, or no longer knows. */
   'unknown-fact',
   /** The user chose that the assistant never sleeps. */

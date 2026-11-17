@@ -6,7 +6,8 @@ import { type LocalListener, listenLocal } from './index.ts'
 
 const settings: Settings = {
   revision: 1,
-  personas: { available: [{ id: 'first', name: 'Ada', stance: 'accommodating', accent: 'cyan' }], active: 'first', confirmed: true }
+  personas: { available: [{ id: 'first', name: 'Ada', stance: 'accommodating', accent: 'cyan' }], active: 'first', confirmed: true },
+  engines: { models: {} }
 }
 const changed: Event = { type: 'event', name: 'settings.changed', settings }
 

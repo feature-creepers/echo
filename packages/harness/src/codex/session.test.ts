@@ -314,7 +314,7 @@ describe('a Codex session', () => {
 
     expect(JSON.parse(followed.text())).toEqual({
       cwd: at,
-      model: 'gpt-6.1-sol',
+      model: 'gpt-6.1-terra',
       approvalPolicy: 'untrusted',
       sandbox: 'read-only',
       ephemeral: true,
@@ -364,6 +364,7 @@ describe('a Codex session', () => {
       return JSON.parse(followed.text()).model
     }
 
+    // Without a balanced model in the list, the threads run on Codex's first.
     expect(await model({ home: listed }, 'thread')).toBe('gpt-7-workhorse')
     expect(await model({ home: listed }, 'orchestrator')).toBe('gpt-6-luna')
     expect(await model({ home: listed }, 'utility')).toBe('gpt-6-luna')
@@ -371,5 +372,14 @@ describe('a Codex session', () => {
     // Without Codex's own list, the one built in. Without the fast model in the list, the workhorse everywhere.
     expect(await model({}, 'orchestrator')).toBe('gpt-6-luna')
     expect(await model({ home: home({ 'models_cache.json': '{"models":[{"slug":"only-one","visibility":"list"}]}' }) }, 'orchestrator')).toBe('only-one')
+  })
+
+  it('runs on the model a session asks for, whatever its role', async () => {
+    const session = harness().harness.open({ role: 'thread', instructions: '', model: 'gpt-6.1-sol' })
+    open.push(session)
+    const followed = follow(session)
+    session.send('thread')
+    await followed.until('turn-end')
+    expect(JSON.parse(followed.text()).model).toBe('gpt-6.1-sol')
   })
 })

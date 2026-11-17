@@ -68,7 +68,10 @@ export function createCore(options: CoreOptions): Core {
 
   const now = options.now ?? (() => new Date())
   const settings = createUserSettings(options.records)
-  const engines = createEngineRoom(options.harnesses)
+  const engines = createEngineRoom(options.harnesses, {
+    preferred: () => settings.read().engines.preferred,
+    model: (harness) => settings.read().engines.models[harness]
+  })
   const tools = createTools(options.newId)
   let toolServer: string | undefined
   const screen = createScreen({ records: options.records, newId: options.newId })
@@ -140,7 +143,11 @@ export function createCore(options: CoreOptions): Core {
   })
   currentTurn = channel.turn
 
-  settings.onChange((changed) => emit({ type: 'event', name: 'settings.changed', settings: changed }))
+  settings.onChange((changed) => {
+    emit({ type: 'event', name: 'settings.changed', settings: changed })
+    // The harness preferred or a model may have changed: the clients see it at once, the sessions from the next one.
+    void engines.reconsider()
+  })
   engines.onChange((changed) => emit({ type: 'event', name: 'engines.changed', engines: changed }))
   channel.onEvent(emit)
   screen.onEvent(emit)
@@ -196,6 +203,22 @@ export function createCore(options: CoreOptions): Core {
         channel.focus(input.thread)
           ? { ok: true, output: {} }
           : { ok: false, error: { code: 'invalid-input', message: `There is no topic "${input.thread}".` } },
+      'engines.prefer': async (input) => {
+        if (input.harness !== null && !(await engines.read()).harnesses.some((harness) => harness.id === input.harness)) {
+          return { ok: false, error: { code: 'unknown-harness', message: `There is no harness "${input.harness}".` } }
+        }
+        return { ok: true, output: { settings: settings.prefer(input.harness) } }
+      },
+      'engines.model.set': async (input) => {
+        const harness = (await engines.read()).harnesses.find((known) => known.id === input.harness)
+        if (!harness) return { ok: false, error: { code: 'unknown-harness', message: `There is no harness "${input.harness}".` } }
+        if (input.model !== null && !harness.models.some((model) => model.id === input.model)) {
+          return { ok: false, error: { code: 'unknown-model', message: `${harness.name} does not offer the model "${input.model}".` } }
+        }
+        // The default is kept as no choice at all, so a user who picks it follows the default as it changes.
+        const model = input.model === harness.defaultModel ? null : input.model
+        return { ok: true, output: { settings: settings.chooseModel(input.harness, model) } }
+      },
       'engines.sign-in': async (input) => {
         const known = (await engines.read()).harnesses.some((harness) => harness.id === input.harness)
         if (!known) return { ok: false, error: { code: 'unknown-harness', message: `There is no harness "${input.harness}".` } }

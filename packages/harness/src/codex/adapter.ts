@@ -1,8 +1,10 @@
 import type { Harness } from '@repo/core'
 import type { HarnessOptions } from '../options.ts'
 import { createCli } from '../process/cli.ts'
+import { loadEnvironment } from '../process/environment.ts'
 import { openTerminal } from '../process/terminal/index.ts'
 import { installLocations } from './install/index.ts'
+import { codexChoices, codexHome } from './models.ts'
 import { complete } from './one-shot.ts'
 import { openSession } from './session.ts'
 import { NOT_INSTALLED, status } from './status.ts'
@@ -22,6 +24,8 @@ export function createCodex(options: HarnessOptions): Harness {
     id: CODEX_ID,
     name: 'Codex',
     status: () => status(cli),
+    // Codex keeps the list of models it offers this account in its own folder, which the environment can move.
+    models: async () => codexChoices(codexHome(await loadEnvironment(options.env))),
     async signIn() {
       const { command, env } = await cli.launch()
       const home = env[HOME_VARIABLE]

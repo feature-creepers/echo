@@ -2,7 +2,7 @@ import type { Persona, Settings } from '@repo/protocol'
 import { describe, expect, it, vi } from 'vitest'
 import { PERSONAS_SET } from '../personas/choice.ts'
 import { memoryRecords } from '../records/memory.ts'
-import { createUserSettings } from './settings.ts'
+import { createUserSettings, ENGINES_MODEL, ENGINES_PREFERRED } from './settings.ts'
 
 const first: Persona = { id: 'first', name: 'Ada', stance: 'accommodating', accent: 'cyan' }
 const second: Persona = { id: 'second', name: 'Grace', stance: 'critical', accent: 'red' }
@@ -11,7 +11,7 @@ const defaults: readonly [Persona, ...Persona[]] = [first, second]
 describe('the settings of a new user', () => {
   it('are the defaults, with the first persona answering, not yet confirmed', () => {
     const settings = createUserSettings(memoryRecords(), defaults)
-    expect(settings.read()).toEqual({ revision: 0, personas: { available: [first, second], active: 'first', confirmed: false } })
+    expect(settings.read()).toEqual({ revision: 0, personas: { available: [first, second], active: 'first', confirmed: false }, engines: { models: {} } })
   })
 })
 
@@ -22,7 +22,10 @@ describe('setPersonas', () => {
 
     const change = settings.setPersonas({ names: [], active: 'first' })
 
-    expect(change).toEqual({ ok: true, settings: { revision: 1, personas: { available: [first, second], active: 'first', confirmed: true } } })
+    expect(change).toEqual({
+      ok: true,
+      settings: { revision: 1, personas: { available: [first, second], active: 'first', confirmed: true }, engines: { models: {} } }
+    })
     expect(records.read([PERSONAS_SET])).toHaveLength(1)
   })
 
@@ -33,7 +36,11 @@ describe('setPersonas', () => {
 
     settings.setPersonas({ names: [{ persona: 'second', name: ' Marvin ' }], active: 'second' })
 
-    const expected: Settings = { revision: 1, personas: { available: [first, { ...second, name: 'Marvin' }], active: 'second', confirmed: true } }
+    const expected: Settings = {
+      revision: 1,
+      personas: { available: [first, { ...second, name: 'Marvin' }], active: 'second', confirmed: true },
+      engines: { models: {} }
+    }
     expect(settings.read()).toEqual(expected)
     expect(heard).toHaveBeenCalledExactlyOnceWith(expected)
   })
@@ -110,6 +117,73 @@ describe('settings read back from the records', () => {
 
     const settings = createUserSettings(records, defaults)
 
-    expect(settings.read()).toEqual({ revision: 1, personas: { available: [first, second], active: 'second', confirmed: true } })
+    expect(settings.read()).toEqual({ revision: 1, personas: { available: [first, second], active: 'second', confirmed: true }, engines: { models: {} } })
+  })
+})
+
+describe('the engines the user chose', () => {
+  it('are none at first: the first harness ready, on its default model', () => {
+    expect(createUserSettings(memoryRecords(), defaults).read().engines).toEqual({ models: {} })
+  })
+
+  it('keep the harness preferred and the model of each, tell the listeners, and read back the same', () => {
+    const records = memoryRecords()
+    const settings = createUserSettings(records, defaults)
+    const heard = vi.fn()
+    settings.onChange(heard)
+
+    settings.prefer('codex')
+    settings.chooseModel('claude-code', 'opus')
+    settings.chooseModel('codex', 'gpt-6.1-sol')
+
+    expect(settings.read()).toMatchObject({ revision: 3, engines: { preferred: 'codex', models: { 'claude-code': 'opus', codex: 'gpt-6.1-sol' } } })
+    expect(heard).toHaveBeenCalledTimes(3)
+    expect(createUserSettings(records, defaults).read()).toEqual(settings.read())
+  })
+
+  it('go back to the defaults, leaving no trace of the earlier choice', () => {
+    const records = memoryRecords()
+    const settings = createUserSettings(records, defaults)
+    settings.prefer('codex')
+    settings.chooseModel('claude-code', 'opus')
+
+    settings.prefer(null)
+    settings.chooseModel('claude-code', null)
+
+    expect(settings.read().engines).toEqual({ models: {} })
+    expect(createUserSettings(records, defaults).read().engines).toEqual({ models: {} })
+  })
+
+  it('write nothing and tell nobody when the choice is the one already made', () => {
+    const records = memoryRecords()
+    const settings = createUserSettings(records, defaults)
+    settings.chooseModel('claude-code', 'sonnet')
+    const heard = vi.fn()
+    settings.onChange(heard)
+
+    settings.chooseModel('claude-code', 'sonnet')
+    settings.prefer(null)
+
+    expect(heard).not.toHaveBeenCalled()
+    expect(records.read([ENGINES_MODEL, ENGINES_PREFERRED])).toHaveLength(1)
+  })
+
+  it('keep the personas when the engines change, and the engines when the personas do', () => {
+    const settings = createUserSettings(memoryRecords(), defaults)
+    settings.chooseModel('claude-code', 'opus')
+    settings.setPersonas({ names: [{ persona: 'first', name: 'Alan' }], active: 'second' })
+
+    expect(settings.read()).toMatchObject({ personas: { active: 'second' }, engines: { models: { 'claude-code': 'opus' } } })
+  })
+
+  it('skip an engine record this version cannot read', () => {
+    const records = memoryRecords()
+    records.append([
+      { type: ENGINES_MODEL, payload: { harness: 'claude-code' } },
+      { type: ENGINES_PREFERRED, payload: { harness: 7 } },
+      { type: ENGINES_MODEL, payload: { harness: 'codex', model: 'gpt-6-luna' } }
+    ])
+
+    expect(createUserSettings(records, defaults).read().engines).toEqual({ models: { codex: 'gpt-6-luna' } })
   })
 })

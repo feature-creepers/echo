@@ -4,7 +4,7 @@ export { createMemory, type Memory, type MemoryChange, type MemoryOptions, type 
 export { keywordsOf, SEARCHABLE_TYPES, searchableText } from './memory/searchable.ts'
 export type { Blobs } from './ports/blobs.ts'
 export type { Timers } from './ports/clock.ts'
-export type { Harness, HarnessStatus, OneShot, Role, Session, SessionEvent, SessionRequest, ToolServer } from './ports/harness.ts'
+export type { Harness, HarnessModel, HarnessModels, HarnessStatus, OneShot, Role, Session, SessionEvent, SessionRequest, ToolServer } from './ports/harness.ts'
 export type { Log } from './ports/log.ts'
 export { ERASURE, type Erasure, erasedBy, type NewRecord, type Records, type StoredRecord } from './ports/records.ts'
 export type { Search, SearchHit, SearchQuery } from './ports/search.ts'

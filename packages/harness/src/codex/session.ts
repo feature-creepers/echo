@@ -89,7 +89,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
       writeJsonLine(running.stdin, { method: 'initialized' })
       const opened = await call(
         'thread/start',
-        threadSettings({ folder: context.folder, model: models[request.role], instructions: request.instructions, tools: request.tools })
+        threadSettings({ folder: context.folder, model: request.model ?? models[request.role], instructions: request.instructions, tools: request.tools })
       )
       thread = asString(asObject(asObject(opened)?.thread)?.id) ?? ''
       if (thread === '') throw new Error('it did not open a conversation.')

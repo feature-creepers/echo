@@ -124,7 +124,18 @@ describe('a conversation through the core', () => {
   it('says which harnesses can be used, and looks again each time it is asked', async () => {
     const { core, harness } = start()
     expect((await run(core, 'engines.read', {})).engines).toEqual({
-      harnesses: [{ id: 'scripted', name: 'Scripted', installed: true, signedIn: true, version: '1.0.0' }],
+      harnesses: [
+        {
+          id: 'scripted',
+          name: 'Scripted',
+          installed: true,
+          signedIn: true,
+          version: '1.0.0',
+          models: [expect.objectContaining({ id: 'quick' }), expect.objectContaining({ id: 'deep' })],
+          defaultModel: 'quick',
+          model: 'quick'
+        }
+      ],
       active: 'scripted'
     })
     const events: Event[] = []
@@ -135,6 +146,37 @@ describe('a conversation through the core', () => {
 
     expect(engines.active).toBeUndefined()
     expect(events).toEqual([{ type: 'event', name: 'engines.changed', engines }])
+  })
+
+  it('answers with the model the user chose, from the next conversation on, and tells the clients at once', async () => {
+    const records = memoryRecords()
+    const { core } = start(records)
+    const events: Event[] = []
+    core.onEvent((event) => events.push(event))
+
+    const { settings } = await run(core, 'engines.model.set', { harness: 'scripted', model: 'deep' })
+    await settled()
+
+    expect(settings.engines.models).toEqual({ scripted: 'deep' })
+    expect(events.map((event) => event.name)).toEqual(['settings.changed', 'engines.changed'])
+    expect(events[1]).toMatchObject({ engines: { harnesses: [{ model: 'deep', defaultModel: 'quick' }] } })
+
+    const after = start(records)
+    await run(after.core, 'utterance.send', { text: 'Hello.' })
+    await settled()
+    expect(after.harness.sessions[0]?.request).toMatchObject({ role: 'thread', model: 'deep' })
+  })
+
+  it('keeps the default model as no choice, and refuses a model or a harness that does not exist', async () => {
+    const { core } = start()
+    await run(core, 'engines.model.set', { harness: 'scripted', model: 'deep' })
+    expect((await run(core, 'engines.model.set', { harness: 'scripted', model: 'quick' })).settings.engines.models).toEqual({})
+
+    const refused = (name: 'engines.model.set' | 'engines.prefer', input: object) => core.execute({ type: 'command', id: 'c1', name, input })
+    expect(await refused('engines.model.set', { harness: 'scripted', model: 'gigantic' })).toMatchObject({ ok: false, error: { code: 'unknown-model' } })
+    expect(await refused('engines.model.set', { harness: 'nobody', model: 'deep' })).toMatchObject({ ok: false, error: { code: 'unknown-harness' } })
+    expect(await refused('engines.prefer', { harness: 'nobody' })).toMatchObject({ ok: false, error: { code: 'unknown-harness' } })
+    expect((await run(core, 'engines.prefer', { harness: 'scripted' })).settings.engines.preferred).toBe('scripted')
   })
 
   it("opens a harness's sign-in, and refuses one it does not have", async () => {
