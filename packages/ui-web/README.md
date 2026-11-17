@@ -1,6 +1,6 @@
 # @repo/ui-web
 
-The interface for web renderers: catalogue components, the stage, the shell and the inspector. Built so far: first launch, the assistant present with its persona, and settings.
+The interface for web renderers: catalogue components, the stage, the shell and the inspector. Built so far: first launch, the assistant present with its persona, and settings, including the Memory section (what it knows, to edit or forget, when it sleeps, and the export).
 
 Styles are CSS modules beside each component. Colours, sizes and durations come from `@repo/tokens`: the app calls `applyTheme` once, before the first draw.
 

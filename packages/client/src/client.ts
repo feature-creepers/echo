@@ -2,6 +2,7 @@ import { openSession, type Session, type SessionLink } from './session.ts'
 import { type DeviceVoice, playSpeech, type SpeechPlayer } from './speech-player.ts'
 import { type ChannelState, followChannel } from './state/channel.ts'
 import { type EnginesState, followEngines } from './state/engines.ts'
+import { followMemory, type MemoryState } from './state/memory.ts'
 import { followSettings, type SettingsState } from './state/settings.ts'
 import { followView, type ViewState } from './state/view.ts'
 
@@ -12,6 +13,8 @@ export interface Client {
   channel: ChannelState
   engines: EnginesState
   view: ViewState
+  /** What the assistant knows about the user, and whether it is asleep. */
+  memory: MemoryState
   speech: SpeechPlayer
   /** Let go of all of it. The link under the session is left as it is. */
   close(): void
@@ -27,6 +30,7 @@ export function openClient(link: SessionLink, voice: DeviceVoice): Client {
   const channel = followChannel(session)
   const engines = followEngines(session)
   const view = followView(session)
+  const memory = followMemory(session)
   const speech = playSpeech(channel, voice)
   return {
     session,
@@ -34,9 +38,11 @@ export function openClient(link: SessionLink, voice: DeviceVoice): Client {
     channel,
     engines,
     view,
+    memory,
     speech,
     close() {
       speech.close()
+      memory.unfollow()
       view.unfollow()
       engines.unfollow()
       channel.unfollow()

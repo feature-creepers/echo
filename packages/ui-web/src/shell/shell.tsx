@@ -162,6 +162,7 @@ function Connected({ productName, client, engine }: { productName: string; clien
                   productName={productName}
                   personas={personas}
                   engines={client.engines}
+                  memory={client.memory}
                   speech={engine ? speech : undefined}
                   section={showing.section}
                   setPersonas={setPersonas}
