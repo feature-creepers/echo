@@ -3,6 +3,7 @@ import { type DeviceVoice, playSpeech, type SpeechPlayer } from './speech-player
 import { type ChannelState, followChannel } from './state/channel.ts'
 import { type EnginesState, followEngines } from './state/engines.ts'
 import { followSettings, type SettingsState } from './state/settings.ts'
+import { followView, type ViewState } from './state/view.ts'
 
 /** Everything a client holds while it is connected to a core: the exchange, and what it keeps current from it. */
 export interface Client {
@@ -10,6 +11,7 @@ export interface Client {
   settings: SettingsState
   channel: ChannelState
   engines: EnginesState
+  view: ViewState
   speech: SpeechPlayer
   /** Let go of all of it. The link under the session is left as it is. */
   close(): void
@@ -24,15 +26,18 @@ export function openClient(link: SessionLink, voice: DeviceVoice): Client {
   const settings = followSettings(session)
   const channel = followChannel(session)
   const engines = followEngines(session)
+  const view = followView(session)
   const speech = playSpeech(channel, voice)
   return {
     session,
     settings,
     channel,
     engines,
+    view,
     speech,
     close() {
       speech.close()
+      view.unfollow()
       engines.unfollow()
       channel.unfollow()
       settings.stop()

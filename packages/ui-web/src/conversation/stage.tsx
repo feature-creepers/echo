@@ -9,6 +9,7 @@ import type { Mood } from '../presence/painter.ts'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { accentStyle } from '../styles/accent.ts'
+import { ViewPanel } from '../view/view-panel.tsx'
 import { InputLine } from './input-line.tsx'
 
 export interface StageProps {
@@ -40,6 +41,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine }: StageProps)
   const channel = useFollowed(client.channel)
   const speaking = useFollowed(client.speech)
   const engines = useFollowed(client.engines)
+  const view = useFollowed(client.view)
   const [problem, setProblem] = useState<string>()
   const level = useRef(syllables)
 
@@ -65,68 +67,94 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine }: StageProps)
 
   if (!active) return null
 
+  const caption = (
+    <AnimatePresence mode="wait">
+      {speaking.sentence ? (
+        <motion.p
+          key={`${speaking.sentence.turn}:${speaking.sentence.text}`}
+          initial={{ opacity: 0, y: 8, filter: 'blur(4px)' }}
+          animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+          exit={{ opacity: 0, y: -6, filter: 'blur(4px)' }}
+          transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+          className={cn('text-balance leading-snug', view ? 'text-lg' : 'text-2xl')}
+        >
+          {speaking.sentence.text}
+        </motion.p>
+      ) : running && last ? (
+        <motion.p
+          key={`said:${last.turn}`}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="text-balance text-lg text-text-faint leading-snug"
+        >
+          “{last.said}”
+        </motion.p>
+      ) : failed || problem ? (
+        <motion.div
+          key="problem"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className={cn('grid gap-3', !view && 'justify-items-center')}
+        >
+          <p className="text-balance text-danger leading-relaxed">{failed ?? problem}</p>
+          {noEngine && (
+            <button
+              type="button"
+              onClick={onSetUpEngine}
+              className="w-fit font-mono text-text-soft text-xs underline decoration-line-strong underline-offset-4 hover:text-text"
+            >
+              Set up an AI program
+            </button>
+          )}
+        </motion.div>
+      ) : last?.replied ? (
+        <motion.p
+          key={`last:${last.turn}`}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="line-clamp-3 text-balance text-lg text-text-faint leading-snug"
+        >
+          {last.replied}
+        </motion.p>
+      ) : null}
+    </AnimatePresence>
+  )
+
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col">
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-8">
-        <Orb size={300} mood={mood} level={level.current} className="-my-6" />
-
-        <div className="grid justify-items-center gap-1.5">
-          <h1 className="font-medium text-4xl tracking-tight">{active.name}</h1>
-          <Eyebrow accent={mood !== 'idle'} className="transition-colors duration-300">
-            {MOODS[mood]}
-          </Eyebrow>
+      {view ? (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <motion.div layout className="mx-auto flex w-full max-w-5xl items-center gap-5 px-8 pt-5 pb-3">
+            <Orb size={84} mood={mood} level={level.current} className="-m-3 shrink-0" />
+            <div className="grid min-w-0 flex-1 gap-1">
+              <div className="flex items-baseline gap-3">
+                <span className="font-medium text-lg">{active.name}</span>
+                <Eyebrow accent={mood !== 'idle'}>{MOODS[mood]}</Eyebrow>
+              </div>
+              <div className="min-h-7" aria-live="polite">
+                {caption}
+              </div>
+            </div>
+          </motion.div>
+          <ViewPanel view={view} onSay={say} onClose={() => void client.view.clear().catch(() => undefined)} />
         </div>
-
-        <div className="mt-8 flex h-28 w-full max-w-2xl items-start justify-center text-center" aria-live="polite">
-          <AnimatePresence mode="wait">
-            {speaking.sentence ? (
-              <motion.p
-                key={`${speaking.sentence.turn}:${speaking.sentence.text}`}
-                initial={{ opacity: 0, y: 8, filter: 'blur(4px)' }}
-                animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-                exit={{ opacity: 0, y: -6, filter: 'blur(4px)' }}
-                transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-                className="text-balance text-2xl leading-snug"
-              >
-                {speaking.sentence.text}
-              </motion.p>
-            ) : running && last ? (
-              <motion.p
-                key={`said:${last.turn}`}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="text-balance text-lg text-text-faint leading-snug"
-              >
-                “{last.said}”
-              </motion.p>
-            ) : failed || problem ? (
-              <motion.div key="problem" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="grid justify-items-center gap-3">
-                <p className="text-balance text-danger leading-relaxed">{failed ?? problem}</p>
-                {noEngine && (
-                  <button
-                    type="button"
-                    onClick={onSetUpEngine}
-                    className="font-mono text-text-soft text-xs underline decoration-line-strong underline-offset-4 hover:text-text"
-                  >
-                    Set up an AI program
-                  </button>
-                )}
-              </motion.div>
-            ) : last?.replied ? (
-              <motion.p
-                key={`last:${last.turn}`}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="line-clamp-3 text-balance text-lg text-text-faint leading-snug"
-              >
-                {last.replied}
-              </motion.p>
-            ) : null}
-          </AnimatePresence>
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-8">
+          <Orb size={300} mood={mood} level={level.current} className="-my-6" />
+          <div className="grid justify-items-center gap-1.5">
+            <h1 className="font-medium text-4xl tracking-tight">{active.name}</h1>
+            <Eyebrow accent={mood !== 'idle'} className="transition-colors duration-300">
+              {MOODS[mood]}
+            </Eyebrow>
+          </div>
+          <div className="mt-8 flex h-28 w-full max-w-2xl items-start justify-center text-center" aria-live="polite">
+            {caption}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="mx-auto grid w-full max-w-3xl gap-3 px-8 pb-7">
         <InputLine name={active.name} busy={running || speaking.sentence !== undefined} onSay={say} onStop={stop} />
