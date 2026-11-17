@@ -13,7 +13,10 @@
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "self-check": "electron . --self-check",
-    "package": "electron-builder --config build/electron-builder.yml"
+    "stage": "node build/stage.ts",
+    "package:win": "node build/stage.ts --os win32 --arch x64 && electron-builder --projectDir stage --config ../build/electron-builder.yml --win zip --x64",
+    "package:mac": "node build/stage.ts --os darwin --arch arm64 && electron-builder --projectDir stage --config ../build/electron-builder.yml --mac --arm64",
+    "package:linux": "node build/stage.ts --os linux --arch x64 && electron-builder --projectDir stage --config ../build/electron-builder.yml --linux --x64"
   },
   "dependencies": {
     "sherpa-onnx-node": "catalog:"

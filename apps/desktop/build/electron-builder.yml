@@ -1,16 +1,22 @@
-# How the desktop app is packaged for each system. Run with `pnpm --filter @repo/desktop package`,
-# after `pnpm build`. The product's name and version come from ../package.json.
+# How the desktop app is packaged for each system. It packages what build/stage.ts lays out in stage/:
+# run `pnpm --filter @repo/desktop package:win` (or :mac, :linux) after `pnpm build`.
+# The product's name and version come from ../package.json, through the staged manifest.
 appId: io.github.feature-creepers.echo
 copyright: Copyright © 2026 Tommy Sendra and Rodolphe Barbanneau
 
 directories:
-  output: release
+  output: ../release
+electronVersion: 45.3.2
 
-# The app is bundled by electron-vite into out/: nothing is read from node_modules at run time.
+# The app is bundled by electron-vite into out/. The one thing read from node_modules at run time is the
+# speech library, whose native part must sit outside the archive to be loaded.
 files:
   - out/**
   - package.json
+  - node_modules/**
   - "!**/*.map"
+asarUnpack:
+  - node_modules/sherpa-onnx-*-*/**
 npmRebuild: false
 
 # Electron's switches, set in the packaged program: it cannot be started as plain Node, takes no Node
@@ -38,8 +44,12 @@ nsis:
 mac:
   target:
     - target: dmg
-      arch: [arm64, x64]
+      arch: [arm64]
   category: public.app-category.productivity
+  # Unsigned for now: the user opens it the first time with a right click, then Open.
+  identity: null
+  extendInfo:
+    NSMicrophoneUsageDescription: Echo listens to you when you talk to it. Your voice is turned into text on this computer.
 dmg:
   artifactName: ${productName}-${version}-${arch}.${ext}
 

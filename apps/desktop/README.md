@@ -38,15 +38,16 @@ Deleting the data folder brings back the first launch.
 
 ## Packaging
 
-`build/electron-builder.yml` says how. The product's name and version come from `package.json` (`productName`, `version`).
+`build/stage.ts` lays out what is packaged in `stage/`: the built program, a manifest, and the native part of the speech library for the target system, fetched from the registry. `build/electron-builder.yml` then makes the package from it. A package for another system can be made from this one.
 
 ```bash
 pnpm build
-pnpm --filter @repo/desktop package                  # for the system you are on
-pnpm --filter @repo/desktop package --win zip --x64  # a Windows build from macOS or Linux
+pnpm --filter @repo/desktop package:win     # release/Echo-<version>-win.zip
+pnpm --filter @repo/desktop package:linux   # release/Echo-<version>.AppImage
+pnpm --filter @repo/desktop package:mac     # on a Mac: release/Echo-<version>-arm64.dmg
 ```
 
-The Windows installer can only be built on Windows; the ZIP builds anywhere. Nothing is signed yet, so Windows and macOS warn before the first start.
+CI packages the app on each system on every push, with the Windows installer, and keeps the packages for download on the run's page. Nothing is signed yet, so Windows and macOS warn before the first start.
 
 ## How it is put together
 

@@ -46,3 +46,36 @@ jobs:
       - name: Desktop self-check (Linux)
         if: runner.os == 'Linux'
         run: xvfb-run -a pnpm --filter @repo/desktop exec electron . --self-check --no-sandbox
+
+      # Package the app for the system of the runner, and keep the packages for download from the run's page.
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        working-directory: apps/desktop
+        run: |
+          node build/stage.ts --os win32 --arch x64
+          pnpm exec electron-builder --projectDir stage --config ../build/electron-builder.yml --win nsis zip --x64 --publish never
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        working-directory: apps/desktop
+        run: |
+          node build/stage.ts --os darwin --arch arm64
+          pnpm exec electron-builder --projectDir stage --config ../build/electron-builder.yml --mac dmg --arm64 --publish never
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        working-directory: apps/desktop
+        run: |
+          node build/stage.ts --os linux --arch x64
+          pnpm exec electron-builder --projectDir stage --config ../build/electron-builder.yml --linux AppImage --x64 --publish never
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: echo-${{ runner.os }}
+          path: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.zip
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.AppImage
+          if-no-files-found: error
+          retention-days: 14
