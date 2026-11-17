@@ -58,10 +58,14 @@ export function followChannel(session: Session): ChannelState {
         put(event.exchange)
         if (event.exchange.outcome !== 'done') for (const listener of stops) listener(event.exchange.turn)
         return
+      case 'answer.written':
+        put(event.exchange)
+        return
       case 'speech.say': {
         const { exchanges } = state.current()
         const line = exchanges.find((exchange) => exchange.turn === event.turn)
-        if (line) put({ ...line, replied: line.replied ? `${line.replied} ${event.text}` : event.text })
+        // An answer said again when its thread is brought back is already in the line: only a running one grows.
+        if (line?.outcome === 'running') put({ ...line, replied: line.replied ? `${line.replied} ${event.text}` : event.text })
         for (const listener of sentences) listener({ turn: event.turn, text: event.text, language: event.language })
         return
       }

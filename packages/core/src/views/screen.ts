@@ -50,6 +50,10 @@ export interface Screen {
   find(view: string): ShownView | undefined
   /** The latest view a thread showed, or, left out, the one on the stage. */
   latest(thread: string | undefined): ShownView | undefined
+  /** Every view a thread showed, oldest first, from the records. */
+  history(thread: string): ShownView[]
+  /** Put an aside's latest card back in the margin. */
+  recall(thread: string): void
   /** The focus moved to this thread: the stage shows its view, or nothing. */
   focus(thread: string | undefined): void
   /** Remove the view given, or, left out, what is on the stage. */
@@ -134,6 +138,25 @@ export function createScreen({ records, newId }: ScreenOptions): Screen {
     },
 
     latest: (thread) => (thread === undefined ? stage : byThread.get(thread)),
+
+    history(thread) {
+      const views: ShownView[] = []
+      for (const record of records.read([VIEW_SHOWN])) {
+        const view = viewSchema.safeParse(record.payload)
+        // A card brought back is recorded again: it is still one view.
+        if (view.success && view.data.thread === thread && !views.some((one) => one.id === view.data.id)) views.push(view.data)
+      }
+      return views
+    },
+
+    recall(thread) {
+      const view = byThread.get(thread)
+      if (view?.slot !== 'margin') return
+      // Recorded again, so the card is still there after a restart.
+      if (!margin.some((card) => card.id === view.id)) records.append([{ type: VIEW_SHOWN, payload: view }])
+      place(view)
+      emit({ type: 'event', name: 'view.shown', view })
+    },
 
     focus(thread) {
       const view = byThread.get(thread ?? '')

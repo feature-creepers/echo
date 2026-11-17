@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { activitySchema, enginesChangedSchema, speechSaySchema, turnEndedSchema, turnStartedSchema } from './events/conversation.ts'
+import { activitySchema, answerWrittenSchema, enginesChangedSchema, speechSaySchema, turnEndedSchema, turnStartedSchema } from './events/conversation.ts'
 import { libraryChangedSchema } from './events/library.ts'
 import { assistantStateChangedSchema, memoryChangedSchema } from './events/memory.ts'
 import { settingsChangedSchema } from './events/settings.ts'
@@ -13,6 +13,7 @@ export const eventSchema = z.discriminatedUnion('name', [
   speechSaySchema,
   turnEndedSchema,
   activitySchema,
+  answerWrittenSchema,
   enginesChangedSchema,
   viewShownSchema,
   viewClearedSchema,

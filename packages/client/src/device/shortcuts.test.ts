@@ -42,6 +42,22 @@ describe('a key pressed in the window', () => {
     expect(matchesShortcut(press('KeyT', { ctrl: true }), 'Ctrl+T', false)).toBe(true)
     expect(matchesShortcut(press('KeyT', { ctrl: true }), '', false)).toBe(false)
   })
+
+  it('never fires with a modifier more or less than the shortcut has', () => {
+    // Another program may use Ctrl+Shift+Space: holding Shift too is not the talk key.
+    for (const extra of [{ shift: true }, { alt: true }, { meta: true }, { shift: true, alt: true }]) {
+      expect(matchesShortcut(press('Space', { ctrl: true, ...extra }), 'CommandOrControl+Space', false)).toBe(false)
+      expect(matchesShortcut(press('KeyT', { ctrl: true, ...extra }), 'CommandOrControl+T', false)).toBe(false)
+      expect(matchesShortcut(press('Space', { meta: true, ...(extra.meta ? { ctrl: true } : extra) }), 'CommandOrControl+Space', true)).toBe(false)
+    }
+    expect(matchesShortcut(press('Space'), 'CommandOrControl+Space', false)).toBe(false)
+    expect(matchesShortcut(press('Space', { shift: true }), 'CommandOrControl+Shift+Space', false)).toBe(false)
+    expect(matchesShortcut(press('Space', { ctrl: true, shift: true }), 'CommandOrControl+Shift+Space', false)).toBe(true)
+  })
+
+  it('ignores the repeats of a key held down', () => {
+    expect(matchesShortcut(press('Space', { ctrl: true, repeat: true }), 'CommandOrControl+Space', false)).toBe(false)
+  })
 })
 
 describe('shortcuts written down', () => {

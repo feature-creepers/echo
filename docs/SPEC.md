@@ -14,7 +14,7 @@ Sections 2 and 3 describe what existed before this branch. Section 14.8 says wha
 - Tommy Sendra and Rodolphe Barbanneau are credited as co-authors (decision 12).
 - Settings cover what matters, split as section 5.2 says: on this computer the microphone, speakers, voice, listening, shortcuts, start and tray; with the user the AI program preferred and the model it answers with (decision 17).
 - The app updates itself from the project's GitHub releases, which a tag publishes as a draft (section 14.7).
-- The catalogue has a Media block, and one player serves the app (section 9.6). Saved widgets form a library the assistant brings back from (section 9.8). Everything the assistant shows stays in the centre; the right side is a sheet for pinned widgets (sections 9.3 and 13.2).
+- The catalogue has a Media block, and one player serves the app (section 9.6). Saved widgets form a library the assistant brings back from (section 9.8). Everything the assistant shows stays in the centre; pinned widgets float on the right of the main screen, and a sheet over the stage holds the advanced views (sections 9.3 and 13.2).
 
 ## 0. Summary
 
@@ -321,7 +321,7 @@ Speak's `Agent` and `ControlAgent` interfaces already cover most of this for Cla
    - `thread.send`, to continue an existing thread;
    - `thread.open`, to start a new thread or an aside;
    - `thread.focus`, to bring an earlier thread's view back ("back to the document").
-5. **Thread.** The chosen thread works in its own session with its own tools, renders its view, and speaks its answer.
+5. **Thread.** The chosen thread works in its own session with its own tools and answers in three layers (section 7.2): it says the short answer, shows its view, and keeps its full written answer.
 6. **Record.** The utterance, the spoken reply, the view and the thread are appended to the channel log.
 
 Dispatch does not block. Once the orchestrator has passed a turn on, it is free to hear the next one, so the user can keep talking while a thread works.
@@ -331,6 +331,16 @@ Dispatch does not block. Once the orchestrator has passed a turn on, it is free 
 The thread in focus speaks directly: its reply text streams straight to the voice, without passing back through the orchestrator. Going back would add a second model round trip to every answer. The orchestrator receives a compact note of what was said, so it stays informed.
 
 The user still hears one voice, because every session receives the same persona and all speech goes through one queue. The queue plays one speaker at a time, gives priority to the thread in focus, and holds results from background threads until a pause.
+
+**An answer has three layers**, produced in this order so the voice starts first and the rest arrives while it is heard:
+
+1. **What is said.** Short, as a friend says it (section 8.5): the session's text, spoken sentence by sentence as it is written, and the caption. A thread writes it before any tool call except a search.
+2. **What is shown.** The view (`ui_render`), drawn while the voice speaks.
+3. **The full work.** The complete written answer, in Markdown, with figures, sources and details (`answer_write`), and every tool call with its input and its whole output (a web search's results, a page read, a view shown). It is kept with the exchange and the thread, and read only in the side sheet (section 13.3). Small talk has none, so a simple answer costs nothing more.
+
+The order is held by the instructions, by a reminder at the end of each request, and by the core: a call to `ui_render` or `answer_write` before anything was said is sent back once ("say the short answer first"), after which the model speaks at once and keeps the order for the rest of its thread. A layer is a tool rather than a marker in the text, because tool calls are what both harnesses deliver reliably and in order.
+
+**Nothing is said twice.** Each speaker's words are cut into sentences of their own (a thread's first sentence never runs into the orchestrator's last); what the orchestrator said before passing a turn on is told to the thread, which carries on from it; a sentence already said in a turn is not said again; once the full answer is written, a recap in other words is not voiced; and a thread brought back says only what was not heard of its answer. The double voice users heard came from the orchestrator greeting and then passing the briefing to a thread that greeted again, through one shared sentence cutter, and from a thread repeating its answer after its tool calls.
 
 ### 7.3 Threads
 
@@ -357,6 +367,7 @@ An aside is a question that does not change the topic: "By the way, what time is
 
 - **Trigger.** A spoken marker ("by the way", "quick question", their French equivalents), the orchestrator's own judgement when a short unrelated question arrives mid-task, or an optional modifier on the talk shortcut.
 - **On screen.** A compact card with the answer appears in the centre column, over the view of the topic, which stays where it is. Nothing moves aside: the core and the view stay centred.
+- **Its topic.** An aside records the topic on the stage when it was asked, its parent. The side sheet lists it under that topic; opened there, it shows its work like any thread, and "Show the card" brings its card back beside the stage.
 - **After.** The card is dismissed with its close button, or saved to the library and pinned like any view (section 9.8). It can be promoted to a full thread ("tell me more about that"). Leaving by itself after a while, on "thanks" or on Esc, is not built yet.
 - **Behind.** The orchestrator answers it directly, or opens a short-lived thread that is archived at once.
 
@@ -392,7 +403,8 @@ Every utterance passes through the orchestrator, so work that goes to a thread c
 
 ### 8.1 Input
 
-- **Version 1: push to talk.** A key in the app, or a global shortcut from anywhere, starts listening; a pause ends the take (short, normal or long, as the user sets), or the key pressed again when the user sets it never to stop by itself. A soft tone marks the start and the end, unless turned off. Both keys are recorded by pressing them in settings; the global one is refused, with the reason, when the system or another app holds it. Holding the key while speaking is not offered: Electron's global shortcuts report no key release, and a keyboard hook (Speak's) is a native dependency not worth it yet.
+- **Version 1: push to talk.** A key in the app, or a global shortcut from anywhere once the user records one, starts listening; a pause ends the take (short, normal or long, as the user sets), or the key pressed again when the user sets it never to stop by itself. A soft tone marks the start and the end, unless turned off. Both keys are recorded by pressing them in settings; the global one is refused, with the reason, when the system or another app holds it. Holding the key while speaking is not offered: Electron's global shortcuts report no key release, and a keyboard hook (Speak's) is a native dependency not worth it yet.
+- **Exact keys.** A key in the window fires only with exactly its modifiers, no more and no fewer, and never on the repeats of a key held down. The shortcut from any app is off until the user records one: a global shortcut takes its keys from every other program, and the former default, Ctrl+Shift+Space, is an editor's own (parameter hints). Settings written by earlier versions let go of that default, and keep any keys the user chose.
 - **The microphone** is the system's default unless the user picks one. It is found again by its name when its identifier changes, and the system's default is used while it is unplugged. Settings show its live level, so the user sees it hears them before talking.
 - **Later: open conversation.** The microphone stays open, speech is detected automatically, and talking over the assistant interrupts it. This needs echo cancellation and careful end-of-speech detection, and is its own project.
 - **Typing** is always available on the input line, which doubles as the live caption of what is being recognised.
@@ -433,11 +445,15 @@ The app waits in the system tray (the menu bar on macOS): closing the window lea
 
 ### 8.4 Output
 
-- Speech is produced sentence by sentence as the reply text arrives, so the first sentence is heard while the rest is still being written.
+- Speech is produced sentence by sentence as the reply text arrives, so the first sentence is heard while the rest is still being written. A sentence is released as soon as it is known to be whole: when text follows it, or when the session starts a tool call.
+- **The sound of what comes next is made ahead.** While a sentence plays, the device's voice makes the sound of every sentence queued after it. A long sentence (100 characters or more) is made a clause at a time, cut where a speaker breathes, and its first clause plays while the next are made; the clauses are scheduled end to end on the audio clock, so there is no gap.
+- **The caption follows the voice.** A sentence is shown when its sound starts, not when its text arrives, and each word lights up as the voice reaches it, timed from the sound's length. Every word is in place from the start, so the line never reflows.
+- **While it works, it says what it is doing.** The word under the core names the tool in use: "Searching the web", "Reading a page", "Preparing the view", instead of only "Thinking".
 - The user sets the pace (four steps around the voice's own), the speakers it plays on (the system's default unless chosen, routed with the audio context's `setSinkId`), or text only, for a quiet room.
 - Stop is instant, by key, by voice or by starting to talk.
 - Short sounds mark listening, thinking and results ready. When a thread needs more than about a second, the core animation shows it. A spoken "one moment" is used only for long waits.
 - Target to validate in the first build step, on each system: under 1.5 seconds from the end of speech to the first sound, for a direct answer on a warm session.
+- **Measured on 17 November 2026**, Linux, Claude Code on Haiku, from Enter to the first sound / the first caption / the view. Before: a direct answer 3.6 s / 3.1 s (the caption ran ahead of the voice); a topic with a view 19.1 s / 17.8 s / 19.2 s, everything waiting for the thread's search and view. After: a direct answer 2.5 s / 2.6 s; a new topic with a view 7.0 s / 7.1 s / 7.7 s, the view drawn while the voice speaks; the next turn in that topic 5.4 s / 5.5 s / 6.6 s; a weather lookup through a reliable source 6.4 s, its card at 11.5 s; two web searches 23.7 s, with "Searching the web" shown meanwhile; the greeting 4.3 s. Of a new topic's 7 s, about 2.5 s is the orchestrator's decision, 3.5 s the thread's first words and 0.7 s the voice.
 
 ### 8.5 The speech contract
 
@@ -809,8 +825,14 @@ Three sizes on a desktop: the full window, Mini (core and caption, always on top
 | ------------- | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
 | 0. Presence   | The core, the caption of the current reply, the stage                                                                   | Everyone, by default          |
 | 1. Transcript | What both sides said, as a scrolling log                                                                                | Anyone: one key or one phrase |
-| 2. Activity   | Which thread is working, tool chips, waiting and ready states                                                           | The curious                   |
+| 2. Activity   | What the assistant is doing (the word under the core), which thread is working, waiting and ready states                | The curious                   |
 | 3. Inspector  | Threads and their transcripts, routing decisions, prompts, raw harness events, memory results, timings, tokens and cost | Technical users and debugging |
+
+The side sheet is level 1 and beyond, for advanced use only: what the user keeps at hand, pinned widgets, is on the main screen. It has three tabs.
+
+- **Transcript.** What both sides said; a line whose thread wrote a full answer offers it, folded.
+- **Threads.** Each topic, most recent first, with the asides asked beside it nested under it. Opening one shows the thread whole: each request, its work (every tool call in order, with what it was about and how long it took, opened to show the input and the whole output), what was said aloud, and the full written answer. It fills in live while the thread works. A topic can be brought back on screen from there, and an aside's card beside it.
+- **Inspector.** The raw events, each opened on demand.
 
 The inspector also acts: move a turn to another thread, close or reopen a thread, edit memory, change harness or model per role, replay a turn.
 
@@ -1253,13 +1275,13 @@ Electron uses more memory than the proof of concept's WKWebView shell. That is t
 
 Built, and checked against the real Claude Code on 17 November 2026:
 
-- **Conversation.** The user types, or talks (Ctrl+Space in the window, Ctrl+Shift+Space from any app); the take ends after a pause. The orchestrator answers small things itself and passes the rest to threads, which answer aloud sentence by sentence while the rest is still being written. Saying something during an answer takes its place.
+- **Conversation.** The user types, or talks (Ctrl+Space in the window, exactly; from any app with keys the user records); the take ends after a pause. The orchestrator answers small things itself and passes the rest to threads, which answer in three layers: the short answer aloud first, sentence by sentence while the rest is written, the view while it is heard, and the full written answer with every tool call kept for the side sheet (section 7.2). Captions follow the voice word by word; the word under the core says what the assistant is doing. Nothing is said twice. Saying something during an answer takes its place. Measured before and after in section 8.4.
 - **Threads.** Topics, asides as cards over the view, topics brought back with their view, and answers finished in the background waiting as "ready" (section 7). Every request carries the moment and the time zone.
 - **Generated interface.** Views composed from the generic blocks of section 9.6, checked by the core, drawn by our web renderer; buttons, choices and fields speak to the assistant.
 - **Personas.** Named by the user at first launch and in settings; the critical stance objects with a decision card and remembers decisions made despite it (section 11).
 - **Voice.** Local recognition and voice (section 8.2), downloaded once from first launch or settings.
 - **Harnesses.** Claude Code, verified for real, isolation included; Codex, written from Speak's proven code and tested against a stand-in, never run against the real CLI.
-- **Interface.** First launch in steps, the main screen around the living core with everything the assistant shows in one centred column and a composer that floats over it, the persona's eye animated with each state, settings (personalities, voice, engine, memory), pinned widgets floating in the right margin, and a side sheet over the stage for the transcript, the threads and an inspector of raw events (section 13.2). The look of section 13.1 (small radii, no glow outside the core, graph-paper ground, hairlines, one motion curve) was checked on screenshots of every screen of the built app at 1320 by 860 and at 760 by 560.
+- **Interface.** First launch in steps, the main screen around the living core with everything the assistant shows in one centred column and a composer that floats over it, the persona's eye animated with each state, settings (personalities, voice, engine, memory), pinned widgets floating in the right margin, and a side sheet over the stage for advanced use: the transcript, the threads (topics with their asides, each opened on its full work) and an inspector of raw events (sections 13.2 and 13.3). The look of section 13.1 (small radii, no glow outside the core, graph-paper ground, hairlines, one motion curve) was checked on screenshots of every screen of the built app at 1320 by 860 and at 760 by 560.
 - **Media.** The Media block plays radio, podcasts, songs and video from https streams and files, HLS included, through one player for the app: one sound at a time, going on when its view changes, a now-playing control in the title row, the system's media keys, lowered under the assistant's voice and while the user talks (section 9.6). Verified in the built app with the real Claude Code: asked to play Radio FIP, it found the station's MP3 stream and the stream played in the app.
 - **Library.** Any view bookmarked, then browsed, searched, filed in collections, renamed, pinned to the main screen, put in order by dragging (the order kept by the core), shown again, changed by asking, or deleted (section 9.8). Verified in the built app: a widget dragged to the top of the stack stays there after the page is reloaded, and a pinned radio keeps playing in its card. Verified with the real Claude Code: after a restart, "I want to listen to the radio again" brought back the saved radio widget itself, and it played.
 - **Memory.** Every word kept and searchable at once (SQLite FTS5); facts extracted, reconciled and summarised into a profile while the assistant sleeps, at times the user sets; recalled into each request; shown, editable, forgettable and exportable in settings. Verified with the real Claude Code: facts learned in one session answered a question in the next.

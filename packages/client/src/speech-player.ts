@@ -7,8 +7,12 @@ import { cell, type Followed } from './state/followed.ts'
  * nothing but a pause the length of the sentence when there is no sound.
  */
 export interface DeviceVoice {
-  /** Start saying a sentence. `done` resolves when it has been said, or when it was cancelled. */
-  say(sentence: Sentence): { done: Promise<void>; cancel(): void }
+  /**
+   * Start saying a sentence. `done` resolves when it has been said, or when it was cancelled. `heard` resolves
+   * when its sound actually starts, with how long it lasts, in seconds: a voice makes the sound first, and the
+   * caption waits for it. A voice that leaves it out is heard at once.
+   */
+  say(sentence: Sentence): { done: Promise<void>; cancel(): void; heard?: Promise<number | undefined> }
   /** Start making the sound of a sentence that will be said soon, so it follows the current one with no gap. */
   prepare?(sentence: Sentence): void
   /** Hold what is being said, to be resumed where it stopped. A voice that cannot pause leaves these out. */
@@ -18,9 +22,12 @@ export interface DeviceVoice {
 
 /** What is being said right now. */
 export interface Speaking {
-  /** The sentence being said, which is also the caption to show. Nothing when silent. */
+  /** The sentence being heard, which is also the caption to show. Nothing when silent, or while its sound is made. */
   sentence: Sentence | undefined
-  /** Sentences announced and not yet said. */
+  /** When its sound started, in milliseconds by `Date.now()` unless the player was given another clock, and how long it lasts in seconds, when the voice says. */
+  since: number | undefined
+  seconds: number | undefined
+  /** Sentences announced and not yet heard, the one whose sound is being made included. */
   waiting: number
   /** The user paused: nothing is said until they resume. */
   paused: boolean
@@ -41,22 +48,43 @@ export interface SpeechPlayer extends Followed<Speaking> {
  * Says the sentences of the conversation one at a time, in the order announced, through the device's voice.
  * A turn that is stopped is cut at once, and so is everything said when the user starts a new turn.
  */
-export function playSpeech(channel: ChannelState, initial: DeviceVoice): SpeechPlayer {
-  const state = cell<Speaking>({ sentence: undefined, waiting: 0, paused: false })
+export function playSpeech(channel: ChannelState, initial: DeviceVoice, now: () => number = Date.now): SpeechPlayer {
+  const state = cell<Speaking>({ sentence: undefined, since: undefined, seconds: undefined, waiting: 0, paused: false })
   let paused = false
   const queue: Sentence[] = []
   let voice = initial
-  let playing: { sentence: Sentence; cancel(): void } | undefined
+  /** The sentence given to the voice: `since` is set once it is heard. */
+  type Playing = { sentence: Sentence; cancel(): void; since: number | undefined; seconds: number | undefined }
+  let playing: Playing | undefined
 
-  const publish = () => state.set({ sentence: playing?.sentence, waiting: queue.length, paused })
+  const publish = () => {
+    const heard = playing?.since !== undefined ? playing : undefined
+    state.set({
+      sentence: heard?.sentence,
+      since: heard?.since,
+      seconds: heard?.seconds,
+      waiting: queue.length + (playing && !heard ? 1 : 0),
+      paused
+    })
+  }
 
   const next = () => {
     if (playing || paused) return
     const sentence = queue.shift()
     if (!sentence) return publish()
     const saying = voice.say(sentence)
-    const mine = { sentence, cancel: saying.cancel }
+    const mine: Playing = { sentence, cancel: saying.cancel, since: undefined, seconds: undefined }
     playing = mine
+    // The sound of the sentences after it is made while it plays, so each follows the one before with no gap.
+    for (const ahead of queue) voice.prepare?.(ahead)
+    const heard = (seconds: number | undefined) => {
+      if (playing !== mine) return
+      mine.since = now()
+      mine.seconds = seconds
+      publish()
+    }
+    if (saying.heard) void saying.heard.then(heard, () => heard(undefined))
+    else heard(undefined)
     publish()
     void saying.done.finally(() => {
       if (playing !== mine) return

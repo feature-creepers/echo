@@ -111,7 +111,9 @@ export function orchestratorInstructions({ persona, earlier, abilities, profile 
       'Behind the one conversation, work is done in threads: each thread is a session of its own working on one topic, with the screen to show things on. You decide, for each thing the person says, who answers. Each message you receive starts with the list of threads, then what the person said.',
       '',
       '- Small talk, a greeting, a one-line fact, a thank you: answer yourself, in a sentence, and call no tool.',
-      '- Anything that needs work, detail, the screen, or that continues a topic: call thread_send with the thread it belongs to, or thread_open for a new topic. Then write nothing at all: the thread answers the person itself.',
+      '- Several figures, a comparison, a list, a plan, steps, anything better seen than heard: pass it on, since only a thread has the screen and keeps the full answer.',
+      '- Anything that needs work, detail, the screen, or that continues a topic: call thread_send with the thread it belongs to, or thread_open for a new topic. Call it straight away, writing nothing before it and nothing after it: the thread answers the person itself, and anything you said too would be heard twice.',
+      '- Either you answer, or a thread does, never both: decide before you write a word.',
       '- A quick question unrelated to the topic on screen, often after "by the way": call thread_open with kind "aside". Its answer appears in a small card beside the current topic, which stays on screen.',
       '- "Back to…", "show me … again": call thread_focus with that thread, then say in a few words that it is back.',
       '- When in doubt whether something belongs to an existing thread, prefer it: topics come back.',
@@ -132,17 +134,33 @@ export interface ThreadContext extends InstructionsContext {
   kind: 'topic' | 'aside'
 }
 
+/**
+ * How a thread answers when it has a screen: in three layers, in this order, so the voice starts as soon as it
+ * can and the rest follows while it is heard (docs/SPEC.md, sections 7.2 and 8.4).
+ */
+const LAYERS = [
+  'How you answer: in three layers, always in this order.',
+  '1. Say it. Your reply always begins with the short spoken answer, as text, before any call to ui_render or answer_write: it is heard while you carry on. Only a search or a page you must read comes before it.',
+  '2. Show it, when it helps: call ui_render once you have said the answer, so the view appears while you are heard. Never write the view before speaking.',
+  '3. Write it, when the answer has more to it than what you said: figures, sources, steps, a comparison, an explanation. Call answer_write with the full answer, complete and well organised, in Markdown, with the sources you used. It is kept for the person to read in the side panel; never mention it, and never say the view or the answer is on the screen. Skip it for small talk and one-line answers.',
+  'So a turn looks like: [search if needed] → the spoken answer → ui_render → answer_write → stop. After ui_render and answer_write, write nothing at all: no recap, no "those are the figures", no offer of more. Everything you write is heard.'
+].join('\n')
+
+/** Added to each request a thread with a screen receives: a model follows the order best when reminded of it last. */
+export const SPEAK_FIRST =
+  '(Begin your reply with the short spoken answer, as plain text, before any tool call except a search: the person hears it while you work. Only then call ui_render and answer_write, if they help, and stop there without writing more.)'
+
 /** A thread works on one topic, speaks its answers directly, and shows what is detailed on the screen. */
 export function threadInstructions({ persona, earlier, abilities, profile, title, kind }: ThreadContext): string {
-  const parts = [
-    who(persona),
-    STANCES[persona.stance],
-    SPEECH_CONTRACT,
+  // What every thread shares comes first and what is its own last, so a new thread starts on the harness's cache
+  // of the long shared part (the catalogue above all) and answers sooner.
+  const parts = [who(persona), STANCES[persona.stance], SPEECH_CONTRACT]
+  if (abilities) parts.push(LAYERS, abilities, SOURCES)
+  parts.push(
     kind === 'aside'
       ? `You are answering a side question: "${title}". Answer it in a sentence or two. If something helps to see, show a small view: it appears as a card in the margin, beside the topic on screen, so keep it to a few blocks.`
       : `In this part of the conversation you work on one topic: "${title}". The person may come back to it later, from other topics, and you will carry on where you stopped. Requests reach you through the assistant that hears everything; answer the person directly, as yourself.`
-  ]
-  if (abilities) parts.push(abilities, SOURCES)
+  )
   const memory = known(profile)
   if (memory) parts.push(memory)
   const before = recap(earlier)

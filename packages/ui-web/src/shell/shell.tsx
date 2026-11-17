@@ -272,16 +272,7 @@ function Connected({ productName, client, engine }: { productName: string; clien
           {/* The sheet slides over whatever screen is there: it never pushes the stage off centre. */}
           <AnimatePresence initial={false}>
             {sheet && (
-              <SideSheet
-                key="sheet"
-                client={client}
-                personas={personas.available}
-                controls={controls}
-                actions={actions}
-                tab={sheet}
-                onTab={openSheet}
-                onClose={() => openSheet(undefined)}
-              />
+              <SideSheet key="sheet" client={client} personas={personas.available} tab={sheet} onTab={openSheet} onClose={() => openSheet(undefined)} />
             )}
           </AnimatePresence>
         </div>

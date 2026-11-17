@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react'
 
 /**
- * A small Markdown reader for what a model writes in Prose: headings, paragraphs, lists, quotes, code,
- * emphasis and links shown as text. It builds React elements, never HTML, so nothing written can run.
+ * A small Markdown reader for what a model writes in Prose and in its full answers: headings, paragraphs,
+ * lists, tables, quotes, code, emphasis and links shown as text. It builds React elements, never HTML, so
+ * nothing written can run.
  */
 export function Markdown({ text }: { text: string }) {
   const blocks: ReactNode[] = []
@@ -63,6 +64,40 @@ export function Markdown({ text }: { text: string }) {
       )
       continue
     }
+    // A table: a row of cells between pipes, then the line of dashes under its header.
+    if (isRow(line) && /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/.test(lines[index + 1] ?? '')) {
+      const head = cells(line)
+      index += 2
+      const rows: string[][] = []
+      while (index < lines.length && isRow(lines[index] ?? '')) rows.push(cells(lines[index++] ?? ''))
+      blocks.push(
+        <div key={key()} className="scroll-quiet overflow-x-auto rounded-md border border-line">
+          <table className="w-full border-collapse text-left text-[0.875rem]">
+            <thead className="bg-raised/60">
+              <tr>
+                {head.map((cell, at) => (
+                  <th key={at} className="px-3 py-1.5 font-medium text-text-soft">
+                    {inline(cell)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, at) => (
+                <tr key={at} className="border-line border-t">
+                  {head.map((_, column) => (
+                    <td key={column} className="px-3 py-1.5 tabular-nums">
+                      {inline(row[column] ?? '')}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )
+      continue
+    }
     if (line.startsWith('>')) {
       const quote: string[] = []
       while (index < lines.length && (lines[index] ?? '').startsWith('>')) quote.push((lines[index++] ?? '').replace(/^>\s?/, ''))
@@ -74,7 +109,12 @@ export function Markdown({ text }: { text: string }) {
       continue
     }
     const paragraph: string[] = []
-    while (index < lines.length && (lines[index] ?? '').trim() !== '' && !/^(#{1,4}\s|```|>|\s*([-*+]|\d+[.)])\s)/.test(lines[index] ?? ''))
+    while (
+      index < lines.length &&
+      (lines[index] ?? '').trim() !== '' &&
+      !/^(#{1,4}\s|```|>|\s*([-*+]|\d+[.)])\s)/.test(lines[index] ?? '') &&
+      !isRow(lines[index] ?? '')
+    )
       paragraph.push(lines[index++] ?? '')
     // A line break inside a paragraph is kept, as in a letter's address block or a poem.
     blocks.push(
@@ -86,6 +126,17 @@ export function Markdown({ text }: { text: string }) {
 
   return <div className="grid max-w-[68ch] gap-3 text-sm">{blocks}</div>
 }
+
+/** A line of a table: it starts and ends with a pipe. */
+const isRow = (line: string) => /^\s*\|.*\|\s*$/.test(line)
+
+/** The cells of a table's line, trimmed. */
+const cells = (line: string) =>
+  line
+    .trim()
+    .replace(/^\||\|$/g, '')
+    .split('|')
+    .map((cell) => cell.trim())
 
 /** Emphasis, strong text, code and links inside a line. A link shows its words; the address is not followed. */
 function inline(text: string): ReactNode[] {

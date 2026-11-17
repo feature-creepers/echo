@@ -54,8 +54,12 @@ export interface SessionRequest {
 export type SessionEvent =
   /** A piece of the reply, as it is written. Pieces arrive in order; put end to end they are the reply. */
   | { type: 'text'; text: string }
-  /** A tool of the core started or ended. `name` is the tool's name as the core serves it. */
-  | { type: 'tool'; name: string; phase: 'started' | 'ended' }
+  /**
+   * A tool of the core, or a web tool of the harness, started or ended. `name` is the tool's name as the core
+   * serves it. `call` tells the calls apart. A call can be reported started twice: as soon as the session begins
+   * writing it, then again once its input is complete. Its end carries what the tool gave back, whole.
+   */
+  | { type: 'tool'; name: string; phase: 'started' | 'ended'; call?: string; input?: unknown; output?: string; failed?: boolean }
   /** The turn is over. Nothing more comes until the next `send`. */
   | { type: 'turn-end' }
   /** The session cannot go on, and why, in words for the user. It is closed. */

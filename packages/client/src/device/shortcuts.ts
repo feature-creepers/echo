@@ -13,6 +13,8 @@ export interface KeyPress {
   meta: boolean
   alt: boolean
   shift: boolean
+  /** The key is held and the system repeats it. Left out, a first press. */
+  repeat?: boolean
 }
 
 /** The keys by the name Electron gives them, from the place a browser names. Letters, digits and F-keys are worked out. */
@@ -113,10 +115,14 @@ function needs(parsed: Parsed, mac: boolean) {
   }
 }
 
-/** Whether a key press is the shortcut: the same key, with exactly the same modifiers held. */
+/**
+ * Whether a key press is the shortcut: the same key, with exactly the same modifiers held, no more and no fewer,
+ * pressed once. A key held down repeats; the repeats are not presses, or holding the talk key would start and
+ * send a take over and over.
+ */
 export function matchesShortcut(press: KeyPress, accelerator: string, mac: boolean): boolean {
   const parsed = parse(accelerator)
-  if (!parsed || codeOf(parsed.key) !== press.code) return false
+  if (!parsed || press.repeat === true || codeOf(parsed.key) !== press.code) return false
   const held = needs(parsed, mac)
   return held.ctrl === press.ctrl && held.meta === press.meta && held.alt === press.alt && held.shift === press.shift
 }

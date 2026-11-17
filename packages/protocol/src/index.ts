@@ -19,6 +19,8 @@ export {
   harnessModelSchema,
   harnessStateSchema,
   languageSchema,
+  type Step,
+  stepSchema,
   TURN_OUTCOMES,
   type TurnId,
   turnIdSchema,

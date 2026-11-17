@@ -1,4 +1,5 @@
 import type { DeviceVoice } from '@repo/client'
+import { clauses } from './clauses.ts'
 import { route } from './devices.ts'
 import type { SpeechEngine } from './engine.ts'
 import { loudness } from './recorder.ts'
@@ -20,8 +21,9 @@ export interface VoiceManner {
 
 /**
  * Says each sentence through the speech engine and the speakers. The next sentence is made while this one
- * plays, so there is no gap between them. When the engine fails, the sentence is held silent for the time it
- * would take to read, so the caption keeps its pace.
+ * plays, so there is no gap between them, and a long sentence is made a clause at a time, so it starts sooner.
+ * When the engine fails, the sentence is held silent for the time it would take to read, so the caption keeps
+ * its pace.
  */
 export function engineVoice(engine: SpeechEngine, manner: VoiceManner | (() => string), fallbackLanguage = 'en'): SpeakingVoice {
   const how: VoiceManner = typeof manner === 'function' ? { style: manner } : manner
@@ -30,8 +32,8 @@ export function engineVoice(engine: SpeechEngine, manner: VoiceManner | (() => s
   let context: AudioContext | undefined
   let analyser: AnalyserNode | undefined
   let buffer: Float32Array<ArrayBuffer> | undefined
-  /** Sound being made ahead, by sentence text. */
-  const ahead = new Map<string, Promise<AudioBuffer | undefined>>()
+  /** Sound being made ahead, by sentence text: one piece per clause, in order. */
+  const ahead = new Map<string, Promise<AudioBuffer | undefined>[]>()
 
   const ready = () => {
     if (!context) {
@@ -44,18 +46,22 @@ export function engineVoice(engine: SpeechEngine, manner: VoiceManner | (() => s
     return { context, analyser: analyser as AnalyserNode }
   }
 
+  /** Ask for the sound of each clause of a sentence at once: the engine makes them in order, the first first. */
   const make = (text: string, language: string | undefined) => {
     const known = ahead.get(text)
     if (known) return known
     const { context: audio } = ready()
     const speed = how.speed?.() ?? 1
-    const made = engine.speak(text, { language: language ?? fallbackLanguage, style: how.style(), ...(speed === 1 ? {} : { speed }) }).then(
-      (sound) => {
-        const out = audio.createBuffer(1, sound.samples.length, sound.sampleRate)
-        out.copyToChannel(new Float32Array(sound.samples), 0)
-        return out
-      },
-      () => undefined
+    const style = how.style()
+    const made = clauses(text).map((piece) =>
+      engine.speak(piece, { language: language ?? fallbackLanguage, style, ...(speed === 1 ? {} : { speed }) }).then(
+        (sound) => {
+          const out = audio.createBuffer(1, sound.samples.length, sound.sampleRate)
+          out.copyToChannel(new Float32Array(sound.samples), 0)
+          return out
+        },
+        () => undefined
+      )
     )
     ahead.set(text, made)
     return made
@@ -78,17 +84,27 @@ export function engineVoice(engine: SpeechEngine, manner: VoiceManner | (() => s
     },
     say(sentence) {
       let cancelled = false
-      let source: AudioBufferSourceNode | undefined
+      const sources: AudioBufferSourceNode[] = []
       let timer: number | undefined
       let finish: () => void = () => undefined
       const done = new Promise<void>((resolve) => {
         finish = resolve
       })
-      void make(sentence.text, sentence.language).then((audio) => {
-        ahead.delete(sentence.text)
+      // Resolved when the sound starts, with its length: the caption appears with the voice, not before it.
+      let start: (seconds: number | undefined) => void = () => undefined
+      const heard = new Promise<number | undefined>((resolve) => {
+        start = resolve
+      })
+      void done.then(() => start(undefined))
+      const pieces = make(sentence.text, sentence.language)
+      ahead.delete(sentence.text)
+      const play = async () => {
+        const first = await pieces[0]
         if (cancelled) return finish()
-        if (!audio) {
-          timer = window.setTimeout(finish, Math.max(1200, sentence.text.length * 55))
+        if (!first) {
+          const ms = Math.max(1200, sentence.text.length * 55)
+          timer = window.setTimeout(finish, ms)
+          start(ms / 1000)
           return
         }
         const { context: out, analyser: meter } = ready()
@@ -98,21 +114,48 @@ export function engineVoice(engine: SpeechEngine, manner: VoiceManner | (() => s
           void route(out, sink)
         }
         void out.resume()
-        source = out.createBufferSource()
-        source.buffer = audio
-        source.connect(meter)
-        source.onended = () => finish()
-        source.start()
-      })
+        // Each clause is set to start where the one before ends, so they run together with no gap.
+        let at = out.currentTime
+        let waiting = pieces.length
+        const queue = (sound: AudioBuffer) => {
+          const source = out.createBufferSource()
+          source.buffer = sound
+          source.connect(meter)
+          at = Math.max(at, out.currentTime)
+          source.start(at)
+          at += sound.duration
+          sources.push(source)
+          source.onended = () => {
+            if (waiting === 0 && source === sources.at(-1)) finish()
+          }
+        }
+        queue(first)
+        waiting -= 1
+        // The whole sentence lasts about as long as its first clause, in proportion to its letters.
+        const firstLetters = clauses(sentence.text)[0]?.length ?? sentence.text.length
+        start((first.duration * sentence.text.length) / Math.max(1, firstLetters))
+        for (const piece of pieces.slice(1)) {
+          const sound = await piece
+          waiting -= 1
+          if (cancelled) return
+          if (sound) queue(sound)
+        }
+        // The last clauses failed, and what was queued has already played: the sentence is over.
+        if (at <= out.currentTime) finish()
+      }
+      void play()
       return {
         done,
+        heard,
         cancel() {
           cancelled = true
           window.clearTimeout(timer)
-          try {
-            source?.stop()
-          } catch {
-            // It had not started, or had already ended.
+          for (const source of sources) {
+            try {
+              source.stop()
+            } catch {
+              // It had not started, or had already ended.
+            }
           }
           finish()
         }

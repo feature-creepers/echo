@@ -168,3 +168,37 @@ describe('the speech player', () => {
     expect(player.current()).toMatchObject({ paused: false, sentence: { text: 'Two.' } })
   })
 })
+
+describe('the caption', () => {
+  it('shows a sentence when its sound starts, not when it is announced, and prepares the ones after it', async () => {
+    const core = fakeChannel()
+    const prepared: string[] = []
+    const starts: ((seconds: number) => void)[] = []
+    const voice: DeviceVoice = {
+      say() {
+        let start: (seconds: number) => void = () => undefined
+        const heard = new Promise<number | undefined>((resolve) => {
+          start = resolve
+        })
+        starts.push(start)
+        return { done: new Promise<void>(() => undefined), cancel: () => undefined, heard }
+      },
+      prepare: (sentence) => void prepared.push(sentence.text)
+    }
+    let clock = 1000
+    const player = playSpeech(core.channel, voice, () => clock)
+    core.announce('t1', 'First.')
+    core.announce('t1', 'Second.')
+    core.announce('t1', 'Third.')
+
+    // Its sound is being made: nothing is shown yet, and everything waits.
+    expect(player.current()).toMatchObject({ sentence: undefined, waiting: 3 })
+    expect(prepared).toEqual(['Second.', 'Third.'])
+
+    clock = 1450
+    starts[0]?.(2.5)
+    await settled()
+    expect(player.current()).toMatchObject({ sentence: { text: 'First.' }, since: 1450, seconds: 2.5, waiting: 2 })
+    player.close()
+  })
+})

@@ -29,6 +29,7 @@ function setup(overrides: Partial<Handlers> = {}) {
     'view.clear': () => ({ ok: true, output: {} }),
     'threads.read': () => ({ ok: true, output: { threads: [] } }),
     'thread.focus': () => ({ ok: true, output: {} }),
+    'thread.read': () => ({ ok: false, error: { code: 'invalid-input', message: 'There is no such thread.' } }),
     'file.read': () => ({ ok: false, error: { code: 'invalid-input', message: 'none' } }),
     'memory.read': () => ({ ok: true, output: { memory, state: { asleep: false } } }),
     'memory.edit': () => ({ ok: true, output: { memory } }),

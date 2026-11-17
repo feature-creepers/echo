@@ -1,5 +1,6 @@
 import type { Logged } from '@repo/client'
 import { useState } from 'react'
+import { stepSummary } from '../conversation/thread-view.tsx'
 
 const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 })
 
@@ -16,14 +17,16 @@ export function Inspector({ events }: { events: readonly Logged[] }) {
           event.name === 'speech.say'
             ? event.text
             : event.name === 'activity'
-              ? `${event.tool} ${event.phase}`
-              : event.name === 'turn.started' || event.name === 'turn.ended'
-                ? `${event.exchange.outcome}${event.exchange.thread ? ` · thread ${event.exchange.thread.slice(0, 8)}` : ''}`
-                : event.name === 'view.shown'
-                  ? `${event.view.title} · ${event.view.slot}${event.view.widget ? ' · saved' : ''}`
-                  : event.name === 'library.changed'
-                    ? `${event.library.widgets.length} saved`
-                    : ''
+              ? `${event.tool} ${event.phase}${event.step && stepSummary(event.step) ? ` · ${stepSummary(event.step)}` : ''}`
+              : event.name === 'answer.written'
+                ? `${event.exchange.written?.length ?? 0} characters`
+                : event.name === 'turn.started' || event.name === 'turn.ended'
+                  ? `${event.exchange.outcome}${event.exchange.thread ? ` · thread ${event.exchange.thread.slice(0, 8)}` : ''}`
+                  : event.name === 'view.shown'
+                    ? `${event.view.title} · ${event.view.slot}${event.view.widget ? ' · saved' : ''}`
+                    : event.name === 'library.changed'
+                      ? `${event.library.widgets.length} saved`
+                      : ''
         return (
           <li key={`${logged.at}-${event.name}-${summary}`}>
             <button

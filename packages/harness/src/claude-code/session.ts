@@ -55,8 +55,8 @@ export function openSession(request: SessionRequest, context: SessionContext): S
   const unsent: unknown[] = []
   /** Messages sent and not answered yet, by the identifier each was sent with. The turn is over when none is left. */
   const unanswered = new Set<string>()
-  /** Calls to the core's tools under way: the call's identifier, and the tool's name. */
-  const calls = new Map<string, string>()
+  /** Calls to the core's tools under way, by the call's identifier: the tool's name and, once written, its input. */
+  const calls = new Map<string, { tool: string; input: unknown }>()
   /** Replies whose text arrives piece by piece. The whole reply comes too, and its text must not be said twice. */
   const streamed = new Set<string>()
   /** Text was written since the turn began, so the next block of text starts a new paragraph. */
@@ -187,7 +187,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
         // A reply can hold several blocks of text, around its tool calls. End to end they would run into each other.
         paragraphDue = wrote
         say(asString(block.text) ?? '')
-      } else if (block?.type === 'tool_use') toolStarted(block.id, block.name)
+      } else if (block?.type === 'tool_use') toolStarted(block.id, block.name, undefined)
     } else if (event.type === 'content_block_delta') {
       const delta = asObject(event.delta)
       if (delta?.type === 'text_delta') say(asString(delta.text) ?? '')
@@ -206,30 +206,44 @@ export function openSession(request: SessionRequest, context: SessionContext): S
       if (block?.type === 'text' && !inPieces && !notice) {
         paragraphDue = wrote
         say(asString(block.text) ?? '')
-      } else if (block?.type === 'tool_use') toolStarted(block.id, block.name)
+      } else if (block?.type === 'tool_use') toolStarted(block.id, block.name, block.input)
     }
   }
 
-  function toolStarted(id: unknown, name: unknown): void {
+  /**
+   * A call begins when its block starts, before its input is written, so the person sees at once what is under
+   * way. It is reported again once the whole block, input included, has arrived.
+   */
+  function toolStarted(id: unknown, name: unknown, input: unknown): void {
     const call = asString(id)
     const tool = reportedToolName(name, request.web === true)
-    if (call === undefined || tool === undefined || calls.has(call)) return
-    calls.set(call, tool)
-    events.emit({ type: 'tool', name: tool, phase: 'started' })
+    if (call === undefined || tool === undefined) return
+    const known = calls.get(call)
+    if (known && (input === undefined || known.input !== undefined)) return
+    calls.set(call, { tool, input })
+    events.emit(input === undefined ? { type: 'tool', name: tool, phase: 'started', call } : { type: 'tool', name: tool, phase: 'started', call, input })
   }
 
-  function toolEnded(call: string): void {
-    const tool = calls.get(call)
-    if (tool === undefined) return
+  function toolEnded(call: string, output?: string, failed?: boolean): void {
+    const known = calls.get(call)
+    if (known === undefined) return
     calls.delete(call)
-    events.emit({ type: 'tool', name: tool, phase: 'ended' })
+    events.emit({
+      type: 'tool',
+      name: known.tool,
+      phase: 'ended',
+      call,
+      ...(known.input === undefined ? {} : { input: known.input }),
+      ...(output === undefined ? {} : { output }),
+      ...(failed ? { failed } : {})
+    })
   }
 
   /** The results of tool calls come back as a message in the user's name. */
   function toolResults(message: JsonObject): void {
     for (const item of asArray(asObject(message.message)?.content)) {
       const block = asObject(item)
-      if (block?.type === 'tool_result') toolEnded(asString(block.tool_use_id) ?? '')
+      if (block?.type === 'tool_result') toolEnded(asString(block.tool_use_id) ?? '', resultText(block.content), block.is_error === true)
     }
   }
 
@@ -299,4 +313,14 @@ export function openSession(request: SessionRequest, context: SessionContext): S
     },
     onEvent: events.listen
   }
+}
+
+/** What a tool gave back, as text: a plain text, or the text of each of its parts. Pictures are named, not carried. */
+export function resultText(content: unknown): string | undefined {
+  if (typeof content === 'string') return content
+  const parts = asArray(content)
+    .map(asObject)
+    .map((part) => (part?.type === 'text' ? (asString(part.text) ?? '') : part?.type === 'image' ? '[an image]' : ''))
+    .filter((part) => part !== '')
+  return parts.length > 0 ? parts.join('\n\n') : undefined
 }

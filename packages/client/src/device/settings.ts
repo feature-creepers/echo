@@ -8,6 +8,8 @@ import { isShortcut, sameShortcut } from './shortcuts.ts'
  * with `readDeviceSettings`, which accepts anything and gives settings that can be used.
  */
 export interface DeviceSettings {
+  /** Which version of these settings wrote them, so that a default changed since is not mistaken for a choice. */
+  revision: number
   /** The microphone that hears the user. */
   microphone: AudioDevice
   /** Where the assistant's voice plays. */
@@ -26,7 +28,10 @@ export interface DeviceSettings {
   }
   /** Keyboard shortcuts, as Electron writes them. An empty one is off. */
   shortcuts: {
-    /** Talk from any app: the system hands the keys to this app. */
+    /**
+     * Talk from any app: the system hands the keys to this app, and every other app loses them. Off until the
+     * user records keys, so the app never takes keys another program uses.
+     */
     talk: string
     /** Talk while the window is in front. */
     talkInWindow: string
@@ -65,12 +70,22 @@ export function pauseMs(pause: Pause): number | undefined {
 /** The paces a voice can speak at, slowest first. */
 export const SPEEDS = [0.85, 1, 1.15, 1.3] as const
 
+/** The version of the settings this build writes. */
+const REVISION = 2
+
+/**
+ * The shortcut to talk from any app that versions before the second took by default, taken from every other
+ * program whether the user wanted it or not: an editor's parameter hints use the same keys.
+ */
+const FORMER_TALK = 'CommandOrControl+Shift+Space'
+
 export const DEFAULT_DEVICE_SETTINGS: DeviceSettings = {
+  revision: REVISION,
   microphone: { id: '', label: '' },
   speaker: { id: '', label: '' },
   listening: { pause: 'normal', sounds: true },
   voice: { aloud: true, speed: 1 },
-  shortcuts: { talk: 'CommandOrControl+Shift+Space', talkInWindow: 'CommandOrControl+Space', transcript: 'CommandOrControl+T' },
+  shortcuts: { talk: '', talkInWindow: 'CommandOrControl+Space', transcript: 'CommandOrControl+T' },
   app: { launchAtLogin: false, startHidden: false, closeToTray: true },
   updates: { automatic: true }
 }
@@ -109,6 +124,10 @@ export function readDeviceSettings(raw: unknown): DeviceSettings {
     const shortcut = read.shortcuts[name]
     if (shortcut !== '' && !isShortcut(shortcut)) read.shortcuts[name] = fallback.shortcuts[name]
   }
+  // Written before the second version, the former default was never chosen: it is let go.
+  const written = isObject(raw) && typeof raw.revision === 'number' ? raw.revision : 1
+  if (written < 2 && read.shortcuts.talk === FORMER_TALK) read.shortcuts.talk = ''
+  read.revision = REVISION
   return read
 }
 

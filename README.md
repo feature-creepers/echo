@@ -6,7 +6,7 @@ The assistant has personalities, and you call it by the name of the one in use. 
 
 ## What it does
 
-- **Talk or type.** Ctrl+Space in the window, Ctrl+Shift+Space from any app (Cmd on a Mac; both can be changed), or the microphone button; it stops listening when you pause. It answers aloud, sentence by sentence, while the rest is still being written.
+- **Talk or type.** Ctrl+Space in the window (Cmd on a Mac), keys of your choice from any app, or the microphone button; it stops listening when you pause. It answers aloud, sentence by sentence, while the rest is still being written.
 - **It shows what is better seen than heard.** The assistant composes each view itself from generic building blocks (metrics, tables, charts, steps, timelines, its own drawings, documents to download). Nothing is made in advance for any subject.
 - **One conversation, hidden threads.** Topics are worked on in threads you never have to manage. "By the way" questions open asides beside the current topic. An answer that finishes while you moved on waits, marked ready.
 - **Two personalities, named by you.** One goes along with you; the other questions a risky move with a decision card, and complies if you insist.

@@ -27,6 +27,8 @@ export const threadSchema = z.object({
   title: z.string(),
   kind: z.enum(THREAD_KINDS),
   state: z.enum(THREAD_STATES),
+  /** For an aside: the topic on the stage when it was opened, which it sits beside. */
+  parent: threadIdSchema.optional(),
   /** When it was last used: an ISO 8601 date in UTC. */
   at: z.string()
 })

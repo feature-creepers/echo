@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { enginesSchema, exchangeSchema, languageSchema, turnIdSchema } from '../conversation.ts'
+import { enginesSchema, exchangeSchema, languageSchema, stepSchema, turnIdSchema } from '../conversation.ts'
 import { eventPrefixSchema } from '../envelope.ts'
 
 /** The user said something and the assistant started on it. Carries the new line of the transcript. */
@@ -26,12 +26,22 @@ export const turnEndedSchema = eventPrefixSchema.extend({
   exchange: exchangeSchema
 })
 
-/** A tool started or ended while the assistant works on a turn. For those who want to see it work. */
+/**
+ * A tool started or ended while the assistant works on a turn: what shows the user it is at work ("searching
+ * the web") while they wait. `step` carries the call whole, its input and, once ended, its output.
+ */
 export const activitySchema = eventPrefixSchema.extend({
   name: z.literal('activity'),
   turn: turnIdSchema,
   tool: z.string(),
-  phase: z.enum(['started', 'ended'])
+  phase: z.enum(['started', 'ended']),
+  step: stepSchema.optional()
+})
+
+/** A thread wrote its full answer to a turn, for reading: the line of the transcript now carries it. */
+export const answerWrittenSchema = eventPrefixSchema.extend({
+  name: z.literal('answer.written'),
+  exchange: exchangeSchema
 })
 
 /** Which harnesses can be used changed: one was installed, signed in or out, or another was picked. */

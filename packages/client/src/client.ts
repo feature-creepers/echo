@@ -1,5 +1,6 @@
 import { openSession, type Session, type SessionLink } from './session.ts'
 import { type DeviceVoice, playSpeech, type SpeechPlayer } from './speech-player.ts'
+import { type Activity, followActivity } from './state/activity.ts'
 import { type ChannelState, followChannel } from './state/channel.ts'
 import { type EnginesState, followEngines } from './state/engines.ts'
 import type { Followed } from './state/followed.ts'
@@ -15,6 +16,8 @@ export interface Client {
   session: Session
   settings: SettingsState
   channel: ChannelState
+  /** What the assistant is doing for the turn under way: the tool calls it is making. */
+  activity: Followed<Activity>
   engines: EnginesState
   view: ViewState
   threads: ThreadsState
@@ -37,6 +40,7 @@ export function openClient(link: SessionLink, voice: DeviceVoice): Client {
   const session = openSession(link)
   const settings = followSettings(session)
   const channel = followChannel(session)
+  const activity = followActivity(session)
   const engines = followEngines(session)
   const view = followView(session)
   const threads = followThreads(session)
@@ -48,6 +52,7 @@ export function openClient(link: SessionLink, voice: DeviceVoice): Client {
     session,
     settings,
     channel,
+    activity,
     engines,
     view,
     threads,
@@ -63,6 +68,7 @@ export function openClient(link: SessionLink, voice: DeviceVoice): Client {
       threads.unfollow()
       events.unfollow()
       engines.unfollow()
+      activity.unfollow()
       channel.unfollow()
       settings.stop()
       session.close()

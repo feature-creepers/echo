@@ -12,7 +12,8 @@ const INDEXED = 12
 export interface ThreadRegistry {
   read(): Threads
   get(id: string): Thread | undefined
-  open(title: string, kind: Thread['kind']): Thread
+  /** Open a thread. An aside is given the topic it sits beside. */
+  open(title: string, kind: Thread['kind'], parent?: string): Thread
   setState(id: string, state: Thread['state']): void
   /** Bring a topic to the stage. An aside never takes the focus. */
   focus(id: string): void
@@ -61,8 +62,15 @@ export function createThreadRegistry({ records, now, newId }: RegistryOptions): 
   return {
     read,
     get: (id) => threads.get(id),
-    open(title, kind) {
-      const thread: Thread = { id: newId(), title, kind, state: 'working', at: now().toISOString() }
+    open(title, kind, parent) {
+      const thread: Thread = {
+        id: newId(),
+        title,
+        kind,
+        state: 'working',
+        at: now().toISOString(),
+        ...(kind === 'aside' && parent !== undefined && threads.has(parent) ? { parent } : {})
+      }
       write(thread)
       return thread
     },
