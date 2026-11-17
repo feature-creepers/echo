@@ -85,20 +85,16 @@ export function ShortcutRecorder({ label, value, onRecord, onProblem }: Shortcut
           keys.map((key) => (
             <kbd
               key={key}
-              className="inline-flex h-6 min-w-6 items-center justify-center rounded-[5px] border border-line-strong border-b-2 bg-raised px-1.5 font-mono text-[0.6875rem] text-text"
+              className="inline-flex h-6 min-w-6 items-center justify-center rounded-[5px] border border-line-strong border-b-2 bg-raised px-1.5 text-[0.6875rem] text-text"
             >
               {key}
             </kbd>
           ))
         ) : (
-          <span className={cn('px-1 font-mono text-xs', recording ? 'animate-pulse text-accent' : 'text-text-faint')}>
-            {recording ? 'Press the keys…' : 'None'}
-          </span>
+          <span className={cn('px-1 text-xs', recording ? 'animate-pulse text-accent' : 'text-text-faint')}>{recording ? 'Press the keys…' : 'None'}</span>
         )}
       </span>
-      <span className={cn('font-mono text-label uppercase', recording ? 'text-accent' : 'text-text-faint group-hover:text-text-soft')}>
-        {recording ? 'esc' : 'change'}
-      </span>
+      <span className={cn('text-label', recording ? 'text-accent' : 'text-text-faint group-hover:text-text-soft')}>{recording ? 'Esc' : 'Change'}</span>
     </button>
   )
 }

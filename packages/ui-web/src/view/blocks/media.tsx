@@ -64,14 +64,7 @@ export function Media({ props }: { props: BlockProps<'Media'> }) {
         <div className="grid min-w-0 flex-1 gap-0.5">
           <div className="flex items-center gap-1.5">
             {props.live && <Live on={sounding} />}
-            <span
-              className={cn(
-                'font-mono text-[0.625rem] uppercase tracking-[0.12em]',
-                status === 'failed' ? 'text-danger' : going ? 'text-accent' : 'text-text-faint'
-              )}
-            >
-              {label}
-            </span>
+            <span className={cn('text-[0.6875rem]', status === 'failed' ? 'text-danger' : going ? 'text-accent' : 'text-text-faint')}>{label}</span>
           </div>
           <p className="truncate font-medium text-sm leading-snug">{props.title}</p>
           {props.subtitle && <p className="truncate text-text-soft text-xs">{props.subtitle}</p>}
@@ -90,7 +83,7 @@ export function Media({ props }: { props: BlockProps<'Media'> }) {
       </div>
 
       {held && !props.live && state.duration !== undefined && (
-        <div className="flex items-center gap-2.5 px-0.5 font-mono text-[0.625rem] text-text-faint tabular-nums">
+        <div className="flex items-center gap-2.5 px-0.5 text-[0.6875rem] text-text-faint tabular-nums">
           <span>{duration(state.position)}</span>
           <Slider
             label="Position"
@@ -104,7 +97,7 @@ export function Media({ props }: { props: BlockProps<'Media'> }) {
       {status === 'failed' ? (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-danger/30 bg-danger/8 px-2.5 py-1.5">
           <p className="text-danger text-xs">{state.problem}</p>
-          <button type="button" onClick={() => player.play(source)} className="font-mono text-label text-text-soft uppercase hover:text-text">
+          <button type="button" onClick={() => player.play(source)} className="text-label text-text-soft hover:text-text">
             Try again
           </button>
         </div>
@@ -120,7 +113,7 @@ export function Media({ props }: { props: BlockProps<'Media'> }) {
               <VolumeGlyph muted={state.muted || state.volume === 0} />
             </button>
             <Slider label="Volume" value={state.muted ? 0 : state.volume} onChange={(volume) => player.setVolume(volume)} className="max-w-32" />
-            {state.ducked && <span className="truncate font-mono text-[0.625rem] text-text-faint uppercase tracking-[0.1em]">Lowered while speaking</span>}
+            {state.ducked && <span className="truncate text-[0.6875rem] text-text-faint">Lowered while speaking</span>}
           </div>
         )
       )}
@@ -160,7 +153,7 @@ function Live({ on }: { on: boolean }) {
   return (
     <span
       className={cn(
-        'flex h-4 items-center gap-1 rounded-xs border px-1 font-mono text-[0.5625rem] uppercase tracking-[0.12em]',
+        'flex h-4 items-center gap-1 rounded-xs border px-1 font-medium text-[0.625rem]',
         on ? 'border-danger/40 text-danger' : 'border-line-strong text-text-faint'
       )}
     >

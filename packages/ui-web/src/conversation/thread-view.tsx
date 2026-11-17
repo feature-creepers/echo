@@ -10,7 +10,7 @@ import { Markdown } from '../view/blocks/markdown.tsx'
 import { StateDot } from './thread-list.tsx'
 
 const clock = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' })
-const STATE = { working: 'Working', ready: 'Ready', parked: 'Idle' } as const
+const STATE = { working: 'working', ready: 'ready', parked: 'idle' } as const
 
 /** What each tool did, in a few words, for the list of calls. */
 const TOOL_TITLES: Record<string, string> = {
@@ -106,7 +106,7 @@ export function ThreadView({ client, thread, personas, onBack }: ThreadViewProps
           <div className="flex items-start justify-between gap-3">
             <div className="grid min-w-0 gap-1">
               <span className="font-medium text-[0.9375rem] leading-snug">{header.title}</span>
-              <span className="flex items-center gap-2 font-mono text-label text-text-faint uppercase">
+              <span className="flex items-center gap-2 text-label text-text-faint">
                 <StateDot state={header.state} />
                 {header.kind === 'aside' ? 'Aside' : 'Topic'} · {STATE[header.state]}
               </span>
@@ -148,7 +148,7 @@ function ExchangeEntry({ exchange, steps, views, persona }: { exchange: Exchange
   return (
     <li className="grid gap-3" style={accentStyle(persona?.accent)}>
       <div className="grid gap-1">
-        <span className="flex items-baseline gap-2 font-mono text-label text-text-faint uppercase">
+        <span className="flex items-baseline gap-2 text-label text-text-faint">
           {exchange.trigger === 'greeting' ? 'Briefing' : 'You'} <time dateTime={exchange.at}>{clock.format(new Date(exchange.at))}</time>
         </span>
         {exchange.said && <p className="text-sm text-text-soft leading-relaxed">{exchange.said}</p>}
@@ -173,13 +173,13 @@ function ExchangeEntry({ exchange, steps, views, persona }: { exchange: Exchange
       )}
 
       <div className="grid gap-1 border-accent/50 border-l pl-3">
-        <span className="font-mono text-accent text-label uppercase">{persona?.name ?? 'Assistant'} said</span>
+        <span className="text-accent text-label">{persona?.name ?? 'Assistant'} said</span>
         {exchange.replied ? (
           <p className="text-sm leading-relaxed">{exchange.replied}</p>
         ) : exchange.outcome === 'running' ? (
           <p className="text-sm text-text-faint">…</p>
         ) : null}
-        {exchange.outcome === 'stopped' && <p className="font-mono text-label text-text-faint uppercase">Stopped</p>}
+        {exchange.outcome === 'stopped' && <p className="text-label text-text-faint">Stopped</p>}
         {exchange.outcome === 'failed' && <p className="text-danger text-sm leading-relaxed">{exchange.problem ?? 'It could not answer.'}</p>}
       </div>
 
@@ -231,7 +231,7 @@ function StepRow({ step }: { step: Step }) {
 function Detail({ label, text }: { label: string; text: string }) {
   return (
     <div className="grid gap-1">
-      <span className="font-mono text-[0.625rem] text-text-faint uppercase tracking-wide">{label}</span>
+      <span className="text-[0.6875rem] text-text-faint">{label}</span>
       <pre className="scroll-quiet max-h-72 overflow-auto whitespace-pre-wrap rounded-sm bg-ground p-2.5 font-mono text-[0.6875rem] text-text-soft leading-relaxed [overflow-wrap:anywhere]">
         {text}
       </pre>

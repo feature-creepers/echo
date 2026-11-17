@@ -57,12 +57,7 @@ function Control({ view, controls }: { view: Saveable; controls: LibraryControls
     <div className="flex items-center">
       <AnimatePresence>
         {just && (
-          <motion.span
-            initial={{ opacity: 0, x: 6 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0 }}
-            className="mr-1 font-mono text-[0.625rem] text-text-soft uppercase tracking-[0.12em]"
-          >
+          <motion.span initial={{ opacity: 0, x: 6 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="mr-1 text-[0.6875rem] text-text-soft">
             Saved
           </motion.span>
         )}
@@ -70,7 +65,7 @@ function Control({ view, controls }: { view: Saveable; controls: LibraryControls
       <Menu
         header={
           <span className="grid gap-0.5">
-            <span className="font-mono text-label text-text-faint uppercase">In your library</span>
+            <span className="text-label text-text-faint">In your library</span>
             <span className="truncate text-sm">{saved.title}</span>
           </span>
         }

@@ -14,7 +14,7 @@ export function VoiceSetup({ speech }: { speech: DeviceSpeech }) {
   const { readiness, install } = speech
   const { settings, mac } = useDevice()
   const talkKey = settings.shortcuts.talkInWindow
-  if (!readiness) return <p className="font-mono text-text-faint text-xs">Looking at the voice models on this computer…</p>
+  if (!readiness) return <p className="text-text-faint text-xs">Looking at the voice models on this computer…</p>
 
   const missing = readiness.models.filter((model) => !model.installed)
   const total = missing.reduce((sum, model) => sum + model.bytes, 0)
@@ -27,7 +27,7 @@ export function VoiceSetup({ speech }: { speech: DeviceSpeech }) {
           <li key={model.id} className="flex items-center gap-4 rounded-md border border-line bg-surface/80 px-4 py-3.5">
             <span className={cn('size-2 shrink-0 rounded-full', model.installed ? 'bg-ok shadow-[0_0_10px_var(--color-ok)]' : 'bg-text-faint/50')} />
             <span className="flex-1 text-sm">{model.name}</span>
-            <span className="font-mono text-text-soft text-xs">{model.installed ? 'Installed' : megabytes(model.bytes)}</span>
+            <span className="text-text-soft text-xs">{model.installed ? 'Installed' : megabytes(model.bytes)}</span>
           </li>
         ))}
       </ul>
@@ -39,7 +39,7 @@ export function VoiceSetup({ speech }: { speech: DeviceSpeech }) {
           <div className="h-1 overflow-hidden rounded-full bg-white/[0.06]">
             <div className="h-full rounded-full bg-accent transition-[width] duration-500 ease-soft" style={{ width: `${progress * 100}%` }} />
           </div>
-          <span className="font-mono text-text-soft text-xs tabular-nums">
+          <span className="text-text-soft text-xs tabular-nums">
             {install.progress ? `${megabytes(install.progress.received)} of ${megabytes(install.progress.total)}` : 'Starting the download…'}
           </span>
         </div>

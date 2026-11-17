@@ -1,5 +1,5 @@
 import type { Client, CoreLink } from '@repo/client'
-import { describeShortcut, matchesShortcut } from '@repo/client'
+import { describeShortcut, matchesShortcut, pinnedOf } from '@repo/client'
 import { useFollowed } from '@repo/client/react'
 import type { Accent, CommandInput, PersonaId } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
@@ -11,17 +11,18 @@ import { DeviceProvider, keyPress, useDevice } from '../device/device.tsx'
 import type { DeviceHost } from '../device/host.ts'
 import { LibraryContext, type LibraryControls } from '../library/library-context.ts'
 import { LibraryScreen } from '../library/library-screen.tsx'
-import { PinnedStack } from '../library/pinned-stack.tsx'
+import { DOCKED_SHIFT, PinnedStack, usePinnedDock } from '../library/pinned-stack.tsx'
 import { NowPlaying } from '../media/now-playing.tsx'
 import { PlayerProvider, usePlayer } from '../media/player-provider.tsx'
 import { Onboarding } from '../onboarding/onboarding.tsx'
 import { Orb } from '../presence/orb.tsx'
+import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { IconButton } from '../primitives/icon-button.tsx'
-import { LibraryGlyph, SettingsGlyph, SheetGlyph } from '../primitives/icons.tsx'
+import { LibraryGlyph, PinnedGlyph, SettingsGlyph, SheetGlyph } from '../primitives/icons.tsx'
 import { SettingsScreen, type SettingsSection } from '../settings/settings-screen.tsx'
 import { accentStyle } from '../styles/accent.ts'
-import { DURATION, EASE } from '../styles/motion.ts'
+import { DURATION, EASE, glide } from '../styles/motion.ts'
 import type { ViewActions } from '../view/context.ts'
 import { type SheetTab, SideSheet } from './side-sheet.tsx'
 
@@ -119,6 +120,10 @@ function Connected({ productName, client, engine }: { productName: string; clien
   const player = usePlayer()
   useEffect(() => player.duck('speaking', speaking.sentence !== undefined), [player, speaking.sentence])
 
+  // The pinned widgets: docked beside the conversation in a wide window, behind a toggle in a narrow one.
+  const library = useFollowed(client.library)
+  const dock = usePinnedDock(pinnedOf(library).length)
+
   const controls = useMemo<LibraryControls>(() => ({ library: client.library, open: (widget) => setScreen({ is: 'library', widget }) }), [client])
   const say = useCallback(
     (text: string) => {
@@ -177,6 +182,7 @@ function Connected({ productName, client, engine }: { productName: string; clien
   if (showing.is === 'onboarding') {
     return (
       <Frame productName={productName} accent={accent}>
+        <Ground />
         <Onboarding
           productName={productName}
           personas={personas}
@@ -193,6 +199,15 @@ function Connected({ productName, client, engine }: { productName: string; clien
   const titleActions = (
     <>
       <NowPlaying />
+      {showing.is === 'main' && dock.count > 0 && (
+        <IconButton
+          label={dock.shown ? `Hide the pinned widgets (${dock.count})` : `Show the pinned widgets (${dock.count})`}
+          active={dock.shown}
+          onClick={dock.toggle}
+        >
+          <PinnedGlyph />
+        </IconButton>
+      )}
       <IconButton label="Library" active={showing.is === 'library'} onClick={() => (showing.is === 'library' ? toMain() : setScreen({ is: 'library' }))}>
         <LibraryGlyph />
       </IconButton>
@@ -219,7 +234,7 @@ function Connected({ productName, client, engine }: { productName: string; clien
 
   return (
     <LibraryContext.Provider value={controls}>
-      <Frame productName={productName} accent={accent} actions={titleActions}>
+      <Frame productName={productName} accent={accent} actions={titleActions} split={showing.is !== 'main'}>
         <div className="relative h-full">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
@@ -253,18 +268,21 @@ function Connected({ productName, client, engine }: { productName: string; clien
                   onClose={toMain}
                 />
               ) : (
-                // The pinned widgets float on the right of the main screen, over its margin: the stage stays centred.
-                <div className="relative h-full">
-                  <Stage
-                    client={client}
-                    personas={personas}
-                    onSwitch={(persona) => setPersonas({ names: [], active: persona })}
-                    onSetUpEngine={() => setScreen({ is: 'settings', section: 'models' })}
-                    speech={speech.ready}
-                    voiceLevel={speech.ready ? speech.level : undefined}
-                    onSetUpVoice={engine ? () => setScreen({ is: 'settings', section: 'voice' }) : undefined}
-                  />
-                  <PinnedStack controls={controls} actions={actions} />
+                <div className="relative h-full overflow-hidden">
+                  <Ground />
+                  {/* With the pinned widgets docked, the conversation is centred in the space left of them. Moved, not laid out again. */}
+                  <motion.div className="relative h-full" initial={false} animate={{ x: dock.shown && dock.wide ? DOCKED_SHIFT : 0 }} transition={glide}>
+                    <Stage
+                      client={client}
+                      personas={personas}
+                      onSwitch={(persona) => setPersonas({ names: [], active: persona })}
+                      onSetUpEngine={() => setScreen({ is: 'settings', section: 'models' })}
+                      speech={speech.ready}
+                      voiceLevel={speech.ready ? speech.level : undefined}
+                      onSetUpVoice={engine ? () => setScreen({ is: 'settings', section: 'voice' }) : undefined}
+                    />
+                  </motion.div>
+                  <PinnedStack controls={controls} actions={actions} dock={dock} />
                 </div>
               )}
             </motion.div>
@@ -287,31 +305,42 @@ interface FrameProps {
   accent?: Accent | undefined
   /** What the title row offers on the right. */
   actions?: ReactNode
+  /** The screen paints its own panes (a sidebar and its content), so the window's material shows in the sidebar. */
+  split?: boolean
   children: ReactNode
 }
 
 /**
- * The window: a ground ruled like graph paper, the title row, and the screen under it.
+ * The window: the title row, and the screen under it.
  *
- * The title row is the window's own bar. The window is dragged by it, and the system draws its buttons
- * (close, minimise, maximise) over it: the titlebar-area values say which part of the row those leave free.
+ * The title row is the window's own bar, as in a native app with a unified toolbar. The window is dragged by it,
+ * and the system draws its buttons (close, minimise, maximise) over it: the titlebar-area values say which part
+ * of the row those leave free. Where the system draws a material behind the page, the row and the screens tint it.
  */
-function Frame({ productName, accent, actions, children }: FrameProps) {
+function Frame({ productName, accent, actions, split = false, children }: FrameProps) {
   return (
-    <div className="accent-shift relative flex h-screen flex-col overflow-hidden bg-ground" style={accentStyle(accent)}>
-      {/* Graph paper under everything: texture that never competes with what is on it. */}
-      <div aria-hidden="true" className="graph-paper pointer-events-none absolute inset-0" />
-      <header className="drag relative h-[calc(env(titlebar-area-height,var(--frame-title-bar))+1px)] shrink-0 border-line border-b bg-ground/60">
+    <div className="accent-shift relative flex h-screen flex-col overflow-hidden" style={accentStyle(accent)}>
+      <header className="drag relative h-[calc(env(titlebar-area-height,var(--frame-title-bar))+1px)] shrink-0 border-black/50 border-b bg-(--window) shadow-[0_1px_0_rgb(255_255_255/0.035)]">
         <div className="absolute top-[env(titlebar-area-y,0px)] left-[env(titlebar-area-x,0px)] flex h-[env(titlebar-area-height,var(--frame-title-bar))] w-[env(titlebar-area-width,100%)] items-center justify-between pr-2 pl-4">
-          <span className="flex items-center gap-2 font-medium font-mono text-[0.6875rem] text-text-soft lowercase tracking-[0.2em]">
-            <span className="size-1.5 rounded-full bg-accent" />
-            {productName}
-          </span>
-          <span className="no-drag flex items-center gap-1">{actions}</span>
+          <span className="font-semibold text-[0.8125rem] text-text-soft tracking-[-0.005em]">{productName}</span>
+          <span className="no-drag flex items-center gap-0.5">{actions}</span>
         </div>
       </header>
-      <main className="relative min-h-0 flex-1">{children}</main>
+      <main className={cn('relative min-h-0 flex-1', !split && 'bg-(--window)')}>{children}</main>
     </div>
+  )
+}
+
+/** The ground of the main screen and of first launch: dense, faint dots, and a little of the accent's light from above. */
+function Ground() {
+  return (
+    <>
+      <div aria-hidden="true" className="dot-ground pointer-events-none absolute inset-0" />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(56%_42%_at_50%_0%,color-mix(in_oklab,var(--accent)_8%,transparent),transparent_100%)]"
+      />
+    </>
   )
 }
 

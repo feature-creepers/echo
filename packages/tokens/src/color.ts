@@ -13,8 +13,8 @@ export const color = {
   overlay: '#161b24',
   /** A hairline between two areas. A wash of white, so it reads on every layer. */
   line: 'rgb(255 255 255 / 0.07)',
-  /** The faintest rule: the squares of the graph paper behind everything. */
-  lineFaint: 'rgb(255 255 255 / 0.028)',
+  /** The dots of the main screen's ground: dense, and barely there. */
+  dot: 'rgb(255 255 255 / 0.075)',
   /** The edge of something that can be typed in or pressed. */
   lineStrong: 'rgb(255 255 255 / 0.14)',
   text: '#edf0f5',
@@ -27,7 +27,13 @@ export const color = {
   /** Something went through. */
   ok: '#5fd39b',
   /** Something to keep an eye on. */
-  warn: '#f0c05a'
+  warn: '#f0c05a',
+  /**
+   * Pure white and black, for washes and shadows made of them at a low opacity (`bg-white/[0.06]`): a raised
+   * control, a selected row, the dark edge under the title row. Never used whole.
+   */
+  white: '#ffffff',
+  black: '#000000'
 } as const
 
 export type ColorName = keyof typeof color

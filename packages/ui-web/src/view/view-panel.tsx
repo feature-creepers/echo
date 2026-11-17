@@ -28,7 +28,7 @@ export function ViewPanel({ view, actions, onClose }: ViewPanelProps) {
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0, transition: { duration: DURATION.slow, ease: EASE } }}
         exit={{ opacity: 0, transition: { duration: DURATION.quick, ease: EASE } }}
-        className="grid w-full min-w-0 overflow-hidden rounded-lg border border-line bg-surface/85 shadow-[0_1px_0_rgb(255_255_255/0.03)_inset,0_24px_48px_-32px_rgb(0_0_0/0.9)]"
+        className="grid w-full min-w-0 overflow-hidden rounded-lg bg-surface/90 shadow-[0_0_0_1px_rgb(255_255_255/0.065),inset_0_1px_0_rgb(255_255_255/0.03),0_18px_44px_-26px_rgb(0_0_0/0.9)]"
       >
         <PanelBar title={view.title}>
           <SaveControl view={view} />
@@ -48,9 +48,9 @@ export function ViewPanel({ view, actions, onClose }: ViewPanelProps) {
 /** The bar on top of a view, wherever it is shown: its name on the left, what can be done with it on the right. */
 export function PanelBar({ title, lead, children }: { title: string; lead?: string; children: ReactNode }) {
   return (
-    <header className="flex h-9 min-w-0 items-center justify-between gap-3 border-line border-b pr-1 pl-4">
+    <header className="flex h-9 min-w-0 items-center justify-between gap-3 border-white/[0.06] border-b pr-1 pl-4">
       <span className="flex min-w-0 items-baseline gap-2 text-xs">
-        {lead && <span className="shrink-0 font-mono text-[0.625rem] text-text-faint uppercase tracking-[0.12em]">{lead}</span>}
+        {lead && <span className="shrink-0 text-[0.6875rem] text-text-faint">{lead}</span>}
         <span className="truncate font-medium text-text-soft">{title}</span>
       </span>
       <div className="flex shrink-0 items-center">{children}</div>

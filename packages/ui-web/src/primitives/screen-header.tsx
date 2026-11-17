@@ -19,7 +19,7 @@ export function ScreenHeader({ title, detail, closeLabel, onClose }: ScreenHeade
   return (
     <div className="flex items-start justify-between gap-6">
       <div className="grid min-w-0 gap-1">
-        <h1 className="truncate font-medium text-2xl leading-8 tracking-[-0.02em]">{title}</h1>
+        <h1 className="truncate font-semibold text-[1.375rem] leading-8 tracking-[-0.02em]">{title}</h1>
         {detail && <p className="text-[0.8125rem] text-text-soft">{detail}</p>}
       </div>
       <IconButton label={closeLabel} onClick={onClose} className="mt-0.5 size-7">

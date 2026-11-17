@@ -40,10 +40,10 @@ export function Asides({ cards, ready, onFocus, onClose, actions }: AsidesProps)
                 exit={{ opacity: 0, scale: 0.98 }}
                 transition={{ duration: 0.24, ease: EASE }}
                 onClick={() => onFocus(thread.id)}
-                className="group flex h-7 max-w-full items-center gap-2 rounded-md border border-line-strong bg-surface/90 pr-2 pl-2.5 transition-colors duration-(--duration-quick) hover:border-accent/50 hover:bg-raised"
+                className="group flex h-7 max-w-full items-center gap-2 rounded-md bg-white/[0.07] pr-2 pl-2.5 shadow-[0_1px_2px_rgb(0_0_0/0.3),inset_0_0_0_0.5px_rgb(255_255_255/0.1)] transition-colors duration-(--duration-quick) hover:bg-white/[0.1]"
               >
                 <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-accent" />
-                <span className="font-mono text-[0.625rem] text-accent uppercase tracking-[0.12em]">Ready</span>
+                <span className="font-medium text-[0.6875rem] text-accent">Ready</span>
                 <span className="min-w-0 truncate text-[0.8125rem]">{thread.title}</span>
                 <span className="text-text-faint transition group-hover:translate-x-0.5 group-hover:text-text [&_svg]:size-3.5">
                   <ArrowGlyph />
@@ -64,7 +64,7 @@ export function Asides({ cards, ready, onFocus, onClose, actions }: AsidesProps)
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.98, transition: { duration: 0.14 } }}
                 transition={{ duration: 0.3, ease: EASE }}
-                className="grid min-w-0 content-start overflow-hidden rounded-lg border border-line bg-surface/85"
+                className="grid min-w-0 content-start overflow-hidden rounded-lg bg-surface/90 shadow-[0_0_0_1px_rgb(255_255_255/0.065),0_12px_32px_-22px_rgb(0_0_0/0.9)]"
               >
                 <PanelBar lead="By the way" title={card.title}>
                   <SaveControl view={card} />

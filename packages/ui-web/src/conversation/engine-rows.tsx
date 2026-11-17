@@ -34,7 +34,7 @@ export function EngineRows({ engines }: { engines: EnginesState }) {
     }
   }
 
-  if (!known) return <p className="font-mono text-text-faint text-xs">Looking for the AI programs on this machine…</p>
+  if (!known) return <p className="text-text-faint text-xs">Looking for the AI programs on this machine…</p>
 
   return (
     <div className="grid gap-3">
@@ -47,7 +47,7 @@ export function EngineRows({ engines }: { engines: EnginesState }) {
               <div className="grid min-w-0 flex-1 gap-0.5">
                 <span className="font-medium text-sm">
                   {harness.name}
-                  {harness.id === known.active && <span className="ml-2 font-mono text-accent text-label uppercase">in use</span>}
+                  {harness.id === known.active && <span className="ml-2 font-medium text-accent text-label">In use</span>}
                 </span>
                 <span className="truncate text-text-soft text-xs" title={text}>
                   {text}

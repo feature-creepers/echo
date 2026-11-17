@@ -4,10 +4,9 @@ import { useFollowed } from '@repo/client/react'
 import type { SavedWidget } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo, useState } from 'react'
-import { cn } from '../primitives/cn.ts'
-import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { BookmarkGlyph, PinGlyph, SearchGlyph } from '../primitives/icons.tsx'
 import { ScreenHeader } from '../primitives/screen-header.tsx'
+import { Sidebar, SidebarItem } from '../primitives/sidebar.tsx'
 import { EASE } from '../styles/motion.ts'
 import type { ViewActions } from '../view/context.ts'
 import { ViewRenderer } from '../view/view-renderer.tsx'
@@ -79,29 +78,39 @@ export function LibraryScreen({ controls, actions, selected, onAsk, onClose }: L
   const counts = { all: widgets.length, pinned: widgets.filter((one) => one.pinned).length, unfiled: widgets.filter((one) => !one.collection).length }
 
   return (
-    <section aria-label="Library" className="relative mx-auto flex h-full w-full max-w-6xl gap-10 px-8 pt-8">
-      <nav aria-label="Shelves" className="grid w-44 shrink-0 content-start gap-px">
-        <Eyebrow className="mb-2 px-2.5 leading-8">Library</Eyebrow>
-        <ShelfButton label="All widgets" count={counts.all} on={shelf.is === 'all'} onClick={() => setShelf({ is: 'all' })} />
-        <ShelfButton label="Pinned" count={counts.pinned} on={shelf.is === 'pinned'} onClick={() => setShelf({ is: 'pinned' })} />
-        <ShelfButton label="Unfiled" count={counts.unfiled} on={shelf.is === 'unfiled'} onClick={() => setShelf({ is: 'unfiled' })} />
-        <span className="mt-5 mb-1 px-2.5 text-[0.6875rem] text-text-faint">Collections</span>
-        {collections.length === 0 ? (
-          <p className="px-2.5 text-text-faint text-xs leading-relaxed">Open a widget and give it a collection to start one.</p>
-        ) : (
-          collections.map((collection) => (
-            <ShelfButton
-              key={collection.name}
-              label={collection.name}
-              count={collection.count}
-              on={shelf.is === 'collection' && shelf.name === collection.name}
-              onClick={() => setShelf({ is: 'collection', name: collection.name })}
-            />
-          ))
-        )}
-      </nav>
+    <section aria-label="Library" className="relative flex h-full w-full">
+      <Sidebar title="Library" label="Shelves">
+        <div className="grid gap-px">
+          <SidebarItem detail={counts.all} on={shelf.is === 'all'} onClick={() => setShelf({ is: 'all' })}>
+            All widgets
+          </SidebarItem>
+          <SidebarItem detail={counts.pinned} on={shelf.is === 'pinned'} onClick={() => setShelf({ is: 'pinned' })}>
+            Pinned
+          </SidebarItem>
+          <SidebarItem detail={counts.unfiled} on={shelf.is === 'unfiled'} onClick={() => setShelf({ is: 'unfiled' })}>
+            Unfiled
+          </SidebarItem>
+        </div>
+        <div className="grid gap-px">
+          <span className="mb-0.5 px-2.5 font-semibold text-[0.6875rem] text-text-faint">Collections</span>
+          {collections.length === 0 ? (
+            <p className="px-2.5 text-text-faint text-xs leading-relaxed">Open a widget and give it a collection to start one.</p>
+          ) : (
+            collections.map((collection) => (
+              <SidebarItem
+                key={collection.name}
+                detail={collection.count}
+                on={shelf.is === 'collection' && shelf.name === collection.name}
+                onClick={() => setShelf({ is: 'collection', name: collection.name })}
+              >
+                {collection.name}
+              </SidebarItem>
+            ))
+          )}
+        </div>
+      </Sidebar>
 
-      <div className="scroll-quiet min-w-0 flex-1 overflow-y-auto overflow-x-hidden pb-16">
+      <div className="scroll-quiet min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-(--window) px-10 pt-7 pb-16">
         <ScreenHeader
           title={title}
           detail={widgets.length === 0 ? 'Nothing saved yet.' : `${shown.length} of ${widgets.length} ${widgets.length === 1 ? 'widget' : 'widgets'}`}
@@ -110,7 +119,7 @@ export function LibraryScreen({ controls, actions, selected, onAsk, onClose }: L
         />
         {/* The search spans the column under the title, where the eye goes next; the close button keeps its corner. */}
         {widgets.length > 0 && (
-          <label className="mt-5 mb-5 flex h-9 items-center gap-2 rounded-md border border-line-strong bg-surface/80 px-2.5 text-text-faint transition-colors duration-(--duration-quick) focus-within:border-accent/50 focus-within:text-text-soft [&_svg]:size-3.5">
+          <label className="mt-5 mb-5 flex h-8 items-center gap-2 rounded-md bg-white/[0.06] px-2.5 text-text-faint shadow-[inset_0_0_0_0.5px_rgb(255_255_255/0.08)] transition-shadow duration-(--duration-quick) focus-within:text-text-soft focus-within:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_55%,transparent)] [&_svg]:size-3.5">
             <SearchGlyph />
             <input
               type="search"
@@ -118,7 +127,7 @@ export function LibraryScreen({ controls, actions, selected, onAsk, onClose }: L
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search by title, collection or anything a widget shows"
               aria-label="Search the library"
-              className="min-w-0 flex-1 bg-transparent text-[0.8125rem] text-text outline-none placeholder:text-text-faint focus-visible:outline-none"
+              className="min-w-0 flex-1 bg-transparent text-[0.8125rem] text-text outline-none placeholder:text-text-faint focus-visible:outline-none [&::-webkit-search-cancel-button]:hidden"
             />
           </label>
         )}
@@ -168,32 +177,15 @@ export function LibraryScreen({ controls, actions, selected, onAsk, onClose }: L
   )
 }
 
-function ShelfButton({ label, count, on, onClick }: { label: string; count: number; on: boolean; onClick(): void }) {
-  return (
-    <button
-      type="button"
-      aria-current={on}
-      onClick={onClick}
-      className={cn(
-        'flex h-8 items-center justify-between gap-3 rounded-md px-2.5 text-left text-[0.8125rem] transition-colors duration-(--duration-quick) ease-soft',
-        on ? 'bg-white/[0.06] text-text' : 'text-text-soft hover:bg-white/[0.03] hover:text-text'
-      )}
-    >
-      <span className="truncate">{label}</span>
-      <span className={cn('font-mono text-[0.625rem] tabular-nums', on ? 'text-text-soft' : 'text-text-faint')}>{count}</span>
-    </button>
-  )
-}
-
 /** A saved widget as a tile: a live miniature of it, its title, where it is filed. Pressing it opens it. */
 function Tile({ widget, actions, onOpen }: { widget: SavedWidget; actions: ViewActions; onOpen(): void }) {
   return (
     <button
       type="button"
       onClick={onOpen}
-      className="group grid w-full overflow-hidden rounded-lg border border-line bg-surface/80 text-left transition-colors duration-(--duration-calm) ease-soft hover:border-line-strong hover:bg-raised/80"
+      className="group grid w-full overflow-hidden rounded-lg bg-surface text-left shadow-[0_0_0_1px_rgb(255_255_255/0.06),0_6px_18px_-12px_rgb(0_0_0/0.7)] transition-shadow duration-(--duration-calm) ease-soft hover:shadow-[0_0_0_1px_rgb(255_255_255/0.12),0_10px_24px_-12px_rgb(0_0_0/0.8)]"
     >
-      <div className="relative h-36 overflow-hidden border-line border-b bg-ground/50">
+      <div className="relative h-36 overflow-hidden border-line border-b bg-black/20">
         {/* A miniature, not to be used: the widget is used once opened. */}
         <div inert className="pointer-events-none p-5 [zoom:0.62]">
           <ViewRenderer spec={widget.spec as ViewSpec} actions={actions} />
@@ -209,7 +201,7 @@ function Tile({ widget, actions, onOpen }: { widget: SavedWidget; actions: ViewA
             </span>
           )}
         </span>
-        <span className="flex items-center gap-1.5 font-mono text-[0.625rem] text-text-faint uppercase tracking-[0.1em]">
+        <span className="flex items-center gap-1.5 text-[0.6875rem] text-text-faint">
           <span className="truncate">{widget.collection ?? 'Unfiled'}</span>
           <span aria-hidden="true">·</span>
           <time dateTime={widget.since} className="shrink-0">

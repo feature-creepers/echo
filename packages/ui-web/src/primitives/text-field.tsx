@@ -35,7 +35,7 @@ export function TextField({ label, value, onChange, problem, maxLength, first = 
         aria-invalid={problem !== undefined}
         aria-describedby={problemId}
         onChange={(event) => onChange(event.target.value)}
-        className="h-10 w-full rounded-md border border-line-strong bg-ground px-3 text-base text-text outline-none transition duration-(--duration-quick) ease-soft placeholder:text-text-faint focus-visible:border-accent/70 focus-visible:outline-none aria-invalid:border-danger"
+        className="h-9 w-full rounded-md border border-line-strong bg-black/25 px-3 text-sm text-text shadow-[inset_0_1px_1px_rgb(0_0_0/0.25)] transition duration-(--duration-quick) ease-soft placeholder:text-text-faint aria-invalid:border-danger"
       />
       <p id={problemId} role="alert" className="min-h-5 text-danger text-xs">
         {problem}

@@ -1,14 +1,15 @@
 /**
- * Typefaces, both shipped with the app so it looks the same on every system. Sentences are set in the
- * proportional face. The monospace face is kept for what signals the system: labels, values, keys, the input line.
+ * Typefaces. Sentences and controls are set in the system's own face, as native apps are: San Francisco on
+ * macOS, Segoe UI on Windows. Linux has no single system face, so Geist, shipped with the app, stands in.
+ * The monospace face is kept for what is technical: keys, values, code, paths, the inspector.
  */
 export const font = {
-  sans: '"Geist Variable", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif',
-  mono: '"Geist Mono Variable", "Cascadia Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace'
+  sans: '-apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", "Geist Variable", system-ui, sans-serif',
+  mono: 'ui-monospace, "SF Mono", "Cascadia Mono", "Geist Mono Variable", Menlo, Consolas, monospace'
 } as const
 
 /**
- * The small capitals of the interface: section names, field labels, states. Smaller than any sentence,
- * spaced out, always in the monospace face.
+ * The small labels of the interface: a group's name, a field's label, a state. In sentence case and in the
+ * sentence face, a little smaller than body text, as system settings label their groups.
  */
-export const label = { size: '0.6875rem', lineHeight: '1rem', letterSpacing: '0.12em' } as const
+export const label = { size: '0.75rem', lineHeight: '1rem', letterSpacing: '0' } as const

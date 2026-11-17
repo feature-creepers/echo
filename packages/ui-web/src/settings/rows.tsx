@@ -7,10 +7,10 @@ export function SettingGroup({ title, note, children, className }: { title: stri
   return (
     <section aria-label={title} className={cn('grid gap-2', className)}>
       <div className="flex items-baseline justify-between gap-4 px-0.5">
-        <Eyebrow>{title}</Eyebrow>
+        <Eyebrow className="font-semibold text-text-soft">{title}</Eyebrow>
         {note && <span className="text-right text-text-faint text-xs">{note}</span>}
       </div>
-      <div className="divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface/85">{children}</div>
+      <div className="divide-y divide-white/[0.06] overflow-hidden rounded-lg bg-white/[0.035] shadow-[inset_0_0_0_1px_rgb(255_255_255/0.06)]">{children}</div>
     </section>
   )
 }
@@ -30,8 +30,8 @@ export function SettingRow({ title, detail, children, stacked = false }: Setting
   return (
     <div className={cn('px-4 py-3', stacked ? 'grid gap-3' : 'flex items-center justify-between gap-8')}>
       <div className="grid min-w-0 gap-0.5">
-        <span className="font-medium text-[0.8125rem]">{title}</span>
-        {detail && <span className="max-w-xl text-text-soft text-xs leading-relaxed">{detail}</span>}
+        <span className="text-[0.8125rem]">{title}</span>
+        {detail && <span className="max-w-xl text-text-faint text-xs leading-relaxed">{detail}</span>}
       </div>
       {children !== undefined && <div className={cn('min-w-0', !stacked && 'shrink-0')}>{children}</div>}
     </div>

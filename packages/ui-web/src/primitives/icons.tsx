@@ -183,3 +183,12 @@ export const CollapseGlyph = () => (
     <path d="M10 3v10M5.5 6.5 7 8l-1.5 1.5" />
   </Glyph>
 )
+
+/** The pinned widgets: a window with two small tiles stacked down its right side. */
+export const PinnedGlyph = () => (
+  <Glyph>
+    <rect x="2" y="3" width="12" height="10" rx="1.5" />
+    <rect x="9.25" y="5" width="2.75" height="2.5" rx="0.5" />
+    <rect x="9.25" y="8.75" width="2.75" height="2.5" rx="0.5" />
+  </Glyph>
+)

@@ -116,6 +116,7 @@
     background: var(--color-ground);
     color: var(--color-text);
     font-family: var(--font-sans);
+    /* Only Geist, where it stands in for the system face, has these. */
     font-feature-settings: "ss01", "cv11";
     -webkit-font-smoothing: antialiased;
     overflow: hidden;
@@ -125,9 +126,26 @@
     background: color-mix(in oklab, var(--accent) 35%, transparent);
   }
 
+  /* The focus ring of macOS: a soft band of the accent hugging what has the keyboard. */
   :focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
+    outline: 3px solid color-mix(in oklab, var(--accent) 55%, transparent);
+    outline-offset: 1px;
+  }
+
+  /*
+   * The window's own ground. Where the system draws a translucent material behind the page, the page is
+   * transparent and only tints it: nearly opaque for content, lighter for side panes, as native apps do.
+   */
+  :root {
+    --window: var(--color-ground);
+    --sidebar: color-mix(in srgb, var(--color-surface) 100%, transparent);
+  }
+  :root[data-material="vibrant"] {
+    --window: color-mix(in srgb, var(--color-ground) 90%, transparent);
+    --sidebar: color-mix(in srgb, var(--color-surface) 62%, transparent);
+  }
+  :root[data-material="vibrant"] body {
+    background: transparent;
   }
 
   button {
@@ -154,20 +172,44 @@
 }
 
 /*
- * The ground's graph paper: fine squares, and every fifth line drawn twice so it reads a little stronger. It is
- * texture, not content, so it stays under everything and fades out towards the edges of the window.
+ * The main screen's ground: small dots on a regular pitch, very faint, fading out towards the edges of the
+ * window. It is texture, not content: it stays under everything and never competes with what is on it.
+ * Each dot is a soft circle a little over one pixel wide, so it stays round on every screen density.
  */
-@utility graph-paper {
-  background-image:
-    linear-gradient(to right, var(--color-line-faint) 1px, transparent 1px), linear-gradient(to bottom, var(--color-line-faint) 1px, transparent 1px),
-    linear-gradient(to right, var(--color-line-faint) 1px, transparent 1px), linear-gradient(to bottom, var(--color-line-faint) 1px, transparent 1px);
-  background-size:
-    80px 80px,
-    80px 80px,
-    16px 16px,
-    16px 16px;
-  background-position: center top;
-  mask-image: radial-gradient(ellipse 75% 65% at 50% 40%, black 30%, transparent 100%);
+@utility dot-ground {
+  background-image: radial-gradient(circle at center, var(--color-dot) 0.8px, transparent 1.3px);
+  background-size: 18px 18px;
+  background-position: center 9px;
+  mask-image: radial-gradient(ellipse 72% 70% at 50% 42%, black 35%, transparent 100%);
+}
+
+/*
+ * What floats over other things, as on macOS: a translucent layer that blurs and slightly saturates what is
+ * behind it, a hairline that catches the light on its top edge, and a soft shadow instead of a hard border.
+ */
+@utility material {
+  background: color-mix(in srgb, var(--color-overlay) 82%, transparent);
+  backdrop-filter: blur(20px) saturate(1.5);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.07),
+    inset 0 1px 0 rgb(255 255 255 / 0.05);
+}
+
+/* The shadow of what floats: wide and soft, never coloured. */
+@utility shadow-float {
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 0.35),
+    0 10px 30px -8px rgb(0 0 0 / 0.55),
+    0 2px 6px -2px rgb(0 0 0 / 0.4);
+}
+
+/*
+ * The pane down the side of a screen, such as the settings' sections. Where the window has the system's
+ * translucent material behind the page (macOS, Windows 11), it lets it through; elsewhere it is a flat pane a
+ * shade above the ground.
+ */
+@utility sidebar {
+  background: var(--sidebar);
 }
 
 /* A scroll area that shows no bar at all, for a screen whose edges already fade to say there is more. */

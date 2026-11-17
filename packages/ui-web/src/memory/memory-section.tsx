@@ -25,7 +25,7 @@ function download(name: string, text: string): void {
  */
 export function MemorySection({ memory, productName }: { memory: MemoryState; productName: string }) {
   const view = useFollowed(memory)
-  if (!view) return <p className="font-mono text-text-faint text-xs">Reading what it remembers…</p>
+  if (!view) return <p className="text-text-faint text-xs">Reading what it remembers…</p>
 
   const count = view.groups.reduce((sum, group) => sum + group.facts.length, 0)
   const exportFile = () => {
@@ -63,14 +63,14 @@ export function MemorySection({ memory, productName }: { memory: MemoryState; pr
             <p className="text-sm text-text-soft leading-relaxed">
               Every word said is kept and can be searched at once. While it sleeps, {productName} picks out what is worth remembering about you.
             </p>
-            <p className="font-mono text-text-faint text-xs">Or say “remember that…”, and it is kept straight away.</p>
+            <p className="text-text-faint text-xs">Or say “remember that…”, and it is kept straight away.</p>
           </div>
         ) : (
           view.groups.map((group) => (
             <section key={group.kind} className="grid gap-2.5" aria-label={FACT_KIND_TITLES[group.kind]}>
               <div className="flex items-baseline gap-2 px-1">
                 <Eyebrow>{FACT_KIND_TITLES[group.kind]}</Eyebrow>
-                <span className="font-mono text-label text-text-faint/70 tabular-nums">{group.facts.length}</span>
+                <span className="text-label text-text-faint/70 tabular-nums">{group.facts.length}</span>
               </div>
               <ul className="grid gap-2">
                 {group.facts.map((fact) => (

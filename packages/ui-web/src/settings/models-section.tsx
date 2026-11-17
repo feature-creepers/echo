@@ -36,7 +36,7 @@ export function ModelsSection({ client, settings }: { client: Client; settings: 
     }
   }
 
-  if (!known) return <p className="font-mono text-text-faint text-xs">Looking for the AI programs on this machine…</p>
+  if (!known) return <p className="text-text-faint text-xs">Looking for the AI programs on this machine…</p>
   const installed = known.harnesses.filter((harness) => harness.installed)
 
   return (
@@ -101,7 +101,7 @@ function HarnessCard({ harness, inUse, onSignIn, onModel }: HarnessCardProps) {
         <div className="grid min-w-0 flex-1 gap-0.5">
           <span className="flex items-center gap-2.5 font-medium text-sm">
             {harness.name}
-            {inUse && <Eyebrow accent>in use</Eyebrow>}
+            {inUse && <Eyebrow accent>In use</Eyebrow>}
           </span>
           <span className="truncate text-text-soft text-xs" title={text}>
             {text}
@@ -147,7 +147,7 @@ function HarnessCard({ harness, inUse, onSignIn, onModel }: HarnessCardProps) {
                   <span className="grid min-w-0 flex-1 gap-0.5">
                     <span className="flex items-center gap-2.5 text-sm">
                       <span className="font-medium">{model.name}</span>
-                      {model.id === harness.defaultModel && <span className="font-mono text-label text-text-faint uppercase">default</span>}
+                      {model.id === harness.defaultModel && <span className="text-label text-text-faint">Default</span>}
                     </span>
                     <span className="text-text-soft text-xs leading-relaxed">{model.description}</span>
                   </span>

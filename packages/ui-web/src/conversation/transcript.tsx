@@ -31,17 +31,17 @@ export function Transcript({ exchanges, personas }: TranscriptProps) {
             return (
               <li key={exchange.turn} className="grid gap-2" style={accentStyle(persona?.accent)}>
                 <div className="grid gap-1">
-                  <span className="flex items-baseline gap-2 font-mono text-label text-text-faint uppercase">
+                  <span className="flex items-baseline gap-2 text-label text-text-faint">
                     {exchange.trigger === 'greeting' ? 'Briefing' : 'You'} <time dateTime={exchange.at}>{clock.format(new Date(exchange.at))}</time>
                   </span>
                   {exchange.said && <p className="text-sm text-text-soft leading-relaxed">{exchange.said}</p>}
                 </div>
                 <div className="grid gap-1 border-accent/50 border-l pl-3">
-                  <span className="font-mono text-accent text-label uppercase">{persona?.name ?? 'Assistant'}</span>
+                  <span className="text-accent text-label">{persona?.name ?? 'Assistant'}</span>
                   {exchange.replied && <p className="text-sm leading-relaxed">{exchange.replied}</p>}
                   {exchange.written && (
                     <details className="group mt-1">
-                      <summary className="w-fit cursor-pointer list-none font-mono text-label text-text-faint uppercase transition-colors hover:text-text-soft">
+                      <summary className="w-fit cursor-pointer list-none text-label text-text-faint transition-colors hover:text-text-soft">
                         <span className="inline-block transition-transform duration-150 group-open:rotate-90">›</span> Full answer
                       </summary>
                       <div className="mt-2 grid gap-3 rounded-md border border-line bg-ground/60 px-3 py-2.5 text-sm leading-relaxed [&_h3]:text-lg [&_h4]:text-base">
@@ -50,7 +50,7 @@ export function Transcript({ exchanges, personas }: TranscriptProps) {
                     </details>
                   )}
                   {exchange.outcome === 'running' && !exchange.replied && <p className="text-sm text-text-faint">…</p>}
-                  {exchange.outcome === 'stopped' && <p className="font-mono text-label text-text-faint uppercase">Stopped</p>}
+                  {exchange.outcome === 'stopped' && <p className="text-label text-text-faint">Stopped</p>}
                   {exchange.outcome === 'failed' && <p className="text-danger text-sm leading-relaxed">{exchange.problem ?? 'It could not answer.'}</p>}
                 </div>
               </li>

@@ -23,7 +23,7 @@ export function Metric({ props }: { props: BlockProps<'Metric'> }) {
         </span>
         {props.unit && <span className="text-sm text-text-soft">{props.unit}</span>}
         {props.trend && (
-          <span className={cn('ml-0.5 font-mono text-xs', props.trend === 'up' ? 'text-ok' : props.trend === 'down' ? 'text-danger' : 'text-text-faint')}>
+          <span className={cn('ml-0.5 text-xs', props.trend === 'up' ? 'text-ok' : props.trend === 'down' ? 'text-danger' : 'text-text-faint')}>
             {TREND[props.trend]}
           </span>
         )}
@@ -40,13 +40,7 @@ export function Table({ props }: { props: BlockProps<'Table'> }) {
         <thead>
           <tr className="border-line border-b bg-white/[0.02]">
             {props.columns.map((column) => (
-              <th
-                key={column.key}
-                className={cn(
-                  'h-8 px-3 font-mono font-normal text-[0.625rem] text-text-faint uppercase tracking-[0.1em]',
-                  column.align === 'end' ? 'text-right' : 'text-left'
-                )}
-              >
+              <th key={column.key} className={cn('h-8 px-3 font-normal text-[0.6875rem] text-text-faint', column.align === 'end' ? 'text-right' : 'text-left')}>
                 {column.label}
               </th>
             ))}
@@ -74,7 +68,7 @@ export function Timeline({ props }: { props: BlockProps<'Timeline'> }) {
     <ol className="grid grid-cols-[fit-content(35%)_0.75rem_minmax(0,1fr)] gap-x-2.5">
       {props.items.map((item, index) => (
         <li key={index} className="contents">
-          <span className="text-right font-mono text-[0.6875rem] text-text-faint tabular-nums leading-5">{item.time}</span>
+          <span className="text-right text-[0.6875rem] text-text-faint tabular-nums leading-5">{item.time}</span>
           <div className="flex flex-col items-center">
             <span
               className="mt-[0.4375rem] size-1.5 shrink-0 rounded-full"
@@ -148,7 +142,7 @@ export function Chart({ props }: { props: BlockProps<'Chart'> }) {
       {(props.series.length > 1 || props.unit) && (
         <figcaption className="flex flex-wrap items-center gap-3">
           {/* The unit sits above the axis, where a long one has room: beside the top value it would spill out. */}
-          {props.unit && <span className="font-mono text-[0.625rem] text-text-faint uppercase tracking-wider">{props.unit}</span>}
+          {props.unit && <span className="text-[0.6875rem] text-text-faint">{props.unit}</span>}
           {props.series.length > 1 &&
             props.series.map((series) => (
               <span key={series.name} className="flex items-center gap-1.5 text-[0.6875rem] text-text-soft">
@@ -167,14 +161,14 @@ export function Chart({ props }: { props: BlockProps<'Chart'> }) {
         {ticks.map((tick) => (
           <g key={tick}>
             <line x1={pad.left} x2={width - pad.right} y1={y(tick)} y2={y(tick)} stroke="var(--color-line)" />
-            <text x={pad.left - 8} y={y(tick)} dy="0.32em" textAnchor="end" className="fill-text-faint font-mono text-[10px]">
+            <text x={pad.left - 8} y={y(tick)} dy="0.32em" textAnchor="end" className="fill-text-faint text-[10px]">
               {tick}
             </text>
           </g>
         ))}
         {labels.map((label, index) =>
           index % everyNth === 0 ? (
-            <text key={label + String(index)} x={x(index)} y={height - 6} textAnchor="middle" className="fill-text-faint font-mono text-[10px]">
+            <text key={label + String(index)} x={x(index)} y={height - 6} textAnchor="middle" className="fill-text-faint text-[10px]">
               {label}
             </text>
           ) : null

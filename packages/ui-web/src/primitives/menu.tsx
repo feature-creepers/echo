@@ -56,7 +56,7 @@ export function Menu({ trigger, items, align = 'end', header }: MenuProps) {
             exit={{ opacity: 0, y: -2, scale: 0.98, transition: { duration: 0.1 } }}
             transition={{ duration: 0.16, ease: EASE }}
             className={cn(
-              'absolute top-full z-50 mt-1 grid min-w-48 gap-px rounded-lg border border-line-strong bg-overlay p-1 shadow-[0_16px_40px_-12px_rgb(0_0_0/0.8)]',
+              'material shadow-float absolute top-full z-50 mt-1 grid min-w-48 gap-px rounded-lg p-1',
               align === 'end' ? 'right-0 origin-top-right' : 'left-0 origin-top-left'
             )}
           >
@@ -71,8 +71,8 @@ export function Menu({ trigger, items, align = 'end', header }: MenuProps) {
                   item.onSelect()
                 }}
                 className={cn(
-                  'flex h-7 items-center rounded-sm px-2 text-left text-[0.8125rem] transition duration-(--duration-quick) ease-soft',
-                  item.danger ? 'text-danger hover:bg-danger/12' : 'text-text-soft hover:bg-raised hover:text-text'
+                  'flex h-6 items-center rounded-sm px-2 text-left text-[0.8125rem]',
+                  item.danger ? 'text-danger hover:bg-danger/12' : 'text-text hover:bg-accent hover:text-accent-ink'
                 )}
               >
                 {item.label}

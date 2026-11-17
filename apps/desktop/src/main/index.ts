@@ -55,6 +55,7 @@ const DEVICE_SETTINGS_FILE = 'settings.json'
 const built = (path: string) => join(import.meta.dirname, path)
 
 function openWindow(core: CoreProcess, visible: boolean): BrowserWindow {
+  const look = chrome({ background: color.ground, symbols: color.text, height: frame.titleBar })
   const window = new BrowserWindow({
     title: app.getName(),
     width: 1320,
@@ -65,7 +66,7 @@ function openWindow(core: CoreProcess, visible: boolean): BrowserWindow {
     backgroundColor: color.ground,
     autoHideMenuBar: true,
     // No title bar above the page: the page's own title row is the bar, with the system's buttons drawn over it.
-    ...chrome({ background: color.ground, symbols: color.text, height: frame.titleBar }),
+    ...look.options,
     webPreferences: { preload: built('../preload/index.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false }
   })
   window.once('ready-to-show', () => {
@@ -88,9 +89,11 @@ function openWindow(core: CoreProcess, visible: boolean): BrowserWindow {
   })
 
   // In development the page is served by the bundler, so a change shows without a rebuild.
+  // The page is told whether the system draws a material behind it, so it can let it through.
+  const query = look.vibrant ? { material: 'vibrant' } : {}
   const served = process.env.ELECTRON_RENDERER_URL
-  if (served) void window.loadURL(served)
-  else void window.loadFile(built('../renderer/index.html'))
+  if (served) void window.loadURL(`${served}?${new URLSearchParams(query)}`)
+  else void window.loadFile(built('../renderer/index.html'), { query })
   return window
 }
 
