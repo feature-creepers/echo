@@ -67,7 +67,9 @@ function answer(request: IncomingMessage, response: ServerResponse): void {
   const cut = faults.cutAfter
   if (cut && cut.requests > 0) {
     cut.requests--
-    response.write(body.subarray(0, cut.bytes), () => response.destroy())
+    // The cut comes a moment after the bytes, so that they reach the client first: a connection that is
+    // destroyed at once drops what is still on its way, and how much that is differs from system to system.
+    response.write(body.subarray(0, cut.bytes), () => setTimeout(() => response.destroy(), 100))
     return
   }
   // In two pieces, so that a test can act between them.
@@ -205,7 +207,7 @@ describe('installing a model set', () => {
 
     await installModelSet(at, set)
 
-    // How much had arrived when the connection was cut depends on the system: some of the 100 000 bytes.
+    // The download goes on from what had arrived when the connection was cut: the 100 000 bytes, or fewer on a slow system.
     const requests = seen.filter((request) => request.path === '/big.bin')
     expect(requests.length).toBe(2)
     expect(requests[0]?.range).toBeUndefined()
