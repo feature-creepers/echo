@@ -60,7 +60,7 @@ export function InputLine({ name, busy, onSay, onStop, talk, persona, pause }: I
   return (
     <form
       onSubmit={send}
-      className="group flex h-12 items-center gap-1 rounded-lg border border-line-strong bg-surface/85 px-1.5 shadow-[0_16px_40px_-20px_rgb(0_0_0/0.95),inset_0_1px_0_rgb(255_255_255/0.035)] backdrop-blur-xl transition-[border-color] duration-(--duration-calm) ease-soft focus-within:border-accent/40"
+      className="material shadow-float group flex h-12 items-center gap-1 rounded-lg px-1.5 transition-shadow duration-(--duration-calm) ease-soft"
     >
       {persona ? (
         // The eye says which persona answers and what it is doing; pressing it hands over to the other one.
@@ -93,10 +93,10 @@ export function InputLine({ name, busy, onSay, onStop, talk, persona, pause }: I
               ? 'Listening… speak, then pause'
               : 'Listening… press again to send'
             : talk && talkKey
-              ? `Ask ${name} anything · ${talkKey} to talk`
+              ? `Ask ${name} anything, or press ${talkKey} to talk`
               : `Ask ${name} anything`
         }
-        className="h-full min-w-0 flex-1 bg-transparent pl-1 font-mono text-sm text-text outline-none placeholder:text-text-faint/80 focus-visible:outline-none"
+        className="h-full min-w-0 flex-1 bg-transparent pl-1 text-[0.9375rem] text-text outline-none placeholder:text-text-faint focus-visible:outline-none"
       />
       {talk && (
         <button
@@ -133,7 +133,7 @@ export function InputLine({ name, busy, onSay, onStop, talk, persona, pause }: I
           type="button"
           onClick={onStop}
           aria-label="Stop"
-          className="ml-0.5 flex h-8 items-center gap-2 rounded-md border border-line-strong bg-raised pr-1.5 pl-2.5 text-text-soft text-xs transition-colors duration-(--duration-quick) ease-soft hover:border-text-faint/60 hover:text-text [&_svg]:size-3.5"
+          className="ml-0.5 flex h-8 items-center gap-2 rounded-md bg-white/[0.08] pr-1.5 pl-2.5 text-text-soft text-xs shadow-[inset_0_0_0_0.5px_rgb(255_255_255/0.1)] transition-colors duration-(--duration-quick) ease-soft hover:bg-white/[0.12] hover:text-text [&_svg]:size-3.5"
         >
           <StopGlyph />
           Stop

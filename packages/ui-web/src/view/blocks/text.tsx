@@ -19,7 +19,7 @@ export function Badge({ props }: { props: BlockProps<'Badge'> }) {
   return (
     <span
       className={cn(
-        'inline-flex h-5 w-fit items-center gap-1.5 rounded-xs border border-current/25 bg-current/[0.07] px-1.5 font-mono text-[0.625rem] uppercase tracking-[0.1em]',
+        'inline-flex h-5 w-fit items-center gap-1.5 rounded-xs border border-current/25 bg-current/[0.07] px-1.5 text-[0.6875rem]',
         TONE_TEXT[props.tone]
       )}
     >
@@ -33,7 +33,7 @@ export function KeyValue({ props }: { props: BlockProps<'KeyValue'> }) {
     <dl className="grid grid-cols-[fit-content(45%)_minmax(0,1fr)] gap-x-5 gap-y-1.5">
       {props.items.map((item, index) => (
         <div key={index} className="contents">
-          <dt className="pt-px font-mono text-label text-text-faint uppercase">{item.label}</dt>
+          <dt className="pt-px text-label text-text-faint">{item.label}</dt>
           <dd className="text-sm leading-snug">{item.value}</dd>
         </div>
       ))}
@@ -47,7 +47,7 @@ export function List({ props }: { props: BlockProps<'List'> }) {
       {props.items.map((item, index) => (
         <li key={index} className="flex gap-2.5">
           {props.marker === 'bullet' && <span className="mt-[0.5625rem] size-1 shrink-0 rounded-full bg-text-faint" />}
-          {props.marker === 'number' && <span className="w-4 shrink-0 pt-px text-right font-mono text-[0.6875rem] text-text-faint leading-5">{index + 1}</span>}
+          {props.marker === 'number' && <span className="w-4 shrink-0 pt-px text-right text-[0.6875rem] text-text-faint leading-5">{index + 1}</span>}
           {props.marker === 'check' && (
             <span
               className={cn(
@@ -78,7 +78,7 @@ export function Steps({ props }: { props: BlockProps<'Steps'> }) {
             <div className="flex flex-col items-center">
               <span
                 className={cn(
-                  'flex size-5 shrink-0 items-center justify-center rounded-sm border font-mono text-[0.625rem] [&_svg]:size-3',
+                  'flex size-5 shrink-0 items-center justify-center rounded-sm border text-[0.625rem] [&_svg]:size-3',
                   step.state === 'done' && 'border-accent/50 bg-accent/15 text-accent',
                   step.state === 'current' && 'border-accent text-accent',
                   step.state === 'todo' && 'border-line-strong text-text-faint'

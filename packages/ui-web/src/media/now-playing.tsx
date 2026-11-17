@@ -24,7 +24,7 @@ export function NowPlaying() {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -4 }}
           transition={{ duration: 0.22, ease: EASE }}
-          className="no-drag mr-1.5 flex h-6 max-w-80 items-center gap-2 rounded-md border border-line bg-white/[0.03] pr-0.5 pl-2"
+          className="no-drag mr-1.5 flex h-6 max-w-80 items-center gap-2 rounded-md bg-white/[0.06] pr-0.5 pl-2 shadow-[inset_0_0_0_0.5px_rgb(255_255_255/0.08)]"
           aria-label="Now playing"
           role="group"
         >

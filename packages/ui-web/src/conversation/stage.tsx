@@ -46,6 +46,28 @@ const COLUMN = 'max-w-[45rem]'
 
 const MOODS: Record<Mood, string> = { idle: 'Ready', listening: 'Listening', thinking: 'Thinking', speaking: 'Speaking', asleep: 'Asleep' }
 
+/** How strongly the light around the core shows in each mood: brighter while it hears or speaks, dim asleep. */
+const HALO: Record<Mood, number> = { idle: 0.7, listening: 1, thinking: 0.85, speaking: 1, asleep: 0.3 }
+
+/**
+ * The core with the soft light it casts on the ground around it: the accent, faint, fading to nothing well
+ * before any edge. It follows the core wherever it goes and only changes in opacity, so it costs no layout.
+ */
+function Core({ size, mood, level }: { size: number; mood: Mood; level: () => number }) {
+  return (
+    <div className="relative">
+      <motion.span
+        aria-hidden="true"
+        initial={false}
+        animate={{ opacity: HALO[mood] }}
+        transition={{ duration: DURATION.slow * 2, ease: EASE }}
+        className="pointer-events-none absolute -inset-[42%] bg-[radial-gradient(closest-side,color-mix(in_oklab,var(--accent)_15%,transparent),color-mix(in_oklab,var(--accent)_6%,transparent)_45%,transparent)]"
+      />
+      <Orb size={size} mood={mood} level={level} className="relative" />
+    </div>
+  )
+}
+
 /**
  * A voice's loudness when there is no sound to measure: the rise and fall of syllables, made from a few
  * waves that never line up the same way twice. It keeps the core alive while sentences are shown, not played.
@@ -225,11 +247,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
         >
           <p className="text-balance text-danger text-sm leading-relaxed">{failed ?? problem}</p>
           {noEngine && (
-            <button
-              type="button"
-              onClick={onSetUpEngine}
-              className="w-fit font-mono text-text-soft text-xs underline decoration-line-strong underline-offset-4 hover:text-text"
-            >
+            <button type="button" onClick={onSetUpEngine} className="w-fit text-accent text-xs hover:underline hover:underline-offset-4">
               Set up an AI program
             </button>
           )}
@@ -292,11 +310,11 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
           <header className="relative z-10 shrink-0 px-8 pt-5 pb-3">
             <div className={cn('mx-auto flex w-full items-start gap-4', COLUMN)}>
               <motion.div layoutId="stage-core" transition={glide} className="-m-2.5 shrink-0">
-                <Orb size={60} mood={mood} level={level.current} />
+                <Core size={60} mood={mood} level={level.current} />
               </motion.div>
               <div className="grid min-w-0 flex-1 gap-0.5 pt-1">
                 <div className="flex items-baseline gap-2.5">
-                  <motion.span layoutId="stage-name" transition={glide} className="font-medium text-[0.9375rem] tracking-tight">
+                  <motion.span layoutId="stage-name" transition={glide} className="font-semibold text-[0.9375rem] tracking-tight">
                     {active.name}
                   </motion.span>
                   <Eyebrow accent={mood !== 'idle'} className="transition-colors duration-(--duration-calm)">
@@ -310,9 +328,8 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
             </div>
           </header>
           <div className="relative min-h-0 flex-1">
-            {/* What scrolls fades in under the header rather than being cut by a hard edge. */}
-            <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 z-10 h-4 bg-gradient-to-b from-ground to-transparent" />
-            <div className="scroll-none h-full overflow-y-auto px-8 pt-2 pb-32">
+            {/* What scrolls fades out under the header rather than being cut by a hard edge, whatever the ground behind. */}
+            <div className="scroll-none h-full overflow-y-auto px-8 pt-2 pb-32 [mask-image:linear-gradient(to_bottom,transparent,black_20px)]">
               <motion.div
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -329,10 +346,10 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
         <div className="scroll-none min-h-0 flex-1 overflow-y-auto px-8">
           <div className="flex min-h-full w-full flex-col items-center justify-center pt-6 pb-32">
             <motion.div layoutId="stage-core" transition={glide} className={asides ? '-my-4' : '-my-7'}>
-              <Orb size={asides ? 200 : 280} mood={mood} level={level.current} />
+              <Core size={asides ? 200 : 280} mood={mood} level={level.current} />
             </motion.div>
             <div className="grid justify-items-center gap-2">
-              <motion.h1 layoutId="stage-name" transition={glide} className="font-medium text-[2rem] leading-none tracking-[-0.03em]">
+              <motion.h1 layoutId="stage-name" transition={glide} className="font-semibold text-[1.875rem] leading-none tracking-[-0.025em]">
                 {active.name}
               </motion.h1>
               <Eyebrow accent={mood !== 'idle'} className="transition-colors duration-(--duration-calm)">
@@ -353,7 +370,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
       )}
 
       {/* The composer floats over the bottom of the screen; what scrolls passes behind it and fades out. */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-8 pt-10 pb-4 [background:linear-gradient(to_top,var(--color-ground)_26%,color-mix(in_srgb,var(--color-ground)_60%,transparent)_62%,transparent)]">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-8 pt-10 pb-4 [background:linear-gradient(to_top,var(--color-ground)_22%,color-mix(in_srgb,var(--color-ground)_55%,transparent)_60%,transparent)]">
         <div className={cn('pointer-events-auto mx-auto grid w-full gap-1.5', COLUMN)}>
           {composer}
           {/* Which AI program answers: there to read, rarely to press. */}
@@ -362,11 +379,11 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
             <button
               type="button"
               onClick={onSetUpEngine}
-              className="flex h-4 items-center gap-1.5 font-mono text-[0.625rem] text-text-faint/70 uppercase tracking-[0.12em] transition-colors duration-(--duration-quick) hover:text-text-soft"
+              className="flex h-4 items-center gap-1.5 text-[0.6875rem] text-text-faint transition-colors duration-(--duration-quick) hover:text-text-soft"
             >
-              <span className={cn('size-1 rounded-full', engines === undefined ? 'bg-text-faint/50' : noEngine ? 'bg-warn' : 'bg-ok/80')} />
+              <span className={cn('size-1.5 rounded-full', engines === undefined ? 'bg-text-faint/50' : noEngine ? 'bg-warn' : 'bg-ok/80')} />
               {engines === undefined
-                ? 'Looking'
+                ? 'Looking…'
                 : noEngine
                   ? 'No AI program ready'
                   : (engines.harnesses.find((harness) => harness.id === engines.active)?.name ?? 'Ready')}

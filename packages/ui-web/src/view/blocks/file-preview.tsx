@@ -67,7 +67,7 @@ export function FilePreview({ props }: { props: BlockProps<'FilePreview'> }) {
           <table className="w-full text-[0.8125rem]">
             <tbody>
               {rows(file.text).map((row, index) => (
-                <tr key={index} className={cn('border-line border-b last:border-0', index === 0 && 'font-mono text-label text-text-faint uppercase')}>
+                <tr key={index} className={cn('border-line border-b last:border-0', index === 0 && 'text-label text-text-faint')}>
                   {row.map((value, column) => (
                     <td key={column} className="px-2 py-1.5">
                       {value}

@@ -71,7 +71,7 @@ export function FactRow({ fact, onEdit, onForget }: FactRowProps) {
             value={mode.kind}
             onChange={(event) => setMode({ ...mode, kind: event.target.value as FactKind })}
             onKeyDown={(event) => keys(event)}
-            className="h-7 rounded-sm border border-line-strong bg-ground px-2 font-mono text-text-soft text-xs outline-none focus-visible:border-accent"
+            className="h-7 rounded-sm border border-line-strong bg-black/25 shadow-[inset_0_1px_1px_rgb(0_0_0/0.25)] px-2 text-text-soft text-xs outline-none"
           >
             {FACT_KINDS.map((kind) => (
               <option key={kind} value={kind}>
@@ -101,7 +101,7 @@ export function FactRow({ fact, onEdit, onForget }: FactRowProps) {
     >
       <div className="grid min-w-0 flex-1 gap-1.5">
         <p className={cn('text-sm leading-relaxed transition', mode.is === 'forgetting' && 'text-text-soft line-through decoration-danger/60')}>{fact.text}</p>
-        <p className="flex min-w-0 items-baseline gap-2 font-mono text-text-faint text-xs">
+        <p className="flex min-w-0 items-baseline gap-2 text-text-faint text-xs">
           <span className="shrink-0">{learnedFrom(fact)}</span>
           {source?.said && (
             <span className="truncate" title={source.said}>

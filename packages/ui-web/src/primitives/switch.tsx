@@ -8,7 +8,7 @@ export interface SwitchProps {
   disabled?: boolean
 }
 
-/** On or off, taking effect at once. */
+/** On or off, taking effect at once: the switch of macOS. */
 export function Switch({ label, on, onChange, disabled = false }: SwitchProps) {
   return (
     <button
@@ -19,14 +19,16 @@ export function Switch({ label, on, onChange, disabled = false }: SwitchProps) {
       disabled={disabled}
       onClick={() => onChange(!on)}
       className={cn(
-        'relative inline-flex h-5 w-8.5 shrink-0 items-center rounded-full border transition duration-(--duration-calm) ease-soft disabled:opacity-45',
-        on ? 'border-accent/60 bg-accent/20' : 'border-line-strong bg-raised hover:not-disabled:border-text-faint/60'
+        'relative inline-flex h-[1.375rem] w-[2.375rem] shrink-0 items-center rounded-full transition-colors duration-(--duration-calm) ease-soft disabled:opacity-45',
+        'shadow-[inset_0_0_0_1px_rgb(0_0_0/0.25),inset_0_1px_2px_rgb(0_0_0/0.25)]',
+        on ? 'bg-accent' : 'bg-white/[0.13] hover:not-disabled:bg-white/[0.17]'
       )}
     >
+      {/* The knob, as macOS draws it: white, round, lifted by a small shadow. */}
       <span
         className={cn(
-          'absolute top-0.5 left-0.5 size-3.5 rounded-full transition-[translate,background-color] duration-(--duration-calm) ease-soft',
-          on ? 'translate-x-3.5 bg-accent' : 'bg-text-faint'
+          'absolute top-[0.1875rem] left-[0.1875rem] size-4 rounded-full bg-[#f4f6f9] shadow-[0_1px_2px_rgb(0_0_0/0.4),0_0_0_0.5px_rgb(0_0_0/0.2)] transition-transform duration-(--duration-calm) ease-soft',
+          on && 'translate-x-4'
         )}
       />
     </button>

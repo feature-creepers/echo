@@ -67,7 +67,7 @@ export function Field({ props }: { props: BlockProps<'Field'> }) {
           onChange={(event) => setValue(event.target.value)}
           placeholder={props.placeholder}
           aria-label={props.label}
-          className="h-8 min-w-0 flex-1 rounded-md border border-line-strong bg-ground px-2.5 text-sm outline-none transition-colors duration-(--duration-quick) placeholder:text-text-faint focus-visible:border-accent/70 focus-visible:outline-none disabled:opacity-60"
+          className="h-8 min-w-0 flex-1 rounded-md border border-line-strong bg-black/25 shadow-[inset_0_1px_1px_rgb(0_0_0/0.25)] px-2.5 text-sm transition-colors duration-(--duration-quick) placeholder:text-text-faint disabled:opacity-60"
         />
         <AppButton type="submit" kind="primary" disabled={sent || value.trim() === ''}>
           {sent ? 'Sent' : 'Send'}

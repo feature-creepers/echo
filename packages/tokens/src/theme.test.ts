@@ -28,7 +28,7 @@ describe('the theme', () => {
     expect(theme).toContain(`--color-ground: ${color.ground};`)
     expect(theme).toContain(`--color-text-soft: ${color.textSoft};`)
     expect(theme).toContain('--radius-md: 4px;')
-    expect(theme).toContain('--frame-title-bar: 32px;')
+    expect(theme).toContain('--frame-title-bar: 38px;')
     expect(theme).toContain('--duration-quick: 120ms;')
   })
 

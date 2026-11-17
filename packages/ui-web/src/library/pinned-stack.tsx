@@ -2,34 +2,73 @@ import type { ViewSpec } from '@repo/catalog'
 import { pinnedOf } from '@repo/client'
 import { useFollowed } from '@repo/client/react'
 import type { SavedWidget } from '@repo/protocol'
-import { AnimatePresence, motion, Reorder, useDragControls } from 'motion/react'
+import { motion, Reorder, useDragControls } from 'motion/react'
 import { type PointerEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { cn } from '../primitives/cn.ts'
 import { IconButton } from '../primitives/icon-button.tsx'
-import { ChevronGlyph, CollapseGlyph, ExpandGlyph, GripGlyph, PinGlyph } from '../primitives/icons.tsx'
+import { ChevronGlyph, CloseGlyph, ExpandGlyph, GripGlyph, PinGlyph } from '../primitives/icons.tsx'
 import { DURATION, EASE, glide } from '../styles/motion.ts'
 import type { ViewActions } from '../view/context.ts'
 import { ViewRenderer } from '../view/view-renderer.tsx'
 import type { LibraryControls } from './library-context.ts'
 
-/** The stack's width, and the gap it keeps from the window's edge and from the centred column, in pixels. */
-const WIDTH = 272
+/** The stack's width, and the gap it keeps from the window's edges and from the column, in pixels. */
+const WIDTH = 280
 const GUTTER = 12
-/** The centred column of the main screen (45rem): the stack opens by itself only where it leaves the column alone. */
-const COLUMN = 720
-const ROOMY = COLUMN + 2 * (WIDTH + 2 * GUTTER)
+/**
+ * The narrowest window where the stack sits beside the conversation: the 720 px column, a comfortable 40 px on
+ * each side of it, and the stack with its gutters. Narrower, the stack waits behind a toggle and floats over.
+ */
+export const DOCK_WIDTH = 720 + 2 * 40 + WIDTH + 2 * GUTTER
+/** How far the conversation moves left while the stack is docked, so it is centred in the space left of it. */
+export const DOCKED_SHIFT = -(WIDTH + 2 * GUTTER) / 2
 /** How tall a widget is drawn before it is folded, with a way to unfold it. */
 const FOLDED_HEIGHT = 288
 
+/** Where the pinned widgets stand: docked beside the conversation, floating over it, or out of sight. */
+export interface PinnedDock {
+  /** How many widgets are pinned. */
+  count: number
+  /** The window is wide enough for the stack to sit beside the conversation. */
+  wide: boolean
+  /** The stack is on screen. */
+  shown: boolean
+  toggle(): void
+  hide(): void
+}
+
 /**
- * The widgets the user pinned, floating on the right of the main screen: live (a pinned radio plays, a chart is
- * as it was saved), stacked from the top in the user's own order, scrolled with the wheel and put in order by
- * dragging a card by its bar. The order is the library's, kept by the core.
- *
- * It never pushes the centred column. Where the window leaves room in its right margin it is open; where it does
- * not, it waits folded into a small tab, and opened from there it floats over the stage until folded again.
+ * Where the pinned widgets stand, from the window's width and the user's choice. Wide enough, they show beside
+ * the conversation; narrower, they wait behind a toggle. The user's choice holds until the window crosses
+ * that width again.
  */
-export function PinnedStack({ controls, actions }: { controls: LibraryControls; actions: ViewActions }) {
+export function usePinnedDock(count: number): PinnedDock {
+  const query = `(min-width: ${DOCK_WIDTH}px)`
+  const [wide, setWide] = useState(() => window.matchMedia(query).matches)
+  const [chosen, setChosen] = useState<boolean>()
+  useEffect(() => {
+    const media = window.matchMedia(query)
+    const onChange = () => {
+      setWide(media.matches)
+      setChosen(undefined)
+    }
+    media.addEventListener('change', onChange)
+    return () => media.removeEventListener('change', onChange)
+  }, [query])
+  const shown = count > 0 && (chosen ?? wide)
+  return useMemo(() => ({ count, wide, shown, toggle: () => setChosen(!shown), hide: () => setChosen(false) }), [count, wide, shown])
+}
+
+/**
+ * The widgets the user pinned, on the right of the main screen: live (a pinned radio plays, a chart is as it was
+ * saved), stacked from the top in the user's own order, scrolled with the wheel and put in order by dragging a
+ * card by its bar. The order is the library's, kept by the core.
+ *
+ * In a wide window the stack is docked beside the conversation, which moves to the centre of the space left of
+ * it. In a narrow one it slides over the right of the stage from the title row's toggle, as a translucent panel,
+ * and closes with the same toggle, its close button or Escape.
+ */
+export function PinnedStack({ controls, actions, dock }: { controls: LibraryControls; actions: ViewActions; dock: PinnedDock }) {
   const library = useFollowed(controls.library)
   const pinned = pinnedOf(library)
   const byId = useMemo(() => new Map(pinned.map((widget) => [widget.id, widget])), [pinned])
@@ -53,95 +92,73 @@ export function PinnedStack({ controls, actions }: { controls: LibraryControls; 
     controls.library.arrange(next).catch(() => setOrder(stored))
   }
 
-  // Open by default only when the window's right margin can hold the stack; the user's choice wins until the
-  // window crosses that width again.
-  const root = useRef<HTMLDivElement>(null)
-  const [roomy, setRoomy] = useState(true)
-  const [chosen, setChosen] = useState<boolean>()
-  useLayoutEffect(() => {
-    const element = root.current
-    if (!element) return
-    const observer = new ResizeObserver(([entry]) => {
-      const next = (entry?.contentRect.width ?? 0) >= ROOMY
-      setRoomy((was) => {
-        if (was !== next) setChosen(undefined)
-        return next
-      })
-    })
-    observer.observe(element)
-    return () => observer.disconnect()
-  }, [])
-  const open = chosen ?? roomy
+  const floating = dock.shown && !dock.wide
+  const { hide } = dock
+  useEffect(() => {
+    if (!floating) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') hide()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [floating, hide])
 
   const shown = order.flatMap((id) => byId.get(id) ?? [])
 
+  if (pinned.length === 0) return null
+  // Hidden, the stack stays drawn and only fades and slides away: showing it again costs no new layout, and what
+  // its widgets hold (a scroll position, an unfolded card) is kept.
+  const offset = floating ? 24 : 16
   return (
-    <div ref={root} className="pointer-events-none absolute inset-0 z-20">
-      <AnimatePresence initial={false}>
-        {pinned.length > 0 &&
-          (open ? (
-            <motion.aside
-              key="open"
-              aria-label="Pinned widgets"
-              initial={{ opacity: 0, x: 12 }}
-              animate={{ opacity: 1, x: 0, transition: { duration: DURATION.calm, ease: EASE } }}
-              exit={{ opacity: 0, x: 12, transition: { duration: DURATION.quick, ease: EASE } }}
-              style={{ width: WIDTH, right: GUTTER }}
-              className={cn(
-                'pointer-events-auto absolute top-3 flex flex-col',
-                // In the margin it needs no ground of its own; over the stage it is a panel, so what is under it does not show through.
-                roomy ? 'bottom-4' : 'bottom-24 rounded-lg border border-line-strong bg-ground px-1.5 pb-1 shadow-[0_24px_60px_-20px_rgb(0_0_0/0.95)]'
-              )}
-            >
-              <header className="flex h-7 shrink-0 items-center justify-between pr-0.5 pl-1">
-                <span className="flex items-center gap-1.5 font-mono text-[0.625rem] text-text-faint uppercase tracking-[0.12em]">
-                  Pinned <span className="text-text-faint/60 tabular-nums">{pinned.length}</span>
-                </span>
-                <IconButton label="Fold the pinned widgets away" onClick={() => setChosen(false)}>
-                  <CollapseGlyph />
-                </IconButton>
-              </header>
-              {/* The list scrolls with the wheel, and fades out at its ends instead of being cut. */}
-              <motion.div
-                layoutScroll
-                className="scroll-quiet -mx-1 min-h-0 flex-1 overflow-y-auto px-1 pt-1 pb-2 [mask-image:linear-gradient(to_bottom,transparent,black_6px,black_calc(100%-16px),transparent)]"
-              >
-                <Reorder.Group axis="y" values={order} onReorder={setOrder} className="grid gap-2">
-                  {shown.map((widget) => (
-                    <PinnedCard
-                      key={widget.id}
-                      widget={widget}
-                      controls={controls}
-                      actions={actions}
-                      onDragStart={() => {
-                        dragging.current = true
-                      }}
-                      onDragEnd={commit}
-                    />
-                  ))}
-                </Reorder.Group>
-              </motion.div>
-            </motion.aside>
-          ) : (
-            <motion.button
-              key="folded"
-              type="button"
-              aria-label={`Show the pinned widgets (${pinned.length})`}
-              title="Show the pinned widgets"
-              initial={{ opacity: 0, x: 8 }}
-              animate={{ opacity: 1, x: 0, transition: { duration: DURATION.calm, ease: EASE } }}
-              exit={{ opacity: 0, x: 8, transition: { duration: DURATION.quick, ease: EASE } }}
-              onClick={() => setChosen(true)}
-              style={{ right: GUTTER }}
-              className="pointer-events-auto absolute top-3 flex h-7 items-center gap-1.5 rounded-md border border-line-strong bg-surface/90 pr-2 pl-1.5 text-text-soft shadow-[0_8px_24px_-12px_rgb(0_0_0/0.9)] backdrop-blur-xl transition-colors duration-(--duration-quick) hover:border-text-faint/50 hover:text-text [&_svg]:size-3.5"
-            >
-              <PinGlyph filled />
-              <span className="font-mono text-[0.625rem] uppercase tracking-[0.12em]">Pinned</span>
-              <span className="font-mono text-[0.625rem] text-text-faint tabular-nums">{pinned.length}</span>
-            </motion.button>
+    <motion.aside
+      key={floating ? 'floating' : 'docked'}
+      aria-label="Pinned widgets"
+      aria-hidden={!dock.shown}
+      inert={!dock.shown}
+      initial={false}
+      animate={
+        dock.shown
+          ? { opacity: 1, x: 0, visibility: 'visible', transition: { duration: DURATION.slow, ease: EASE } }
+          : { opacity: 0, x: offset, transitionEnd: { visibility: 'hidden' }, transition: { duration: DURATION.calm, ease: EASE } }
+      }
+      style={{ width: floating ? WIDTH + 2 * GUTTER : WIDTH, right: floating ? GUTTER / 2 : GUTTER }}
+      className={cn(
+        'absolute z-20 flex flex-col',
+        // Docked, it needs no ground of its own; floating over the stage, it is a translucent panel.
+        floating ? 'material shadow-float top-1.5 bottom-1.5 rounded-lg px-2.5 pb-1' : 'top-3 bottom-4'
+      )}
+    >
+      <header className={cn('flex shrink-0 items-center justify-between pl-1', floating ? 'h-10 pr-0' : 'h-7 pr-0.5')}>
+        <span className="flex items-baseline gap-1.5 font-medium text-text-soft text-xs">
+          Pinned <span className="font-normal text-text-faint tabular-nums">{pinned.length}</span>
+        </span>
+        {floating && (
+          <IconButton label="Close the pinned widgets" onClick={dock.hide} className="size-6 [&_svg]:size-3.5">
+            <CloseGlyph />
+          </IconButton>
+        )}
+      </header>
+      {/* The list scrolls with the wheel, and fades out at its ends instead of being cut. */}
+      <motion.div
+        layoutScroll
+        className="scroll-quiet -mx-1 min-h-0 flex-1 overflow-y-auto px-1 pt-1 pb-3 [mask-image:linear-gradient(to_bottom,transparent,black_6px,black_calc(100%-16px),transparent)]"
+      >
+        <Reorder.Group axis="y" values={order} onReorder={setOrder} className="grid gap-2.5">
+          {shown.map((widget) => (
+            <PinnedCard
+              key={widget.id}
+              widget={widget}
+              controls={controls}
+              actions={actions}
+              onDragStart={() => {
+                dragging.current = true
+              }}
+              onDragEnd={commit}
+            />
           ))}
-      </AnimatePresence>
-    </div>
+        </Reorder.Group>
+      </motion.div>
+    </motion.aside>
   )
 }
 
@@ -192,14 +209,11 @@ function PinnedCard({ widget, controls, actions, onDragStart, onDragEnd }: Pinne
       transition={glide}
       initial={{ opacity: 0, y: -6 }}
       animate={{ opacity: 1, y: 0 }}
-      whileDrag={{ scale: 1.02, boxShadow: '0 18px 40px -16px rgb(0 0 0 / 0.95)', zIndex: 10 }}
-      className="group/card relative grid overflow-hidden rounded-lg border border-line bg-surface shadow-[inset_0_1px_0_rgb(255_255_255/0.03)]"
+      whileDrag={{ scale: 1.02, boxShadow: '0 20px 44px -14px rgb(0 0 0 / 0.9)', zIndex: 10 }}
+      className="group/card relative grid overflow-hidden rounded-lg bg-surface shadow-[0_0_0_1px_rgb(255_255_255/0.06),0_6px_18px_-10px_rgb(0_0_0/0.7)]"
     >
-      <div
-        onPointerDown={grab}
-        className="flex h-8 cursor-grab touch-none select-none items-center gap-1 border-line border-b pr-1 pl-1.5 active:cursor-grabbing"
-      >
-        <span className="text-text-faint/50 transition-colors group-hover/card:text-text-faint [&_svg]:size-3.5">
+      <div onPointerDown={grab} className="flex h-8 cursor-grab touch-none select-none items-center gap-1 pr-1 pl-1.5 active:cursor-grabbing">
+        <span className="text-text-faint/0 transition-colors group-hover/card:text-text-faint [&_svg]:size-3.5">
           <GripGlyph />
         </span>
         <span className="min-w-0 flex-1 truncate font-medium text-text-soft text-xs">{widget.title}</span>
@@ -221,7 +235,7 @@ function PinnedCard({ widget, controls, actions, onDragStart, onDragEnd }: Pinne
       <div hidden={shut} className="relative">
         <div className="overflow-hidden" style={unfolded ? undefined : { maxHeight: FOLDED_HEIGHT }}>
           {/* Drawn a little smaller than on the stage: the same widget, at the size of a margin. */}
-          <div ref={body} className="px-3 pt-2.5 pb-3 [zoom:0.86]">
+          <div ref={body} className="px-3 pt-1 pb-3 [zoom:0.86]">
             <ViewRenderer spec={widget.spec as ViewSpec} actions={actions} />
           </div>
         </div>
@@ -235,9 +249,9 @@ function PinnedCard({ widget, controls, actions, onDragStart, onDragEnd }: Pinne
             <button
               type="button"
               onClick={() => setUnfolded((was) => !was)}
-              className="flex h-5 items-center gap-1 rounded-sm px-1.5 font-mono text-[0.5625rem] text-text-faint uppercase tracking-[0.12em] transition-colors hover:bg-white/[0.05] hover:text-text"
+              className="flex h-5 items-center gap-1 rounded-sm px-2 text-[0.6875rem] text-text-soft transition-colors hover:bg-white/[0.06] hover:text-text"
             >
-              {unfolded ? 'Less' : 'More'}
+              {unfolded ? 'Show less' : 'Show more'}
             </button>
           </div>
         )}

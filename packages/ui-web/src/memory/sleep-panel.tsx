@@ -4,6 +4,7 @@ import type { SleepSettings } from '@repo/protocol'
 import { type KeyboardEvent, useEffect, useId, useState } from 'react'
 import { Orb } from '../presence/orb.tsx'
 import { Button } from '../primitives/button.tsx'
+import { Choice } from '../primitives/choice.tsx'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { SLEEP_CHOICES, sleepStatus } from './words.ts'
@@ -19,7 +20,7 @@ function useNow(): Date {
 }
 
 const fieldClass =
-  'h-9 rounded-md border border-line-strong bg-ground px-3 font-mono text-sm text-text tabular-nums outline-none transition duration-150 ease-soft focus-visible:border-accent/70 focus-visible:outline-none'
+  'h-7 rounded-md border border-line-strong bg-black/25 px-2.5 text-[0.8125rem] text-text tabular-nums shadow-[inset_0_1px_1px_rgb(0_0_0/0.25)] transition duration-150 ease-soft'
 
 /**
  * Whether the assistant is asleep, the work its sleep is doing, and when it sleeps. The core on the main
@@ -79,24 +80,12 @@ export function SleepPanel({ memory, sleep }: { memory: MemoryState; sleep: Slee
 
       <div className="grid gap-4 border-line border-t pt-5">
         <Eyebrow>When it sleeps</Eyebrow>
-        <div role="radiogroup" aria-label="When it sleeps" className="flex flex-wrap gap-2">
-          {SLEEP_CHOICES.map(({ mode, label }) => (
-            // biome-ignore lint/a11y/useSemanticElements: a row of pills reads better than radio buttons, and says the same to a screen reader
-            <button
-              key={mode}
-              type="button"
-              role="radio"
-              aria-checked={sleep.when === mode}
-              onClick={() => change({ when: mode })}
-              className={cn(
-                'h-7 rounded-md border px-3 text-xs transition duration-150 ease-soft',
-                sleep.when === mode ? 'border-accent/50 bg-accent/10 text-text' : 'border-line-strong text-text-soft hover:border-text-faint hover:text-text'
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <Choice
+          label="When it sleeps"
+          value={sleep.when}
+          options={SLEEP_CHOICES.map(({ mode, label }) => ({ value: mode, label }))}
+          onChange={(when) => change({ when })}
+        />
 
         {(usesQuiet || usesTime) && (
           <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-sm text-text-soft">

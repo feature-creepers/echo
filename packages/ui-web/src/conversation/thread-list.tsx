@@ -2,7 +2,7 @@ import type { Thread, Threads } from '@repo/protocol'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 
-const STATE = { working: 'Working', ready: 'Ready', parked: 'Idle' } as const
+const STATE = { working: 'working', ready: 'ready', parked: 'idle' } as const
 
 /** A topic, and the asides asked beside it, the most recent first. */
 export interface TopicGroup {
@@ -75,7 +75,7 @@ function Row({ thread, onScreen = false, onOpen }: { thread: Thread; onScreen?: 
       <StateDot state={thread.state} />
       <span className="grid min-w-0 flex-1 gap-0.5">
         <span className={cn('truncate', thread.kind === 'aside' ? 'text-[0.8125rem] text-text-soft' : 'text-sm')}>{thread.title}</span>
-        <span className="font-mono text-label text-text-faint uppercase">
+        <span className="text-label text-text-faint">
           {thread.kind === 'aside' ? 'Aside' : 'Topic'} · {STATE[thread.state]}
           {onScreen ? ' · on screen' : ''}
         </span>

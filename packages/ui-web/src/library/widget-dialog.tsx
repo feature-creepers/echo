@@ -70,7 +70,7 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
 
   return (
     <motion.div
-      className="absolute inset-0 z-40 flex items-center justify-center bg-ground/75 p-6"
+      className="absolute inset-0 z-40 flex items-center justify-center bg-black/55 p-6"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1, transition: { duration: DURATION.calm, ease: EASE } }}
       exit={{ opacity: 0, transition: { duration: DURATION.quick, ease: EASE } }}
@@ -86,10 +86,10 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 4, scale: 0.99, transition: { duration: DURATION.quick, ease: EASE } }}
         transition={{ duration: DURATION.calm, ease: EASE }}
-        className="flex max-h-full w-full max-w-4xl overflow-hidden rounded-lg border border-line-strong bg-surface shadow-[0_32px_80px_-24px_rgb(0_0_0/0.9)]"
+        className="shadow-float flex max-h-full w-full max-w-4xl overflow-hidden rounded-lg bg-surface ring-1 ring-white/[0.08]"
       >
         <div className="scroll-quiet grid min-w-0 flex-1 content-start overflow-y-auto">
-          <div className="sticky top-0 z-10 flex h-9 items-center border-line border-b bg-surface/95 px-5 text-text-soft text-xs backdrop-blur-xl">
+          <div className="sticky top-0 z-10 flex h-10 items-center border-line border-b bg-surface/90 px-5 text-text-soft text-xs backdrop-blur-xl">
             <span className="truncate font-medium">{widget.title}</span>
           </div>
           <div className="p-5">
@@ -97,8 +97,8 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
           </div>
         </div>
 
-        <aside className="scroll-quiet flex w-72 shrink-0 flex-col gap-5 overflow-y-auto border-line border-l bg-ground/40 px-4 pb-4 *:shrink-0">
-          <div className="-mx-4 flex h-9 shrink-0 items-center justify-between border-line border-b pr-1 pl-4">
+        <aside className="scroll-quiet flex w-72 shrink-0 flex-col gap-5 overflow-y-auto border-black/40 border-l bg-white/[0.025] px-4 pb-4 *:shrink-0">
+          <div className="-mx-4 flex h-10 shrink-0 items-center justify-between border-line border-b pr-1.5 pl-4">
             <Eyebrow>Saved {when.format(new Date(widget.since))}</Eyebrow>
             <IconButton label="Close" onClick={onClose}>
               <CloseGlyph />
@@ -117,7 +117,7 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
                 onChange={(event) => setTitle(event.target.value)}
                 onBlur={keepTitle}
                 onKeyDown={(event) => event.key === 'Enter' && event.currentTarget.blur()}
-                className="h-8 rounded-md border border-line-strong bg-ground px-2.5 font-medium text-[0.8125rem] outline-none transition-colors focus-visible:border-accent/70 focus-visible:outline-none"
+                className="h-8 rounded-md border border-line-strong bg-black/25 shadow-[inset_0_1px_1px_rgb(0_0_0/0.25)] px-2.5 font-medium text-[0.8125rem] transition-colors"
               />
             </div>
             <div className="grid gap-1.5">
@@ -133,7 +133,7 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
                 onChange={(event) => setCollection(event.target.value)}
                 onBlur={keepCollection}
                 onKeyDown={(event) => event.key === 'Enter' && event.currentTarget.blur()}
-                className="h-8 rounded-md border border-line-strong bg-ground px-2.5 text-[0.8125rem] outline-none transition-colors placeholder:text-text-faint focus-visible:border-accent/70 focus-visible:outline-none"
+                className="h-8 rounded-md border border-line-strong bg-black/25 shadow-[inset_0_1px_1px_rgb(0_0_0/0.25)] px-2.5 text-[0.8125rem] transition-colors placeholder:text-text-faint"
               />
               <datalist id={`${ids}-collections`}>
                 {collections.map((name) => (
@@ -141,7 +141,7 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
                 ))}
               </datalist>
             </div>
-            <div className="flex items-center justify-between gap-3 rounded-md border border-line bg-ground/60 px-2.5 py-2">
+            <div className="flex items-center justify-between gap-3 rounded-md bg-white/[0.04] px-2.5 py-2 shadow-[inset_0_0_0_1px_rgb(255_255_255/0.05)]">
               <span className="grid gap-px">
                 <span className="text-[0.8125rem]">Pin to the main screen</span>
                 <span className="text-[0.6875rem] text-text-faint">Kept live on the right, in your order</span>
@@ -158,7 +158,7 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
             <label htmlFor={`${ids}-change`}>
               <Eyebrow>Ask for a change</Eyebrow>
             </label>
-            <div className="flex items-end gap-1.5 rounded-md border border-line-strong bg-ground py-1.5 pr-1 pl-2.5 transition-colors focus-within:border-accent/60">
+            <div className="flex items-end gap-1.5 rounded-md border border-line-strong bg-black/25 shadow-[inset_0_1px_1px_rgb(0_0_0/0.25)] py-1.5 pr-1 pl-2.5 transition-colors focus-within:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_55%,transparent)]">
               <textarea
                 id={`${ids}-change`}
                 value={change}

@@ -55,13 +55,13 @@ export function SideSheet({ client, personas, tab, onTab, onClose }: SideSheetPr
       animate={{ x: 0, opacity: 1 }}
       exit={{ x: '100%', opacity: 0.6 }}
       transition={{ duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
-      className="absolute inset-y-0 right-0 z-30 flex w-[27rem] max-w-[calc(100%-3rem)] flex-col border-line-strong border-l bg-surface/95 shadow-[-24px_0_48px_-32px_rgb(0_0_0/0.8)] backdrop-blur-xl"
+      className="material absolute inset-y-0 right-0 z-30 flex w-[27rem] max-w-[calc(100%-3rem)] flex-col border-black/50 border-l shadow-[-20px_0_40px_-24px_rgb(0_0_0/0.7)]"
     >
-      <header className="grid gap-3.5 border-line border-b px-4 pt-4 pb-3.5">
+      <header className="grid gap-3 border-white/[0.06] border-b px-4 pt-4 pb-3">
         <div className="flex items-start justify-between gap-3">
           <div className="grid min-w-0 gap-0.5 pl-0.5">
-            <h2 className="font-medium text-lg leading-tight tracking-tight">{TITLES[tab]}</h2>
-            <p className="truncate font-mono text-label text-text-faint uppercase">{subtitle[tab]}</p>
+            <h2 className="font-semibold text-[0.9375rem] leading-tight tracking-[-0.01em]">{TITLES[tab]}</h2>
+            <p className="truncate text-text-faint text-xs">{subtitle[tab]}</p>
           </div>
           <div className="-mr-1 flex items-center gap-1.5">
             {tab === 'transcript' && <Kbd>Ctrl T</Kbd>}
@@ -70,7 +70,11 @@ export function SideSheet({ client, personas, tab, onTab, onClose }: SideSheetPr
             </IconButton>
           </div>
         </div>
-        <div role="tablist" aria-label="What the side sheet shows" className="grid grid-cols-3 gap-0.5 rounded-md border border-line bg-ground/70 p-0.5">
+        <div
+          role="tablist"
+          aria-label="What the side sheet shows"
+          className="grid grid-cols-3 rounded-md bg-white/[0.06] p-0.5 shadow-[inset_0_0_0_1px_rgb(255_255_255/0.04)]"
+        >
           {SHEET_TABS.map((name) => (
             <button
               key={name}
@@ -79,20 +83,20 @@ export function SideSheet({ client, personas, tab, onTab, onClose }: SideSheetPr
               aria-selected={tab === name}
               onClick={() => onTab(name)}
               className={cn(
-                'relative flex h-7 items-center justify-center gap-1.5 rounded-sm text-xs transition-colors duration-150',
-                tab === name ? 'text-text' : 'text-text-faint hover:text-text-soft'
+                'relative flex h-6 items-center justify-center gap-1.5 rounded-sm text-xs transition-colors duration-150',
+                tab === name ? 'text-text' : 'text-text-soft hover:text-text'
               )}
             >
               {tab === name && (
                 <motion.span
                   layoutId="side-sheet-tab"
                   transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-                  className="absolute inset-0 rounded-sm border border-line-strong bg-raised"
+                  className="absolute inset-0 rounded-sm bg-white/[0.13] shadow-[0_1px_2px_rgb(0_0_0/0.35),inset_0_1px_0_rgb(255_255_255/0.06)]"
                 />
               )}
               <span className="relative">{TITLES[name]}</span>
               {counts[name] !== undefined && (
-                <span className={cn('relative font-mono text-[0.625rem] tabular-nums', tab === name ? 'text-accent' : 'text-text-faint')}>{counts[name]}</span>
+                <span className={cn('relative text-[0.6875rem] tabular-nums', tab === name ? 'text-text-soft' : 'text-text-faint')}>{counts[name]}</span>
               )}
             </button>
           ))}

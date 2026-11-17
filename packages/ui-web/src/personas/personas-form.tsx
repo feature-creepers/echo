@@ -91,7 +91,7 @@ export function PersonasForm({ personas, active, submitLabel, busyLabel, doneLab
                 problem={problem && nameProblemCopy[problem]}
                 onChange={(name) => change({ ...draft, names: { ...draft.names, [persona.id]: name } })}
               />
-              <label className="-mt-1 flex cursor-pointer items-center gap-2.5 border-line border-t pt-4 font-mono text-text-soft text-xs has-checked:text-text">
+              <label className="-mt-1 flex cursor-pointer items-center gap-2.5 border-line border-t pt-4 text-text-soft text-xs has-checked:text-text">
                 <input
                   type="radio"
                   name={group}
@@ -113,7 +113,7 @@ export function PersonasForm({ personas, active, submitLabel, busyLabel, doneLab
         <Button kind="primary" size="lg" type="submit" disabled={state.is === 'busy'}>
           {state.is === 'busy' ? busyLabel : submitLabel}
         </Button>
-        <span role="status" className={cn('text-sm', state.is === 'refused' ? 'text-danger' : 'font-mono text-text-soft text-xs')}>
+        <span role="status" className={cn('text-sm', state.is === 'refused' ? 'text-danger' : 'text-text-soft text-xs')}>
           {state.is === 'refused' ? state.why : state.is === 'done' ? doneLabel : undefined}
         </span>
       </div>

@@ -38,10 +38,10 @@ export function Onboarding({ productName, personas, engines, speech, setPersonas
   const at = STEPS.indexOf(step)
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="relative flex h-full flex-col">
       <div className="mx-auto flex w-full max-w-3xl items-center gap-4 px-8 pt-7">
-        <Eyebrow>
-          {String(at + 1).padStart(2, '0')} <span className="text-text-faint/50">/ {String(STEPS.length).padStart(2, '0')}</span>
+        <Eyebrow className="tabular-nums">
+          Step {at + 1} of {STEPS.length}
         </Eyebrow>
         <div className="h-px flex-1 bg-line">
           <motion.div
@@ -129,7 +129,7 @@ function Welcome({ productName, onNext }: { productName: string; onNext(): void 
   return (
     <div className="flex flex-col items-center text-center">
       <Orb size={260} mood="idle" />
-      <h1 className="mt-1 font-medium font-mono text-4xl lowercase tracking-[0.3em] [margin-right:-0.3em]">{productName}</h1>
+      <h1 className="mt-1 font-semibold text-4xl tracking-[-0.03em]">{productName}</h1>
       <p className="mt-4 max-w-sm text-balance text-base text-text-soft leading-relaxed">
         A personal assistant you talk to. It answers aloud, and shows the rest.
       </p>
@@ -148,7 +148,7 @@ function Section({ eyebrow, title, lead, children }: { eyebrow: string; title: s
     <section className="grid gap-7">
       <div className="grid max-w-2xl gap-2.5">
         <Eyebrow>{eyebrow}</Eyebrow>
-        <h1 className="font-medium text-3xl tracking-[-0.025em]">{title}</h1>
+        <h1 className="font-semibold text-3xl tracking-[-0.025em]">{title}</h1>
         <p className="text-base text-text-soft leading-relaxed">{lead}</p>
       </div>
       <div>{children}</div>

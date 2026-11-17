@@ -21,7 +21,7 @@ export function AccessIndicator({ client }: { client: Client }) {
       type="button"
       onClick={() => window.dispatchEvent(new Event(OPEN_ACCESS_EVENT))}
       title="What the assistant may reach on this computer. Change it in Settings, Access."
-      className="mr-4 flex h-4 items-center gap-1.5 font-mono text-[0.625rem] text-text-faint/70 uppercase tracking-[0.12em] transition-colors duration-(--duration-quick) hover:text-text-soft"
+      className="mr-4 flex h-4 items-center gap-1.5 text-[0.6875rem] text-text-faint transition-colors duration-(--duration-quick) hover:text-text-soft"
     >
       <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true">
         <path d="M2 4.5V12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3.5H3a1 1 0 0 0-1 1Z" />
