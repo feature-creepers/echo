@@ -20,8 +20,19 @@ export function folder(): string {
   return created
 }
 
+/**
+ * Remove the folders made for the tests. On Windows a stand-in CLI that was just stopped can still hold its
+ * working folder for a moment; what cannot be removed then is left to the system's temporary folder, since a
+ * test's outcome does not depend on it.
+ */
 export function removeFolders(): void {
-  for (const created of folders.splice(0)) rmSync(created, { recursive: true, force: true, maxRetries: 5 })
+  for (const created of folders.splice(0)) {
+    try {
+      rmSync(created, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+    } catch {
+      // Still held: left behind in the temporary folder.
+    }
+  }
 }
 
 /** A log that keeps what it is told. */
