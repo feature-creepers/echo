@@ -38,9 +38,9 @@ export function Media({ props }: { props: BlockProps<'Media'> }) {
     status === 'failed' ? 'Unavailable' : going && (state.buffering || status === 'loading') ? 'Tuning in' : going ? 'Playing' : held ? 'Paused' : 'Ready'
 
   return (
-    <div className="@container grid min-w-[min(18rem,100%)] gap-4 rounded-lg border border-line bg-surface/70 p-4 backdrop-blur-sm">
+    <div className="@container grid min-w-[min(15rem,100%)] gap-2.5 rounded-md border border-line bg-white/[0.018] p-2.5">
       {props.kind === 'video' && (
-        <div className="relative aspect-video w-full overflow-hidden rounded-md border border-line bg-black">
+        <div className="relative aspect-video w-full overflow-hidden rounded-sm border border-line bg-black">
           {/* While this source plays, the player's element is drawn here; otherwise its picture, if any. */}
           <div ref={surface} className="absolute inset-0" />
           {!held && props.artwork && (
@@ -51,7 +51,7 @@ export function Media({ props }: { props: BlockProps<'Media'> }) {
               type="button"
               aria-label={`Play ${props.title}`}
               onClick={() => player.play(source)}
-              className="absolute inset-0 m-auto flex size-16 items-center justify-center rounded-full bg-accent text-accent-ink shadow-[0_0_40px_-6px_var(--accent)] transition hover:brightness-110 [&_svg]:size-6"
+              className="absolute inset-0 m-auto flex size-11 items-center justify-center rounded-md bg-accent text-accent-ink transition hover:brightness-110 [&_svg]:size-5"
             >
               <PlayGlyph />
             </button>
@@ -59,27 +59,30 @@ export function Media({ props }: { props: BlockProps<'Media'> }) {
         </div>
       )}
 
-      <div className="flex min-w-0 items-center gap-4">
+      <div className="flex min-w-0 items-center gap-3">
         <Artwork url={props.artwork} sounding={sounding} />
-        <div className="grid min-w-0 flex-1 gap-1">
-          <div className="flex items-center gap-2">
+        <div className="grid min-w-0 flex-1 gap-0.5">
+          <div className="flex items-center gap-1.5">
             {props.live && <Live on={sounding} />}
-            <span className={cn('font-mono text-label uppercase', status === 'failed' ? 'text-danger' : going ? 'text-accent' : 'text-text-faint')}>
+            <span
+              className={cn(
+                'font-mono text-[0.625rem] uppercase tracking-[0.12em]',
+                status === 'failed' ? 'text-danger' : going ? 'text-accent' : 'text-text-faint'
+              )}
+            >
               {label}
             </span>
           </div>
-          <p className="truncate font-medium text-[1.0625rem] leading-snug">{props.title}</p>
-          {props.subtitle && <p className="truncate text-sm text-text-soft">{props.subtitle}</p>}
+          <p className="truncate font-medium text-sm leading-snug">{props.title}</p>
+          {props.subtitle && <p className="truncate text-text-soft text-xs">{props.subtitle}</p>}
         </div>
         <button
           type="button"
           aria-label={going ? `Pause ${props.title}` : `Play ${props.title}`}
           onClick={() => player.toggle(source)}
           className={cn(
-            'flex size-12 shrink-0 items-center justify-center rounded-full transition duration-150 ease-soft active:scale-95 [&_svg]:size-5',
-            going
-              ? 'border border-line-strong bg-raised text-text hover:bg-overlay'
-              : 'bg-accent text-accent-ink shadow-[0_0_28px_-6px_var(--accent)] hover:brightness-110'
+            'mr-0.5 flex size-8 shrink-0 items-center justify-center rounded-md transition-colors duration-(--duration-quick) ease-soft active:translate-y-px [&_svg]:size-4',
+            going ? 'border border-line-strong bg-raised text-text hover:bg-overlay' : 'bg-accent text-accent-ink hover:brightness-110'
           )}
         >
           {going ? <PauseGlyph /> : <PlayGlyph />}
@@ -87,7 +90,7 @@ export function Media({ props }: { props: BlockProps<'Media'> }) {
       </div>
 
       {held && !props.live && state.duration !== undefined && (
-        <div className="flex items-center gap-3 font-mono text-[0.6875rem] text-text-faint tabular-nums">
+        <div className="flex items-center gap-2.5 px-0.5 font-mono text-[0.625rem] text-text-faint tabular-nums">
           <span>{duration(state.position)}</span>
           <Slider
             label="Position"
@@ -99,25 +102,25 @@ export function Media({ props }: { props: BlockProps<'Media'> }) {
       )}
 
       {status === 'failed' ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-danger/30 bg-danger/8 px-3 py-2">
-          <p className="text-danger text-sm">{state.problem}</p>
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-danger/30 bg-danger/8 px-2.5 py-1.5">
+          <p className="text-danger text-xs">{state.problem}</p>
           <button type="button" onClick={() => player.play(source)} className="font-mono text-label text-text-soft uppercase hover:text-text">
             Try again
           </button>
         </div>
       ) : (
         held && (
-          <div className="hidden items-center gap-3 @[18rem]:flex">
+          <div className="hidden items-center gap-2.5 px-0.5 @[16rem]:flex">
             <button
               type="button"
               aria-label={state.muted ? 'Unmute' : 'Mute'}
               onClick={() => player.setMuted(!state.muted)}
-              className="text-text-faint transition hover:text-text"
+              className="text-text-faint transition-colors hover:text-text [&_svg]:size-3.5"
             >
               <VolumeGlyph muted={state.muted || state.volume === 0} />
             </button>
-            <Slider label="Volume" value={state.muted ? 0 : state.volume} onChange={(volume) => player.setVolume(volume)} className="max-w-40" />
-            {state.ducked && <span className="font-mono text-label text-text-faint uppercase">Lowered while speaking</span>}
+            <Slider label="Volume" value={state.muted ? 0 : state.volume} onChange={(volume) => player.setVolume(volume)} className="max-w-32" />
+            {state.ducked && <span className="truncate font-mono text-[0.625rem] text-text-faint uppercase tracking-[0.1em]">Lowered while speaking</span>}
           </div>
         )
       )}
@@ -135,16 +138,16 @@ function Artwork({ url, sounding }: { url: string | undefined; sounding: boolean
         alt=""
         referrerPolicy="no-referrer"
         onError={() => setBroken(true)}
-        className="size-16 shrink-0 rounded-md border border-line object-cover @md:size-20"
+        className="size-11 shrink-0 rounded-sm border border-line object-cover"
       />
     )
   }
   return (
-    <div className="flex size-16 shrink-0 items-end justify-center gap-[3px] overflow-hidden rounded-md border border-accent/30 bg-[radial-gradient(120%_120%_at_30%_0%,color-mix(in_oklab,var(--accent)_35%,transparent),transparent_70%)] pb-4 @md:size-20">
+    <div className="flex size-11 shrink-0 items-end justify-center gap-[2px] overflow-hidden rounded-sm border border-line bg-accent/[0.07] pb-3">
       {[0.5, 0.85, 0.65, 1, 0.55].map((height, index) => (
         <span
           key={index}
-          className={cn('w-[3px] origin-bottom rounded-full bg-accent', sounding && 'animate-level')}
+          className={cn('w-[2px] origin-bottom rounded-full bg-accent', sounding && 'animate-level')}
           style={{ height: `${height * 40}%`, animationDelay: `${index * -0.23}s`, opacity: sounding ? 1 : 0.45 }}
         />
       ))}
@@ -157,11 +160,11 @@ function Live({ on }: { on: boolean }) {
   return (
     <span
       className={cn(
-        'flex items-center gap-1.5 rounded-sm border px-1.5 py-px font-mono text-[0.625rem] uppercase tracking-[0.12em]',
-        on ? 'border-danger/50 text-danger' : 'border-line-strong text-text-faint'
+        'flex h-4 items-center gap-1 rounded-xs border px-1 font-mono text-[0.5625rem] uppercase tracking-[0.12em]',
+        on ? 'border-danger/40 text-danger' : 'border-line-strong text-text-faint'
       )}
     >
-      <span className={cn('size-1.5 rounded-full', on ? 'animate-pulse bg-danger shadow-[0_0_8px_var(--color-danger)]' : 'bg-text-faint/60')} />
+      <span className={cn('size-1 rounded-full', on ? 'animate-pulse bg-danger' : 'bg-text-faint/60')} />
       Live
     </span>
   )
@@ -171,7 +174,7 @@ function Live({ on }: { on: boolean }) {
 function Slider({ label, value, onChange, className }: { label: string; value: number; onChange(value: number): void; className?: string }) {
   return (
     <div className={cn('group relative flex h-4 min-w-0 flex-1 items-center', className)}>
-      <div className="h-1 w-full overflow-hidden rounded-full bg-line-strong">
+      <div className="h-[3px] w-full overflow-hidden rounded-full bg-white/[0.08]">
         <div className="h-full rounded-full bg-accent" style={{ width: `${Math.round(value * 100)}%` }} />
       </div>
       <div

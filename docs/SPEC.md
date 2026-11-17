@@ -489,11 +489,11 @@ Both libraries are young, so both stay behind our own packages. The rest of the 
 | ------ | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
 | Stage  | The view of the thread in focus. It changes when that thread renders again or when focus moves                                                | The whole screen                |
 | Asides | Answers to side questions, as compact cards, and "ready" chips of background threads. In the centre column, over the view (the `margin` slot) | Banners over the stage          |
-| Pinned | Saved widgets the user pinned (section 9.8), live, in a sheet that slides over the stage from the right                                       | A sheet pulled up from the edge |
+| Pinned | Saved widgets the user pinned (section 9.8), live, stacked on the right of the main screen in the user's own order                            | A sheet pulled up from the edge |
 
-Everything the assistant composes appears in the centre: the core, its caption and the view stay centred whatever else comes up, and nothing the assistant does pushes them aside. The right side belongs to the user: it holds what they pinned, and one step further in, the transcript, the threads and the inspector (section 13.2).
+Everything the assistant composes appears in the centre: the core, its caption and the view stay centred whatever else comes up, and nothing the assistant does pushes them aside. The right side belongs to the user: the pinned widgets float in its margin, and the side sheet, opened from the title row, holds the advanced views: the transcript, the threads and the inspector (section 13.2).
 
-A view says what to show, never where on a screen. Components describe content (a recipe, steps, a table), and each renderer lays them out for its device. Every block wraps and shrinks to the width it is given, from the stage to a card in the pinned sheet, and a word longer than its line breaks rather than overflowing. The core tells each session what kind of device is active, so a view meant for a phone stays short.
+A view says what to show, never where on a screen. Components describe content (a recipe, steps, a table), and each renderer lays them out for its device. Every block wraps and shrinks to the width it is given, from the stage to a card in the pinned stack, and a word longer than its line breaks rather than overflowing. The core tells each session what kind of device is active, so a view meant for a phone stays short.
 
 Earlier views are never lost: each belongs to a thread and can be brought back by asking, as the proof of concept's "Last" button does. Views the user wants to keep go to the library.
 
@@ -545,10 +545,10 @@ Each thread has a set of files of its own, kept by the core. A document the assi
 
 The user keeps the views they like. Every view, on the stage, in an aside or pinned, has a bookmark: one press saves it. The library collects them, so the user builds a set of widgets of their own out of what the assistant composed for them, and the assistant brings them back as they are.
 
-- **What is kept.** A saved widget is a view and a few words about it: a title, an optional collection, whether it is pinned. What it shows or plays is its spec, drawn again; a saved radio plays, a saved chart is as it was. Nothing in the library is a component made for one subject.
+- **What is kept.** A saved widget is a view and a few words about it: a title, an optional collection, whether it is pinned and, pinned, its place in the stack. What it shows or plays is its spec, drawn again; a saved radio plays, a saved chart is as it was. Nothing in the library is a component made for one subject.
 - **Records.** Each change is a new `library.widget` record carrying the widget's identifier and its whole state; deleting one is an erasure of every version (section 10.3). The library is the user's, kept by the core, so it follows them to every device.
 - **The library screen.** Reached from the title row. Widgets are drawn live as tiles, filtered by all, pinned, unfiled or a collection, and searched by any word they show. Opened, a widget is drawn at full size beside its name, its collection (collections are the user's own, made by typing one), a pin switch, "Show on the stage", "Ask for a change" and "Delete". The content is the assistant's to change: asking for a change sends the request to the assistant, which saves a new version and shows it at once, without starting what it plays. Verified with the real Claude Code: asked from the library to add a line under the radio, it saved and showed the new version.
-- **Pinned.** A pinned widget is shown live in the right sheet, which slides over the stage without moving it. Nothing pinned starts playing by itself.
+- **Pinned.** A pinned widget floats live on the right of the main screen, in a stack the wheel scrolls through. A widget just pinned goes on top; the user puts the stack in order by dragging a card by its bar, and the order is the library's (`place` on each widget, set with `library.arrange`), kept by the core and the same on every device. Each card folds to its bar, and a tall one is shown to a fixed height until unfolded; what it plays goes on either way. The stack never pushes the centred column: where the window's margin cannot hold it, it waits folded into a small tab, and opened from there it floats over the stage. Nothing pinned starts playing by itself.
 - **The assistant remembers.** Every session is told what is saved, by name and in a few words (up to thirty, then it searches), and threads have five tools: `library_search`, `library_show`, `library_save`, `library_update` and `library_delete`. When the user asks for something a saved widget covers ("I want to listen to the radio again"), the thread shows the saved widget with `library_show` instead of composing a new one, so it comes back the same each time. A view shown this way names its widget, and the core checks it against the catalogue again first, in case a block changed since it was saved. The assistant saves, files, pins or deletes a widget only when the user asks.
 
 ## 10. Memory
@@ -758,52 +758,48 @@ Version 1 has no server of ours, no account and no analytics. With the later ser
 
 ### 13.1 Direction
 
-Speak's discipline with the proof of concept's presence: digital, not retro.
+Speak's discipline with the proof of concept's presence: digital, not retro, and restrained in the way of Linear, Vercel, Supabase or Raycast. The design is macro and simple, a large living core over a calm ground, and every detail around it is precise rather than decorated.
 
 - **From Speak**: flat surfaces, thin rules, a strict spacing scale, bracketed secondary actions, keyboard hints, the theme system.
-- **From the proof of concept**: the near-black background, the living core at the centre of attention, one glowing accent, and a red variant, which becomes the accent of the critical persona.
-- **To stay modern rather than "geeky"**:
-  - Monospace only where it signals the system: labels, values, keys, the input line. Sentences inside generated elements use a proportional typeface, at a generous size.
-  - Glow is reserved for the core and for the element currently speaking. No scanlines, no fake terminal effects.
-  - Key hints and brackets appear from disclosure level 1 upward. Level 0 is clean.
-  - One accent per persona, as part of its data: cyan-blue and red for the two that ship.
+- **From the proof of concept**: the near-black background, the living core at the centre of attention, one accent, and a red variant, which becomes the accent of the critical persona.
+- **Restraint**:
+  - **Light.** The core is the only thing that glows. Nothing else has a glow, a coloured shadow or a gradient wash: buttons, switches, cards, chips and bars are flat, with at most a one-pixel highlight on their top edge and a dark shadow under what floats.
+  - **Corners.** Small radii, from `packages/tokens/src/radius.ts`: 2 px (badges, key hints), 3 px (small buttons, chips), 4 px (buttons, fields, widget cards), 6 px for what holds other things (a panel, the composer, a dialog, a pinned card). Nothing is a pill except a switch's track and a status dot.
+  - **Rules.** Hairlines at 7 % white separate areas; 14 % marks what can be typed in or pressed. The ground is ruled like graph paper: 16 px squares, every fifth line slightly stronger, in a 2.8 % white that fades out towards the window's edges. It is texture and never competes with content.
+  - **Type.** Geist for sentences, Geist Mono only where it signals the system: labels, values, keys, the input line. Generated views read at 14 px, labels at 10 to 11 px spaced capitals; titles are medium weight with tight tracking, never bold.
+  - **Accent.** One per persona, as part of its data: cyan-blue and red for the two that ship. It marks state and meaning (the core, the eye, what is playing, the chosen option, a focused field), not decoration: section titles and bullets are grey.
+  - Key hints and brackets appear from disclosure level 1 upward. Level 0 is clean: the screens that cover the main one close with Escape and show only a close button, no "esc" hint.
+- **Motion.** One curve (quick to start, long to settle, never bouncing), short durations (120, 240 and 420 ms), and a stiff, damped spring for what follows the pointer or changes place. Only transform and opacity are animated, so the compositor runs them without laying the page out again; measured in the built app, the main screen holds 60 frames a second at rest, while a view appears and while it clears. When a view arrives, the core glides from the middle of the screen to the top of the column and the view rises in under it.
 
 ### 13.2 Layout
 
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│ ● echo                          ▮▮▮ FIP · Radio France ❙❙ ✕   ⊞  ◫  ⚙    │
-├──────────────────────────────────────────────────────────────────────────┤
-│            ( core )  Name · READY                                        │
-│                      "…and it suits your vegetarian guest."              │
-│      ● ready · Recipe →                                                  │
-│      ┌─ by the way · Montreal ──────────────────────────────── ⌑ ✕ ┐     │
-│      │ 08:02 · clear, -3 °C                                        │     │
-│      └─────────────────────────────────────────────────────────────┘     │
-│      ┌─ Mushroom risotto ───────────────────────────────────── ⌑ ✕ ┐     │
-│      │ 40 min · serves 6 · vegetarian                              │     │
-│      │ ingredients            steps                                │     │
-│      └─────────────────────────────────────────────────────────────┘     │
-│                 > Ask anything · Ctrl+Space to talk                      │
-└──────────────────────────────────────────────────────────────────────────┘
-
-    with the side sheet open (◫), over the stage, which does not move:
-
-┌──────────────────────────────────────────────┬───────────────────────────┐
-│ ● echo                                       │ Pinned          2 live  ✕ │
-├──────────────────────────────────────────────┤ [Pinned 2│Transcript│Thre…│
-│            ( core )  Name · READY            │ RADIO FIP             ⋯   │
-│      ┌─ Mushroom risotto ──────────────────  │ ┌ ▶ FIP · live ───────┐   │
-│      │ 40 min · serves 6 · vegetarian        │ └─────────────────────┘   │
-│      └────────────────────────────────────── │ LYON WEATHER          ⋯   │
-│                                              │ ┌ 12 °C · 4 °C ───────┐   │
-└──────────────────────────────────────────────┴───────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ ● echo                              ▮▮▮ FIP · Radio France ❙❙ ✕   ⊞  ◫  ⚙    │
+├──────────────────────────────────────────────────────────────────────────────┤
+│          ( core )  Name · READY                         PINNED 3         ⇥   │
+│                    "…and it suits your guest."          ┌ ⋮ Radio FIP   ⌄ ┐  │
+│          ● ready · Recipe →                             │ ▶ FIP · live    │  │
+│          ┌ by the way · Montreal ──────── ⌑ ✕ ┐         └─────────────────┘  │
+│          │ 08:02 · clear, -3 °C               │         ┌ ⋮ Lyon        ⌄ ┐  │
+│          └────────────────────────────────────┘         │ 17°  18°  16°   │  │
+│          ┌ Mushroom risotto ───────────── ⌑ ✕ ┐         │      more       │  │
+│          │ 40 min · serves 6 · vegetarian     │         └─────────────────┘  │
+│          │ ingredients        steps           │                              │
+│          ┌────────────────────────────────────┐                              │
+│          │ ◉ Ask anything · Ctrl+Space   ◌ ↑  │                              │
+│          └────────────────────────────────────┘                              │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **One column for everything the assistant does.** The core, its caption, the "ready" chips, aside cards and the view share one centred column. An aside is a compact card over the view, not a column beside it, so nothing the assistant shows can move the stage off centre. With no view on the stage, the core stays large and asides come under the caption.
-- **The right side is the user's.** One sheet slides over the stage from the right, opened from the title row (◫), and Ctrl+T opens it on the transcript. Its header is a title, a line of status, and a segmented control: Pinned, Transcript, Threads, Inspector. One sheet rather than two: there is one right edge, two panels would fight over it, and everything there is kept beside the conversation rather than part of it. Pinned comes first because it is what a user opens most.
+- **One column for everything the assistant does.** The core, its caption, the "ready" chips, aside cards, the view and the composer share one centred column, 45rem (720 px) wide. An aside is a compact card over the view, not a column beside it, so nothing the assistant shows can move the stage off centre. With no view on the stage, the core stays large and asides come under the caption.
+- **A view** sits in a panel with a thin bar on top: its title on the left, its bookmark (⌑) and close button on the right, a hairline under it, and the view below. An aside uses the same bar, with "By the way" before its title.
+- **The composer floats.** It sits over the bottom of the screen, and everything above it scrolls behind it and fades out under it. On its left, the persona's eye: a ring with a pupil, drawn as one picture so the pupil is exactly centred, that lives as the core does: it breathes and blinks at rest, leans in while listening, carries a circling arc while thinking, beats while speaking, and asleep it closes to a slit that still breathes. Pressing it hands over to the other persona. There is no prompt chevron: the eye says who answers and what it is doing.
+- **The right margin is the user's.** The pinned widgets float there, stacked, scrolled with the wheel and put in order by dragging (section 9.8). The stack is 272 px wide and keeps 12 px from the window's edge, so it opens by itself only in windows at least 1312 px wide; in a narrower one it waits folded into a "Pinned" tab and, opened, floats over the stage as a panel until folded again.
+- **The side sheet is for advanced views.** One sheet slides over the stage, and over the pinned stack, from the right, opened from the title row (◫), and Ctrl+T opens it on the transcript. Its header is a title, a line of status, and a segmented control: Transcript, Threads, Inspector.
 - **The title row** holds, from the right: settings (⚙), the side sheet (◫), the library (⊞), and, while something plays, the now-playing control.
-- **Every view has a bookmark** (⌑) beside its close button: one press saves it to the library; once saved, it opens a menu to pin it, find it in the library, or take it out.
+- **Screens that cover the main one** (settings, library) put their title at the top left and a close button level with it at the right; their sections are listed on the left. The library's search spans the column under its title.
+- **Every view has a bookmark** (⌑) beside its close button: one press saves it to the library; once saved, it opens a menu to pin it to the main screen, find it in the library, or take it out.
 
 Three sizes on a desktop: the full window, Mini (core and caption, always on top, from the proof of concept), and the pill (summoned over another app by the global shortcut, from Speak). Window frames and controls follow each system's conventions.
 
@@ -1263,9 +1259,9 @@ Built, and checked against the real Claude Code on 17 November 2026:
 - **Personas.** Named by the user at first launch and in settings; the critical stance objects with a decision card and remembers decisions made despite it (section 11).
 - **Voice.** Local recognition and voice (section 8.2), downloaded once from first launch or settings.
 - **Harnesses.** Claude Code, verified for real, isolation included; Codex, written from Speak's proven code and tested against a stand-in, never run against the real CLI.
-- **Interface.** First launch in steps, the main screen around the living core with everything the assistant shows in one centred column, settings (personalities, voice, engine, memory), and a side sheet over the stage: pinned widgets, the transcript, the threads and an inspector of raw events (section 13.2).
+- **Interface.** First launch in steps, the main screen around the living core with everything the assistant shows in one centred column and a composer that floats over it, the persona's eye animated with each state, settings (personalities, voice, engine, memory), pinned widgets floating in the right margin, and a side sheet over the stage for the transcript, the threads and an inspector of raw events (section 13.2). The look of section 13.1 (small radii, no glow outside the core, graph-paper ground, hairlines, one motion curve) was checked on screenshots of every screen of the built app at 1320 by 860 and at 760 by 560.
 - **Media.** The Media block plays radio, podcasts, songs and video from https streams and files, HLS included, through one player for the app: one sound at a time, going on when its view changes, a now-playing control in the title row, the system's media keys, lowered under the assistant's voice and while the user talks (section 9.6). Verified in the built app with the real Claude Code: asked to play Radio FIP, it found the station's MP3 stream and the stream played in the app.
-- **Library.** Any view bookmarked, then browsed, searched, filed in collections, renamed, pinned beside the conversation, shown again, changed by asking, or deleted (section 9.8). Verified with the real Claude Code: after a restart, "I want to listen to the radio again" brought back the saved radio widget itself, and it played.
+- **Library.** Any view bookmarked, then browsed, searched, filed in collections, renamed, pinned to the main screen, put in order by dragging (the order kept by the core), shown again, changed by asking, or deleted (section 9.8). Verified in the built app: a widget dragged to the top of the stack stays there after the page is reloaded, and a pinned radio keeps playing in its card. Verified with the real Claude Code: after a restart, "I want to listen to the radio again" brought back the saved radio widget itself, and it played.
 - **Memory.** Every word kept and searchable at once (SQLite FTS5); facts extracted, reconciled and summarised into a profile while the assistant sleeps, at times the user sets; recalled into each request; shown, editable, forgettable and exportable in settings. Verified with the real Claude Code: facts learned in one session answered a question in the next.
 - **Files, web and briefing.** Documents written as versioned files, previewed with a download button; web search and page reading through the harness's own tools; a greeting and briefing when the app opens.
 - **Settings.** In two groups that say where each is kept. This computer: opening at login, starting in the background, the tray, the data folder; the voice models, each personality's voice, speaking aloud or not, the pace and the speakers; the microphone with a live level, how a pause ends listening, the sounds; the three shortcuts, recorded by pressing them. The assistant (kept by the core): personalities, the model each AI program answers with and the one preferred, memory. Then updates and about.

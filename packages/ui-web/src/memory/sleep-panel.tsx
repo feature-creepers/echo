@@ -19,7 +19,7 @@ function useNow(): Date {
 }
 
 const fieldClass =
-  'h-9 rounded-md border border-line-strong bg-ground px-3 font-mono text-sm text-text tabular-nums outline-none transition duration-150 ease-soft focus-visible:border-accent focus-visible:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_22%,transparent)]'
+  'h-9 rounded-md border border-line-strong bg-ground px-3 font-mono text-sm text-text tabular-nums outline-none transition duration-150 ease-soft focus-visible:border-accent/70 focus-visible:outline-none'
 
 /**
  * Whether the assistant is asleep, the work its sleep is doing, and when it sleeps. The core on the main
@@ -58,10 +58,7 @@ export function SleepPanel({ memory, sleep }: { memory: MemoryState; sleep: Slee
 
   return (
     <div
-      className={cn(
-        'grid gap-6 rounded-lg border bg-surface/80 p-6 backdrop-blur-sm transition duration-500 ease-soft',
-        state.asleep ? 'border-line' : 'border-line-strong'
-      )}
+      className={cn('grid gap-5 rounded-lg border bg-surface/85 p-5 transition duration-500 ease-soft', state.asleep ? 'border-line' : 'border-line-strong')}
     >
       <div className="flex items-center gap-5">
         <Orb size={64} mood={state.asleep ? 'asleep' : 'idle'} className={cn('-m-2 shrink-0 transition-opacity duration-700', state.asleep && 'opacity-70')} />
@@ -75,11 +72,8 @@ export function SleepPanel({ memory, sleep }: { memory: MemoryState; sleep: Slee
       </div>
 
       {working && (
-        <div className="h-1 overflow-hidden rounded-full bg-raised" role="progressbar" aria-label="Sleep" aria-valuenow={Math.round(progress * 100)}>
-          <div
-            className="h-full rounded-full bg-accent/70 shadow-[0_0_12px_var(--accent)] transition-[width] duration-700 ease-soft"
-            style={{ width: `${Math.max(4, progress * 100)}%` }}
-          />
+        <div className="h-1 overflow-hidden rounded-full bg-white/[0.06]" role="progressbar" aria-label="Sleep" aria-valuenow={Math.round(progress * 100)}>
+          <div className="h-full rounded-full bg-accent/70 transition-[width] duration-700 ease-soft" style={{ width: `${Math.max(4, progress * 100)}%` }} />
         </div>
       )}
 
@@ -95,10 +89,8 @@ export function SleepPanel({ memory, sleep }: { memory: MemoryState; sleep: Slee
               aria-checked={sleep.when === mode}
               onClick={() => change({ when: mode })}
               className={cn(
-                'h-8 rounded-full border px-3.5 text-xs transition duration-150 ease-soft',
-                sleep.when === mode
-                  ? 'border-accent/60 bg-accent/10 text-text shadow-[0_0_18px_-8px_var(--accent)]'
-                  : 'border-line-strong text-text-soft hover:border-text-faint hover:text-text'
+                'h-7 rounded-md border px-3 text-xs transition duration-150 ease-soft',
+                sleep.when === mode ? 'border-accent/50 bg-accent/10 text-text' : 'border-line-strong text-text-soft hover:border-text-faint hover:text-text'
               )}
             >
               {label}

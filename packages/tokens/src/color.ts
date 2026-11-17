@@ -13,6 +13,8 @@ export const color = {
   overlay: '#161b24',
   /** A hairline between two areas. A wash of white, so it reads on every layer. */
   line: 'rgb(255 255 255 / 0.07)',
+  /** The faintest rule: the squares of the graph paper behind everything. */
+  lineFaint: 'rgb(255 255 255 / 0.028)',
   /** The edge of something that can be typed in or pressed. */
   lineStrong: 'rgb(255 255 255 / 0.14)',
   text: '#edf0f5',

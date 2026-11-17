@@ -15,7 +15,7 @@ export interface Saveable {
 
 /**
  * The bookmark on every view: one press saves it to the library. Once saved, the same place holds what to do
- * with it: pin it beside the conversation, find it in the library, or take it out.
+ * with it: pin it to the main screen, find it in the library, or take it out.
  */
 export function SaveControl({ view }: { view: Saveable }) {
   const controls = useLibraryControls()
@@ -61,7 +61,7 @@ function Control({ view, controls }: { view: Saveable; controls: LibraryControls
             initial={{ opacity: 0, x: 6 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0 }}
-            className="mr-1 font-mono text-accent text-label uppercase"
+            className="mr-1 font-mono text-[0.625rem] text-text-soft uppercase tracking-[0.12em]"
           >
             Saved
           </motion.span>
@@ -75,14 +75,14 @@ function Control({ view, controls }: { view: Saveable; controls: LibraryControls
           </span>
         }
         trigger={(open, toggle) => (
-          <IconButton label="Saved in the library" active={open} onClick={toggle} className="text-accent">
+          <IconButton label="Saved in the library" active={open} onClick={toggle} className="text-text-soft">
             <BookmarkGlyph filled />
           </IconButton>
         )}
         items={[
           saved.pinned
-            ? { label: 'Unpin from the side', onSelect: () => act(controls.library.update({ widget: saved.id, pinned: false })) }
-            : { label: 'Pin to the side', onSelect: () => act(controls.library.update({ widget: saved.id, pinned: true })) },
+            ? { label: 'Unpin from the main screen', onSelect: () => act(controls.library.update({ widget: saved.id, pinned: false })) }
+            : { label: 'Pin to the main screen', onSelect: () => act(controls.library.update({ widget: saved.id, pinned: true })) },
           { label: 'Open in the library', onSelect: () => controls.open(saved.id) },
           { label: 'Remove from the library', danger: true, onSelect: () => act(controls.library.remove(saved.id)) }
         ]}

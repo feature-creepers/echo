@@ -4,6 +4,7 @@ import {
   type CommandInput,
   type Event,
   type LibraryView,
+  pinnedInOrder,
   type SavedWidget,
   type ShownView,
   savedWidgetSchema,
@@ -18,8 +19,8 @@ import type { Screen, Showing } from '../views/screen.ts'
 import { LIBRARY_INSTRUCTIONS, type LibraryEdit, libraryTools } from './tools.ts'
 
 /**
- * The library (docs/SPEC.md, section 9.8): views the user bookmarked, kept to be sorted, pinned beside the
- * conversation, and brought back as they are when asked for again.
+ * The library (docs/SPEC.md, section 9.8): views the user bookmarked, kept to be sorted, pinned on the main
+ * screen in an order of the user's own, and brought back as they are when asked for again.
  *
  * A widget is never changed in place. Each version is a record of type `library.widget` carrying the
  * widget's own identifier and its whole state: a later record with the same identifier replaces it. Deleting
@@ -59,6 +60,8 @@ export interface Library {
   /** Save a view shown now or earlier. Saving one already saved gives back the widget it became. */
   save(input: CommandInput<'library.save'>): { ok: true; widget: SavedWidget; library: LibraryView } | { ok: false; error: CommandError }
   update(input: CommandInput<'library.update'>): LibraryChange
+  /** Put the pinned widgets in an order, from the top of the stack. */
+  arrange(input: CommandInput<'library.arrange'>): LibraryChange
   remove(widget: string): LibraryChange
   /** Show a saved widget as it is, where `showing` says. */
   show(widget: string, showing: Showing): ToolResult
@@ -136,19 +139,43 @@ export function createLibrary({ records, screen, now, newId }: LibraryOptions): 
   const update: Library['update'] = (input) => {
     const before = kept.get(input.widget)?.widget
     if (!before) return unknown(input.widget)
-    const { at: _at, collection, pinnedAt, ...rest } = before
+    const { at: _at, collection, pinnedAt, place, ...rest } = before
     const filed = input.collection === undefined ? collection : (input.collection ?? undefined)
     const pinned = input.pinned ?? before.pinned
     const pinnedSince = pinned ? (before.pinned ? pinnedAt : now().toISOString()) : undefined
+    // A widget just pinned goes on top of the stack, where the user sees it; unpinned, it has no place.
+    const placed = pinned ? (before.pinned ? place : top()) : undefined
     write({
       ...rest,
       ...(input.title === undefined ? {} : { title: input.title }),
       ...(filed === undefined ? {} : { collection: filed }),
       pinned,
-      ...(pinnedSince === undefined ? {} : { pinnedAt: pinnedSince })
+      ...(pinnedSince === undefined ? {} : { pinnedAt: pinnedSince }),
+      ...(placed === undefined ? {} : { place: placed })
     })
     return { ok: true, library: changed() }
   }
+
+  /** A place above every pinned widget. */
+  const top = () => Math.min(0, ...stacked().map((widget, index) => widget.place ?? index)) - 1
+
+  const arrange: Library['arrange'] = (input) => {
+    const stack = stacked()
+    const byId = new Map(stack.map((widget) => [widget.id, widget]))
+    const listed = [...new Set(input.pinned)].flatMap((id) => byId.get(id) ?? [])
+    const order = [...listed, ...stack.filter((widget) => !listed.includes(widget))]
+    // Only the widgets whose place changes get a new version.
+    let moved = 0
+    order.forEach((widget, place) => {
+      if (widget.place === place) return
+      const { at: _at, ...rest } = widget
+      write({ ...rest, place })
+      moved++
+    })
+    return { ok: true, library: moved > 0 ? changed() : read() }
+  }
+
+  const stacked = () => pinnedInOrder(read().widgets)
 
   const replace = (id: string, spec: ViewSpec, title?: string): SavedWidget | undefined => {
     const before = kept.get(id)?.widget
@@ -193,6 +220,7 @@ export function createLibrary({ records, screen, now, newId }: LibraryOptions): 
     get: (id) => kept.get(id)?.widget,
     save,
     update,
+    arrange,
     remove,
     show,
     search,

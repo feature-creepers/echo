@@ -13,6 +13,7 @@ import { Orb } from '../presence/orb.tsx'
 import type { Mood } from '../presence/painter.ts'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
+import { DURATION, EASE, glide, settle } from '../styles/motion.ts'
 import { Asides } from '../view/asides.tsx'
 import type { ViewActions } from '../view/context.ts'
 import { ViewPanel } from '../view/view-panel.tsx'
@@ -36,6 +37,9 @@ export interface StageProps {
 
 /** The event an app dispatches on the window to start talking, or to send what was said: its global shortcut. */
 export const TALK_EVENT = 'echo:talk'
+
+/** The width of the centred column, for everything the assistant shows and for the composer. */
+const COLUMN = 'max-w-[45rem]'
 
 const MOODS: Record<Mood, string> = { idle: 'Ready', listening: 'Listening', thinking: 'Thinking', speaking: 'Speaking', asleep: 'Asleep' }
 
@@ -177,11 +181,11 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
       {speaking.sentence ? (
         <motion.p
           key={`${speaking.sentence.turn}:${speaking.sentence.text}`}
-          initial={{ opacity: 0, y: 8, filter: 'blur(4px)' }}
-          animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-          exit={{ opacity: 0, y: -6, filter: 'blur(4px)' }}
-          transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-          className={cn('text-balance leading-snug', view ? 'text-lg' : 'text-2xl')}
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -3 }}
+          transition={settle}
+          className={cn('text-balance', view ? 'text-[0.9375rem] leading-relaxed' : 'text-xl leading-snug tracking-[-0.01em]')}
         >
           {speaking.sentence.text}
         </motion.p>
@@ -191,7 +195,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="text-balance text-lg text-text-faint leading-snug"
+          className={cn('text-balance text-text-faint', view ? 'text-[0.9375rem] leading-relaxed' : 'text-lg leading-snug')}
         >
           “{last.said}”
         </motion.p>
@@ -203,7 +207,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
           exit={{ opacity: 0 }}
           className={cn('grid gap-3', !view && 'justify-items-center')}
         >
-          <p className="text-balance text-danger leading-relaxed">{failed ?? problem}</p>
+          <p className="text-balance text-danger text-sm leading-relaxed">{failed ?? problem}</p>
           {noEngine && (
             <button
               type="button"
@@ -220,7 +224,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="line-clamp-3 text-balance text-lg text-text-faint leading-snug"
+          className={cn('line-clamp-3 text-balance text-text-soft', view ? 'text-[0.9375rem] leading-relaxed' : 'text-lg leading-snug')}
         >
           {last.replied}
         </motion.p>
@@ -239,45 +243,91 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
       />
     ) : undefined
 
+  const composer = (
+    <InputLine
+      name={active.name}
+      busy={running || speaking.sentence !== undefined}
+      onSay={say}
+      onStop={stop}
+      pause={
+        speaking.sentence || speaking.paused
+          ? { paused: speaking.paused, onToggle: () => (speaking.paused ? client.speech.resume() : client.speech.pause()) }
+          : undefined
+      }
+      talk={canTalk ? { listening, onPress: toggle } : onSetUpVoice ? { listening: false, onPress: onSetUpVoice } : undefined}
+      persona={{
+        name: active.name,
+        mood,
+        next: other && other.id !== active.id ? { name: other.name } : undefined,
+        onToggle: () => {
+          if (other && other.id !== active.id) onSwitch(other.id).catch(() => setProblem(refusalCopy('failed')))
+        }
+      }}
+    />
+  )
+
   // Everything the assistant shows stays in one centred column: the core and its caption never move aside.
+  // The column leaves the right margin free for the pinned widgets, and everything scrolls behind the composer,
+  // which floats over the bottom of the screen.
   return (
-    <div className="flex h-full min-w-0 flex-1 flex-col">
+    <div className="relative flex h-full min-w-0 flex-col">
       {view ? (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <motion.div layout className="mx-auto flex w-full max-w-5xl items-center gap-5 px-8 pt-5 pb-3">
-            <Orb size={84} mood={mood} level={level.current} className="-m-3 shrink-0" />
-            <div className="grid min-w-0 flex-1 gap-1">
-              <div className="flex items-baseline gap-3">
-                <span className="font-medium text-lg">{active.name}</span>
-                <Eyebrow accent={mood !== 'idle'}>{MOODS[mood]}</Eyebrow>
-              </div>
-              <div className="min-h-7" aria-live="polite">
-                {caption}
+        <>
+          <header className="relative z-10 shrink-0 px-8 pt-5 pb-3">
+            <div className={cn('mx-auto flex w-full items-start gap-4', COLUMN)}>
+              <motion.div layoutId="stage-core" transition={glide} className="-m-2.5 shrink-0">
+                <Orb size={60} mood={mood} level={level.current} />
+              </motion.div>
+              <div className="grid min-w-0 flex-1 gap-0.5 pt-1">
+                <div className="flex items-baseline gap-2.5">
+                  <motion.span layoutId="stage-name" transition={glide} className="font-medium text-[0.9375rem] tracking-tight">
+                    {active.name}
+                  </motion.span>
+                  <Eyebrow accent={mood !== 'idle'} className="transition-colors duration-(--duration-calm)">
+                    {MOODS[mood]}
+                  </Eyebrow>
+                </div>
+                <div className="min-h-6 text-text" aria-live="polite">
+                  {caption}
+                </div>
               </div>
             </div>
-          </motion.div>
-          <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto px-8 pb-6">
-            <div className="mx-auto grid w-full max-w-5xl gap-4">
-              {asides}
-              <ViewPanel view={view} actions={actionsFor(view)} onClose={() => void client.view.clear().catch(() => undefined)} />
+          </header>
+          <div className="relative min-h-0 flex-1">
+            {/* What scrolls fades in under the header rather than being cut by a hard edge. */}
+            <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 z-10 h-4 bg-gradient-to-b from-ground to-transparent" />
+            <div className="scroll-none h-full overflow-y-auto px-8 pt-2 pb-32">
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: DURATION.slow, ease: EASE }}
+                className={cn('mx-auto grid w-full gap-3', COLUMN)}
+              >
+                {asides}
+                <ViewPanel view={view} actions={actionsFor(view)} onClose={() => void client.view.clear().catch(() => undefined)} />
+              </motion.div>
             </div>
           </div>
-        </div>
+        </>
       ) : (
-        <div className="scroll-quiet flex min-h-0 flex-1 flex-col overflow-y-auto px-8">
-          <div className="my-auto flex w-full flex-col items-center py-4">
-            <Orb size={asides ? 210 : 300} mood={mood} level={level.current} className="-my-6" />
-            <div className="grid justify-items-center gap-1.5">
-              <h1 className="font-medium text-4xl tracking-tight">{active.name}</h1>
-              <Eyebrow accent={mood !== 'idle'} className="transition-colors duration-300">
+        <div className="scroll-none min-h-0 flex-1 overflow-y-auto px-8">
+          <div className="flex min-h-full w-full flex-col items-center justify-center pt-6 pb-32">
+            <motion.div layoutId="stage-core" transition={glide} className={asides ? '-my-4' : '-my-7'}>
+              <Orb size={asides ? 200 : 280} mood={mood} level={level.current} />
+            </motion.div>
+            <div className="grid justify-items-center gap-2">
+              <motion.h1 layoutId="stage-name" transition={glide} className="font-medium text-[2rem] leading-none tracking-[-0.03em]">
+                {active.name}
+              </motion.h1>
+              <Eyebrow accent={mood !== 'idle'} className="transition-colors duration-(--duration-calm)">
                 {MOODS[mood]}
               </Eyebrow>
             </div>
-            <div className={cn('mt-8 flex w-full max-w-2xl items-start justify-center text-center', asides ? 'min-h-10' : 'h-28')} aria-live="polite">
+            <div className={cn('mt-7 flex w-full items-start justify-center text-center', COLUMN, asides ? 'min-h-8' : 'min-h-24')} aria-live="polite">
               {caption}
             </div>
             {asides ? (
-              <div className="mt-4 w-full max-w-3xl">{asides}</div>
+              <div className={cn('mt-4 w-full', COLUMN)}>{asides}</div>
             ) : (
               // Until the user has said anything, a few things to try.
               !noEngine && !running && !speaking.sentence && channel.exchanges.every((line) => line.trigger !== undefined) && <Suggestions onSay={say} />
@@ -286,40 +336,25 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
         </div>
       )}
 
-      <div className="mx-auto grid w-full max-w-3xl gap-3 px-8 pb-7">
-        <InputLine
-          name={active.name}
-          busy={running || speaking.sentence !== undefined}
-          onSay={say}
-          onStop={stop}
-          pause={
-            speaking.sentence || speaking.paused
-              ? { paused: speaking.paused, onToggle: () => (speaking.paused ? client.speech.resume() : client.speech.pause()) }
-              : undefined
-          }
-          talk={canTalk ? { listening, onPress: toggle } : onSetUpVoice ? { listening: false, onPress: onSetUpVoice } : undefined}
-          persona={{
-            name: active.name,
-            next: other && other.id !== active.id ? { name: other.name, accent: other.accent } : undefined,
-            onToggle: () => {
-              if (other && other.id !== active.id) onSwitch(other.id).catch(() => setProblem(refusalCopy('failed')))
-            }
-          }}
-        />
-        {/* Which AI program answers: there to read, rarely to press. */}
-        <div className="-mt-1 flex justify-end px-1">
-          <button
-            type="button"
-            onClick={onSetUpEngine}
-            className="flex items-center gap-1.5 font-mono text-[0.625rem] text-text-faint/70 uppercase tracking-[0.12em] transition hover:text-text-soft"
-          >
-            <span className={cn('size-1 rounded-full', engines === undefined ? 'bg-text-faint/50' : noEngine ? 'bg-warn' : 'bg-ok/80')} />
-            {engines === undefined
-              ? 'Looking'
-              : noEngine
-                ? 'No AI program ready'
-                : (engines.harnesses.find((harness) => harness.id === engines.active)?.name ?? 'Ready')}
-          </button>
+      {/* The composer floats over the bottom of the screen; what scrolls passes behind it and fades out. */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-8 pt-10 pb-4 [background:linear-gradient(to_top,var(--color-ground)_26%,color-mix(in_srgb,var(--color-ground)_60%,transparent)_62%,transparent)]">
+        <div className={cn('pointer-events-auto mx-auto grid w-full gap-1.5', COLUMN)}>
+          {composer}
+          {/* Which AI program answers: there to read, rarely to press. */}
+          <div className="flex justify-end px-1">
+            <button
+              type="button"
+              onClick={onSetUpEngine}
+              className="flex h-4 items-center gap-1.5 font-mono text-[0.625rem] text-text-faint/70 uppercase tracking-[0.12em] transition-colors duration-(--duration-quick) hover:text-text-soft"
+            >
+              <span className={cn('size-1 rounded-full', engines === undefined ? 'bg-text-faint/50' : noEngine ? 'bg-warn' : 'bg-ok/80')} />
+              {engines === undefined
+                ? 'Looking'
+                : noEngine
+                  ? 'No AI program ready'
+                  : (engines.harnesses.find((harness) => harness.id === engines.active)?.name ?? 'Ready')}
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -1,4 +1,4 @@
-import type { CommandInput, LibraryView, SavedWidget } from '@repo/protocol'
+import { type CommandInput, type LibraryView, pinnedInOrder, type SavedWidget } from '@repo/protocol'
 import type { Session } from '../session.ts'
 import { cell, type Followed } from './followed.ts'
 
@@ -8,6 +8,8 @@ export interface LibraryState extends Followed<LibraryView | undefined> {
   save(view: string, title?: string): Promise<SavedWidget>
   /** Rename, file, pin or unpin a widget. */
   update(change: CommandInput<'library.update'>): Promise<void>
+  /** Put the pinned widgets in this order, from the top of the stack. */
+  arrange(pinned: readonly string[]): Promise<void>
   remove(widget: string): Promise<void>
   /** Show a saved widget on the stage. */
   show(widget: string): Promise<void>
@@ -43,6 +45,9 @@ export function followLibrary(session: Session): LibraryState {
     async update(change) {
       accept((await session.run('library.update', change)).library)
     },
+    async arrange(pinned) {
+      accept((await session.run('library.arrange', { pinned: [...pinned] })).library)
+    },
     async remove(widget) {
       accept((await session.run('library.delete', { widget })).library)
     },
@@ -58,9 +63,9 @@ export function savedAs(library: LibraryView | undefined, view: { id: string; wi
   return library?.widgets.find((widget) => widget.id === view.widget || widget.from === view.id)
 }
 
-/** The pinned widgets, in the order they were pinned. */
+/** The pinned widgets, from the top of the stack. */
 export function pinnedOf(library: LibraryView | undefined): SavedWidget[] {
-  return (library?.widgets ?? []).filter((widget) => widget.pinned).sort((one, other) => (one.pinnedAt ?? '').localeCompare(other.pinnedAt ?? ''))
+  return pinnedInOrder(library?.widgets ?? [])
 }
 
 /** The collections the user made, by name, each with how many widgets it holds. */

@@ -3,10 +3,11 @@ import { COLLECTION_MAX_LENGTH, type SavedWidget, WIDGET_TITLE_MAX_LENGTH } from
 import { motion } from 'motion/react'
 import { type FormEvent, useEffect, useId, useState } from 'react'
 import { Button } from '../primitives/button.tsx'
-import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { IconButton } from '../primitives/icon-button.tsx'
-import { CloseGlyph, PinGlyph, SendGlyph } from '../primitives/icons.tsx'
+import { CloseGlyph, SendGlyph } from '../primitives/icons.tsx'
+import { Switch } from '../primitives/switch.tsx'
+import { DURATION, EASE } from '../styles/motion.ts'
 import type { ViewActions } from '../view/context.ts'
 import { ViewRenderer } from '../view/view-renderer.tsx'
 import type { LibraryControls } from './library-context.ts'
@@ -69,10 +70,10 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
 
   return (
     <motion.div
-      className="absolute inset-0 z-40 flex items-center justify-center bg-ground/70 p-8 backdrop-blur-sm"
+      className="absolute inset-0 z-40 flex items-center justify-center bg-ground/75 p-6"
       initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
+      animate={{ opacity: 1, transition: { duration: DURATION.calm, ease: EASE } }}
+      exit={{ opacity: 0, transition: { duration: DURATION.quick, ease: EASE } }}
       onPointerDown={(event) => {
         if (event.target === event.currentTarget) onClose()
       }}
@@ -81,28 +82,30 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
         role="dialog"
         aria-modal="true"
         aria-label={widget.title}
-        initial={{ opacity: 0, y: 16, scale: 0.98 }}
+        initial={{ opacity: 0, y: 8, scale: 0.99 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 10, scale: 0.98 }}
-        transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-        className="flex max-h-full w-full max-w-5xl overflow-hidden rounded-xl border border-line-strong bg-surface shadow-[0_40px_120px_-40px_rgb(0_0_0/0.95)]"
+        exit={{ opacity: 0, y: 4, scale: 0.99, transition: { duration: DURATION.quick, ease: EASE } }}
+        transition={{ duration: DURATION.calm, ease: EASE }}
+        className="flex max-h-full w-full max-w-4xl overflow-hidden rounded-lg border border-line-strong bg-surface shadow-[0_32px_80px_-24px_rgb(0_0_0/0.9)]"
       >
-        <div className="scroll-quiet grid min-w-0 flex-1 content-start gap-5 overflow-y-auto p-7">
-          <Eyebrow accent className="truncate">
-            {widget.title}
-          </Eyebrow>
-          <ViewRenderer spec={widget.spec as ViewSpec} actions={actions} />
+        <div className="scroll-quiet grid min-w-0 flex-1 content-start overflow-y-auto">
+          <div className="sticky top-0 z-10 flex h-9 items-center border-line border-b bg-surface/95 px-5 text-text-soft text-xs backdrop-blur-xl">
+            <span className="truncate font-medium">{widget.title}</span>
+          </div>
+          <div className="p-5">
+            <ViewRenderer spec={widget.spec as ViewSpec} actions={actions} />
+          </div>
         </div>
 
-        <aside className="scroll-quiet flex w-80 shrink-0 flex-col gap-6 overflow-y-auto border-line border-l bg-raised/40 p-6">
-          <div className="-mt-1 -mr-2 flex items-center justify-between">
+        <aside className="scroll-quiet flex w-72 shrink-0 flex-col gap-5 overflow-y-auto border-line border-l bg-ground/40 px-4 pb-4 *:shrink-0">
+          <div className="-mx-4 flex h-9 shrink-0 items-center justify-between border-line border-b pr-1 pl-4">
             <Eyebrow>Saved {when.format(new Date(widget.since))}</Eyebrow>
             <IconButton label="Close" onClick={onClose}>
               <CloseGlyph />
             </IconButton>
           </div>
 
-          <div className="grid gap-4">
+          <div className="grid gap-3.5">
             <div className="grid gap-1.5">
               <label htmlFor={`${ids}-title`}>
                 <Eyebrow>Name</Eyebrow>
@@ -114,7 +117,7 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
                 onChange={(event) => setTitle(event.target.value)}
                 onBlur={keepTitle}
                 onKeyDown={(event) => event.key === 'Enter' && event.currentTarget.blur()}
-                className="h-10 rounded-md border border-line-strong bg-ground px-3 font-medium text-[0.9375rem] outline-none transition focus-visible:border-accent"
+                className="h-8 rounded-md border border-line-strong bg-ground px-2.5 font-medium text-[0.8125rem] outline-none transition-colors focus-visible:border-accent/70 focus-visible:outline-none"
               />
             </div>
             <div className="grid gap-1.5">
@@ -130,7 +133,7 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
                 onChange={(event) => setCollection(event.target.value)}
                 onBlur={keepCollection}
                 onKeyDown={(event) => event.key === 'Enter' && event.currentTarget.blur()}
-                className="h-10 rounded-md border border-line-strong bg-ground px-3 text-[0.9375rem] outline-none transition placeholder:text-text-faint focus-visible:border-accent"
+                className="h-8 rounded-md border border-line-strong bg-ground px-2.5 text-[0.8125rem] outline-none transition-colors placeholder:text-text-faint focus-visible:border-accent/70 focus-visible:outline-none"
               />
               <datalist id={`${ids}-collections`}>
                 {collections.map((name) => (
@@ -138,26 +141,16 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
                 ))}
               </datalist>
             </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={widget.pinned}
-              onClick={() => act(controls.library.update({ widget: widget.id, pinned: !widget.pinned }))}
-              className="flex items-center justify-between gap-3 rounded-md border border-line bg-ground/60 px-3 py-2.5 text-left transition hover:border-line-strong"
-            >
-              <span className="flex items-center gap-2.5 text-sm [&_svg]:size-4">
-                <span className={widget.pinned ? 'text-accent' : 'text-text-faint'}>
-                  <PinGlyph filled={widget.pinned} />
-                </span>
-                Pin to the side
+            <div className="flex items-center justify-between gap-3 rounded-md border border-line bg-ground/60 px-2.5 py-2">
+              <span className="grid gap-px">
+                <span className="text-[0.8125rem]">Pin to the main screen</span>
+                <span className="text-[0.6875rem] text-text-faint">Kept live on the right, in your order</span>
               </span>
-              <span className={cn('relative h-5 w-9 rounded-full transition', widget.pinned ? 'bg-accent' : 'bg-line-strong')}>
-                <span className={cn('absolute top-0.5 size-4 rounded-full bg-text shadow transition-all', widget.pinned ? 'left-[1.125rem]' : 'left-0.5')} />
-              </span>
-            </button>
+              <Switch label="Pin to the main screen" on={widget.pinned} onChange={(pinned) => act(controls.library.update({ widget: widget.id, pinned }))} />
+            </div>
           </div>
 
-          <Button kind="primary" onClick={() => act(controls.library.show(widget.id).then(onShown))}>
+          <Button kind="primary" size="sm" onClick={() => act(controls.library.show(widget.id).then(onShown))}>
             Show on the stage
           </Button>
 
@@ -165,7 +158,7 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
             <label htmlFor={`${ids}-change`}>
               <Eyebrow>Ask for a change</Eyebrow>
             </label>
-            <div className="flex items-end gap-2 rounded-md border border-line-strong bg-ground px-3 py-2 transition focus-within:border-accent">
+            <div className="flex items-end gap-1.5 rounded-md border border-line-strong bg-ground py-1.5 pr-1 pl-2.5 transition-colors focus-within:border-accent/60">
               <textarea
                 id={`${ids}-change`}
                 value={change}
@@ -175,16 +168,21 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' && !event.shiftKey) ask(event)
                 }}
-                className="min-w-0 flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-text-faint"
+                className="min-w-0 flex-1 resize-none bg-transparent text-[0.8125rem] outline-none placeholder:text-text-faint focus-visible:outline-none"
               />
-              <IconButton label="Ask the assistant" type="submit" disabled={change.trim() === ''} className="text-accent disabled:opacity-40">
+              <IconButton
+                label="Ask the assistant"
+                type="submit"
+                disabled={change.trim() === ''}
+                className="text-accent disabled:text-text-faint disabled:opacity-50"
+              >
                 <SendGlyph />
               </IconButton>
             </div>
             <p className="text-text-faint text-xs leading-relaxed">The assistant changes it and saves the new version.</p>
           </form>
 
-          <div className="mt-auto grid gap-2 border-line border-t pt-5">
+          <div className="mt-auto grid gap-2 border-line border-t pt-4">
             {problem && (
               <p role="alert" className="text-danger text-xs">
                 {problem}
@@ -192,7 +190,7 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
             )}
             {deleting ? (
               <div className="grid gap-2">
-                <p className="text-sm text-text-soft">Delete “{widget.title}” for good?</p>
+                <p className="text-[0.8125rem] text-text-soft">Delete “{widget.title}” for good?</p>
                 <div className="flex gap-2">
                   <Button
                     size="sm"

@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { EASE } from '../styles/motion.ts'
 import { cn } from './cn.ts'
 
 export interface MenuItem {
@@ -50,16 +51,16 @@ export function Menu({ trigger, items, align = 'end', header }: MenuProps) {
         {open && (
           <motion.div
             role="menu"
-            initial={{ opacity: 0, y: -4, scale: 0.97 }}
+            initial={{ opacity: 0, y: -2, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -4, scale: 0.97, transition: { duration: 0.12 } }}
-            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+            exit={{ opacity: 0, y: -2, scale: 0.98, transition: { duration: 0.1 } }}
+            transition={{ duration: 0.16, ease: EASE }}
             className={cn(
-              'absolute top-full z-50 mt-1.5 grid min-w-52 gap-0.5 rounded-md border border-line-strong bg-overlay/95 p-1 shadow-[0_20px_50px_-20px_rgb(0_0_0/0.9)] backdrop-blur-xl',
+              'absolute top-full z-50 mt-1 grid min-w-48 gap-px rounded-lg border border-line-strong bg-overlay p-1 shadow-[0_16px_40px_-12px_rgb(0_0_0/0.8)]',
               align === 'end' ? 'right-0 origin-top-right' : 'left-0 origin-top-left'
             )}
           >
-            {header && <div className="border-line border-b px-2.5 pt-1.5 pb-2">{header}</div>}
+            {header && <div className="mb-1 border-line border-b px-2 pt-1 pb-2">{header}</div>}
             {items.map((item) => (
               <button
                 key={item.label}
@@ -70,7 +71,7 @@ export function Menu({ trigger, items, align = 'end', header }: MenuProps) {
                   item.onSelect()
                 }}
                 className={cn(
-                  'flex h-8 items-center rounded-sm px-2.5 text-left text-[0.8125rem] transition duration-150 ease-soft',
+                  'flex h-7 items-center rounded-sm px-2 text-left text-[0.8125rem] transition duration-(--duration-quick) ease-soft',
                   item.danger ? 'text-danger hover:bg-danger/12' : 'text-text-soft hover:bg-raised hover:text-text'
                 )}
               >

@@ -149,3 +149,37 @@ export const ArrowGlyph = () => (
     <path d="M3 8h10M9 4l4 4-4 4" />
   </Glyph>
 )
+
+/** What a card is dragged by: two columns of dots. */
+export const GripGlyph = () => (
+  <Glyph>
+    <circle cx="6" cy="4" r="0.9" fill="currentColor" stroke="none" />
+    <circle cx="10" cy="4" r="0.9" fill="currentColor" stroke="none" />
+    <circle cx="6" cy="8" r="0.9" fill="currentColor" stroke="none" />
+    <circle cx="10" cy="8" r="0.9" fill="currentColor" stroke="none" />
+    <circle cx="6" cy="12" r="0.9" fill="currentColor" stroke="none" />
+    <circle cx="10" cy="12" r="0.9" fill="currentColor" stroke="none" />
+  </Glyph>
+)
+
+/** Something that folds open downwards. Turned, it folds the other way. */
+export const ChevronGlyph = () => (
+  <Glyph>
+    <path d="m4.5 6.5 3.5 3.5 3.5-3.5" />
+  </Glyph>
+)
+
+/** Bring something to the stage: a frame with an arrow going into it. */
+export const ExpandGlyph = () => (
+  <Glyph>
+    <path d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9" />
+  </Glyph>
+)
+
+/** Fold a panel away to the edge it came from. */
+export const CollapseGlyph = () => (
+  <Glyph>
+    <rect x="2" y="3" width="12" height="10" rx="1.5" />
+    <path d="M10 3v10M5.5 6.5 7 8l-1.5 1.5" />
+  </Glyph>
+)

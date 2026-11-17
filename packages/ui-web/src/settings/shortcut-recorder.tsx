@@ -77,9 +77,7 @@ export function ShortcutRecorder({ label, value, onRecord, onProblem }: Shortcut
       onBlur={() => setRecording(false)}
       className={cn(
         'group flex h-10 min-w-48 items-center justify-between gap-4 rounded-md border px-2.5 transition duration-150 ease-soft',
-        recording
-          ? 'border-accent/70 bg-accent/8 shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_18%,transparent)]'
-          : 'border-line-strong bg-ground hover:border-text-faint'
+        recording ? 'border-accent/70 bg-accent/8' : 'border-line-strong bg-ground hover:border-text-faint'
       )}
     >
       <span className="flex items-center gap-1">

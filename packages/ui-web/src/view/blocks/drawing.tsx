@@ -58,9 +58,9 @@ export function Drawing({ props }: { props: BlockProps<'Drawing'> }) {
 
 export function Image({ props }: { props: BlockProps<'Image'> }) {
   return (
-    <figure className="grid gap-2">
-      <img src={props.url} alt={props.alt} referrerPolicy="no-referrer" className="max-h-96 w-full rounded-lg border border-line object-cover" />
-      {props.caption && <figcaption className="text-text-soft text-xs">{props.caption}</figcaption>}
+    <figure className="grid gap-1.5">
+      <img src={props.url} alt={props.alt} referrerPolicy="no-referrer" className="max-h-80 w-full rounded-md border border-line object-cover" />
+      {props.caption && <figcaption className="text-[0.6875rem] text-text-faint">{props.caption}</figcaption>}
     </figure>
   )
 }

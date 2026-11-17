@@ -16,7 +16,7 @@ export function Select({ label, value, options, onChange, className }: SelectPro
         aria-label={label}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-9 w-full min-w-0 cursor-pointer appearance-none truncate rounded-md border border-line-strong bg-ground pr-9 pl-3 text-sm text-text outline-none transition duration-150 ease-soft hover:border-text-faint focus-visible:border-accent focus-visible:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_22%,transparent)]"
+        className="h-8 w-full min-w-0 cursor-pointer appearance-none truncate rounded-md border border-line-strong bg-ground pr-8 pl-2.5 text-[0.8125rem] text-text outline-none transition duration-(--duration-quick) ease-soft hover:border-text-faint/60 focus-visible:border-accent/70 focus-visible:outline-none"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>

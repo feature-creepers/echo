@@ -72,8 +72,8 @@ export function PersonasForm({ personas, active, submitLabel, busyLabel, doneLab
               key={persona.id}
               style={accentStyle(persona.accent)}
               className={cn(
-                'relative grid gap-5 rounded-lg border bg-surface/80 p-6 backdrop-blur-sm transition duration-300 ease-soft',
-                answers ? 'border-accent/55 shadow-[0_0_80px_-28px_var(--accent)]' : 'border-line hover:border-line-strong'
+                'relative grid gap-4 rounded-lg border bg-surface/85 p-5 transition-colors duration-300 ease-soft',
+                answers ? 'border-accent/50 bg-accent/[0.03]' : 'border-line hover:border-line-strong'
               )}
             >
               <div className="flex items-center gap-4">

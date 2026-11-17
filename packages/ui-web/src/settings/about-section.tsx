@@ -52,7 +52,7 @@ export function AboutSection({ productName }: { productName: string }) {
 
   return (
     <div className="grid gap-10">
-      <div className="flex items-center gap-6 rounded-lg border border-line-strong bg-surface/80 p-6 backdrop-blur-sm">
+      <div className="flex items-center gap-6 rounded-lg border border-line bg-surface/85 p-5">
         <Orb size={72} mood={updates?.is === 'checking' || updates?.is === 'downloading' ? 'thinking' : 'idle'} className="-m-2 shrink-0" />
         <div className="grid min-w-0 flex-1 gap-1.5">
           <div className="flex items-baseline gap-3">
@@ -65,11 +65,8 @@ export function AboutSection({ productName }: { productName: string }) {
       </div>
 
       {updates?.is === 'downloading' && (
-        <div className="-mt-7 h-1 overflow-hidden rounded-full bg-raised" role="progressbar" aria-label="Download" aria-valuenow={updates.percent}>
-          <div
-            className="h-full rounded-full bg-accent shadow-[0_0_12px_var(--accent)] transition-[width] duration-500 ease-soft"
-            style={{ width: `${Math.max(3, updates.percent)}%` }}
-          />
+        <div className="-mt-7 h-1 overflow-hidden rounded-full bg-white/[0.06]" role="progressbar" aria-label="Download" aria-valuenow={updates.percent}>
+          <div className="h-full rounded-full bg-accent transition-[width] duration-500 ease-soft" style={{ width: `${Math.max(3, updates.percent)}%` }} />
         </div>
       )}
 

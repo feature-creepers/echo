@@ -10,6 +10,7 @@ import { Orb } from '../presence/orb.tsx'
 import { Button } from '../primitives/button.tsx'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { Kbd } from '../primitives/kbd.tsx'
+import { DURATION, EASE } from '../styles/motion.ts'
 
 export interface OnboardingProps {
   productName: string
@@ -38,7 +39,7 @@ export function Onboarding({ productName, personas, engines, speech, setPersonas
 
   return (
     <div className="flex h-full flex-col">
-      <div className="mx-auto flex w-full max-w-4xl items-center gap-4 px-8 pt-8">
+      <div className="mx-auto flex w-full max-w-3xl items-center gap-4 px-8 pt-7">
         <Eyebrow>
           {String(at + 1).padStart(2, '0')} <span className="text-text-faint/50">/ {String(STEPS.length).padStart(2, '0')}</span>
         </Eyebrow>
@@ -46,7 +47,7 @@ export function Onboarding({ productName, personas, engines, speech, setPersonas
           <motion.div
             className="h-px bg-accent"
             animate={{ width: `${((at + 1) / STEPS.length) * 100}%` }}
-            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: DURATION.slow, ease: EASE }}
           />
         </div>
       </div>
@@ -55,11 +56,10 @@ export function Onboarding({ productName, personas, engines, speech, setPersonas
         <AnimatePresence mode="wait">
           <motion.div
             key={step}
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-            className="mx-auto flex min-h-full w-full max-w-4xl flex-col justify-center px-8 py-10"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0, transition: { duration: DURATION.slow, ease: EASE } }}
+            exit={{ opacity: 0, transition: { duration: DURATION.quick, ease: EASE } }}
+            className="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-center px-8 py-10"
           >
             {step === 'welcome' && <Welcome productName={productName} onNext={() => setStep('personalities')} />}
             {step === 'personalities' && (
@@ -129,9 +129,11 @@ function Welcome({ productName, onNext }: { productName: string; onNext(): void 
   return (
     <div className="flex flex-col items-center text-center">
       <Orb size={260} mood="idle" />
-      <h1 className="mt-2 font-mono font-medium text-5xl lowercase tracking-[0.3em] [margin-right:-0.3em]">{productName}</h1>
-      <p className="mt-5 max-w-md text-lg text-text-soft leading-relaxed">A personal assistant you talk to. It answers aloud, and shows the rest.</p>
-      <div className="mt-10 flex items-center gap-3">
+      <h1 className="mt-1 font-medium font-mono text-4xl lowercase tracking-[0.3em] [margin-right:-0.3em]">{productName}</h1>
+      <p className="mt-4 max-w-sm text-balance text-base text-text-soft leading-relaxed">
+        A personal assistant you talk to. It answers aloud, and shows the rest.
+      </p>
+      <div className="mt-8 flex items-center gap-2.5">
         <Button kind="primary" size="lg" onClick={onNext}>
           Begin
         </Button>
@@ -143,11 +145,11 @@ function Welcome({ productName, onNext }: { productName: string; onNext(): void 
 
 function Section({ eyebrow, title, lead, children }: { eyebrow: string; title: string; lead: string; children: ReactNode }) {
   return (
-    <section className="grid gap-8">
-      <div className="grid max-w-2xl gap-3">
-        <Eyebrow accent>{eyebrow}</Eyebrow>
-        <h1 className="font-medium text-4xl tracking-tight">{title}</h1>
-        <p className="text-lg text-text-soft leading-relaxed">{lead}</p>
+    <section className="grid gap-7">
+      <div className="grid max-w-2xl gap-2.5">
+        <Eyebrow>{eyebrow}</Eyebrow>
+        <h1 className="font-medium text-3xl tracking-[-0.025em]">{title}</h1>
+        <p className="text-base text-text-soft leading-relaxed">{lead}</p>
       </div>
       <div>{children}</div>
     </section>

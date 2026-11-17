@@ -11,6 +11,7 @@ import { DeviceProvider, keyPress, useDevice } from '../device/device.tsx'
 import type { DeviceHost } from '../device/host.ts'
 import { LibraryContext, type LibraryControls } from '../library/library-context.ts'
 import { LibraryScreen } from '../library/library-screen.tsx'
+import { PinnedStack } from '../library/pinned-stack.tsx'
 import { NowPlaying } from '../media/now-playing.tsx'
 import { PlayerProvider, usePlayer } from '../media/player-provider.tsx'
 import { Onboarding } from '../onboarding/onboarding.tsx'
@@ -20,6 +21,7 @@ import { IconButton } from '../primitives/icon-button.tsx'
 import { LibraryGlyph, SettingsGlyph, SheetGlyph } from '../primitives/icons.tsx'
 import { SettingsScreen, type SettingsSection } from '../settings/settings-screen.tsx'
 import { accentStyle } from '../styles/accent.ts'
+import { DURATION, EASE } from '../styles/motion.ts'
 import type { ViewActions } from '../view/context.ts'
 import { type SheetTab, SideSheet } from './side-sheet.tsx'
 
@@ -83,7 +85,7 @@ function Connected({ productName, client, engine }: { productName: string; clien
   const entered = useRef<Screen>(undefined)
   /** The side sheet, open on a tab, and the tab it opens on next. */
   const [sheet, setSheet] = useState<SheetTab>()
-  const lastTab = useRef<SheetTab>('pinned')
+  const lastTab = useRef<SheetTab>('transcript')
   const openSheet = useCallback((tab: SheetTab | undefined) => {
     if (tab) lastTab.current = tab
     setSheet(tab)
@@ -196,7 +198,9 @@ function Connected({ productName, client, engine }: { productName: string; clien
       </IconButton>
       <IconButton
         label={
-          transcriptKey ? `Side sheet: pinned, transcript, threads (${describeShortcut(transcriptKey, device.mac)})` : 'Side sheet: pinned, transcript, threads'
+          transcriptKey
+            ? `Side sheet: transcript, threads, inspector (${describeShortcut(transcriptKey, device.mac)})`
+            : 'Side sheet: transcript, threads, inspector'
         }
         active={sheet !== undefined}
         onClick={() => openSheet(sheet ? undefined : lastTab.current)}
@@ -220,10 +224,9 @@ function Connected({ productName, client, engine }: { productName: string; clien
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={showing.is}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0, transition: { duration: DURATION.calm, ease: EASE } }}
+              exit={{ opacity: 0, transition: { duration: DURATION.quick, ease: EASE } }}
               className="h-full"
             >
               {showing.is === 'settings' ? (
@@ -250,15 +253,19 @@ function Connected({ productName, client, engine }: { productName: string; clien
                   onClose={toMain}
                 />
               ) : (
-                <Stage
-                  client={client}
-                  personas={personas}
-                  onSwitch={(persona) => setPersonas({ names: [], active: persona })}
-                  onSetUpEngine={() => setScreen({ is: 'settings', section: 'models' })}
-                  speech={speech.ready}
-                  voiceLevel={speech.ready ? speech.level : undefined}
-                  onSetUpVoice={engine ? () => setScreen({ is: 'settings', section: 'voice' }) : undefined}
-                />
+                // The pinned widgets float on the right of the main screen, over its margin: the stage stays centred.
+                <div className="relative h-full">
+                  <Stage
+                    client={client}
+                    personas={personas}
+                    onSwitch={(persona) => setPersonas({ names: [], active: persona })}
+                    onSetUpEngine={() => setScreen({ is: 'settings', section: 'models' })}
+                    speech={speech.ready}
+                    voiceLevel={speech.ready ? speech.level : undefined}
+                    onSetUpVoice={engine ? () => setScreen({ is: 'settings', section: 'voice' }) : undefined}
+                  />
+                  <PinnedStack controls={controls} actions={actions} />
+                </div>
               )}
             </motion.div>
           </AnimatePresence>
@@ -293,7 +300,7 @@ interface FrameProps {
 }
 
 /**
- * The window: a ground with a wash of the accent, the title row, and the screen under it.
+ * The window: a ground ruled like graph paper, the title row, and the screen under it.
  *
  * The title row is the window's own bar. The window is dragged by it, and the system draws its buttons
  * (close, minimise, maximise) over it: the titlebar-area values say which part of the row those leave free.
@@ -301,21 +308,15 @@ interface FrameProps {
 function Frame({ productName, accent, actions, children }: FrameProps) {
   return (
     <div className="accent-shift relative flex h-screen flex-col overflow-hidden bg-ground" style={accentStyle(accent)}>
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(70%_50%_at_50%_0%,color-mix(in_oklab,var(--accent)_13%,transparent),transparent_70%)]"
-      />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle,var(--color-line-strong)_1px,transparent_1px)] bg-[size:28px_28px] opacity-25 [mask-image:radial-gradient(60%_60%_at_50%_45%,black,transparent)]"
-      />
-      <header className="drag relative h-[calc(env(titlebar-area-height,var(--frame-title-bar))+1px)] shrink-0 border-line border-b">
+      {/* Graph paper under everything: texture that never competes with what is on it. */}
+      <div aria-hidden="true" className="graph-paper pointer-events-none absolute inset-0" />
+      <header className="drag relative h-[calc(env(titlebar-area-height,var(--frame-title-bar))+1px)] shrink-0 border-line border-b bg-ground/60">
         <div className="absolute top-[env(titlebar-area-y,0px)] left-[env(titlebar-area-x,0px)] flex h-[env(titlebar-area-height,var(--frame-title-bar))] w-[env(titlebar-area-width,100%)] items-center justify-between pr-2 pl-4">
-          <span className="flex items-center gap-2.5 font-medium font-mono text-xs lowercase tracking-[0.22em]">
-            <span className="size-1.5 rounded-full bg-accent shadow-[0_0_10px_var(--accent)]" />
+          <span className="flex items-center gap-2 font-medium font-mono text-[0.6875rem] text-text-soft lowercase tracking-[0.2em]">
+            <span className="size-1.5 rounded-full bg-accent" />
             {productName}
           </span>
-          <span className="no-drag flex items-center gap-0.5">{actions}</span>
+          <span className="no-drag flex items-center gap-1">{actions}</span>
         </div>
       </header>
       <main className="relative min-h-0 flex-1">{children}</main>

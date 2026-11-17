@@ -212,6 +212,10 @@ export function createCore(options: CoreOptions): Core {
         const change = library.update(input)
         return change.ok ? { ok: true, output: { library: change.library } } : change
       },
+      'library.arrange': (input) => {
+        const change = library.arrange(input)
+        return change.ok ? { ok: true, output: { library: change.library } } : change
+      },
       'library.delete': (input) => {
         const change = library.remove(input.widget)
         return change.ok ? { ok: true, output: { library: change.library } } : change

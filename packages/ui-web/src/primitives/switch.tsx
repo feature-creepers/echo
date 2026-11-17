@@ -19,14 +19,14 @@ export function Switch({ label, on, onChange, disabled = false }: SwitchProps) {
       disabled={disabled}
       onClick={() => onChange(!on)}
       className={cn(
-        'relative inline-flex h-5.5 w-9.5 shrink-0 items-center rounded-full border transition duration-200 ease-soft disabled:opacity-45',
-        on ? 'border-accent/70 bg-accent/25 shadow-[0_0_16px_-6px_var(--accent)]' : 'border-line-strong bg-raised hover:not-disabled:border-text-faint'
+        'relative inline-flex h-5 w-8.5 shrink-0 items-center rounded-full border transition duration-(--duration-calm) ease-soft disabled:opacity-45',
+        on ? 'border-accent/60 bg-accent/20' : 'border-line-strong bg-raised hover:not-disabled:border-text-faint/60'
       )}
     >
       <span
         className={cn(
-          'absolute top-1/2 size-3.5 -translate-y-1/2 rounded-full transition-[left,background-color,box-shadow] duration-200 ease-soft',
-          on ? 'left-[calc(100%-1.125rem)] bg-accent shadow-[0_0_8px_var(--accent)]' : 'left-[0.1875rem] bg-text-faint'
+          'absolute top-0.5 left-0.5 size-3.5 rounded-full transition-[translate,background-color] duration-(--duration-calm) ease-soft',
+          on ? 'translate-x-3.5 bg-accent' : 'bg-text-faint'
         )}
       />
     </button>

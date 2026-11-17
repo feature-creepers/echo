@@ -38,6 +38,7 @@ function setup(overrides: Partial<Handlers> = {}) {
     'library.read': () => ({ ok: true, output: { library } }),
     'library.save': () => ({ ok: false, error: { code: 'unknown-widget', message: 'none' } }),
     'library.update': () => ({ ok: true, output: { library } }),
+    'library.arrange': () => ({ ok: true, output: { library } }),
     'library.delete': () => ({ ok: true, output: { library } }),
     'library.show': () => ({ ok: true, output: {} }),
     ...overrides

@@ -27,9 +27,9 @@ describe('the theme', () => {
     const theme = renderTheme()
     expect(theme).toContain(`--color-ground: ${color.ground};`)
     expect(theme).toContain(`--color-text-soft: ${color.textSoft};`)
-    expect(theme).toContain('--radius-md: 8px;')
+    expect(theme).toContain('--radius-md: 4px;')
     expect(theme).toContain('--frame-title-bar: 32px;')
-    expect(theme).toContain('--duration-quick: 140ms;')
+    expect(theme).toContain('--duration-quick: 120ms;')
   })
 
   it('makes the accent a variable read where it is used, starting with the neutral one', () => {

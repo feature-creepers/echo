@@ -42,17 +42,17 @@ export function FilePreview({ props }: { props: BlockProps<'FilePreview'> }) {
     }
   }, [props.file, readFile])
 
-  if (file === 'missing') return <p className="text-sm text-text-faint">This document is no longer available.</p>
+  if (file === 'missing') return <p className="text-[0.8125rem] text-text-faint">This document is no longer available.</p>
 
   return (
-    <div className="grid overflow-hidden rounded-lg border border-line bg-ground/60">
-      <div className="flex items-center justify-between gap-4 border-line border-b bg-surface/80 px-4 py-2.5">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="flex size-7 shrink-0 items-center justify-center rounded-sm border border-accent/40 font-mono text-[0.5625rem] text-accent uppercase">
+    <div className="grid overflow-hidden rounded-md border border-line bg-ground/60">
+      <div className="flex items-center justify-between gap-3 border-line border-b bg-white/[0.02] py-2 pr-2 pl-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="flex h-6 w-7 shrink-0 items-center justify-center rounded-xs border border-line-strong font-mono text-[0.5625rem] text-text-soft uppercase">
             {file ? EXTENSION[file.format] : '…'}
           </span>
           <div className="grid min-w-0">
-            <span className="truncate text-sm">{file?.name ?? 'Opening…'}</span>
+            <span className="truncate text-[0.8125rem] leading-tight">{file?.name ?? 'Opening…'}</span>
             {file && <Eyebrow>Version {file.version}</Eyebrow>}
           </div>
         </div>
@@ -60,11 +60,11 @@ export function FilePreview({ props }: { props: BlockProps<'FilePreview'> }) {
           Download
         </Button>
       </div>
-      <div className={cn('scroll-quiet overflow-y-auto px-6 py-5', HEIGHT[props.height])}>
+      <div className={cn('scroll-quiet overflow-y-auto px-5 py-4', HEIGHT[props.height])}>
         {!file ? null : file.format === 'markdown' ? (
           <Markdown text={file.text} />
         ) : file.format === 'csv' ? (
-          <table className="w-full text-sm">
+          <table className="w-full text-[0.8125rem]">
             <tbody>
               {rows(file.text).map((row, index) => (
                 <tr key={index} className={cn('border-line border-b last:border-0', index === 0 && 'font-mono text-label text-text-faint uppercase')}>
@@ -78,7 +78,7 @@ export function FilePreview({ props }: { props: BlockProps<'FilePreview'> }) {
             </tbody>
           </table>
         ) : (
-          <pre className="whitespace-pre-wrap font-mono text-[0.8125rem] text-text-soft leading-relaxed">{file.text}</pre>
+          <pre className="whitespace-pre-wrap font-mono text-text-soft text-xs leading-relaxed">{file.text}</pre>
         )}
       </div>
     </div>

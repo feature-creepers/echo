@@ -1,5 +1,5 @@
 import { EXAMPLE_VIEW } from '@repo/catalog'
-import type { Event } from '@repo/protocol'
+import { type Event, pinnedInOrder } from '@repo/protocol'
 import { describe, expect, it } from 'vitest'
 import { ERASURE } from '../ports/records.ts'
 import { memoryRecords } from '../records/memory.ts'
@@ -78,6 +78,42 @@ describe('the library', () => {
     expect(library.get(saved.widget.id)?.pinnedAt).toBe(pinnedAt)
     library.update({ widget: saved.widget.id, pinned: false })
     expect(library.get(saved.widget.id)?.pinnedAt).toBeUndefined()
+  })
+
+  it('puts a widget just pinned on top of the stack, and keeps the order the user drags them into', () => {
+    const { records, library, shown, events } = setup()
+    const pin = (title: string) => {
+      const saved = library.save({ view: shown(title) })
+      if (!saved.ok) throw new Error('Not saved.')
+      library.update({ widget: saved.widget.id, pinned: true })
+      return saved.widget.id
+    }
+    const radio = pin('Radio')
+    const weather = pin('Weather')
+    const plan = pin('Plan')
+    const order = () => pinnedInOrder(library.read().widgets).map((widget) => widget.id)
+    expect(order()).toEqual([plan, weather, radio])
+
+    const before = records.read([WIDGET]).length
+    const told = events.length
+    expect(library.arrange({ pinned: [radio, plan, weather] })).toMatchObject({ ok: true })
+    expect(order()).toEqual([radio, plan, weather])
+    // Every place changed, so each got a version, and clients were told once.
+    expect(records.read([WIDGET]).length - before).toBe(3)
+    expect(events.length - told).toBe(1)
+
+    // The same order again writes nothing; a widget left out keeps its place after those listed; an unknown one is ignored.
+    library.arrange({ pinned: [radio, plan, weather] })
+    expect(records.read([WIDGET]).length - before).toBe(3)
+    library.arrange({ pinned: [plan, 'nothing'] })
+    expect(order()).toEqual([plan, radio, weather])
+
+    // Unpinned, a widget leaves the stack; pinned again, it comes back on top. The order outlives a restart.
+    library.update({ widget: weather, pinned: false })
+    expect(library.get(weather)?.place).toBeUndefined()
+    library.update({ widget: weather, pinned: true })
+    expect(order()).toEqual([weather, plan, radio])
+    expect(pinnedInOrder(setup(records).library.read().widgets).map((widget) => widget.id)).toEqual([weather, plan, radio])
   })
 
   it('erases every version of a deleted widget', () => {

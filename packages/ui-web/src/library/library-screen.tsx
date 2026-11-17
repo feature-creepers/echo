@@ -6,9 +6,9 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo, useState } from 'react'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
-import { IconButton } from '../primitives/icon-button.tsx'
-import { BookmarkGlyph, CloseGlyph, PinGlyph, SearchGlyph } from '../primitives/icons.tsx'
-import { Kbd } from '../primitives/kbd.tsx'
+import { BookmarkGlyph, PinGlyph, SearchGlyph } from '../primitives/icons.tsx'
+import { ScreenHeader } from '../primitives/screen-header.tsx'
+import { EASE } from '../styles/motion.ts'
 import type { ViewActions } from '../view/context.ts'
 import { ViewRenderer } from '../view/view-renderer.tsx'
 import type { LibraryControls } from './library-context.ts'
@@ -43,8 +43,8 @@ function wordsOf(widget: SavedWidget): string {
 }
 
 /**
- * The views the user bookmarked: to find again, sort into their own collections, rename, pin beside the
- * conversation, or delete. Each one is drawn live, as it was saved.
+ * The views the user bookmarked: to find again, sort into their own collections, rename, pin to the main
+ * screen, or delete. Each one is drawn live, as it was saved.
  */
 export function LibraryScreen({ controls, actions, selected, onAsk, onClose }: LibraryScreenProps) {
   const library = useFollowed(controls.library)
@@ -75,19 +75,19 @@ export function LibraryScreen({ controls, actions, selected, onAsk, onClose }: L
     })
   }, [widgets, shelf, query])
 
-  const title = shelf.is === 'all' ? 'Library' : shelf.is === 'pinned' ? 'Pinned' : shelf.is === 'unfiled' ? 'Unfiled' : shelf.name
+  const title = shelf.is === 'all' ? 'All widgets' : shelf.is === 'pinned' ? 'Pinned' : shelf.is === 'unfiled' ? 'Unfiled' : shelf.name
   const counts = { all: widgets.length, pinned: widgets.filter((one) => one.pinned).length, unfiled: widgets.filter((one) => !one.collection).length }
 
   return (
-    <section aria-label="Library" className="relative mx-auto flex h-full w-full max-w-6xl gap-12 px-8 pt-10">
-      <nav aria-label="Shelves" className="grid w-48 shrink-0 content-start gap-1">
-        <Eyebrow className="mb-3 px-3">Library</Eyebrow>
+    <section aria-label="Library" className="relative mx-auto flex h-full w-full max-w-6xl gap-10 px-8 pt-8">
+      <nav aria-label="Shelves" className="grid w-44 shrink-0 content-start gap-px">
+        <Eyebrow className="mb-2 px-2.5 leading-8">Library</Eyebrow>
         <ShelfButton label="All widgets" count={counts.all} on={shelf.is === 'all'} onClick={() => setShelf({ is: 'all' })} />
         <ShelfButton label="Pinned" count={counts.pinned} on={shelf.is === 'pinned'} onClick={() => setShelf({ is: 'pinned' })} />
         <ShelfButton label="Unfiled" count={counts.unfiled} on={shelf.is === 'unfiled'} onClick={() => setShelf({ is: 'unfiled' })} />
-        <Eyebrow className="mt-6 mb-2 px-3">Collections</Eyebrow>
+        <span className="mt-5 mb-1 px-2.5 text-[0.6875rem] text-text-faint">Collections</span>
         {collections.length === 0 ? (
-          <p className="px-3 text-text-faint text-xs leading-relaxed">Open a widget and give it a collection to start one.</p>
+          <p className="px-2.5 text-text-faint text-xs leading-relaxed">Open a widget and give it a collection to start one.</p>
         ) : (
           collections.map((collection) => (
             <ShelfButton
@@ -101,48 +101,43 @@ export function LibraryScreen({ controls, actions, selected, onAsk, onClose }: L
         )}
       </nav>
 
-      <div className="scroll-quiet min-w-0 flex-1 overflow-y-auto pb-16">
-        <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
-          <div className="grid gap-1">
-            <h1 className="font-medium text-3xl tracking-tight">{title}</h1>
-            <p className="text-sm text-text-soft">
-              {widgets.length === 0 ? 'Nothing saved yet.' : `${shown.length} of ${widgets.length} ${widgets.length === 1 ? 'widget' : 'widgets'}`}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="flex h-9 w-64 items-center gap-2 rounded-md border border-line-strong bg-ground/80 px-3 text-text-faint transition focus-within:border-accent focus-within:text-text">
-              <SearchGlyph />
-              <input
-                type="search"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search the library"
-                aria-label="Search the library"
-                className="min-w-0 flex-1 bg-transparent text-sm text-text outline-none placeholder:text-text-faint"
-              />
-            </label>
-            <Kbd>esc</Kbd>
-            <IconButton label="Close the library" onClick={onClose}>
-              <CloseGlyph />
-            </IconButton>
-          </div>
-        </div>
+      <div className="scroll-quiet min-w-0 flex-1 overflow-y-auto overflow-x-hidden pb-16">
+        <ScreenHeader
+          title={title}
+          detail={widgets.length === 0 ? 'Nothing saved yet.' : `${shown.length} of ${widgets.length} ${widgets.length === 1 ? 'widget' : 'widgets'}`}
+          closeLabel="Close the library"
+          onClose={onClose}
+        />
+        {/* The search spans the column under the title, where the eye goes next; the close button keeps its corner. */}
+        {widgets.length > 0 && (
+          <label className="mt-5 mb-5 flex h-9 items-center gap-2 rounded-md border border-line-strong bg-surface/80 px-2.5 text-text-faint transition-colors duration-(--duration-quick) focus-within:border-accent/50 focus-within:text-text-soft [&_svg]:size-3.5">
+            <SearchGlyph />
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search by title, collection or anything a widget shows"
+              aria-label="Search the library"
+              className="min-w-0 flex-1 bg-transparent text-[0.8125rem] text-text outline-none placeholder:text-text-faint focus-visible:outline-none"
+            />
+          </label>
+        )}
 
         {widgets.length === 0 ? (
           <Empty />
         ) : shown.length === 0 ? (
-          <p className="py-16 text-center text-text-soft">No widget here{query ? ` matches “${query}”` : ''}.</p>
+          <p className="py-16 text-center text-sm text-text-soft">No widget here{query ? ` matches “${query}”` : ''}.</p>
         ) : (
-          <ul className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(17rem,1fr))]">
+          <ul className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(15rem,1fr))]">
             <AnimatePresence initial={false}>
               {shown.map((widget) => (
                 <motion.li
                   key={widget.id}
                   layout
-                  initial={{ opacity: 0, y: 12 }}
+                  initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.18 } }}
-                  transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+                  exit={{ opacity: 0, scale: 0.98, transition: { duration: 0.14 } }}
+                  transition={{ duration: 0.28, ease: EASE }}
                 >
                   <Tile widget={widget} actions={actions} onOpen={() => setOpen(widget.id)} />
                 </motion.li>
@@ -180,14 +175,12 @@ function ShelfButton({ label, count, on, onClick }: { label: string; count: numb
       aria-current={on}
       onClick={onClick}
       className={cn(
-        'relative flex h-9 items-center justify-between gap-3 rounded-sm px-3 text-left text-sm transition duration-150 ease-soft',
-        on
-          ? 'bg-raised text-text before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-accent'
-          : 'text-text-soft hover:bg-raised/60 hover:text-text'
+        'flex h-8 items-center justify-between gap-3 rounded-md px-2.5 text-left text-[0.8125rem] transition-colors duration-(--duration-quick) ease-soft',
+        on ? 'bg-white/[0.06] text-text' : 'text-text-soft hover:bg-white/[0.03] hover:text-text'
       )}
     >
       <span className="truncate">{label}</span>
-      <span className={cn('font-mono text-[0.6875rem] tabular-nums', on ? 'text-accent' : 'text-text-faint')}>{count}</span>
+      <span className={cn('font-mono text-[0.625rem] tabular-nums', on ? 'text-text-soft' : 'text-text-faint')}>{count}</span>
     </button>
   )
 }
@@ -198,25 +191,25 @@ function Tile({ widget, actions, onOpen }: { widget: SavedWidget; actions: ViewA
     <button
       type="button"
       onClick={onOpen}
-      className="group grid w-full overflow-hidden rounded-lg border border-line bg-surface/60 text-left transition duration-200 ease-soft hover:-translate-y-0.5 hover:border-line-strong hover:bg-surface/90 hover:shadow-[0_24px_60px_-40px_var(--accent)]"
+      className="group grid w-full overflow-hidden rounded-lg border border-line bg-surface/80 text-left transition-colors duration-(--duration-calm) ease-soft hover:border-line-strong hover:bg-raised/80"
     >
-      <div className="relative h-44 overflow-hidden border-line border-b bg-ground/40">
+      <div className="relative h-36 overflow-hidden border-line border-b bg-ground/50">
         {/* A miniature, not to be used: the widget is used once opened. */}
-        <div inert className="pointer-events-none origin-top-left p-5 [zoom:0.6]">
+        <div inert className="pointer-events-none p-5 [zoom:0.62]">
           <ViewRenderer spec={widget.spec as ViewSpec} actions={actions} />
         </div>
-        <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-surface to-transparent" />
+        <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-ground to-transparent" />
       </div>
-      <div className="grid gap-1 px-4 py-3">
+      <div className="grid gap-0.5 px-3 py-2.5">
         <span className="flex items-center justify-between gap-3">
-          <span className="truncate font-medium text-[0.9375rem]">{widget.title}</span>
+          <span className="truncate font-medium text-[0.8125rem]">{widget.title}</span>
           {widget.pinned && (
-            <span title="Pinned to the side" className="shrink-0 text-accent [&_svg]:size-3.5">
+            <span title="Pinned to the main screen" className="shrink-0 text-text-soft [&_svg]:size-3">
               <PinGlyph filled />
             </span>
           )}
         </span>
-        <span className="flex items-center gap-2 font-mono text-label text-text-faint uppercase">
+        <span className="flex items-center gap-1.5 font-mono text-[0.625rem] text-text-faint uppercase tracking-[0.1em]">
           <span className="truncate">{widget.collection ?? 'Unfiled'}</span>
           <span aria-hidden="true">·</span>
           <time dateTime={widget.since} className="shrink-0">
@@ -230,15 +223,15 @@ function Tile({ widget, actions, onOpen }: { widget: SavedWidget; actions: ViewA
 
 function Empty() {
   return (
-    <div className="grid justify-items-center gap-4 rounded-xl border border-line border-dashed px-8 py-20 text-center">
-      <span className="flex size-12 items-center justify-center rounded-full border border-line-strong bg-raised text-accent [&_svg]:size-5">
+    <div className="mt-6 grid justify-items-center gap-3 rounded-lg border border-line border-dashed px-8 py-16 text-center">
+      <span className="flex size-9 items-center justify-center rounded-md border border-line-strong bg-raised text-text-soft [&_svg]:size-4">
         <BookmarkGlyph />
       </span>
       <div className="grid max-w-md gap-1.5">
-        <p className="font-medium">Keep the views you like</p>
-        <p className="text-balance text-sm text-text-soft leading-relaxed">
-          Press the bookmark on anything the assistant shows. It lands here, to sort into collections, pin beside the conversation, and ask for again: the
-          assistant brings back the same one.
+        <p className="font-medium text-sm">Keep the views you like</p>
+        <p className="text-balance text-[0.8125rem] text-text-soft leading-relaxed">
+          Press the bookmark on anything the assistant shows. It lands here, to sort into collections, pin to the main screen, and ask for again: the assistant
+          brings back the same one.
         </p>
       </div>
     </div>

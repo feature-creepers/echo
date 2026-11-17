@@ -3,7 +3,8 @@ import type { ReactNode } from 'react'
 import { cn } from '../../primitives/cn.ts'
 import { Eyebrow } from '../../primitives/eyebrow.tsx'
 
-const GAP = { tight: 'gap-2', normal: 'gap-4', loose: 'gap-7' } as const
+/** The three spacings a view is laid out with. One scale for every block, so views read as one family. */
+export const GAP = { tight: 'gap-1.5', normal: 'gap-3', loose: 'gap-5' } as const
 
 export function Stack({ props, children }: { props: BlockProps<'Stack'>; children: ReactNode }) {
   const align = { start: 'items-start', center: 'items-center', end: 'items-end', stretch: 'items-stretch' }[props.align]
@@ -17,12 +18,15 @@ export function Row({ props, children }: { props: BlockProps<'Row'>; children: R
   return <div className={cn('flex min-w-0 flex-wrap', GAP[props.gap], align, justify)}>{children}</div>
 }
 
+/** Tiles sit closer than the blocks of a stack: they read as one set. */
+const TILE_GAP = { tight: 'gap-1.5', normal: 'gap-2', loose: 'gap-3' } as const
+
 export function Grid({ props, children }: { props: BlockProps<'Grid'>; children: ReactNode }) {
-  // Tiles never get narrower than about twelve characters: the grid takes fewer columns instead.
+  // Tiles never get narrower than about nine characters: the grid takes fewer columns instead.
   return (
     <div
-      className={cn('grid min-w-0', GAP[props.gap])}
-      style={{ gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, max(10rem, calc((100% - ${props.columns - 1} * 1rem) / ${props.columns}))), 1fr))` }}
+      className={cn('grid min-w-0', TILE_GAP[props.gap])}
+      style={{ gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, max(7.5rem, calc((100% - ${props.columns - 1} * 0.5rem) / ${props.columns}))), 1fr))` }}
     >
       {children}
     </div>
@@ -34,14 +38,14 @@ export function Card({ props, children }: { props: BlockProps<'Card'>; children:
   return (
     <div
       className={cn(
-        'grid min-w-0 content-start gap-4 overflow-hidden rounded-lg border bg-surface/80 p-5 backdrop-blur-sm',
-        accent ? 'border-accent/45 shadow-[0_0_60px_-30px_var(--accent)]' : 'border-line'
+        'grid min-w-0 content-start gap-2.5 overflow-hidden rounded-md border px-3.5 py-3',
+        accent ? 'border-accent/35 bg-accent/[0.045]' : 'border-line bg-white/[0.018]'
       )}
     >
       {(props.title || props.subtitle) && (
         <div className="grid gap-0.5">
-          {props.title && <h3 className="font-medium text-base">{props.title}</h3>}
-          {props.subtitle && <p className="text-sm text-text-soft">{props.subtitle}</p>}
+          {props.title && <h3 className="font-medium text-sm leading-snug">{props.title}</h3>}
+          {props.subtitle && <p className="text-text-soft text-xs leading-snug">{props.subtitle}</p>}
         </div>
       )}
       {children}
@@ -51,10 +55,10 @@ export function Card({ props, children }: { props: BlockProps<'Card'>; children:
 
 export function Section({ props, children }: { props: BlockProps<'Section'>; children: ReactNode }) {
   return (
-    <section className="grid min-w-0 gap-3">
-      <div className="grid gap-1">
-        <Eyebrow accent>{props.title}</Eyebrow>
-        {props.description && <p className="text-sm text-text-soft">{props.description}</p>}
+    <section className="grid min-w-0 gap-2">
+      <div className="grid gap-0.5">
+        <Eyebrow>{props.title}</Eyebrow>
+        {props.description && <p className="text-[0.8125rem] text-text-soft leading-snug">{props.description}</p>}
       </div>
       {children}
     </section>

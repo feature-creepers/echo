@@ -110,10 +110,7 @@ function LevelMeter({ hearing }: { hearing: Hearing }) {
             <span
               key={index}
               style={{ height: `${height}%` }}
-              className={cn(
-                'flex-1 rounded-[1.5px] transition-colors duration-75',
-                on ? (index > BARS * 0.86 ? 'bg-warn' : 'bg-accent shadow-[0_0_8px_-1px_var(--accent)]') : 'bg-raised'
-              )}
+              className={cn('flex-1 rounded-[1.5px] transition-colors duration-75', on ? (index > BARS * 0.86 ? 'bg-warn' : 'bg-accent') : 'bg-raised')}
             />
           )
         })}

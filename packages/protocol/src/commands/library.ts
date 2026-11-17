@@ -27,6 +27,15 @@ export const libraryCommands = {
     output: libraryOutput
   },
 
+  /**
+   * Put the pinned widgets in this order, from the top of the stack. Widgets that are not pinned are ignored;
+   * pinned ones left out keep their order, after those listed.
+   */
+  'library.arrange': {
+    input: z.object({ pinned: z.array(widgetIdSchema).max(200) }),
+    output: libraryOutput
+  },
+
   /** Delete a widget: every version of it is erased. */
   'library.delete': {
     input: z.object({ widget: widgetIdSchema }),

@@ -55,6 +55,8 @@ describe('followLibrary', () => {
     expect((await state.save('view-1')).id).toBe('saved')
     expect(core.ran.at(-1)).toEqual({ name: 'library.save', input: { view: 'view-1' } })
     expect(state.current()?.revision).toBe(9)
+    await state.arrange(['saved'])
+    expect(core.ran.at(-1)).toEqual({ name: 'library.arrange', input: { pinned: ['saved'] } })
     await state.remove('saved')
     expect(state.current()?.widgets).toEqual([])
   })
@@ -76,8 +78,11 @@ describe('reading the library', () => {
     expect(savedAs(library, { id: 'view-9' })).toBeUndefined()
   })
 
-  it('lists pinned widgets in the order they were pinned, and collections with their counts', () => {
+  it('lists pinned widgets in the order they were placed or pinned, and collections with their counts', () => {
     expect(pinnedOf(library).map((one) => one.id)).toEqual(['plan', 'radio'])
+    // Once the user has dragged them, the places they were given come first.
+    const dragged: LibraryView = { revision: 2, widgets: library.widgets.map((one) => (one.id === 'radio' ? { ...one, place: 0 } : one)) }
+    expect(pinnedOf(dragged).map((one) => one.id)).toEqual(['radio', 'plan'])
     expect(collectionsOf(library)).toEqual([
       { name: 'Music', count: 2 },
       { name: 'Work', count: 1 }

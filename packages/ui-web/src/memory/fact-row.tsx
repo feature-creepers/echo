@@ -53,7 +53,7 @@ export function FactRow({ fact, onEdit, onForget }: FactRowProps) {
       if (text !== '') void act(() => onEdit(text, mode.kind), 'The correction could not be saved.')
     }
     return (
-      <li className="grid gap-3 rounded-md border border-accent/45 bg-surface px-4 py-3.5 shadow-[0_0_40px_-24px_var(--accent)]">
+      <li className="grid gap-3 rounded-md border border-accent/45 bg-surface px-4 py-3.5">
         <textarea
           aria-label="What it knows"
           value={mode.text}

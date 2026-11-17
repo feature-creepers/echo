@@ -95,10 +95,7 @@ function HarnessCard({ harness, inUse, onSignIn, onModel }: HarnessCardProps) {
   const choosable = harness.installed && harness.models.length > 0
 
   return (
-    <section
-      aria-label={harness.name}
-      className={cn('overflow-hidden rounded-lg border bg-surface/80 backdrop-blur-sm', inUse ? 'border-line-strong' : 'border-line')}
-    >
+    <section aria-label={harness.name} className={cn('overflow-hidden rounded-lg border bg-surface/85', inUse ? 'border-line-strong' : 'border-line')}>
       <div className="flex items-center gap-4 px-5 py-4">
         <span className={cn('size-2 shrink-0 rounded-full', TONES[tone])} />
         <div className="grid min-w-0 flex-1 gap-0.5">
@@ -136,7 +133,7 @@ function HarnessCard({ harness, inUse, onSignIn, onModel }: HarnessCardProps) {
                   }}
                   className={cn(
                     'flex items-center gap-4 rounded-md border px-4 py-3 text-left transition duration-150 ease-soft',
-                    chosen ? 'border-accent/55 bg-accent/8 shadow-[0_0_24px_-12px_var(--accent)]' : 'border-line hover:border-line-strong hover:bg-raised/60'
+                    chosen ? 'border-accent/50 bg-accent/[0.06]' : 'border-line hover:border-line-strong hover:bg-raised/60'
                   )}
                 >
                   <span

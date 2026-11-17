@@ -56,6 +56,7 @@ export {
   collectionSchema,
   type LibraryView,
   libraryViewSchema,
+  pinnedInOrder,
   type SavedWidget,
   savedWidgetSchema,
   WIDGET_TITLE_MAX_LENGTH,

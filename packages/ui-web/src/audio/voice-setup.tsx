@@ -36,11 +36,8 @@ export function VoiceSetup({ speech }: { speech: DeviceSpeech }) {
         <p className="text-sm text-text-soft">Ready. Press {talkKey ? `${describeShortcut(talkKey, mac)}, or ` : ''}the microphone, to talk.</p>
       ) : install.is === 'running' ? (
         <div className="grid gap-2">
-          <div className="h-1.5 overflow-hidden rounded-full bg-raised">
-            <div
-              className="h-full rounded-full bg-accent shadow-[0_0_12px_var(--accent)] transition-[width] duration-500 ease-soft"
-              style={{ width: `${progress * 100}%` }}
-            />
+          <div className="h-1 overflow-hidden rounded-full bg-white/[0.06]">
+            <div className="h-full rounded-full bg-accent transition-[width] duration-500 ease-soft" style={{ width: `${progress * 100}%` }} />
           </div>
           <span className="font-mono text-text-soft text-xs tabular-nums">
             {install.progress ? `${megabytes(install.progress.received)} of ${megabytes(install.progress.total)}` : 'Starting the download…'}

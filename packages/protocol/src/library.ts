@@ -22,10 +22,15 @@ export const savedWidgetSchema = z.object({
   title: widgetTitleSchema,
   /** The collection the user filed it in. Left out, it is unfiled. */
   collection: collectionSchema.optional(),
-  /** Pinned widgets are shown in the side sheet, beside the conversation. */
+  /** Pinned widgets float on the main screen, live, stacked on its right side. */
   pinned: z.boolean(),
-  /** When it was last pinned, to keep pinned widgets in the order they were pinned. */
+  /** When it was last pinned. */
   pinnedAt: z.string().optional(),
+  /**
+   * Where a pinned widget sits in the stack, from the top: the lowest first. The user sets it by dragging; a
+   * widget just pinned goes on top. Left out, the widget follows those that have one, in the order they were pinned.
+   */
+  place: z.number().int().optional(),
   /** When it was saved: an ISO 8601 date in UTC. */
   since: z.string(),
   /** When it last changed. */
@@ -35,6 +40,15 @@ export const savedWidgetSchema = z.object({
   spec: viewSpecShape
 })
 export type SavedWidget = z.infer<typeof savedWidgetSchema>
+
+/**
+ * The pinned widgets, from the top of the stack: by the place the user dragged them to, then, for those with
+ * none, in the order they were pinned. The core and every client sort them this one way.
+ */
+export function pinnedInOrder(widgets: readonly SavedWidget[]): SavedWidget[] {
+  const place = (widget: SavedWidget) => widget.place ?? Number.POSITIVE_INFINITY
+  return widgets.filter((widget) => widget.pinned).sort((one, other) => place(one) - place(other) || (one.pinnedAt ?? '').localeCompare(other.pinnedAt ?? ''))
+}
 
 /** The whole library, as a client shows it. */
 export const libraryViewSchema = z.object({

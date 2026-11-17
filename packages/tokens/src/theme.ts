@@ -7,8 +7,10 @@ import { font, label } from './type.ts'
 
 const kebab = (name: string) => name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)
 
-const declarations = (prefix: string, values: Record<string, string | number>, unit = '') =>
-  Object.entries(values).map(([name, value]) => `  --${prefix}-${kebab(name)}: ${value}${unit};`)
+const declarations = (prefix: string, values: Record<string, unknown>, unit = '') =>
+  Object.entries(values)
+    .filter((entry): entry is [string, string | number] => typeof entry[1] === 'string' || typeof entry[1] === 'number')
+    .map(([name, value]) => `  --${prefix}-${kebab(name)}: ${value}${unit};`)
 
 /**
  * The design values as a Tailwind theme, which is how the web interface reads them: `bg-surface`,

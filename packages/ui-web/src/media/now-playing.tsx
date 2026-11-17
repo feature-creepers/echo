@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { cn } from '../primitives/cn.ts'
 import { CloseGlyph, PauseGlyph, PlayGlyph } from '../primitives/icons.tsx'
+import { EASE } from '../styles/motion.ts'
 import { usePlayer, usePlayerState } from './player-provider.tsx'
 
 /**
@@ -19,11 +20,11 @@ export function NowPlaying() {
       {source && (
         <motion.div
           key="now-playing"
-          initial={{ opacity: 0, y: -6 }}
+          initial={{ opacity: 0, y: -4 }}
           animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -6 }}
-          transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-          className="no-drag mr-2 flex h-7 max-w-80 items-center gap-2 rounded-full border border-line-strong bg-raised/80 pr-1 pl-3 backdrop-blur-md"
+          exit={{ opacity: 0, y: -4 }}
+          transition={{ duration: 0.22, ease: EASE }}
+          className="no-drag mr-1.5 flex h-6 max-w-80 items-center gap-2 rounded-md border border-line bg-white/[0.03] pr-0.5 pl-2"
           aria-label="Now playing"
           role="group"
         >
@@ -36,7 +37,7 @@ export function NowPlaying() {
               />
             ))}
           </span>
-          <span className="min-w-0 truncate text-xs">
+          <span className="min-w-0 truncate text-[0.6875rem]">
             <span className="text-text">{source.title}</span>
             {status === 'failed' ? (
               <span className="text-danger"> · unavailable</span>
@@ -48,7 +49,7 @@ export function NowPlaying() {
             type="button"
             aria-label={going ? 'Pause' : 'Play'}
             onClick={() => player.toggle(source)}
-            className="flex size-5 shrink-0 items-center justify-center rounded-full text-text-soft transition hover:bg-overlay hover:text-text [&_svg]:size-3.5"
+            className="flex size-5 shrink-0 items-center justify-center rounded-sm text-text-soft transition-colors hover:bg-white/[0.06] hover:text-text [&_svg]:size-3"
           >
             {going ? <PauseGlyph /> : <PlayGlyph />}
           </button>
@@ -56,7 +57,7 @@ export function NowPlaying() {
             type="button"
             aria-label="Stop"
             onClick={() => player.stop()}
-            className="flex size-5 shrink-0 items-center justify-center rounded-full text-text-faint transition hover:bg-overlay hover:text-text [&_svg]:size-3"
+            className="flex size-5 shrink-0 items-center justify-center rounded-sm text-text-faint transition-colors hover:bg-white/[0.06] hover:text-text [&_svg]:size-3"
           >
             <CloseGlyph />
           </button>

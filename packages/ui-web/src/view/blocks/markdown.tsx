@@ -24,7 +24,7 @@ export function Markdown({ text }: { text: string }) {
       blocks.push(
         <pre
           key={key()}
-          className="scroll-quiet overflow-x-auto rounded-md border border-line bg-ground p-4 font-mono text-[0.8125rem] text-text-soft leading-relaxed"
+          className="scroll-quiet overflow-x-auto rounded-md border border-line bg-ground px-3.5 py-3 font-mono text-text-soft text-xs leading-relaxed"
         >
           {code.join('\n')}
         </pre>
@@ -34,10 +34,10 @@ export function Markdown({ text }: { text: string }) {
     const heading = /^(#{1,4})\s+(.*)$/.exec(line)
     if (heading) {
       const level = heading[1]?.length ?? 1
-      const style = level === 1 ? 'text-2xl font-medium tracking-tight' : level === 2 ? 'text-xl font-medium tracking-tight' : 'text-base font-medium'
+      const style = level === 1 ? 'text-lg font-medium tracking-[-0.015em]' : level === 2 ? 'text-base font-medium tracking-[-0.01em]' : 'text-sm font-medium'
       const Tag = level === 1 ? 'h3' : level === 2 ? 'h4' : 'h5'
       blocks.push(
-        <Tag key={key()} className={`${style} mt-2`}>
+        <Tag key={key()} className={`${style} mt-1.5 leading-snug`}>
           {inline(heading[2] ?? '')}
         </Tag>
       )
@@ -52,7 +52,7 @@ export function Markdown({ text }: { text: string }) {
       blocks.push(
         <List
           key={key()}
-          className={`grid gap-1.5 pl-5 ${ordered ? 'list-decimal marker:font-mono marker:text-accent marker:text-xs' : 'list-disc marker:text-accent'}`}
+          className={`grid gap-1 pl-5 ${ordered ? 'list-decimal marker:font-mono marker:text-text-faint marker:text-xs' : 'list-disc marker:text-text-faint'}`}
         >
           {items.map((item, at) => (
             <li key={at} className="pl-1 leading-relaxed">
@@ -67,7 +67,7 @@ export function Markdown({ text }: { text: string }) {
       const quote: string[] = []
       while (index < lines.length && (lines[index] ?? '').startsWith('>')) quote.push((lines[index++] ?? '').replace(/^>\s?/, ''))
       blocks.push(
-        <blockquote key={key()} className="border-accent/60 border-l-2 pl-4 text-text-soft italic">
+        <blockquote key={key()} className="border-line-strong border-l-2 pl-3.5 text-text-soft">
           {inline(quote.join(' '))}
         </blockquote>
       )
@@ -84,7 +84,7 @@ export function Markdown({ text }: { text: string }) {
     )
   }
 
-  return <div className="grid max-w-[68ch] gap-3.5 text-[0.9375rem]">{blocks}</div>
+  return <div className="grid max-w-[68ch] gap-3 text-sm">{blocks}</div>
 }
 
 /** Emphasis, strong text, code and links inside a line. A link shows its words; the address is not followed. */
@@ -105,7 +105,7 @@ function inline(text: string): ReactNode[] {
       )
     else if (token.startsWith('`'))
       parts.push(
-        <code key={key} className="rounded-sm bg-raised px-1 py-0.5 font-mono text-[0.85em]">
+        <code key={key} className="rounded-xs bg-white/[0.06] px-1 py-px font-mono text-[0.85em]">
           {token.slice(1, -1)}
         </code>
       )
