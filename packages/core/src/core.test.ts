@@ -173,7 +173,15 @@ describe('threads and the screen through the core', () => {
     const thread = harness.sessions[2]
     const token = thread?.request.tools?.token ?? ''
     expect(thread?.request.instructions).toContain('ui_render')
-    expect(core.toolHost.list(token)?.map((tool) => tool.name)).toEqual(['ui_render', 'ui_clear', 'file_write', 'file_read'])
+    expect(core.toolHost.list(token)?.map((tool) => tool.name)).toEqual([
+      'ui_render',
+      'ui_clear',
+      'file_write',
+      'file_read',
+      'memory_search',
+      'memory_remember',
+      'memory_forget'
+    ])
 
     const { EXAMPLE_VIEW } = await import('@repo/catalog')
     expect(await core.toolHost.call(token, 'ui_render', { title: 'The week', view: EXAMPLE_VIEW })).toEqual({ ok: true, text: 'Shown.' })

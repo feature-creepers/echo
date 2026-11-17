@@ -5,12 +5,16 @@ import { createExecutor } from './commands/execute.ts'
 import { type Admission, admit } from './devices/admission.ts'
 import { createEngineRoom } from './engines/engines.ts'
 import { createFiles } from './files/files.ts'
+import { createMemory } from './memory/memory.ts'
 import { createObjections } from './personas/objection.ts'
 import type { Blobs } from './ports/blobs.ts'
+import type { Timers } from './ports/clock.ts'
 import type { Harness } from './ports/harness.ts'
 import type { Log } from './ports/log.ts'
 import type { Records } from './ports/records.ts'
+import type { Search } from './ports/search.ts'
 import type { ToolHost } from './ports/tools.ts'
+import { memorySearch } from './records/memory-search.ts'
 import { createUserSettings } from './settings/settings.ts'
 import { createTools, type Tool } from './tools/tools.ts'
 import { createScreen, type Showing } from './views/screen.ts'
@@ -24,6 +28,10 @@ export interface CoreOptions {
   records: Records
   /** Files' contents. */
   blobs: Blobs
+  /** Search over the text of the records. Left out, they are searched in memory: for tests and small logs. */
+  search?: Search
+  /** Timers, for the assistant to fall asleep after a quiet period. Left out, it sleeps only when told to. */
+  timers?: Timers
   log: Log
   /** The harnesses the assistant can run on, in order of preference. */
   harnesses: readonly Harness[]
@@ -92,6 +100,21 @@ export function createCore(options: CoreOptions): Core {
   const objections = createObjections({ records: options.records, screen, now })
   const files = createFiles({ records: options.records, blobs: options.blobs, now, newId: options.newId })
 
+  // Memory (docs/SPEC.md, section 10): recalled into each turn, written while the assistant sleeps, and its tools.
+  let currentTurn: () => string | undefined = () => undefined
+  const memory = createMemory({
+    records: options.records,
+    search: options.search ?? memorySearch(options.records),
+    engines,
+    log: options.log,
+    now,
+    newId: options.newId,
+    turn: () => currentTurn(),
+    busy: () => currentTurn() !== undefined,
+    ...(options.timers ? { timers: options.timers } : {})
+  })
+  memory.onEvent(emit)
+
   const channel = createChannel({
     engines,
     settings,
@@ -107,12 +130,15 @@ export function createCore(options: CoreOptions): Core {
       threadTools: (showing, stance) => [
         ...screenTools(showing),
         ...files.tools(() => showing().thread),
+        ...memory.tools,
         ...(stance === 'critical' ? objections.tools(showing) : [])
       ],
-      instructions: describeCatalog(),
+      instructions: `${describeCatalog()}\n\n${memory.instructions}`,
       standing: () => objections.standing()
-    }
+    },
+    memory
   })
+  currentTurn = channel.turn
 
   settings.onChange((changed) => emit({ type: 'event', name: 'settings.changed', settings: changed }))
   engines.onChange((changed) => emit({ type: 'event', name: 'engines.changed', engines: changed }))
@@ -146,6 +172,20 @@ export function createCore(options: CoreOptions): Core {
         return { ok: true, output: {} }
       },
       'threads.read': () => ({ ok: true, output: channel.threads() }),
+      'memory.read': () => ({ ok: true, output: { memory: memory.read(), state: memory.state() } }),
+      'memory.edit': (input) => {
+        const change = memory.edit(input)
+        return change.ok ? { ok: true, output: { memory: change.memory } } : change
+      },
+      'memory.forget': (input) => {
+        const change = memory.forget(input.fact)
+        return change.ok ? { ok: true, output: { memory: change.memory } } : change
+      },
+      'memory.sleep-settings.set': (input) => ({ ok: true, output: { memory: memory.setSleep(input) } }),
+      'memory.sleep-now': () => {
+        const asked = memory.sleepNow()
+        return asked.ok ? { ok: true, output: {} } : asked
+      },
       'file.read': (input) => {
         const file = files.read(input.file)
         return file
@@ -177,6 +217,9 @@ export function createCore(options: CoreOptions): Core {
     serveToolsAt(url) {
       toolServer = url
     },
-    close: () => channel.close()
+    close() {
+      channel.close()
+      memory.close()
+    }
   }
 }

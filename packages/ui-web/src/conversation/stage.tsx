@@ -57,6 +57,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
   const shown = useFollowed(client.view)
   const view = shown.stage
   const threads = useFollowed(client.threads)
+  const asleep = useFollowed(client.memory.asleep)
   const ready = threads.threads.filter((thread) => thread.state === 'ready')
   const [problem, setProblem] = useState<string>()
 
@@ -92,7 +93,18 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
     client.channel.say(text, language).catch(() => setProblem(refusalCopy('failed')))
   })
   const listening = talk.is === 'listening'
-  const mood: Mood = listening ? 'listening' : talk.is === 'transcribing' ? 'thinking' : speaking.sentence ? 'speaking' : running ? 'thinking' : 'idle'
+  const mood: Mood =
+    asleep && !listening && !running && !speaking.sentence
+      ? 'asleep'
+      : listening
+        ? 'listening'
+        : talk.is === 'transcribing'
+          ? 'thinking'
+          : speaking.sentence
+            ? 'speaking'
+            : running
+              ? 'thinking'
+              : 'idle'
   const failed =
     talk.is === 'failed' ? talk.reason : !running && !speaking.sentence && last?.outcome === 'failed' ? (last.problem ?? 'It could not answer.') : undefined
 

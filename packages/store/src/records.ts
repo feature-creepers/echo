@@ -1,13 +1,19 @@
 import { randomUUID } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
-import type { Records, StoredRecord } from '@repo/core'
+import { erasedBy, type Records, type StoredRecord } from '@repo/core'
 import { transaction } from './database.ts'
+import type { KeywordIndex } from './search/keyword.ts'
 
-/** The records of a core, in its file. */
-export function createRecords(database: DatabaseSync, now: () => Date = () => new Date()): Records {
+/**
+ * The records of a core, in its file. The search index, when given, takes in each record in the same
+ * transaction, so it is never behind what was written.
+ */
+export function createRecords(database: DatabaseSync, now: () => Date = () => new Date(), index?: KeywordIndex): Records {
   const origin = coreId(database)
   const last = database.prepare('select coalesce(max(sequence), 0) as last from record where origin = ?')
   const insert = database.prepare('insert into record (id, origin, sequence, at, type, payload) values (?, ?, ?, ?, ?, ?)')
+  // A tombstone keeps the record in its place and erases its content (the records port says why).
+  const erase = database.prepare("update record set payload = 'null' where id = ?")
 
   return {
     append(records) {
@@ -18,8 +24,11 @@ export function createRecords(database: DatabaseSync, now: () => Date = () => ne
           const payload: string | undefined = JSON.stringify(record.payload)
           if (payload === undefined) throw new Error(`A record of type "${record.type}" has a payload that is not JSON data.`)
           const stored = { id: randomUUID(), origin, sequence: ++sequence, at: now().toISOString(), type: record.type }
-          insert.run(stored.id, stored.origin, stored.sequence, stored.at, stored.type, payload)
-          return { ...stored, payload: JSON.parse(payload) }
+          const { lastInsertRowid } = insert.run(stored.id, stored.origin, stored.sequence, stored.at, stored.type, payload)
+          const written = { ...stored, payload: JSON.parse(payload) }
+          for (const erased of erasedBy(written)) erase.run(erased)
+          index?.take(written, lastInsertRowid)
+          return written
         })
       })
     },

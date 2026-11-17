@@ -4,6 +4,7 @@ import { type ChannelState, followChannel } from './state/channel.ts'
 import { type EnginesState, followEngines } from './state/engines.ts'
 import type { Followed } from './state/followed.ts'
 import { followEvents, type Logged } from './state/inspector.ts'
+import { followMemory, type MemoryState } from './state/memory.ts'
 import { followSettings, type SettingsState } from './state/settings.ts'
 import { followThreads, type ThreadsState } from './state/threads.ts'
 import { followView, type ViewState } from './state/view.ts'
@@ -18,6 +19,8 @@ export interface Client {
   threads: ThreadsState
   /** Every event the core sent, for the inspector. */
   events: Followed<readonly Logged[]>
+  /** What the assistant knows about the user, and whether it is asleep. */
+  memory: MemoryState
   speech: SpeechPlayer
   /** Let go of all of it. The link under the session is left as it is. */
   close(): void
@@ -35,6 +38,7 @@ export function openClient(link: SessionLink, voice: DeviceVoice): Client {
   const view = followView(session)
   const threads = followThreads(session)
   const events = followEvents(session)
+  const memory = followMemory(session)
   const speech = playSpeech(channel, voice)
   return {
     session,
@@ -44,9 +48,11 @@ export function openClient(link: SessionLink, voice: DeviceVoice): Client {
     view,
     threads,
     events,
+    memory,
     speech,
     close() {
       speech.close()
+      memory.unfollow()
       view.unfollow()
       threads.unfollow()
       events.unfollow()

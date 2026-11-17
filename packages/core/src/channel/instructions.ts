@@ -62,12 +62,19 @@ export interface InstructionsContext {
   earlier: readonly Exchange[]
   /** What the session can do besides speak, and how: the screen and its blocks. Left out, it can only speak. */
   abilities?: string
+  /** What the assistant knows about the person, from its memory. */
+  profile?: string | undefined
 }
 
+const known = (profile: string | undefined) =>
+  profile ? `What you know about the person, from your memory. Use it naturally; do not recite it.\n\n${profile}` : undefined
+
 /** A session that answers on its own, with no orchestrator: used when there are no tools to route with. */
-export function instructionsFor({ persona, earlier, abilities }: InstructionsContext): string {
+export function instructionsFor({ persona, earlier, abilities, profile }: InstructionsContext): string {
   const parts = [who(persona), STANCES[persona.stance], SPEECH_CONTRACT]
   if (abilities) parts.push(abilities)
+  const memory = known(profile)
+  if (memory) parts.push(memory)
   const before = recap(earlier)
   if (before) parts.push(before)
   return parts.join('\n\n')
@@ -78,7 +85,7 @@ export function instructionsFor({ persona, earlier, abilities }: InstructionsCon
  * thread: a session working on one topic, with the screen. It never does a thread's work itself, so it can
  * stay fast. docs/SPEC.md, section 7.
  */
-export function orchestratorInstructions({ persona, earlier, abilities }: InstructionsContext): string {
+export function orchestratorInstructions({ persona, earlier, abilities, profile }: InstructionsContext): string {
   const parts = [
     who(persona),
     TONES[persona.stance],
@@ -98,6 +105,8 @@ export function orchestratorInstructions({ persona, earlier, abilities }: Instru
     ].join('\n')
   ]
   if (abilities) parts.push(abilities)
+  const memory = known(profile)
+  if (memory) parts.push(memory)
   const before = recap(earlier)
   if (before) parts.push(before)
   return parts.join('\n\n')
@@ -109,7 +118,7 @@ export interface ThreadContext extends InstructionsContext {
 }
 
 /** A thread works on one topic, speaks its answers directly, and shows what is detailed on the screen. */
-export function threadInstructions({ persona, earlier, abilities, title, kind }: ThreadContext): string {
+export function threadInstructions({ persona, earlier, abilities, profile, title, kind }: ThreadContext): string {
   const parts = [
     who(persona),
     STANCES[persona.stance],
@@ -119,6 +128,8 @@ export function threadInstructions({ persona, earlier, abilities, title, kind }:
       : `In this part of the conversation you work on one topic: "${title}". The person may come back to it later, from other topics, and you will carry on where you stopped. Requests reach you through the assistant that hears everything; answer the person directly, as yourself.`
   ]
   if (abilities) parts.push(abilities)
+  const memory = known(profile)
+  if (memory) parts.push(memory)
   const before = recap(earlier)
   if (before) parts.push(before)
   return parts.join('\n\n')

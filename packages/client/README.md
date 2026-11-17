@@ -1,6 +1,6 @@
 # @repo/client
 
-Client logic with no interface: the connection to a core, the state derived from its events, speech playback. Shared by the desktop app and, later, the phone app.
+Client logic with no interface: the connection to a core, the state derived from its events (settings, conversation, harnesses, view, memory and whether the assistant is asleep), speech playback, and the memory as Markdown. Shared by the desktop app and, later, the phone app.
 
 - **Runs in:** Anywhere: Node, a browser, a phone. No Node API, no DOM
 - **May import:** `@repo/protocol`, `@repo/catalog`

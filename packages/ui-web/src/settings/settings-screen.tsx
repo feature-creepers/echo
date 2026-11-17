@@ -1,10 +1,11 @@
-import type { EnginesState } from '@repo/client'
+import type { EnginesState, MemoryState } from '@repo/client'
 import type { CommandInput, PersonaId, Settings } from '@repo/protocol'
 import { type ReactNode, useEffect, useState } from 'react'
 import type { DeviceSpeech } from '../audio/use-speech.ts'
 import { VoicePicker } from '../audio/voice-picker.tsx'
 import { VoiceSetup } from '../audio/voice-setup.tsx'
 import { EngineRows } from '../conversation/engine-rows.tsx'
+import { MemorySection } from '../memory/memory-section.tsx'
 import { PersonasForm } from '../personas/personas-form.tsx'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
@@ -12,15 +13,17 @@ import { IconButton } from '../primitives/icon-button.tsx'
 import { CloseGlyph } from '../primitives/icons.tsx'
 import { Kbd } from '../primitives/kbd.tsx'
 
-export const SETTINGS_SECTIONS = ['personalities', 'voice', 'engine'] as const
+export const SETTINGS_SECTIONS = ['personalities', 'voice', 'memory', 'engine'] as const
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number]
 
-const TITLES: Record<SettingsSection, string> = { personalities: 'Personalities', voice: 'Voice', engine: 'Engine' }
+const TITLES: Record<SettingsSection, string> = { personalities: 'Personalities', voice: 'Voice', memory: 'Memory', engine: 'Engine' }
 
 export interface SettingsScreenProps {
   productName: string
   personas: Settings['personas']
   engines: EnginesState
+  /** What the assistant knows about the user, and when it sleeps. */
+  memory: MemoryState
   /** The device's speech. Left out, the device has none and the section says so. */
   speech?: DeviceSpeech | undefined
   /** The section to open on. */
@@ -31,7 +34,7 @@ export interface SettingsScreenProps {
 }
 
 /** The user's settings, one section at a time, with the sections listed on the left. Escape goes back. */
-export function SettingsScreen({ productName, personas, engines, speech, section: first, setPersonas, onPick, onClose }: SettingsScreenProps) {
+export function SettingsScreen({ productName, personas, engines, memory, speech, section: first, setPersonas, onPick, onClose }: SettingsScreenProps) {
   const [section, setSection] = useState<SettingsSection>(first)
 
   useEffect(() => {
@@ -98,6 +101,13 @@ export function SettingsScreen({ productName, personas, engines, speech, section
             ) : (
               <p className="text-sm text-text-soft">This device cannot run speech models.</p>
             )}
+          </Block>
+        )}
+        {section === 'memory' && (
+          <Block
+            lead={`${productName} keeps every word of your conversations, and while it sleeps it works out what is worth remembering about you. Here is what it knows, where it learned it, and when it sleeps.`}
+          >
+            <MemorySection memory={memory} productName={productName} />
           </Block>
         )}
         {section === 'engine' && (

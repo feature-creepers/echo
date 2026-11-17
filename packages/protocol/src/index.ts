@@ -50,6 +50,27 @@ export {
 } from './handshake.ts'
 export { CORE_TOKEN_VARIABLE, DATA_OPTION, EXIT_WITH_PARENT_FLAG, EXIT_WITH_PARENT_OPTION, type Ready, readySchema } from './launch.ts'
 export {
+  type AssistantState,
+  assistantStateSchema,
+  FACT_KINDS,
+  FACT_MAX_LENGTH,
+  FACT_ORIGINS,
+  type Fact,
+  type FactId,
+  type FactKind,
+  type FactSource,
+  factIdSchema,
+  factKindSchema,
+  factSchema,
+  factSourceSchema,
+  type MemoryView,
+  memoryViewSchema,
+  SLEEP_MODES,
+  type SleepMode,
+  type SleepSettings,
+  sleepSettingsSchema
+} from './memory.ts'
+export {
   ACCENTS,
   type Accent,
   accentSchema,

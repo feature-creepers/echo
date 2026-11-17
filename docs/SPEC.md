@@ -555,6 +555,12 @@ The channel log is kept in full unless the user sets a retention period. This is
 
 **Records are immutable** (section 5.2). A turn, a fact, a view version or a file version is written once, with a global identifier, the core that wrote it and a sequence number. Correcting a fact writes a new record that replaces the old one. "Forget that" writes a tombstone and erases the content. Tables that answer "what is true now" are indexes kept in step with the records. This costs little now and makes later sync an exchange of missing records.
 
+**As built.**
+
+- **The tombstone** is a record of type `record.erasure` naming the records to erase (`ERASURE` in the core's records port). Appending one empties the payload of each record it names, which is read back as `null`, and takes their text out of the search index. The erased records keep their place, identifier and sequence number, so sync still has nothing to reconcile. It is the one exception to "records never change", and it exists so that forgetting is real.
+- **The keyword index** is an FTS5 table, `search_text` (migration `0002-search`), with accents and case folded. The store takes each record into it in the same transaction that writes the record, so what was said can be searched the moment it is recorded. On opening, it takes in whatever was written since it last read the table (a file from before the index, or records written by another version), from a progress mark it keeps. Which text a record is found by is decided by the core (`searchableText`): for an exchange, both sides of it; for a fact, its statement. The words searched for are the core's too (`keywordsOf`): no words that carry nothing, in English and in French, and a word of four letters or more also finds the words it starts. Ranking is bm25, divided by `1 + age / half-life` when the search asks for recency.
+- **The `Search` port** (`packages/core/src/ports/search.ts`) takes a text, record types, a limit, a period and an optional half-life, and gives hits: record, type, date, snippet and score. Vectors (section 10.4) will be a second adapter whose hits are merged with these by record; keyword search answers alone until then.
+
 ### 10.4 Embeddings
 
 Vector search needs an embedding model, and harnesses do not provide one. Under "no API keys", that leaves a small model running locally.
@@ -567,7 +573,9 @@ Vector search needs an embedding model, and harnesses do not provide one. Under 
 ### 10.5 Reading
 
 - **Automatic.** Before each turn, the core searches the utterance against facts and recent log (keywords and vectors combined, weighted by recency) and adds the best few results to the context. The model does nothing.
-- **On demand.** The model can call `memory.search(query, period)` when it needs more, for instance "what did we decide about the trip in March?".
+- **On demand.** The model can call `memory_search(query, after, before)` when it needs more, for instance "what did we decide about the trip in March?".
+
+As built, recall is keyword search alone and makes no model call. It finds up to four facts true now (half-life a year) and up to three lines of the log (half-life 45 days), and leaves out the lines the session already knows: those it was told when it opened, and everything said since. The memories go ahead of what the user said, in brackets, as something to use if it helps and not to mention otherwise; the exchange is recorded with the user's words alone. A memory that cannot be searched never stops the answer: recall then gives nothing.
 
 ### 10.6 Writing: awake and asleep
 
@@ -583,9 +591,29 @@ Memory is written in two phases, as a person's is.
 
 What sleep has not yet processed is not lost in the meantime: recall (section 10.5) searches the raw log as well as the facts.
 
+**Facts as records.** A fact is a record of type `memory.fact` carrying the fact's own identifier, its statement, its kind (person, preference, project, date, override, other), how it came (from conversation, told, edited), the turns it came from, and the date it was first learned. A later record with the same identifier is a new version of it: an update during sleep, or the user's correction. A record that `replaces` another fact ends that one, which stays as history and is no longer true. Forgetting writes one tombstone naming every version of the fact, the facts it replaced before it, and the profiles, which may say it; the next sleep writes a new profile. Overrides of the critical stance (section 11.4) are facts of the kind `override`.
+
+**Sleep, as built.** The setting is the user's, kept as `memory.sleep-set` records: when (`quiet`, `time`, `quiet-or-time`, `asked`, `never`), the quiet period (10 minutes by default) and the time of day (03:00 by default, on the core's clock). The core is given timers by its host (`Timers` in `ports/clock.ts`); without them it sleeps only when told. It does not fall asleep in the middle of an answer: it looks again a minute later. `never` refuses even "sleep now", so the only facts are those the user asks it to remember.
+
+Asleep, it reads the exchanges written since its cursor, twelve at a time at most, and for each batch:
+
+1. **Extract.** One call (role `utility`) with the turns numbered, each with its weekday, date and time, so relative dates can be made absolute. The model answers with candidate facts as JSON, each with the turns it came from.
+2. **Reconcile.** Each candidate is searched against the facts true now; the three most alike are its comparison. If no candidate resembles anything, all are added with no call. Otherwise one call decides add, update, replace or ignore for each; a fact the model names that the candidate was not compared with is not touched, and a candidate it skips is added.
+3. **Write.** The facts and a `memory.slept` cursor (the last exchange read) are appended together, so a batch is kept whole or not at all.
+
+An answer that cannot be read is asked for once more, then the batch is passed over and logged, so that one batch cannot block every sleep after it. A harness that cannot be reached stops the sleep, and the batch waits for the next one. Speaking wakes it at once: the call in flight is let go and its answer dropped, and that batch is read again at the next sleep. When the facts changed since the last profile, it ends by writing a new one (a call that turns the most important facts into at most 250 words, overrides first) as a `memory.profile` record. Every session is given the profile and the facts learned after it; a new profile opens a new session at the next turn, while facts remembered on request reach the session through the tool that kept them.
+
+**Tools.** `memory_search(query, after, before)`, `memory_remember(text, kind)` (immediate, from the turn under way, and once: the same statement is not kept twice) and `memory_forget(fact or description)`. Forgetting by description forgets the one fact that matches best; when several match nearly as well, nothing is forgotten and the model is given their identifiers to choose, or to ask.
+
+**Checked against the real thing.** `apps/server/test/memory.real.test.ts`, run with `REAL_HARNESS=1`, gives Claude Code's smallest model five exchanges said on Tuesday 17 November 2026 and puts the assistant to sleep. It kept the sister and her city, her visit "next Friday" as 2026-11-20, the preference for green tea, and the project (in French, as it was said), and nothing from the article the user read out or the question about the weather. Told later that the sister moved, it replaced the old city with the new one. Five short calls in all.
+
 ### 10.7 What the user sees
 
 A "what I know about you" view, grouped by people, preferences, projects and dates. Each fact shows where it was learned, and can be edited or forgotten. The whole memory exports to Markdown, keeping the best property of the proof of concept's notes file: the user can read and correct it. Memory is shared by every persona and survives any change of harness. A one-off import brings in the proof of concept's notes, context file and history from `~/JARVIS`.
+
+As built, it is the Memory section of settings. At the top, the assistant's state (awake, with when it last slept and when it will sleep next; or asleep, with the progress of its work), the choice of when it sleeps and a "Sleep now" button. Then the profile, then the facts by kind, each with how and when it was learned and the words it came from, with Edit and Forget (which asks once, since the words are erased). Export to Markdown downloads the same, built by the client (`memoryMarkdown`) so a phone can offer it too. The protocol carries it as `memory.read`, `memory.edit`, `memory.forget`, `memory.sleep-settings.set` and `memory.sleep-now`, and the events `memory.changed` and `assistant.state`; a client follows both with `followMemory`, which also gives `asleep` for the main screen to dim the core.
+
+Not built yet: vectors (section 10.4), thread summaries, a retention period for the log, the import from the proof of concept, and erasing from the log the words a forgotten fact came from (forgetting a fact removes the fact; the conversation it was learned in stays in the log, and can still be recalled).
 
 ## 11. Personas
 
@@ -863,6 +891,7 @@ packages/protocol/src/
 ├── commands.ts             every command, assembled from the groups in commands/
 ├── commands/               client to core, each answered by one result
 │   ├── settings.ts         read the settings; name the personas and pick the one that answers
+│   ├── memory.ts           read what is known, correct or forget a fact, choose when it sleeps, sleep now
 │   ├── utterance.ts        something said or typed: text, or audio frames
 │   ├── action.ts           a semantic action from a view
 │   ├── control.ts          stop, focus
@@ -870,6 +899,7 @@ packages/protocol/src/
 ├── events.ts               every event, assembled from the groups in events/
 ├── events/                 core to every client
 │   ├── settings.ts         the settings changed
+│   ├── memory.ts           what is known changed; the assistant fell asleep, woke, or went further in its work
 │   ├── turn.ts             turn started, ended, failed
 │   ├── speech.ts           say this text, play this audio, stop
 │   ├── view.ts             render, patch, clear, and the slot
@@ -878,6 +908,7 @@ packages/protocol/src/
 │   └── status.ts           harness state, usage, errors
 ├── personas.ts             a persona (name, stance, accent) and the rule for names, shared by both sides
 ├── settings.ts             the user's settings as a client sees them
+├── memory.ts               facts, their kinds and sources, the sleep setting, and whether the assistant is asleep
 ├── device/                 the core asks a device, the device answers
 │   ├── request.ts
 │   └── files.ts  media.ts  system.ts  cursor.ts  screen.ts  notify.ts
@@ -915,11 +946,12 @@ packages/core/src/
 ├── ports/                  what the core needs from outside, as interfaces
 │   ├── harness.ts          Harness, Session
 │   ├── records.ts          append and read records
-│   ├── search.ts           keyword and vector search
+│   ├── search.ts           keyword search now, vectors later: hits by record, ranked by match and recency
 │   ├── embedder.ts
 │   ├── blobs.ts            files by content hash
 │   ├── devices.ts          capabilities of connected devices
-│   └── clock.ts  ids.ts  log.ts
+│   ├── clock.ts            timers, given by the host, to do things later
+│   └── ids.ts  log.ts
 ├── channel/                the single conversation
 │   ├── channel.ts          intake and ordering of turns
 │   ├── turn.ts
@@ -944,11 +976,16 @@ packages/core/src/
 │   ├── slots.ts            stage, margin, dock
 │   └── feeds.ts            live data kept current without a model
 ├── memory/
-│   ├── recall.ts           automatic and on-demand search, ranking
-│   ├── extract.ts          candidate facts from new exchanges
+│   ├── memory.ts           createMemory: the one entry point; sleep's work, remembering, correcting, forgetting
+│   ├── facts.ts            fact records, and the facts true now
+│   ├── searchable.ts       the text each record is found by, and the words a search looks for
+│   ├── recall.ts           what bears on a turn, from the facts and the log, with no model call
+│   ├── sleep.ts            the sleep setting, and the timers that put the assistant to sleep
+│   ├── extract.ts          candidate facts from new exchanges: the prompt and its reading
 │   ├── reconcile.ts        add, update, replace or ignore
-│   ├── facts.ts
-│   └── profile.ts          the short profile present in every prompt
+│   ├── profile.ts          the short profile present in every prompt
+│   ├── answer.ts           reading a model's JSON answer; days and weekdays for absolute dates
+│   └── tools.ts            memory_search, memory_remember, memory_forget
 ├── personas/
 │   ├── defaults.ts         the personas a new user starts with: data, and the only place their default names are written
 │   ├── choice.ts           the user's choice of names and of the persona that answers: its rules, and the record that keeps it
@@ -959,7 +996,8 @@ packages/core/src/
 ├── files/                  each thread's files and their versions
 ├── permissions/            scopes and approvals, as policy
 ├── devices/                connected devices, the active one, routing of capability requests
-├── records/                the record types, the "what is true now" readers built on them, and records kept in memory
+├── records/                the record types, the "what is true now" readers built on them, and records and search kept in memory
+├── replay/                 a scripted harness and timers moved by hand, for tests and replays
 └── usage/                  tokens, cost, timings
 ```
 
@@ -988,11 +1026,12 @@ packages/store/src/
 ├── store.ts                opens a user's data folder and gives the core its ports
 ├── database.ts             open, settings, loading of extensions on each system, bringing the layout up to date
 ├── migrations/             numbered files, one per change of layout. A released one is never edited
-├── records.ts              the append-only record table
+│   └── 0001-records.ts  0002-search.ts
+├── records.ts              the append-only record table, tombstones, and the index kept in the same transaction
 ├── readers/                indexed "what is true now" tables, kept in step with the records
 ├── search/
-│   ├── keyword.ts          FTS5
-│   └── vector.ts           sqlite-vec
+│   ├── keyword.ts          FTS5, ranked by bm25 and recency, caught up on opening
+│   └── vector.ts           sqlite-vec (later)
 ├── blobs.ts                files on disk by content hash
 └── export.ts               Markdown and archive export
 ```
@@ -1048,7 +1087,8 @@ packages/client/src/
 │   ├── local.ts            a core on this machine (Node only, its own entry point)
 │   └── websocket.ts        a remote core
 ├── state/                  what a client knows, derived from events
-│   └── settings.ts  channel.ts  views.ts  threads.ts  activity.ts  inspector.ts
+│   └── settings.ts  channel.ts  view.ts  engines.ts  memory.ts  threads.ts  activity.ts  inspector.ts
+├── export/                 the memory as Markdown, for any interface to hand the user
 ├── speech-player.ts        plays speech events through the device's voice, reports progress, stops
 ├── capabilities.ts         declares device capabilities and answers the core's requests
 └── react/                  hooks (its own entry point)
@@ -1064,6 +1104,7 @@ packages/ui-web/src/
 ├── shell/                  what fills the window: the core animation, caption, input line, disclosure levels
 ├── onboarding/             first launch
 ├── settings/               the user's settings
+├── memory/                 the Memory section: the sleep and its setting, the profile, the facts to edit or forget, the export
 ├── personas/               the form that names the personas, their mark, and the words written for each stance
 ├── inspector/              threads, events, memory, usage
 ├── styles/                 global styles

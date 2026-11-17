@@ -54,6 +54,21 @@ export interface ChannelOptions {
   abilities?: Abilities
   /** The user's time zone, as an IANA name. Left out, the machine's. */
   timeZone?: string
+  /** What the assistant remembers. Left out, it knows only the latest lines of the transcript. */
+  memory?: Remembering
+}
+
+/** What the channel asks of the memory (docs/SPEC.md, section 10.5). */
+export interface Remembering {
+  /** Something was said or answered: the assistant wakes if it was asleep, and the quiet period starts again. */
+  wake(): void
+  /** What to add ahead of what the user said. Lines of the log written from `knownSince` on are known to the session already. */
+  recall(said: string, knownSince?: string): string | undefined
+  /**
+   * What every session is told about the user. `version` changes only when sleep writes a new profile: sessions
+   * are then opened again with it. Facts learned in between reach the next session opened for another reason.
+   */
+  profile(): { text: string; version?: string | undefined } | undefined
 }
 
 /** A moment as a person says it, with its time zone: "Tuesday, 17 November 2026, 14:13 (Europe/Paris)". */
@@ -83,6 +98,8 @@ export interface Channel {
   read(limit: number): Exchange[]
   /** The threads, and the one in focus. */
   threads(): Threads
+  /** The turn on the stage, if any. */
+  turn(): TurnId | undefined
   /** Bring a thread to the stage, with its last answer if it was waiting to be seen. False when there is no such thread. */
   focus(thread: string): boolean
   /** Be told each event of the conversation. Returns a function that stops the telling. */
@@ -106,6 +123,8 @@ interface Live {
   session: Session
   key: string
   grant: Grant | undefined
+  /** The date of the oldest line the session was told about: recall leaves out what it already has. */
+  knownSince: string
 }
 
 /** A thread at work: its session, the turn it answers, and what waits for it. */
@@ -130,7 +149,7 @@ const focusInput = z.object({ thread: z.string().min(1) })
  * restart, new sessions are opened and told the latest lines of what concerns them.
  */
 export function createChannel(options: ChannelOptions): Channel {
-  const { engines, settings, records, screen, log, now, newId, abilities } = options
+  const { engines, settings, records, screen, log, now, newId, abilities, memory } = options
   const listeners = new Set<(event: Event) => void>()
   const emit = (event: Event) => {
     for (const listener of listeners) listener(event)
@@ -180,6 +199,7 @@ export function createChannel(options: ChannelOptions): Channel {
 
   const finish = (turn: Turn, outcome: Exchange['outcome'], problem?: string) => {
     if (turn.exchange.outcome !== 'running') return
+    memory?.wake()
     for (const sentence of turn.cutter.flush()) say(turn, sentence)
     turn.exchange = problem === undefined ? { ...turn.exchange, outcome } : { ...turn.exchange, outcome, problem }
     replace(turn.exchange)
@@ -219,7 +239,8 @@ export function createChannel(options: ChannelOptions): Channel {
   const threadSession = (runtime: Runtime, engine: Harness, server: string): Session => {
     const thread = registry.get(runtime.thread)
     const persona = activePersona()
-    const key = JSON.stringify([engine.id, persona.id, persona.name, persona.stance, server])
+    const profile = memory?.profile()
+    const key = JSON.stringify([engine.id, persona.id, persona.name, persona.stance, server, profile?.version ?? null])
     if (runtime.live?.key === key) return runtime.live.session
     end(runtime.live)
     const kind = thread?.kind ?? 'topic'
@@ -234,9 +255,11 @@ export function createChannel(options: ChannelOptions): Channel {
         persona.stance
       )
     )
+    const earlier = recapFor(runtime.thread)
     const instructions = threadInstructions({
       persona,
-      earlier: recapFor(runtime.thread),
+      earlier,
+      profile: profile?.text,
       title: thread?.title ?? 'A topic',
       kind,
       ...(abilities ? { abilities: [abilities.instructions, abilities.standing?.()].filter(Boolean).join('\n\n') } : {})
@@ -245,7 +268,7 @@ export function createChannel(options: ChannelOptions): Channel {
     const session = engine.open(
       grant ? { role: 'thread', instructions, tools: { url: server, token: grant.token }, web: true } : { role: 'thread', instructions, web: true }
     )
-    const live: Live = { session, key, grant }
+    const live: Live = { session, key, grant, knownSince: earlier[0]?.at ?? now().toISOString() }
     runtime.live = live
     session.onEvent((event) => hearThread(runtime, live, event))
     return session
@@ -300,7 +323,9 @@ export function createChannel(options: ChannelOptions): Channel {
       finish(waiting.turn, 'stopped')
       return void next(runtime)
     }
-    threadSession(runtime, engine, server).send(`${context()}\n${waiting.text}`)
+    const session = threadSession(runtime, engine, server)
+    const recalled = memory?.recall(waiting.text, runtime.live?.knownSince)
+    session.send(`${context()}\n${recalled ? `${recalled}\n\n` : ''}${waiting.text}`)
   }
 
   /** Pass a turn to a thread, which answers it as soon as it is free. */
@@ -390,7 +415,8 @@ export function createChannel(options: ChannelOptions): Channel {
   const orchestratorSession = (engine: Harness): Session => {
     const persona = activePersona()
     const server = abilities?.server()
-    const key = JSON.stringify([engine.id, persona.id, persona.name, persona.stance, server ?? null])
+    const profile = memory?.profile()
+    const key = JSON.stringify([engine.id, persona.id, persona.name, persona.stance, server ?? null, profile?.version ?? null])
     if (orchestrator?.key === key) return orchestrator.session
     end(orchestrator)
     const routing = abilities !== undefined && server !== undefined
@@ -398,11 +424,16 @@ export function createChannel(options: ChannelOptions): Channel {
     const session = grant
       ? engine.open({
           role: 'orchestrator',
-          instructions: orchestratorInstructions({ persona, earlier: recapFor(undefined) }),
+          instructions: orchestratorInstructions({
+            persona,
+            earlier: recapFor(undefined),
+            profile: profile?.text,
+            ...(abilities?.standing?.() ? { abilities: abilities.standing() as string } : {})
+          }),
           tools: { url: server as string, token: grant.token }
         })
-      : engine.open({ role: 'thread', instructions: instructionsFor({ persona, earlier: recapFor(undefined) }) })
-    const live: Live = { session, key, grant }
+      : engine.open({ role: 'thread', instructions: instructionsFor({ persona, earlier: recapFor(undefined), profile: profile?.text }) })
+    const live: Live = { session, key, grant, knownSince: recapFor(undefined)[0]?.at ?? now().toISOString() }
     orchestrator = live
     session.onEvent((event) => hearOrchestrator(live, event))
     return session
@@ -462,7 +493,9 @@ export function createChannel(options: ChannelOptions): Channel {
       finish(turn, 'stopped')
       return void decideNext()
     }
-    orchestratorSession(engine).send(message(turn))
+    const session = orchestratorSession(engine)
+    const recalled = turn.exchange.trigger ? undefined : memory?.recall(turn.exchange.said, orchestrator?.knownSince)
+    session.send(recalled ? `${recalled}\n\n${message(turn)}` : message(turn))
   }
 
   const decideNext = () => {
@@ -490,6 +523,7 @@ export function createChannel(options: ChannelOptions): Channel {
 
   return {
     say(text, language) {
+      memory?.wake()
       const persona = activePersona()
       const exchange: Exchange = { turn: newId(), at: now().toISOString(), persona: persona.id, said: text, replied: '', outcome: 'running' }
       const turn: Turn = { exchange, language, cutter: createSentenceCutter(), stopped: false, routed: undefined }
@@ -530,6 +564,8 @@ export function createChannel(options: ChannelOptions): Channel {
     read: (limit) => transcript.slice(-limit),
 
     threads: () => registry.read(),
+
+    turn: () => current?.exchange.turn,
 
     focus(id) {
       const thread = registry.get(id)

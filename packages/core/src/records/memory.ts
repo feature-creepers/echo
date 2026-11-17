@@ -1,4 +1,4 @@
-import type { Records, StoredRecord } from '../ports/records.ts'
+import { erasedBy, type Records, type StoredRecord } from '../ports/records.ts'
 
 export interface MemoryRecordsOptions {
   /** The name of the core that writes. */
@@ -19,6 +19,8 @@ export function memoryRecords({ origin = 'memory', now = () => new Date() }: Mem
         return { id: `${origin}-${sequence}`, origin, sequence, at: now().toISOString(), type: record.type, payload: structuredCloneJson(record.payload) }
       })
       stored.push(...written)
+      const erased = new Set(written.flatMap(erasedBy))
+      for (const record of stored) if (erased.has(record.id)) record.payload = null
       return written.map((record) => ({ ...record }))
     },
     read(types) {
