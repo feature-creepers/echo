@@ -1,5 +1,5 @@
 import { type ViewSpec, validateView } from '@repo/catalog'
-import { type Event, type ShownView, type TurnId, viewSchema } from '@repo/protocol'
+import { type Event, onTop, type ShownView, type TurnId, viewSchema } from '@repo/protocol'
 import { z } from 'zod'
 import type { Records } from '../ports/records.ts'
 import type { ToolResult } from '../ports/tools.ts'
@@ -36,12 +36,17 @@ export interface Checked {
   widget?: string
 }
 
-/** What the assistant shows: each thread's view, the one of the topic in focus on the stage, and aside cards in the margin. */
+/**
+ * What the assistant shows: each thread's view, the one of the topic in focus on the stage, aside cards in the
+ * margin, and the stream the main screen draws, every view still open, newest first.
+ */
 export interface Screen {
   /** What is on the stage now. */
   current(): ShownView | undefined
   /** The aside cards, the newest last. */
   margin(): ShownView[]
+  /** Every view of the conversation still open, newest first, stage and asides together. */
+  stream(): ShownView[]
   /** Show what a session asked to show. The answer says "shown", or lists what to correct. */
   show(asked: unknown, showing: Showing): ToolResult
   /** Show a view that was checked already, as it is. */
@@ -56,7 +61,7 @@ export interface Screen {
   recall(thread: string): void
   /** The focus moved to this thread: the stage shows its view, or nothing. */
   focus(thread: string | undefined): void
-  /** Remove the view given, or, left out, what is on the stage. */
+  /** Remove the view given, wherever it is in the stream, or, left out, what is on the stage. */
   clear(view?: string): void
   onEvent(listener: (event: Event) => void): () => void
 }
@@ -76,8 +81,10 @@ export function createScreen({ records, newId }: ScreenOptions): Screen {
   const byThread = new Map<string, ShownView>()
   let stage: ShownView | undefined
   let margin: ShownView[] = []
+  let stream: ShownView[] = []
   const place = (view: ShownView) => {
     byThread.set(view.thread ?? '', view)
+    stream = onTop(stream, view)
     // An aside keeps one card in the margin: its latest.
     if (view.slot === 'margin')
       margin = [...margin.filter((card) => card.id !== view.id && (view.thread === undefined || card.thread !== view.thread)), view].slice(-MARGIN)
@@ -87,6 +94,7 @@ export function createScreen({ records, newId }: ScreenOptions): Screen {
     const target = id ?? stage?.id
     if (id === undefined || stage?.id === id) stage = undefined
     margin = margin.filter((card) => card.id !== id)
+    stream = stream.filter((view) => view.id !== target)
     // A view removed from the stage does not come back when its topic does. An aside's card closed is only put
     // away: it comes back when its aside is opened again.
     for (const [thread, view] of byThread) if (view.id === target && view.slot === 'stage') byThread.delete(thread)
@@ -122,6 +130,7 @@ export function createScreen({ records, newId }: ScreenOptions): Screen {
   return {
     current: () => stage,
     margin: () => [...margin],
+    stream: () => [...stream],
 
     show(asked, showing) {
       const read = request.safeParse(asked)
@@ -169,6 +178,8 @@ export function createScreen({ records, newId }: ScreenOptions): Screen {
       if (view && view.slot === 'stage') {
         if (stage?.id === view.id) return
         stage = view
+        // A topic brought back puts its view on top of the stream again.
+        stream = onTop(stream, view)
         emit({ type: 'event', name: 'view.shown', view })
       } else if (stage) {
         stage = undefined
@@ -179,7 +190,7 @@ export function createScreen({ records, newId }: ScreenOptions): Screen {
     clear(id) {
       const target = id ?? stage?.id
       if (target === undefined) return
-      if (stage?.id !== target && !margin.some((card) => card.id === target)) return
+      if (stage?.id !== target && !margin.some((card) => card.id === target) && !stream.some((view) => view.id === target)) return
       remove(target)
       records.append([{ type: VIEW_CLEARED, payload: { view: target } }])
       emit({ type: 'event', name: 'view.cleared', view: target })
