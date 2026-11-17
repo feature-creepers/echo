@@ -4,9 +4,9 @@ import type { SleepSettings } from '@repo/protocol'
 import { type KeyboardEvent, useEffect, useId, useState } from 'react'
 import { Orb } from '../presence/orb.tsx'
 import { Button } from '../primitives/button.tsx'
-import { Choice } from '../primitives/choice.tsx'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
+import { Select } from '../primitives/select.tsx'
 import { SLEEP_CHOICES, sleepStatus } from './words.ts'
 
 /** The time now, again every half minute, so "last slept 3 minutes ago" stays true while the screen is open. */
@@ -79,13 +79,16 @@ export function SleepPanel({ memory, sleep }: { memory: MemoryState; sleep: Slee
       )}
 
       <div className="grid gap-4 border-line border-t pt-5">
-        <Eyebrow>When it sleeps</Eyebrow>
-        <Choice
-          label="When it sleeps"
-          value={sleep.when}
-          options={SLEEP_CHOICES.map(({ mode, label }) => ({ value: mode, label }))}
-          onChange={(when) => change({ when })}
-        />
+        <div className="flex items-center justify-between gap-6">
+          <Eyebrow>When it sleeps</Eyebrow>
+          <Select
+            label="When it sleeps"
+            className="w-60"
+            value={sleep.when}
+            options={SLEEP_CHOICES.map(({ mode, label, description }) => ({ value: mode, label, description }))}
+            onChange={(when) => change({ when })}
+          />
+        </div>
 
         {(usesQuiet || usesTime) && (
           <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-sm text-text-soft">

@@ -4,9 +4,9 @@ import type { HarnessState, Settings } from '@repo/protocol'
 import { useState } from 'react'
 import { standing, TONES } from '../conversation/engine-rows.tsx'
 import { Button } from '../primitives/button.tsx'
-import { Choice } from '../primitives/choice.tsx'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
+import { Select } from '../primitives/select.tsx'
 import { SettingGroup, SettingRow } from './rows.tsx'
 
 /** The value of the preference that lets the first ready harness answer. */
@@ -41,23 +41,36 @@ export function ModelsSection({ client, settings }: { client: Client; settings: 
 
   return (
     <div className="grid gap-10">
-      {known.harnesses.map((harness) => (
-        <HarnessCard
-          key={harness.id}
-          harness={harness}
-          inUse={harness.id === known.active}
-          onSignIn={() => run(client.engines.signIn(harness.id))}
-          onModel={(model) => run(client.session.run('engines.model.set', { harness: harness.id, model }))}
-        />
-      ))}
+      <section aria-label="AI programs" className="grid gap-2">
+        <Eyebrow className="px-0.5 font-semibold text-text-soft">AI programs</Eyebrow>
+        <div className="grid gap-3">
+          {known.harnesses.map((harness) => (
+            <HarnessCard
+              key={harness.id}
+              harness={harness}
+              inUse={harness.id === known.active}
+              onSignIn={() => run(client.engines.signIn(harness.id))}
+              onModel={(model) => run(client.session.run('engines.model.set', { harness: harness.id, model }))}
+            />
+          ))}
+        </div>
+      </section>
 
       {installed.length > 1 && (
         <SettingGroup title="When more than one is ready">
-          <SettingRow title="Answer with" detail="The other is used only when this one is not ready: not signed in, or not installed." stacked>
-            <Choice
+          <SettingRow title="Answer with" detail="The others are used only when this one is not ready: not signed in, or not installed.">
+            <Select
               label="Answer with"
+              className="w-52"
               value={settings.engines.preferred ?? FIRST_READY}
-              options={[{ value: FIRST_READY, label: 'The first ready' }, ...installed.map((harness) => ({ value: harness.id, label: harness.name }))]}
+              options={[
+                { value: FIRST_READY, label: 'The first ready', description: 'In the order they are listed here' },
+                ...installed.map((harness) => ({
+                  value: harness.id,
+                  label: harness.name,
+                  hint: standing(harness).tone === 'ok' ? undefined : standing(harness).text
+                }))
+              ]}
               onChange={(value) => run(client.session.run('engines.prefer', { harness: value === FIRST_READY ? null : value }))}
             />
           </SettingRow>
@@ -75,7 +88,7 @@ export function ModelsSection({ client, settings }: { client: Client; settings: 
         ) : known.active === undefined ? (
           <span className="text-text-soft text-xs">Install Claude Code or Codex and sign in with your own account.</span>
         ) : (
-          <span className="text-text-faint text-xs">A change applies from the next conversation.</span>
+          <span className="text-text-faint text-xs">A change applies from your next question.</span>
         )}
       </div>
     </div>
@@ -89,21 +102,28 @@ interface HarnessCardProps {
   onModel(model: string): void
 }
 
-/** One AI program: where it stands, and the models it offers, one to pick. */
+/** One AI program: where it stands, and the model it answers with, picked from those it offers. */
 function HarnessCard({ harness, inUse, onSignIn, onModel }: HarnessCardProps) {
   const { tone, text } = standing(harness)
   const choosable = harness.installed && harness.models.length > 0
+  const chosen = harness.models.find((model) => model.id === harness.model)
 
   return (
-    <section aria-label={harness.name} className={cn('overflow-hidden rounded-lg border bg-surface/85', inUse ? 'border-line-strong' : 'border-line')}>
-      <div className="flex items-center gap-4 px-5 py-4">
+    <section
+      aria-label={harness.name}
+      className={cn(
+        'divide-y divide-white/[0.06] overflow-hidden rounded-lg bg-white/[0.035] transition-shadow duration-(--duration-calm)',
+        inUse ? 'shadow-[inset_0_0_0_1px_rgb(255_255_255/0.11)]' : 'shadow-[inset_0_0_0_1px_rgb(255_255_255/0.06)]'
+      )}
+    >
+      <div className="flex items-center gap-3.5 px-4 py-3">
         <span className={cn('size-2 shrink-0 rounded-full', TONES[tone])} />
         <div className="grid min-w-0 flex-1 gap-0.5">
-          <span className="flex items-center gap-2.5 font-medium text-sm">
+          <span className="flex items-center gap-2.5 font-medium text-[0.8125rem]">
             {harness.name}
             {inUse && <Eyebrow accent>In use</Eyebrow>}
           </span>
-          <span className="truncate text-text-soft text-xs" title={text}>
+          <span className="truncate text-text-faint text-xs" title={text}>
             {text}
             {harness.version && tone === 'ok' ? ` · ${harness.version}` : ''}
           </span>
@@ -116,46 +136,20 @@ function HarnessCard({ harness, inUse, onSignIn, onModel }: HarnessCardProps) {
       </div>
 
       {choosable && (
-        <div className="border-line border-t px-5 pt-4 pb-5">
-          <Eyebrow className="mb-3 block">Answers with</Eyebrow>
-          <div role="radiogroup" aria-label={`The model ${harness.name} answers with`} className="grid gap-2">
-            {harness.models.map((model) => {
-              const chosen = model.id === harness.model
-              return (
-                // biome-ignore lint/a11y/useSemanticElements: a card per model, with its description, reads better than a bare radio button
-                <button
-                  key={model.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={chosen}
-                  onClick={() => {
-                    if (!chosen) onModel(model.id)
-                  }}
-                  className={cn(
-                    'flex items-center gap-4 rounded-md border px-4 py-3 text-left transition duration-150 ease-soft',
-                    chosen ? 'border-accent/50 bg-accent/[0.06]' : 'border-line hover:border-line-strong hover:bg-raised/60'
-                  )}
-                >
-                  <span
-                    className={cn(
-                      'flex size-4 shrink-0 items-center justify-center rounded-full border transition',
-                      chosen ? 'border-accent' : 'border-line-strong'
-                    )}
-                  >
-                    {chosen && <span className="size-2 rounded-full bg-accent shadow-[0_0_8px_var(--accent)]" />}
-                  </span>
-                  <span className="grid min-w-0 flex-1 gap-0.5">
-                    <span className="flex items-center gap-2.5 text-sm">
-                      <span className="font-medium">{model.name}</span>
-                      {model.id === harness.defaultModel && <span className="text-label text-text-faint">Default</span>}
-                    </span>
-                    <span className="text-text-soft text-xs leading-relaxed">{model.description}</span>
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-        </div>
+        <SettingRow title="Model" detail={chosen?.description}>
+          <Select
+            label={`The model ${harness.name} answers with`}
+            className="w-52"
+            value={harness.model ?? ''}
+            options={harness.models.map((model) => ({
+              value: model.id,
+              label: model.name,
+              description: model.description,
+              hint: model.id === harness.defaultModel ? 'Default' : undefined
+            }))}
+            onChange={onModel}
+          />
+        </SettingRow>
       )}
     </section>
   )

@@ -2,6 +2,8 @@ import { recordShortcut, shortcutKeys } from '@repo/client'
 import { useEffect, useRef, useState } from 'react'
 import { keyPress, useDevice } from '../device/device.tsx'
 import { cn } from '../primitives/cn.ts'
+import { Kbd } from '../primitives/kbd.tsx'
+import { FIELD } from '../primitives/select.tsx'
 
 export interface ShortcutRecorderProps {
   /** What the shortcut does, for a screen reader. */
@@ -11,13 +13,16 @@ export interface ShortcutRecorderProps {
   onRecord(accelerator: string): Promise<string | undefined>
   /** Tell the row what went wrong, or that nothing did. */
   onProblem(problem: string | undefined): void
+  /** Take the shortcut away: the action is left without keys. */
+  onClear(): void
 }
 
 /**
- * A shortcut, shown as its keys. Pressed, it listens for the next keys held together and records them; Escape
- * stops listening. While it listens, the app lets go of its own global shortcut, so pressing it records it.
+ * A shortcut, shown as its keys in a field like the other controls, with a cross to clear it. Pressed, it listens
+ * for the next keys held together and records them; Escape stops listening. While it listens, the app lets go of
+ * its own global shortcut, so pressing it records it.
  */
-export function ShortcutRecorder({ label, value, onRecord, onProblem }: ShortcutRecorderProps) {
+export function ShortcutRecorder({ label, value, onRecord, onProblem, onClear }: ShortcutRecorderProps) {
   const { mac, host } = useDevice()
   const [recording, setRecording] = useState(false)
   const [held, setHeld] = useState<string[]>([])
@@ -63,38 +68,61 @@ export function ShortcutRecorder({ label, value, onRecord, onProblem }: Shortcut
   }, [recording, mac, host])
 
   const keys = recording ? held : shortcutKeys(value, mac)
+  const said = keys.join(' ')
 
   return (
-    <button
-      ref={button}
-      type="button"
-      aria-label={recording ? `${label}: press the new keys, or Escape to cancel` : `${label}: ${keys.join(' ') || 'none'}. Press to change.`}
-      aria-pressed={recording}
-      onClick={() => {
-        latest.current.onProblem(undefined)
-        setRecording((on) => !on)
-      }}
-      onBlur={() => setRecording(false)}
+    // The field of a select, holding the keys: the same height, corners, hairline and face as the other controls.
+    <div
       className={cn(
-        'group flex h-10 min-w-48 items-center justify-between gap-4 rounded-md border px-2.5 transition duration-150 ease-soft',
-        recording ? 'border-accent/70 bg-accent/8' : 'border-line-strong bg-ground hover:border-text-faint'
+        FIELD,
+        'flex w-52 items-center',
+        recording ? 'bg-accent/[0.07] shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--accent)_70%,transparent)]' : 'hover:bg-white/[0.11]'
       )}
     >
-      <span className="flex items-center gap-1">
+      <button
+        ref={button}
+        type="button"
+        aria-label={recording ? `${label}: press the new keys, or Escape to cancel` : `${label}: ${said || 'not set'}. Press to change.`}
+        aria-pressed={recording}
+        onClick={() => {
+          latest.current.onProblem(undefined)
+          setRecording((on) => !on)
+        }}
+        onBlur={() => setRecording(false)}
+        className="flex h-full min-w-0 flex-1 items-center gap-1 rounded-md pr-1 pl-2 text-left"
+      >
         {keys.length > 0 ? (
           keys.map((key) => (
-            <kbd
-              key={key}
-              className="inline-flex h-6 min-w-6 items-center justify-center rounded-[5px] border border-line-strong border-b-2 bg-raised px-1.5 text-[0.6875rem] text-text"
-            >
+            <Kbd key={key} className={cn('text-[0.6875rem]', recording && 'text-accent')}>
               {key}
-            </kbd>
+            </Kbd>
           ))
+        ) : recording ? (
+          <span className="flex items-center gap-2 text-accent">
+            <span aria-hidden="true" className="size-1.5 animate-pulse rounded-full bg-accent" />
+            Press the keys…
+          </span>
         ) : (
-          <span className={cn('px-1 text-xs', recording ? 'animate-pulse text-accent' : 'text-text-faint')}>{recording ? 'Press the keys…' : 'None'}</span>
+          <span className="text-text-faint">Not set</span>
         )}
-      </span>
-      <span className={cn('text-label', recording ? 'text-accent' : 'text-text-faint group-hover:text-text-soft')}>{recording ? 'Esc' : 'Change'}</span>
-    </button>
+      </button>
+      {recording ? (
+        <Kbd className="mr-1.5 text-text-faint">Esc</Kbd>
+      ) : (
+        value !== '' && (
+          <button
+            type="button"
+            aria-label={`Clear ${label}`}
+            title="Clear"
+            onClick={onClear}
+            className="mr-1 grid size-5 shrink-0 place-items-center rounded-sm text-text-faint transition-colors duration-(--duration-quick) hover:bg-white/[0.09] hover:text-text-soft"
+          >
+            <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+              <path d="m4 4 8 8M12 4l-8 8" />
+            </svg>
+          </button>
+        )
+      )}
+    </div>
   )
 }

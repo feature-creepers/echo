@@ -140,6 +140,18 @@ describe('the user’s choice of engine', () => {
     expect(harness.completions.map((request) => request.model)).toEqual(['deep', undefined])
   })
 
+  it('names the model chosen while the harness offers it, and none for its default', async () => {
+    const { chosen, choice } = choosing(undefined, { scripted: 'deep' })
+    const room = createEngineRoom([scriptedHarness()], choice)
+    await room.read()
+
+    expect(room.chosenModel('scripted')).toBe('deep')
+    chosen.models = { scripted: 'retired' }
+    expect(room.chosenModel('scripted')).toBeUndefined()
+    chosen.models = {}
+    expect(room.chosenModel('scripted')).toBeUndefined()
+  })
+
   it('leaves the harness to its default when the model chosen is no longer offered', async () => {
     const harness = scriptedHarness()
     const { choice } = choosing(undefined, { scripted: 'retired' })

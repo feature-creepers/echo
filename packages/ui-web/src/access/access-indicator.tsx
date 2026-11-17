@@ -1,34 +1,103 @@
 import type { Client } from '@repo/client'
 import { useFollowed } from '@repo/client/react'
+import type { CommandInput } from '@repo/protocol'
+import { useState } from 'react'
 import { cn } from '../primitives/cn.ts'
+import { Menu } from '../primitives/menu.tsx'
 import { reachInWords } from './words.ts'
 
 /** The event that asks the app to show the Access settings. */
 export const OPEN_ACCESS_EVENT = 'echo:open-access'
 
+/** The look of the words under the composer that open a menu: quiet until pointed at, lit while their menu is open. */
+export const BAR_LABEL =
+  'flex h-5 items-center gap-1.5 rounded-sm px-1.5 text-[0.6875rem] text-text-faint transition-colors duration-(--duration-quick) hover:bg-white/[0.06] hover:text-text-soft aria-expanded:bg-white/[0.07] aria-expanded:text-text-soft'
+
 /**
- * What the assistant may reach on this computer, in a few words, beside the name of the AI program in the
- * bottom bar. There to read at a glance; pressed, it opens the Access settings.
+ * What the assistant may reach on this computer, in a few words, under the composer beside the name of the AI
+ * program. Pressed, it opens a menu right there to change how far it reaches and whether it asks first, the same
+ * choices as the Access settings, which its last entry opens for the rest: folders and files to give.
  */
 export function AccessIndicator({ client }: { client: Client }) {
   const snapshot = useFollowed(client.settings)
+  const [failed, setFailed] = useState<string>()
   if (snapshot.state !== 'ready') return null
   const { access } = snapshot.settings
   const { reach, approvals } = reachInWords(access)
+  /** What was given, whatever the reach beyond it: "Own folder, 2 folders". */
+  const given = reachInWords({ ...access, computer: 'off' }).reach
   const wide = access.computer !== 'off'
+
+  const change = (asked: CommandInput<'access.set'>) => {
+    setFailed(undefined)
+    client.session.run('access.set', asked).catch((error: unknown) => setFailed(error instanceof Error ? error.message : 'The change could not be saved.'))
+  }
+
   return (
-    <button
-      type="button"
-      onClick={() => window.dispatchEvent(new Event(OPEN_ACCESS_EVENT))}
-      title="What the assistant may reach on this computer. Change it in Settings, Access."
-      className="mr-4 flex h-4 items-center gap-1.5 text-[0.6875rem] text-text-faint transition-colors duration-(--duration-quick) hover:text-text-soft"
-    >
-      <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true">
-        <path d="M2 4.5V12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3.5H3a1 1 0 0 0-1 1Z" />
-      </svg>
-      <span className={cn(wide && 'text-warn/80')}>{reach}</span>
-      <span aria-hidden="true">·</span>
-      <span>{approvals}</span>
-    </button>
+    <Menu
+      side="top"
+      align="end"
+      label="What the assistant may reach"
+      className="w-[17.5rem]"
+      trigger={(_open, toggle, { props }) => (
+        <button
+          type="button"
+          {...props}
+          onClick={() => {
+            setFailed(undefined)
+            toggle()
+          }}
+          aria-label={`What the assistant may reach: ${reach}, ${approvals}`}
+          title={failed}
+          className={BAR_LABEL}
+        >
+          <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true">
+            <path d="M2 4.5V12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3.5H3a1 1 0 0 0-1 1Z" />
+          </svg>
+          <span className={cn(wide && 'text-warn/80')}>{reach}</span>
+          <span aria-hidden="true">·</span>
+          {failed ? <span className="text-danger">not changed</span> : <span>{approvals}</span>}
+        </button>
+      )}
+      items={[
+        { heading: 'Scope' },
+        {
+          label: 'Only what you gave',
+          detail: given === 'No files' ? 'Nothing yet: add folders in the settings' : given,
+          checked: access.computer === 'off',
+          onSelect: () => change({ computer: 'off' })
+        },
+        {
+          label: 'Read everything',
+          detail: 'Every file you can read, private ones too',
+          checked: access.computer === 'read',
+          warn: access.computer === 'read',
+          onSelect: () => change({ computer: 'read' })
+        },
+        {
+          label: 'Read & change everything',
+          detail: 'Every file, and any command',
+          checked: access.computer === 'write',
+          warn: access.computer === 'write',
+          onSelect: () => change({ computer: 'write' })
+        },
+        { divider: true },
+        { heading: 'Before acting' },
+        {
+          label: 'Ask me first',
+          detail: 'Before each change and each command',
+          checked: access.approvals === 'ask',
+          onSelect: () => change({ approvals: 'ask' })
+        },
+        {
+          label: 'Allow within what I gave',
+          detail: access.computer === 'write' ? 'Changes and commands, without asking' : 'Changes without asking, commands still asked',
+          checked: access.approvals === 'trust',
+          onSelect: () => change({ approvals: 'trust' })
+        },
+        { divider: true },
+        { label: 'Access settings…', onSelect: () => window.dispatchEvent(new Event(OPEN_ACCESS_EVENT)) }
+      ]}
+    />
   )
 }

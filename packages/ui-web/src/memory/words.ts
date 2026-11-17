@@ -1,12 +1,12 @@
 import type { AssistantState, Fact, SleepMode, SleepSettings } from '@repo/protocol'
 
-/** The choices of when the assistant sleeps, as the user reads them. */
-export const SLEEP_CHOICES: readonly { mode: SleepMode; label: string }[] = [
-  { mode: 'quiet', label: 'After a quiet moment' },
-  { mode: 'time', label: 'At a time of day' },
-  { mode: 'quiet-or-time', label: 'Both' },
-  { mode: 'asked', label: 'Only when told' },
-  { mode: 'never', label: 'Never' }
+/** The choices of when the assistant sleeps, as the user reads them, each with what it means. */
+export const SLEEP_CHOICES: readonly { mode: SleepMode; label: string; description: string }[] = [
+  { mode: 'quiet', label: 'After a quiet moment', description: 'Once nothing has been said for a while' },
+  { mode: 'time', label: 'At a time of day', description: 'Every day, at the hour you set' },
+  { mode: 'quiet-or-time', label: 'Both', description: 'After a quiet moment, or at the hour, whichever comes first' },
+  { mode: 'asked', label: 'Only when told', description: 'When you say so, or press Sleep now' },
+  { mode: 'never', label: 'Never', description: 'It keeps only what you ask it to remember' }
 ]
 
 const MINUTE = 60_000
