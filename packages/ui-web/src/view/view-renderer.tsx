@@ -5,6 +5,7 @@ import { Drawing, Image } from './blocks/drawing.tsx'
 import { FilePreview } from './blocks/file-preview.tsx'
 import { Button, Choice, Field } from './blocks/input.tsx'
 import { Card, Divider, Grid, Row, Section, Stack } from './blocks/layout.tsx'
+import { PlaceMap, RegionMap } from './blocks/map.tsx'
 import { Media } from './blocks/media.tsx'
 import { Badge, Heading, KeyValue, List, Prose, Steps, Text } from './blocks/text.tsx'
 import { type ViewActions, ViewActionsContext } from './context.ts'
@@ -31,6 +32,8 @@ const DRAWERS: Drawers = {
   Chart,
   Timeline,
   Progress,
+  RegionMap,
+  PlaceMap,
   Drawing,
   Image,
   Media,

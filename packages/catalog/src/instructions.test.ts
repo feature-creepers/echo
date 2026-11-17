@@ -22,9 +22,16 @@ describe('describeCatalog', () => {
     expect(text).toContain('Never show a link to a web player instead.')
   })
 
-  // About 2,700 tokens. A new block is worth its words; a catalogue that keeps growing is not.
+  it('tells the model to offer maps and charts itself, and never to say it cannot show one', () => {
+    expect(text).toContain('- RegionMap { shapes: string; key: string;')
+    expect(text).toContain('- PlaceMap { places:')
+    expect(text).toContain('Offer the visual yourself, without being asked')
+    expect(text).toContain('never say you cannot show one')
+  })
+
+  // About 3,300 tokens. A new block is worth its words; a catalogue that keeps growing is not.
   it('stays short enough to be part of every prompt', () => {
-    expect(text.length).toBeLessThan(11_000)
+    expect(text.length).toBeLessThan(13_500)
   })
 })
 

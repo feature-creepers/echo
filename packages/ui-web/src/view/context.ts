@@ -14,6 +14,11 @@ export interface ViewActions {
   say(text: string): void
   readFile(file: string): Promise<FileContent>
   /**
+   * The GeoJSON a map names, read by the core, which checked it and needs no permission of the page to fetch it.
+   * Left out, a map fetches it itself.
+   */
+  readShapes?(url: string): Promise<unknown>
+  /**
    * Set when the view may start what it plays by itself: it was just shown in answer to the person. The value
    * is a key for that showing, so drawing the view again does not start it again. Left out, nothing starts.
    */
