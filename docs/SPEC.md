@@ -370,8 +370,13 @@ An aside is a question that does not change the topic: "By the way, what time is
 - **Its topic.** An aside records the topic on the stage when it was asked, its parent. The side sheet lists it under that topic; opened there, it shows its work like any thread, and "Show the card" brings its card back beside the stage.
 - **After.** The card is dismissed with its close button, or saved to the library and pinned like any view (section 9.8). It can be promoted to a full thread ("tell me more about that"). Leaving by itself after a while, on "thanks" or on Esc, is not built yet.
 - **Behind.** The orchestrator answers it directly, or opens a short-lived thread that is archived at once.
+- **Nothing to sit beside.** With nothing on the stage, a side question is a topic of its own: the core opens it as one, whatever the orchestrator asked. An aside keeps one card in the margin, its latest.
 
-### 7.6 Example
+### 7.6 Two requests at once
+
+"Stop the radio, and what is the weather in Lyon?" holds two requests for two threads. The orchestrator passes each to its thread, one call each, in the order they were said. The first takes the turn; the second becomes a turn of its own, with its own line in the transcript, answered by its thread at the same time. Its words are held until the first answer has been said, then said in turn, so two answers never run into each other. Stopping the turn stops both. A third request in the same words is refused, as too much to hear at once.
+
+### 7.7 Example
 
 ```
 "I have guests coming tonight, what's a good recipe?"
@@ -391,11 +396,11 @@ An aside is a question that does not change the topic: "By the way, what time is
    orchestrator   sends to A, focus on A, the stage shows the recipe again
 ```
 
-### 7.7 Proactive turns
+### 7.8 Proactive turns
 
 The assistant can start a turn itself: the briefing at launch or on greeting, a reminder, a background result. Each is a thread opened by a trigger (time, app start, greeting, thread finished) rather than by an utterance. The proof of concept's briefing and daily news become two such triggers.
 
-### 7.8 Routing cost
+### 7.9 Routing cost
 
 Every utterance passes through the orchestrator, so work that goes to a thread costs two model calls: the routing, then the answer. Direct answers cost one. If measurement shows the routing step is too slow for a user who stays on one task, the fallback is sticky focus: utterances go straight to the thread in focus, which hands back to the orchestrator when the subject is not its own. Version 1 keeps the simple path, and the first build step measures it.
 
@@ -561,6 +566,7 @@ The catalogue stays small on purpose: it is part of every prompt, and a model co
 - A Media block starts by itself only when it was shown in answer to the turn under way ("play FIP"). Nothing plays when the app opens, and a topic brought back does not restart what the user stopped.
 - The sound is lowered under the assistant's voice and while the user talks, and comes back smoothly after.
 - A video is drawn in its block while it plays; when the view goes, its sound goes on.
+- Since it goes on, clearing its view does not stop it: the assistant pauses, resumes and stops the player with the `media_control` tool, and the core tells every client. It never tests a stream before showing it: the player says itself when one does not play.
 
 ### 9.7 Files
 
@@ -1326,7 +1332,7 @@ Built, and checked against the real Claude Code on 17 November 2026:
 
 Three checks guard the rules of this section: the compiler presets (code that must run anywhere cannot name a Node or DOM API, and a package's internal files cannot be imported from outside), the table in `biome.jsonc` (a forbidden import fails), and pnpm (a package cannot import what its `package.json` does not declare).
 
-Not built yet: vector search and thread summaries (section 10), approvals for sending, paying and deleting for good (section 12.2), proactive turns other than the briefing (section 7.7), live data feeds for figures (section 9.4), asides leaving by themselves (section 7.5), the phone app and the paid service. Nothing is signed yet.
+Not built yet: vector search and thread summaries (section 10), approvals for sending, paying and deleting for good (section 12.2), proactive turns other than the briefing (section 7.8), live data feeds for figures (section 9.4), asides leaving by themselves (section 7.5), the phone app and the paid service. Nothing is signed yet.
 
 ## 15. Decisions
 
@@ -1366,7 +1372,7 @@ Not built yet: vector search and thread summaries (section 10), approvals for se
 
 | Risk                              | Why                                                                                | Mitigation                                                                                                                          |
 | --------------------------------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| Replies feel slow                 | Routing then answering is two model calls, through CLI processes                   | Warm sessions, a fast orchestrator model, direct speech from threads, measurement first; sticky focus as the fallback (section 7.8) |
+| Replies feel slow                 | Routing then answering is two model calls, through CLI processes                   | Warm sessions, a fast orchestrator model, direct speech from threads, measurement first; sticky focus as the fallback (section 7.9) |
 | Three systems triple the work     | Speech engines, shortcuts, packaging and signing differ on each                    | Speak's code already covers all three; per-system code is contained (rule 5); CI runs on all three from the first commit            |
 | Weak Windows and Linux machines   | They have no built-in recogniser comparable to Apple's                             | A small local model, measured on real old hardware in step 0                                                                        |
 | Linux restrictions                | Wayland blocks global shortcuts and control of other apps                          | Speak's answer: shortcuts bound to command-line flags, X11 for control                                                              |
