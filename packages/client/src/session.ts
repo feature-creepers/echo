@@ -1,4 +1,4 @@
-import { COMMANDS, eventSchema, resultSchema, type CommandErrorCode, type CommandInput, type CommandName, type CommandOutput, type Event } from '@repo/protocol'
+import { COMMANDS, type CommandErrorCode, type CommandInput, type CommandName, type CommandOutput, type Event, eventSchema, resultSchema } from '@repo/protocol'
 import type { Transport } from './transport.ts'
 
 /** What a session needs from the link under it: a way to send, and the messages that arrive. */

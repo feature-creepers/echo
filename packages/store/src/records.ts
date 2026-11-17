@@ -13,7 +13,7 @@ export function createRecords(database: DatabaseSync, now: () => Date = () => ne
     append(records) {
       if (records.length === 0) return []
       return transaction(database, () => {
-        let sequence = Number(last.get(origin)?.['last'] ?? 0)
+        let sequence = Number(last.get(origin)?.last ?? 0)
         return records.map((record): StoredRecord => {
           const payload: string | undefined = JSON.stringify(record.payload)
           if (payload === undefined) throw new Error(`A record of type "${record.type}" has a payload that is not JSON data.`)
@@ -29,12 +29,12 @@ export function createRecords(database: DatabaseSync, now: () => Date = () => ne
       const marks = types.map(() => '?').join(', ')
       const rows = database.prepare(`select id, origin, sequence, at, type, payload from record where type in (${marks}) order by rowid`).all(...types)
       return rows.map((row) => ({
-        id: String(row['id']),
-        origin: String(row['origin']),
-        sequence: Number(row['sequence']),
-        at: String(row['at']),
-        type: String(row['type']),
-        payload: JSON.parse(String(row['payload']))
+        id: String(row.id),
+        origin: String(row.origin),
+        sequence: Number(row.sequence),
+        at: String(row.at),
+        type: String(row.type),
+        payload: JSON.parse(String(row.payload))
       }))
     }
   }
@@ -42,7 +42,7 @@ export function createRecords(database: DatabaseSync, now: () => Date = () => ne
 
 /** The identifier of the core that owns the file, made the first time the file is opened. */
 function coreId(database: DatabaseSync): string {
-  const known = database.prepare('select id from core').get()?.['id']
+  const known = database.prepare('select id from core').get()?.id
   if (typeof known === 'string') return known
   const created = randomUUID()
   database.prepare('insert into core (id) values (?)').run(created)

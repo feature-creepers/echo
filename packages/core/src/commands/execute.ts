@@ -1,12 +1,12 @@
 import {
   COMMANDS,
-  commandSchema,
-  isCommandName,
   type CommandError,
   type CommandErrorCode,
   type CommandInput,
   type CommandName,
   type CommandOutput,
+  commandSchema,
+  isCommandName,
   type Result
 } from '@repo/protocol'
 import type { Log } from '../ports/log.ts'

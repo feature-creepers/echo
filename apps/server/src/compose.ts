@@ -1,4 +1,4 @@
-import { createCore, type Core } from '@repo/core'
+import { type Core, createCore } from '@repo/core'
 import { openStore } from '@repo/store'
 import manifest from '../package.json' with { type: 'json' }
 import { localToken } from './auth/local-token.ts'

@@ -16,6 +16,6 @@ export function deviceId(dataFolder: string): string {
   }
   const created = randomUUID()
   mkdirSync(dataFolder, { recursive: true })
-  writeFileSync(file, created + '\n')
+  writeFileSync(file, `${created}\n`)
   return created
 }

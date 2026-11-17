@@ -1,5 +1,5 @@
-import { followSettings, openSession, type CoreLink, type Session, type SettingsState } from '@repo/client'
-import { Shell, applyTheme } from '@repo/ui-web'
+import { type CoreLink, followSettings, openSession, type Session, type SettingsState } from '@repo/client'
+import { applyTheme, Shell } from '@repo/ui-web'
 import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import manifest from '../../package.json'

@@ -1,6 +1,6 @@
 import { PROTOCOL_VERSION } from '@repo/protocol'
 import { describe, expect, it } from 'vitest'
-import { ConnectionRefused, HandshakeFailed, connect, type Identity } from './connection.ts'
+import { ConnectionRefused, connect, HandshakeFailed, type Identity } from './connection.ts'
 import type { Transport } from './transport.ts'
 
 const identity: Identity = { client: { kind: 'desktop', version: '0.1.0', device: 'device-1' }, capabilities: ['display'], credential: 'token' }

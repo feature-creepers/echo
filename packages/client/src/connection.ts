@@ -1,4 +1,4 @@
-import { PROTOCOL_VERSION, handshakeReplySchema, type Capability, type Hello, type RefusalReason } from '@repo/protocol'
+import { type Capability, type Hello, handshakeReplySchema, PROTOCOL_VERSION, type RefusalReason } from '@repo/protocol'
 import type { Transport } from './transport.ts'
 
 /** Who is connecting, and what proves it may. */

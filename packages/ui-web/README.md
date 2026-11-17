@@ -8,4 +8,4 @@ Styles are CSS modules beside each component. Colours, sizes and durations come 
 - **May import:** `@repo/client`, `@repo/protocol`, `@repo/catalog`, `@repo/tokens`
 - **Entry points:** `@repo/ui-web`
 
-The import rule is enforced by `tooling/eslint/boundaries.js` and explained in [docs/SPEC.md](../../docs/SPEC.md), section 14.3.
+The import rule is enforced by `biome.jsonc` and explained in [docs/SPEC.md](../../docs/SPEC.md), section 14.3.

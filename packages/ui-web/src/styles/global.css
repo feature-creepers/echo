@@ -8,17 +8,17 @@
  * applyTheme() sets the real ones on the root before the first draw.
  */
 @property --accent {
-  syntax: '<color>';
+  syntax: "<color>";
   inherits: true;
   initial-value: transparent;
 }
 @property --accent-soft {
-  syntax: '<color>';
+  syntax: "<color>";
   inherits: true;
   initial-value: transparent;
 }
 @property --accent-glow {
-  syntax: '<color>';
+  syntax: "<color>";
   inherits: true;
   initial-value: transparent;
 }
@@ -76,8 +76,11 @@ input {
   *,
   *::before,
   *::after {
+    /* biome-ignore lint/complexity/noImportantStyles: someone who asked for less motion gets it, whatever a component says */
     animation-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: someone who asked for less motion gets it, whatever a component says */
     animation-iteration-count: 1 !important;
+    /* biome-ignore lint/complexity/noImportantStyles: someone who asked for less motion gets it, whatever a component says */
     transition-duration: 0.01ms !important;
   }
 }

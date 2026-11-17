@@ -1,8 +1,8 @@
 import { connect, type Socket } from 'node:net'
 import type { Core } from '@repo/core'
-import { MAX_LINE_LENGTH, PROTOCOL_VERSION, createLineDecoder, encodeLine, type Event, type Settings } from '@repo/protocol'
+import { createLineDecoder, type Event, encodeLine, MAX_LINE_LENGTH, PROTOCOL_VERSION, type Settings } from '@repo/protocol'
 import { afterEach, describe, expect, it } from 'vitest'
-import { listenLocal, type LocalListener } from './index.ts'
+import { type LocalListener, listenLocal } from './index.ts'
 
 const settings: Settings = {
   revision: 1,
@@ -28,7 +28,10 @@ function welcoming() {
       return () => void listeners.delete(listener)
     }
   }
-  return { core, emit: (event: Event) => listeners.forEach((listener) => listener(event)), listening: () => listeners.size }
+  const emit = (event: Event) => {
+    for (const listener of listeners) listener(event)
+  }
+  return { core, emit, listening: () => listeners.size }
 }
 
 let listener: LocalListener | undefined

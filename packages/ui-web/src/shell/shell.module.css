@@ -13,7 +13,7 @@
 
 /* A wash of the accent under the title row: the only colour that is not on an element. */
 .main::before {
-  content: '';
+  content: "";
   position: absolute;
   inset: 0;
   z-index: -1;
@@ -59,7 +59,7 @@
 }
 
 .wordmark::before {
-  content: '';
+  content: "";
   width: 6px;
   height: 6px;
   border-radius: 50%;

@@ -1,4 +1,4 @@
-import { accentVariables, themeVariables, type AccentName } from '@repo/tokens'
+import { type AccentName, accentVariables, themeVariables } from '@repo/tokens'
 import type { CSSProperties } from 'react'
 import './global.css'
 

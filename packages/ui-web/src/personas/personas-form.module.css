@@ -23,7 +23,7 @@
 }
 
 /* The persona picked to answer. */
-.card[data-active='true'] {
+.card[data-active="true"] {
   border-color: var(--accent);
   box-shadow: 0 0 var(--space-xxl) var(--accent-soft);
 }
@@ -71,7 +71,7 @@
 }
 
 .choice input::before {
-  content: '';
+  content: "";
   width: 8px;
   height: 8px;
   border-radius: 50%;

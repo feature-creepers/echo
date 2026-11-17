@@ -1,6 +1,6 @@
 import { encodeLine, type Ready } from '@repo/protocol'
-import { compose, type Composition } from './compose.ts'
-import { ConfigError, USAGE, readConfig, type Config } from './config.ts'
+import { type Composition, compose } from './compose.ts'
+import { type Config, ConfigError, readConfig, USAGE } from './config.ts'
 import { listenLocal } from './listeners/local/index.ts'
 
 /**

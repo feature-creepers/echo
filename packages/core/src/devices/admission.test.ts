@@ -1,6 +1,6 @@
-import { PROTOCOL_VERSION, type Hello } from '@repo/protocol'
+import { type Hello, PROTOCOL_VERSION } from '@repo/protocol'
 import { describe, expect, it } from 'vitest'
-import { admit, type AdmissionRules } from './admission.ts'
+import { type AdmissionRules, admit } from './admission.ts'
 
 const rules: AdmissionRules = { coreVersion: '1.2.3', acceptsCredential: (credential) => credential === 'right' }
 

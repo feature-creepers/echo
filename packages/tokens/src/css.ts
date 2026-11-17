@@ -1,4 +1,4 @@
-import { accents, neutralAccent, type AccentName } from './accent.ts'
+import { type AccentName, accents, neutralAccent } from './accent.ts'
 import { color } from './color.ts'
 import { frame } from './frame.ts'
 import { motion } from './motion.ts'

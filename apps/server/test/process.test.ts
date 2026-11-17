@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import { type ChildProcess, spawn } from 'node:child_process'
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { connect, type Socket } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -7,17 +7,17 @@ import { fileURLToPath } from 'node:url'
 import {
   COMMANDS,
   CORE_TOKEN_VARIABLE,
-  DATA_OPTION,
-  EXIT_WITH_PARENT_FLAG,
-  PROTOCOL_VERSION,
-  createLineDecoder,
-  encodeLine,
-  readySchema,
-  resultSchema,
   type CommandInput,
   type CommandName,
   type CommandOutput,
-  type Hello
+  createLineDecoder,
+  DATA_OPTION,
+  EXIT_WITH_PARENT_FLAG,
+  encodeLine,
+  type Hello,
+  PROTOCOL_VERSION,
+  readySchema,
+  resultSchema
 } from '@repo/protocol'
 import { afterEach, describe, expect, it } from 'vitest'
 import manifest from '../package.json' with { type: 'json' }

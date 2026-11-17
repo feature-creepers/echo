@@ -1,6 +1,6 @@
 import type { Event, Result } from '@repo/protocol'
 import { createExecutor } from './commands/execute.ts'
-import { admit, type Admission } from './devices/admission.ts'
+import { type Admission, admit } from './devices/admission.ts'
 import type { Log } from './ports/log.ts'
 import type { Records } from './ports/records.ts'
 import { createUserSettings } from './settings/settings.ts'

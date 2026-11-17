@@ -1,4 +1,4 @@
-import { personaIdSchema, readPersonaName, samePersonaName, type CommandError, type CommandInput, type Persona, type PersonaId } from '@repo/protocol'
+import { type CommandError, type CommandInput, type Persona, type PersonaId, personaIdSchema, readPersonaName, samePersonaName } from '@repo/protocol'
 import { z } from 'zod'
 
 /** The type of the record written each time the user names the personas or picks the one that answers. */

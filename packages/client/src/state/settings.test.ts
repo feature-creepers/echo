@@ -27,7 +27,9 @@ function fakeSession() {
     },
     close: () => undefined
   }
-  const announce = (settings: Settings) => listeners.forEach((listener) => listener({ type: 'event', name: 'settings.changed', settings }))
+  const announce = (settings: Settings) => {
+    for (const listener of listeners) listener({ type: 'event', name: 'settings.changed', settings })
+  }
   return { session, announce, answer: (settings: Settings) => answer(settings), refuse: (error: unknown) => refuse(error), listening: () => listeners.size }
 }
 

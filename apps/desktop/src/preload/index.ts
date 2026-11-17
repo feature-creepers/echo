@@ -1,5 +1,5 @@
 import type { CoreLink } from '@repo/client'
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import { contextBridge, type IpcRendererEvent, ipcRenderer } from 'electron'
 import { CORE_LINK_CHANNEL, CORE_MESSAGE_CHANNEL, type DesktopBridge } from './bridge.ts'
 
 /** The one listener for messages from the core, replaced each time the window opens a session. */

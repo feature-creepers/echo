@@ -1,5 +1,5 @@
-export { createCore, type Core, type CoreOptions } from './core.ts'
+export { type Core, type CoreOptions, createCore } from './core.ts'
 export type { Admission } from './devices/admission.ts'
 export type { Log } from './ports/log.ts'
 export type { NewRecord, Records, StoredRecord } from './ports/records.ts'
-export { memoryRecords, type MemoryRecordsOptions } from './records/memory.ts'
+export { type MemoryRecordsOptions, memoryRecords } from './records/memory.ts'

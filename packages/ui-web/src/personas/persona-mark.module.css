@@ -16,7 +16,7 @@
 
 .mark::before,
 .mark::after {
-  content: '';
+  content: "";
   position: absolute;
   border-radius: 50%;
 }

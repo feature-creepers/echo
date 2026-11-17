@@ -36,6 +36,7 @@ export function Presence({ personas, onSwitch }: PresenceProps) {
       </div>
       <div className={styles.switch} role="radiogroup" aria-label="Who answers">
         {personas.available.map((persona) => (
+          // biome-ignore lint/a11y/useSemanticElements: a row of names that reads as buttons, with the behaviour of a radio group
           <button
             key={persona.id}
             type="button"

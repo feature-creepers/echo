@@ -1,6 +1,6 @@
 import type { Persona } from '@repo/protocol'
 import { describe, expect, it } from 'vitest'
-import { NO_EDITS, activeIn, choiceOf, nameIn, problemsOf } from './draft.ts'
+import { activeIn, choiceOf, NO_EDITS, nameIn, problemsOf } from './draft.ts'
 
 const first: Persona = { id: 'first', name: 'Ada', stance: 'accommodating', accent: 'cyan' }
 const second: Persona = { id: 'second', name: 'Grace', stance: 'critical', accent: 'red' }

@@ -10,7 +10,7 @@ directories:
 files:
   - out/**
   - package.json
-  - '!**/*.map'
+  - "!**/*.map"
 npmRebuild: false
 
 # Electron's switches, set in the packaged program: it cannot be started as plain Node, takes no Node

@@ -1,7 +1,7 @@
 import type { CoreLink, Session, SettingsState } from '@repo/client'
 import { useSettings } from '@repo/client/react'
 import type { Accent, CommandInput, PersonaId } from '@repo/protocol'
-import { useCallback, useState, type ReactNode } from 'react'
+import { type ReactNode, useCallback, useState } from 'react'
 import { Onboarding } from '../onboarding/onboarding.tsx'
 import { Button } from '../primitives/button.tsx'
 import { SettingsScreen } from '../settings/settings-screen.tsx'

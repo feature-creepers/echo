@@ -7,7 +7,7 @@
 export const MAX_LINE_LENGTH = 1024 * 1024
 
 export function encodeLine(message: unknown): string {
-  return JSON.stringify(message) + '\n'
+  return `${JSON.stringify(message)}\n`
 }
 
 export type DecodedLine = { ok: true; message: unknown } | { ok: false; error: 'not-json' | 'too-long' }

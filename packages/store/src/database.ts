@@ -31,7 +31,7 @@ export function openDatabase(file: string): DatabaseSync {
 }
 
 function migrate(database: DatabaseSync, file: string): void {
-  const applied = Number(database.prepare('pragma user_version').get()?.['user_version'] ?? 0)
+  const applied = Number(database.prepare('pragma user_version').get()?.user_version ?? 0)
   if (applied > MIGRATIONS.length) throw new StoreTooRecent(file)
 
   for (const [index, migration] of MIGRATIONS.entries()) {

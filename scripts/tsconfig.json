@@ -1,0 +1,10 @@
+{
+  // Repository automation, run directly by Node.
+  "extends": "@repo/tsconfig/node.json",
+  "compilerOptions": {
+    "rootDir": "..",
+    "outDir": "dist"
+  },
+  "include": ["*.ts"],
+  "references": [{ "path": "../packages/core" }]
+}

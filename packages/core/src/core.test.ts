@@ -1,4 +1,4 @@
-import { COMMANDS, PROTOCOL_VERSION, type Event } from '@repo/protocol'
+import { COMMANDS, type Event, PROTOCOL_VERSION } from '@repo/protocol'
 import { describe, expect, it, vi } from 'vitest'
 import { createCore } from './core.ts'
 import { memoryRecords } from './records/memory.ts'

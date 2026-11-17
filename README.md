@@ -34,4 +34,4 @@ tooling/     shared compiler and lint configuration
 docs/        the spec
 ```
 
-Which package may import which is declared in `tooling/eslint/boundaries.js` and enforced by `pnpm lint`.
+Which package may import which is declared in `biome.jsonc` and enforced by `pnpm lint`.

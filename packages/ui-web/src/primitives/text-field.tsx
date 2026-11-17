@@ -26,6 +26,7 @@ export function TextField({ label, value, onChange, problem, maxLength, autoFocu
         type="text"
         value={value}
         maxLength={maxLength}
+        // biome-ignore lint/a11y/noAutofocus: the first field of a screen that exists to be typed in
         autoFocus={autoFocus}
         autoComplete="off"
         spellCheck={false}

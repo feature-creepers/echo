@@ -1,5 +1,5 @@
 import type { CommandError, CommandInput, Persona, Settings } from '@repo/protocol'
-import { PERSONAS_SET, applyChoice, checkChoice, readChoice, type PersonaChoice } from '../personas/choice.ts'
+import { applyChoice, checkChoice, PERSONAS_SET, type PersonaChoice, readChoice } from '../personas/choice.ts'
 import { DEFAULT_PERSONAS } from '../personas/defaults.ts'
 import type { Records } from '../ports/records.ts'
 

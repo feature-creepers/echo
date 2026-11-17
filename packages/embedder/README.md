@@ -6,4 +6,4 @@ The local embedding model that turns text into vectors for memory search.
 - **May import:** `@repo/core`, `@repo/models`
 - **Entry points:** `@repo/embedder`
 
-The import rule is enforced by `tooling/eslint/boundaries.js` and explained in [docs/SPEC.md](../../docs/SPEC.md), section 14.3.
+The import rule is enforced by `biome.jsonc` and explained in [docs/SPEC.md](../../docs/SPEC.md), section 14.3.

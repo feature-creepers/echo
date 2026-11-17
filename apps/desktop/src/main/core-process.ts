@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto'
-import { ConnectionRefused, connect, type Connection, type CoreLink, type Identity, type SessionLink } from '@repo/client'
+import { type Connection, ConnectionRefused, type CoreLink, connect, type Identity, type SessionLink } from '@repo/client'
 import { openLocal } from '@repo/client/transports/local'
-import { CORE_TOKEN_VARIABLE, DATA_OPTION, createLineDecoder, readySchema } from '@repo/protocol'
+import { CORE_TOKEN_VARIABLE, createLineDecoder, DATA_OPTION, readySchema } from '@repo/protocol'
 import { utilityProcess } from 'electron'
 
 /** How long the core has to announce where it listens. */

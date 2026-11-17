@@ -602,7 +602,7 @@ Two personas ship with the product. They are two entries in one list:
 | Jarvis       | Accommodating | Cyan-blue | Yes                     |
 | HAL          | Critical      | Red       | No                      |
 
-**No code names a persona.** The default names are written in one file, `packages/core/src/personas/defaults.ts`, and nowhere else. Behaviour depends on the stance, the look depends on the accent, and every text the user reads is written for a stance. Neither default is treated differently from the other. Tests use made-up personas. A lint rule built from that file refuses a default name anywhere else in the code, as an identifier or as text. For the same reason this spec says "the critical persona" where it means the behaviour, and a name only where it means the default name.
+**No code names a persona.** The default names are written in one file, `packages/core/src/personas/defaults.ts`, and nowhere else. Behaviour depends on the stance, the look depends on the accent, and every text the user reads is written for a stance. Neither default is treated differently from the other. Tests use made-up personas. A check built from that file (`scripts/check-persona-names.ts`, part of `pnpm check`) refuses a default name anywhere else in the code: in an identifier, a text or a file name. For the same reason this spec says "the critical persona" where it means the behaviour, and a name only where it means the default name.
 
 ### 11.1 Names
 
@@ -781,9 +781,8 @@ Easter eggs come later: Speak's seasonal themes and secret theme. The proof of c
 ├── native/                   code that is not TypeScript, built per system
 │   └── apple-speech/         Swift: Apple speech recognition (macOS now, iOS later)
 ├── tooling/                  shared configuration, as packages
-│   ├── tsconfig/             compiler presets: base, node, dom
-│   └── eslint/               lint rules, including the dependency rules of 14.3
-├── scripts/                  repository automation: fetch speech engines, build native code, check a release
+│   └── tsconfig/             compiler presets: base, node, dom
+├── scripts/                  repository automation: the check that no code names a persona, fetching engines, checking a release
 ├── e2e/                      end-to-end tests that drive the built desktop app
 ├── docs/                     this spec, and later the developer guide
 ├── .github/                  CI on three systems, the release workflow, issue templates
@@ -792,8 +791,8 @@ Easter eggs come later: Speak's seasonal themes and secret theme. The proof of c
 ├── pnpm-lock.yaml
 ├── turbo.json                task graph and build cache
 ├── tsconfig.json             project references only, for editors and a whole-repository typecheck
-├── eslint.config.js          one line: the rules live in tooling/eslint
-├── .editorconfig  .gitattributes  .gitignore  .node-version  .prettierignore
+├── biome.jsonc               one tool lints and formats; holds the dependency rules of 14.3 as one table
+├── .editorconfig  .gitattributes  .gitignore  .node-version
 └── README.md  LICENSE
 ```
 
@@ -1132,22 +1131,22 @@ native/apple-speech/
 
 ### 14.7 Stack and tooling
 
-| Concern              | Choice                                                                                                                                                                                        | Reason                                                                                                                                           |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Language             | TypeScript in strict mode; Swift for the one Apple helper                                                                                                                                     | Shared with Speak, and with a React Native phone app later                                                                                       |
-| Desktop shell        | Electron, electron-vite, React                                                                                                                                                                | Three systems at once, and Speak's code moves over almost unchanged                                                                              |
-| Workspace            | pnpm workspaces                                                                                                                                                                               | Strict about undeclared dependencies, which supports rule 3                                                                                      |
-| Tasks                | Turborepo                                                                                                                                                                                     | Builds and tests only what changed, with a cache shared by CI                                                                                    |
-| Typecheck            | TypeScript project references                                                                                                                                                                 | Each package compiles alone; the dependency graph is explicit                                                                                    |
-| Lint and format      | ESLint with boundary rules; Prettier with Speak's settings                                                                                                                                    | The dependency rules fail a build instead of relying on review. The linter parses with TypeScript 6 until typescript-eslint accepts TypeScript 7 |
-| Tests                | Vitest for unit and replay tests; Playwright for the built desktop app                                                                                                                        |                                                                                                                                                  |
-| Store                | SQLite with FTS5 and sqlite-vec, through Node's built-in `node:sqlite`                                                                                                                        | Section 10.3. No native module to build per system. Checked in Electron 45: FTS5 and extension loading are present                               |
-| Tools                | MCP over HTTP on the loopback address                                                                                                                                                         | Understood by every harness                                                                                                                      |
-| Generated interface  | json-render with zod schemas                                                                                                                                                                  | Section 9                                                                                                                                        |
-| Component behaviours | UI SDK                                                                                                                                                                                        | Section 9                                                                                                                                        |
-| Local models         | whisper.cpp builds; ONNX runtime for Kokoro and embeddings                                                                                                                                    | Already used by Speak and the proof of concept                                                                                                   |
-| CI                   | On every push, on Windows, macOS and Linux: typecheck, lint, tests. The Swift helper builds on the macOS runner. The core is started without any interface on Linux, as a server would run it | Principle 8 and principle 10 are checked by machines                                                                                             |
-| Release              | electron-builder: NSIS and ZIP for Windows, DMG for macOS, AppImage for Linux, signed, with update manifests. The Windows installer is built on Windows; the ZIP builds anywhere              | Speak's release workflow                                                                                                                         |
+| Concern              | Choice                                                                                                                                                                                        | Reason                                                                                                                            |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Language             | TypeScript in strict mode; Swift for the one Apple helper                                                                                                                                     | Shared with Speak, and with a React Native phone app later                                                                        |
+| Desktop shell        | Electron, electron-vite, React                                                                                                                                                                | Three systems at once, and Speak's code moves over almost unchanged                                                               |
+| Workspace            | pnpm workspaces                                                                                                                                                                               | Strict about undeclared dependencies, which supports rule 3                                                                       |
+| Tasks                | Turborepo                                                                                                                                                                                     | Builds and tests only what changed, with a cache shared by CI                                                                     |
+| Typecheck            | TypeScript project references                                                                                                                                                                 | Each package compiles alone; the dependency graph is explicit                                                                     |
+| Lint and format      | Biome: one tool lints and formats. Its configuration holds the dependency rules of 14.3 as one table                                                                                          | The dependency rules fail a build instead of relying on review. One fast tool in place of a linter, a formatter and their plugins |
+| Tests                | Vitest for unit and replay tests; Playwright for the built desktop app                                                                                                                        |                                                                                                                                   |
+| Store                | SQLite with FTS5 and sqlite-vec, through Node's built-in `node:sqlite`                                                                                                                        | Section 10.3. No native module to build per system. Checked in Electron 45: FTS5 and extension loading are present                |
+| Tools                | MCP over HTTP on the loopback address                                                                                                                                                         | Understood by every harness                                                                                                       |
+| Generated interface  | json-render with zod schemas                                                                                                                                                                  | Section 9                                                                                                                         |
+| Component behaviours | UI SDK                                                                                                                                                                                        | Section 9                                                                                                                         |
+| Local models         | whisper.cpp builds; ONNX runtime for Kokoro and embeddings                                                                                                                                    | Already used by Speak and the proof of concept                                                                                    |
+| CI                   | On every push, on Windows, macOS and Linux: typecheck, lint, tests. The Swift helper builds on the macOS runner. The core is started without any interface on Linux, as a server would run it | Principle 8 and principle 10 are checked by machines                                                                              |
+| Release              | electron-builder: NSIS and ZIP for Windows, DMG for macOS, AppImage for Linux, signed, with update manifests. The Windows installer is built on Windows; the ZIP builds anywhere              | Speak's release workflow                                                                                                          |
 
 Electron uses more memory than the proof of concept's WKWebView shell. That is the accepted price of three systems and of reusing Speak. To limit it: one window, the inspector loaded only when opened, and a cap on warm sessions in the light tier.
 
@@ -1157,7 +1156,7 @@ Electron uses more memory than the proof of concept's WKWebView shell. That is t
 
 Built and checked so far, as the start of build step 1:
 
-- **The workspace**: root configuration, `tooling/tsconfig`, `tooling/eslint` with the dependency rules of 14.3 as one table, and CI on Windows, macOS and Linux.
+- **The workspace**: root configuration, `tooling/tsconfig`, `biome.jsonc` with the dependency rules of 14.3 as one table, and CI on Windows, macOS and Linux.
 - **The thirteen library packages**, each with its allowed dependencies declared. `protocol`, `core`, `store`, `client`, `tokens` and `ui-web` hold code; the others are empty projects.
 - **`protocol`**: the handshake, then commands, results and events. Two commands exist: read the settings, and name the personas and pick the one that answers.
 - **`core`**: admission of clients, execution of commands, and the user's settings, built from the defaults and from the choices recorded.
@@ -1167,7 +1166,7 @@ Built and checked so far, as the start of build step 1:
 - **`tokens` and `ui-web`**: the design values, and the first screens: first launch, the assistant present with its persona, and settings.
 - **`apps/desktop`**: the Electron app. It starts the core, connects to it through `client`, and shows the interface. `--self-check` does what a first launch does against the real core, with no window, and exits with the result. `build/` packages it for the three systems.
 
-Three checks guard the rules of this section: the compiler presets (code that must run anywhere cannot name a Node or DOM API), the lint table (a forbidden or deep import fails), and pnpm (a package cannot import what its `package.json` does not declare).
+Three checks guard the rules of this section: the compiler presets (code that must run anywhere cannot name a Node or DOM API, and a package's internal files cannot be imported from outside), the table in `biome.jsonc` (a forbidden import fails), and pnpm (a package cannot import what its `package.json` does not declare).
 
 Not built: voice, harnesses, threads, memory beyond settings, generated views. Not created yet: `native/`, `scripts/` and `e2e/` appear with their first content, `apps/mobile` and `packages/ui-native` with the phone app. Signing, an application icon and the release workflow come with the first release.
 

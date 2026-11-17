@@ -1,4 +1,4 @@
-import { readPersonaName, samePersonaName, type CommandInput, type Persona, type PersonaId, type PersonaNameProblem } from '@repo/protocol'
+import { type CommandInput, type Persona, type PersonaId, type PersonaNameProblem, readPersonaName, samePersonaName } from '@repo/protocol'
 
 /**
  * What the user changed in the form and has not sent yet: only their own edits.

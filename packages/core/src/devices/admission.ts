@@ -1,4 +1,4 @@
-import { PROTOCOL_VERSION, helloPrefixSchema, helloSchema, isCompatible, type Hello, type Refusal, type RefusalReason, type Welcome } from '@repo/protocol'
+import { type Hello, helloPrefixSchema, helloSchema, isCompatible, PROTOCOL_VERSION, type Refusal, type RefusalReason, type Welcome } from '@repo/protocol'
 
 export interface AdmissionRules {
   /** The version of this core, told to the client for diagnostics. */

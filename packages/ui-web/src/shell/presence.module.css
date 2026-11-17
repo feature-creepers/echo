@@ -56,7 +56,7 @@
   color: var(--color-text);
 }
 
-.option[aria-checked='true'] {
+.option[aria-checked="true"] {
   border-color: var(--accent);
   background: var(--accent-soft);
   color: var(--color-text);

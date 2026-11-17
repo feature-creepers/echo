@@ -6,4 +6,4 @@ The tool server a harness calls, and the gate that checks scope and approval at 
 - **May import:** `@repo/core`, `@repo/catalog`
 - **Entry points:** `@repo/tools`
 
-The import rule is enforced by `tooling/eslint/boundaries.js` and explained in [docs/SPEC.md](../../docs/SPEC.md), section 14.3.
+The import rule is enforced by `biome.jsonc` and explained in [docs/SPEC.md](../../docs/SPEC.md), section 14.3.

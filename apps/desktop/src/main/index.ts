@@ -2,10 +2,10 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { color, frame } from '@repo/tokens'
-import { BrowserWindow, app, ipcMain, nativeTheme } from 'electron'
+import { app, BrowserWindow, ipcMain, nativeTheme } from 'electron'
 import { CORE_LINK_CHANNEL, CORE_MESSAGE_CHANNEL } from '../preload/bridge.ts'
 import { chrome } from './chrome/index.ts'
-import { startCore, type CoreProcess } from './core-process.ts'
+import { type CoreProcess, startCore } from './core-process.ts'
 import { deviceId } from './device.ts'
 import { checkSettings } from './self-check.ts'
 
@@ -61,7 +61,7 @@ function openWindow(core: CoreProcess): BrowserWindow {
   })
 
   // In development the page is served by the bundler, so a change shows without a rebuild.
-  const served = process.env['ELECTRON_RENDERER_URL']
+  const served = process.env.ELECTRON_RENDERER_URL
   if (served) void window.loadURL(served)
   else void window.loadFile(built('../renderer/index.html'))
   return window
@@ -71,7 +71,7 @@ async function selfCheck(core: CoreProcess): Promise<void> {
   const link = await core.settled()
   const settings = link.state === 'connected' ? await checkSettings(core) : 'not checked'
   const passed = link.state === 'connected' && settings === 'ok'
-  process.stdout.write(JSON.stringify({ selfCheck: passed ? 'ok' : 'failed', link, settings }) + '\n')
+  process.stdout.write(`${JSON.stringify({ selfCheck: passed ? 'ok' : 'failed', link, settings })}\n`)
   await core.stop()
   try {
     if (scratch) rmSync(scratch, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })

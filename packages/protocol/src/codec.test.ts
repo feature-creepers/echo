@@ -16,7 +16,7 @@ describe('line framing', () => {
 
   it('returns every message of a chunk, in order, and keeps the unfinished one', () => {
     const decoder = createLineDecoder()
-    expect(decoder.push(encodeLine(1) + encodeLine(2) + '{"a"')).toEqual([
+    expect(decoder.push(`${encodeLine(1) + encodeLine(2)}{"a"`)).toEqual([
       { ok: true, message: 1 },
       { ok: true, message: 2 }
     ])

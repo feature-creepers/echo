@@ -15,24 +15,16 @@
   "scripts": {
     "build": "turbo run build",
     "typecheck": "tsc --build",
-    "lint": "eslint .",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "lint": "biome check .",
+    "format": "biome check --write .",
     "test": "turbo run test",
-    "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test"
+    "check": "pnpm typecheck && pnpm lint && node scripts/check-persona-names.ts && pnpm test"
   },
   "devDependencies": {
-    "@repo/eslint-config": "workspace:*",
-    "eslint": "catalog:",
-    "prettier": "catalog:",
+    "@biomejs/biome": "catalog:",
+    "@repo/tsconfig": "workspace:*",
+    "@types/node": "catalog:",
     "turbo": "catalog:",
     "typescript": "catalog:"
-  },
-  "prettier": {
-    "semi": false,
-    "singleQuote": true,
-    "trailingComma": "none",
-    "printWidth": 160,
-    "endOfLine": "lf"
   }
 }

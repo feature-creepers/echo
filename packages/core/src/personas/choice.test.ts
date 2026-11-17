@@ -1,6 +1,6 @@
 import type { Persona } from '@repo/protocol'
 import { describe, expect, it } from 'vitest'
-import { applyChoice, checkChoice, readChoice, type Cast } from './choice.ts'
+import { applyChoice, type Cast, checkChoice, readChoice } from './choice.ts'
 
 const first: Persona = { id: 'first', name: 'Ada', stance: 'accommodating', accent: 'cyan' }
 const second: Persona = { id: 'second', name: 'Grace', stance: 'critical', accent: 'red' }

@@ -1,5 +1,5 @@
-import { PERSONA_NAME_MAX_LENGTH, type Stance } from '@repo/protocol'
 import type { CommandFailure } from '@repo/client'
+import { PERSONA_NAME_MAX_LENGTH, type Stance } from '@repo/protocol'
 import type { NameProblem } from './draft.ts'
 
 /**

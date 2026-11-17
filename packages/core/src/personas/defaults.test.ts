@@ -1,4 +1,4 @@
-import { STANCES, readPersonaName, samePersonaName } from '@repo/protocol'
+import { readPersonaName, STANCES, samePersonaName } from '@repo/protocol'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PERSONAS } from './defaults.ts'
 

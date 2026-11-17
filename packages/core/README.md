@@ -10,4 +10,4 @@ A persona is data. `src/personas/defaults.ts` is the only file that contains the
 - **May import:** `@repo/protocol`, `@repo/catalog`
 - **Entry points:** `@repo/core`
 
-The import rule is enforced by `tooling/eslint/boundaries.js` and explained in [docs/SPEC.md](../../docs/SPEC.md), section 14.3.
+The import rule is enforced by `biome.jsonc` and explained in [docs/SPEC.md](../../docs/SPEC.md), section 14.3.
