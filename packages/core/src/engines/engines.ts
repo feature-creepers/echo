@@ -12,6 +12,8 @@ export interface EngineRoom {
   active(): Promise<Harness | undefined>
   /** Open a harness's own sign-in. Rejects when there is no harness of that name. */
   signIn(id: string): Promise<void>
+  /** The model a harness's answers run on: the user's choice while the harness offers it. Nothing for its default. */
+  chosenModel(id: string): string | undefined
   /** The user changed their choice: decide again from the last look, without looking again. */
   reconsider(): Promise<void>
   /** Be told each time a look or a choice gives something different. Returns a function that stops the telling. */
@@ -98,6 +100,11 @@ export function createEngineRoom(harnesses: readonly Harness[], choice: EngineCh
     return decide(await looked)
   }
 
+  const chosenModel = (id: string) => {
+    const model = choice.model(id)
+    return model !== undefined && seen?.models.get(id)?.models.some((one) => one.id === model) ? model : undefined
+  }
+
   /** Each harness as the core uses it: the same, except that its answers run on the model the user chose. */
   const wrapped = new Map<string, Harness>()
   const answeringHarness = (harness: Harness): Harness => {
@@ -107,9 +114,8 @@ export function createEngineRoom(harnesses: readonly Harness[], choice: EngineCh
     // The room has looked by the time a harness is handed out, so the models it offers are known.
     const withModel = <Request extends SessionRequest | OneShot>(request: Request): Request => {
       if (request.role !== 'thread' || request.model !== undefined) return request
-      const model = choice.model(harness.id)
-      const offered = seen?.models.get(harness.id)
-      return model !== undefined && offered?.models.some((one) => one.id === model) ? { ...request, model } : request
+      const model = chosenModel(harness.id)
+      return model === undefined ? request : { ...request, model }
     }
     const made: Harness = {
       id: harness.id,
@@ -136,6 +142,7 @@ export function createEngineRoom(harnesses: readonly Harness[], choice: EngineCh
       if (!harness) throw new Error(`There is no harness "${id}".`)
       await harness.signIn()
     },
+    chosenModel,
     async reconsider() {
       if (looked) decide(await looked)
     },

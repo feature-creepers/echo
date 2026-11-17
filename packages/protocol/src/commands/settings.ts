@@ -27,17 +27,13 @@ export const settingsCommands = {
 
   /**
    * Run on this harness whenever it is ready; the others are used only when it is not. `null` goes back to
-   * the first one ready. Takes effect for the next conversation the assistant opens.
+   * the first one ready. Takes effect from the next question: a session opens on it, told what was said.
    */
   'engines.prefer': {
     input: z.object({ harness: z.string().min(1).max(64).nullable() }),
     output: settingsOutput
   },
 
-  /**
-   * The model a harness answers with, from those it offers. `null` goes back to its default.
-   * Takes effect for the next conversation the assistant opens; the one under way keeps its model.
-   */
   /**
    * What the assistant may reach on the computer: its own folder, the folders and files granted, the whole
    * computer, and whether changes are asked first. What is left out keeps its value. A place is checked by the
@@ -53,6 +49,10 @@ export const settingsCommands = {
     output: settingsOutput
   },
 
+  /**
+   * The model a harness answers with, from those it offers. `null` goes back to its default. Takes effect
+   * from the next question: the topic it goes to opens again on the new model, told what was said.
+   */
   'engines.model.set': {
     input: z.object({ harness: z.string().min(1).max(64), model: z.string().min(1).max(100).nullable() }),
     output: settingsOutput

@@ -30,7 +30,8 @@ function setup({ harness = scriptedHarness(), records = memoryRecords(), server 
   const tools = createTools(newId)
   const screen = createScreen({ records, newId })
   const channel = createChannel({
-    engines: createEngineRoom([harness]),
+    // The user's choice of program and model, read from the settings as the core does.
+    engines: createEngineRoom([harness], { preferred: () => settings.read().engines.preferred, model: (id) => settings.read().engines.models[id] }),
     settings,
     records,
     screen,
@@ -513,6 +514,30 @@ describe('new sessions', () => {
     expect(instructions).toContain('You are Grace.')
     expect(instructions).toContain('Your tone is calm, direct and exacting.')
     expect(instructions).toContain('They said: I have guests tonight.')
+  })
+
+  it('replace a thread’s when another model is chosen, from the next question, and are told what was said', async () => {
+    const { channel, harness, settings, call } = setup()
+    channel.say('What should I cook?')
+    await settled()
+    await call(0, 'thread_open', { title: 'Dinner' })
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+    harness.sessions[1]?.reply('A risotto.')
+    const thread = channel.threads().threads[0]?.id as string
+
+    settings.chooseModel('scripted', 'deep')
+    channel.say('Can I use white wine?')
+    await settled()
+    await call(0, 'thread_send', { thread })
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+
+    expect(harness.sessions[0]?.closed).toBe(false)
+    expect(harness.sessions[1]?.closed).toBe(true)
+    expect(harness.sessions[2]?.request.model).toBe('deep')
+    expect(harness.sessions[2]?.request.instructions).toContain('What should I cook?')
+    expect(harness.sessions[2]?.sent.at(-1)).toContain('Can I use white wine?')
   })
 
   it('carry on from the transcript and the threads kept by an earlier run', async () => {

@@ -367,7 +367,17 @@ export function createChannel(options: ChannelOptions): Channel {
     const thread = registry.get(runtime.thread)
     const persona = activePersona()
     const profile = memory?.profile()
-    const key = JSON.stringify([engine.id, persona.id, persona.name, persona.stance, server, profile?.version ?? null, abilities?.version?.() ?? null])
+    // A change of program, model or persona opens a new session for the next question, told what was said before.
+    const key = JSON.stringify([
+      engine.id,
+      engines.chosenModel(engine.id) ?? null,
+      persona.id,
+      persona.name,
+      persona.stance,
+      server,
+      profile?.version ?? null,
+      abilities?.version?.() ?? null
+    ])
     if (runtime.live?.key === key) return runtime.live.session
     end(runtime.live)
     const kind = thread?.kind ?? 'topic'
