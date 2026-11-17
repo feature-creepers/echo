@@ -7,8 +7,22 @@ import { findDevice } from './devices.ts'
 import type { InstallProgress, SpeechEngine, SpeechReadiness } from './engine.ts'
 import { engineVoice, type SpeakingVoice } from './voice.ts'
 
-/** The voice style of each stance, until the user picks their own: a calm voice that goes along, a deeper one that questions. */
-const STYLE_OF_STANCE: Record<Persona['stance'], string> = { accommodating: 'f1', critical: 'm2' }
+/**
+ * The voice style of each stance, until the user picks their own, chosen by ear and by measuring the styles'
+ * pitch and pace. The stance that goes along speaks as a polished, assured aide: crisp, quick, the most even
+ * of the lighter voices. The one that questions speaks in the deep, composed voice whose pitch moves least:
+ * calm, level, never raised. The voice speaks every language in the same style, so each persona sounds like
+ * itself in French as in English.
+ */
+const STYLE_OF_STANCE: Record<Persona['stance'], string> = { accommodating: 'm3', critical: 'm2' }
+
+/** How each stance's pace compares with the pace set: the one that questions takes its time. */
+const PACE_OF_STANCE: Record<Persona['stance'], number> = { accommodating: 1, critical: 0.92 }
+
+/** The pace a persona speaks at, from the pace set. */
+export function paceOf(persona: Persona | undefined, speed: number): number {
+  return speed * PACE_OF_STANCE[persona?.stance ?? 'accommodating']
+}
 
 /** Where the voices the user picked are kept: on this device, since speakers and taste belong to it. */
 const PICKED = 'echo.voices'
@@ -45,8 +59,8 @@ export interface DeviceSpeech {
   styleOf(persona: Persona): string
   /** Pick a persona's voice. */
   pick(persona: string, style: string): void
-  /** Say a sentence in a style, to hear it before picking, at the pace set or the one given. */
-  preview(style: string, text: string, speed?: number): void
+  /** Say a sentence as a persona speaks, in its voice and at its pace, from the pace set or the one given. */
+  preview(persona: Persona, text: string, speed?: number): void
 }
 
 /**
@@ -115,9 +129,13 @@ export function useDeviceSpeech(engine: SpeechEngine | undefined, client: Client
   }, [])
 
   const preview = useCallback(
-    (style: string, text: string, speed?: number) => {
+    (persona: Persona, text: string, speed?: number) => {
       if (!ready) return
-      const sample = engineVoice(ready, { style: () => style, speed: () => speed ?? manner.current.speed, sink: () => manner.current.sink })
+      const sample = engineVoice(ready, {
+        style: () => styleOf(persona, speaking.current.picked),
+        speed: () => paceOf(persona, speed ?? manner.current.speed),
+        sink: () => manner.current.sink
+      })
       sample.say({ turn: 'preview', text, language: undefined })
     },
     [ready]
@@ -128,7 +146,7 @@ export function useDeviceSpeech(engine: SpeechEngine | undefined, client: Client
     if (!ready || !aloud) return
     const made = engineVoice(ready, {
       style: () => styleOf(speaking.current.persona, speaking.current.picked),
-      speed: () => manner.current.speed,
+      speed: () => paceOf(speaking.current.persona, manner.current.speed),
       sink: () => manner.current.sink
     })
     voice.current = made

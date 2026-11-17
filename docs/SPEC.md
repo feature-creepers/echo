@@ -426,7 +426,7 @@ Measured and chosen on 17 November 2026: one library, sherpa-onnx, runs every en
 
 - **The models are downloaded once**, at first launch or later from settings, with progress, and resumed if interrupted. Nothing is sent anywhere: voice never leaves the device.
 - **The voice's language is told per sentence.** The core tells each sentence's language from its words (English or French), since Parakeet does not report the language it heard.
-- **Each persona speaks in its stance's style** until the user picks one: a calm voice for the accommodating stance, a deeper one for the critical stance.
+- **Each persona speaks in its stance's style** until the user picks one, chosen by measuring the styles' pitch and pace: for the accommodating stance, a polished, assured man's voice, crisp and quick (style `m3`); for the critical stance, the deep, composed one whose pitch moves least (`m2`), a little slower than the pace set (0.92 of it), calm and level. The voice speaks every language in the same style, so a persona sounds like itself in each language.
 - **Licences.** Parakeet is CC-BY-4.0. Supertonic's model is OpenRAIL-M, which carries use restrictions to pass on to users; to review before distribution.
 - **Still to measure** on old hardware, and on macOS older than 14 (Apple Silicon) or 15 (Intel), the minimum the native builds declare. The process holds about 1.45 GB with all three engines loaded; a lighter recognition set for the light tier is still to choose.
 - The tier also sets the memory components and the number of threads working at once:

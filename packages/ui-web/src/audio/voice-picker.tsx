@@ -23,7 +23,7 @@ export function VoicePicker({ speech, personas }: { speech: DeviceSpeech; person
               onChange={(style) => speech.pick(persona.id, style)}
               className="flex-1"
             />
-            <Button size="sm" onClick={() => speech.preview(speech.styleOf(persona), `Hello, I am ${persona.name}. This is how I sound.`)}>
+            <Button size="sm" onClick={() => speech.preview(persona, `Hello, I am ${persona.name}. This is how I sound.`)}>
               Listen
             </Button>
           </li>

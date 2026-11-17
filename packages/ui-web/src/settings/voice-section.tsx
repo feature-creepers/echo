@@ -32,7 +32,7 @@ export function VoiceSection({ speech, personas, active }: { speech: DeviceSpeec
   const missing = speaker.id !== '' && outputs !== undefined && present === undefined
 
   const test = () => {
-    if (speech?.ready && active) speech.preview(speech.styleOf(active), `This is how ${active.name} sounds, on these speakers.`)
+    if (speech?.ready && active) speech.preview(active, `This is how ${active.name} sounds, on these speakers.`)
     else void findDevice(speaker, 'audiooutput').then((sink) => playCue('open', sink))
   }
 
@@ -59,7 +59,7 @@ export function VoiceSection({ speech, personas, active }: { speech: DeviceSpeec
               options={SPEEDS.map((speed) => ({ value: speed, label: PACES[speed] }))}
               onChange={(speed) => {
                 change({ voice: { speed } })
-                if (speech?.ready && active) speech.preview(speech.styleOf(active), 'This is the pace I will speak at.', speed)
+                if (speech?.ready && active) speech.preview(active, 'This is the pace I will speak at.', speed)
               }}
             />
           </div>
