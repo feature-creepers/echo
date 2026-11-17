@@ -112,7 +112,9 @@ export function SettingsScreen({ productName, client, settings, memory, speech, 
 
           <Block lead={leads[section]}>
             {section === 'general' && <GeneralSection productName={productName} />}
-            {section === 'voice' && <VoiceSection speech={speech} personas={personas.available} active={active} />}
+            {section === 'voice' && (
+              <VoiceSection client={client} languages={settings.languages} speech={speech} personas={personas.available} active={active} />
+            )}
             {section === 'microphone' && <MicrophoneSection />}
             {section === 'shortcuts' && <ShortcutsSection productName={productName} />}
             {section === 'personalities' && (

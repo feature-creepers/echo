@@ -58,9 +58,7 @@ export function SleepPanel({ memory, sleep }: { memory: MemoryState; sleep: Slee
   }
 
   return (
-    <div
-      className={cn('grid gap-5 rounded-lg border bg-raised/95 p-5 transition duration-500 ease-soft', state.asleep ? 'border-line' : 'border-line-strong')}
-    >
+    <div className={cn('grid gap-5 rounded-lg border bg-raised/95 p-5 transition duration-500 ease-soft', state.asleep ? 'border-line' : 'border-line-strong')}>
       <div className="flex items-center gap-5">
         <Orb size={64} mood={state.asleep ? 'asleep' : 'idle'} className={cn('-m-2 shrink-0 transition-opacity duration-700', state.asleep && 'opacity-70')} />
         <div className="grid min-w-0 flex-1 gap-1" aria-live="polite">

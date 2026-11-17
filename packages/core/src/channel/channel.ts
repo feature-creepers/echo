@@ -3,6 +3,8 @@ import {
   type Event,
   type Exchange,
   exchangeSchema,
+  LANGUAGE_CODES,
+  languageName,
   type Persona,
   type ShownView,
   type Step,
@@ -48,9 +50,6 @@ const GREETING_GAP_MS = 6 * 60 * 60 * 1000
 
 /** How many of the latest lines a new session is told about, so it carries on where the last one stopped. */
 const RECAP_EXCHANGES = 8
-
-/** The languages the voice is asked to tell apart. */
-const LANGUAGES = ['en', 'fr'] as const
 
 /** What sessions can do besides speak, given by the core. */
 export interface Abilities {
@@ -282,7 +281,7 @@ export function createChannel(options: ChannelOptions): Channel {
 
   const voice = (turn: Turn, text: string) => {
     turn.heard += 1
-    const language = languageOf(text, LANGUAGES, turn.language)
+    const language = answerIn(text, turn.language)
     emit({ type: 'event', name: 'speech.say', turn: turn.exchange.turn, text, ...(language === undefined ? {} : { language }) })
   }
 
@@ -691,7 +690,31 @@ export function createChannel(options: ChannelOptions): Channel {
   }
 
   /** The moment and the place a turn happens in: a model has no clock of its own. */
-  const context = () => `(Now: ${moment(now(), options.timeZone)})`
+  /** The language the person last spoke in: what a sentence that does not say is taken to be in. */
+  let conversationLanguage: string | undefined
+
+  /** The language of what the person said: the one they set, else the one their words or speech say, else the conversation's. */
+  const spokenIn = (text: string, heard: string | undefined): string | undefined => {
+    const { spoken } = settings.read().languages
+    if (spoken !== 'auto') return spoken
+    return heard ?? languageOf(text, LANGUAGE_CODES, conversationLanguage)
+  }
+
+  /** The language the assistant answers in, when the user set it: the one set, or the one they set as theirs. */
+  const answerLanguage = (): string | undefined => {
+    const { spoken, answers } = settings.read().languages
+    return answers !== 'spoken' ? answers : spoken !== 'auto' ? spoken : undefined
+  }
+
+  /** The language a sentence of an answer is said in: the one set, else the one it is written in, else the turn's. */
+  const answerIn = (sentence: string, turnLanguage: string | undefined): string | undefined =>
+    answerLanguage() ?? languageOf(sentence, LANGUAGE_CODES, turnLanguage ?? conversationLanguage)
+
+  /** What a session reads first with each message: the moment, and the language to answer in when the user set it. */
+  const context = () => {
+    const language = answerLanguage()
+    return `(Now: ${moment(now(), options.timeZone)}${language === undefined ? '' : `. Answer in ${languageName(language)}.`})`
+  }
 
   /** What the person said, or what the assistant starts on by itself. */
   const what = (turn: Turn) =>
@@ -756,7 +779,9 @@ export function createChannel(options: ChannelOptions): Channel {
       memory?.wake()
       const persona = activePersona()
       const exchange: Exchange = { turn: newId(), at: now().toISOString(), persona: persona.id, said: text, replied: '', outcome: 'running' }
-      const turn = newTurn(exchange, language)
+      const spoken = spokenIn(text, language)
+      if (spoken) conversationLanguage = spoken
+      const turn = newTurn(exchange, spoken)
       transcript.push(exchange)
 
       const previous = current
@@ -820,7 +845,7 @@ export function createChannel(options: ChannelOptions): Channel {
           const cutter = createSentenceCutter()
           const sentences = missed ?? [...cutter.push(answer.replied), ...cutter.flush()]
           for (const sentence of sentences) {
-            const language = languageOf(sentence, LANGUAGES, undefined)
+            const language = answerIn(sentence, undefined)
             emit({ type: 'event', name: 'speech.say', turn: answer.turn, text: sentence, ...(language === undefined ? {} : { language }) })
           }
         }

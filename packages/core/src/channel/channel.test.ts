@@ -67,6 +67,45 @@ async function settled(): Promise<void> {
   for (let turn = 0; turn < 20; turn++) await Promise.resolve()
 }
 
+describe('languages', () => {
+  const voiced = (events: Event[]) => events.flatMap((event) => (event.name === 'speech.say' ? [[event.text, event.language]] : []))
+
+  it('follows the language the person speaks, and keeps it for a sentence that does not say', async () => {
+    const { channel, harness, events } = setup()
+    channel.say('Quel temps fait-il demain ?')
+    await settled()
+    harness.sessions[0]?.reply('Il fera doux. ', 'OK.')
+
+    expect(harness.sessions[0]?.sent[0]).toMatch(/^\(Now: [^\n]*\(Europe\/Paris\)\)\n/)
+    expect(voiced(events)).toEqual([
+      ['Il fera doux.', 'fr'],
+      ['OK.', 'fr']
+    ])
+  })
+
+  it('answers in the language the user set, whatever they speak', async () => {
+    const { channel, harness, settings, events } = setup()
+    settings.setLanguages({ answers: 'de' })
+    channel.say('What is the weather tomorrow?')
+    await settled()
+    harness.sessions[0]?.reply('Morgen wird es mild.')
+
+    expect(harness.sessions[0]?.sent[0]).toContain('(Europe/Paris). Answer in German.)')
+    expect(voiced(events)).toEqual([['Morgen wird es mild.', 'de']])
+  })
+
+  it('takes the language the user set as theirs, and answers in it', async () => {
+    const { channel, harness, settings, events } = setup()
+    settings.setLanguages({ spoken: 'it' })
+    channel.say('Meteo domani')
+    await settled()
+    harness.sessions[0]?.reply('Domani sarà mite.')
+
+    expect(harness.sessions[0]?.sent[0]).toContain('Answer in Italian.')
+    expect(voiced(events)).toEqual([['Domani sarà mite.', 'it']])
+  })
+})
+
 describe('the orchestrator', () => {
   it('hears each turn with the list of threads, as the persona in use', async () => {
     const { channel, harness } = setup()

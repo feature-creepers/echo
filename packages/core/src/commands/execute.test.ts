@@ -1,4 +1,4 @@
-import { DEFAULT_ACCESS, type LibraryView, type MemoryView, type Settings } from '@repo/protocol'
+import { DEFAULT_ACCESS, DEFAULT_LANGUAGES, type LibraryView, type MemoryView, type Settings } from '@repo/protocol'
 import { describe, expect, it, vi } from 'vitest'
 import { createExecutor, type Handlers } from './execute.ts'
 
@@ -10,7 +10,8 @@ const settings: Settings = {
   revision: 0,
   personas: { available: [{ id: 'first', name: 'Ada', stance: 'accommodating', accent: 'cyan' }], active: 'first', confirmed: false },
   engines: { models: {} },
-  access: DEFAULT_ACCESS
+  access: DEFAULT_ACCESS,
+  languages: DEFAULT_LANGUAGES
 }
 
 function setup(overrides: Partial<Handlers> = {}) {
@@ -30,6 +31,7 @@ function setup(overrides: Partial<Handlers> = {}) {
     'view.clear': () => ({ ok: true, output: {} }),
     'shapes.read': () => ({ ok: true, output: { shapes: {} } }),
     'access.set': async () => ({ ok: true, output: { settings } }),
+    'languages.set': () => ({ ok: true, output: { settings } }),
     'threads.read': () => ({ ok: true, output: { threads: [] } }),
     'thread.focus': () => ({ ok: true, output: {} }),
     'thread.read': () => ({ ok: false, error: { code: 'invalid-input', message: 'There is no such thread.' } }),

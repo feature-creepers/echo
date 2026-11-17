@@ -1,5 +1,6 @@
-import { SPEEDS } from '@repo/client'
-import type { Persona } from '@repo/protocol'
+import { type Client, SPEEDS } from '@repo/client'
+import { type CommandInput, LANGUAGES, type Languages, type Persona } from '@repo/protocol'
+import { useState } from 'react'
 import { playCue } from '../audio/cues.ts'
 import { findDevice } from '../audio/devices.ts'
 import { useAudioDevices } from '../audio/use-devices.ts'
@@ -18,12 +19,37 @@ const PACES: Record<(typeof SPEEDS)[number], string> = { 0.85: 'Slower', 1: 'Nat
 /** The value of the list that stands for the system's own choice. */
 const SYSTEM = ''
 
+/** The languages the person may speak in, those the speech recognition hears, after finding it by itself. */
+const SPOKEN = [
+  { value: 'auto', label: 'Auto-detect', description: 'Found from what you say' },
+  ...LANGUAGES.filter((language) => language.heard).map((language) => ({ value: language.code, label: language.name }))
+]
+/** The languages the assistant may answer in, after the one the person speaks. */
+const ANSWERS = [
+  { value: 'spoken', label: 'As spoken', description: 'The language you speak to it in' },
+  ...LANGUAGES.map((language) => ({ value: language.code, label: language.name }))
+]
+
+interface VoiceSectionProps {
+  client: Client
+  /** The languages of the conversation: the user's, not this computer's. */
+  languages: Languages
+  speech: DeviceSpeech | undefined
+  personas: readonly Persona[]
+  active: Persona | undefined
+}
+
 /**
- * The voice of this computer: the models it needs to hear and speak, each personality's voice, and how the
- * answers are heard: aloud or not, at what pace, on which speakers.
+ * The voice of this computer: the models it needs to hear and speak, each personality's voice, the languages
+ * spoken and answered in, and how the answers are heard: aloud or not, at what pace, on which speakers.
  */
-export function VoiceSection({ speech, personas, active }: { speech: DeviceSpeech | undefined; personas: readonly Persona[]; active: Persona | undefined }) {
+export function VoiceSection({ client, languages, speech, personas, active }: VoiceSectionProps) {
   const { settings, change } = useDevice()
+  const [problem, setProblem] = useState<string>()
+  const setLanguages = (asked: CommandInput<'languages.set'>) => {
+    setProblem(undefined)
+    client.session.run('languages.set', asked).catch((error: unknown) => setProblem(error instanceof Error ? error.message : 'The change could not be saved.'))
+  }
   const outputs = useAudioDevices('audiooutput')
   const speaker = settings.speaker
   const present =
@@ -46,6 +72,27 @@ export function VoiceSection({ speech, personas, active }: { speech: DeviceSpeec
       ) : (
         <p className="text-sm text-text-soft">This device cannot run speech models.</p>
       )}
+
+      <SettingGroup title="Languages" note="On every device">
+        <SettingRow title="You speak" detail="The language you talk to it in. Auto-detect finds it from what you say.">
+          <Select
+            label="You speak"
+            className="w-56"
+            value={languages.spoken as string}
+            options={SPOKEN}
+            onChange={(spoken) => setLanguages({ spoken: spoken as Languages['spoken'] })}
+          />
+        </SettingRow>
+        <SettingRow title="It answers in" detail="The language it answers and speaks in." problem={problem}>
+          <Select
+            label="It answers in"
+            className="w-56"
+            value={languages.answers as string}
+            options={ANSWERS}
+            onChange={(answers) => setLanguages({ answers: answers as Languages['answers'] })}
+          />
+        </SettingRow>
+      </SettingGroup>
 
       <SettingGroup title="Answers">
         <SettingRow title="Speak answers aloud" detail="Off, answers are only written under the assistant: for a quiet room, or a meeting.">

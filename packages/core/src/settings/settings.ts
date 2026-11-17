@@ -1,4 +1,14 @@
-import { type Access, accessSchema, type CommandError, type CommandInput, type Persona, type Settings } from '@repo/protocol'
+import {
+  type Access,
+  accessSchema,
+  type CommandError,
+  type CommandInput,
+  DEFAULT_LANGUAGES,
+  type Languages,
+  languagesSchema,
+  type Persona,
+  type Settings
+} from '@repo/protocol'
 import { z } from 'zod'
 import { applyChoice, checkChoice, PERSONAS_SET, type PersonaChoice, readChoice } from '../personas/choice.ts'
 import { DEFAULT_PERSONAS } from '../personas/defaults.ts'
@@ -15,6 +25,8 @@ export const ENGINES_PREFERRED = 'engines.preferred'
 export const ENGINES_MODEL = 'engines.model'
 /** The type of the record written when the user changes what the assistant may reach on the computer. It carries the whole of it. */
 export const ACCESS_SET = 'access.set'
+/** The type of the record written when the user sets the languages of the conversation. It carries both. */
+export const LANGUAGES_SET = 'languages.set'
 
 const preferredSchema = z.object({ harness: z.string().min(1).nullable() })
 const modelSchema = z.object({ harness: z.string().min(1), model: z.string().min(1).nullable() })
@@ -30,6 +42,8 @@ export interface UserSettings {
   chooseModel(harness: string, model: string | null): Settings
   /** What the assistant may reach on the computer. What is left out keeps its value. The places are not checked here. */
   setAccess(change: AccessChange): Settings
+  /** The language the person speaks and the one the assistant answers in. What is left out keeps its value. */
+  setLanguages(change: { [Name in keyof Languages]?: Languages[Name] | undefined }): Settings
   /** Be told each time the settings change. Returns a function that stops the telling. */
   onChange(listener: (settings: Settings) => void): () => void
 }
@@ -51,13 +65,17 @@ export function createUserSettings(
     revision: 0,
     personas: { available: [...defaults], active: defaults[0].id, confirmed: false },
     engines: { models: {} },
-    access: accessSchema.parse(folder === undefined ? {} : { folder })
+    access: accessSchema.parse(folder === undefined ? {} : { folder }),
+    languages: DEFAULT_LANGUAGES
   }
   const listeners = new Set<(settings: Settings) => void>()
 
   // A record this version cannot read is skipped, so one written by another version never breaks this one.
-  for (const record of records.read([PERSONAS_SET, ENGINES_PREFERRED, ENGINES_MODEL, ACCESS_SET])) {
-    if (record.type === ACCESS_SET) {
+  for (const record of records.read([PERSONAS_SET, ENGINES_PREFERRED, ENGINES_MODEL, ACCESS_SET, LANGUAGES_SET])) {
+    if (record.type === LANGUAGES_SET) {
+      const read = languagesSchema.safeParse(record.payload)
+      if (read.success) settings = { ...settings, revision: settings.revision + 1, languages: read.data }
+    } else if (record.type === ACCESS_SET) {
       const read = accessSchema.omit({ folder: true }).safeParse(record.payload)
       if (read.success) settings = withAccess(settings, read.data)
     } else if (record.type === PERSONAS_SET) {
@@ -105,6 +123,12 @@ export function createUserSettings(
       const next = withAccess(settings, asked)
       if (JSON.stringify(chosen(next.access)) === JSON.stringify(chosen(settings.access))) return settings
       return change(next, { type: ACCESS_SET, payload: chosen(next.access) })
+    },
+
+    setLanguages(asked) {
+      const next: Languages = { spoken: asked.spoken ?? settings.languages.spoken, answers: asked.answers ?? settings.languages.answers }
+      if (next.spoken === settings.languages.spoken && next.answers === settings.languages.answers) return settings
+      return change({ ...settings, revision: settings.revision + 1, languages: next }, { type: LANGUAGES_SET, payload: next })
     },
 
     onChange(listener) {

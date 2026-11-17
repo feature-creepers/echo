@@ -3,6 +3,7 @@ import { DEFAULT_ACCESS } from './access.ts'
 import { COMMANDS, isCommandName } from './commands.ts'
 import { commandSchema, resultSchema } from './envelope.ts'
 import { eventSchema } from './events.ts'
+import { DEFAULT_LANGUAGES } from './languages.ts'
 import type { Settings } from './settings.ts'
 
 const settings: Settings = {
@@ -16,7 +17,8 @@ const settings: Settings = {
     confirmed: true
   },
   engines: { models: {} },
-  access: DEFAULT_ACCESS
+  access: DEFAULT_ACCESS,
+  languages: DEFAULT_LANGUAGES
 }
 
 describe('commands', () => {

@@ -54,6 +54,18 @@ export {
   type Welcome,
   welcomeSchema
 } from './handshake.ts'
+export {
+  answerLanguageSchema,
+  DEFAULT_LANGUAGES,
+  HEARD_LANGUAGES,
+  LANGUAGE_CODES,
+  LANGUAGES,
+  type LanguageCode,
+  type Languages,
+  languageName,
+  languagesSchema,
+  spokenLanguageSchema
+} from './languages.ts'
 export { CORE_TOKEN_VARIABLE, DATA_OPTION, EXIT_WITH_PARENT_FLAG, EXIT_WITH_PARENT_OPTION, type Ready, readySchema } from './launch.ts'
 export {
   COLLECTION_MAX_LENGTH,

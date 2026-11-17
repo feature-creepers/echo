@@ -1,4 +1,4 @@
-import { DEFAULT_ACCESS, type Persona, type Settings } from '@repo/protocol'
+import { DEFAULT_ACCESS, DEFAULT_LANGUAGES, type Persona, type Settings } from '@repo/protocol'
 import { describe, expect, it, vi } from 'vitest'
 import { PERSONAS_SET } from '../personas/choice.ts'
 import { memoryRecords } from '../records/memory.ts'
@@ -15,7 +15,8 @@ describe('the settings of a new user', () => {
       revision: 0,
       personas: { available: [first, second], active: 'first', confirmed: false },
       engines: { models: {} },
-      access: DEFAULT_ACCESS
+      access: DEFAULT_ACCESS,
+      languages: DEFAULT_LANGUAGES
     })
   })
 })
@@ -29,7 +30,13 @@ describe('setPersonas', () => {
 
     expect(change).toEqual({
       ok: true,
-      settings: { revision: 1, personas: { available: [first, second], active: 'first', confirmed: true }, engines: { models: {} }, access: DEFAULT_ACCESS }
+      settings: {
+        revision: 1,
+        personas: { available: [first, second], active: 'first', confirmed: true },
+        engines: { models: {} },
+        access: DEFAULT_ACCESS,
+        languages: DEFAULT_LANGUAGES
+      }
     })
     expect(records.read([PERSONAS_SET])).toHaveLength(1)
   })
@@ -45,7 +52,8 @@ describe('setPersonas', () => {
       revision: 1,
       personas: { available: [first, { ...second, name: 'Marvin' }], active: 'second', confirmed: true },
       engines: { models: {} },
-      access: DEFAULT_ACCESS
+      access: DEFAULT_ACCESS,
+      languages: DEFAULT_LANGUAGES
     }
     expect(settings.read()).toEqual(expected)
     expect(heard).toHaveBeenCalledExactlyOnceWith(expected)
@@ -127,7 +135,8 @@ describe('settings read back from the records', () => {
       revision: 1,
       personas: { available: [first, second], active: 'second', confirmed: true },
       engines: { models: {} },
-      access: DEFAULT_ACCESS
+      access: DEFAULT_ACCESS,
+      languages: DEFAULT_LANGUAGES
     })
   })
 })
@@ -196,5 +205,26 @@ describe('the engines the user chose', () => {
     ])
 
     expect(createUserSettings(records, defaults).read().engines).toEqual({ models: { codex: 'gpt-6-luna' } })
+  })
+})
+
+describe('the languages the user set', () => {
+  it('are found from what is said, and answered in, at first', () => {
+    expect(createUserSettings(memoryRecords(), defaults).read().languages).toEqual({ spoken: 'auto', answers: 'spoken' })
+  })
+
+  it('keep what was left out, write nothing when unchanged, and read back the same', () => {
+    const records = memoryRecords()
+    const settings = createUserSettings(records, defaults)
+    const heard = vi.fn()
+    settings.onChange(heard)
+
+    settings.setLanguages({ spoken: 'fr' })
+    settings.setLanguages({ answers: 'en' })
+    settings.setLanguages({ spoken: 'fr', answers: undefined })
+
+    expect(settings.read().languages).toEqual({ spoken: 'fr', answers: 'en' })
+    expect(heard).toHaveBeenCalledTimes(2)
+    expect(createUserSettings(records, defaults).read()).toEqual(settings.read())
   })
 })

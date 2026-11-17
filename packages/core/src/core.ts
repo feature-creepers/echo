@@ -286,6 +286,7 @@ export function createCore(options: CoreOptions): Core {
         const change = await access.set(input)
         return change.ok ? { ok: true, output: { settings: change.settings } } : change
       },
+      'languages.set': (input) => ({ ok: true, output: { settings: settings.setLanguages(input) } }),
       'engines.model.set': async (input) => {
         const harness = (await engines.read()).harnesses.find((known) => known.id === input.harness)
         if (!harness) return { ok: false, error: { code: 'unknown-harness', message: `There is no harness "${input.harness}".` } }

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { APPROVALS, COMPUTER_REACH, MAX_PLACES, placeSchema } from '../access.ts'
+import { answerLanguageSchema, spokenLanguageSchema } from '../languages.ts'
 import { personaIdSchema } from '../personas.ts'
 import { settingsSchema } from '../settings.ts'
 
@@ -46,6 +47,15 @@ export const settingsCommands = {
       computer: z.enum(COMPUTER_REACH).optional(),
       approvals: z.enum(APPROVALS).optional()
     }),
+    output: settingsOutput
+  },
+
+  /**
+   * The language the person speaks (`auto`: found from what they say) and the one the assistant answers in
+   * (`spoken`: theirs). What is left out keeps its value. Takes effect from the next question.
+   */
+  'languages.set': {
+    input: z.object({ spoken: spokenLanguageSchema.optional(), answers: answerLanguageSchema.optional() }),
     output: settingsOutput
   },
 
