@@ -3,11 +3,15 @@ import { dataBlocks } from './blocks/data.ts'
 import { drawingBlocks } from './blocks/drawing.ts'
 import { inputBlocks } from './blocks/input.ts'
 import { layoutBlocks } from './blocks/layout.ts'
+import { mapBlocks } from './blocks/map.ts'
 import { mediaBlocks } from './blocks/media.ts'
 import { textBlocks } from './blocks/text.ts'
 
 /** Every block the assistant can compose with, assembled from the groups in `blocks/`. */
-export const BLOCKS = { ...layoutBlocks, ...textBlocks, ...dataBlocks, ...drawingBlocks, ...mediaBlocks, ...inputBlocks } satisfies Record<string, Block>
+export const BLOCKS = { ...layoutBlocks, ...textBlocks, ...dataBlocks, ...mapBlocks, ...drawingBlocks, ...mediaBlocks, ...inputBlocks } satisfies Record<
+  string,
+  Block
+>
 
 export type BlockName = keyof typeof BLOCKS
 

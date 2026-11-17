@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { ToolServer } from '@repo/core'
+import type { Scope, ToolServer } from '@repo/core'
 import { SANDBOX_SETTINGS } from './sandbox/index.ts'
 
 /**
@@ -32,11 +32,21 @@ export const FEATURES_OFF = [
  * ignored rather than refused, which suits the ones a version may not have.
  */
 const SETTINGS_OFF = [
-  // No command line of its own: the session acts through the core's tools only.
-  'features.shell_tool=false',
   // No room for AGENTS.md and the like, so none is read.
   'project_doc_max_bytes=0'
 ]
+
+/** No command line of its own: the session acts through the core's tools only. */
+const SHELL_OFF = 'features.shell_tool=false'
+
+/**
+ * Whether a session may have Codex's command line, which is how Codex reads and changes files. Its sandbox
+ * confines writing to the folders given, but not reading: with the command line, a session can read anything
+ * the user can. So it gets one only when the person let the assistant read the whole computer.
+ */
+export function shellAllowed(scope: Scope | undefined): boolean {
+  return scope !== undefined && scope.computer !== 'off'
+}
 
 /**
  * The names of the tool servers in the user's own Codex settings. A session turns each of them off, so
@@ -55,37 +65,50 @@ export async function userToolServers(home: string): Promise<string[]> {
 const settings = (values: string[]) => values.flatMap((value) => ['-c', value])
 
 /** The arguments of a live session: Codex as a server that takes requests on its standard input. */
-export function appServerArguments(userServers: string[]): string[] {
+export function appServerArguments(userServers: string[], shell = false): string[] {
   return [
     'app-server',
     ...FEATURES_OFF.flatMap((feature) => ['--disable', feature]),
     ...settings(userServers.map((name) => `mcp_servers.${/^[A-Za-z0-9_-]+$/.test(name) ? name : JSON.stringify(name)}.enabled=false`)),
-    ...settings(SETTINGS_OFF),
+    ...settings(shell ? SETTINGS_OFF : [SHELL_OFF, ...SETTINGS_OFF]),
     ...SANDBOX_SETTINGS
   ]
 }
 
 /** How a conversation is opened on that server. */
-export function threadSettings(options: { folder: string; model: string; instructions: string; tools?: ToolServer | undefined }): Record<string, unknown> {
+export function threadSettings(options: {
+  folder: string
+  model: string
+  instructions: string
+  tools?: ToolServer | undefined
+  scope?: Scope | undefined
+}): Record<string, unknown> {
+  const { scope } = options
+  const shell = shellAllowed(scope)
+  // Writing is confined to the folders granted to change, unless the whole computer was given to change.
+  const writable = (scope?.places ?? []).filter((place) => place.write && place.kind === 'folder').map((place) => place.path)
+  const sandbox = !shell ? 'read-only' : scope?.computer === 'write' ? 'danger-full-access' : 'workspace-write'
+  const config = {
+    ...(options.tools
+      ? {
+          mcp_servers: {
+            // A tool of the core may wait a long time for the user: an approval, an answer.
+            [TOOL_SERVER]: { url: options.tools.url, http_headers: { Authorization: `Bearer ${options.tools.token}` }, tool_timeout_sec: 3600 }
+          }
+        }
+      : {}),
+    ...(sandbox === 'workspace-write' ? { sandbox_workspace_write: { writable_roots: writable, network_access: false } } : {})
+  }
   return {
-    cwd: options.folder,
+    cwd: shell && scope?.home ? scope.home : options.folder,
     model: options.model,
-    // Ask before anything that is not plainly harmless, and write nothing: the session then declines what is asked.
+    // Ask before anything that is not plainly harmless. Each question is checked against what the person granted.
     approvalPolicy: 'untrusted',
-    sandbox: 'read-only',
+    sandbox,
     // The conversation is ours to keep. Codex writes none of it to disk.
     ephemeral: true,
     developerInstructions: options.instructions,
-    ...(options.tools
-      ? {
-          config: {
-            mcp_servers: {
-              // A tool of the core may wait a long time for the user: an approval, an answer.
-              [TOOL_SERVER]: { url: options.tools.url, http_headers: { Authorization: `Bearer ${options.tools.token}` }, tool_timeout_sec: 3600 }
-            }
-          }
-        }
-      : {})
+    ...(Object.keys(config).length > 0 ? { config } : {})
   }
 }
 
@@ -98,7 +121,7 @@ export function execArguments(options: { model: string; instructions: string; an
     'exec',
     ['-m', options.model],
     // A string in TOML. Forward slashes keep a Windows path free of escapes.
-    settings([`model_instructions_file="${options.instructions.replace(/\\/g, '/')}"`, ...SETTINGS_OFF]),
+    settings([`model_instructions_file="${options.instructions.replace(/\\/g, '/')}"`, SHELL_OFF, ...SETTINGS_OFF]),
     '--ignore-user-config',
     '--ignore-rules',
     ['--sandbox', 'read-only'],

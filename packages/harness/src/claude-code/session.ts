@@ -1,6 +1,10 @@
 import type { ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import type { Log, Session, SessionRequest } from '@repo/core'
+import { mkdir } from 'node:fs/promises'
+import { join } from 'node:path'
+import type { Log, Session, SessionRequest, Verdict } from '@repo/core'
+import { kindAt } from '../computer/paths.ts'
+import { outsideScope } from '../computer/scope.ts'
 import { type Cli, NotInstalled } from '../process/cli.ts'
 import { createSessionEvents } from '../process/events.ts'
 import { asArray, asObject, asString, type JsonObject } from '../process/json.ts'
@@ -9,7 +13,8 @@ import { KEPT_OUTPUT, lastLines, saysSignedOut } from '../process/output.ts'
 import { platform } from '../process/platform/index.ts'
 import { start } from '../process/run.ts'
 import { createWorkingFiles } from '../process/working-files.ts'
-import { ISOLATION_SETTINGS, ISOLATION_VARIABLES, isolationArguments, isolationLeaks, reportedToolName, TOOL_SERVER, toolServerConfig } from './isolation.ts'
+import { computerTools, useOf } from './computer-tools.ts'
+import { ISOLATION_VARIABLES, isolationArguments, isolationLeaks, reportedToolName, sessionSettings, TOOL_SERVER, toolServerConfig } from './isolation.ts'
 import { SIGNED_OUT } from './status.ts'
 
 export interface SessionContext {
@@ -67,6 +72,11 @@ export function openSession(request: SessionRequest, context: SessionContext): S
   let signedOut = false
   let checked = false
   let errorOutput = ''
+  /** The CLI's own tools on the computer this session was given, and the folder it works in. */
+  let computer: string[] = []
+  let workingFolder = context.folder
+  /** Questions to the core about a use of the computer, waiting for the person: withdrawn when the turn stops. */
+  const asking = new Set<AbortController>()
 
   function write(message: unknown): void {
     if (child) writeJsonLine(child.stdin, message)
@@ -77,15 +87,27 @@ export function openSession(request: SessionRequest, context: SessionContext): S
     let running: ChildProcess
     try {
       const launch = await context.cli.launch()
+      // On the computer, the session works in the assistant's own folder, or in an empty one of its own: never
+      // in the adapter's folder, whose files hold the session's instructions and token.
+      const scope = request.computer?.scope()
+      computer = computerTools(scope)
+      if (computer.length > 0) {
+        workingFolder = scope?.home ?? join(context.folder, 'empty')
+        await mkdir(workingFolder, { recursive: true })
+      }
+      const folders = []
+      for (const place of scope?.places ?? [])
+        if (place.kind === 'folder' && place.path !== scope?.home && (await kindAt(place.path)) === 'folder') folders.push(place.path)
       const paths = {
         instructions: await files.write('instructions.txt', request.instructions),
-        settings: await files.write('settings.json', JSON.stringify(ISOLATION_SETTINGS)),
+        settings: await files.write('settings.json', JSON.stringify(sessionSettings(computer))),
         tools: request.tools ? await files.write('tools.json', toolServerConfig(request.tools)) : undefined,
-        web: request.web === true
+        web: request.web === true,
+        computer: { tools: computer, folders: computer.length > 0 ? folders : [] }
       }
       if (closed) return void files.remove()
       running = start(launch.command, [...SESSION_ARGUMENTS, ...isolationArguments(context.model, paths)], {
-        cwd: context.folder,
+        cwd: workingFolder,
         env: { ...launch.env, ...ISOLATION_VARIABLES, MCP_TOOL_TIMEOUT: String(TOOL_TIMEOUT_MS) }
       })
     } catch (error) {
@@ -116,6 +138,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
 
   function shut(): void {
     closed = true
+    withdraw()
     const running = child
     child = undefined
     if (running && running.exitCode === null && running.signalCode === null) {
@@ -159,7 +182,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
   function check(init: JsonObject): void {
     if (checked) return
     checked = true
-    const leaks = isolationLeaks(init, request.web === true)
+    const leaks = isolationLeaks(init, request.web === true, computer)
     if (leaks.length > 0) log.error(`A Claude Code session started with ${leaks.join(', ')}, which should all be switched off.`)
     if (!request.tools) return
     const server = asArray(init.mcp_servers)
@@ -216,7 +239,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
    */
   function toolStarted(id: unknown, name: unknown, input: unknown): void {
     const call = asString(id)
-    const tool = reportedToolName(name, request.web === true)
+    const tool = reportedToolName(name, request.web === true, computer)
     if (call === undefined || tool === undefined) return
     const known = calls.get(call)
     if (known && (input === undefined || known.input !== undefined)) return
@@ -283,12 +306,54 @@ export function openSession(request: SessionRequest, context: SessionContext): S
       write({ type: 'control_response', response: { subtype: 'error', request_id, error: `This session does not answer "${String(question?.subtype)}".` } })
       return
     }
+    const answer = (response: JsonObject) => {
+      if (!closed) write({ type: 'control_response', response: { subtype: 'success', request_id, response } })
+    }
+    const input = asObject(question.input) ?? {}
+    const tool = asString(question.tool_name) ?? ''
+    if (computer.includes(tool)) {
+      void onComputer(tool, input).then(answer)
+      return
+    }
     // The core decides for itself whether one of its tools may run, when it is called. Nothing else may run at all.
-    const response =
-      reportedToolName(question.tool_name, request.web === true) === undefined
+    answer(
+      reportedToolName(tool, request.web === true) === undefined
         ? { behavior: 'deny', message: 'This tool is not available in this session.' }
-        : { behavior: 'allow', updatedInput: asObject(question.input) ?? {} }
-    write({ type: 'control_response', response: { subtype: 'success', request_id, response } })
+        : { behavior: 'allow', updatedInput: input }
+    )
+  }
+
+  /**
+   * A use of the computer: refused when it falls outside what the person granted, and otherwise put to the
+   * core, which has the person approve a change or a command first when they asked to.
+   */
+  async function onComputer(tool: string, input: JsonObject): Promise<JsonObject> {
+    const reach = request.computer
+    const use = reach ? await useOf(tool, input, workingFolder) : undefined
+    if (!reach || !use) return { behavior: 'deny', message: 'This tool is not available in this session.' }
+    const outside = await outsideScope(use, reach.scope(), [context.folder])
+    if (outside) return { behavior: 'deny', message: `Refused: ${outside} The person can grant more in Settings, Access.` }
+    const controller = new AbortController()
+    asking.add(controller)
+    try {
+      // A stopped turn gets its answer at once, whatever the core is still doing with the question.
+      const stopped = new Promise<Verdict>((resolve) =>
+        controller.signal.addEventListener('abort', () => resolve({ allow: false, reason: 'The turn was stopped, so it was not done.' }), { once: true })
+      )
+      const verdict = await Promise.race([reach.approve(use, controller.signal), stopped])
+      return verdict.allow ? { behavior: 'allow', updatedInput: input } : { behavior: 'deny', message: verdict.reason }
+    } catch (error) {
+      log.error(`A use of the computer could not be decided: ${error instanceof Error ? error.message : String(error)}`)
+      return { behavior: 'deny', message: 'It could not be approved.' }
+    } finally {
+      asking.delete(controller)
+    }
+  }
+
+  /** Withdraw the questions waiting for the person: the turn they belong to is over. */
+  function withdraw(): void {
+    for (const controller of asking) controller.abort()
+    asking.clear()
   }
 
   void begin()
@@ -303,6 +368,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
     },
     interrupt() {
       if (closed || unanswered.size === 0) return
+      withdraw()
       interrupting = true
       write({ type: 'control_request', request_id: randomUUID(), request: { subtype: 'interrupt' } })
     },

@@ -13,7 +13,7 @@ import {
 } from '@repo/protocol'
 import { z } from 'zod'
 import type { EngineRoom } from '../engines/engines.ts'
-import type { Harness, Session, SessionEvent } from '../ports/harness.ts'
+import type { Harness, Reach, Session, SessionEvent } from '../ports/harness.ts'
 import type { Log } from '../ports/log.ts'
 import type { Records } from '../ports/records.ts'
 import type { UserSettings } from '../settings/settings.ts'
@@ -63,6 +63,12 @@ export interface Abilities {
   instructions: string
   /** What every session must keep in mind, such as decisions already made and widgets saved. Read each time a session opens. */
   standing?(role: 'orchestrator' | 'thread'): string | undefined
+  /** The person's computer as a thread reaches it, its questions going where `showing` says. */
+  reach?(showing: () => Showing): Reach | undefined
+  /** Changes when what a thread is given changes, such as its access to the computer: its session is then opened again. */
+  version?(): string
+  /** Something the person said that answers a question on screen, taken before any turn. True when it did. */
+  hear?(said: string): boolean
 }
 
 export interface ChannelOptions {
@@ -333,24 +339,22 @@ export function createChannel(options: ChannelOptions): Channel {
     const thread = registry.get(runtime.thread)
     const persona = activePersona()
     const profile = memory?.profile()
-    const key = JSON.stringify([engine.id, persona.id, persona.name, persona.stance, server, profile?.version ?? null])
+    const key = JSON.stringify([engine.id, persona.id, persona.name, persona.stance, server, profile?.version ?? null, abilities?.version?.() ?? null])
     if (runtime.live?.key === key) return runtime.live.session
     end(runtime.live)
     const kind = thread?.kind ?? 'topic'
+    const showing = (): Showing => ({
+      thread: runtime.thread,
+      turn: runtime.answering?.exchange.turn,
+      slot: kind === 'aside' ? 'margin' : 'stage',
+      focused: registry.focused()?.id === runtime.thread
+    })
     const grant = abilities?.grant(
-      [
-        ...abilities.threadTools(
-          () => ({
-            thread: runtime.thread,
-            turn: runtime.answering?.exchange.turn,
-            slot: kind === 'aside' ? 'margin' : 'stage',
-            focused: registry.focused()?.id === runtime.thread
-          }),
-          persona.stance
-        ),
-        answerTool(runtime)
-      ].map((tool) => (SPOKEN_FIRST.has(tool.definition.name) ? speakFirst(runtime, tool) : tool))
+      [...abilities.threadTools(showing, persona.stance), answerTool(runtime)].map((tool) =>
+        SPOKEN_FIRST.has(tool.definition.name) ? speakFirst(runtime, tool) : tool
+      )
     )
+    const computer = abilities?.reach?.(showing)
     const earlier = recapFor(runtime.thread)
     const instructions = threadInstructions({
       persona,
@@ -361,9 +365,13 @@ export function createChannel(options: ChannelOptions): Channel {
       ...(abilities ? { abilities: [abilities.instructions, abilities.standing?.('thread')].filter(Boolean).join('\n\n') } : {})
     })
     // A thread may search the web and read pages with the harness's own tools.
-    const session = engine.open(
-      grant ? { role: 'thread', instructions, tools: { url: server, token: grant.token }, web: true } : { role: 'thread', instructions, web: true }
-    )
+    const session = engine.open({
+      role: 'thread',
+      instructions,
+      web: true,
+      ...(grant ? { tools: { url: server, token: grant.token } } : {}),
+      ...(computer ? { computer } : {})
+    })
     const live: Live = { session, key, grant, knownSince: earlier[0]?.at ?? now().toISOString() }
     runtime.live = live
     session.onEvent((event) => hearThread(runtime, live, event))
@@ -683,6 +691,8 @@ export function createChannel(options: ChannelOptions): Channel {
 
   return {
     say(text, language) {
+      // A yes or a no to a question on screen answers it: the turn that asked goes on, and no new one starts.
+      if (abilities?.hear?.(text)) return current?.exchange.turn ?? newId()
       memory?.wake()
       const persona = activePersona()
       const exchange: Exchange = { turn: newId(), at: now().toISOString(), persona: persona.id, said: text, replied: '', outcome: 'running' }

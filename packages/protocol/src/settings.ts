@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { accessSchema, DEFAULT_ACCESS } from './access.ts'
 import { personaIdSchema, personaSchema } from './personas.ts'
 
 /**
@@ -24,6 +25,8 @@ export const settingsSchema = z.object({
       /** The model the answers use, by harness id. A harness left out answers with its default model. */
       models: z.record(z.string().min(1).max(64), z.string().min(1).max(100)).default({})
     })
-    .default({ models: {} })
+    .default({ models: {} }),
+  /** What the assistant may reach on the computer its core runs on, and what it asks first. */
+  access: accessSchema.default(DEFAULT_ACCESS)
 })
 export type Settings = z.infer<typeof settingsSchema>

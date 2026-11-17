@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { type DeviceSettingsChange, isShortcut, shortcutClash } from '@repo/client'
 import { color, frame } from '@repo/tokens'
-import { app, BrowserWindow, ipcMain, nativeTheme, session, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, session, shell } from 'electron'
 import {
   type About,
   APP_CHANNELS,
@@ -252,6 +252,19 @@ function start(): void {
   ipcMain.handle(APP_CHANNELS.openReleases, async () => {
     const page = releasesPage()
     if (page) await shell.openExternal(page)
+  })
+  // Folders and files for the assistant are picked by the user in the system's own picker, never typed by the window.
+  ipcMain.handle(APP_CHANNELS.filesPick, async (_event, kind: 'folder' | 'file') => {
+    const picked = await dialog.showOpenDialog(window, {
+      title: kind === 'folder' ? 'Give access to folders' : 'Give access to files',
+      buttonLabel: 'Give access',
+      properties: [kind === 'folder' ? 'openDirectory' : 'openFile', 'multiSelections']
+    })
+    return picked.canceled ? [] : picked.filePaths
+  })
+  // Shown in its folder, never opened: opening a file could run it.
+  ipcMain.handle(APP_CHANNELS.filesReveal, (_event, path: string) => {
+    if (typeof path === 'string' && path !== '') shell.showItemInFolder(path)
   })
   ipcMain.handle(APP_CHANNELS.updateState, () => updater.state())
   ipcMain.handle(APP_CHANNELS.updateCheck, () => updater.check())

@@ -22,12 +22,14 @@
     "@repo/tokens": "workspace:*",
     "class-variance-authority": "catalog:",
     "clsx": "catalog:",
+    "d3-geo": "catalog:",
     "motion": "catalog:",
     "tailwind-merge": "catalog:",
     "tailwindcss": "catalog:"
   },
   "devDependencies": {
     "@repo/tsconfig": "workspace:*",
+    "@types/d3-geo": "catalog:",
     "@types/react": "catalog:",
     "react": "catalog:",
     "vitest": "catalog:"

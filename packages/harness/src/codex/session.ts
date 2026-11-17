@@ -1,6 +1,8 @@
 import type { ChildProcess } from 'node:child_process'
 import { mkdir } from 'node:fs/promises'
-import type { Log, Role, Session, SessionRequest } from '@repo/core'
+import type { ComputerUse, Log, Role, Session, SessionRequest } from '@repo/core'
+import { absolute } from '../computer/paths.ts'
+import { outsideScope } from '../computer/scope.ts'
 import { type Cli, NotInstalled } from '../process/cli.ts'
 import { createSessionEvents } from '../process/events.ts'
 import { asArray, asObject, asString, type JsonObject } from '../process/json.ts'
@@ -8,7 +10,7 @@ import { readJsonLines, writeJsonLine } from '../process/json-lines.ts'
 import { KEPT_OUTPUT, lastLines, saysSignedOut } from '../process/output.ts'
 import { platform } from '../process/platform/index.ts'
 import { start } from '../process/run.ts'
-import { appServerArguments, TOOL_SERVER, threadSettings, userToolServers } from './isolation.ts'
+import { appServerArguments, shellAllowed, TOOL_SERVER, threadSettings, userToolServers } from './isolation.ts'
 import { codexHome, codexModels } from './models.ts'
 import { SIGNED_OUT } from './status.ts'
 
@@ -28,6 +30,9 @@ const CLOSE_GRACE_MS = 1500
 const CLIENT = { name: 'core', title: 'Core', version: '1' }
 
 const text = (value: string) => [{ type: 'text', text: value, text_elements: [] }]
+
+/** A command as Codex gives it, a line or its words, as one line to show the person. */
+const commandLine = (value: unknown) => (Array.isArray(value) ? value.map(String).join(' ') : typeof value === 'string' ? value : '')
 
 /**
  * A live session with Codex, run as a server: requests and notifications go both ways as JSON lines, in
@@ -57,6 +62,13 @@ export function openSession(request: SessionRequest, context: SessionContext): S
   let paragraphDue = false
   let errorOutput = ''
 
+  /** The files each change under way touches, by its item: Codex names them when the change starts, not when it asks. */
+  const changes = new Map<string, ComputerUse>()
+  /** Questions to the core about a use of the computer, waiting for the person: withdrawn when the turn stops. */
+  const asking = new Set<AbortController>()
+  const scope = request.computer?.scope()
+  const shell = shellAllowed(scope)
+
   let lastCall = 0
   const calls = new Map<number, { resolve(result: unknown): void; reject(error: Error): void }>()
 
@@ -75,7 +87,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
       const home = codexHome(launch.env)
       const [models, userServers] = await Promise.all([codexModels(home, context.models), userToolServers(home), mkdir(context.folder, { recursive: true })])
       if (closed) return
-      const running = start(launch.command, appServerArguments(userServers), { cwd: context.folder, env: launch.env })
+      const running = start(launch.command, appServerArguments(userServers, shell), { cwd: context.folder, env: launch.env })
       child = running
       running.stderr?.setEncoding('utf8').on('data', (chunk: string) => {
         errorOutput = (errorOutput + chunk).slice(-KEPT_OUTPUT)
@@ -89,7 +101,13 @@ export function openSession(request: SessionRequest, context: SessionContext): S
       writeJsonLine(running.stdin, { method: 'initialized' })
       const opened = await call(
         'thread/start',
-        threadSettings({ folder: context.folder, model: request.model ?? models[request.role], instructions: request.instructions, tools: request.tools })
+        threadSettings({
+          folder: context.folder,
+          model: request.model ?? models[request.role],
+          instructions: request.instructions,
+          tools: request.tools,
+          scope: shell ? scope : undefined
+        })
       )
       thread = asString(asObject(asObject(opened)?.thread)?.id) ?? ''
       if (thread === '') throw new Error('it did not open a conversation.')
@@ -116,6 +134,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
 
   function shut(): void {
     closed = true
+    withdraw()
     const running = child
     child = undefined
     for (const pending of calls.values()) pending.reject(new Error('Codex stopped.'))
@@ -152,6 +171,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
 
   function interrupt(): void {
     if (closed) return
+    withdraw()
     if (turn === undefined) {
       // Nothing to interrupt by name yet, when a message is on its way to start a turn.
       interruptDue = undelivered > 0
@@ -194,25 +214,47 @@ export function openSession(request: SessionRequest, context: SessionContext): S
     }
     const params = asObject(message.params) ?? {}
     // A request of Codex's own, which waits for an answer.
-    if (message.id !== undefined && method !== undefined) return void writeJsonLine(child?.stdin, { id: message.id, ...answer(method, params) })
+    if (message.id !== undefined && method !== undefined) {
+      const id = message.id
+      return void Promise.resolve(answer(method, params)).then((reply) => {
+        if (!closed) writeJsonLine(child?.stdin, { id, ...reply })
+      })
+    }
     if (method !== undefined) notified(method, params)
   }
 
+  type Reply = { result: unknown } | { error: { code: number; message: string } }
+
   /**
-   * What Codex is told when it asks. Nothing of its own may run: commands and file changes are declined.
-   * It asks before calling a tool server's tool too: the core's are accepted, since the core decides for
-   * itself when the call arrives, and any other server's are declined.
+   * What Codex is told when it asks. A command or a file change is checked against what the person granted,
+   * then put to the core, which has the person approve it when they asked to; without access to the computer,
+   * every one is declined. It asks before calling a tool server's tool too: the core's are accepted, since the
+   * core decides for itself when the call arrives, and any other server's are declined.
    */
-  function answer(method: string, params: JsonObject): { result: unknown } | { error: { code: number; message: string } } {
+  function answer(method: string, params: JsonObject): Reply | Promise<Reply> {
+    const folder = asString(params.cwd) ?? (shell && scope?.home ? scope.home : context.folder)
     switch (method) {
       case 'item/commandExecution/requestApproval':
-      case 'item/fileChange/requestApproval':
+        return decide({ action: 'run', tool: 'shell', paths: [folder], command: commandLine(params.command) }).then((yes) => ({
+          result: { decision: yes ? 'accept' : 'decline' }
+        }))
+      case 'item/fileChange/requestApproval': {
+        const use = changes.get(asString(params.itemId) ?? '')
+        return decide(use).then((yes) => ({ result: { decision: yes ? 'accept' : 'decline' } }))
+      }
       case 'item/permissions/requestApproval':
         return { result: { decision: 'decline' } }
       // The same questions, as older versions ask them.
       case 'execCommandApproval':
-      case 'applyPatchApproval':
-        return { result: { decision: 'denied' } }
+        return decide({ action: 'run', tool: 'shell', paths: [folder], command: commandLine(params.command) }).then((yes) => ({
+          result: { decision: yes ? 'approved' : 'denied' }
+        }))
+      case 'applyPatchApproval': {
+        const paths = Object.keys(asObject(params.fileChanges) ?? {}).map((path) => absolute(path, folder))
+        return decide(paths.length > 0 ? { action: 'change', tool: 'apply_patch', paths } : undefined).then((yes) => ({
+          result: { decision: yes ? 'approved' : 'denied' }
+        }))
+      }
       case 'mcpServer/elicitation/request':
         return { result: params.serverName === TOOL_SERVER ? { action: 'accept', content: {} } : { action: 'decline', content: null } }
       case 'item/tool/requestUserInput':
@@ -222,8 +264,38 @@ export function openSession(request: SessionRequest, context: SessionContext): S
     }
   }
 
+  /** Whether a use of the computer may go ahead: within what was granted, and approved when it must be. */
+  async function decide(use: ComputerUse | undefined): Promise<boolean> {
+    const reach = request.computer
+    if (!shell || !reach || !use) return false
+    if (await outsideScope(use, reach.scope(), [context.folder])) return false
+    const controller = new AbortController()
+    asking.add(controller)
+    const stopped = new Promise<boolean>((resolve) => controller.signal.addEventListener('abort', () => resolve(false), { once: true }))
+    try {
+      return (await Promise.race([reach.approve(use, controller.signal).then((verdict) => verdict.allow), stopped])) === true
+    } catch {
+      return false
+    } finally {
+      asking.delete(controller)
+    }
+  }
+
+  function withdraw(): void {
+    for (const controller of asking) controller.abort()
+    asking.clear()
+  }
+
   function notified(method: string, params: JsonObject): void {
     const item = asObject(params.item) ?? {}
+    if (method === 'item/started' && item.type === 'fileChange') {
+      const touched = asArray(item.changes).map(asObject)
+      const kinds = touched.map((change) => asString(asObject(change?.kind)?.type) ?? asString(change?.kind))
+      const base = shell && scope?.home ? scope.home : context.folder
+      const paths = touched.map((change) => absolute(asString(change?.path) ?? '.', base))
+      const action = kinds.every((kind) => kind === 'add') ? 'create' : kinds.every((kind) => kind === 'delete') ? 'delete' : 'change'
+      if (paths.length > 0) changes.set(asString(item.id) ?? '', { action, tool: 'apply_patch', paths })
+    }
     const ours = item.type === 'mcpToolCall' && item.server === TOOL_SERVER ? asString(item.tool) : undefined
     switch (method) {
       case 'turn/started':

@@ -7,7 +7,7 @@ import { type ScriptedHarness, scriptedHarness } from '../replay/scripted-harnes
 import { createUserSettings } from '../settings/settings.ts'
 import { createTools } from '../tools/tools.ts'
 import { createScreen } from '../views/screen.ts'
-import { createChannel, EXCHANGE } from './channel.ts'
+import { type Abilities, createChannel, EXCHANGE } from './channel.ts'
 import { SPEAK_FIRST } from './instructions.ts'
 
 interface Setup {
@@ -15,9 +15,11 @@ interface Setup {
   records?: ReturnType<typeof memoryRecords>
   /** Whether a tool server runs: with none, one session answers everything. */
   server?: boolean
+  /** More of what sessions can do: the computer. */
+  more?: Partial<Abilities>
 }
 
-function setup({ harness = scriptedHarness(), records = memoryRecords(), server = true }: Setup = {}) {
+function setup({ harness = scriptedHarness(), records = memoryRecords(), server = true, more = {} }: Setup = {}) {
   let ids = 0
   const newId = () => `id-${++ids}`
   const settings = createUserSettings(records, [
@@ -45,7 +47,8 @@ function setup({ harness = scriptedHarness(), records = memoryRecords(), server 
           : []),
         { definition: { name: 'ui_render', description: '', inputSchema: {} }, run: (input) => screen.show(input, showing()) }
       ],
-      instructions: 'THE SCREEN'
+      instructions: 'THE SCREEN',
+      ...more
     }
   })
   const events: Event[] = []
@@ -527,5 +530,45 @@ describe('the greeting', () => {
     await settled()
     harness.sessions[0]?.reply('Good morning.')
     expect(channel.greet()).toBeUndefined()
+  })
+})
+
+describe('the computer', () => {
+  const reach = { scope: () => ({ places: [], computer: 'off' as const }), approve: async () => ({ allow: true as const }) }
+
+  it('is given to a thread, whose session opens again when what it may reach changes', async () => {
+    let version = 'one'
+    const { channel, harness, call } = setup({ more: { reach: () => reach, version: () => version } })
+    channel.say('Look at my notes')
+    await settled()
+    await call(0, 'thread_open', { title: 'Notes', kind: 'topic' })
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+    expect(harness.sessions[1]?.request.computer).toBe(reach)
+    harness.sessions[1]?.reply('Done.')
+
+    version = 'two'
+    const thread = channel.threads().threads[0]?.id ?? ''
+    channel.say('And again')
+    await settled()
+    await call(0, 'thread_send', { thread })
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+    expect(harness.sessions[1]?.closed).toBe(true)
+    expect(harness.sessions[2]?.request).toMatchObject({ role: 'thread', computer: reach })
+  })
+
+  it('takes an answer to a question on screen, and starts no turn for it', async () => {
+    const heard: string[] = []
+    const { channel, harness, events } = setup({ more: { hear: (said) => heard.push(said) > 0 && said === 'Allow' } })
+    channel.say('Allow')
+    await settled()
+    expect(heard).toEqual(['Allow'])
+    expect(harness.sessions).toHaveLength(0)
+    expect(events.some((event) => event.name === 'turn.started')).toBe(false)
+
+    channel.say('Something else')
+    await settled()
+    expect(harness.sessions).toHaveLength(1)
   })
 })

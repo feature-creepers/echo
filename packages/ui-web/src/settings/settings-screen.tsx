@@ -1,6 +1,7 @@
 import type { Client, MemoryState } from '@repo/client'
 import type { CommandInput, PersonaId, Settings } from '@repo/protocol'
 import { type ReactNode, useEffect, useState } from 'react'
+import { AccessSection } from '../access/access-section.tsx'
 import type { DeviceSpeech } from '../audio/use-speech.ts'
 import { MemorySection } from '../memory/memory-section.tsx'
 import { PersonasForm } from '../personas/personas-form.tsx'
@@ -14,7 +15,7 @@ import { ModelsSection } from './models-section.tsx'
 import { ShortcutsSection } from './shortcuts-section.tsx'
 import { VoiceSection } from './voice-section.tsx'
 
-export const SETTINGS_SECTIONS = ['general', 'voice', 'microphone', 'shortcuts', 'personalities', 'models', 'memory', 'about'] as const
+export const SETTINGS_SECTIONS = ['general', 'voice', 'microphone', 'shortcuts', 'personalities', 'models', 'access', 'memory', 'about'] as const
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number]
 
 const TITLES: Record<SettingsSection, string> = {
@@ -24,6 +25,7 @@ const TITLES: Record<SettingsSection, string> = {
   shortcuts: 'Shortcuts',
   personalities: 'Personalities',
   models: 'Models',
+  access: 'Access',
   memory: 'Memory',
   about: 'Updates & about'
 }
@@ -34,7 +36,7 @@ const TITLES: Record<SettingsSection, string> = {
  */
 const GROUPS: { title?: string; sections: SettingsSection[] }[] = [
   { title: 'This computer', sections: ['general', 'voice', 'microphone', 'shortcuts'] },
-  { title: 'Your assistant', sections: ['personalities', 'models', 'memory'] },
+  { title: 'Your assistant', sections: ['personalities', 'models', 'access', 'memory'] },
   { sections: ['about'] }
 ]
 
@@ -77,6 +79,7 @@ export function SettingsScreen({ productName, client, settings, memory, speech, 
     shortcuts: `The keys that call ${productName}. Click one, then press the keys you want.`,
     personalities: 'What you call each personality, and which one answers. A name is what you say to talk to it.',
     models: `${productName} runs on an AI program you already have, signed in with your own account. Choose the model it answers with: these choices follow you, not this computer.`,
+    access: `What ${productName} may reach on this computer: its own folder, the folders and files you give it, or everything. It is held to this on every use, whatever it is asked.`,
     memory: `${productName} keeps every word of your conversations, and while it sleeps it works out what is worth remembering about you. Here is what it knows, where it learned it, and when it sleeps.`,
     about: `The version of ${productName} on this computer, and its updates.`
   }
@@ -128,6 +131,7 @@ export function SettingsScreen({ productName, client, settings, memory, speech, 
             />
           )}
           {section === 'models' && <ModelsSection client={client} settings={settings} />}
+          {section === 'access' && <AccessSection client={client} settings={settings} productName={productName} />}
           {section === 'memory' && <MemorySection memory={memory} productName={productName} />}
           {section === 'about' && <AboutSection productName={productName} />}
         </Block>

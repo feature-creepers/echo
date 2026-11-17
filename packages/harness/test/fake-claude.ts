@@ -91,12 +91,13 @@ function session(): void {
   const said = (message: Message) => String((message.message as Message | undefined)?.content ?? '')
 
   function init(): void {
-    const tools = flag('--mcp-config') === undefined ? [] : ['mcp__core__ui_render']
+    const given = (flag('--tools') ?? '').split(',').filter((tool) => tool !== '' && !['WebSearch', 'WebFetch'].includes(tool))
+    const tools = [...(flag('--mcp-config') === undefined ? [] : ['mcp__core__ui_render']), ...given]
     print({
       type: 'system',
       subtype: 'init',
       tools: process.env.FAKE_LEAK ? [...tools, 'Bash'] : tools,
-      mcp_servers: tools.length > 0 ? [{ name: 'core', status: process.env.FAKE_TOOL_SERVER_STATUS ?? 'connected' }] : [],
+      mcp_servers: flag('--mcp-config') !== undefined ? [{ name: 'core', status: process.env.FAKE_TOOL_SERVER_STATUS ?? 'connected' }] : [],
       slash_commands: [],
       skills: [],
       ...(process.env.FAKE_LEAK ? { memory_paths: { auto: '/somewhere/memory/' } } : {})
@@ -118,18 +119,18 @@ function session(): void {
   }
 
   /** A call to a tool: written, announced whole, put to the permission prompt, and its result reported. */
-  async function callTool(message: string, index: number, name: string): Promise<Message> {
+  async function callTool(message: string, index: number, name: string, input: Message = { title: 'Hello' }): Promise<Message> {
     const call = id('toolu')
     event(message, { type: 'content_block_start', index, content_block: { type: 'tool_use', id: call, name, input: {} } })
-    event(message, { type: 'content_block_delta', index, delta: { type: 'input_json_delta', partial_json: '{"title":"Hello"}' } })
+    event(message, { type: 'content_block_delta', index, delta: { type: 'input_json_delta', partial_json: JSON.stringify(input) } })
     print({
       type: 'assistant',
-      message: { id: message, role: 'assistant', content: [{ type: 'tool_use', id: call, name, input: { title: 'Hello' } }] },
+      message: { id: message, role: 'assistant', content: [{ type: 'tool_use', id: call, name, input }] },
       parent_tool_use_id: null
     })
     event(message, { type: 'content_block_stop', index })
     const request = id('request')
-    print({ type: 'control_request', request_id: request, request: { subtype: 'can_use_tool', tool_name: name, input: { title: 'Hello' }, tool_use_id: call } })
+    print({ type: 'control_request', request_id: request, request: { subtype: 'can_use_tool', tool_name: name, input, tool_use_id: call } })
     const reply = await new Promise<Message>((resolve) => {
       answered = resolve
     })
@@ -206,6 +207,15 @@ function session(): void {
         interrupted = resolve
       })
       return result([user], { is_error: true, subtype: 'error_during_execution', terminal_reason: 'aborted_tools' })
+    }
+    // "use Read {"file_path":"/x"}": a use of one of the CLI's own tools, put to the permission prompt.
+    const use = /^use (\w+) (\{.*\})$/.exec(text)
+    if (use?.[1] && use[2]) {
+      const decision = await callTool(message, 0, use[1], JSON.parse(use[2]) as Message)
+      const next = id('msg')
+      start(next)
+      await write(next, 0, [decision.behavior === 'allow' ? 'Allowed.' : `Refused: ${String(decision.message)}`])
+      return result([user])
     }
     if (text.includes('foreign')) {
       const decision = await callTool(message, 0, 'Bash')

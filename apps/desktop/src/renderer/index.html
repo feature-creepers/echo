@@ -5,11 +5,12 @@
     <!--
       Scripts come only from the app. What the assistant shows may load pictures and play sound or video from
       https addresses it found (an Image, a Media block): those are data, never code, and never over plain http.
-      HLS playlists are played by Chromium itself, which fetches their segments as media.
+      HLS playlists are played by Chromium itself, which fetches their segments as media. A map's shapes are read
+      through the core; connect-src allows https so a map can still read them itself where there is no core to ask.
     -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws://localhost:*; img-src 'self' https: data: blob:; media-src 'self' https: blob:"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws://localhost:* https:; img-src 'self' https: data: blob:; media-src 'self' https: blob:"
     />
   </head>
   <body>

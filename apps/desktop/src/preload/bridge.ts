@@ -27,6 +27,15 @@ export interface DesktopBridge {
   app: AppBridge
   /** New versions of the app. */
   updates: UpdatesBridge
+  /** The files of this computer, as the user picks them for the assistant. */
+  files: FilesBridge
+}
+
+export interface FilesBridge {
+  /** Ask the user to pick folders or files with the system's own picker. Nothing when they cancel. */
+  pick(kind: 'folder' | 'file'): Promise<string[]>
+  /** Show a folder or a file in the system's file manager. Nothing is opened or run. */
+  reveal(path: string): Promise<void>
 }
 
 export type ShortcutName = keyof DeviceSettings['shortcuts']
@@ -92,7 +101,9 @@ export const APP_CHANNELS = {
   updateChanged: 'updates:changed',
   updateCheck: 'updates:check',
   updateDownload: 'updates:download',
-  updateInstall: 'updates:install'
+  updateInstall: 'updates:install',
+  filesPick: 'files:pick',
+  filesReveal: 'files:reveal'
 } as const
 
 /** The channel the global shortcut to talk comes on. */

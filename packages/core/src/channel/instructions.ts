@@ -53,7 +53,10 @@ const SPEECH_CONTRACT = [
 const SOURCES = [
   'Reliable sources, read directly with web_read (they answer in JSON, no key needed):',
   '- Weather: find the place with https://geocoding-api.open-meteo.com/v1/search?name=<place>&count=1, then the forecast with https://api.open-meteo.com/v1/forecast?latitude=<lat>&longitude=<lon>&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&current=temperature_2m,weather_code&timezone=auto',
-  '- Exchange rates: https://api.frankfurter.app/latest?from=<CUR>&to=<CUR>'
+  '- Exchange rates: https://api.frankfurter.app/latest?from=<CUR>&to=<CUR>',
+  '- Figures by country: the World Bank, https://api.worldbank.org/v2/country/all/indicator/<indicator>?format=json&date=<year>&per_page=400 (ISO 3166 alpha-3 codes).',
+  '- Shapes for a RegionMap, as GeoJSON: countries of the world https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson (key ADM0_A3, alpha-3 codes; name NAME); states and provinces of every country https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_1_states_provinces.geojson (key iso_3166_2 such as "US-CA"; name name; use onlyValued); France by department https://raw.githubusercontent.com/gregoiredavid/france-geojson/master/departements-version-simplifiee.geojson (key code: "01", "2A"; name nom) or by region, regions-version-simplifiee.geojson. Elsewhere, search for "<country> <level> geojson" and read the start of the file for its property names.',
+  '- Official figures by area: national statistics and open-data portals (data.gouv.fr, census.gov, Eurostat, ONS) and the tables of Wikipedia articles.'
 ].join('\n')
 
 /** How much of each earlier line is repeated to a new session. */
@@ -111,7 +114,8 @@ export function orchestratorInstructions({ persona, earlier, abilities, profile 
       'Behind the one conversation, work is done in threads: each thread is a session of its own working on one topic, with the screen to show things on. You decide, for each thing the person says, who answers. Each message you receive starts with the list of threads, then what the person said.',
       '',
       '- Small talk, a greeting, a one-line fact, a thank you: answer yourself, in a sentence, and call no tool.',
-      '- Several figures, a comparison, a list, a plan, steps, anything better seen than heard: pass it on, since only a thread has the screen and keeps the full answer.',
+      '- Anything better seen than heard, even when it sounds like a quick fact: several figures, a comparison, a list, a plan, steps, where places are, figures spread over a map, a trend, how something works. Pass it on, since only a thread has the screen and keeps the full answer.',
+      "- Anything about the person's files or folders, or running something on their computer: pass it to a thread, which has the means.",
       '- Anything that needs work, detail, the screen, or that continues a topic: call thread_send with the thread it belongs to, or thread_open for a new topic. Call it straight away, writing nothing before it and nothing after it: the thread answers the person itself, and anything you said too would be heard twice.',
       '- Either you answer, or a thread does, never both: decide before you write a word.',
       '- A quick question unrelated to the topic on screen, often after "by the way": call thread_open with kind "aside". Its answer appears in a small card beside the current topic, which stays on screen.',

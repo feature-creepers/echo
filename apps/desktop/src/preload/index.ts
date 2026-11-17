@@ -48,6 +48,10 @@ const bridge: DesktopBridge = {
     download: () => ipcRenderer.invoke(APP_CHANNELS.updateDownload),
     install: () => ipcRenderer.invoke(APP_CHANNELS.updateInstall)
   },
+  files: {
+    pick: (kind) => ipcRenderer.invoke(APP_CHANNELS.filesPick, kind),
+    reveal: (path) => ipcRenderer.invoke(APP_CHANNELS.filesReveal, path)
+  },
   speech: {
     status: () => ipcRenderer.invoke(SPEECH_CHANNELS.status),
     async install(onProgress) {

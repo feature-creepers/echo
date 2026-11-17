@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { APPROVALS, COMPUTER_REACH, MAX_PLACES, placeSchema } from '../access.ts'
 import { personaIdSchema } from '../personas.ts'
 import { settingsSchema } from '../settings.ts'
 
@@ -37,6 +38,21 @@ export const settingsCommands = {
    * The model a harness answers with, from those it offers. `null` goes back to its default.
    * Takes effect for the next conversation the assistant opens; the one under way keeps its model.
    */
+  /**
+   * What the assistant may reach on the computer: its own folder, the folders and files granted, the whole
+   * computer, and whether changes are asked first. What is left out keeps its value. A place is checked by the
+   * core, which refuses one that does not exist. Takes effect at once, for the session under way too.
+   */
+  'access.set': {
+    input: z.object({
+      workspace: z.boolean().optional(),
+      places: z.array(placeSchema).max(MAX_PLACES).optional(),
+      computer: z.enum(COMPUTER_REACH).optional(),
+      approvals: z.enum(APPROVALS).optional()
+    }),
+    output: settingsOutput
+  },
+
   'engines.model.set': {
     input: z.object({ harness: z.string().min(1).max(64), model: z.string().min(1).max(100).nullable() }),
     output: settingsOutput

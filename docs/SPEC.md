@@ -533,6 +533,7 @@ The catalogue contains generic building blocks and nothing made for one subject.
 | Layout  | Stack, Row, Grid, Card, Section, Divider                                                                                  |
 | Text    | Heading, Text, Badge, KeyValue, List, Steps, Prose (formatted long text, for when detail is asked for)                    |
 | Data    | Metric, Table, Chart, Timeline, Progress                                                                                  |
+| Maps    | RegionMap (areas coloured by a figure, from a GeoJSON the assistant finds), PlaceMap (places with coordinates)            |
 | Drawing | Drawing (vector shapes the assistant writes itself: lines, circles, paths, labels), Image (a picture from a file or page) |
 | Media   | Media (sound or video from an https stream or file: a radio, a podcast, a song, a clip)                                   |
 | Input   | Choice, Checklist, Field, Button                                                                                          |
@@ -545,6 +546,14 @@ Three rules keep it that way:
 3. **Live data attaches to generic blocks** (section 9.4): a Metric or a Chart bound to a feed, not a dedicated widget.
 
 The catalogue stays small on purpose: it is part of every prompt, and a model composes better from few well-described pieces. When nothing fits, the model falls back to Prose rather than failing.
+
+**Maps.** There is no election map and no weather map: there are two map blocks, and the assistant finds the shapes and the figures for the answer at hand.
+
+- **RegionMap** colours areas by a figure (a choropleth). The assistant gives the https address of a public GeoJSON of the areas (countries, states, departments, districts), the feature property its figures join on (a code), one value per area, and a sequential or diverging scale in the app's colours. A legend explains the colours; pointing at an area shows its name and figure. `onlyValued` picks a few areas out of a larger file.
+- **PlaceMap** puts places with coordinates on a quiet dark street map framed to fit them, or over the areas of a GeoJSON outline; `route` joins them in order. Labels move aside so they never cover one another.
+- **Checked before shown.** The core reads the GeoJSON itself (https only, public addresses only, 25 MB at most, kept a while) and checks the join: a property that does not exist, or codes that match no area, come back to the model with what the codes look like, so it corrects the view rather than showing an empty map. The clients get the shapes from the core, so no page needs to reach the address, and a library widget draws again without it.
+- **Proactive.** The catalogue's description tells the model to offer a map, a chart, a table or a drawing whenever one fits, without being asked, to find the data with its web tools first, and never to say it cannot show one. Threads are told reliable sources of shapes (Natural Earth for countries, states and provinces; the French departments and regions) and of figures (the World Bank, national open-data portals, Wikipedia's tables); the orchestrator passes anything better seen than heard to a thread. Verified with the real Claude Code: "Show me a map of France coloured by department with Macron's share in the 2022 presidential first round" produced a choropleth of the 96 metropolitan departments whose figures all match the official results on data.gouv.fr (to 0.01 point), with the highest, lowest and national figures beside it.
+- **The street map's tiles** are Esri's World Dark Gray Canvas, which needs no key: the tile services that ask for a referrer (CARTO) or a key refuse the app's page, which sends none. Their terms for an app distributed widely are to be checked before release (section 15.2).
 
 **Media.** There is no radio and no video player in the catalogue: there is Media, a block that plays a stream or a file, and the assistant composes the rest around it (what is on, other stations as Buttons, a drawing). It finds the stream's address itself with its web tools: a radio station publishes its stream, and the assistant shows the stream, never a link to the station's web player. Chromium plays MP3, AAC, Ogg, Opus, MP4, WebM and HLS playlists by itself, so no player library is needed. Addresses are https only. In the interface:
 
@@ -730,33 +739,47 @@ Example: "Send this to my landlord now." The critical persona: "I'd hold it. The
 
 ### 12.1 Tools
 
-The harness calls tools served by the core over MCP on the loopback address with a token, as Speak does. The harness's own tools are off, except web search where it exists. A tool either runs in the core, or is forwarded to a device capability of a connected client.
+The harness calls tools served by the core over MCP on the loopback address with a token, as Speak does. The harness's own tools are off, except web search where it exists, and its tools for files and commands within what the user granted (section 12.2). A tool either runs in the core, or is forwarded to a device capability of a connected client.
 
-| Family                        | Purpose                                           | Runs                       | Who may call it   |
-| ----------------------------- | ------------------------------------------------- | -------------------------- | ----------------- |
-| `ui`                          | Render, patch and clear views                     | Core; drawn by clients     | Any session       |
-| `memory`                      | Search, remember, forget                          | Core                       | Any session       |
-| `thread`                      | Open, send, focus, search                         | Core                       | Orchestrator only |
-| `files`                       | Read and write the thread's own files             | Core                       | Threads           |
-| `web`                         | Search and fetch                                  | Core, or the harness's own | Threads           |
-| `calendar` and other services | Read, and write with approval                     | Core                       | Threads           |
-| `device.files`                | The user's own files, within the granted scope    | The device                 | Threads           |
-| `device.media`                | Music player                                      | The device                 | Any session       |
-| `device.system`               | Machine readings, time zone, place                | The device                 | Any session       |
-| `device.cursor`               | The selection, and writing at the cursor          | A desktop                  | Threads           |
-| `device.screen`               | See and operate other apps (Speak's control mode) | A desktop, later           | Threads           |
-| `device.notify`               | Notifications                                     | The device                 | Triggers          |
+| Family                        | Purpose                                           | Runs                                         | Who may call it   |
+| ----------------------------- | ------------------------------------------------- | -------------------------------------------- | ----------------- |
+| `ui`                          | Render, patch and clear views                     | Core; drawn by clients                       | Any session       |
+| `memory`                      | Search, remember, forget                          | Core                                         | Any session       |
+| `thread`                      | Open, send, focus, search                         | Core                                         | Orchestrator only |
+| `files`                       | Read and write the thread's own files             | Core                                         | Threads           |
+| `web`                         | Search and fetch                                  | Core, or the harness's own                   | Threads           |
+| `calendar` and other services | Read, and write with approval                     | Core                                         | Threads           |
+| `device.files`                | The user's own files, within the granted scope    | The harness's own tools, checked by the core | Threads           |
+| `device.media`                | Music player                                      | The device                                   | Any session       |
+| `device.system`               | Machine readings, time zone, place                | The device                                   | Any session       |
+| `device.cursor`               | The selection, and writing at the cursor          | A desktop                                    | Threads           |
+| `device.screen`               | See and operate other apps (Speak's control mode) | A desktop, later                             | Threads           |
+| `device.notify`               | Notifications                                     | The device                                   | Triggers          |
 
 Services such as the calendar are reached through our own tools, so they work on every harness. The proof of concept's route, the claude.ai connector, works with Claude Code only.
 
 ### 12.2 Permissions
 
-The proof of concept is read-only; the new product must write files and, later, act. It takes Speak's model.
+The assistant reaches the user's computer the way a coding agent does: it reads, searches and, with approval, changes files and runs commands, within what the user grants. Enforcement is in the harness adapter and the core, never left to the model.
 
-- **Scope**: what the assistant may touch. By default, its own files and the web. More is granted explicitly, per device.
-- **Approval**: sending a message as the user, deleting for good, paying and passwords always ask first, whatever the persona.
-- **Enforcement** is in the tool server, never left to the model's good behaviour. A client checks the scope again before it runs a device capability, so a device does not depend on a remote core being right.
-- **Undo** for file changes, with a trash per thread.
+**Scopes.** Kept by the core with the user's settings (`access`), shown in Settings, Access, and summed up in the bottom bar beside the AI program's name ("Own folder, 2 folders · asks first"), which opens that section.
+
+| Scope                  | Default | What it allows                                                                                                                                                             |
+| ---------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The assistant's folder | On      | Read and write in `<data>/core/workspace`, where files it makes for the user go                                                                                            |
+| Folders and files      | None    | Each picked with the system's own picker, or given by voice; read only until the user allows changes                                                                       |
+| The whole computer     | Nothing | Read everything, or read and change everything, with a warning that says what that means                                                                                   |
+| Approvals              | Ask     | Ask before each change and command; or allow changes within what was granted. A command is still asked, as it can reach anything, unless the whole computer may be changed |
+
+**Given by voice.** "You can look at my Documents folder" makes the thread call `computer_grant` with the path (`~` for the home folder). The core finds it on disk and shows a card, "Give access to this folder?"; once confirmed, the place is added to the settings and usable in the same turn.
+
+**Enforcement with Claude Code.** A thread is given Claude Code's own Read, Glob and Grep when anything is granted, and Write, Edit and Bash when something may be changed; nothing else of its own. It works in the assistant's folder (or an empty one of its own), each granted folder is named with `--add-dir`, and its settings ask for every use of each tool, so the CLI's own allowances (reads in its working folders, commands it judges harmless) never apply: every use comes to the session's permission prompt (`--permission-prompt-tool stdio`). There the adapter works out what the use touches (a glob's fixed folders included), follows links to the real place, and refuses anything outside the scope, or a change in a read-only place, with a reason the model relays ("outside what the person granted… they can grant more in Settings, Access"). The adapter's own folder, which holds the session's instructions and token, is refused whatever the scope. What is within scope goes to the core, which shows the approval card when the policy asks.
+
+**Enforcement with Codex.** Codex reads and changes files through its command line, and its sandbox confines writing but not reading. A thread gets the command line only when the user lets the assistant read the whole computer; writing is then confined by the sandbox to the folders granted to change (`workspace-write` with those writable roots, or no sandbox when the whole computer may be changed), and each command or file change Codex asks about is checked against the scope and approved like Claude Code's. With anything less, Codex reaches no file, and the Access section says so. Tested against the stand-in only: Codex is not installed where this was written.
+
+**Approvals.** A question is a card composed from the generic blocks (a heading such as "Create this file?", the file or the command as it would run, where, and two buttons), shown where the thread's views go. A press, or a yes or a no said aloud ("yes", "go ahead", "oui, vas-y", "don't allow", the button's own words), answers it without starting a turn, and the turn that asked goes on. Anything else said withdraws the question, as does stopping the turn; ten minutes without an answer count as a no. The card goes once answered.
+
+**Still to do.** Sending a message as the user, deleting for good, paying and passwords: no tool does them yet, and when one does it will always ask first, whatever the policy. Undo for file changes, with a trash per thread. A client checking the scope again before it runs a device capability, for a remote core.
 
 ### 12.3 Privacy
 
@@ -767,6 +790,8 @@ The proof of concept is read-only; the new product must write files and, later, 
 | Voice audio                                                     | Stays on the machine with local engines. With Apple speech, it can reach Apple unless on-device recognition is forced |
 | Speech and embedding models                                     | Downloaded once from their hosts                                                                                      |
 | Weather, news, radio                                            | Public services, as in the proof of concept                                                                           |
+| Files the assistant reads on the computer                       | The harness's vendor, as tool results: only what the user granted (section 12.2)                                      |
+| Map shapes and street tiles                                     | Fetched from public addresses: the GeoJSON by the core, the tiles by the window                                       |
 
 Version 1 has no server of ours, no account and no analytics. With the later service, a user who chooses it has their records on their own hosted instance (section 5).
 
@@ -990,7 +1015,8 @@ packages/catalog/src/
 ├── view.ts                 the view format: spec, patch, version, slot
 ├── catalog.ts              the catalogue, assembled from the component definitions
 ├── components/             one file per group: properties and description, no drawing
-│   └── layout.ts  text.ts  data.ts  drawing.ts  media.ts  input.ts  files.ts
+│   └── layout.ts  text.ts  data.ts  map.ts  drawing.ts  media.ts  input.ts  files.ts
+├── geo.ts                  reading a map's GeoJSON, and checking that its figures find their areas
 ├── actions.ts              local and semantic actions
 ├── feeds.ts                live data a component can bind to: weather, timer, player, readings
 ├── instructions.ts         the catalogue described for a model
@@ -1018,6 +1044,8 @@ packages/core/src/
 │   ├── blobs.ts            files by content hash
 │   ├── devices.ts          capabilities of connected devices
 │   ├── clock.ts            timers, given by the host, to do things later
+│   ├── computer.ts         the assistant's own folder, and what is at a path
+│   ├── web.ts              public addresses the core reads itself: a map's shapes
 │   └── ids.ts  log.ts
 ├── channel/                the single conversation
 │   ├── channel.ts          intake and ordering of turns
@@ -1041,6 +1069,7 @@ packages/core/src/
 ├── views/
 │   ├── views.ts            views per thread and their versions
 │   ├── slots.ts            stage, asides (the margin slot), pinned
+│   ├── maps.ts             the shapes a map names: read, checked against its figures, kept a while
 │   └── feeds.ts            live data kept current without a model
 ├── memory/
 │   ├── memory.ts           createMemory: the one entry point; sleep's work, remembering, correcting, forgetting
@@ -1064,7 +1093,7 @@ packages/core/src/
 ├── settings/               the user's settings: the defaults, then every choice recorded, in order
 ├── triggers/               turns the assistant starts: time, launch, greeting, thread finished
 ├── files/                  each thread's files and their versions
-├── permissions/            scopes and approvals, as policy
+├── access/                 what the assistant may reach on the computer, approval cards answered by click or voice, computer_grant
 ├── devices/                connected devices, the active one, routing of capability requests
 ├── records/                the record types, the "what is true now" readers built on them, and records and search kept in memory
 ├── replay/                 a scripted harness and timers moved by hand, for tests and replays
@@ -1080,6 +1109,7 @@ packages/harness/src/
 │   ├── session.ts          live session over stream-json
 │   ├── one-shot.ts
 │   ├── isolation.ts        the settings that switch off what Claude Code adds by itself
+│   ├── computer-tools.ts   its own tools for files and commands, and what each use touches
 │   └── models.ts
 ├── codex/
 │   ├── adapter.ts
@@ -1087,6 +1117,7 @@ packages/harness/src/
 │   ├── one-shot.ts
 │   ├── isolation.ts
 │   └── models.ts
+├── computer/               paths as the system reaches them, links followed; whether a use is within the scope
 └── api/                    direct API adapters (later)
 ```
 
@@ -1285,13 +1316,15 @@ Built, and checked against the real Claude Code on 17 November 2026:
 - **Media.** The Media block plays radio, podcasts, songs and video from https streams and files, HLS included, through one player for the app: one sound at a time, going on when its view changes, a now-playing control in the title row, the system's media keys, lowered under the assistant's voice and while the user talks (section 9.6). Verified in the built app with the real Claude Code: asked to play Radio FIP, it found the station's MP3 stream and the stream played in the app.
 - **Library.** Any view bookmarked, then browsed, searched, filed in collections, renamed, pinned to the main screen, put in order by dragging (the order kept by the core), shown again, changed by asking, or deleted (section 9.8). Verified in the built app: a widget dragged to the top of the stack stays there after the page is reloaded, and a pinned radio keeps playing in its card. Verified with the real Claude Code: after a restart, "I want to listen to the radio again" brought back the saved radio widget itself, and it played.
 - **Memory.** Every word kept and searchable at once (SQLite FTS5); facts extracted, reconciled and summarised into a profile while the assistant sleeps, at times the user sets; recalled into each request; shown, editable, forgettable and exportable in settings. Verified with the real Claude Code: facts learned in one session answered a question in the next.
+- **Maps.** RegionMap and PlaceMap (section 9.6), checked by the core against the shapes they name, and offered by the assistant whenever they fit. Verified with the real Claude Code: the 2022 first round by department, with every figure matching the official results; the five largest cities of Japan; three landmarks of Paris on a street map.
+- **Access to the computer.** Its own folder by default, folders and files granted in settings or by voice, the whole computer with a warning, and approvals by card or by voice (section 12.2). Verified with the real Claude Code: a folder given by voice, its files read and summed up in the same turn; a file created in the assistant's folder after "Create it" was pressed; a read outside the scope refused by the adapter with its reason; a change in a read-only folder not made; a command asked even when changes were trusted, and run after a spoken yes.
 - **Files, web and briefing.** Documents written as versioned files, previewed with a download button; web search and page reading through the harness's own tools; a greeting and briefing when the app opens.
 - **Settings.** In two groups that say where each is kept. This computer: opening at login, starting in the background, the tray, the data folder; the voice models, each personality's voice, speaking aloud or not, the pace and the speakers; the microphone with a live level, how a pause ends listening, the sounds; the three shortcuts, recorded by pressing them. The assistant (kept by the core): personalities, the model each AI program answers with and the one preferred, memory. Then updates and about.
 - **Packaging and updates.** Windows, macOS and Linux packages, made in CI on each system and downloadable from the run's page; a Windows package can also be made on Linux. A tag publishes them, with update manifests, as a draft GitHub release, which installed copies update from once published (checked with a local feed and a packaged Linux build, not yet with a real release).
 
 Three checks guard the rules of this section: the compiler presets (code that must run anywhere cannot name a Node or DOM API, and a package's internal files cannot be imported from outside), the table in `biome.jsonc` (a forbidden import fails), and pnpm (a package cannot import what its `package.json` does not declare).
 
-Not built yet: vector search and thread summaries (section 10), permissions and approvals for actions (section 12.2), proactive turns other than the briefing (section 7.7), live data feeds for figures (section 9.4), asides leaving by themselves (section 7.5), the phone app and the paid service. Nothing is signed yet.
+Not built yet: vector search and thread summaries (section 10), approvals for sending, paying and deleting for good (section 12.2), proactive turns other than the briefing (section 7.7), live data feeds for figures (section 9.4), asides leaving by themselves (section 7.5), the phone app and the paid service. Nothing is signed yet.
 
 ## 15. Decisions
 
@@ -1319,12 +1352,13 @@ Not built yet: vector search and thread summaries (section 10), permissions and 
 
 ### 15.2 Still open
 
-| Question                            | Recommendation                                                                 | Needed by                                              |
-| ----------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------ |
-| Where the paid service's code lives | A private repository, since this one is MIT                                    | The service design                                     |
-| Phone stack                         | React Native                                                                   | Before `ui-native`; nothing in version 1 depends on it |
-| Model access on a hosted core       | API adapter, unless both vendors' terms allow subscription sign-in on a server | The service design                                     |
-| Light-tier voice on Linux           | Measure Piper against Kokoro, after a licence check                            | Build step 0                                           |
+| Question                            | Recommendation                                                                                                                   | Needed by                                              |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| Where the paid service's code lives | A private repository, since this one is MIT                                                                                      | The service design                                     |
+| Phone stack                         | React Native                                                                                                                     | Before `ui-native`; nothing in version 1 depends on it |
+| Model access on a hosted core       | API adapter, unless both vendors' terms allow subscription sign-in on a server                                                   | The service design                                     |
+| The street map's tiles              | Keep Esri's keyless dark canvas for now; before a wide release, confirm its terms or move to a provider with a key the app ships | Release                                                |
+| Light-tier voice on Linux           | Measure Piper against Kokoro, after a licence check                                                                              | Build step 0                                           |
 
 ## 16. Risks
 

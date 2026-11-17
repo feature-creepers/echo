@@ -1,5 +1,6 @@
-import { CLEAR_TOOL, describeCatalog, SHOW_TOOL, SHOW_TOOL_INPUT } from '@repo/catalog'
+import { CLEAR_TOOL, describeCatalog, SHOW_TOOL, SHOW_TOOL_INPUT, validateView } from '@repo/catalog'
 import type { Event, Result } from '@repo/protocol'
+import { createAccess } from './access/access.ts'
 import { createChannel } from './channel/channel.ts'
 import { createExecutor } from './commands/execute.ts'
 import { type Admission, admit } from './devices/admission.ts'
@@ -10,14 +11,17 @@ import { createMemory } from './memory/memory.ts'
 import { createObjections } from './personas/objection.ts'
 import type { Blobs } from './ports/blobs.ts'
 import type { Timers } from './ports/clock.ts'
+import type { Computer } from './ports/computer.ts'
 import type { Harness } from './ports/harness.ts'
 import type { Log } from './ports/log.ts'
 import type { Records } from './ports/records.ts'
 import type { Search } from './ports/search.ts'
 import type { ToolHost } from './ports/tools.ts'
+import type { Web } from './ports/web.ts'
 import { memorySearch } from './records/memory-search.ts'
 import { createUserSettings } from './settings/settings.ts'
 import { createTools, type Tool } from './tools/tools.ts'
+import { createMaps } from './views/maps.ts'
 import { createScreen, type Showing } from './views/screen.ts'
 
 /** What a core is given by the program that hosts it. */
@@ -40,6 +44,10 @@ export interface CoreOptions {
   newId: () => string
   /** The time now. Left out, the machine's clock. */
   now?: () => Date
+  /** Public web addresses, read by the core itself: the shapes of a map. Left out, maps are shown unchecked. */
+  web?: Web
+  /** The computer the core runs on, whose files the assistant may reach as the user grants. Left out, it reaches none. */
+  computer?: Computer
 }
 
 /** The core as the listeners see it. */
@@ -68,7 +76,7 @@ export function createCore(options: CoreOptions): Core {
   }
 
   const now = options.now ?? (() => new Date())
-  const settings = createUserSettings(options.records)
+  const settings = createUserSettings(options.records, undefined, options.computer?.workspace)
   const engines = createEngineRoom(options.harnesses, {
     preferred: () => settings.read().engines.preferred,
     model: (harness) => settings.read().engines.models[harness]
@@ -76,6 +84,7 @@ export function createCore(options: CoreOptions): Core {
   const tools = createTools(options.newId)
   let toolServer: string | undefined
   const screen = createScreen({ records: options.records, newId: options.newId })
+  const mapsOf = createMaps(options.web)
 
   /** The screen's tools, for one thread: its views go where `showing` says. */
   const screenTools = (showing: () => Showing): Tool[] => [
@@ -86,7 +95,14 @@ export function createCore(options: CoreOptions): Core {
           'Show a view on the screen, composed from the blocks of the catalogue. It replaces what was shown. Answers with the problems to correct when the view is not valid. Say your short answer aloud before calling it, so the view appears while you are heard.',
         inputSchema: SHOW_TOOL_INPUT
       },
-      run: (input) => screen.show(input, showing())
+      async run(input) {
+        // A map is checked against the shapes it names first, so a join that finds nothing comes back to be corrected.
+        const written = validateView((input as { view?: unknown } | undefined)?.view)
+        const maps = written.ok ? await mapsOf.check(written.spec) : { problems: [], notes: [] }
+        if (maps.problems.length > 0) return { ok: false, text: `The view was not shown. Correct this and show it again:\n- ${maps.problems.join('\n- ')}` }
+        const shown = screen.show(input, showing())
+        return shown.ok && maps.notes.length > 0 ? { ...shown, text: `${shown.text} Note: ${maps.notes.join(' ')}` } : shown
+      }
     },
     {
       definition: {
@@ -102,6 +118,7 @@ export function createCore(options: CoreOptions): Core {
   ]
 
   const library = createLibrary({ records: options.records, screen, now, newId: options.newId })
+  const access = createAccess({ settings, screen, computer: options.computer, timers: options.timers })
   const objections = createObjections({ records: options.records, screen, now })
   const files = createFiles({ records: options.records, blobs: options.blobs, now, newId: options.newId })
 
@@ -137,10 +154,16 @@ export function createCore(options: CoreOptions): Core {
         ...files.tools(() => showing().thread),
         ...memory.tools,
         ...library.tools(showing),
+        ...access.tools(showing),
         ...(stance === 'critical' ? objections.tools(showing) : [])
       ],
       instructions: `${describeCatalog()}\n\n${library.instructions}\n\n${memory.instructions}`,
-      standing: (role) => [objections.standing(), library.standing(role)].filter(Boolean).join('\n\n') || undefined
+      standing: (role) =>
+        [objections.standing(), library.standing(role), role === 'thread' ? access.standing() : undefined].filter(Boolean).join('\n\n') || undefined,
+      // The person's files and commands, within what they granted (docs/SPEC.md, section 12.2).
+      reach: (showing) => access.reach(showing),
+      version: () => access.version(),
+      hear: (said) => access.hear(said)
     },
     memory
   })
@@ -203,6 +226,12 @@ export function createCore(options: CoreOptions): Core {
           ? { ok: true, output: { name: file.name, mime: file.mime, format: file.format, version: file.version, text: file.text } }
           : { ok: false, error: { code: 'invalid-input', message: `There is no file "${input.file}".` } }
       },
+      'shapes.read': async (input) => {
+        const read = await mapsOf.regions(input.url)
+        return read.ok
+          ? { ok: true, output: { shapes: read.regions } }
+          : { ok: false, error: { code: 'invalid-input', message: `The map's shapes could not be read: ${read.problem}` } }
+      },
       'library.read': () => ({ ok: true, output: { library: library.read() } }),
       'library.save': (input) => {
         const saved = library.save(input)
@@ -238,6 +267,10 @@ export function createCore(options: CoreOptions): Core {
           return { ok: false, error: { code: 'unknown-harness', message: `There is no harness "${input.harness}".` } }
         }
         return { ok: true, output: { settings: settings.prefer(input.harness) } }
+      },
+      'access.set': async (input) => {
+        const change = await access.set(input)
+        return change.ok ? { ok: true, output: { settings: change.settings } } : change
       },
       'engines.model.set': async (input) => {
         const harness = (await engines.read()).harnesses.find((known) => known.id === input.harness)

@@ -43,6 +43,16 @@ session.send('What is on today?')
 - **`failed`** is the last event. The session is closed by it: its process is stopped and its files removed.
 - Events that happen before `onEvent` is called are kept and delivered.
 
+## The computer
+
+A session given `computer` (a `Reach` from the core) may use the CLI's own tools for files and commands, within what the user granted, and nothing beyond (docs/SPEC.md, section 12.2):
+
+- **Claude Code** gets Read, Glob and Grep when anything is granted, and Write, Edit and Bash when something may be changed. It works in the assistant's own folder, each granted folder is named with `--add-dir`, and every use of these tools goes to the permission prompt, where `src/computer` follows links to the real place and refuses anything outside the scope with its reason. What is within it goes to `Reach.approve`, which the core answers, after asking the user when they want to be asked.
+- **Codex** gets its command line only when the whole computer may be read, since its sandbox confines writing but not reading. Writing is confined to the folders granted to change, and each command or change it asks about is checked and approved the same way.
+- The adapter's own folder, which holds the session's token, is refused whatever the scope. A stopped turn withdraws its questions.
+
+`createComputer` gives the core what it needs to keep the grants: the assistant's own folder, made when missing, and what is at a path.
+
 ## Roles and models
 
 | Role           | Claude Code | Codex                                                                                      |

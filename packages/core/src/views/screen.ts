@@ -82,8 +82,12 @@ export function createScreen({ records, newId }: ScreenOptions): Screen {
     else stage = view
   }
   const remove = (id: string | undefined) => {
+    const target = id ?? stage?.id
     if (id === undefined || stage?.id === id) stage = undefined
     margin = margin.filter((card) => card.id !== id)
+    // A view removed from the stage does not come back when its topic does. An aside's card closed is only put
+    // away: it comes back when its aside is opened again.
+    for (const [thread, view] of byThread) if (view.id === target && view.slot === 'stage') byThread.delete(thread)
   }
   for (const record of records.read([VIEW_SHOWN, VIEW_CLEARED])) {
     if (record.type === VIEW_CLEARED) remove((record.payload as { view?: string }).view)
