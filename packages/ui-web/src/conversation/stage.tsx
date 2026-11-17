@@ -10,7 +10,6 @@ import { Orb } from '../presence/orb.tsx'
 import type { Mood } from '../presence/painter.ts'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
-import { accentStyle } from '../styles/accent.ts'
 import { Margin } from '../view/margin.tsx'
 import { ViewPanel } from '../view/view-panel.tsx'
 import { InputLine } from './input-line.tsx'
@@ -62,6 +61,8 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
   const [problem, setProblem] = useState<string>()
 
   const active = personas.available.find((persona) => persona.id === personas.active) ?? personas.available[0]
+  /** The persona the toggle hands over to: the next one in the list. */
+  const other = personas.available[(personas.available.findIndex((persona) => persona.id === active?.id) + 1) % personas.available.length]
   const last = channel.exchanges.at(-1)
   const running = channel.running !== undefined
   const noEngine = engines !== undefined && engines.active === undefined
@@ -269,40 +270,28 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
           busy={running || speaking.sentence !== undefined}
           onSay={say}
           onStop={stop}
+          pause={
+            speaking.sentence || speaking.paused
+              ? { paused: speaking.paused, onToggle: () => (speaking.paused ? client.speech.resume() : client.speech.pause()) }
+              : undefined
+          }
           talk={canTalk ? { listening, onPress: toggle } : onSetUpVoice ? { listening: false, onPress: onSetUpVoice } : undefined}
+          persona={{
+            name: active.name,
+            next: other && other.id !== active.id ? { name: other.name, accent: other.accent } : undefined,
+            onToggle: () => {
+              if (other && other.id !== active.id) onSwitch(other.id).catch(() => setProblem(refusalCopy('failed')))
+            }
+          }}
         />
-        <div className="flex items-center justify-between gap-4 px-1">
-          <div role="radiogroup" aria-label="Who answers" className="flex items-center gap-1">
-            {personas.available.map((persona) => {
-              const answers = persona.id === personas.active
-              return (
-                // biome-ignore lint/a11y/useSemanticElements: a row of names that reads as buttons, with the behaviour of a radio group
-                <button
-                  key={persona.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={answers}
-                  style={accentStyle(persona.accent)}
-                  onClick={() => {
-                    if (!answers) onSwitch(persona.id).catch(() => setProblem(refusalCopy('failed')))
-                  }}
-                  className={cn(
-                    'flex h-7 items-center gap-2 rounded-sm px-2.5 text-xs transition duration-150 ease-soft',
-                    answers ? 'bg-accent/12 text-text' : 'text-text-faint hover:bg-raised hover:text-text-soft'
-                  )}
-                >
-                  <span className={cn('size-1.5 rounded-full bg-accent transition', answers ? 'shadow-[0_0_8px_var(--accent)]' : 'opacity-40')} />
-                  {persona.name}
-                </button>
-              )
-            })}
-          </div>
+        {/* Which AI program answers: there to read, rarely to press. */}
+        <div className="-mt-1 flex justify-end px-1">
           <button
             type="button"
             onClick={onSetUpEngine}
-            className="flex items-center gap-2 rounded-sm px-2 py-1 font-mono text-label text-text-faint uppercase transition hover:text-text-soft"
+            className="flex items-center gap-1.5 font-mono text-[0.625rem] text-text-faint/70 uppercase tracking-[0.12em] transition hover:text-text-soft"
           >
-            <span className={cn('size-1.5 rounded-full', engines === undefined ? 'bg-text-faint/50' : noEngine ? 'bg-warn' : 'bg-ok')} />
+            <span className={cn('size-1 rounded-full', engines === undefined ? 'bg-text-faint/50' : noEngine ? 'bg-warn' : 'bg-ok/80')} />
             {engines === undefined
               ? 'Looking'
               : noEngine

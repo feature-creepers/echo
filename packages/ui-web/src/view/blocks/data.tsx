@@ -7,10 +7,14 @@ const TREND = { up: '↑', down: '↓', flat: '→' } as const
 
 export function Metric({ props }: { props: BlockProps<'Metric'> }) {
   return (
-    <div className="grid min-w-0 content-start gap-1.5 rounded-lg border border-line bg-surface/70 px-5 py-4">
+    <div className="@container grid min-w-0 content-start gap-1.5 overflow-hidden rounded-lg border border-line bg-surface/70 px-5 py-4">
       <Eyebrow>{props.label}</Eyebrow>
-      <div className="flex items-baseline gap-1.5">
-        <span className={cn('font-medium text-4xl tabular-nums tracking-tight', TONE_TEXT[props.tone])}>{props.value}</span>
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5">
+        <span
+          className={cn('min-w-0 break-words font-medium text-[clamp(1.5rem,18cqi,2.25rem)] tabular-nums leading-none tracking-tight', TONE_TEXT[props.tone])}
+        >
+          {props.value}
+        </span>
         {props.unit && <span className="text-lg text-text-soft">{props.unit}</span>}
         {props.trend && (
           <span className={cn('ml-1 font-mono text-sm', props.trend === 'up' ? 'text-ok' : props.trend === 'down' ? 'text-danger' : 'text-text-faint')}>

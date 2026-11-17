@@ -48,6 +48,12 @@ export function engineVoice(engine: SpeechEngine, style: () => string, fallbackL
   }
 
   return {
+    pause() {
+      void context?.suspend()
+    },
+    resume() {
+      void context?.resume()
+    },
     prepare(sentence) {
       void make(sentence.text, sentence.language)
     },

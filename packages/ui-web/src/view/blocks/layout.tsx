@@ -13,7 +13,8 @@ export function Stack({ props, children }: { props: BlockProps<'Stack'>; childre
 export function Row({ props, children }: { props: BlockProps<'Row'>; children: ReactNode }) {
   const align = { start: 'items-start', center: 'items-center', end: 'items-end', baseline: 'items-baseline' }[props.align]
   const justify = { start: 'justify-start', center: 'justify-center', end: 'justify-end', between: 'justify-between' }[props.justify]
-  return <div className={cn('flex min-w-0', GAP[props.gap], align, justify, props.wrap && 'flex-wrap')}>{children}</div>
+  // A row always wraps when there is no room: a view is drawn in places of every width.
+  return <div className={cn('flex min-w-0 flex-wrap', GAP[props.gap], align, justify)}>{children}</div>
 }
 
 export function Grid({ props, children }: { props: BlockProps<'Grid'>; children: ReactNode }) {
@@ -21,7 +22,7 @@ export function Grid({ props, children }: { props: BlockProps<'Grid'>; children:
   return (
     <div
       className={cn('grid min-w-0', GAP[props.gap])}
-      style={{ gridTemplateColumns: `repeat(auto-fit, minmax(max(10rem, calc((100% - ${props.columns - 1} * 1rem) / ${props.columns})), 1fr))` }}
+      style={{ gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, max(10rem, calc((100% - ${props.columns - 1} * 1rem) / ${props.columns}))), 1fr))` }}
     >
       {children}
     </div>
@@ -33,7 +34,7 @@ export function Card({ props, children }: { props: BlockProps<'Card'>; children:
   return (
     <div
       className={cn(
-        'grid min-w-0 content-start gap-4 rounded-lg border bg-surface/80 p-5 backdrop-blur-sm',
+        'grid min-w-0 content-start gap-4 overflow-hidden rounded-lg border bg-surface/80 p-5 backdrop-blur-sm',
         accent ? 'border-accent/45 shadow-[0_0_60px_-30px_var(--accent)]' : 'border-line'
       )}
     >

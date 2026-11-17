@@ -70,7 +70,7 @@ describe('the speech player', () => {
 
     said[1]?.finish()
     await settled()
-    expect(player.current()).toEqual({ sentence: undefined, waiting: 0 })
+    expect(player.current()).toEqual({ sentence: undefined, waiting: 0, paused: false })
   })
 
   it('cuts what it is saying and forgets the rest when told to stop', async () => {
@@ -84,7 +84,7 @@ describe('the speech player', () => {
     await settled()
 
     expect(said.map((entry) => [entry.text, entry.cancelled])).toEqual([['One.', true]])
-    expect(player.current()).toEqual({ sentence: undefined, waiting: 0 })
+    expect(player.current()).toEqual({ sentence: undefined, waiting: 0, paused: false })
   })
 
   it('cuts a turn that was stopped, and only that turn', async () => {
@@ -147,5 +147,24 @@ describe('the speech player', () => {
 
     expect(said.map((entry) => [entry.text, entry.cancelled])).toEqual([['One.', true]])
     expect(core.listening()).toBe(0)
+  })
+
+  it('holds the next sentences while paused, and carries on when resumed', async () => {
+    const core = fakeChannel()
+    const { voice, said } = fakeVoice()
+    const player = playSpeech(core.channel, voice)
+    core.announce('t1', 'One.')
+    core.announce('t1', 'Two.')
+
+    player.pause()
+    said[0]?.finish()
+    await settled()
+    expect(said.map((entry) => entry.text)).toEqual(['One.'])
+    expect(player.current()).toMatchObject({ paused: true, waiting: 1 })
+
+    player.resume()
+    await settled()
+    expect(said.map((entry) => entry.text)).toEqual(['One.', 'Two.'])
+    expect(player.current()).toMatchObject({ paused: false, sentence: { text: 'Two.' } })
   })
 })

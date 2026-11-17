@@ -1,7 +1,9 @@
+import type { Accent } from '@repo/protocol'
 import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from 'react'
 import { cn } from '../primitives/cn.ts'
-import { MicGlyph, SendGlyph, StopGlyph } from '../primitives/icons.tsx'
+import { MicGlyph, PauseGlyph, PlayGlyph, SendGlyph, StopGlyph } from '../primitives/icons.tsx'
 import { Kbd } from '../primitives/kbd.tsx'
+import { accentStyle } from '../styles/accent.ts'
 
 export interface InputLineProps {
   /** The name of the persona that will answer, for the hint in the empty line. */
@@ -10,15 +12,19 @@ export interface InputLineProps {
   busy: boolean
   onSay(text: string): void
   onStop(): void
+  /** Pausing what is being said, while something is. */
+  pause?: { paused: boolean; onToggle(): void } | undefined
   /** Talking instead of typing, when the device can hear. */
   talk?: { listening: boolean; onPress(): void } | undefined
+  /** The persona that answers, and the one a press of the toggle hands over to. */
+  persona?: { name: string; next: { name: string; accent: Accent } | undefined; onToggle(): void } | undefined
 }
 
 /**
  * The line the user types on. It keeps the keyboard: typing anywhere in the window lands here.
  * Enter sends; Escape stops the answer under way.
  */
-export function InputLine({ name, busy, onSay, onStop, talk }: InputLineProps) {
+export function InputLine({ name, busy, onSay, onStop, talk, persona, pause }: InputLineProps) {
   const [text, setText] = useState('')
   const input = useRef<HTMLInputElement>(null)
 
@@ -47,9 +53,28 @@ export function InputLine({ name, busy, onSay, onStop, talk }: InputLineProps) {
   return (
     <form
       onSubmit={send}
-      className="group flex h-14 items-center gap-3 rounded-xl border border-line-strong bg-surface/90 pr-2.5 pl-5 shadow-[0_18px_60px_-30px_rgb(0_0_0/0.9)] backdrop-blur-md transition duration-200 ease-soft focus-within:border-accent/60 focus-within:shadow-[0_0_0_4px_color-mix(in_oklab,var(--accent)_14%,transparent),0_18px_60px_-30px_rgb(0_0_0/0.9)]"
+      className="group flex h-14 items-center gap-3 rounded-xl border border-line-strong bg-surface/90 pr-2.5 pl-2.5 shadow-[0_18px_60px_-30px_rgb(0_0_0/0.9)] backdrop-blur-md transition duration-200 ease-soft focus-within:border-accent/60 focus-within:shadow-[0_0_0_4px_color-mix(in_oklab,var(--accent)_14%,transparent),0_18px_60px_-30px_rgb(0_0_0/0.9)]"
     >
-      <span aria-hidden="true" className="font-mono text-accent text-lg leading-none">
+      {persona && (
+        <button
+          type="button"
+          onClick={persona.onToggle}
+          disabled={!persona.next}
+          aria-label={persona.next ? `Talking to ${persona.name}. Switch to ${persona.next.name}` : `Talking to ${persona.name}`}
+          title={persona.next ? `${persona.name} · click for ${persona.next.name}` : persona.name}
+          className="group/persona relative flex size-9 shrink-0 items-center justify-center rounded-lg transition duration-200 ease-soft hover:bg-raised"
+        >
+          <span className="absolute inset-[9px] rounded-full border border-accent/70 shadow-[0_0_12px_-2px_var(--accent)] transition duration-300" />
+          <span className="size-2 rounded-full bg-accent shadow-[0_0_8px_var(--accent)] transition duration-300" />
+          {persona.next && (
+            <span
+              style={accentStyle(persona.next.accent)}
+              className="absolute right-1 bottom-1 size-1.5 rounded-full bg-accent opacity-0 transition group-hover/persona:opacity-100"
+            />
+          )}
+        </button>
+      )}
+      <span aria-hidden="true" className={cn('font-mono text-accent text-lg leading-none', !persona && 'pl-2.5')}>
         ›
       </span>
       <input
@@ -79,6 +104,17 @@ export function InputLine({ name, busy, onSay, onStop, talk }: InputLineProps) {
         >
           {talk.listening && <span className="absolute inset-0 animate-ping rounded-md bg-accent/40" />}
           <MicGlyph />
+        </button>
+      )}
+      {pause && (
+        <button
+          type="button"
+          onClick={pause.onToggle}
+          aria-label={pause.paused ? 'Continue' : 'Pause'}
+          title={pause.paused ? 'Continue' : 'Pause'}
+          className="flex size-9 items-center justify-center rounded-md text-text-soft transition duration-150 ease-soft hover:bg-raised hover:text-text"
+        >
+          {pause.paused ? <PlayGlyph /> : <PauseGlyph />}
         </button>
       )}
       {busy ? (

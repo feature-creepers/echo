@@ -72,3 +72,15 @@ export const BackGlyph = () => (
     <path d="M10 3.5 5.5 8l4.5 4.5" />
   </Glyph>
 )
+
+export const PauseGlyph = () => (
+  <Glyph>
+    <path d="M5.5 3.5v9M10.5 3.5v9" />
+  </Glyph>
+)
+
+export const PlayGlyph = () => (
+  <Glyph>
+    <path d="M5 3.5v9l7-4.5z" />
+  </Glyph>
+)

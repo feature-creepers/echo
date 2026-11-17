@@ -11,6 +11,9 @@ export interface DeviceVoice {
   say(sentence: Sentence): { done: Promise<void>; cancel(): void }
   /** Start making the sound of a sentence that will be said soon, so it follows the current one with no gap. */
   prepare?(sentence: Sentence): void
+  /** Hold what is being said, to be resumed where it stopped. A voice that cannot pause leaves these out. */
+  pause?(): void
+  resume?(): void
 }
 
 /** What is being said right now. */
@@ -19,11 +22,16 @@ export interface Speaking {
   sentence: Sentence | undefined
   /** Sentences announced and not yet said. */
   waiting: number
+  /** The user paused: nothing is said until they resume. */
+  paused: boolean
 }
 
 export interface SpeechPlayer extends Followed<Speaking> {
   /** Cut what is being said and forget what was waiting. */
   stop(): void
+  /** Hold what is being said; `resume` carries on from there. */
+  pause(): void
+  resume(): void
   /** Use another voice from the next sentence on. */
   use(voice: DeviceVoice): void
   close(): void
@@ -34,15 +42,16 @@ export interface SpeechPlayer extends Followed<Speaking> {
  * A turn that is stopped is cut at once, and so is everything said when the user starts a new turn.
  */
 export function playSpeech(channel: ChannelState, initial: DeviceVoice): SpeechPlayer {
-  const state = cell<Speaking>({ sentence: undefined, waiting: 0 })
+  const state = cell<Speaking>({ sentence: undefined, waiting: 0, paused: false })
+  let paused = false
   const queue: Sentence[] = []
   let voice = initial
   let playing: { sentence: Sentence; cancel(): void } | undefined
 
-  const publish = () => state.set({ sentence: playing?.sentence, waiting: queue.length })
+  const publish = () => state.set({ sentence: playing?.sentence, waiting: queue.length, paused })
 
   const next = () => {
-    if (playing) return
+    if (playing || paused) return
     const sentence = queue.shift()
     if (!sentence) return publish()
     const saying = voice.say(sentence)
@@ -83,7 +92,24 @@ export function playSpeech(channel: ChannelState, initial: DeviceVoice): SpeechP
   return {
     current: state.current,
     subscribe: state.subscribe,
-    stop: () => drop(() => false),
+    stop: () => {
+      paused = false
+      voice.resume?.()
+      drop(() => false)
+    },
+    pause() {
+      if (paused) return
+      paused = true
+      voice.pause?.()
+      publish()
+    },
+    resume() {
+      if (!paused) return
+      paused = false
+      voice.resume?.()
+      next()
+      publish()
+    },
     use(replacement) {
       voice = replacement
     },
