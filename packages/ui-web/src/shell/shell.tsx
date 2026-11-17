@@ -119,6 +119,18 @@ function Connected({ productName, client, engine }: { productName: string; clien
   // What plays goes quiet under the assistant's voice, and comes back when it stops speaking.
   const player = usePlayer()
   useEffect(() => player.duck('speaking', speaking.sentence !== undefined), [player, speaking.sentence])
+  // The assistant pauses, resumes or stops what plays when asked to: the player is the app's, not a view's.
+  useEffect(
+    () =>
+      client.session.onEvent((event) => {
+        if (event.name !== 'media.control') return
+        const { source } = player.current()
+        if (event.action === 'stop') player.stop()
+        else if (event.action === 'pause') player.pause()
+        else if (source) player.play(source)
+      }),
+    [client, player]
+  )
 
   const controls = useMemo<LibraryControls>(() => ({ library: client.library, open: (widget) => setScreen({ is: 'library', widget }) }), [client])
   const say = useCallback(

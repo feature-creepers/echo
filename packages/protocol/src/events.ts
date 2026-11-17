@@ -4,7 +4,7 @@ import { libraryChangedSchema } from './events/library.ts'
 import { assistantStateChangedSchema, memoryChangedSchema } from './events/memory.ts'
 import { settingsChangedSchema } from './events/settings.ts'
 import { threadsChangedSchema } from './events/threads.ts'
-import { viewClearedSchema, viewShownSchema } from './events/views.ts'
+import { mediaControlSchema, viewClearedSchema, viewShownSchema } from './events/views.ts'
 
 /** Every event a core can send, assembled from the groups in `events/`. */
 export const eventSchema = z.discriminatedUnion('name', [
@@ -17,6 +17,7 @@ export const eventSchema = z.discriminatedUnion('name', [
   enginesChangedSchema,
   viewShownSchema,
   viewClearedSchema,
+  mediaControlSchema,
   threadsChangedSchema,
   memoryChangedSchema,
   assistantStateChangedSchema,

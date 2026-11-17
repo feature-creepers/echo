@@ -33,7 +33,15 @@ export function followView(session: Session): ViewState {
       heard = true
       const now = [...arrived.filter((id) => id !== event.view.id), event.view.id].slice(-ARRIVED)
       if (event.view.slot === 'margin')
-        state.set({ stage, margin: [...margin.filter((card) => card.id !== event.view.id), event.view].slice(-MARGIN), arrived: now })
+        state.set({
+          stage,
+          // An aside keeps one card in the margin, its latest, as the core does.
+          margin: [
+            ...margin.filter((card) => card.id !== event.view.id && (event.view.thread === undefined || card.thread !== event.view.thread)),
+            event.view
+          ].slice(-MARGIN),
+          arrived: now
+        })
       else state.set({ stage: event.view, margin, arrived: now })
     } else if (event.name === 'view.cleared') {
       heard = true

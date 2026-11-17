@@ -95,6 +95,43 @@ describe('the orchestrator', () => {
 })
 
 describe('threads', () => {
+  it('passes two requests said at once to their threads, and says the second answer after the first', async () => {
+    const { channel, harness, spoken, ended, call } = setup()
+    channel.say('Turn the lights off. And what is the weather tomorrow?')
+    await settled()
+    expect((await call(0, 'thread_open', { title: 'Lights', request: 'Turn the lights off.' })).ok).toBe(true)
+    expect((await call(0, 'thread_open', { title: 'Weather', request: 'What is the weather tomorrow?' })).ok).toBe(true)
+    // A third is too much to hear at once.
+    expect((await call(0, 'thread_open', { title: 'More', request: 'And more.' })).ok).toBe(false)
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+
+    expect(harness.sessions[2]?.sent[0]).toContain('What is the weather tomorrow?')
+    harness.sessions[2]?.emit({ type: 'text', text: 'Sunny and mild. ' })
+    harness.sessions[2]?.emit({ type: 'turn-end' })
+    await settled()
+    expect(spoken()).toEqual([])
+    harness.sessions[1]?.emit({ type: 'text', text: 'The lights are off. ' })
+    harness.sessions[1]?.emit({ type: 'turn-end' })
+    await settled()
+
+    expect(spoken()).toEqual(['The lights are off.', 'Sunny and mild.'])
+    expect(ended().map((exchange) => [exchange.said, exchange.replied])).toEqual([
+      ['What is the weather tomorrow?', 'Sunny and mild.'],
+      ['Turn the lights off. And what is the weather tomorrow?', 'The lights are off.']
+    ])
+    expect(channel.threads().threads.every((thread) => thread.state === 'parked')).toBe(true)
+  })
+
+  it('opens a side question as a topic when nothing is on the stage to sit beside', async () => {
+    const { channel, harness, call } = setup()
+    channel.say('By the way, where is Kyoto?')
+    await settled()
+    await call(0, 'thread_open', { title: 'Kyoto', kind: 'aside' })
+    expect(channel.threads().threads).toMatchObject([{ title: 'Kyoto', kind: 'topic' }])
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+  })
+
   it('opens a thread for a topic, which answers aloud and shows its view on the stage', async () => {
     const { channel, harness, spoken, ended, call, screen, events } = setup()
     channel.say('What should I cook tonight?')

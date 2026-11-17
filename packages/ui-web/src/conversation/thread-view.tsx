@@ -18,6 +18,7 @@ const TOOL_TITLES: Record<string, string> = {
   web_read: 'Read a page',
   ui_render: 'Showed a view',
   ui_clear: 'Cleared the screen',
+  media_control: 'Controlled the player',
   answer_write: 'Wrote the full answer',
   thread_open: 'Opened this thread',
   thread_send: 'Passed it to this thread',

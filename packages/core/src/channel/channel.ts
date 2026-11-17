@@ -16,6 +16,7 @@ import type { EngineRoom } from '../engines/engines.ts'
 import type { Harness, Reach, Session, SessionEvent } from '../ports/harness.ts'
 import type { Log } from '../ports/log.ts'
 import type { Records } from '../ports/records.ts'
+import type { ToolResult } from '../ports/tools.ts'
 import type { UserSettings } from '../settings/settings.ts'
 import { languageOf } from '../speech/language.ts'
 import { createSentenceCutter, type SentenceCutter, speakable } from '../speech/sentences.ts'
@@ -161,6 +162,16 @@ interface Turn {
   stopped: boolean
   /** The thread answering it, once the orchestrator has passed it on. */
   routed: Runtime | undefined
+  /**
+   * A second request in the same words ("stop the radio, and what is the weather?") is a turn of its own,
+   * answered by its own thread. It is heard after this one: `next` on the first, `after` on the second.
+   */
+  next: Turn | undefined
+  after: Turn | undefined
+  /** What a second request's thread said while the first was still being answered, said once it is. */
+  held: string[]
+  /** It has spoken and then shown its view: anything it writes after that would only say the answer again. */
+  shown: boolean
 }
 
 /** A live session, and what it was opened for. When any of that changes, the session is replaced. */
@@ -195,7 +206,11 @@ const newTurn = (exchange: Exchange, language: string | undefined): Turn => ({
   steps: new Map(),
   calls: 0,
   stopped: false,
-  routed: undefined
+  routed: undefined,
+  next: undefined,
+  after: undefined,
+  held: [],
+  shown: false
 })
 
 /**
@@ -258,9 +273,14 @@ export function createChannel(options: ChannelOptions): Channel {
     turn.exchange = { ...turn.exchange, replied: turn.exchange.replied ? `${turn.exchange.replied} ${text}` : text }
     replace(turn.exchange)
     if (current !== turn) {
-      unheard.set(turn.exchange.turn, [...(unheard.get(turn.exchange.turn) ?? []), text])
+      if (turn.after !== undefined && current === turn.after) turn.held.push(text)
+      else unheard.set(turn.exchange.turn, [...(unheard.get(turn.exchange.turn) ?? []), text])
       return
     }
+    voice(turn, text)
+  }
+
+  const voice = (turn: Turn, text: string) => {
     turn.heard += 1
     const language = languageOf(text, LANGUAGES, turn.language)
     emit({ type: 'event', name: 'speech.say', turn: turn.exchange.turn, text, ...(language === undefined ? {} : { language }) })
@@ -303,7 +323,15 @@ export function createChannel(options: ChannelOptions): Channel {
     turn.exchange = problem === undefined ? { ...turn.exchange, outcome } : { ...turn.exchange, outcome, problem }
     replace(turn.exchange)
     records.append([{ type: EXCHANGE, payload: turn.exchange }])
-    if (current === turn) current = undefined
+    if (current === turn) {
+      current = undefined
+      // The second request of the same words is heard now: what its thread said meanwhile first.
+      const second = turn.next
+      if (second && !second.stopped) {
+        if (second.exchange.outcome === 'running') current = second
+        for (const text of second.held.splice(0)) voice(second, text)
+      }
+    }
     emit({ type: 'event', name: 'turn.ended', exchange: turn.exchange })
   }
 
@@ -383,20 +411,22 @@ export function createChannel(options: ChannelOptions): Channel {
     const turn = runtime.answering
     switch (event.type) {
       case 'text':
-        // The full answer is the last thing a thread does: what it writes after it would only say the answer again.
-        if (turn && turn.exchange.written === undefined) for (const sentence of turn.cutter.push(event.text)) say(turn, sentence)
+        // The view and the full answer come after the spoken answer: what a thread writes after them would only say
+        // the answer again.
+        if (turn && turn.exchange.written === undefined && !turn.shown) for (const sentence of turn.cutter.push(event.text)) say(turn, sentence)
         return
       case 'tool':
         if (!turn) return
         // What was written before a call is whole: it is said now, while the tool runs, not once more text follows.
         if (event.phase === 'started') for (const sentence of turn.cutter.flush()) say(turn, sentence)
         step(turn, runtime.thread, event)
+        if (event.phase === 'ended' && event.name === SHOW_TOOL && !event.failed && turn.sentences.size > 0) turn.shown = true
         return
       case 'turn-end': {
         if (!turn) return
         // An answer is waiting to be seen when some of it was said while another turn had the stage, or when it
         // finished out of sight before saying anything.
-        const outOfSight = current !== turn
+        const outOfSight = current !== turn && !(turn.after !== undefined && current === turn.after)
         finish(turn, turn.stopped ? 'stopped' : 'done')
         const missed = (unheard.get(turn.exchange.turn)?.length ?? 0) > 0 || (outOfSight && turn.heard === 0)
         runtime.answering = undefined
@@ -457,6 +487,26 @@ export function createChannel(options: ChannelOptions): Channel {
     }
     runtime.queue.push({ turn, text })
     void next(runtime)
+  }
+
+  /**
+   * Pass a request on. The first one passed takes the turn; a second, when the person asked two things at once,
+   * becomes a turn of its own, heard once the first is answered. A third is refused: two is already a lot to hear.
+   */
+  const passOn = (turn: Turn, thread: Thread, request: string): ToolResult => {
+    if (!turn.routed) {
+      route(turn, thread, request)
+      return { ok: true, text: `Thread ${thread.id} is answering. Write nothing more.` }
+    }
+    if (turn.next || turn.routed.thread === thread.id) return { ok: false, text: 'This has already been passed on. Write nothing more.' }
+    const exchange: Exchange = { turn: newId(), at: now().toISOString(), persona: turn.exchange.persona, said: request, replied: '', outcome: 'running' }
+    const second = newTurn(exchange, turn.language)
+    second.after = turn
+    turn.next = second
+    transcript.push(exchange)
+    emit({ type: 'event', name: 'turn.started', exchange })
+    route(second, thread, request)
+    return { ok: true, text: `Thread ${thread.id} is answering that part. Write nothing more.` }
   }
 
   /**
@@ -528,12 +578,13 @@ export function createChannel(options: ChannelOptions): Channel {
         const asked = openInput.safeParse(input)
         if (!turn) return { ok: false, text: 'There is nothing to pass on.' }
         if (!asked.success) return { ok: false, text: 'thread_open takes a title, a kind ("topic" or "aside") and a request.' }
-        if (turn.routed) return { ok: false, text: 'This has already been passed on. Write nothing more.' }
-        // An aside sits beside the topic on the stage when it was asked.
-        const parent = asked.data.kind === 'aside' ? registry.focused()?.id : undefined
-        const thread = registry.open(asked.data.title, asked.data.kind, parent)
-        route(turn, thread, asked.data.request ?? turn.exchange.said)
-        return { ok: true, text: `Thread ${thread.id} is answering. Write nothing more.` }
+        if (turn.next) return { ok: false, text: 'This has already been passed on. Write nothing more.' }
+        // An aside sits beside the topic on the stage. With no topic on the stage, there is nothing to sit beside:
+        // the question is a topic of its own.
+        const beside = registry.focused()
+        const aside = asked.data.kind === 'aside' && beside !== undefined && screen.current() !== undefined
+        const thread = registry.open(asked.data.title, aside ? 'aside' : 'topic', aside ? beside.id : undefined)
+        return passOn(turn, thread, asked.data.request ?? turn.exchange.said)
       }
     },
     {
@@ -555,9 +606,7 @@ export function createChannel(options: ChannelOptions): Channel {
         if (!turn) return { ok: false, text: 'There is nothing to pass on.' }
         const thread = asked.success ? registry.get(asked.data.thread) : undefined
         if (!asked.success || !thread) return { ok: false, text: `There is no such thread. The threads are:\n${registry.index()}` }
-        if (turn.routed) return { ok: false, text: 'This has already been passed on. Write nothing more.' }
-        route(turn, thread, asked.data.request ?? turn.exchange.said)
-        return { ok: true, text: `Thread ${thread.id} is answering. Write nothing more.` }
+        return passOn(turn, thread, asked.data.request ?? turn.exchange.said)
       }
     },
     {
@@ -687,6 +736,7 @@ export function createChannel(options: ChannelOptions): Channel {
     } else {
       finish(turn, 'stopped')
     }
+    if (turn.next) halt(turn.next)
   }
 
   return {
@@ -705,6 +755,11 @@ export function createChannel(options: ChannelOptions): Channel {
         // What is said now takes the stage. A thread that was answering finishes in the background, and its
         // answer waits, marked ready; an answer the orchestrator was still giving is stopped.
         if (!previous.routed) halt(previous)
+        const second = previous.next
+        if (second && second.held.length > 0) {
+          unheard.set(second.exchange.turn, [...(unheard.get(second.exchange.turn) ?? []), ...second.held.splice(0)])
+          if (second.exchange.outcome !== 'running' && second.routed) registry.setState(second.routed.thread, 'ready')
+        }
       }
       if (pending) finish(pending, 'stopped')
       pending = undefined

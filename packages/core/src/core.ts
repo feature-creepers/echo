@@ -1,5 +1,5 @@
-import { CLEAR_TOOL, describeCatalog, SHOW_TOOL, SHOW_TOOL_INPUT, validateView } from '@repo/catalog'
-import type { Event, Result } from '@repo/protocol'
+import { CLEAR_TOOL, describeCatalog, MEDIA_TOOL, SHOW_TOOL, SHOW_TOOL_INPUT, validateView } from '@repo/catalog'
+import { type Event, MEDIA_ACTIONS, type Result } from '@repo/protocol'
 import { createAccess } from './access/access.ts'
 import { createChannel } from './channel/channel.ts'
 import { createExecutor } from './commands/execute.ts'
@@ -113,6 +113,20 @@ export function createCore(options: CoreOptions): Core {
       run: () => {
         screen.clear()
         return { ok: true, text: 'Cleared.' }
+      }
+    },
+    {
+      definition: {
+        name: MEDIA_TOOL,
+        description:
+          'Pause, resume or stop what the media player plays (a radio, a podcast, a video). It plays on when its view is cleared or replaced, so stop it with this when the person asks.',
+        inputSchema: { type: 'object', properties: { action: { type: 'string', enum: [...MEDIA_ACTIONS] } }, required: ['action'] }
+      },
+      run: (input) => {
+        const action = (input as { action?: unknown } | undefined)?.action
+        if (!MEDIA_ACTIONS.includes(action as (typeof MEDIA_ACTIONS)[number])) return { ok: false, text: `action is one of: ${MEDIA_ACTIONS.join(', ')}.` }
+        emit({ type: 'event', name: 'media.control', action: action as (typeof MEDIA_ACTIONS)[number] })
+        return { ok: true, text: 'Done.' }
       }
     }
   ]

@@ -45,8 +45,8 @@ export function followChannel(session: Session): ChannelState {
     const { exchanges } = state.current()
     const at = exchanges.findIndex((line) => line.turn === exchange.turn)
     const next = at >= 0 ? exchanges.map((line, index) => (index === at ? exchange : line)) : [...exchanges, exchange]
-    const running = exchange.outcome === 'running' ? exchange.turn : state.current().running === exchange.turn ? undefined : state.current().running
-    state.set({ exchanges: next, running })
+    // Two turns can run at once (two requests in the same words): the latest still running is the one shown.
+    state.set({ exchanges: next, running: next.findLast((line) => line.outcome === 'running')?.turn })
   }
 
   const stopEvents = session.onEvent((event) => {

@@ -5,6 +5,8 @@ import { signature } from './signature.ts'
 /** The name of the tool that shows a view, and of the one that removes it. */
 export const SHOW_TOOL = 'ui_render'
 export const CLEAR_TOOL = 'ui_clear'
+/** The name of the tool that pauses, resumes or stops the media player. */
+export const MEDIA_TOOL = 'media_control'
 
 /** A small view, complete, to show a model the format and the manner. Its subject is arbitrary on purpose. */
 const EXAMPLE = {
@@ -87,8 +89,8 @@ export function describeCatalog(): string {
     '- Lead with what matters most: one Heading, then the key figure or the answer itself. A view is an answer, not a document: a handful of blocks, no filler, no source list unless asked.',
     '- Group what belongs together in Cards, compare figures with Metrics in a Grid or a Row, show change over time with a Chart, order with Steps or a Timeline.',
     '- When a picture would help, draw it with Drawing: a pictogram, a diagram, a sketch. Keep pictograms simple: a few bold shapes.',
-    '- Figures by area (votes, incomes, prices, populations by country, state, department) go on a RegionMap: find a public GeoJSON of the areas, read a little of it to learn the property that holds each code, then give one value per code. Places with coordinates go on a PlaceMap. Put a Heading above the map and, if useful, the few figures that matter in Metrics beside it.',
-    '- To play something (a radio, a podcast, a video), find the address of the stream itself with your web tools and play it in a Media block. Never show a link to a web player instead.',
+    '- Figures by area (votes, incomes, prices, populations by country, state, department) go on a RegionMap: find a public GeoJSON of the areas, read a little of it to learn the property that holds each code, then give one value per code. Where things are (cities, venues, an itinerary, "where is…", "where are…") goes on a PlaceMap, with the coordinates you know or find: a list alone does not say where. Put a Heading above the map and, if useful, the few figures that matter in Metrics beside it.',
+    '- To play something (a radio, a podcast, a video), find the address of the stream itself with your web tools and play it in a Media block. Never show a link to a web player instead. Do not test the stream first: the player tells the person itself if it does not play. It plays on when its view goes: to pause or stop it, call media_control.',
     '- Colours are roles, not hues: accent for the one thing that matters, ok, warn and danger for states, soft and faint for what is secondary.',
     '- Write real content in the language the person speaks. Never placeholder text.',
     `- If ${SHOW_TOOL} answers with problems, correct the view and call it again.`,

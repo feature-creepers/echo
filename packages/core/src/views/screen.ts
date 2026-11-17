@@ -78,7 +78,9 @@ export function createScreen({ records, newId }: ScreenOptions): Screen {
   let margin: ShownView[] = []
   const place = (view: ShownView) => {
     byThread.set(view.thread ?? '', view)
-    if (view.slot === 'margin') margin = [...margin.filter((card) => card.id !== view.id), view].slice(-MARGIN)
+    // An aside keeps one card in the margin: its latest.
+    if (view.slot === 'margin')
+      margin = [...margin.filter((card) => card.id !== view.id && (view.thread === undefined || card.thread !== view.thread)), view].slice(-MARGIN)
     else stage = view
   }
   const remove = (id: string | undefined) => {

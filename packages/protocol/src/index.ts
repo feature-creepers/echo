@@ -38,6 +38,7 @@ export {
   type Result,
   resultSchema
 } from './envelope.ts'
+export { MEDIA_ACTIONS } from './events/views.ts'
 export { type Event, type EventName, type EventOf, eventSchema } from './events.ts'
 export {
   CLIENT_KINDS,

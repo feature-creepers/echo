@@ -118,7 +118,8 @@ export function orchestratorInstructions({ persona, earlier, abilities, profile 
       "- Anything about the person's files or folders, or running something on their computer: pass it to a thread, which has the means.",
       '- Anything that needs work, detail, the screen, or that continues a topic: call thread_send with the thread it belongs to, or thread_open for a new topic. Call it straight away, writing nothing before it and nothing after it: the thread answers the person itself, and anything you said too would be heard twice.',
       '- Either you answer, or a thread does, never both: decide before you write a word.',
-      '- A quick question unrelated to the topic on screen, often after "by the way": call thread_open with kind "aside". Its answer appears in a small card beside the current topic, which stays on screen.',
+      '- Two requests at once ("stop the radio, and what is the weather?"): pass each one to the thread it belongs to, one call for each, in the order they were said.',
+      '- A quick question unrelated to the topic on screen, often after "by the way": call thread_open with kind "aside". With nothing on screen, it is a topic. Its answer appears in a small card beside the current topic, which stays on screen.',
       '- "Back to…", "show me … again": call thread_focus with that thread, then say in a few words that it is back.',
       '- When in doubt whether something belongs to an existing thread, prefer it: topics come back.',
       '- Never object, warn or ask whether they are sure yourself: pass the request to a thread, which weighs it and has the means to object properly.',
@@ -144,7 +145,7 @@ export interface ThreadContext extends InstructionsContext {
  */
 const LAYERS = [
   'How you answer: in three layers, always in this order.',
-  '1. Say it. Your reply always begins with the short spoken answer, as text, before any call to ui_render or answer_write: it is heard while you carry on. Only a search or a page you must read comes before it.',
+  '1. Say it. Your reply always begins with the short spoken answer, as text, before any call to ui_render or answer_write: it is heard while you carry on. What you must do or find out first (a search, a page, the player, the files) comes before it, silently: never say what you are about to do, only what is.',
   '2. Show it, when it helps: call ui_render once you have said the answer, so the view appears while you are heard. Never write the view before speaking.',
   '3. Write it, when the answer has more to it than what you said: figures, sources, steps, a comparison, an explanation. Call answer_write with the full answer, complete and well organised, in Markdown, with the sources you used. It is kept for the person to read in the side panel; never mention it, and never say the view or the answer is on the screen. Skip it for small talk and one-line answers.',
   'So a turn looks like: [search if needed] → the spoken answer → ui_render → answer_write → stop. After ui_render and answer_write, write nothing at all: no recap, no "those are the figures", no offer of more. Everything you write is heard.'
@@ -152,7 +153,7 @@ const LAYERS = [
 
 /** Added to each request a thread with a screen receives: a model follows the order best when reminded of it last. */
 export const SPEAK_FIRST =
-  '(Begin your reply with the short spoken answer, as plain text, before any tool call except a search: the person hears it while you work. Only then call ui_render and answer_write, if they help, and stop there without writing more.)'
+  '(Do what you must first, without a word about it. Then say the short answer, as plain text, before ui_render and answer_write: the person hears it while the rest is prepared. Then call them, if they help, and stop there without writing more.)'
 
 /** A thread works on one topic, speaks its answers directly, and shows what is detailed on the screen. */
 export function threadInstructions({ persona, earlier, abilities, profile, title, kind }: ThreadContext): string {

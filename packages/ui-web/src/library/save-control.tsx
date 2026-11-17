@@ -11,7 +11,12 @@ import { type LibraryControls, useLibraryControls } from './library-context.ts'
 export interface Saveable {
   id: string
   widget?: string | undefined
+  spec?: unknown
 }
+
+/** A view that asks the person something (a choice to make, an approval) is a moment, not a widget to keep. */
+const asks = (spec: unknown) =>
+  Object.values((spec as { elements?: Record<string, { type?: string }> } | undefined)?.elements ?? {}).some((element) => element.type === 'Choice')
 
 /**
  * The bookmark on every view: one press saves it to the library. Once saved, the same place holds what to do
@@ -19,7 +24,7 @@ export interface Saveable {
  */
 export function SaveControl({ view }: { view: Saveable }) {
   const controls = useLibraryControls()
-  return controls ? <Control view={view} controls={controls} /> : null
+  return controls && !asks(view.spec) ? <Control view={view} controls={controls} /> : null
 }
 
 function Control({ view, controls }: { view: Saveable; controls: LibraryControls }) {

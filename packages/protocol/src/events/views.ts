@@ -13,3 +13,10 @@ export const viewClearedSchema = eventPrefixSchema.extend({
   name: z.literal('view.cleared'),
   view: z.string().min(1).max(64).optional()
 })
+
+/** The assistant pauses, resumes or stops what the media player plays, on every client. */
+export const MEDIA_ACTIONS = ['pause', 'resume', 'stop'] as const
+export const mediaControlSchema = eventPrefixSchema.extend({
+  name: z.literal('media.control'),
+  action: z.enum(MEDIA_ACTIONS)
+})

@@ -19,7 +19,8 @@ const DOING: Record<string, string | undefined> = {
   thread_open: undefined,
   thread_send: undefined,
   thread_focus: undefined,
-  ui_clear: undefined
+  ui_clear: undefined,
+  media_control: undefined
 }
 
 /** The words for a tool at work, or nothing when "Thinking" says it already. */

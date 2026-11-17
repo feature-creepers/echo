@@ -25,7 +25,7 @@ export function Markdown({ text }: { text: string }) {
       blocks.push(
         <pre
           key={key()}
-          className="scroll-quiet overflow-x-auto rounded-md border border-line bg-ground px-3.5 py-3 font-mono text-text-soft text-xs leading-relaxed"
+          className="whitespace-pre-wrap rounded-md border border-line bg-ground px-3.5 py-3 font-mono text-text-soft text-xs leading-relaxed [overflow-wrap:anywhere]"
         >
           {code.join('\n')}
         </pre>

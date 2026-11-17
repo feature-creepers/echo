@@ -174,9 +174,10 @@ export function createAccess({ settings, screen, computer, timers }: AccessOptio
         "You can work with the person's files with your Read, Glob, Grep, Write, Edit and Bash tools, within what they granted:",
         ...lines,
         policy === 'ask'
-          ? 'Every change and every command waits for their approval on screen: before one, say in a few words what you are about to do, then call the tool; it returns once they answered.'
-          : `You may change files within what they granted without asking.${reach === 'write' ? '' : ' A command still waits for their approval on screen: say in a few words what it does first.'}`,
+          ? 'Every change and every command waits for their approval on screen, where it is shown as it will be done: call the tool, which returns once they answered.'
+          : `You may change files within what they granted without asking.${reach === 'write' ? '' : ' A command still waits for their approval on screen, shown as it will run.'}`,
         'file_write keeps a document with the conversation, to show and download. When the person wants a file on their computer, in your folder or one of theirs, write it there with Write.',
+        "These tools are for the person's files and for what they ask you to do on their computer, nothing else: never use them to reach the web, to check a link or a stream, or to look something up. The web tools do that.",
         'Look with Read, Glob and Grep, change with Write and Edit, and use Bash only for what these cannot do. A use outside what they granted is refused with the reason: tell them in a sentence, and that they can grant more in Settings, Access.',
         'When they give you a folder or a file by voice, call computer_grant with its path; they confirm on screen.'
       ].join('\n')

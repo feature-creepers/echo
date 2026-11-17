@@ -218,6 +218,7 @@ describe('threads and the screen through the core', () => {
     expect(core.toolHost.list(token)?.map((tool) => tool.name)).toEqual([
       'ui_render',
       'ui_clear',
+      'media_control',
       'file_write',
       'file_read',
       'memory_search',
