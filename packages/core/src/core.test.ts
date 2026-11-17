@@ -227,10 +227,12 @@ describe('threads and the screen through the core', () => {
       'library_show',
       'library_save',
       'library_update',
-      'library_delete'
+      'library_delete',
+      'answer_write'
     ])
 
     const { EXAMPLE_VIEW } = await import('@repo/catalog')
+    thread?.emit({ type: 'text', text: 'Here is your week. ' })
     expect(await core.toolHost.call(token, 'ui_render', { title: 'The week', view: EXAMPLE_VIEW })).toEqual({ ok: true, text: 'Shown.' })
     expect(events.find((event) => event.name === 'view.shown')).toMatchObject({ view: { title: 'The week', slot: 'stage', thread: expect.any(String) } })
     expect((await run(core, 'view.read', {})).view?.title).toBe('The week')
@@ -263,6 +265,8 @@ describe('the library through the core', () => {
     orchestrator?.emit({ type: 'turn-end' })
     await settled()
     const thread = harness.sessions.at(-1)
+    // A thread says its short answer before it shows anything.
+    thread?.emit({ type: 'text', text: 'Here it is. ' })
     return { orchestrator, thread, token: thread?.request.tools?.token ?? '' }
   }
 

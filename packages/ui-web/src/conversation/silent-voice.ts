@@ -11,9 +11,12 @@ export function silentVoice(msPerCharacter = 55, minimumMs = 1200): DeviceVoice 
       const done = new Promise<void>((resolve) => {
         finish = resolve
       })
-      const timer = window.setTimeout(finish, Math.max(minimumMs, sentence.text.length * msPerCharacter))
+      const ms = Math.max(minimumMs, sentence.text.length * msPerCharacter)
+      const timer = window.setTimeout(finish, ms)
       return {
         done,
+        // Shown at once, for the time it takes to read.
+        heard: Promise.resolve(ms / 1000),
         cancel() {
           window.clearTimeout(timer)
           finish()

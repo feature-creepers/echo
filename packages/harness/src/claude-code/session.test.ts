@@ -80,7 +80,13 @@ describe('a Claude Code session', () => {
     session.send('use a tool')
     await followed.until('turn-end')
 
-    expect(followed.outline()).toEqual(['tool:ui_render:started', 'tool:ui_render:ended', 'text:After', 'text:.', 'turn-end'])
+    // Reported as soon as the call begins, again once its input is written, and ended with what the tool gave back.
+    expect(followed.outline()).toEqual(['tool:ui_render:started', 'tool:ui_render:started', 'tool:ui_render:ended', 'text:After', 'text:.', 'turn-end'])
+    const calls = followed.events.filter((event) => event.type === 'tool')
+    expect(calls[0]).not.toHaveProperty('input')
+    expect(calls[1]).toMatchObject({ input: { title: 'Hello' } })
+    expect(calls[2]).toMatchObject({ phase: 'ended', input: { title: 'Hello' }, output: 'Shown.' })
+    expect(new Set(calls.map((event) => (event.type === 'tool' ? event.call : undefined))).size).toBe(1)
   })
 
   it('starts a new paragraph for the text that follows a tool call', async () => {

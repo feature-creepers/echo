@@ -8,6 +8,7 @@ import { createUserSettings } from '../settings/settings.ts'
 import { createTools } from '../tools/tools.ts'
 import { createScreen } from '../views/screen.ts'
 import { createChannel, EXCHANGE } from './channel.ts'
+import { SPEAK_FIRST } from './instructions.ts'
 
 interface Setup {
   harness?: ScriptedHarness
@@ -108,10 +109,11 @@ describe('threads', () => {
     expect(harness.sessions[0]?.request.web).toBeUndefined()
     expect(thread?.request.instructions).toContain('"Dinner tonight"')
     expect(thread?.request.instructions).toContain('THE SCREEN')
-    expect(thread?.sent).toEqual(['(Now: Tuesday, 17 November 2026, 09:00 (Europe/Paris))\nWhat should I cook tonight?'])
+    expect(thread?.sent).toEqual([`(Now: Tuesday, 17 November 2026, 09:00 (Europe/Paris))\nWhat should I cook tonight?\n\n${SPEAK_FIRST}`])
 
+    thread?.emit({ type: 'text', text: 'A risotto would work. ' })
     expect((await call(1, 'ui_render', { title: 'Risotto', view: EXAMPLE_VIEW })).ok).toBe(true)
-    thread?.reply('A risotto would work.')
+    thread?.emit({ type: 'turn-end' })
 
     expect(spoken()).toEqual(['A risotto would work.'])
     expect(ended()).toMatchObject([{ outcome: 'done', replied: 'A risotto would work.' }])
@@ -159,8 +161,9 @@ describe('threads', () => {
     await call(0, 'thread_open', { title: 'Trip' })
     harness.sessions[0]?.emit({ type: 'turn-end' })
     await settled()
+    harness.sessions[1]?.emit({ type: 'text', text: 'Here is a plan. ' })
     await call(1, 'ui_render', { title: 'Itinerary', view: EXAMPLE_VIEW })
-    harness.sessions[1]?.reply('Here is a plan.')
+    harness.sessions[1]?.emit({ type: 'turn-end' })
 
     channel.say('By the way, what time is it in Montreal?')
     await settled()
@@ -168,13 +171,120 @@ describe('threads', () => {
     harness.sessions[0]?.emit({ type: 'turn-end' })
     await settled()
     expect(harness.sessions[2]?.request.instructions).toContain('side question')
+    harness.sessions[2]?.emit({ type: 'text', text: 'It is two in the morning there. ' })
     await call(2, 'ui_render', { title: 'Montreal', view: EXAMPLE_VIEW })
-    harness.sessions[2]?.reply('It is two in the morning there.')
+    harness.sessions[2]?.emit({ type: 'turn-end' })
 
     expect(screen.current()?.title).toBe('Itinerary')
     expect(screen.margin().map((view) => view.title)).toEqual(['Montreal'])
     const trip = channel.threads().threads.find((thread) => thread.title === 'Trip')
     expect(channel.threads().focus).toBe(trip?.id)
+
+    // The aside sits under the topic it was asked beside, and its card can be brought back once closed.
+    const aside = channel.threads().threads.find((thread) => thread.kind === 'aside')
+    expect(aside?.parent).toBe(trip?.id)
+    screen.clear(screen.margin()[0]?.id)
+    expect(screen.margin()).toEqual([])
+    expect(channel.focus(aside?.id as string)).toBe(true)
+    expect(screen.margin().map((view) => view.title)).toEqual(['Montreal'])
+    expect(screen.current()?.title).toBe('Itinerary')
+    expect(channel.thread(aside?.id as string)).toMatchObject({
+      thread: { title: 'Time in Montreal' },
+      exchanges: [{ replied: 'It is two in the morning there.' }],
+      views: [{ title: 'Montreal' }]
+    })
+  })
+
+  it('never says twice what the orchestrator said before passing a turn on', async () => {
+    const { channel, harness, call, spoken, ended } = setup()
+    channel.greet()
+    await settled()
+    // What the real orchestrator did once: greet, then pass the briefing to a thread, which greeted again.
+    harness.sessions[0]?.emit({ type: 'text', text: 'Hello, good to have you back.' })
+    await call(0, 'thread_open', { title: 'Briefing' })
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+
+    const thread = harness.sessions[1]
+    expect(thread?.sent[0]).toContain('You have already said this aloud: "Hello, good to have you back."')
+    thread?.reply('It is Tuesday, and mild.')
+    // Each speaker's words are cut on their own: the thread's first sentence never runs into the orchestrator's last.
+    expect(spoken()).toEqual(['Hello, good to have you back.', 'It is Tuesday, and mild.'])
+    expect(ended()[0]?.replied).toBe('Hello, good to have you back. It is Tuesday, and mild.')
+  })
+
+  it('says what a thread wrote before a tool call while the tool runs, and never the same sentence twice', async () => {
+    const { channel, harness, call, spoken } = setup()
+    channel.say('Compare Paris and Lyon, and show it')
+    await settled()
+    await call(0, 'thread_open', { title: 'Cities' })
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+    const thread = harness.sessions[1]
+    // The last sentence of a block of text has no text after it: the call that follows tells it is whole.
+    thread?.emit({ type: 'text', text: 'Paris is four times larger.' })
+    expect(spoken()).toEqual([])
+    thread?.emit({ type: 'tool', name: 'ui_render', phase: 'started', call: 'c1' })
+    expect(spoken()).toEqual(['Paris is four times larger.'])
+    // What the real thread did once: after its tool calls, it wrote its answer again.
+    thread?.emit({ type: 'tool', name: 'ui_render', phase: 'ended', call: 'c1', output: 'Shown.' })
+    thread?.reply('\n\nParis is four times larger.')
+    expect(spoken()).toEqual(['Paris is four times larger.'])
+    expect(channel.read(1)[0]?.replied).toBe('Paris is four times larger.')
+  })
+
+  it('sends a view back once when nothing was said yet, so the voice comes first, and takes it the second time', async () => {
+    const { channel, harness, call, screen } = setup()
+    channel.say('Show me the week')
+    await settled()
+    await call(0, 'thread_open', { title: 'Week' })
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+
+    const first = await call(1, 'ui_render', { title: 'Week', view: EXAMPLE_VIEW })
+    expect(first).toMatchObject({ ok: false, text: expect.stringContaining('Write the short spoken answer first') })
+    expect(screen.current()).toBeUndefined()
+    expect((await call(1, 'ui_render', { title: 'Week', view: EXAMPLE_VIEW })).ok).toBe(true)
+    expect(screen.current()?.title).toBe('Week')
+  })
+
+  it('keeps each tool call whole, and the full written answer beside the spoken one', async () => {
+    const { channel, harness, call, events } = setup()
+    channel.say('Compare Paris and Lyon')
+    await settled()
+    harness.sessions[0]?.emit({ type: 'tool', name: 'thread_open', phase: 'started', call: 'c0', input: { title: 'Cities' } })
+    await call(0, 'thread_open', { title: 'Cities' })
+    harness.sessions[0]?.emit({ type: 'tool', name: 'thread_open', phase: 'ended', call: 'c0', output: 'Thread is answering.' })
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+    const thread = harness.sessions[1]
+    thread?.emit({ type: 'tool', name: 'web_search', phase: 'started', call: 'c1' })
+    thread?.emit({ type: 'tool', name: 'web_search', phase: 'started', call: 'c1', input: { query: 'population Paris Lyon' } })
+    thread?.emit({
+      type: 'tool',
+      name: 'web_search',
+      phase: 'ended',
+      call: 'c1',
+      input: { query: 'population Paris Lyon' },
+      output: 'Paris 2.1 M; Lyon 0.52 M'
+    })
+    thread?.emit({ type: 'text', text: 'Paris is about four times larger. ' })
+    expect((await call(1, 'answer_write', { text: '| City | People |\n| Paris | 2.1 M |\n| Lyon | 0.52 M |' })).ok).toBe(true)
+    // Once the full answer is written, a recap in other words is not said.
+    thread?.emit({ type: 'text', text: 'So Paris is the biggest, then Lyon.' })
+    thread?.emit({ type: 'turn-end' })
+
+    const activity = events.flatMap((event) => (event.name === 'activity' ? [event] : []))
+    expect(activity.filter((event) => event.tool === 'web_search').map((event) => event.phase)).toEqual(['started', 'started', 'ended'])
+    expect(events.some((event) => event.name === 'answer.written')).toBe(true)
+
+    const id = channel.threads().threads[0]?.id as string
+    const read = channel.thread(id)
+    expect(read?.exchanges).toMatchObject([{ replied: 'Paris is about four times larger.', written: expect.stringContaining('| Paris | 2.1 M |') }])
+    // The routing call is part of the thread's work too.
+    expect(read?.steps.map((step) => step.tool)).toEqual(['thread_open', 'web_search'])
+    expect(read?.steps[1]).toMatchObject({ input: { query: 'population Paris Lyon' }, output: 'Paris 2.1 M; Lyon 0.52 M', ended: expect.any(String) })
+    expect(channel.thread('nope')).toBeUndefined()
   })
 
   it('brings back an earlier topic, with its view', async () => {
@@ -189,8 +299,9 @@ describe('threads', () => {
       harness.sessions[0]?.emit({ type: 'turn-end' })
       await settled()
       const session = harness.sessions.at(-1)
+      session?.emit({ type: 'text', text: `${title} done. ` })
       await call(harness.sessions.length - 1, 'ui_render', { title, view: EXAMPLE_VIEW })
-      session?.reply(`${title} done.`)
+      session?.emit({ type: 'turn-end' })
     }
     expect(screen.current()?.title).toBe('Form')
 
@@ -226,8 +337,12 @@ describe('threads', () => {
     expect(thread?.state).toBe('ready')
     expect(channel.read(10).find((line) => line.said === 'Find me a recipe')).toMatchObject({ outcome: 'done', replied: 'Let me look. A risotto would do.' })
 
+    // Only what was not heard is said when the thread comes back: "Let me look." was heard already.
     expect(channel.focus(thread?.id as string)).toBe(true)
-    expect(spoken().slice(2)).toEqual(['Let me look.', 'A risotto would do.'])
+    expect(spoken().slice(2)).toEqual(['A risotto would do.'])
+    // Brought back again, nothing more is said.
+    channel.focus(thread?.id as string)
+    expect(spoken()).toHaveLength(3)
     expect(screen.current()?.title).toBe('Risotto')
     expect(channel.threads().threads.find((candidate) => candidate.id === thread?.id)?.state).toBe('parked')
   })

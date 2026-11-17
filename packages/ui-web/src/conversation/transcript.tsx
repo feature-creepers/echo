@@ -1,6 +1,7 @@
 import type { Exchange, Persona } from '@repo/protocol'
 import { useEffect, useRef } from 'react'
 import { accentStyle } from '../styles/accent.ts'
+import { Markdown } from '../view/blocks/markdown.tsx'
 
 export interface TranscriptProps {
   exchanges: readonly Exchange[]
@@ -38,6 +39,16 @@ export function Transcript({ exchanges, personas }: TranscriptProps) {
                 <div className="grid gap-1 border-accent/50 border-l pl-3">
                   <span className="font-mono text-accent text-label uppercase">{persona?.name ?? 'Assistant'}</span>
                   {exchange.replied && <p className="text-sm leading-relaxed">{exchange.replied}</p>}
+                  {exchange.written && (
+                    <details className="group mt-1">
+                      <summary className="w-fit cursor-pointer list-none font-mono text-label text-text-faint uppercase transition-colors hover:text-text-soft">
+                        <span className="inline-block transition-transform duration-150 group-open:rotate-90">›</span> Full answer
+                      </summary>
+                      <div className="mt-2 grid gap-3 rounded-md border border-line bg-ground/60 px-3 py-2.5 text-sm leading-relaxed [&_h3]:text-lg [&_h4]:text-base">
+                        <Markdown text={exchange.written} />
+                      </div>
+                    </details>
+                  )}
                   {exchange.outcome === 'running' && !exchange.replied && <p className="text-sm text-text-faint">…</p>}
                   {exchange.outcome === 'stopped' && <p className="font-mono text-label text-text-faint uppercase">Stopped</p>}
                   {exchange.outcome === 'failed' && <p className="text-danger text-sm leading-relaxed">{exchange.problem ?? 'It could not answer.'}</p>}

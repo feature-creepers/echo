@@ -83,7 +83,7 @@ function Connected({ productName, client, engine }: { productName: string; clien
   const entered = useRef<Screen>(undefined)
   /** The side sheet, open on a tab, and the tab it opens on next. */
   const [sheet, setSheet] = useState<SheetTab>()
-  const lastTab = useRef<SheetTab>('pinned')
+  const lastTab = useRef<SheetTab>('transcript')
   const openSheet = useCallback((tab: SheetTab | undefined) => {
     if (tab) lastTab.current = tab
     setSheet(tab)
@@ -196,7 +196,9 @@ function Connected({ productName, client, engine }: { productName: string; clien
       </IconButton>
       <IconButton
         label={
-          transcriptKey ? `Side sheet: pinned, transcript, threads (${describeShortcut(transcriptKey, device.mac)})` : 'Side sheet: pinned, transcript, threads'
+          transcriptKey
+            ? `Side sheet: transcript, threads, inspector (${describeShortcut(transcriptKey, device.mac)})`
+            : 'Side sheet: transcript, threads, inspector'
         }
         active={sheet !== undefined}
         onClick={() => openSheet(sheet ? undefined : lastTab.current)}
@@ -265,16 +267,7 @@ function Connected({ productName, client, engine }: { productName: string; clien
           {/* The sheet slides over whatever screen is there: it never pushes the stage off centre. */}
           <AnimatePresence initial={false}>
             {sheet && (
-              <SideSheet
-                key="sheet"
-                client={client}
-                personas={personas.available}
-                controls={controls}
-                actions={actions}
-                tab={sheet}
-                onTab={openSheet}
-                onClose={() => openSheet(undefined)}
-              />
+              <SideSheet key="sheet" client={client} personas={personas.available} tab={sheet} onTab={openSheet} onClose={() => openSheet(undefined)} />
             )}
           </AnimatePresence>
         </div>

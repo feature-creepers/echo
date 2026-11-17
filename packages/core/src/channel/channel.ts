@@ -1,4 +1,16 @@
-import { type Event, type Exchange, exchangeSchema, type Persona, type Thread, type Threads, type TurnId } from '@repo/protocol'
+import { SHOW_TOOL } from '@repo/catalog'
+import {
+  type Event,
+  type Exchange,
+  exchangeSchema,
+  type Persona,
+  type ShownView,
+  type Step,
+  stepSchema,
+  type Thread,
+  type Threads,
+  type TurnId
+} from '@repo/protocol'
 import { z } from 'zod'
 import type { EngineRoom } from '../engines/engines.ts'
 import type { Harness, Session, SessionEvent } from '../ports/harness.ts'
@@ -10,13 +22,25 @@ import { createSentenceCutter, type SentenceCutter, speakable } from '../speech/
 import { createThreadRegistry } from '../threads/registry.ts'
 import type { Grant, Tool } from '../tools/tools.ts'
 import type { Screen, Showing } from '../views/screen.ts'
-import { instructionsFor, orchestratorInstructions, threadInstructions } from './instructions.ts'
+import { instructionsFor, orchestratorInstructions, SPEAK_FIRST, threadInstructions } from './instructions.ts'
 
 /** The type of the record written when a turn is over: one line of the channel log, word for word. */
 export const EXCHANGE = 'channel.exchange'
 
 /** The type of the record written each time the assistant greets the user. */
 export const GREETING = 'channel.greeting'
+
+/** The type of the record written when a tool call ends: what went in and what came out, for the side sheet. */
+export const STEP = 'channel.step'
+
+/** The name of the tool a thread writes its full answer with. */
+export const ANSWER_TOOL = 'answer_write'
+
+/** The tools a thread calls only once it has said its short answer. */
+const SPOKEN_FIRST = new Set([SHOW_TOOL, ANSWER_TOOL])
+
+/** How much of a tool's output is kept, in characters. A page read whole can be far longer, and is not needed whole twice. */
+const OUTPUT_KEPT = 40_000
 
 /** How long after a greeting the assistant does not greet again, in milliseconds. */
 const GREETING_GAP_MS = 6 * 60 * 60 * 1000
@@ -100,8 +124,13 @@ export interface Channel {
   threads(): Threads
   /** The turn on the stage, if any. */
   turn(): TurnId | undefined
-  /** Bring a thread to the stage, with its last answer if it was waiting to be seen. False when there is no such thread. */
+  /**
+   * Bring a thread back: a topic to the stage, an aside's card beside it, with what of its last answer was not
+   * heard yet. False when there is no such thread.
+   */
   focus(thread: string): boolean
+  /** A thread whole, for the side sheet: what it answered, the calls it made, the views it showed. */
+  thread(id: string): { thread: Thread; exchanges: Exchange[]; steps: Step[]; views: ShownView[] } | undefined
   /** Be told each event of the conversation. Returns a function that stops the telling. */
   onEvent(listener: (event: Event) => void): () => void
   /** End every session. The next thing said opens new ones. */
@@ -111,7 +140,17 @@ export interface Channel {
 interface Turn {
   exchange: Exchange
   language: string | undefined
+  /** Cuts the text of whoever is speaking into sentences. Each speaker gets its own, so one's words never run into another's. */
   cutter: SentenceCutter
+  /** How many of its sentences were said aloud while it was on the stage. */
+  heard: number
+  /** Its sentences so far, as said: a model that repeats itself after its tool calls is not heard twice. */
+  sentences: Set<string>
+  /** A call to show or write was sent back once because nothing had been said yet. It is not sent back twice. */
+  urged: boolean
+  /** Its tool calls under way, by call, and how many it made. */
+  steps: Map<string, Step>
+  calls: number
   /** The user stopped it: nothing more of it is said or kept. */
   stopped: boolean
   /** The thread answering it, once the orchestrator has passed it on. */
@@ -138,6 +177,20 @@ interface Runtime {
 const openInput = z.object({ title: z.string().trim().min(1).max(80), kind: z.enum(['topic', 'aside']).default('topic'), request: z.string().optional() })
 const sendInput = z.object({ thread: z.string().min(1), request: z.string().optional() })
 const focusInput = z.object({ thread: z.string().min(1) })
+const answerInput = z.object({ text: z.string().trim().min(1) })
+
+const newTurn = (exchange: Exchange, language: string | undefined): Turn => ({
+  exchange,
+  language,
+  cutter: createSentenceCutter(),
+  heard: 0,
+  sentences: new Set(),
+  urged: false,
+  steps: new Map(),
+  calls: 0,
+  stopped: false,
+  routed: undefined
+})
 
 /**
  * The channel hears every turn through the orchestrator, a warm session on a fast model, which answers small
@@ -162,6 +215,11 @@ export function createChannel(options: ChannelOptions): Channel {
   }
   const registry = createThreadRegistry({ records, now, newId })
   registry.onEvent(emit)
+  /**
+   * Sentences of an answer written while another turn was on the stage, by turn: what is said when its thread is
+   * brought back. Only what was not heard, so nothing is ever said twice.
+   */
+  const unheard = new Map<TurnId, string[]>()
 
   /** The turn on the stage: what is said is said aloud. */
   let current: Turn | undefined
@@ -189,18 +247,53 @@ export function createChannel(options: ChannelOptions): Channel {
   const say = (turn: Turn, sentence: string) => {
     if (turn.stopped) return
     const text = speakable(sentence)
-    if (text === '') return
+    if (text === '' || turn.sentences.has(text)) return
+    turn.sentences.add(text)
     turn.exchange = { ...turn.exchange, replied: turn.exchange.replied ? `${turn.exchange.replied} ${text}` : text }
     replace(turn.exchange)
-    if (current !== turn) return
+    if (current !== turn) {
+      unheard.set(turn.exchange.turn, [...(unheard.get(turn.exchange.turn) ?? []), text])
+      return
+    }
+    turn.heard += 1
     const language = languageOf(text, LANGUAGES, turn.language)
     emit({ type: 'event', name: 'speech.say', turn: turn.exchange.turn, text, ...(language === undefined ? {} : { language }) })
+  }
+
+  /** A tool call started or ended: kept with its turn, recorded once it ends, and told to the clients. */
+  const step = (turn: Turn, thread: string | undefined, event: Extract<SessionEvent, { type: 'tool' }>) => {
+    // A harness that does not name its calls: a start is a new call, an end closes the oldest open call of that tool.
+    const call =
+      event.call ??
+      (event.phase === 'started'
+        ? `${turn.exchange.turn}:${++turn.calls}`
+        : ([...turn.steps.values()].find((open) => open.tool === event.name)?.call ?? `${turn.exchange.turn}:${++turn.calls}`))
+    const known = turn.steps.get(call)
+    const at = now().toISOString()
+    const next: Step = {
+      call,
+      turn: turn.exchange.turn,
+      ...(thread === undefined ? {} : { thread }),
+      tool: event.name,
+      at: known?.at ?? at,
+      ...((event.input ?? known?.input) === undefined ? {} : { input: event.input ?? known?.input })
+    }
+    if (event.phase === 'ended') {
+      if (event.output !== undefined) next.output = event.output.length > OUTPUT_KEPT ? `${event.output.slice(0, OUTPUT_KEPT)}\n[…cut]` : event.output
+      if (event.failed) next.failed = true
+      next.ended = at
+      turn.steps.delete(call)
+      records.append([{ type: STEP, payload: next }])
+    } else turn.steps.set(call, next)
+    emit({ type: 'event', name: 'activity', turn: turn.exchange.turn, tool: event.name, phase: event.phase, step: next })
   }
 
   const finish = (turn: Turn, outcome: Exchange['outcome'], problem?: string) => {
     if (turn.exchange.outcome !== 'running') return
     memory?.wake()
     for (const sentence of turn.cutter.flush()) say(turn, sentence)
+    // A call cut short has no end of its own: it is recorded as it stood.
+    for (const open of [...turn.steps.values()]) step(turn, open.thread, { type: 'tool', name: open.tool, phase: 'ended', call: open.call })
     turn.exchange = problem === undefined ? { ...turn.exchange, outcome } : { ...turn.exchange, outcome, problem }
     replace(turn.exchange)
     records.append([{ type: EXCHANGE, payload: turn.exchange }])
@@ -245,15 +338,18 @@ export function createChannel(options: ChannelOptions): Channel {
     end(runtime.live)
     const kind = thread?.kind ?? 'topic'
     const grant = abilities?.grant(
-      abilities.threadTools(
-        () => ({
-          thread: runtime.thread,
-          turn: runtime.answering?.exchange.turn,
-          slot: kind === 'aside' ? 'margin' : 'stage',
-          focused: registry.focused()?.id === runtime.thread
-        }),
-        persona.stance
-      )
+      [
+        ...abilities.threadTools(
+          () => ({
+            thread: runtime.thread,
+            turn: runtime.answering?.exchange.turn,
+            slot: kind === 'aside' ? 'margin' : 'stage',
+            focused: registry.focused()?.id === runtime.thread
+          }),
+          persona.stance
+        ),
+        answerTool(runtime)
+      ].map((tool) => (SPOKEN_FIRST.has(tool.definition.name) ? speakFirst(runtime, tool) : tool))
     )
     const earlier = recapFor(runtime.thread)
     const instructions = threadInstructions({
@@ -279,17 +375,24 @@ export function createChannel(options: ChannelOptions): Channel {
     const turn = runtime.answering
     switch (event.type) {
       case 'text':
-        if (turn) for (const sentence of turn.cutter.push(event.text)) say(turn, sentence)
+        // The full answer is the last thing a thread does: what it writes after it would only say the answer again.
+        if (turn && turn.exchange.written === undefined) for (const sentence of turn.cutter.push(event.text)) say(turn, sentence)
         return
       case 'tool':
-        if (turn) emit({ type: 'event', name: 'activity', turn: turn.exchange.turn, tool: event.name, phase: event.phase })
+        if (!turn) return
+        // What was written before a call is whole: it is said now, while the tool runs, not once more text follows.
+        if (event.phase === 'started') for (const sentence of turn.cutter.flush()) say(turn, sentence)
+        step(turn, runtime.thread, event)
         return
       case 'turn-end': {
         if (!turn) return
-        const seen = current === turn
+        // An answer is waiting to be seen when some of it was said while another turn had the stage, or when it
+        // finished out of sight before saying anything.
+        const outOfSight = current !== turn
         finish(turn, turn.stopped ? 'stopped' : 'done')
+        const missed = (unheard.get(turn.exchange.turn)?.length ?? 0) > 0 || (outOfSight && turn.heard === 0)
         runtime.answering = undefined
-        registry.setState(runtime.thread, seen || turn.stopped ? 'parked' : 'ready')
+        registry.setState(runtime.thread, missed && !turn.stopped ? 'ready' : 'parked')
         return void next(runtime)
       }
       case 'failed':
@@ -325,12 +428,18 @@ export function createChannel(options: ChannelOptions): Channel {
     }
     const session = threadSession(runtime, engine, server)
     const recalled = memory?.recall(waiting.text, runtime.live?.knownSince)
-    session.send(`${context()}\n${recalled ? `${recalled}\n\n` : ''}${waiting.text}`)
+    session.send(`${context()}\n${recalled ? `${recalled}\n\n` : ''}${waiting.text}\n\n${SPEAK_FIRST}`)
   }
 
   /** Pass a turn to a thread, which answers it as soon as it is free. */
-  const route = (turn: Turn, thread: Thread, text: string) => {
+  const route = (turn: Turn, thread: Thread, request: string) => {
     const runtime = runtimeFor(thread.id)
+    // What the orchestrator wrote before passing the turn on is said now, whole, and the thread is told of it, so
+    // that the person never hears the same thing twice. The thread's words are cut into sentences of their own.
+    for (const sentence of turn.cutter.flush()) say(turn, sentence)
+    turn.cutter = createSentenceCutter()
+    const said = turn.exchange.replied.trim()
+    const text = said === '' ? request : `${request}\n\n(You have already said this aloud: "${said}". Do not say it again; carry on from there.)`
     turn.routed = runtime
     turn.exchange = { ...turn.exchange, thread: thread.id }
     replace(turn.exchange)
@@ -341,6 +450,53 @@ export function createChannel(options: ChannelOptions): Channel {
     runtime.queue.push({ turn, text })
     void next(runtime)
   }
+
+  /**
+   * The full answer, for reading. What a thread writes as text is spoken, so it is short; what it found, whole,
+   * goes through this tool once the spoken answer has started, and waits in the side sheet.
+   */
+  const answerTool = (runtime: Runtime): Tool => ({
+    definition: {
+      name: ANSWER_TOOL,
+      description:
+        'Keep the full answer, written for reading, beside the short one you say aloud: complete, in Markdown, with the figures, sources and details. The person reads it only if they want to. Call it after you have started speaking, and not for small talk or a one-line answer.',
+      inputSchema: {
+        type: 'object',
+        properties: { text: { type: 'string', description: 'The full answer, in Markdown.' } },
+        required: ['text']
+      }
+    },
+    run(input) {
+      const turn = runtime.answering
+      const asked = answerInput.safeParse(input)
+      if (!turn) return { ok: false, text: 'There is no answer under way.' }
+      if (!asked.success) return { ok: false, text: `${ANSWER_TOOL} takes the full answer as text.` }
+      turn.exchange = { ...turn.exchange, written: asked.data.text }
+      replace(turn.exchange)
+      emit({ type: 'event', name: 'answer.written', exchange: turn.exchange })
+      return { ok: true, text: 'Kept for the person to read. Do not mention it.' }
+    }
+  })
+
+  /**
+   * The voice comes first: a call to show or to write the full answer before anything was said is sent back once,
+   * asking for the short answer first. The model then speaks at once, and keeps that order for the rest of its
+   * thread. A second call is always taken, so nothing is ever lost.
+   */
+  const speakFirst = (runtime: Runtime, tool: Tool): Tool => ({
+    definition: tool.definition,
+    run(input) {
+      const turn = runtime.answering
+      if (turn && !turn.urged && turn.sentences.size === 0 && turn.exchange.replied === '') {
+        turn.urged = true
+        return {
+          ok: false,
+          text: `Nothing has been said yet. Write the short spoken answer first, as text, then call ${tool.definition.name} again with the same input.`
+        }
+      }
+      return tool.run(input)
+    }
+  })
 
   // ---------------------------------------------------------------- the orchestrator
 
@@ -365,7 +521,9 @@ export function createChannel(options: ChannelOptions): Channel {
         if (!turn) return { ok: false, text: 'There is nothing to pass on.' }
         if (!asked.success) return { ok: false, text: 'thread_open takes a title, a kind ("topic" or "aside") and a request.' }
         if (turn.routed) return { ok: false, text: 'This has already been passed on. Write nothing more.' }
-        const thread = registry.open(asked.data.title, asked.data.kind)
+        // An aside sits beside the topic on the stage when it was asked.
+        const parent = asked.data.kind === 'aside' ? registry.focused()?.id : undefined
+        const thread = registry.open(asked.data.title, asked.data.kind, parent)
         route(turn, thread, asked.data.request ?? turn.exchange.said)
         return { ok: true, text: `Thread ${thread.id} is answering. Write nothing more.` }
       }
@@ -449,6 +607,7 @@ export function createChannel(options: ChannelOptions): Channel {
         if (turn && !turn.routed) for (const sentence of turn.cutter.push(event.text)) say(turn, sentence)
         return
       case 'tool':
+        if (turn) step(turn, undefined, event)
         return
       case 'turn-end':
         deciding = undefined
@@ -470,7 +629,7 @@ export function createChannel(options: ChannelOptions): Channel {
   /** What the person said, or what the assistant starts on by itself. */
   const what = (turn: Turn) =>
     turn.exchange.trigger === 'greeting'
-      ? 'The person has just opened the app; nobody has said anything yet. Greet them by their name if you know it, in one short sentence, then give a brief briefing for today: the day, the weather where they are if you can find it (their time zone says roughly where), and anything left pending from earlier topics. Keep it short. Pass it to a thread if a view of the day would help.'
+      ? 'The person has just opened the app; nobody has said anything yet. Greet them by their name if you know it, in one short sentence, then give a brief briefing for today: the day, the weather where they are if you can find it (their time zone says roughly where), and anything left pending from earlier topics. Keep it short. Either say it all yourself, or pass it whole to a thread if a view of the day would help, saying nothing yourself.'
       : `The person says: ${turn.exchange.said}`
 
   /** What the orchestrator reads for each turn: the moment, the threads, then what the person said. */
@@ -527,7 +686,7 @@ export function createChannel(options: ChannelOptions): Channel {
       memory?.wake()
       const persona = activePersona()
       const exchange: Exchange = { turn: newId(), at: now().toISOString(), persona: persona.id, said: text, replied: '', outcome: 'running' }
-      const turn: Turn = { exchange, language, cutter: createSentenceCutter(), stopped: false, routed: undefined }
+      const turn = newTurn(exchange, language)
       transcript.push(exchange)
 
       const previous = current
@@ -551,7 +710,7 @@ export function createChannel(options: ChannelOptions): Channel {
       records.append([{ type: GREETING, payload: {} }])
       const persona = activePersona()
       const exchange: Exchange = { turn: newId(), at: now().toISOString(), persona: persona.id, said: '', trigger: 'greeting', replied: '', outcome: 'running' }
-      const turn: Turn = { exchange, language: undefined, cutter: createSentenceCutter(), stopped: false, routed: undefined }
+      const turn = newTurn(exchange, undefined)
       transcript.push(exchange)
       current = turn
       void decide(turn)
@@ -570,27 +729,45 @@ export function createChannel(options: ChannelOptions): Channel {
 
     focus(id) {
       const thread = registry.get(id)
-      if (thread?.kind !== 'topic') return false
-      registry.focus(id)
-      screen.focus(id)
+      if (!thread) return false
+      if (thread.kind === 'topic') {
+        registry.focus(id)
+        screen.focus(id)
+      } else screen.recall(id)
       if (thread.state === 'ready') {
         registry.setState(id, 'parked')
-        // Its answer was written while another topic was on the stage: say it now.
+        // Its answer was written while another turn was on the stage: what was not heard of it is said now.
         const answer = transcript.findLast((line) => line.thread === id && line.outcome === 'done')
-        if (answer?.replied) {
+        if (answer) {
+          const missed = unheard.get(answer.turn)
+          unheard.delete(answer.turn)
+          // After a restart nothing is known of what was heard: the answer is said whole.
           const cutter = createSentenceCutter()
-          for (const sentence of [...cutter.push(answer.replied), ...cutter.flush()]) {
-            emit({
-              type: 'event',
-              name: 'speech.say',
-              turn: answer.turn,
-              text: sentence,
-              ...(languageOf(sentence, LANGUAGES, undefined) ? { language: languageOf(sentence, LANGUAGES, undefined) as string } : {})
-            })
+          const sentences = missed ?? [...cutter.push(answer.replied), ...cutter.flush()]
+          for (const sentence of sentences) {
+            const language = languageOf(sentence, LANGUAGES, undefined)
+            emit({ type: 'event', name: 'speech.say', turn: answer.turn, text: sentence, ...(language === undefined ? {} : { language }) })
           }
         }
       }
       return true
+    },
+
+    thread(id) {
+      const thread = registry.get(id)
+      if (!thread) return undefined
+      const exchanges = transcript.filter((line) => line.thread === id)
+      const turns = new Set(exchanges.map((line) => line.turn))
+      const steps: Step[] = []
+      for (const record of records.read([STEP])) {
+        const read = stepSchema.safeParse(record.payload)
+        if (read.success && (read.data.thread === id || turns.has(read.data.turn))) steps.push(read.data)
+      }
+      // Calls still running belong too.
+      for (const turn of [current, deciding, ...[...runtimes.values()].map((runtime) => runtime.answering)]) {
+        if (turn && turns.has(turn.exchange.turn)) for (const open of turn.steps.values()) if (!steps.some((one) => one.call === open.call)) steps.push(open)
+      }
+      return { thread, exchanges, steps, views: screen.history(id) }
     },
 
     onEvent(listener) {

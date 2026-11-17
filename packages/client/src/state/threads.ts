@@ -1,11 +1,16 @@
-import type { Threads } from '@repo/protocol'
+import type { CommandOutput, Threads } from '@repo/protocol'
 import type { Session } from '../session.ts'
 import { cell, type Followed } from './followed.ts'
 
+/** One thread whole, as the side sheet shows it. */
+export type ThreadRead = CommandOutput<'thread.read'>
+
 /** The threads behind the conversation, kept current for as long as the session lasts. */
 export interface ThreadsState extends Followed<Threads> {
-  /** Bring a topic back to the stage. */
+  /** Bring a thread back: a topic to the stage, an aside's card beside it. */
   focus(thread: string): Promise<void>
+  /** One thread whole: its exchanges with their full answers, its tool calls, its views. */
+  read(thread: string): Promise<ThreadRead>
   unfollow(): void
 }
 
@@ -29,6 +34,7 @@ export function followThreads(session: Session): ThreadsState {
     async focus(thread) {
       await session.run('thread.focus', { thread })
     },
+    read: (thread) => session.run('thread.read', { thread }),
     unfollow: stopEvents
   }
 }

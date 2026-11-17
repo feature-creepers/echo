@@ -16,7 +16,9 @@ import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { Asides } from '../view/asides.tsx'
 import type { ViewActions } from '../view/context.ts'
 import { ViewPanel } from '../view/view-panel.tsx'
+import { doing } from './activity.ts'
 import { InputLine } from './input-line.tsx'
+import { SpokenLine } from './spoken-line.tsx'
 import { Suggestions } from './suggestions.tsx'
 
 export interface StageProps {
@@ -56,6 +58,7 @@ function syllables(): number {
 export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voiceLevel, onSetUpVoice }: StageProps) {
   const channel = useFollowed(client.channel)
   const speaking = useFollowed(client.speech)
+  const activity = useFollowed(client.activity)
   const engines = useFollowed(client.engines)
   const shown = useFollowed(client.view)
   const view = shown.stage
@@ -69,6 +72,8 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
   const other = personas.available[(personas.available.findIndex((persona) => persona.id === active?.id) + 1) % personas.available.length]
   const last = channel.exchanges.at(-1)
   const running = channel.running !== undefined
+  /** Sentences whose sound is still being made: the voice is about to speak. */
+  const voicing = speaking.sentence !== undefined || speaking.waiting > 0
   const noEngine = engines !== undefined && engines.active === undefined
 
   const say = useCallback(
@@ -124,9 +129,11 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
           ? 'thinking'
           : speaking.sentence
             ? 'speaking'
-            : running
+            : running || voicing
               ? 'thinking'
               : 'idle'
+  // While it thinks, the word under the core says what it is doing: searching the web, preparing the view.
+  const moodWord = (mood === 'thinking' ? doing(activity.running.at(-1)?.tool) : undefined) ?? MOODS[mood]
   const failed =
     talk.is === 'failed' ? talk.reason : !running && !speaking.sentence && last?.outcome === 'failed' ? (last.problem ?? 'It could not answer.') : undefined
 
@@ -179,18 +186,19 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
           key={`${speaking.sentence.turn}:${speaking.sentence.text}`}
           initial={{ opacity: 0, y: 8, filter: 'blur(4px)' }}
           animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-          exit={{ opacity: 0, y: -6, filter: 'blur(4px)' }}
+          // A sentence leaves quickly, so the next one is shown as its sound starts.
+          exit={{ opacity: 0, y: -6, filter: 'blur(4px)', transition: { duration: 0.12 } }}
           transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
           className={cn('text-balance leading-snug', view ? 'text-lg' : 'text-2xl')}
         >
-          {speaking.sentence.text}
+          <SpokenLine text={speaking.sentence.text} since={speaking.since} seconds={speaking.seconds} paused={speaking.paused} />
         </motion.p>
-      ) : running && last?.trigger === 'greeting' ? null : running && last ? (
+      ) : (running || voicing) && last?.trigger === 'greeting' ? null : (running || voicing) && last ? (
         <motion.p
           key={`said:${last.turn}`}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
+          exit={{ opacity: 0, transition: { duration: 0.12 } }}
           className="text-balance text-lg text-text-faint leading-snug"
         >
           “{last.said}”
@@ -249,7 +257,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
             <div className="grid min-w-0 flex-1 gap-1">
               <div className="flex items-baseline gap-3">
                 <span className="font-medium text-lg">{active.name}</span>
-                <Eyebrow accent={mood !== 'idle'}>{MOODS[mood]}</Eyebrow>
+                <Eyebrow accent={mood !== 'idle'}>{moodWord}</Eyebrow>
               </div>
               <div className="min-h-7" aria-live="polite">
                 {caption}
@@ -270,7 +278,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
             <div className="grid justify-items-center gap-1.5">
               <h1 className="font-medium text-4xl tracking-tight">{active.name}</h1>
               <Eyebrow accent={mood !== 'idle'} className="transition-colors duration-300">
-                {MOODS[mood]}
+                {moodWord}
               </Eyebrow>
             </div>
             <div className={cn('mt-8 flex w-full max-w-2xl items-start justify-center text-center', asides ? 'min-h-10' : 'h-28')} aria-live="polite">
@@ -289,7 +297,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
       <div className="mx-auto grid w-full max-w-3xl gap-3 px-8 pb-7">
         <InputLine
           name={active.name}
-          busy={running || speaking.sentence !== undefined}
+          busy={running || voicing}
           onSay={say}
           onStop={stop}
           pause={

@@ -3,7 +3,7 @@ import { mkdir } from 'node:fs/promises'
 import type { Log, Role, Session, SessionRequest } from '@repo/core'
 import { type Cli, NotInstalled } from '../process/cli.ts'
 import { createSessionEvents } from '../process/events.ts'
-import { asObject, asString, type JsonObject } from '../process/json.ts'
+import { asArray, asObject, asString, type JsonObject } from '../process/json.ts'
 import { readJsonLines, writeJsonLine } from '../process/json-lines.ts'
 import { KEPT_OUTPUT, lastLines, saysSignedOut } from '../process/output.ts'
 import { platform } from '../process/platform/index.ts'
@@ -254,10 +254,10 @@ export function openSession(request: SessionRequest, context: SessionContext): S
         return
       }
       case 'item/started':
-        if (ours !== undefined) events.emit({ type: 'tool', name: ours, phase: 'started' })
+        if (ours !== undefined) events.emit({ type: 'tool', name: ours, phase: 'started', ...callOf(item) })
         return
       case 'item/completed':
-        if (ours !== undefined) events.emit({ type: 'tool', name: ours, phase: 'ended' })
+        if (ours !== undefined) events.emit({ type: 'tool', name: ours, phase: 'ended', ...callOf(item), ...outcomeOf(item) })
         else if (item.type === 'agentMessage' && !streamed.has(asString(item.id) ?? '')) {
           paragraphDue = wrote
           say(asString(item.text) ?? '')
@@ -293,4 +293,21 @@ export function openSession(request: SessionRequest, context: SessionContext): S
     },
     onEvent: events.listen
   }
+}
+
+/** Which call an item is, and what it was given. */
+function callOf(item: JsonObject): { call?: string; input?: unknown } {
+  const id = asString(item.id)
+  return { ...(id === undefined ? {} : { call: id }), ...(item.arguments === undefined ? {} : { input: item.arguments }) }
+}
+
+/** What a finished call gave back, as text, and whether it failed. */
+function outcomeOf(item: JsonObject): { output?: string; failed?: boolean } {
+  const error = asString(asObject(item.error)?.message)
+  if (error !== undefined) return { output: error, failed: true }
+  const parts = asArray(asObject(item.result)?.content)
+    .map(asObject)
+    .map((part) => (part?.type === 'text' ? (asString(part.text) ?? '') : ''))
+    .filter((part) => part !== '')
+  return parts.length > 0 ? { output: parts.join('\n\n') } : {}
 }

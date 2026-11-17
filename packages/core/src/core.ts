@@ -83,7 +83,7 @@ export function createCore(options: CoreOptions): Core {
       definition: {
         name: SHOW_TOOL,
         description:
-          'Show a view on the screen, composed from the blocks of the catalogue. It replaces what was shown. Answers with the problems to correct when the view is not valid.',
+          'Show a view on the screen, composed from the blocks of the catalogue. It replaces what was shown. Answers with the problems to correct when the view is not valid. Say your short answer aloud before calling it, so the view appears while you are heard.',
         inputSchema: SHOW_TOOL_INPUT
       },
       run: (input) => screen.show(input, showing())
@@ -224,7 +224,11 @@ export function createCore(options: CoreOptions): Core {
       'thread.focus': (input) =>
         channel.focus(input.thread)
           ? { ok: true, output: {} }
-          : { ok: false, error: { code: 'invalid-input', message: `There is no topic "${input.thread}".` } },
+          : { ok: false, error: { code: 'invalid-input', message: `There is no thread "${input.thread}".` } },
+      'thread.read': (input) => {
+        const read = channel.thread(input.thread)
+        return read ? { ok: true, output: read } : { ok: false, error: { code: 'invalid-input', message: `There is no thread "${input.thread}".` } }
+      },
       'engines.prefer': async (input) => {
         if (input.harness !== null && !(await engines.read()).harnesses.some((harness) => harness.id === input.harness)) {
           return { ok: false, error: { code: 'unknown-harness', message: `There is no harness "${input.harness}".` } }
