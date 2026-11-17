@@ -5,6 +5,7 @@ import { Drawing, Image } from './blocks/drawing.tsx'
 import { FilePreview } from './blocks/file-preview.tsx'
 import { Button, Choice, Field } from './blocks/input.tsx'
 import { Card, Divider, Grid, Row, Section, Stack } from './blocks/layout.tsx'
+import { Media } from './blocks/media.tsx'
 import { Badge, Heading, KeyValue, List, Prose, Steps, Text } from './blocks/text.tsx'
 import { type ViewActions, ViewActionsContext } from './context.ts'
 
@@ -32,6 +33,7 @@ const DRAWERS: Drawers = {
   Progress,
   Drawing,
   Image,
+  Media,
   Button,
   Choice,
   Field,
@@ -49,5 +51,11 @@ export function ViewRenderer({ spec, actions }: { spec: ViewSpec; actions: ViewA
     const Drawer = DRAWERS[element.type] as (args: { props: unknown; children: ReactNode }) => ReactNode
     return <Drawer key={id} props={element.props} children={element.children.map((child) => draw(child, depth + 1))} />
   }
-  return <ViewActionsContext.Provider value={actions}>{draw(spec.root, 0)}</ViewActionsContext.Provider>
+  // A word longer than the line it is on, such as an address, breaks rather than pushing the view out of its
+  // bounds. Only where it would overflow: the widths blocks take from their content stay as they are.
+  return (
+    <ViewActionsContext.Provider value={actions}>
+      <div className="grid min-w-0 [overflow-wrap:break-word]">{draw(spec.root, 0)}</div>
+    </ViewActionsContext.Provider>
+  )
 }

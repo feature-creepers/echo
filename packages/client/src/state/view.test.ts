@@ -76,6 +76,17 @@ describe('followView', () => {
     expect(state.current().stage?.id).toBe('topic')
   })
 
+  it('marks the views that arrived while connected, never the one read on connecting', async () => {
+    const core = fakeSession()
+    const state = followView(core.session)
+    core.answer(view('read'))
+    await settled()
+    expect(state.current().arrived).toEqual([])
+    core.emit({ type: 'event', name: 'view.shown', view: view('new') })
+    core.emit({ type: 'event', name: 'view.shown', view: view('aside', 'margin') })
+    expect(state.current().arrived).toEqual(['new', 'aside'])
+  })
+
   it('asks the core to clear the screen', async () => {
     const core = fakeSession()
     await followView(core.session).clear()

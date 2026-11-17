@@ -101,4 +101,10 @@ describe('validateView', () => {
     expect(problems(image('javascript:alert(1)')).length).toBeGreaterThan(0)
     expect(problems(image('file:///etc/passwd')).length).toBeGreaterThan(0)
   })
+
+  it('plays media only from an https address', () => {
+    const media = (url: string) => problems(view({ all: { type: 'Media', props: { url, title: 'A station', live: true } } }))
+    expect(media('https://example.org/live.aac')).toEqual([])
+    expect(media('http://example.org/live.aac')[0]).toMatch(/^"all" \(Media\): url: Give an https:\/\/ address/)
+  })
 })

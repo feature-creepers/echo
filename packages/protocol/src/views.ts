@@ -6,6 +6,11 @@ import { turnIdSchema } from './conversation.ts'
  * it against the catalogue (`@repo/catalog`), which knows what each block and its properties mean; here it
  * is only given its shape, so a client built before a block existed can still receive it.
  */
+export const viewSpecShape = z.object({
+  root: z.string(),
+  elements: z.record(z.string(), z.object({ type: z.string(), props: z.record(z.string(), z.unknown()), children: z.array(z.string()) }))
+})
+
 export const viewSchema = z.object({
   /** Identifies the view for good. */
   id: z.string().min(1).max(64),
@@ -17,9 +22,8 @@ export const viewSchema = z.object({
   thread: z.string().min(1).max(64).optional(),
   /** Where it goes: the stage, or the margin for an aside. */
   slot: z.enum(['stage', 'margin']).default('stage'),
-  spec: z.object({
-    root: z.string(),
-    elements: z.record(z.string(), z.object({ type: z.string(), props: z.record(z.string(), z.unknown()), children: z.array(z.string()) }))
-  })
+  /** The saved widget of the library this view shows again, when it is one. */
+  widget: z.string().min(1).max(64).optional(),
+  spec: viewSpecShape
 })
 export type ShownView = z.infer<typeof viewSchema>

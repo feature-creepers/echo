@@ -222,7 +222,12 @@ describe('threads and the screen through the core', () => {
       'file_read',
       'memory_search',
       'memory_remember',
-      'memory_forget'
+      'memory_forget',
+      'library_search',
+      'library_show',
+      'library_save',
+      'library_update',
+      'library_delete'
     ])
 
     const { EXAMPLE_VIEW } = await import('@repo/catalog')
@@ -244,5 +249,95 @@ describe('threads and the screen through the core', () => {
     harness.sessions[0]?.emit({ type: 'failed', reason: 'Gone.' })
 
     expect(core.toolHost.list(token)).toBeUndefined()
+  })
+})
+
+describe('the library through the core', () => {
+  /** Start a core with a tool server, say something, and open a thread for it: its session and tool token. */
+  async function threadOf(core: ReturnType<typeof start>['core'], harness: ReturnType<typeof start>['harness'], said: string) {
+    core.serveToolsAt('http://127.0.0.1:5000/mcp')
+    await run(core, 'utterance.send', { text: said })
+    await settled()
+    const orchestrator = harness.sessions.at(-1)
+    await core.toolHost.call(orchestrator?.request.tools?.token ?? '', 'thread_open', { title: said })
+    orchestrator?.emit({ type: 'turn-end' })
+    await settled()
+    const thread = harness.sessions.at(-1)
+    return { orchestrator, thread, token: thread?.request.tools?.token ?? '' }
+  }
+
+  const radio = {
+    root: 'all',
+    elements: {
+      all: { type: 'Stack', props: {}, children: ['player'] },
+      player: { type: 'Media', props: { url: 'https://streams.example.org/jazz.aac', title: 'Jazz station', live: true } }
+    }
+  }
+
+  it('brings a saved widget back as it was saved, in a later session, when asked for in other words', async () => {
+    const records = memoryRecords()
+    const first = start(records)
+    const { token } = await threadOf(first.core, first.harness, 'Play some jazz')
+    await first.core.toolHost.call(token, 'ui_render', { title: 'Jazz radio', view: radio })
+    const shown = (await run(first.core, 'view.read', {})).view
+    if (!shown) throw new Error('The view was not shown.')
+    const { widget } = await run(first.core, 'library.save', { view: shown.id, collection: 'Music' })
+    expect(widget).toMatchObject({ title: 'Jazz radio', collection: 'Music', pinned: false, from: shown.id, spec: shown.spec })
+
+    // A new core on the same records: every session is new, and is told what the library holds.
+    const later = start(records)
+    const events: Event[] = []
+    later.core.onEvent((event) => events.push(event))
+    const { orchestrator, thread, token: again } = await threadOf(later.core, later.harness, 'I want to listen to that station again')
+    expect(orchestrator?.request.instructions).toContain(`[${widget.id}] "Jazz radio" in Music: plays "Jazz station" (live)`)
+    expect(thread?.request.instructions).toContain('show it with library_show rather than composing a new view')
+
+    const found = await later.core.toolHost.call(again, 'library_search', { query: 'listen to the jazz again' })
+    expect(found.text).toContain(`[${widget.id}] "Jazz radio" in Music`)
+    expect(await later.core.toolHost.call(again, 'library_show', { widget: widget.id })).toEqual({ ok: true, text: 'Shown.' })
+    const back = events.find((event) => event.name === 'view.shown')
+    expect(back).toMatchObject({ view: { title: 'Jazz radio', widget: widget.id, slot: 'stage', spec: shown.spec } })
+  })
+
+  it('saves what a thread shows when the person asks, and pins it, files it and deletes it on request', async () => {
+    const { core, harness } = start()
+    const events: Event[] = []
+    core.onEvent((event) => events.push(event))
+    const { token } = await threadOf(core, harness, 'Play some jazz')
+    expect((await core.toolHost.call(token, 'library_save', {})).ok).toBe(false)
+    await core.toolHost.call(token, 'ui_render', { title: 'Jazz radio', view: radio })
+
+    const saved = await core.toolHost.call(token, 'library_save', { title: 'My jazz' })
+    const id = /\[(.+)\]/.exec(saved.text)?.[1] ?? ''
+    expect(saved.text).toBe(`Saved as "My jazz" [${id}].`)
+    await core.toolHost.call(token, 'library_update', { widget: id, pinned: true, collection: 'Music' })
+    expect((await run(core, 'library.read', {})).library.widgets).toMatchObject([{ id, title: 'My jazz', pinned: true, collection: 'Music' }])
+    expect(events.filter((event) => event.name === 'library.changed')).toHaveLength(2)
+
+    // A change of content is saved as a new version and shown at once, as the person asked for it to see it.
+    const annotated = {
+      ...radio,
+      elements: { ...radio.elements, all: { type: 'Stack', props: {}, children: ['player', 'note'] }, note: { type: 'Text', props: { text: 'From Paris' } } }
+    }
+    expect(await core.toolHost.call(token, 'library_update', { widget: id, view: annotated })).toEqual({ ok: true, text: 'Saved as a new version, and shown.' })
+    const changed = (await run(core, 'view.read', {})).view
+    expect(changed).toMatchObject({ widget: id, spec: { elements: { note: { type: 'Text' } } } })
+    expect(changed?.turn).toBeUndefined()
+    expect((await core.toolHost.call(token, 'library_update', { widget: id, view: { root: 'x', elements: {} } })).ok).toBe(false)
+
+    await core.toolHost.call(token, 'library_delete', { widget: id })
+    expect((await run(core, 'library.read', {})).library.widgets).toEqual([])
+  })
+
+  it('shows a saved widget on the stage when the user brings it back from the library', async () => {
+    const { core, harness } = start()
+    const { token } = await threadOf(core, harness, 'Play some jazz')
+    await core.toolHost.call(token, 'ui_render', { title: 'Jazz radio', view: radio })
+    const { widget } = await run(core, 'library.save', { view: (await run(core, 'view.read', {})).view?.id ?? '' })
+    await run(core, 'view.clear', {})
+
+    await run(core, 'library.show', { widget: widget.id })
+    expect((await run(core, 'view.read', {})).view).toMatchObject({ widget: widget.id, title: 'Jazz radio' })
+    expect((await core.execute({ type: 'command', id: 'c2', name: 'library.show', input: { widget: 'nothing' } }))?.ok).toBe(false)
   })
 })

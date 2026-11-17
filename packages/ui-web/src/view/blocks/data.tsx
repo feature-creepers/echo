@@ -6,8 +6,11 @@ import { TONE_COLOR, TONE_TEXT } from '../tones.ts'
 const TREND = { up: '↑', down: '↓', flat: '→' } as const
 
 export function Metric({ props }: { props: BlockProps<'Metric'> }) {
+  // Its figure is sized by its own width, so it measures nothing from its content: in a row it would shrink to
+  // nothing. It keeps a width a figure reads at, a row that has no room for it puts it on the next line, and the
+  // figures of a line share it.
   return (
-    <div className="@container grid min-w-0 content-start gap-1.5 overflow-hidden rounded-lg border border-line bg-surface/70 px-5 py-4">
+    <div className="@container grid min-w-[min(9rem,100%)] grow content-start gap-1.5 overflow-hidden rounded-lg border border-line bg-surface/70 px-5 py-4">
       <Eyebrow>{props.label}</Eyebrow>
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5">
         <span
@@ -62,7 +65,7 @@ export function Table({ props }: { props: BlockProps<'Table'> }) {
 export function Timeline({ props }: { props: BlockProps<'Timeline'> }) {
   // One grid for every moment, so the times line up in one column whatever their length.
   return (
-    <ol className="grid grid-cols-[max-content_1rem_1fr] gap-x-3">
+    <ol className="grid grid-cols-[fit-content(35%)_1rem_minmax(0,1fr)] gap-x-3">
       {props.items.map((item, index) => (
         <li key={index} className="contents">
           <span className="pt-0.5 text-right font-mono text-text-soft text-xs tabular-nums">{item.time}</span>

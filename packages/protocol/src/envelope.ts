@@ -39,6 +39,8 @@ export const COMMAND_ERRORS = [
   'unknown-model',
   /** The command names a fact the assistant does not know, or no longer knows. */
   'unknown-fact',
+  /** The command names a view, or a saved widget, that does not exist. */
+  'unknown-widget',
   /** The user chose that the assistant never sleeps. */
   'sleep-off',
   /** The core could not carry the command out, for a reason that is not the client's doing. */

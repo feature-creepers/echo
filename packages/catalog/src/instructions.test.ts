@@ -17,8 +17,14 @@ describe('describeCatalog', () => {
     expect(text).toContain('Nothing is ready-made for any subject')
   })
 
+  it('tells the model to play media in the app, not to link to a web player', () => {
+    expect(text).toContain('- Media { url: string; kind?: "audio" | "video"; title: string;')
+    expect(text).toContain('Never show a link to a web player instead.')
+  })
+
+  // About 2,700 tokens. A new block is worth its words; a catalogue that keeps growing is not.
   it('stays short enough to be part of every prompt', () => {
-    expect(text.length).toBeLessThan(10_000)
+    expect(text.length).toBeLessThan(11_000)
   })
 })
 

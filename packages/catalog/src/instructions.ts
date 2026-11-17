@@ -84,6 +84,7 @@ export function describeCatalog(): string {
     '- Lead with what matters most: one Heading, then the key figure or the answer itself. A view is an answer, not a document: a handful of blocks, no filler, no source list unless asked.',
     '- Group what belongs together in Cards, compare figures with Metrics in a Grid or a Row, show change over time with a Chart, order with Steps or a Timeline.',
     '- When a picture would help, draw it with Drawing: a pictogram, a diagram, a sketch. Keep pictograms simple: a few bold shapes.',
+    '- To play something (a radio, a podcast, a video), find the address of the stream itself with your web tools and play it in a Media block. Never show a link to a web player instead.',
     '- Colours are roles, not hues: accent for the one thing that matters, ok, warn and danger for states, soft and faint for what is secondary.',
     '- Write real content in the language the person speaks. Never placeholder text.',
     `- If ${SHOW_TOOL} answers with problems, correct the view and call it again.`,

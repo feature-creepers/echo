@@ -1,6 +1,6 @@
 # @repo/client
 
-Client logic with no interface: the connection to a core, the state derived from its events (settings, conversation, harnesses, view, memory and whether the assistant is asleep), speech playback, and the memory as Markdown. Shared by the desktop app and, later, the phone app.
+Client logic with no interface: the connection to a core, the state derived from its events (settings, conversation, harnesses, view, memory and whether the assistant is asleep, the library of saved widgets), speech playback, and the memory as Markdown. Shared by the desktop app and, later, the phone app.
 
 It also holds the settings of a device (`device/settings.ts`): their shape, their defaults, and `readDeviceSettings`, which makes usable settings out of anything read back; and shortcuts written as Electron writes them (`device/shortcuts.ts`): recorded from a key press, checked, matched against a key press, and shown as each system labels its keys. The app keeps the settings where it likes; the desktop app keeps them in a file of its data folder.
 

@@ -10,6 +10,21 @@
 /* The components of this package are where the classes are written. */
 @source "..";
 
+/* The bars of a playing sound rise and fall. */
+@theme {
+  --animate-level: level 1.1s ease-in-out infinite;
+
+  @keyframes level {
+    0%,
+    100% {
+      transform: scaleY(0.35);
+    }
+    50% {
+      transform: scaleY(1);
+    }
+  }
+}
+
 /*
  * Declared as a colour so that a change of accent can be animated. The initial value is never seen:
  * the theme sets the real one at the root.

@@ -84,3 +84,68 @@ export const PlayGlyph = () => (
     <path d="M5 3.5v9l7-4.5z" />
   </Glyph>
 )
+
+export const BookmarkGlyph = ({ filled = false }: { filled?: boolean }) => (
+  <Glyph>
+    <path d="M4.5 2.5h7v11L8 10.8l-3.5 2.7z" fill={filled ? 'currentColor' : 'none'} />
+  </Glyph>
+)
+
+export const PinGlyph = ({ filled = false }: { filled?: boolean }) => (
+  <Glyph>
+    <path d="M6 2.5h4l-.6 3.8 2.6 2.2H4l2.6-2.2z" fill={filled ? 'currentColor' : 'none'} />
+    <path d="M8 8.5v5" />
+  </Glyph>
+)
+
+/** The side sheet: a window with its right part set apart. */
+export const SheetGlyph = () => (
+  <Glyph>
+    <rect x="2" y="3" width="12" height="10" rx="1.5" />
+    <path d="M10 3v10" />
+  </Glyph>
+)
+
+/** The library: tiles of saved widgets. */
+export const LibraryGlyph = () => (
+  <Glyph>
+    <rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1" />
+    <rect x="9" y="2.5" width="4.5" height="4.5" rx="1" />
+    <rect x="2.5" y="9" width="4.5" height="4.5" rx="1" />
+    <path d="M9 11.25h4.5M11.25 9v4.5" />
+  </Glyph>
+)
+
+export const MoreGlyph = () => (
+  <Glyph>
+    <circle cx="3.5" cy="8" r="0.6" fill="currentColor" />
+    <circle cx="8" cy="8" r="0.6" fill="currentColor" />
+    <circle cx="12.5" cy="8" r="0.6" fill="currentColor" />
+  </Glyph>
+)
+
+export const SearchGlyph = () => (
+  <Glyph>
+    <circle cx="7" cy="7" r="4" />
+    <path d="m10 10 3.5 3.5" />
+  </Glyph>
+)
+
+export const VolumeGlyph = ({ muted = false }: { muted?: boolean }) => (
+  <Glyph>
+    <path d="M2.5 6h2.5l3.5-3v10l-3.5-3H2.5z" />
+    {muted ? <path d="m11 6 3 3m0-3-3 3" /> : <path d="M11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.8a6 6 0 0 1 0 8.4" />}
+  </Glyph>
+)
+
+export const TrashGlyph = () => (
+  <Glyph>
+    <path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5" />
+  </Glyph>
+)
+
+export const ArrowGlyph = () => (
+  <Glyph>
+    <path d="M3 8h10M9 4l4 4-4 4" />
+  </Glyph>
+)

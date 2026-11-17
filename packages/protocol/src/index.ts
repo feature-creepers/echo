@@ -52,6 +52,17 @@ export {
 } from './handshake.ts'
 export { CORE_TOKEN_VARIABLE, DATA_OPTION, EXIT_WITH_PARENT_FLAG, EXIT_WITH_PARENT_OPTION, type Ready, readySchema } from './launch.ts'
 export {
+  COLLECTION_MAX_LENGTH,
+  collectionSchema,
+  type LibraryView,
+  libraryViewSchema,
+  type SavedWidget,
+  savedWidgetSchema,
+  WIDGET_TITLE_MAX_LENGTH,
+  widgetIdSchema,
+  widgetTitleSchema
+} from './library.ts'
+export {
   type AssistantState,
   assistantStateSchema,
   FACT_KINDS,
@@ -92,4 +103,4 @@ export {
 export { type Settings, settingsSchema } from './settings.ts'
 export { THREAD_KINDS, THREAD_STATES, type Thread, type Threads, threadIdSchema, threadSchema, threadsSchema } from './threads.ts'
 export { isCompatible, PROTOCOL_VERSION } from './version.ts'
-export { type ShownView, viewSchema } from './views.ts'
+export { type ShownView, viewSchema, viewSpecShape } from './views.ts'

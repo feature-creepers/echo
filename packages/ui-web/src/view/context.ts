@@ -13,6 +13,11 @@ export interface FileContent {
 export interface ViewActions {
   say(text: string): void
   readFile(file: string): Promise<FileContent>
+  /**
+   * Set when the view may start what it plays by itself: it was just shown in answer to the person. The value
+   * is a key for that showing, so drawing the view again does not start it again. Left out, nothing starts.
+   */
+  autoplay?: string | undefined
 }
 
 export const ViewActionsContext = createContext<ViewActions>({ say: () => undefined, readFile: () => Promise.reject(new Error('No file can be read here.')) })

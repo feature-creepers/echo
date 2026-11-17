@@ -3,20 +3,25 @@ import { describeShortcut, matchesShortcut } from '@repo/client'
 import { useFollowed } from '@repo/client/react'
 import type { Accent, CommandInput, PersonaId } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
-import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { SpeechEngine } from '../audio/engine.ts'
 import { useDeviceSpeech } from '../audio/use-speech.ts'
 import { Stage } from '../conversation/stage.tsx'
-import { Transcript } from '../conversation/transcript.tsx'
 import { DeviceProvider, keyPress, useDevice } from '../device/device.tsx'
 import type { DeviceHost } from '../device/host.ts'
+import { LibraryContext, type LibraryControls } from '../library/library-context.ts'
+import { LibraryScreen } from '../library/library-screen.tsx'
+import { NowPlaying } from '../media/now-playing.tsx'
+import { PlayerProvider, usePlayer } from '../media/player-provider.tsx'
 import { Onboarding } from '../onboarding/onboarding.tsx'
 import { Orb } from '../presence/orb.tsx'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { IconButton } from '../primitives/icon-button.tsx'
-import { SettingsGlyph, TranscriptGlyph } from '../primitives/icons.tsx'
+import { LibraryGlyph, SettingsGlyph, SheetGlyph } from '../primitives/icons.tsx'
 import { SettingsScreen, type SettingsSection } from '../settings/settings-screen.tsx'
 import { accentStyle } from '../styles/accent.ts'
+import type { ViewActions } from '../view/context.ts'
+import { type SheetTab, SideSheet } from './side-sheet.tsx'
 
 export interface ShellProps {
   /** The name of the product, as the app that hosts the interface is called. */
@@ -61,20 +66,28 @@ function Screens({ productName, link, client, speech }: Omit<ShellProps, 'device
       </Frame>
     )
   }
-  return <Connected productName={productName} client={client} engine={speech} />
+  return (
+    <PlayerProvider>
+      <Connected productName={productName} client={client} engine={speech} />
+    </PlayerProvider>
+  )
 }
 
-type Screen = { is: 'main' } | { is: 'onboarding' } | { is: 'settings'; section: SettingsSection }
+type Screen = { is: 'main' } | { is: 'onboarding' } | { is: 'settings'; section: SettingsSection } | { is: 'library'; widget?: string | undefined }
 
 function Connected({ productName, client, engine }: { productName: string; client: Client; engine: SpeechEngine | undefined }) {
   const snapshot = useFollowed(client.settings)
-  const channel = useFollowed(client.channel)
-  const threads = useFollowed(client.threads)
-  const events = useFollowed(client.events)
+  const speaking = useFollowed(client.speech)
   const [screen, setScreen] = useState<Screen>()
   /** The screen the app opened on, decided once, when the settings first arrive. */
   const entered = useRef<Screen>(undefined)
-  const [transcript, setTranscript] = useState(false)
+  /** The side sheet, open on a tab, and the tab it opens on next. */
+  const [sheet, setSheet] = useState<SheetTab>()
+  const lastTab = useRef<SheetTab>('pinned')
+  const openSheet = useCallback((tab: SheetTab | undefined) => {
+    if (tab) lastTab.current = tab
+    setSheet(tab)
+  }, [])
   /** The persona the user is about to pick in a form, shown in its accent before anything is sent. */
   const [picked, setPicked] = useState<PersonaId>()
 
@@ -100,11 +113,30 @@ function Connected({ productName, client, engine }: { productName: string; clien
   // A key of this device's settings opens and closes the transcript: Control or Command with T, unless changed.
   const device = useDevice()
   const transcriptKey = device.settings.shortcuts.transcript
+  // What plays goes quiet under the assistant's voice, and comes back when it stops speaking.
+  const player = usePlayer()
+  useEffect(() => player.duck('speaking', speaking.sentence !== undefined), [player, speaking.sentence])
+
+  const controls = useMemo<LibraryControls>(() => ({ library: client.library, open: (widget) => setScreen({ is: 'library', widget }) }), [client])
+  const say = useCallback(
+    (text: string) => {
+      client.speech.stop()
+      client.channel.say(text).catch(() => undefined)
+    },
+    [client]
+  )
+  /** What the blocks of a pinned or saved widget can do. Nothing there starts playing by itself. */
+  const actions = useMemo<ViewActions>(() => ({ say, readFile: (file: string) => client.session.run('file.read', { file }) }), [say, client])
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (transcriptKey !== '' && matchesShortcut(keyPress(event), transcriptKey, device.mac)) {
         event.preventDefault()
-        setTranscript((open) => !open)
+        setSheet((open) => {
+          if (open === 'transcript') return undefined
+          lastTab.current = 'transcript'
+          return 'transcript'
+        })
       }
     }
     window.addEventListener('keydown', onKey)
@@ -156,14 +188,20 @@ function Connected({ productName, client, engine }: { productName: string; clien
     )
   }
 
-  const actions = (
+  const titleActions = (
     <>
+      <NowPlaying />
+      <IconButton label="Library" active={showing.is === 'library'} onClick={() => (showing.is === 'library' ? toMain() : setScreen({ is: 'library' }))}>
+        <LibraryGlyph />
+      </IconButton>
       <IconButton
-        label={transcriptKey ? `Transcript (${describeShortcut(transcriptKey, device.mac)})` : 'Transcript'}
-        active={transcript}
-        onClick={() => setTranscript((open) => !open)}
+        label={
+          transcriptKey ? `Side sheet: pinned, transcript, threads (${describeShortcut(transcriptKey, device.mac)})` : 'Side sheet: pinned, transcript, threads'
+        }
+        active={sheet !== undefined}
+        onClick={() => openSheet(sheet ? undefined : lastTab.current)}
       >
-        <TranscriptGlyph />
+        <SheetGlyph />
       </IconButton>
       <IconButton
         label="Settings"
@@ -176,9 +214,9 @@ function Connected({ productName, client, engine }: { productName: string; clien
   )
 
   return (
-    <Frame productName={productName} accent={accent} actions={actions}>
-      <div className="flex h-full">
-        <div className="relative min-w-0 flex-1">
+    <LibraryContext.Provider value={controls}>
+      <Frame productName={productName} accent={accent} actions={titleActions}>
+        <div className="relative h-full">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={showing.is}
@@ -200,6 +238,17 @@ function Connected({ productName, client, engine }: { productName: string; clien
                   onPick={setPicked}
                   onClose={toMain}
                 />
+              ) : showing.is === 'library' ? (
+                <LibraryScreen
+                  controls={controls}
+                  actions={actions}
+                  selected={showing.widget}
+                  onAsk={(text) => {
+                    toMain()
+                    say(text)
+                  }}
+                  onClose={toMain}
+                />
               ) : (
                 <Stage
                   client={client}
@@ -213,30 +262,24 @@ function Connected({ productName, client, engine }: { productName: string; clien
               )}
             </motion.div>
           </AnimatePresence>
-        </div>
-        <AnimatePresence initial={false}>
-          {transcript && (
-            <motion.div
-              key="transcript"
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 'auto', opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-              className="h-full overflow-hidden"
-            >
-              <Transcript
-                exchanges={channel.exchanges}
+          {/* The sheet slides over whatever screen is there: it never pushes the stage off centre. */}
+          <AnimatePresence initial={false}>
+            {sheet && (
+              <SideSheet
+                key="sheet"
+                client={client}
                 personas={personas.available}
-                threads={threads}
-                events={events}
-                onFocus={(thread) => void client.threads.focus(thread).catch(() => undefined)}
-                onClose={() => setTranscript(false)}
+                controls={controls}
+                actions={actions}
+                tab={sheet}
+                onTab={openSheet}
+                onClose={() => openSheet(undefined)}
               />
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </Frame>
+            )}
+          </AnimatePresence>
+        </div>
+      </Frame>
+    </LibraryContext.Provider>
   )
 }
 

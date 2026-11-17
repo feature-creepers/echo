@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { activitySchema, enginesChangedSchema, speechSaySchema, turnEndedSchema, turnStartedSchema } from './events/conversation.ts'
+import { libraryChangedSchema } from './events/library.ts'
 import { assistantStateChangedSchema, memoryChangedSchema } from './events/memory.ts'
 import { settingsChangedSchema } from './events/settings.ts'
 import { threadsChangedSchema } from './events/threads.ts'
@@ -17,7 +18,8 @@ export const eventSchema = z.discriminatedUnion('name', [
   viewClearedSchema,
   threadsChangedSchema,
   memoryChangedSchema,
-  assistantStateChangedSchema
+  assistantStateChangedSchema,
+  libraryChangedSchema
 ])
 export type Event = z.infer<typeof eventSchema>
 export type EventName = Event['name']
