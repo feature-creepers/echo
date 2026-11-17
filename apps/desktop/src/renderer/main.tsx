@@ -1,5 +1,5 @@
 import { type Client, type CoreLink, openClient } from '@repo/client'
-import { Shell, type SpeechEngine, silentVoice } from '@repo/ui-web'
+import { Shell, type SpeechEngine, silentVoice, TALK_EVENT } from '@repo/ui-web'
 import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import manifest from '../../package.json'
@@ -47,6 +47,9 @@ function App() {
   const client = useClient(link.state === 'connected')
   return <Shell productName={manifest.productName} link={link} client={client} speech={speech} />
 }
+
+// The global shortcut, pressed in another app, reaches the interface as an event on the window.
+window.desktop.onTalk(() => window.dispatchEvent(new Event(TALK_EVENT)))
 
 const root = document.getElementById('root')
 if (!root) throw new Error('The page has no #root element.')

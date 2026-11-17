@@ -30,6 +30,9 @@ export interface StageProps {
   onSetUpVoice?: (() => void) | undefined
 }
 
+/** The event an app dispatches on the window to start talking, or to send what was said: its global shortcut. */
+export const TALK_EVENT = 'echo:talk'
+
 const MOODS: Record<Mood, string> = { idle: 'Ready', listening: 'Listening', thinking: 'Thinking', speaking: 'Speaking', asleep: 'Asleep' }
 
 /**
@@ -102,6 +105,12 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
     stop()
     void start()
   }, [listening, finish, start, stop])
+  // The app asks to talk when its global shortcut is pressed from another app.
+  useEffect(() => {
+    const onTalk = () => toggle()
+    window.addEventListener(TALK_EVENT, onTalk)
+    return () => window.removeEventListener(TALK_EVENT, onTalk)
+  }, [toggle])
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.code === 'Space' && (event.ctrlKey || event.metaKey)) {

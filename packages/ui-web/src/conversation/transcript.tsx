@@ -1,3 +1,4 @@
+import type { Logged } from '@repo/client'
 import type { Exchange, Persona, Threads } from '@repo/protocol'
 import { useEffect, useRef, useState } from 'react'
 import { cn } from '../primitives/cn.ts'
@@ -9,6 +10,8 @@ export interface TranscriptProps {
   exchanges: readonly Exchange[]
   personas: readonly Persona[]
   threads: Threads
+  /** Every event the core sent, for the inspector tab. */
+  events: readonly Logged[]
   onFocus(thread: string): void
   onClose(): void
 }
@@ -21,8 +24,8 @@ const clock = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-d
  * One step in from the main screen: what both sides said, as a log that follows the conversation, and the
  * threads working behind it.
  */
-export function Transcript({ exchanges, personas, threads, onFocus, onClose }: TranscriptProps) {
-  const [tab, setTab] = useState<'transcript' | 'threads'>('transcript')
+export function Transcript({ exchanges, personas, threads, events, onFocus, onClose }: TranscriptProps) {
+  const [tab, setTab] = useState<'transcript' | 'threads' | 'inspector'>('transcript')
   const end = useRef<HTMLDivElement>(null)
   const count = exchanges.length
   const last = exchanges.at(-1)?.replied.length ?? 0
@@ -35,7 +38,7 @@ export function Transcript({ exchanges, personas, threads, onFocus, onClose }: T
     <aside aria-label="Transcript" className="flex h-full w-[23rem] shrink-0 flex-col border-line border-l bg-surface/85 backdrop-blur-md">
       <div className="flex h-12 items-center justify-between border-line border-b pr-2.5 pl-3">
         <div role="tablist" className="flex items-center gap-1">
-          {(['transcript', 'threads'] as const).map((name) => (
+          {(['transcript', 'threads', 'inspector'] as const).map((name) => (
             <button
               key={name}
               type="button"
@@ -47,7 +50,11 @@ export function Transcript({ exchanges, personas, threads, onFocus, onClose }: T
                 tab === name ? 'bg-raised text-text' : 'text-text-faint hover:text-text-soft'
               )}
             >
-              {name === 'threads' ? `Threads${threads.threads.length ? ` · ${threads.threads.length}` : ''}` : 'Transcript'}
+              {name === 'threads'
+                ? `Threads${threads.threads.length ? ` · ${threads.threads.length}` : ''}`
+                : name === 'inspector'
+                  ? 'Inspector'
+                  : 'Transcript'}
             </button>
           ))}
         </div>
@@ -55,7 +62,9 @@ export function Transcript({ exchanges, personas, threads, onFocus, onClose }: T
           <CloseGlyph />
         </IconButton>
       </div>
-      {tab === 'threads' ? (
+      {tab === 'inspector' ? (
+        <Inspector events={events} />
+      ) : tab === 'threads' ? (
         <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto px-3 py-3">
           {threads.threads.length === 0 ? (
             <p className="px-2 py-1 text-sm text-text-faint">Topics appear here as the conversation opens them.</p>
@@ -125,5 +134,47 @@ export function Transcript({ exchanges, personas, threads, onFocus, onClose }: T
         </div>
       )}
     </aside>
+  )
+}
+
+const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 })
+
+/** The raw events from the core, newest first, each opened on demand. For those who want to see everything. */
+function Inspector({ events }: { events: readonly Logged[] }) {
+  const [open, setOpen] = useState<number>()
+  if (events.length === 0) return <p className="px-5 py-4 text-sm text-text-faint">Events from the core appear here as they arrive.</p>
+  const newest = [...events].reverse()
+  return (
+    <ol className="scroll-quiet min-h-0 flex-1 overflow-y-auto py-2 font-mono text-[0.6875rem]">
+      {newest.map((logged) => {
+        const { event } = logged
+        const summary =
+          event.name === 'speech.say'
+            ? event.text
+            : event.name === 'activity'
+              ? `${event.tool} ${event.phase}`
+              : event.name === 'turn.started' || event.name === 'turn.ended'
+                ? `${event.exchange.outcome}${event.exchange.thread ? ` · thread ${event.exchange.thread.slice(0, 8)}` : ''}`
+                : event.name === 'view.shown'
+                  ? `${event.view.title} · ${event.view.slot}`
+                  : ''
+        return (
+          <li key={`${logged.at}-${event.name}-${summary}`}>
+            <button
+              type="button"
+              onClick={() => setOpen(open === logged.at ? undefined : logged.at)}
+              className="flex w-full items-baseline gap-2 px-4 py-1 text-left hover:bg-raised"
+            >
+              <span className="shrink-0 text-text-faint tabular-nums">{time.format(logged.at)}</span>
+              <span className="shrink-0 text-accent">{event.name}</span>
+              <span className="truncate text-text-soft">{summary}</span>
+            </button>
+            {open === logged.at && (
+              <pre className="mx-4 mb-2 overflow-x-auto rounded-sm bg-ground p-3 text-text-soft leading-relaxed">{JSON.stringify(event, null, 2)}</pre>
+            )}
+          </li>
+        )
+      })}
+    </ol>
   )
 }

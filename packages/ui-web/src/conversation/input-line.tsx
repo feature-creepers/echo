@@ -62,7 +62,13 @@ export function InputLine({ name, busy, onSay, onStop, talk }: InputLineProps) {
         autoComplete="off"
         spellCheck={false}
         aria-label={`Say something to ${name}`}
-        placeholder={talk?.listening ? 'Listening… speak, then pause' : talk ? `Ask ${name} anything, or press Ctrl+Space to talk` : `Ask ${name} anything`}
+        placeholder={
+          talk?.listening
+            ? 'Listening… speak, then pause'
+            : talk
+              ? `Ask ${name} anything, or press Ctrl+Space to talk (Ctrl+Shift+Space from any app)`
+              : `Ask ${name} anything`
+        }
         className="h-full min-w-0 flex-1 bg-transparent font-mono text-[0.9375rem] text-text outline-none placeholder:text-text-faint"
       />
       {talk && (

@@ -2,6 +2,8 @@ import { openSession, type Session, type SessionLink } from './session.ts'
 import { type DeviceVoice, playSpeech, type SpeechPlayer } from './speech-player.ts'
 import { type ChannelState, followChannel } from './state/channel.ts'
 import { type EnginesState, followEngines } from './state/engines.ts'
+import type { Followed } from './state/followed.ts'
+import { followEvents, type Logged } from './state/inspector.ts'
 import { followSettings, type SettingsState } from './state/settings.ts'
 import { followThreads, type ThreadsState } from './state/threads.ts'
 import { followView, type ViewState } from './state/view.ts'
@@ -14,6 +16,8 @@ export interface Client {
   engines: EnginesState
   view: ViewState
   threads: ThreadsState
+  /** Every event the core sent, for the inspector. */
+  events: Followed<readonly Logged[]>
   speech: SpeechPlayer
   /** Let go of all of it. The link under the session is left as it is. */
   close(): void
@@ -30,6 +34,7 @@ export function openClient(link: SessionLink, voice: DeviceVoice): Client {
   const engines = followEngines(session)
   const view = followView(session)
   const threads = followThreads(session)
+  const events = followEvents(session)
   const speech = playSpeech(channel, voice)
   return {
     session,
@@ -38,11 +43,13 @@ export function openClient(link: SessionLink, voice: DeviceVoice): Client {
     engines,
     view,
     threads,
+    events,
     speech,
     close() {
       speech.close()
       view.unfollow()
       threads.unfollow()
+      events.unfollow()
       engines.unfollow()
       channel.unfollow()
       settings.stop()

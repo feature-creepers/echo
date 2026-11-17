@@ -2,8 +2,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { color, frame } from '@repo/tokens'
-import { app, BrowserWindow, ipcMain, nativeTheme, session } from 'electron'
-import { type BridgeSound, CORE_LINK_CHANNEL, CORE_MESSAGE_CHANNEL, SPEECH_CHANNELS } from '../preload/bridge.ts'
+import { app, BrowserWindow, globalShortcut, ipcMain, nativeTheme, session } from 'electron'
+import { type BridgeSound, CORE_LINK_CHANNEL, CORE_MESSAGE_CHANNEL, SPEECH_CHANNELS, TALK_CHANNEL } from '../preload/bridge.ts'
 import { chrome } from './chrome/index.ts'
 import { type CoreProcess, startCore } from './core-process.ts'
 import { deviceId } from './device.ts'
@@ -26,6 +26,9 @@ const selfChecking = process.argv.includes('--self-check')
 const scratch = selfChecking ? mkdtempSync(join(tmpdir(), 'self-check-')) : undefined
 if (scratch) app.setPath('userData', scratch)
 else if (!app.isPackaged) app.setPath('userData', `${app.getPath('userData')} (development)`)
+
+/** The shortcut that starts talking from any app. */
+const TALK_SHORTCUT = 'CommandOrControl+Shift+Space'
 
 /** Built files sit next to this one: out/main/index.js, out/main/core.js, out/preload, out/renderer. */
 const built = (path: string) => join(import.meta.dirname, path)
@@ -134,6 +137,18 @@ function start(): void {
   }
 
   const window = openWindow(core)
+
+  // Talk from anywhere: the shortcut brings the window forward and starts listening, and pressed again, sends.
+  // Some Linux desktops (Wayland) do not let an app take a global shortcut: the one inside the window remains.
+  const registered = globalShortcut.register(TALK_SHORTCUT, () => {
+    if (window.isDestroyed()) return
+    if (window.isMinimized()) window.restore()
+    window.show()
+    window.focus()
+    window.webContents.send(TALK_CHANNEL)
+  })
+  if (!registered) process.stderr.write(`The shortcut ${TALK_SHORTCUT} could not be registered: another app may use it.\n`)
+  app.on('will-quit', () => globalShortcut.unregisterAll())
   app.on('second-instance', () => {
     if (window.isDestroyed()) return
     if (window.isMinimized()) window.restore()

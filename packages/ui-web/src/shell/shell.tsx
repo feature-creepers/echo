@@ -54,6 +54,7 @@ function Connected({ productName, client, engine }: { productName: string; clien
   const snapshot = useFollowed(client.settings)
   const channel = useFollowed(client.channel)
   const threads = useFollowed(client.threads)
+  const events = useFollowed(client.events)
   const [screen, setScreen] = useState<Screen>()
   /** The screen the app opened on, decided once, when the settings first arrive. */
   const entered = useRef<Screen>(undefined)
@@ -197,6 +198,7 @@ function Connected({ productName, client, engine }: { productName: string; clien
                 exchanges={channel.exchanges}
                 personas={personas.available}
                 threads={threads}
+                events={events}
                 onFocus={(thread) => void client.threads.focus(thread).catch(() => undefined)}
                 onClose={() => setTranscript(false)}
               />

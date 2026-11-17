@@ -6,6 +6,7 @@ export { type ChannelSnapshot, type ChannelState, followChannel, type Sentence }
 export type { CoreLink } from './state/core-link.ts'
 export { type EnginesState, followEngines } from './state/engines.ts'
 export { type Cell, cell, type Followed } from './state/followed.ts'
+export { followEvents, type Logged } from './state/inspector.ts'
 export { followSettings, type SettingsSnapshot, type SettingsState } from './state/settings.ts'
 export { followThreads, type ThreadsState } from './state/threads.ts'
 export { followView, type Shown, type ViewState } from './state/view.ts'

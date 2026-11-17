@@ -17,7 +17,12 @@ export interface DesktopBridge {
   core: SessionLink
   /** The speech engines of this device. */
   speech: SpeechBridge
+  /** Be told when the user pressed the global shortcut to talk. Returns a function that stops the telling. */
+  onTalk(listener: () => void): () => void
 }
+
+/** The channel the global shortcut to talk comes on. */
+export const TALK_CHANNEL = 'talk'
 
 /** Sound as it crosses to and from the window. */
 export interface BridgeSound {
