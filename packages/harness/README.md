@@ -45,11 +45,13 @@ session.send('What is on today?')
 
 ## Roles and models
 
-| Role           | Claude Code | Codex                                                          |
-| -------------- | ----------- | -------------------------------------------------------------- |
-| `orchestrator` | `haiku`     | `gpt-6-luna`, when Codex lists it for the user                 |
-| `thread`       | `sonnet`    | the first model of Codex's own list (`gpt-6.1-sol` without it) |
-| `utility`      | `haiku`     | `gpt-6-luna`, when Codex lists it for the user                 |
+| Role           | Claude Code | Codex                                                                                      |
+| -------------- | ----------- | ------------------------------------------------------------------------------------------ |
+| `orchestrator` | `haiku`     | `gpt-6-luna`, when Codex lists it for the user                                             |
+| `thread`       | `haiku`     | the Terra model of Codex's own list (`gpt-6.1-terra` without the list), else its first one |
+| `utility`      | `haiku`     | `gpt-6-luna`, when Codex lists it for the user                                             |
+
+A request can name its model (`SessionRequest.model`, `OneShot.model`), in place of its role's: that is how the user's choice reaches the CLI (`--model` for Claude Code, the conversation's `model` for Codex). `models()` gives the models the user can choose from for the answers, each with a plain description, and the default: Haiku, Sonnet and Opus for Claude Code; for Codex, the models it lists for the account in its own `models_cache.json`, named and described for a person.
 
 ## Isolation
 
