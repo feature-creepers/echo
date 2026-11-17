@@ -3,10 +3,12 @@ packages:
   - packages/*
   - tooling/*
 
-# Install scripts of dependencies run only when allowed here. Neither of these needs its script:
-# Electron downloads its program the first time it is run, and esbuild works without it.
+# Install scripts of dependencies run only when allowed here. None of these needs its script:
+# Electron downloads its program the first time it is run, esbuild works without it, and
+# electron-winstaller builds a kind of Windows installer (Squirrel) that this project does not make.
 allowBuilds:
   electron: false
+  electron-winstaller: false
   esbuild: false
 
 # One version of each shared dependency for the whole workspace.
@@ -18,6 +20,7 @@ catalog:
   '@types/react-dom': ^19.3.0
   '@vitejs/plugin-react': ^6.3.0
   electron: ^45.3.0
+  electron-builder: ^26.18.0
   electron-vite: ^6.0.0
   esbuild: ^0.28.2
   eslint: ^10.15.0

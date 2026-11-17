@@ -1,0 +1,33 @@
+.onboarding {
+  display: grid;
+  gap: var(--space-xxl);
+  width: min(880px, 100%);
+  margin: 0 auto;
+  padding: var(--space-huge) var(--space-xl);
+}
+
+.intro {
+  display: grid;
+  gap: var(--space-md);
+  max-width: 62ch;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--size-label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.title {
+  font-size: var(--size-title);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.lead {
+  font-size: var(--size-lead);
+  color: var(--color-text-soft);
+}

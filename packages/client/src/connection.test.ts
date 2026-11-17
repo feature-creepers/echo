@@ -73,4 +73,34 @@ describe('connect', () => {
     link.drop()
     expect(causes).toEqual([undefined])
   })
+  it('carries what follows the welcome, both ways, without reading it', async () => {
+    const link = fakeTransport()
+    const connecting = connect(link.transport, identity)
+    link.receive({ type: 'welcome', protocol: PROTOCOL_VERSION, core: { version: '1.2.3' } })
+    const connection = await connecting
+    const received: unknown[] = []
+    connection.onMessage((message) => received.push(message))
+
+    connection.send({ type: 'command', id: 'c1' })
+    link.receive({ type: 'result', id: 'c1' })
+    link.receive('anything at all')
+
+    expect(link.sent.at(-1)).toEqual({ type: 'command', id: 'c1' })
+    expect(received).toEqual([{ type: 'result', id: 'c1' }, 'anything at all'])
+  })
+
+  it('keeps what the core sends before anyone listens, and delivers it in order', async () => {
+    const link = fakeTransport()
+    const connecting = connect(link.transport, identity)
+    link.receive({ type: 'welcome', protocol: PROTOCOL_VERSION, core: { version: '1.2.3' } })
+    link.receive({ n: 1 })
+    link.receive({ n: 2 })
+    const connection = await connecting
+    const received: unknown[] = []
+
+    connection.onMessage((message) => received.push(message))
+    link.receive({ n: 3 })
+
+    expect(received).toEqual([{ n: 1 }, { n: 2 }, { n: 3 }])
+  })
 })

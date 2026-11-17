@@ -1,3 +1,5 @@
 export { ConnectionRefused, HandshakeFailed, connect, type Connection, type Identity } from './connection.ts'
+export { CommandFailed, openSession, type CommandFailure, type Session, type SessionLink } from './session.ts'
 export type { CoreLink } from './state/core-link.ts'
+export { followSettings, type SettingsSnapshot, type SettingsState } from './state/settings.ts'
 export type { Transport } from './transport.ts'

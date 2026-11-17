@@ -1,9 +1,11 @@
 import { parseArgs } from 'node:util'
-import { CORE_TOKEN_VARIABLE, EXIT_WITH_PARENT_FLAG, EXIT_WITH_PARENT_OPTION } from '@repo/protocol'
+import { CORE_TOKEN_VARIABLE, DATA_OPTION, EXIT_WITH_PARENT_FLAG, EXIT_WITH_PARENT_OPTION } from '@repo/protocol'
 
 export interface Config {
   /** The token a client on this machine must present. */
   token: string
+  /** The folder that holds the user's data. */
+  data: string
   /** Where to listen. Left out, the core picks a fresh endpoint and announces it. */
   listen: string | undefined
   /** Stop when standard input closes, so the core never outlives the app that started it. */
@@ -13,8 +15,10 @@ export interface Config {
 /** The configuration cannot be used. The message is written for the person who started the core. */
 export class ConfigError extends Error {}
 
-export const USAGE = `Usage: server [--listen <endpoint>] [${EXIT_WITH_PARENT_FLAG}]
+export const USAGE = `Usage: server --${DATA_OPTION} <folder> [--listen <endpoint>] [${EXIT_WITH_PARENT_FLAG}]
 
+  --${DATA_OPTION} <folder>        The folder that holds the user's data. Created when missing.
+                         Only one core may use a folder at a time.
   --listen <endpoint>    Where to listen: a Unix socket path, or a named pipe on Windows.
                          Left out, the core picks a fresh endpoint.
   ${EXIT_WITH_PARENT_FLAG}     Stop when standard input closes.
@@ -28,14 +32,17 @@ export function readConfig(args: string[], env: Record<string, string | undefine
   const token = env[CORE_TOKEN_VARIABLE]
   if (!token) throw new ConfigError(`The ${CORE_TOKEN_VARIABLE} environment variable is not set.`)
 
-  return { token, listen: flags.listen, exitWithParent: flags[EXIT_WITH_PARENT_OPTION] ?? false }
+  const data = flags[DATA_OPTION]
+  if (!data) throw new ConfigError(`The --${DATA_OPTION} option is missing: the core needs a folder for the user's data.`)
+
+  return { token, data, listen: flags.listen, exitWithParent: flags[EXIT_WITH_PARENT_OPTION] ?? false }
 }
 
 function readFlags(args: string[]) {
   try {
     return parseArgs({
       args,
-      options: { listen: { type: 'string' }, [EXIT_WITH_PARENT_OPTION]: { type: 'boolean' } },
+      options: { [DATA_OPTION]: { type: 'string' }, listen: { type: 'string' }, [EXIT_WITH_PARENT_OPTION]: { type: 'boolean' } },
       strict: true,
       allowPositionals: false
     }).values

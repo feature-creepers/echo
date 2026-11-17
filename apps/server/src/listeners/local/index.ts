@@ -1,6 +1,6 @@
 import { createServer, type Socket } from 'node:net'
+import type { Core } from '@repo/core'
 import { createLineDecoder, encodeLine } from '@repo/protocol'
-import type { Core } from '../../compose.ts'
 import { createEndpoint, type Endpoint } from './endpoint/index.ts'
 
 /** How long a client has to say hello before it is disconnected. */
@@ -23,31 +23,43 @@ export interface LocalListener {
  * Listen for clients on this machine, over a Unix socket or a Windows named pipe.
  *
  * Each connection must start with a hello. The core decides; the listener sends its answer and
- * disconnects a client that was refused or that stayed silent.
+ * disconnects a client that was refused or that stayed silent. From then on the listener carries
+ * the client's commands to the core, each result back to that client, and every event to all of them.
  */
 export function listenLocal(core: Core, options: LocalListenerOptions = {}): Promise<LocalListener> {
   const endpoint: Endpoint = options.address === undefined ? createEndpoint() : { address: options.address, remove: () => undefined }
   const handshakeTimeoutMs = options.handshakeTimeoutMs ?? HANDSHAKE_TIMEOUT_MS
   const sockets = new Set<Socket>()
+  const admitted = new Set<Socket>()
+
+  const stopEvents = core.onEvent((event) => {
+    const line = encodeLine(event)
+    for (const socket of admitted) socket.write(line)
+  })
 
   const server = createServer((socket) => {
     sockets.add(socket)
     socket.setEncoding('utf8')
     const decoder = createLineDecoder()
-    let admitted = false
 
     const silent = setTimeout(() => socket.destroy(), handshakeTimeoutMs)
     socket.on('close', () => {
       clearTimeout(silent)
       sockets.delete(socket)
+      admitted.delete(socket)
     })
     // A client that vanishes mid-write is not an error of the core: the close event does the cleanup.
     socket.on('error', () => undefined)
 
     socket.on('data', (chunk: string) => {
       for (const line of decoder.push(chunk)) {
-        // No message is defined after the handshake yet. What an admitted client sends is ignored until there is.
-        if (admitted) continue
+        if (admitted.has(socket)) {
+          // A line too long to be a message ends the connection: nothing after it can be trusted to be whole.
+          if (!line.ok && line.error === 'too-long') return void socket.destroy()
+          const result = core.execute(line.ok ? line.message : undefined)
+          if (result) socket.write(encodeLine(result))
+          continue
+        }
 
         clearTimeout(silent)
         const admission = core.admit(line.ok ? line.message : undefined)
@@ -55,14 +67,15 @@ export function listenLocal(core: Core, options: LocalListenerOptions = {}): Pro
           socket.end(encodeLine(admission.reply))
           return
         }
-        admitted = true
         socket.write(encodeLine(admission.reply))
+        admitted.add(socket)
       }
     })
   })
 
   return new Promise((resolve, reject) => {
     server.once('error', (error) => {
+      stopEvents()
       endpoint.remove()
       reject(error)
     })
@@ -71,6 +84,7 @@ export function listenLocal(core: Core, options: LocalListenerOptions = {}): Pro
         address: endpoint.address,
         close: () =>
           new Promise<void>((done) => {
+            stopEvents()
             for (const socket of sockets) socket.destroy()
             server.close(() => {
               endpoint.remove()

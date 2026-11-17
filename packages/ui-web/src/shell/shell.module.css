@@ -1,0 +1,61 @@
+.frame {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--color-ground);
+  transition:
+    --accent var(--motion-calm),
+    --accent-soft var(--motion-calm),
+    --accent-glow var(--motion-calm);
+}
+
+/* A wash of the accent behind the top of the window: the only colour that is not on an element. */
+.frame::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(80% 55% at 50% 0%, var(--accent-soft), transparent 70%);
+  pointer-events: none;
+}
+
+.header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  height: 48px;
+  padding: 0 var(--space-xl);
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.wordmark {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-family: var(--font-mono);
+  font-size: var(--size-small);
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: lowercase;
+}
+
+.wordmark::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 var(--space-sm) var(--accent);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.main {
+  position: relative;
+  min-height: 0;
+  overflow-y: auto;
+}

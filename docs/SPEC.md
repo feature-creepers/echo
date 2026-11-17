@@ -1,19 +1,19 @@
-# JARVIS: product and architecture spec
+# Echo: product and architecture spec
 
-Draft 0.2, 16 November 2026, on branch `rodolphe`.
-Sections 2 and 3 describe what exists today. Everything else is a proposal; none of it is built.
+Draft 0.3, 17 November 2026, on branch `rodolphe`.
+Sections 2 and 3 describe what existed before this branch. Section 14.8 says what is built. Everything else is a proposal.
 
-**Changed since draft 0.1**
+**Changed since draft 0.2**
 
-- Windows, macOS and Linux are all targets of the first version (sections 1, 8, 16, 17).
-- The core is designed so it can later run on a server, with sync and a phone app (new section 5).
-- The repository structure is specified in full (section 14).
-- The decisions taken on 16 November are recorded (section 15).
-- The proof-of-concept files are removed from this branch. They remain on `main`.
+- The product is named Echo (decision 13).
+- Personas are data. The user names them, at first launch and in settings, and no code names a persona (section 11, decision 14).
+- The first messages after the handshake exist: commands, results and events, carrying the user's settings (section 14.4).
+- The store exists: SQLite through Node's built-in module, holding immutable records (sections 10.3 and 14.7).
+- Tommy Sendra and Rodolphe Barbanneau are credited as co-authors (decision 12).
 
 ## 0. Summary
 
-The product is a personal assistant you talk to. It answers with a short spoken sentence and with interface elements it composes on screen for that answer. The user has one assistant and one conversation. Which AI tool runs, how many conversations exist behind the scenes and what is remembered are all managed for them, and can be inspected on request.
+Echo is a personal assistant you talk to. It answers with a short spoken sentence and with interface elements it composes on screen for that answer. The user has one assistant and one conversation. Which AI tool runs, how many conversations exist behind the scenes and what is remembered are all managed for them, and can be inspected on request.
 
 Five findings from the analysis shape this document:
 
@@ -21,7 +21,7 @@ Five findings from the analysis shape this document:
 2. **Speak already has most of the plumbing the proof of concept lacks**: a harness abstraction for Claude Code and Codex, live sessions whose tools are served by the app, local speech recognition for strong machines, permissions with undo, and a shell for three systems. The proof of concept brings what Speak lacks: voice output, the low-power speech route, and an assistant with a presence.
 3. **UI SDK is not a framework for AI-generated interfaces.** It is a library of interaction behaviours for building components, announced in beta on 12 November 2026. The Vercel project that does what you describe is json-render. Section 9 uses json-render for generation, with UI SDK underneath for the components.
 4. **Harnesses do keep memory of their own**, each in its own format, so it has to be turned off and replaced by ours. One catch: the single Claude Code flag that does this (`--bare`) also refuses subscription sign-in, so isolation has to be done setting by setting. Section 10 uses one local SQLite file with full-text and vector search.
-5. **HAL already exists in the proof of concept, but only as a costume**: a tone of voice, a red theme and an easter egg. The HAL you describe is a different way of deciding, and needs its own mechanism (section 11).
+5. **The proof of concept's second character is only a costume**: a tone of voice, a red theme and an easter egg. The critical persona you describe is a different way of deciding, and needs its own mechanism (section 11).
 
 ## 1. Product
 
@@ -56,7 +56,7 @@ The design is checked against these.
 | View              | What a thread shows on screen: a description of interface elements and their data                                  |
 | Stage             | The screen area showing the view of the thread in focus                                                            |
 | Aside             | A side question, answered without leaving the current topic                                                        |
-| Persona           | The assistant's character and stance: Jarvis or HAL                                                                |
+| Persona           | One of the characters the assistant can be: a name the user chooses, a stance and a look. Two ship by default      |
 | Hardware tier     | Light, standard or performance: which speech and memory components a machine runs                                  |
 | Inspector         | The technical view of threads, events, memory and cost                                                             |
 
@@ -569,15 +569,38 @@ Vector search needs an embedding model, and harnesses do not provide one. Under 
 
 ### 10.7 What the user sees
 
-A "what I know about you" view, grouped by people, preferences, projects and dates. Each fact shows where it was learned, and can be edited or forgotten. The whole memory exports to Markdown, keeping the best property of the proof of concept's notes file: the user can read and correct it. Memory is shared by both personas and survives any change of harness. A one-off import brings in the proof of concept's notes, context file and history from `~/JARVIS`.
+A "what I know about you" view, grouped by people, preferences, projects and dates. Each fact shows where it was learned, and can be edited or forgotten. The whole memory exports to Markdown, keeping the best property of the proof of concept's notes file: the user can read and correct it. Memory is shared by every persona and survives any change of harness. A one-off import brings in the proof of concept's notes, context file and history from `~/JARVIS`.
 
-## 11. Personas: Jarvis and HAL
+## 11. Personas
 
-A persona has two parts. The **character** is name, tone, voice and accent colour; the proof of concept has this for both. The **stance** is how the assistant handles a request it has doubts about, and it is new.
+A persona is one of the characters the assistant can be. The user talks to the assistant by the name of the persona in use. A persona is data, with four parts:
 
-### 11.1 The two stances
+| Part   | What it is                                                              | Who sets it                  |
+| ------ | ----------------------------------------------------------------------- | ---------------------------- |
+| Name   | What the user calls it, aloud and on screen                             | The user. Each has a default |
+| Stance | How it handles a request it has doubts about: accommodating or critical | The product                  |
+| Accent | The one glowing colour it shows                                         | The product                  |
+| Voice  | How it sounds (later, with speech output)                               | The product, then the user   |
 
-|                                | Jarvis                                        | HAL                                                                                             |
+Two personas ship with the product. They are two entries in one list:
+
+| Default name | Stance        | Accent    | Answers at first launch |
+| ------------ | ------------- | --------- | ----------------------- |
+| Jarvis       | Accommodating | Cyan-blue | Yes                     |
+| HAL          | Critical      | Red       | No                      |
+
+**No code names a persona.** The default names are written in one file, `packages/core/src/personas/defaults.ts`, and nowhere else. Behaviour depends on the stance, the look depends on the accent, and every text the user reads is written for a stance. Neither default is treated differently from the other. Tests use made-up personas. A lint rule built from that file refuses a default name anywhere else in the code, as an identifier or as text. For the same reason this spec says "the critical persona" where it means the behaviour, and a name only where it means the default name.
+
+### 11.1 Names
+
+- **The user chooses them.** At first launch the app shows the personas with their default names. The user keeps them or types their own, and picks the one that answers (section 11.5). Both can be changed later in settings.
+- **A name is something said aloud.** It is kept to letters and digits of any script, with spaces, hyphens, apostrophes and full stops between them, and to 24 characters.
+- **Two personas never share a name**, whatever the case. The name is how the user says which one they are talking to.
+- **Names are user settings.** The core keeps them, so they follow the user to every device (section 5.2). Only the user's choices are stored, never the defaults: a user who never renamed a persona gets its default name as each version defines it.
+
+### 11.2 The two stances
+
+|                                | Accommodating                                 | Critical                                                                                        |
 | ------------------------------ | --------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | Default                        | Does what is asked, at full quality           | Does what is asked, at full quality                                                             |
 | When it sees a serious problem | Mentions it in one sentence and proceeds      | Stops before acting: states the concern, proposes the better way, asks whether the user is sure |
@@ -585,29 +608,34 @@ A persona has two parts. The **character** is name, tone, voice and accent colou
 | Questions                      | Only when it cannot proceed without an answer | Also when the answer would change what is best to do                                            |
 | Tone                           | Warm, accommodating                           | Calm, direct, exacting                                                                          |
 
-### 11.2 HAL's rules
+### 11.3 Rules of the critical stance
 
 1. **Object only when it matters.** The test: would a competent professional advise against this, and is the cost of the mistake significant or hard to undo? If not, do it without comment.
 2. **One objection per decision.** State the concern briefly, give the alternative, ask once.
 3. **The user decides.** If they confirm, carry it out completely.
-4. **Remember the decision.** An overridden objection is recorded ("chose X despite Y, on this date"), so HAL does not raise it again on the same matter.
+4. **Remember the decision.** An overridden objection is recorded ("chose X despite Y, on this date"), so it is not raised again on the same matter.
 5. **Never against the user.** No deception, no withheld effort, no action taken "for their own good" without being asked.
 
-Example: "Send this to my landlord now." HAL: "I'd hold it. The second paragraph admits you withheld rent, which could be used against you. Shall I draft a version without it?" If the user answers "No, send it", it is sent.
+Example: "Send this to my landlord now." The critical persona: "I'd hold it. The second paragraph admits you withheld rent, which could be used against you. Shall I draft a version without it?" If the user answers "No, send it", it is sent.
 
-### 11.3 Mechanism
+### 11.4 Mechanism
 
-- The stance is part of every session's instructions, since the doubt often arises inside a thread that has the specialist knowledge.
+- The stance is part of every session's instructions, since the doubt often arises inside a thread that has the specialist knowledge. The persona's name is part of them too, as the name the assistant answers to.
 - A thread that objects does not act. It ends its turn with a `concern` (the problem, the alternative, how serious). The channel shows a decision card with the two options and the assistant asks aloud. The user answers by voice or by click.
 - Overrides are stored as facts of their own kind and included in later context.
 
-### 11.4 Limits to state plainly
+### 11.5 First launch and settings
 
-- **Objection is not permission.** Approval before risky actions (sending, deleting, paying) is a safety gate that exists in both personas (section 12). HAL's objection is a matter of judgement. They are separate mechanisms.
-- **Model refusals are outside the persona.** If the underlying model declines a request on its own policy, neither persona can override it.
-- **The names.** JARVIS and HAL are characters owned by film studios. That is harmless for a personal project and a risk for a distributed product. Personas are data, so the names can change without touching code.
+- **First launch.** Before anything else, the app shows each persona on a card: what its stance does, its name in a field, and whether it answers by default. The user keeps or changes the names, picks one and starts. Names that cannot be kept are refused next to their field, by the same rule on the device and in the core.
+- **Asked once per user, not per device.** The core records the answer. Until it has one, every client asks; once it has, none does, including a phone connected later.
+- **Settings.** The same form, reached from the main screen. A change is kept by the core and shown at once on every connected device.
+- **Switching.** The persona that answers is a setting, a control beside the core, and later a spoken command. It changes the accent at once, and the voice when there is one.
 
-Switching persona is a setting and a spoken command. It changes voice and accent colour at once.
+### 11.6 Limits to state plainly
+
+- **Objection is not permission.** Approval before risky actions (sending, deleting, paying) is a safety gate that exists whatever the persona (section 12). An objection is a matter of judgement. They are separate mechanisms.
+- **Model refusals are outside the persona.** If the underlying model declines a request on its own policy, no persona can override it.
+- **The default names.** Jarvis and HAL are characters owned by film studios. That is harmless for a personal project and a risk for a distributed product. They are defaults in one file: changing them is a one-line change, and it does not touch a user who chose their own names.
 
 ## 12. Tools, permissions and privacy
 
@@ -637,7 +665,7 @@ Services such as the calendar are reached through our own tools, so they work on
 The proof of concept is read-only; the new product must write files and, later, act. It takes Speak's model.
 
 - **Scope**: what the assistant may touch. By default, its own files and the web. More is granted explicitly, per device.
-- **Approval**: sending a message as the user, deleting for good, paying and passwords always ask first, in both personas.
+- **Approval**: sending a message as the user, deleting for good, paying and passwords always ask first, whatever the persona.
 - **Enforcement** is in the tool server, never left to the model's good behaviour. A client checks the scope again before it runs a device capability, so a device does not depend on a remote core being right.
 - **Undo** for file changes, with a trash per thread.
 
@@ -660,18 +688,18 @@ Version 1 has no server of ours, no account and no analytics. With the later ser
 Speak's discipline with the proof of concept's presence: digital, not retro.
 
 - **From Speak**: flat surfaces, thin rules, a strict spacing scale, bracketed secondary actions, keyboard hints, the theme system.
-- **From the proof of concept**: the near-black background, the living core at the centre of attention, one glowing accent, the red variant for HAL.
+- **From the proof of concept**: the near-black background, the living core at the centre of attention, one glowing accent, and a red variant, which becomes the accent of the critical persona.
 - **To stay modern rather than "geeky"**:
   - Monospace only where it signals the system: labels, values, keys, the input line. Sentences inside generated elements use a proportional typeface, at a generous size.
   - Glow is reserved for the core and for the element currently speaking. No scanlines, no fake terminal effects.
   - Key hints and brackets appear from disclosure level 1 upward. Level 0 is clean.
-  - One accent per persona: cyan-blue for Jarvis, red for HAL.
+  - One accent per persona, as part of its data: cyan-blue and red for the two that ship.
 
 ### 13.2 Layout
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│ jarvis                                               ● listening   14:02 │
+│ echo                                                 ● listening   14:02 │
 ├───────────────────────────────────────────────┬──────────────────────────┤
 │  stage                                        │  margin                  │
 │  the view of the thread in focus              │  ┌─ aside ────────────┐  │
@@ -700,7 +728,7 @@ Three sizes on a desktop: the full window, Mini (core and caption, always on top
 
 The inspector also acts: move a turn to another thread, close or reopen a thread, edit memory, change harness or model per role, replay a turn.
 
-Easter eggs come later: Speak's seasonal themes and secret theme, and the pod-bay-doors reply.
+Easter eggs come later: Speak's seasonal themes and secret theme. The proof of concept's pod-bay-doors reply belongs to a name, not to a persona: it is given only while a persona is still called HAL.
 
 ## 14. Repository
 
@@ -785,21 +813,21 @@ either side  speech          recognisers and voices. Node. Imports models only.
              models          model files and hardware tier. Node. Imports nothing from this repository.
 ```
 
-| Package    | Runs in  | May import                    | Purpose of the boundary                                                      |
-| ---------- | -------- | ----------------------------- | ---------------------------------------------------------------------------- |
-| `protocol` | Anywhere | Nothing                       | Both sides of a connection build against the same messages                   |
-| `catalog`  | Anywhere | Nothing                       | The core validates what renderers on any device will draw                    |
-| `tokens`   | Anywhere | Nothing                       | One set of design values for web and phone                                   |
-| `core`     | Anywhere | Contracts                     | The assistant can be tested, replayed and hosted without any adapter         |
-| `harness`  | Node     | `core` ports                  | A harness can be added or removed without touching the core                  |
-| `store`    | Node     | `core` ports                  | The database can change without touching the core                            |
-| `embedder` | Node     | `core` ports, `models`        | The embedding model can change, or move to an API, without touching the core |
-| `speech`   | Node     | `models`                      | Engines run on a device or on a server, unchanged                            |
-| `models`   | Node     | Nothing                       | One place downloads and verifies large files and detects the hardware tier   |
-| `tools`    | Node     | `core`, `catalog`             | Everything a model may do passes one gate                                    |
-| `client`   | Anywhere | `protocol`, `catalog`         | Desktop and phone share connection, state and playback                       |
-| `ui-web`   | Browser  | `client`, `catalog`, `tokens` | The interface is not tied to Electron                                        |
-| `testing`  | Node     | `core`, contracts             | Every port has one maintained test double                                    |
+| Package    | Runs in  | May import                 | Purpose of the boundary                                                      |
+| ---------- | -------- | -------------------------- | ---------------------------------------------------------------------------- |
+| `protocol` | Anywhere | Nothing                    | Both sides of a connection build against the same messages                   |
+| `catalog`  | Anywhere | Nothing                    | The core validates what renderers on any device will draw                    |
+| `tokens`   | Anywhere | Nothing                    | One set of design values for web and phone                                   |
+| `core`     | Anywhere | Contracts                  | The assistant can be tested, replayed and hosted without any adapter         |
+| `harness`  | Node     | `core` ports               | A harness can be added or removed without touching the core                  |
+| `store`    | Node     | `core` ports               | The database can change without touching the core                            |
+| `embedder` | Node     | `core` ports, `models`     | The embedding model can change, or move to an API, without touching the core |
+| `speech`   | Node     | `models`                   | Engines run on a device or on a server, unchanged                            |
+| `models`   | Node     | Nothing                    | One place downloads and verifies large files and detects the hardware tier   |
+| `tools`    | Node     | `core`, `catalog`          | Everything a model may do passes one gate                                    |
+| `client`   | Anywhere | `protocol`, `catalog`      | Desktop and phone share connection, state and playback                       |
+| `ui-web`   | Browser  | `client` and the contracts | The interface is not tied to Electron                                        |
+| `testing`  | Node     | `core`, contracts          | Every port has one maintained test double                                    |
 
 Two rules follow, and are the ones most likely to be broken by accident:
 
@@ -814,26 +842,32 @@ Every package has the same outline: `package.json` with an `exports` map, `tscon
 packages/protocol/src/
 ├── index.ts
 ├── version.ts              protocol version and the compatibility rule
-├── envelope.ts             what every message carries: identifier, sequence number, time, reply-to
 ├── handshake.ts            hello and welcome: kind of client, device, capabilities, credential
 ├── capabilities.ts         what a device can offer: audio, speech, files, cursor, screen, notify
-├── commands/               client to core
+├── envelope.ts             the three kinds of message after the handshake: command, result, event
+├── commands.ts             every command, assembled from the groups in commands/
+├── commands/               client to core, each answered by one result
+│   ├── settings.ts         read the settings; name the personas and pick the one that answers
 │   ├── utterance.ts        something said or typed: text, or audio frames
 │   ├── action.ts           a semantic action from a view
-│   ├── control.ts          stop, focus, persona, settings
+│   ├── control.ts          stop, focus
 │   └── inspect.ts          inspector queries
-├── events/                 core to client
+├── events.ts               every event, assembled from the groups in events/
+├── events/                 core to every client
+│   ├── settings.ts         the settings changed
 │   ├── turn.ts             turn started, ended, failed
 │   ├── speech.ts           say this text, play this audio, stop
 │   ├── view.ts             render, patch, clear, and the slot
 │   ├── thread.ts           opened, state, focus
 │   ├── activity.ts         tool in use, waiting, ready
 │   └── status.ts           harness state, usage, errors
+├── personas.ts             a persona (name, stance, accent) and the rule for names, shared by both sides
+├── settings.ts             the user's settings as a client sees them
 ├── device/                 the core asks a device, the device answers
 │   ├── request.ts
 │   └── files.ts  media.ts  system.ts  cursor.ts  screen.ts  notify.ts
 ├── replication/            exchange of records between cores (reserved for sync)
-├── launch.ts               the agreement between a core and the program that starts it on the same machine
+├── launch.ts               the agreement between a core and the program that starts it: token, data folder, ready line
 └── codec.ts                JSON messages and binary audio frames
 ```
 
@@ -854,13 +888,15 @@ packages/catalog/src/
 packages/tokens/src/
 ├── index.ts
 ├── color.ts  space.ts  type.ts  motion.ts
-├── persona.ts              the accent of each persona
+├── accent.ts               the accents a persona can show, by name
 └── css.ts                  the tokens as CSS variables
 ```
 
 ```
 packages/core/src/
 ├── index.ts
+├── core.ts                 the core as a listener sees it: admit a client, carry out a command, announce an event
+├── commands/               reads a command, runs its handler, answers with a result
 ├── ports/                  what the core needs from outside, as interfaces
 │   ├── harness.ts          Harness, Session
 │   ├── records.ts          append and read records
@@ -899,14 +935,16 @@ packages/core/src/
 │   ├── facts.ts
 │   └── profile.ts          the short profile present in every prompt
 ├── personas/
-│   ├── persona.ts          character and stance
-│   ├── jarvis.ts  hal.ts
+│   ├── defaults.ts         the personas a new user starts with: data, and the only place their default names are written
+│   ├── choice.ts           the user's choice of names and of the persona that answers: its rules, and the record that keeps it
+│   ├── instructions.ts     what a stance adds to a session's instructions
 │   └── objection.ts        concern, decision, recorded override
+├── settings/               the user's settings: the defaults, then every choice recorded, in order
 ├── triggers/               turns the assistant starts: time, launch, greeting, thread finished
 ├── files/                  each thread's files and their versions
 ├── permissions/            scopes and approvals, as policy
 ├── devices/                connected devices, the active one, routing of capability requests
-├── records/                the record types, and the "what is true now" readers built on them
+├── records/                the record types, the "what is true now" readers built on them, and records kept in memory
 └── usage/                  tokens, cost, timings
 ```
 
@@ -932,8 +970,9 @@ packages/harness/src/
 ```
 packages/store/src/
 ├── index.ts
-├── database.ts             open, settings, loading of extensions on each system
-├── migrations/             numbered SQL files
+├── store.ts                opens a user's data folder and gives the core its ports
+├── database.ts             open, settings, loading of extensions on each system, bringing the layout up to date
+├── migrations/             numbered files, one per change of layout. A released one is never edited
 ├── records.ts              the append-only record table
 ├── readers/                indexed "what is true now" tables, kept in step with the records
 ├── search/
@@ -989,11 +1028,12 @@ packages/tools/src/
 packages/client/src/
 ├── index.ts
 ├── connection.ts           connect, handshake, reconnect, resume from a sequence number
+├── session.ts              commands out, results and events in, once admitted
 ├── transports/
 │   ├── local.ts            a core on this machine (Node only, its own entry point)
 │   └── websocket.ts        a remote core
 ├── state/                  what a client knows, derived from events
-│   └── channel.ts  views.ts  threads.ts  activity.ts  inspector.ts
+│   └── settings.ts  channel.ts  views.ts  threads.ts  activity.ts  inspector.ts
 ├── speech-player.ts        plays speech events through the device's voice, reports progress, stops
 ├── capabilities.ts         declares device capabilities and answers the core's requests
 └── react/                  hooks (its own entry point)
@@ -1006,7 +1046,10 @@ packages/ui-web/src/
 ├── components/             the catalogue drawn for the web, one folder per component
 ├── registry.ts             catalogue name to component, for json-render
 ├── renderer/               stage, margin, dock, transitions, progressive drawing
-├── shell/                  the core animation, caption, input line, disclosure levels
+├── shell/                  what fills the window: the core animation, caption, input line, disclosure levels
+├── onboarding/             first launch
+├── settings/               the user's settings
+├── personas/               the form that names the personas, their mark, and the words written for each stance
 ├── inspector/              threads, events, memory, usage
 ├── styles/                 global styles
 └── themes/                 seasonal themes and easter eggs (later)
@@ -1042,6 +1085,7 @@ apps/desktop/
 │   │   ├── index.ts
 │   │   ├── core-process.ts starts apps/server and connects to it, or connects to a remote core
 │   │   ├── device.ts       the identifier of this device, kept across launches
+│   │   ├── self-check.ts   does what a first launch does against the real core, with no window
 │   │   ├── windows.ts  tray.ts  updater.ts
 │   │   ├── autostart/      darwin.ts · win32.ts · linux.ts · index.ts
 │   │   ├── shortcuts/      global shortcuts and hold to talk, per system
@@ -1053,7 +1097,7 @@ apps/desktop/
 │   ├── preload/            the typed bridge to the renderer
 │   └── renderer/           mounts ui-web; captures the microphone
 ├── resources/              icons and sounds
-└── build/                  installers, entitlements and signing for each system
+└── build/                  how the app is packaged for each system, entitlements and signing
 ```
 
 ```
@@ -1065,7 +1109,8 @@ native/apple-speech/
 
 ### 14.6 Conventions
 
-- **Package names** are `@repo/<folder>`. The product name is still a working name, and a neutral scope means renaming the product touches no import.
+- **Package names** are `@repo/<folder>`. The scope is neutral, so the product's name is written in one place, the manifest of each app (`productName` in `apps/desktop/package.json`), and changing it touches no import.
+- **No persona by name.** No identifier, file, test or message names a persona. The default names are data in `packages/core/src/personas/defaults.ts` (section 11).
 - **File names** are kebab-case, one concept per file. A file that differs by system is named after Node's value for that system: `darwin`, `win32`, `linux`.
 - **Ports are named for what the core needs** (`Records`, `Embedder`, `Devices`), never for the technology behind them. The technology's name appears only inside the adapter package.
 - **Public surface**: a package's `index.ts`, plus entry points declared in its `exports` map. No other barrel files.
@@ -1083,13 +1128,13 @@ native/apple-speech/
 | Typecheck            | TypeScript project references                                                                                                                                                                 | Each package compiles alone; the dependency graph is explicit                                                                                    |
 | Lint and format      | ESLint with boundary rules; Prettier with Speak's settings                                                                                                                                    | The dependency rules fail a build instead of relying on review. The linter parses with TypeScript 6 until typescript-eslint accepts TypeScript 7 |
 | Tests                | Vitest for unit and replay tests; Playwright for the built desktop app                                                                                                                        |                                                                                                                                                  |
-| Store                | SQLite with FTS5 and sqlite-vec                                                                                                                                                               | Section 10.3                                                                                                                                     |
+| Store                | SQLite with FTS5 and sqlite-vec, through Node's built-in `node:sqlite`                                                                                                                        | Section 10.3. No native module to build per system. Checked in Electron 45: FTS5 and extension loading are present                               |
 | Tools                | MCP over HTTP on the loopback address                                                                                                                                                         | Understood by every harness                                                                                                                      |
 | Generated interface  | json-render with zod schemas                                                                                                                                                                  | Section 9                                                                                                                                        |
 | Component behaviours | UI SDK                                                                                                                                                                                        | Section 9                                                                                                                                        |
 | Local models         | whisper.cpp builds; ONNX runtime for Kokoro and embeddings                                                                                                                                    | Already used by Speak and the proof of concept                                                                                                   |
 | CI                   | On every push, on Windows, macOS and Linux: typecheck, lint, tests. The Swift helper builds on the macOS runner. The core is started without any interface on Linux, as a server would run it | Principle 8 and principle 10 are checked by machines                                                                                             |
-| Release              | electron-builder: NSIS for Windows, DMG and ZIP for macOS, AppImage and deb for Linux, signed, with update manifests                                                                          | Speak's release workflow                                                                                                                         |
+| Release              | electron-builder: NSIS and ZIP for Windows, DMG for macOS, AppImage for Linux, signed, with update manifests. The Windows installer is built on Windows; the ZIP builds anywhere              | Speak's release workflow                                                                                                                         |
 
 Electron uses more memory than the proof of concept's WKWebView shell. That is the accepted price of three systems and of reusing Speak. To limit it: one window, the inspector loaded only when opened, and a cap on warm sessions in the light tier.
 
@@ -1100,42 +1145,48 @@ Electron uses more memory than the proof of concept's WKWebView shell. That is t
 Built and checked so far, as the start of build step 1:
 
 - **The workspace**: root configuration, `tooling/tsconfig`, `tooling/eslint` with the dependency rules of 14.3 as one table, and CI on Windows, macOS and Linux.
-- **The thirteen library packages**, each with its allowed dependencies declared. `protocol`, `core` and `client` hold their first code; the others are empty projects.
-- **`apps/server`**: the core as a process. It picks a local endpoint, announces it, and admits or refuses a client from its hello.
-- **`apps/desktop`**: the Electron app. It starts the core, connects to it through `client`, and its window shows the state of the link. `--self-check` does the same without a window and exits with the result.
+- **The thirteen library packages**, each with its allowed dependencies declared. `protocol`, `core`, `store`, `client`, `tokens` and `ui-web` hold code; the others are empty projects.
+- **`protocol`**: the handshake, then commands, results and events. Two commands exist: read the settings, and name the personas and pick the one that answers.
+- **`core`**: admission of clients, execution of commands, and the user's settings, built from the defaults and from the choices recorded.
+- **`store`**: one SQLite file per user, holding immutable records that each carry an identifier, the core that wrote them and a sequence number.
+- **`apps/server`**: the core as a process. It opens the user's data folder, picks a local endpoint, announces it, admits or refuses each client, carries out commands and sends every event to every client.
+- **`client`**: the connection, the session on top of it, and the settings kept current from events.
+- **`tokens` and `ui-web`**: the design values, and the first screens: first launch, the assistant present with its persona, and settings.
+- **`apps/desktop`**: the Electron app. It starts the core, connects to it through `client`, and shows the interface. `--self-check` does what a first launch does against the real core, with no window, and exits with the result. `build/` packages it for the three systems.
 
 Three checks guard the rules of this section: the compiler presets (code that must run anywhere cannot name a Node or DOM API), the lint table (a forbidden or deep import fails), and pnpm (a package cannot import what its `package.json` does not declare).
 
-Not created yet: `native/`, `scripts/` and `e2e/` appear with their first content, `apps/mobile` and `packages/ui-native` with the phone app. Installers and signing come with the first release.
+Not built: voice, harnesses, threads, memory beyond settings, generated views. Not created yet: `native/`, `scripts/` and `e2e/` appear with their first content, `apps/mobile` and `packages/ui-native` with the phone app. Signing, an application icon and the release workflow come with the first release.
 
 ## 15. Decisions
 
-### 15.1 Taken on 16 November 2026
+### 15.1 Taken
 
-| #   | Question                                | Decision                                                                                                                                   |
-| --- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1   | Generated interface                     | json-render, with UI SDK underneath for component behaviours                                                                               |
-| 2   | Desktop shell                           | Electron                                                                                                                                   |
-| 3   | Systems in version 1                    | Windows, macOS and Linux, all three. Later: a paid service for sync and a hosted core, and a native phone app (section 5)                  |
-| 4   | Input in version 1                      | Push to talk. Open conversation later                                                                                                      |
-| 5   | Proof-of-concept features               | Briefing and music player early; the rest after the core works                                                                             |
-| 6   | Speak                                   | Stays a separate product. Packages are shared; merging is decided later                                                                    |
-| 7   | Product and persona names               | JARVIS is the repository's code name and the default persona, not the product's name. The product gets a name of its own, to choose (15.2) |
-| 8   | The proof-of-concept files              | Removed from this branch; kept on `main`                                                                                                   |
-| 9   | Import of the proof of concept's memory | Yes, as a one-off import, low priority                                                                                                     |
-| 10  | Repository structure                    | Section 14, as written                                                                                                                     |
-| 11  | Licence                                 | MIT                                                                                                                                        |
-| 12  | Credits                                 | Tommy Sendra and Rodolphe Barbanneau are co-authors and joint copyright holders, named in that order                                       |
+| #   | Question                                | Decision                                                                                                                                  |
+| --- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Generated interface                     | json-render, with UI SDK underneath for component behaviours                                                                              |
+| 2   | Desktop shell                           | Electron                                                                                                                                  |
+| 3   | Systems in version 1                    | Windows, macOS and Linux, all three. Later: a paid service for sync and a hosted core, and a native phone app (section 5)                 |
+| 4   | Input in version 1                      | Push to talk. Open conversation later                                                                                                     |
+| 5   | Proof-of-concept features               | Briefing and music player early; the rest after the core works                                                                            |
+| 6   | Speak                                   | Stays a separate product. Packages are shared; merging is decided later                                                                   |
+| 7   | Product and persona names               | JARVIS was the proof of concept's name. It is not the product's name: see decisions 13 and 14                                             |
+| 8   | The proof-of-concept files              | Removed from this branch; kept on `main`                                                                                                  |
+| 9   | Import of the proof of concept's memory | Yes, as a one-off import, low priority                                                                                                    |
+| 10  | Repository structure                    | Section 14, as written                                                                                                                    |
+| 11  | Licence                                 | MIT                                                                                                                                       |
+| 12  | Credits                                 | Tommy Sendra and Rodolphe Barbanneau are co-authors and joint copyright holders, named in that order                                      |
+| 13  | The product's name                      | Echo, chosen on 17 November knowing two things: Amazon sells voice devices under the name Echo, and no short domain is free (section 16)  |
+| 14  | Persona names                           | Chosen by the user. Jarvis and HAL are defaults, offered at first launch and changeable in settings. No code names a persona (section 11) |
 
 ### 15.2 Still open
 
-| Question                            | Recommendation                                                                                              | Needed by                                              |
-| ----------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| The product's name                  | A short word that is not a person's name, since personas carry the names; easy to say in French and English | Before the first public build                          |
-| Where the paid service's code lives | A private repository, since this one is MIT                                                                 | The service design                                     |
-| Phone stack                         | React Native                                                                                                | Before `ui-native`; nothing in version 1 depends on it |
-| Model access on a hosted core       | API adapter, unless both vendors' terms allow subscription sign-in on a server                              | The service design                                     |
-| Light-tier voice on Linux           | Measure Piper against Kokoro, after a licence check                                                         | Build step 0                                           |
+| Question                            | Recommendation                                                                 | Needed by                                              |
+| ----------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------ |
+| Where the paid service's code lives | A private repository, since this one is MIT                                    | The service design                                     |
+| Phone stack                         | React Native                                                                   | Before `ui-native`; nothing in version 1 depends on it |
+| Model access on a hosted core       | API adapter, unless both vendors' terms allow subscription sign-in on a server | The service design                                     |
+| Light-tier voice on Linux           | Measure Piper against Kokoro, after a licence check                            | Build step 0                                           |
 
 ## 16. Risks
 
@@ -1154,6 +1205,7 @@ Not created yet: `native/`, `scripts/` and `e2e/` appear with their first conten
 | Wrong memories persist            | Extraction can misread                                                             | Sources on every fact, an editable memory view, facts only from the user's words                                                    |
 | Planted instructions              | Web pages and files are written by strangers                                       | Never stored as facts, never treated as instructions, approvals enforced in the tool server                                         |
 | French voice quality              | Local voices are strongest in English                                              | Evaluate early; system voices as the fallback                                                                                       |
+| The name Echo                     | Amazon uses it for its voice assistant devices, and no short domain is free        | A trademark check before any public distribution. The name is written in one place, so changing it is cheap                         |
 
 ## 17. Build order
 
@@ -1166,13 +1218,13 @@ Every step is done when it works on Windows, macOS and Linux.
 3. Speech: recognition and voice for each cell of the table in section 8.2.
 4. Memory: sqlite-vec and a local multilingual embedding model on the weakest machine.
 
-**Step 1: walking skeleton.** The workspace of section 14 with CI on three systems. `apps/server` and `apps/desktop` as two programs connected through the protocol over the local transport. One session, voice in, a spoken answer and one generated card. Jarvis only.
+**Step 1: walking skeleton.** The workspace of section 14 with CI on three systems. `apps/server` and `apps/desktop` as two programs connected through the protocol over the local transport. One session, voice in, a spoken answer and one generated card. One persona answers; the user names both at first launch.
 
 **Step 2: orchestration.** Orchestrator, threads, focus, asides, the speech queue, disclosure levels 1 to 3, replay tests.
 
 **Step 3: memory.** Immutable records, automatic and on-demand search, background extraction, the memory view.
 
-**Step 4: HAL and files.** The stance mechanism and decision cards; thread files, FilePreview, versions; permissions.
+**Step 4: the critical stance and files.** The stance mechanism and decision cards; thread files, FilePreview, versions; permissions.
 
 **Step 5: what the proof of concept had.** Briefing, player, weather, calendar, news and Mini mode, as triggers, tools and catalogue components.
 

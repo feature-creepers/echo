@@ -3,19 +3,26 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "**/*.css"
+  ],
   "exports": {
     ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
   },
   "dependencies": {
     "@repo/catalog": "workspace:*",
     "@repo/client": "workspace:*",
+    "@repo/protocol": "workspace:*",
     "@repo/tokens": "workspace:*"
   },
   "devDependencies": {
     "@repo/tsconfig": "workspace:*",
     "@types/react": "catalog:",
-    "react": "catalog:"
+    "react": "catalog:",
+    "vitest": "catalog:"
   },
   "peerDependencies": {
     "react": "catalog:"

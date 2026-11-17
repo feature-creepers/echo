@@ -1,0 +1,51 @@
+# How the desktop app is packaged for each system. Run with `pnpm --filter @repo/desktop package`,
+# after `pnpm build`. The product's name and version come from ../package.json.
+appId: io.github.feature-creepers.echo
+copyright: Copyright © 2026 Tommy Sendra and Rodolphe Barbanneau
+
+directories:
+  output: release
+
+# The app is bundled by electron-vite into out/: nothing is read from node_modules at run time.
+files:
+  - out/**
+  - package.json
+  - '!**/*.map'
+npmRebuild: false
+
+# Electron's switches, set in the packaged program: it cannot be started as plain Node, takes no Node
+# options or debugger from its environment or command line, and runs only the archive it shipped with.
+# Otherwise any program on the machine could run its own code as this app, with what the user allowed it.
+# The core runs as an Electron utility process, which these do not affect.
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  onlyLoadAppFromAsar: true
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: zip
+      arch: [x64]
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  artifactName: ${productName}-${version}-setup.${ext}
+
+mac:
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+  category: public.app-category.productivity
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+linux:
+  target:
+    - AppImage
+  category: Utility
+  # The program's file name. Left out, it would be taken from the workspace package's name.
+  executableName: echo

@@ -8,12 +8,12 @@ export interface Identity {
   credential: string
 }
 
-/** An open, admitted link to a core. */
-export interface Connection {
+/**
+ * An open, admitted link to a core. It carries the messages that follow the handshake, unread:
+ * a session is opened on top of it to send commands and hear events.
+ */
+export interface Connection extends Transport {
   core: { version: string }
-  /** Sets the one listener called once when the connection is gone, with the cause when it failed. */
-  onClose(listener: (cause?: Error) => void): void
-  close(): void
 }
 
 /** The core answered the hello with a refusal. */
@@ -47,6 +47,9 @@ export class HandshakeFailed extends Error {
 export function connect(transport: Transport, identity: Identity): Promise<Connection> {
   return new Promise((resolve, reject) => {
     let closeListener: ((cause?: Error) => void) | undefined
+    let messageListener: ((message: unknown) => void) | undefined
+    /** What the core sent after its welcome, before anyone listened. */
+    const waiting: unknown[] = []
     let settled = false
 
     const fail = (error: Error) => {
@@ -62,8 +65,11 @@ export function connect(transport: Transport, identity: Identity): Promise<Conne
     })
 
     transport.onMessage((message) => {
-      // Nothing is defined after the handshake yet: later messages are for the layers built on top.
-      if (settled) return
+      if (settled) {
+        if (messageListener) messageListener(message)
+        else waiting.push(message)
+        return
+      }
       const reply = handshakeReplySchema.safeParse(message)
       if (!reply.success) return fail(new HandshakeFailed('the core answered with something else than a welcome or a refusal'))
       if (reply.data.type === 'refusal') return fail(new ConnectionRefused(reply.data.reason, reply.data.protocol))
@@ -71,6 +77,11 @@ export function connect(transport: Transport, identity: Identity): Promise<Conne
       settled = true
       resolve({
         core: reply.data.core,
+        send: (next) => transport.send(next),
+        onMessage: (listener) => {
+          messageListener = listener
+          for (const kept of waiting.splice(0)) listener(kept)
+        },
         onClose: (listener) => {
           closeListener = listener
         },

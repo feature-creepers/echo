@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto'
-import { ConnectionRefused, connect, type Connection, type CoreLink, type Identity } from '@repo/client'
+import { ConnectionRefused, connect, type Connection, type CoreLink, type Identity, type SessionLink } from '@repo/client'
 import { openLocal } from '@repo/client/transports/local'
-import { CORE_TOKEN_VARIABLE, createLineDecoder, readySchema } from '@repo/protocol'
+import { CORE_TOKEN_VARIABLE, DATA_OPTION, createLineDecoder, readySchema } from '@repo/protocol'
 import { utilityProcess } from 'electron'
 
 /** How long the core has to announce where it listens. */
@@ -13,11 +13,13 @@ const STOP_TIMEOUT_MS = 3_000
 export interface CoreProcessOptions {
   /** The core's program, built beside the app's main process. */
   script: string
+  /** The folder the core keeps the user's data in. */
+  data: string
   client: Identity['client']
   capabilities: Identity['capabilities']
 }
 
-export interface CoreProcess {
+export interface CoreProcess extends SessionLink {
   /** Where the app stands with its core, now. */
   link(): CoreLink
   /** Sets the one listener told each time that changes. */
@@ -42,6 +44,7 @@ export function startCore(options: CoreProcessOptions): CoreProcess {
   const token = randomBytes(32).toString('hex')
   let link: CoreLink = { state: 'starting' }
   let listener: ((link: CoreLink) => void) | undefined
+  let messageListener: ((message: unknown) => void) | undefined
   let connection: Connection | undefined
   let stopped = false
   let exited = false
@@ -60,7 +63,7 @@ export function startCore(options: CoreProcessOptions): CoreProcess {
     if (link.state !== 'failed') set({ state: 'failed', reason })
   }
 
-  const child = utilityProcess.fork(options.script, [], {
+  const child = utilityProcess.fork(options.script, [`--${DATA_OPTION}`, options.data], {
     serviceName: 'Core',
     stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, [CORE_TOKEN_VARIABLE]: token }
@@ -97,6 +100,7 @@ export function startCore(options: CoreProcessOptions): CoreProcess {
     try {
       connection = await connect(await openLocal(endpoint), { client: options.client, capabilities: options.capabilities, credential: token })
       connection.onClose(() => fail('the link to the core closed.'))
+      connection.onMessage((message) => messageListener?.(message))
       set({ state: 'connected', core: connection.core })
     } catch (error) {
       if (error instanceof ConnectionRefused && error.reason === 'protocol') {
@@ -113,6 +117,13 @@ export function startCore(options: CoreProcessOptions): CoreProcess {
       listener = next
     },
     settled: () => settled,
+    // What follows the handshake is not read here: a session, in the window or in the self-check, does that.
+    send: (message) => {
+      if (link.state === 'connected') connection?.send(message)
+    },
+    onMessage: (next) => {
+      messageListener = next
+    },
     stop: () => {
       stopping ??= new Promise<void>((resolve) => {
         stopped = true

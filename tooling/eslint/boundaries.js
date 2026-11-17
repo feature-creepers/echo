@@ -38,7 +38,7 @@ export const workspace = {
     imports: ['protocol', 'catalog'],
     nodeOnly: ['src/transports/local.ts', 'src/transports/local.test.ts']
   },
-  'ui-web': { dir: 'packages/ui-web', runtime: 'browser', side: 'client', imports: ['client', 'catalog', 'tokens'] },
+  'ui-web': { dir: 'packages/ui-web', runtime: 'browser', side: 'client', imports: ['client', 'protocol', 'catalog', 'tokens'] },
 
   // Test doubles for the core's ports.
   testing: { dir: 'packages/testing', runtime: 'node', side: 'core', imports: ['core', 'protocol', 'catalog'] },

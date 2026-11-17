@@ -1,12 +1,13 @@
-import { admit, type Admission } from '@repo/core'
+import { createCore, type Core } from '@repo/core'
+import { openStore } from '@repo/store'
 import manifest from '../package.json' with { type: 'json' }
 import { localToken } from './auth/local-token.ts'
 import type { Config } from './config.ts'
 
-/** The core as the listeners see it. */
-export interface Core {
-  /** Decide whether a client may connect, from the first message it sent. */
-  admit(message: unknown): Admission
+export interface Composition {
+  core: Core
+  /** Let go of what the core holds on this machine. Called once, when the process stops. */
+  close(): void
 }
 
 /**
@@ -14,9 +15,13 @@ export interface Core {
  *
  * This is the only file that knows both the core and the adapters it runs on.
  */
-export function compose(config: Config): Core {
-  const acceptsCredential = localToken(config.token)
-  return {
-    admit: (message) => admit(message, { coreVersion: manifest.version, acceptsCredential })
-  }
+export function compose(config: Config): Composition {
+  const store = openStore({ folder: config.data })
+  const core = createCore({
+    version: manifest.version,
+    acceptsCredential: localToken(config.token),
+    records: store.records,
+    log: { error: (message) => void process.stderr.write(`${message}\n`) }
+  })
+  return { core, close: () => store.close() }
 }

@@ -1,6 +1,6 @@
 {
   "name": "@repo/server",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -13,7 +13,8 @@
   },
   "dependencies": {
     "@repo/core": "workspace:*",
-    "@repo/protocol": "workspace:*"
+    "@repo/protocol": "workspace:*",
+    "@repo/store": "workspace:*"
   },
   "devDependencies": {
     "@repo/tsconfig": "workspace:*",
