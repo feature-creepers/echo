@@ -39,7 +39,8 @@ const speech: SpeechEngine = {
   },
   install: (onProgress) => window.desktop.speech.install((progress) => onProgress({ received: progress.received, total: progress.total })),
   transcribe: (sound) => window.desktop.speech.transcribe(sound),
-  speak: (text, how) => window.desktop.speech.speak(text, how)
+  speak: (text, how) => window.desktop.speech.speak(text, how),
+  styles: () => window.desktop.speech.styles()
 }
 
 function App() {

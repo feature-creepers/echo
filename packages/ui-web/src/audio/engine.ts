@@ -36,4 +36,6 @@ export interface SpeechEngine {
   transcribe(sound: Sound): Promise<{ text: string; language?: string }>
   /** Turn one sentence into sound, in the language and the voice given. */
   speak(text: string, how: { language: string; style: string }): Promise<Sound>
+  /** The voice's styles, to pick from. */
+  styles(): Promise<{ id: string; name: string }[]>
 }

@@ -14,6 +14,7 @@ import { accentStyle } from '../styles/accent.ts'
 import { Margin } from '../view/margin.tsx'
 import { ViewPanel } from '../view/view-panel.tsx'
 import { InputLine } from './input-line.tsx'
+import { Suggestions } from './suggestions.tsx'
 
 export interface StageProps {
   client: Client
@@ -175,6 +176,10 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
               Set up an AI program
             </button>
           )}
+        </motion.div>
+      ) : channel.exchanges.length === 0 && !noEngine ? (
+        <motion.div key="suggestions" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+          <Suggestions onSay={say} />
         </motion.div>
       ) : last?.replied ? (
         <motion.p

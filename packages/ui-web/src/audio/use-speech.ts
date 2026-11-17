@@ -8,6 +8,24 @@ import { engineVoice, type SpeakingVoice } from './voice.ts'
 /** The voice style of each stance, until the user picks their own: a calm voice that goes along, a deeper one that questions. */
 const STYLE_OF_STANCE: Record<Persona['stance'], string> = { accommodating: 'f1', critical: 'm2' }
 
+/** Where the voices the user picked are kept: on this device, since speakers and taste belong to it. */
+const PICKED = 'echo.voices'
+
+function readPicked(): Record<string, string> {
+  try {
+    const kept = JSON.parse(localStorage.getItem(PICKED) ?? '{}') as unknown
+    return typeof kept === 'object' && kept !== null ? (kept as Record<string, string>) : {}
+  } catch {
+    return {}
+  }
+}
+
+/** The voice style a persona speaks in: the one the user picked for it, or its stance's. */
+export function styleOf(persona: Persona | undefined, picked: Record<string, string>): string {
+  if (!persona) return STYLE_OF_STANCE.accommodating
+  return picked[persona.id] ?? STYLE_OF_STANCE[persona.stance]
+}
+
 export type Install = { is: 'idle' } | { is: 'running'; progress: InstallProgress | undefined } | { is: 'failed'; reason: string }
 
 export interface DeviceSpeech {
@@ -19,6 +37,14 @@ export interface DeviceSpeech {
   ready: SpeechEngine | undefined
   /** How loud the assistant's voice is right now. */
   level: () => number
+  /** The voice styles there are, once the engines have said. */
+  styles: { id: string; name: string }[]
+  /** The style each persona speaks in, picked or by default. */
+  styleOf(persona: Persona): string
+  /** Pick a persona's voice. */
+  pick(persona: string, style: string): void
+  /** Say a sentence in a style, to hear it before picking. */
+  preview(style: string, text: string): void
 }
 
 /**
@@ -29,8 +55,10 @@ export function useDeviceSpeech(engine: SpeechEngine | undefined, client: Client
   const [readiness, setReadiness] = useState<SpeechReadiness>()
   const [install, setInstall] = useState<Install>({ is: 'idle' })
   const voice = useRef<SpeakingVoice | undefined>(undefined)
-  const stance = useRef(persona?.stance)
-  stance.current = persona?.stance
+  const [picked, setPicked] = useState(readPicked)
+  const [styles, setStyles] = useState<{ id: string; name: string }[]>([])
+  const speaking = useRef({ persona, picked })
+  speaking.current = { persona, picked }
 
   useEffect(() => {
     engine
@@ -42,8 +70,36 @@ export function useDeviceSpeech(engine: SpeechEngine | undefined, client: Client
   const ready = engine && readiness?.ready ? engine : undefined
 
   useEffect(() => {
+    ready
+      ?.styles()
+      .then(setStyles)
+      .catch(() => undefined)
+  }, [ready])
+
+  const pick = useCallback((id: string, style: string) => {
+    setPicked((before) => {
+      const next = { ...before, [id]: style }
+      try {
+        localStorage.setItem(PICKED, JSON.stringify(next))
+      } catch {
+        // Not kept: the choice lasts until the app closes.
+      }
+      return next
+    })
+  }, [])
+
+  const preview = useCallback(
+    (style: string, text: string) => {
+      if (!ready) return
+      const sample = engineVoice(ready, () => style)
+      sample.say({ turn: 'preview', text, language: undefined })
+    },
+    [ready]
+  )
+
+  useEffect(() => {
     if (!ready) return
-    const made = engineVoice(ready, () => STYLE_OF_STANCE[stance.current ?? 'accommodating'])
+    const made = engineVoice(ready, () => styleOf(speaking.current.persona, speaking.current.picked))
     voice.current = made
     client.speech.use(made)
     return () => {
@@ -65,5 +121,5 @@ export function useDeviceSpeech(engine: SpeechEngine | undefined, client: Client
       .catch((error: unknown) => setInstall({ is: 'failed', reason: error instanceof Error ? error.message : String(error) }))
   }, [engine])
 
-  return { readiness, install, startInstall, ready, level: () => voice.current?.level() ?? 0 }
+  return { readiness, install, startInstall, ready, level: () => voice.current?.level() ?? 0, styles, styleOf: (one) => styleOf(one, picked), pick, preview }
 }

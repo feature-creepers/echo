@@ -94,6 +94,7 @@ function serveSpeech(speech: SpeechProcess): void {
     service.transcribe({ sampleRate: sound.sampleRate, samples: new Float32Array(sound.samples) })
   )
   ipcMain.handle(SPEECH_CHANNELS.speak, (_event, text: string, how: { style: string; language: string }) => service.speak(text, how))
+  ipcMain.handle(SPEECH_CHANNELS.styles, () => service.styles())
   // Load the engines while the user looks at the window, so the first sentence does not wait for them.
   void service
     .status()

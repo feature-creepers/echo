@@ -36,6 +36,8 @@ export interface SpeechBridge {
   install(onProgress: (progress: InstallProgress) => void): Promise<void>
   transcribe(sound: BridgeSound): Promise<{ text: string; language?: string }>
   speak(text: string, how: { style: string; language: string }): Promise<BridgeSound>
+  /** The voice's styles, to pick from. */
+  styles(): Promise<{ id: string; name: string }[]>
 }
 
 /** The channels speech uses, one per call, and the one progress comes back on. */
@@ -44,7 +46,8 @@ export const SPEECH_CHANNELS = {
   install: 'speech:install',
   progress: 'speech:progress',
   transcribe: 'speech:transcribe',
-  speak: 'speech:speak'
+  speak: 'speech:speak',
+  styles: 'speech:styles'
 } as const
 
 /** The channel that carries the state of the link, as a request and as a notification. */

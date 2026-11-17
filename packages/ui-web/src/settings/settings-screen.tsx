@@ -2,6 +2,7 @@ import type { EnginesState } from '@repo/client'
 import type { CommandInput, PersonaId, Settings } from '@repo/protocol'
 import { type ReactNode, useEffect, useState } from 'react'
 import type { DeviceSpeech } from '../audio/use-speech.ts'
+import { VoicePicker } from '../audio/voice-picker.tsx'
 import { VoiceSetup } from '../audio/voice-setup.tsx'
 import { EngineRows } from '../conversation/engine-rows.tsx'
 import { PersonasForm } from '../personas/personas-form.tsx'
@@ -89,7 +90,14 @@ export function SettingsScreen({ productName, personas, engines, speech, section
         )}
         {section === 'voice' && (
           <Block lead="To hear you and answer aloud, this computer runs its own speech models. Your voice never leaves it.">
-            {speech ? <VoiceSetup speech={speech} /> : <p className="text-sm text-text-soft">This device cannot run speech models.</p>}
+            {speech ? (
+              <div className="grid gap-8">
+                <VoiceSetup speech={speech} />
+                <VoicePicker speech={speech} personas={personas.available} />
+              </div>
+            ) : (
+              <p className="text-sm text-text-soft">This device cannot run speech models.</p>
+            )}
           </Block>
         )}
         {section === 'engine' && (

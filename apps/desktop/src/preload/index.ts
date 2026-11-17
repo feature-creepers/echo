@@ -36,7 +36,8 @@ const bridge: DesktopBridge = {
       }
     },
     transcribe: (sound) => ipcRenderer.invoke(SPEECH_CHANNELS.transcribe, sound),
-    speak: (text, how) => ipcRenderer.invoke(SPEECH_CHANNELS.speak, text, how)
+    speak: (text, how) => ipcRenderer.invoke(SPEECH_CHANNELS.speak, text, how),
+    styles: () => ipcRenderer.invoke(SPEECH_CHANNELS.styles)
   }
 }
 
