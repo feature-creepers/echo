@@ -164,12 +164,18 @@ importers:
       '@repo/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@repo/harness':
+        specifier: workspace:*
+        version: link:../../packages/harness
       '@repo/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
       '@repo/store':
         specifier: workspace:*
         version: link:../../packages/store
+      '@repo/tools':
+        specifier: workspace:*
+        version: link:../../packages/tools
     devDependencies:
       '@repo/tsconfig':
         specifier: workspace:*

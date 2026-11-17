@@ -21,7 +21,7 @@ try {
 
 let composition: Composition
 try {
-  composition = compose(config)
+  composition = await compose(config)
 } catch (error) {
   process.stderr.write(`The core could not open the user's data in "${config.data}": ${error instanceof Error ? error.message : String(error)}\n`)
   process.exit(1)
@@ -34,7 +34,7 @@ async function stop(): Promise<void> {
   if (stopping) return
   stopping = true
   await listener.close()
-  composition.close()
+  await composition.close()
   process.exit(0)
 }
 
