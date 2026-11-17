@@ -7,6 +7,8 @@ Sections 2 and 3 describe what existed before this branch. Section 14.8 says wha
 
 - The product is named Echo (decision 13).
 - Personas are data. The user names them, at first launch and in settings, and no code names a persona (section 11, decision 14).
+- The catalogue of the generated interface holds generic building blocks only (section 9.6, decision 15).
+- Memory is processed while the assistant sleeps, when the user sets it to (section 10.6, decision 16).
 - The first messages after the handshake exist: commands, results and events, carrying the user's settings (section 14.4).
 - The store exists: SQLite through Node's built-in module, holding immutable records (sections 10.3 and 14.7).
 - Tommy Sendra and Rodolphe Barbanneau are credited as co-authors (decision 12).
@@ -132,7 +134,7 @@ Keep, as ideas to re-implement:
 Leave behind:
 
 - The single-file server and single-file page.
-- Fixed dashboard panels. Generated views and pinned widgets replace them.
+- Fixed dashboard panels. Views the assistant composes, and the ones the user pins, replace them.
 - Commands inside the reply text. Tool calls replace them.
 - One conversation that resets on idle, with a 1,500-character memory.
 - What is tied to Claude alone: Claude model names in settings, and the claude.ai connector as the only route to a calendar.
@@ -459,7 +461,7 @@ What you described (a weather module appearing for a spoken question, a document
 **Decided: both, in layers.**
 
 - **json-render** is the generation layer: catalogue, validation, streaming, rendering.
-- **Our own components** are the catalogue. Because the model can only compose what the catalogue contains, the result always has the app's native look.
+- **Our own building blocks** are the catalogue (section 9.6). Because the model can only compose what the catalogue contains, the result always has the app's native look.
 - **UI SDK** supplies the behaviours inside the web components (keyboard, focus, accessibility). Later, its agent bridge could let the assistant operate what is on screen by voice ("tick the second box").
 
 Both libraries are young, so both stay behind our own packages. The rest of the app knows our view format, not theirs.
@@ -485,29 +487,33 @@ Earlier views are never lost: each belongs to a thread and can be brought back b
 
 ### 9.4 Live data
 
-A component can be bound to a data feed kept up to date by the core: weather, system readings, calendar, the music player, a timer. A pinned weather card then stays current with no further model call. This is how the proof of concept's fixed panels return, as catalogue components the user chooses to pin.
+A block can be bound to a data feed kept up to date by the core: weather, system readings, calendar, the music player, a timer. A view the assistant composed about the weather, once pinned, then stays current with no further model call. This is how the proof of concept's fixed panels return: as views the assistant composed and the user chose to pin, not as components built in advance.
 
 ### 9.5 Actions
 
 - **Local actions** are handled by the client with no model involved: download, open, reveal in folder, copy, play, pause, dismiss, pin.
 - **Semantic actions** go back to the owning thread as an event ("the user chose option 2", "the user ticked 'butter'"), and the thread continues from there.
 
-### 9.6 First catalogue
+### 9.6 The catalogue: building blocks only
 
-Small on purpose: the catalogue is part of every prompt, and a model composes better from few well-described pieces.
+The catalogue contains generic building blocks and nothing made for one subject. There is no weather component, no recipe component and no prepared illustration. A weather answer is a layout the assistant composes for that answer, from the same blocks it would use for anything else: a few metrics, a small chart, a drawing it writes itself. What appears on screen is then as open as the conversation, and our work goes into the blocks and into how well a model composes them, not into a growing list of special cases.
 
-| Group        | Components                                                                                      |
-| ------------ | ----------------------------------------------------------------------------------------------- |
-| Layout       | Stack, Grid, Card, Section                                                                      |
-| Text         | Heading, Text, KeyValue, List, Steps, Prose (formatted long text, for when detail is asked for) |
-| Data         | Metric, Table, Chart, Timeline, Progress                                                        |
-| Media        | Image, Map, Player                                                                              |
-| Input        | Choice, Checklist, Field, Button                                                                |
-| Files        | FilePreview (document, image or text, with download and open), FileList                         |
-| Rich widgets | Weather, Agenda, Recipe, Timer, Sources                                                         |
-| System       | SystemStats, Usage                                                                              |
+| Group   | Blocks                                                                                                                    |
+| ------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Layout  | Stack, Row, Grid, Card, Section, Divider                                                                                  |
+| Text    | Heading, Text, Badge, KeyValue, List, Steps, Prose (formatted long text, for when detail is asked for)                    |
+| Data    | Metric, Table, Chart, Timeline, Progress                                                                                  |
+| Drawing | Drawing (vector shapes the assistant writes itself: lines, circles, paths, labels), Image (a picture from a file or page) |
+| Input   | Choice, Checklist, Field, Button                                                                                          |
+| Files   | FilePreview (document, image or text, with download and open), FileList                                                   |
 
-When nothing fits, the model falls back to Prose rather than failing.
+Three rules keep it that way:
+
+1. **A block is a kind of content or arrangement, never a subject.** The test before adding one: would answers on unrelated subjects use it?
+2. **No prepared artwork.** The product ships no icon set and no illustration for the assistant to pick from. When an answer needs a picture, the assistant draws it with Drawing, in the accent and text colours, or uses a character as a pictogram.
+3. **Live data attaches to generic blocks** (section 9.4): a Metric or a Chart bound to a feed, not a dedicated widget.
+
+The catalogue stays small on purpose: it is part of every prompt, and a model composes better from few well-described pieces. When nothing fits, the model falls back to Prose rather than failing.
 
 ### 9.7 Files
 
@@ -551,7 +557,7 @@ The channel log is kept in full unless the user sets a retention period. This is
 Vector search needs an embedding model, and harnesses do not provide one. Under "no API keys", that leaves a small model running locally.
 
 - It must be multilingual, since the user mixes French and English, and keyword search fails across languages and on misheard words. Candidates to benchmark: multilingual-e5-small, bge-m3.
-- Embedding happens in the background, after the reply, so it never delays speech.
+- Embedding happens during sleep (section 10.6), so it never delays speech.
 - Each vector is stored with the name of the model that made it, so the model can be changed and the index rebuilt.
 - Search works without vectors. If the model is absent or the index is behind, keyword search answers alone.
 
@@ -560,12 +566,19 @@ Vector search needs an embedding model, and harnesses do not provide one. Under 
 - **Automatic.** Before each turn, the core searches the utterance against facts and recent log (keywords and vectors combined, weighted by recency) and adds the best few results to the context. The model does nothing.
 - **On demand.** The model can call `memory.search(query, period)` when it needs more, for instance "what did we decide about the trip in March?".
 
-### 10.6 Writing
+### 10.6 Writing: awake and asleep
 
-- **In the background.** When a thread parks, a cheap one-shot call extracts candidate facts from the new exchanges, compares them with similar existing facts and decides for each: add, update, replace or ignore. The proof of concept's memory prompt is the starting point.
-- **On request.** "Remember that…" writes at once through `memory.remember`. "Forget that…" removes the fact through `memory.forget`.
+Memory is written in two phases, as a person's is.
+
+- **Awake, it keeps the words.** Every utterance and reply goes into the channel log at once, word for word. That takes no model call and delays nothing, and the words can be searched by keyword straight away.
+- **Asleep, it makes sense of them.** Extracting facts, summarising threads, classifying, building the vector index and archiving idle threads all happen while the assistant sleeps, never during the conversation. A cheap model reads what was said since the last sleep, compares each candidate fact with similar existing ones and decides: add, update, replace or ignore. The proof of concept's memory prompt, which it ran when idle, is the starting point.
+- **When it sleeps is a setting.** After a period with no exchange, at a set time of day, both, only when told ("go to sleep"), or never. The default is after a quiet period.
+- **Sleep never gets in the way.** Speaking to the assistant wakes it at once. Work left unfinished resumes at the next sleep, from where it stopped. The core shows the state: it dims and breathes slowly.
+- **On request, at once.** "Remember that…" writes immediately through `memory.remember`, without waiting for sleep. "Forget that…" removes the fact through `memory.forget`.
 - **Only from the user.** Facts come from what the user said or confirmed. Web pages, files and the assistant's own guesses are never stored as facts, which also protects memory from instructions planted in a web page.
 - **Dates are absolute.** "Next Friday" is stored as its date.
+
+What sleep has not yet processed is not lost in the meantime: recall (section 10.5) searches the raw log as well as the facts.
 
 ### 10.7 What the user sees
 
@@ -877,7 +890,7 @@ packages/catalog/src/
 ├── view.ts                 the view format: spec, patch, version, slot
 ├── catalog.ts              the catalogue, assembled from the component definitions
 ├── components/             one file per group: properties and description, no drawing
-│   └── layout.ts  text.ts  data.ts  media.ts  input.ts  files.ts  widgets.ts  system.ts
+│   └── layout.ts  text.ts  data.ts  drawing.ts  input.ts  files.ts
 ├── actions.ts              local and semantic actions
 ├── feeds.ts                live data a component can bind to: weather, timer, player, readings
 ├── instructions.ts         the catalogue described for a model
@@ -1178,6 +1191,8 @@ Not built: voice, harnesses, threads, memory beyond settings, generated views. N
 | 12  | Credits                                 | Tommy Sendra and Rodolphe Barbanneau are co-authors and joint copyright holders, named in that order                                      |
 | 13  | The product's name                      | Echo, chosen on 17 November knowing two things: Amazon sells voice devices under the name Echo, and no short domain is free (section 16)  |
 | 14  | Persona names                           | Chosen by the user. Jarvis and HAL are defaults, offered at first launch and changeable in settings. No code names a persona (section 11) |
+| 15  | What the catalogue contains             | Generic building blocks only. No component made for one subject and no prepared artwork: the assistant composes and draws (section 9.6)   |
+| 16  | When memory is processed                | While the assistant sleeps: after a quiet period, at a set time, on request or never, as the user sets it (section 10.6)                  |
 
 ### 15.2 Still open
 
