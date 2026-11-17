@@ -1,5 +1,6 @@
 import { accents, neutralAccent, type AccentName } from './accent.ts'
 import { color } from './color.ts'
+import { frame } from './frame.ts'
 import { motion } from './motion.ts'
 import { radius, space } from './space.ts'
 import { font, size } from './type.ts'
@@ -21,6 +22,7 @@ export function themeVariables(): CssVariables {
     ...group('color', color),
     ...group('space', space, 'px'),
     ...group('radius', radius, 'px'),
+    ...group('frame', frame, 'px'),
     ...group('font', font),
     ...group('size', size, 'px'),
     ...group('motion', motion, 'ms'),

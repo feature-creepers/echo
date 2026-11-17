@@ -1,8 +1,10 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { color, frame } from '@repo/tokens'
 import { BrowserWindow, app, ipcMain, nativeTheme } from 'electron'
 import { CORE_LINK_CHANNEL, CORE_MESSAGE_CHANNEL } from '../preload/bridge.ts'
+import { chrome } from './chrome/index.ts'
 import { startCore, type CoreProcess } from './core-process.ts'
 import { deviceId } from './device.ts'
 import { checkSettings } from './self-check.ts'
@@ -35,8 +37,10 @@ function openWindow(core: CoreProcess): BrowserWindow {
     minWidth: 720,
     minHeight: 560,
     show: false,
-    backgroundColor: '#07090c',
+    backgroundColor: color.ground,
     autoHideMenuBar: true,
+    // No title bar above the page: the page's own title row is the bar, with the system's buttons drawn over it.
+    ...chrome({ background: color.ground, symbols: color.text, height: frame.titleBar }),
     webPreferences: { preload: built('../preload/index.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false }
   })
   window.once('ready-to-show', () => window.show())

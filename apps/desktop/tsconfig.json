@@ -7,5 +7,10 @@
     "outDir": "dist/node"
   },
   "include": ["src/main", "src/preload", "electron.vite.config.ts"],
-  "references": [{ "path": "../../packages/client" }, { "path": "../../packages/client/tsconfig.node.json" }, { "path": "../../packages/protocol" }]
+  "references": [
+    { "path": "../../packages/client" },
+    { "path": "../../packages/client/tsconfig.node.json" },
+    { "path": "../../packages/protocol" },
+    { "path": "../../packages/tokens" }
+  ]
 }

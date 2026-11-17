@@ -19,6 +19,7 @@
     "@repo/client": "workspace:*",
     "@repo/protocol": "workspace:*",
     "@repo/server": "workspace:*",
+    "@repo/tokens": "workspace:*",
     "@repo/tsconfig": "workspace:*",
     "@repo/ui-web": "workspace:*",
     "@types/node": "catalog:",

@@ -99,6 +99,9 @@ importers:
       '@repo/server':
         specifier: workspace:*
         version: link:../server
+      '@repo/tokens':
+        specifier: workspace:*
+        version: link:../../packages/tokens
       '@repo/tsconfig':
         specifier: workspace:*
         version: link:../../tooling/tsconfig

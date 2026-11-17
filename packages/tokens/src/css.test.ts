@@ -22,6 +22,7 @@ describe('themeVariables', () => {
     expect(variables['--color-ground']).toBe(color.ground)
     expect(variables['--color-rule-strong']).toBe(color.ruleStrong)
     expect(variables['--space-xl']).toBe('24px')
+    expect(variables['--frame-title-bar']).toBe('32px')
     expect(variables['--size-body']).toBe('15px')
     expect(variables['--motion-quick']).toBe('120ms')
     expect(variables['--font-mono']).toContain('monospace')

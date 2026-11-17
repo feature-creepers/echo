@@ -111,9 +111,10 @@ function Frame({ productName, accent, action, children }: FrameProps) {
   return (
     <div className={styles.frame} style={accentStyle(accent)}>
       <header className={styles.header}>
-        <span className={styles.wordmark}>{productName}</span>
-        <span className={styles.spacer} />
-        {action}
+        <div className={styles.titleRow}>
+          <span className={styles.wordmark}>{productName}</span>
+          <span className={styles.actions}>{action}</span>
+        </div>
       </header>
       <main className={styles.main}>{children}</main>
     </div>

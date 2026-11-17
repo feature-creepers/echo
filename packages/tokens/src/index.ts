@@ -1,6 +1,7 @@
 export { accents, neutralAccent, type AccentName } from './accent.ts'
 export { color, type ColorName } from './color.ts'
 export { accentVariables, themeVariables, type CssVariables } from './css.ts'
+export { frame } from './frame.ts'
 export { motion, type MotionName } from './motion.ts'
 export { radius, space, type SpaceName } from './space.ts'
 export { font, size, type SizeName } from './type.ts'
