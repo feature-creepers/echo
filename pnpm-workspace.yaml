@@ -31,6 +31,7 @@ catalog:
   motion: ^14.14.0
   react: ^19.3.1
   react-dom: ^19.3.1
+  sherpa-onnx-node: ^2.0.1
   tailwind-merge: ^3.7.0
   tailwindcss: ^4.3.5
   turbo: ^2.11.11

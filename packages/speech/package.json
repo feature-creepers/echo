@@ -3,15 +3,24 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "./src/service/process.ts"
+  ],
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./process": "./src/service/process.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
   },
   "dependencies": {
-    "@repo/models": "workspace:*"
+    "@repo/models": "workspace:*",
+    "sherpa-onnx-node": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@repo/tsconfig": "workspace:*",
-    "@types/node": "catalog:"
+    "@types/node": "catalog:",
+    "vitest": "catalog:"
   }
 }
