@@ -177,10 +177,6 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
             </button>
           )}
         </motion.div>
-      ) : channel.exchanges.length === 0 && !noEngine ? (
-        <motion.div key="suggestions" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-          <Suggestions onSay={say} />
-        </motion.div>
       ) : last?.replied ? (
         <motion.p
           key={`last:${last.turn}`}
@@ -229,6 +225,8 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
               <div className="mt-8 flex h-28 w-full max-w-2xl items-start justify-center text-center" aria-live="polite">
                 {caption}
               </div>
+              {/* Until the user has said anything, a few things to try. */}
+              {!noEngine && !running && !speaking.sentence && channel.exchanges.every((line) => line.trigger !== undefined) && <Suggestions onSay={say} />}
             </div>
           )}
         </div>
