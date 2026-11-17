@@ -145,14 +145,17 @@ export function Chart({ props }: { props: BlockProps<'Chart'> }) {
 
   return (
     <figure className="grid min-w-0 gap-1.5">
-      {props.series.length > 1 && (
-        <figcaption className="flex flex-wrap gap-3">
-          {props.series.map((series) => (
-            <span key={series.name} className="flex items-center gap-1.5 text-[0.6875rem] text-text-soft">
-              <span className="h-0.5 w-3 rounded-full" style={{ background: color(series.tone) }} />
-              {series.name}
-            </span>
-          ))}
+      {(props.series.length > 1 || props.unit) && (
+        <figcaption className="flex flex-wrap items-center gap-3">
+          {/* The unit sits above the axis, where a long one has room: beside the top value it would spill out. */}
+          {props.unit && <span className="font-mono text-[0.625rem] text-text-faint uppercase tracking-wider">{props.unit}</span>}
+          {props.series.length > 1 &&
+            props.series.map((series) => (
+              <span key={series.name} className="flex items-center gap-1.5 text-[0.6875rem] text-text-soft">
+                <span className="h-0.5 w-3 rounded-full" style={{ background: color(series.tone) }} />
+                {series.name}
+              </span>
+            ))}
         </figcaption>
       )}
       <svg
@@ -166,7 +169,6 @@ export function Chart({ props }: { props: BlockProps<'Chart'> }) {
             <line x1={pad.left} x2={width - pad.right} y1={y(tick)} y2={y(tick)} stroke="var(--color-line)" />
             <text x={pad.left - 8} y={y(tick)} dy="0.32em" textAnchor="end" className="fill-text-faint font-mono text-[10px]">
               {tick}
-              {props.unit && tick === ticks.at(-1) ? ` ${props.unit}` : ''}
             </text>
           </g>
         ))}
