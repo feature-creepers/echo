@@ -7,7 +7,7 @@
 
 /** A tool as a model sees it. */
 export interface ToolDefinition {
-  /** Unique among the tools of a session: `ui.render`, `memory.search`. */
+  /** Unique among the tools of a session, in lower case with underscores, as every harness accepts: `ui_render`, `memory_search`. */
   name: string
   /** What it does and when to use it, written for a model. */
   description: string
