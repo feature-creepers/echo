@@ -395,17 +395,20 @@ Every utterance passes through the orchestrator, so work that goes to a thread c
 
 ### 8.2 Engines, by system and hardware tier
 
-The tier is detected at first launch from the processor, memory and GPU, and can be changed in settings. Every cell below is a proposal to confirm by measurement.
+Measured and chosen on 17 November 2026: one library, sherpa-onnx, runs every engine on the processor, on Windows, macOS and Linux, in a process of its own on the device.
 
-| System  | Recognition, light tier                   | Recognition, standard and performance | Voice, light tier              | Voice, standard and performance |
-| ------- | ----------------------------------------- | ------------------------------------- | ------------------------------ | ------------------------------- |
-| macOS   | Apple speech                              | Parakeet, or Whisper turbo on Metal   | System voice (`say`)           | Kokoro, or system voice         |
-| Windows | Parakeet, small variant, on the processor | Parakeet, or Whisper turbo on CUDA    | System voice                   | Kokoro                          |
-| Linux   | Parakeet, small variant, on the processor | Parakeet, or Whisper turbo on CUDA    | A small local voice, to choose | Kokoro                          |
+| Purpose          | Engine                            | Languages             | Measured on a 6-core desktop processor | Download |
+| ---------------- | --------------------------------- | --------------------- | -------------------------------------- | -------- |
+| Recognition      | NVIDIA Parakeet TDT 0.6B v3, int8 | 25 European, detected | 6 s of speech heard in 0.35 s          | 671 MB   |
+| Voice            | Supertonic 3, int8, ten styles    | 31, told per sentence | 6 s of speech made in 1 s              | 145 MB   |
+| Speech detection | Silero VAD v5                     | Any                   | 9 s of sound in 33 ms                  | 2 MB     |
 
-- **Windows and Linux have no equivalent of Apple's recogniser**, so their light tier runs a small local model. Speak's catalogue describes Parakeet as very fast on a processor; that has to be measured on an old laptop.
-- **Linux needs a GPU build.** Speak's whisper.cpp builds for Linux run on the processor only. A CUDA build is to be added for the performance tier.
-- **Linux system voices are too robotic to be a default.** A small local voice is needed there; Piper is a candidate, and its licence has to be checked first.
+- **The models are downloaded once**, at first launch or later from settings, with progress, and resumed if interrupted. Nothing is sent anywhere: voice never leaves the device.
+- **The voice's language is told per sentence.** The core tells each sentence's language from its words (English or French), since Parakeet does not report the language it heard.
+- **Each persona speaks in its stance's style** until the user picks one: a calm voice for the accommodating stance, a deeper one for the critical stance.
+- **Licences.** Parakeet is CC-BY-4.0. Supertonic's model is OpenRAIL-M, which carries use restrictions to pass on to users; to review before distribution.
+- **Still to measure** on old hardware, and on macOS older than 14 (Apple Silicon) or 15 (Intel), the minimum the native builds declare. The process holds about 1.45 GB with all three engines loaded; a lighter recognition set for the light tier is still to choose.
+- The tier also sets the memory components and the number of threads working at once:
 - The tier also sets the memory components and the number of threads working at once:
 
 | Tier        | Typical machine                              | Vector memory                                          | Threads at once |
@@ -416,7 +419,7 @@ The tier is detected at first launch from the processor, memory and GPU, and can
 
 Each engine sits behind one of two interfaces, `Recognizer` (start, partial text, final text, stop) and `Voice` (speak a sentence, stop). In version 1 the engines run on the device. The same interfaces let a hosted core run them on the server later, for phones and weak machines.
 
-Apple speech keeps its Swift code: the `SpeechIn` class of the proof of concept becomes a small helper program. The setting that forces on-device recognition should be exposed, since the proof of concept does not set it and audio can then reach Apple.
+Apple's recogniser is not used: the same local engines run on every system, so the product behaves the same everywhere and no audio reaches a vendor.
 
 ### 8.3 System integration
 
@@ -1131,22 +1134,22 @@ native/apple-speech/
 
 ### 14.7 Stack and tooling
 
-| Concern              | Choice                                                                                                                                                                                        | Reason                                                                                                                            |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Language             | TypeScript in strict mode; Swift for the one Apple helper                                                                                                                                     | Shared with Speak, and with a React Native phone app later                                                                        |
-| Desktop shell        | Electron, electron-vite, React                                                                                                                                                                | Three systems at once, and Speak's code moves over almost unchanged                                                               |
-| Workspace            | pnpm workspaces                                                                                                                                                                               | Strict about undeclared dependencies, which supports rule 3                                                                       |
-| Tasks                | Turborepo                                                                                                                                                                                     | Builds and tests only what changed, with a cache shared by CI                                                                     |
-| Typecheck            | TypeScript project references                                                                                                                                                                 | Each package compiles alone; the dependency graph is explicit                                                                     |
-| Lint and format      | Biome: one tool lints and formats. Its configuration holds the dependency rules of 14.3 as one table                                                                                          | The dependency rules fail a build instead of relying on review. One fast tool in place of a linter, a formatter and their plugins |
-| Tests                | Vitest for unit and replay tests; Playwright for the built desktop app                                                                                                                        |                                                                                                                                   |
-| Store                | SQLite with FTS5 and sqlite-vec, through Node's built-in `node:sqlite`                                                                                                                        | Section 10.3. No native module to build per system. Checked in Electron 45: FTS5 and extension loading are present                |
-| Tools                | MCP over HTTP on the loopback address                                                                                                                                                         | Understood by every harness                                                                                                       |
-| Generated interface  | json-render with zod schemas                                                                                                                                                                  | Section 9                                                                                                                         |
-| Component behaviours | UI SDK                                                                                                                                                                                        | Section 9                                                                                                                         |
-| Local models         | whisper.cpp builds; ONNX runtime for Kokoro and embeddings                                                                                                                                    | Already used by Speak and the proof of concept                                                                                    |
-| CI                   | On every push, on Windows, macOS and Linux: typecheck, lint, tests. The Swift helper builds on the macOS runner. The core is started without any interface on Linux, as a server would run it | Principle 8 and principle 10 are checked by machines                                                                              |
-| Release              | electron-builder: NSIS and ZIP for Windows, DMG for macOS, AppImage for Linux, signed, with update manifests. The Windows installer is built on Windows; the ZIP builds anywhere              | Speak's release workflow                                                                                                          |
+| Concern             | Choice                                                                                                                                                                                        | Reason                                                                                                                                                 |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Language            | TypeScript in strict mode; Swift for the one Apple helper                                                                                                                                     | Shared with Speak, and with a React Native phone app later                                                                                             |
+| Desktop shell       | Electron, electron-vite, React                                                                                                                                                                | Three systems at once, and Speak's code moves over almost unchanged                                                                                    |
+| Workspace           | pnpm workspaces                                                                                                                                                                               | Strict about undeclared dependencies, which supports rule 3                                                                                            |
+| Tasks               | Turborepo                                                                                                                                                                                     | Builds and tests only what changed, with a cache shared by CI                                                                                          |
+| Typecheck           | TypeScript project references                                                                                                                                                                 | Each package compiles alone; the dependency graph is explicit                                                                                          |
+| Lint and format     | Biome: one tool lints and formats. Its configuration holds the dependency rules of 14.3 as one table                                                                                          | The dependency rules fail a build instead of relying on review. One fast tool in place of a linter, a formatter and their plugins                      |
+| Tests               | Vitest for unit and replay tests; Playwright for the built desktop app                                                                                                                        |                                                                                                                                                        |
+| Store               | SQLite with FTS5 and sqlite-vec, through Node's built-in `node:sqlite`                                                                                                                        | Section 10.3. No native module to build per system. Checked in Electron 45: FTS5 and extension loading are present                                     |
+| Tools               | MCP over HTTP on the loopback address                                                                                                                                                         | Understood by every harness                                                                                                                            |
+| Generated interface | The view format of json-render, with our own catalogue (zod) and our own web renderer                                                                                                         | Section 9. The renderer is ours so every block looks like the app; the format stays json-render's so its React Native renderer can draw the same views |
+| Interface           | React 19, Tailwind CSS 4 with the theme generated from `@repo/tokens`, Geist and Geist Mono bundled, Motion for transitions                                                                   | Modern, fast to build with, and the same look on every system                                                                                          |
+| Local models        | sherpa-onnx: Parakeet, Supertonic, Silero, in a process of their own                                                                                                                          | Section 8.2. One library, prebuilt for every system                                                                                                    |
+| CI                  | On every push, on Windows, macOS and Linux: typecheck, lint, tests. The Swift helper builds on the macOS runner. The core is started without any interface on Linux, as a server would run it | Principle 8 and principle 10 are checked by machines                                                                                                   |
+| Release             | electron-builder: NSIS and ZIP for Windows, DMG for macOS, AppImage for Linux, signed, with update manifests. The Windows installer is built on Windows; the ZIP builds anywhere              | Speak's release workflow                                                                                                                               |
 
 Electron uses more memory than the proof of concept's WKWebView shell. That is the accepted price of three systems and of reusing Speak. To limit it: one window, the inspector loaded only when opened, and a cap on warm sessions in the light tier.
 
@@ -1154,21 +1157,20 @@ Electron uses more memory than the proof of concept's WKWebView shell. That is t
 
 `rodolphe` was branched from `main`. The proof-of-concept files were removed from this branch on 16 November; they remain on `main` and in history.
 
-Built and checked so far, as the start of build step 1:
+Built, and checked against the real Claude Code on 17 November 2026:
 
-- **The workspace**: root configuration, `tooling/tsconfig`, `biome.jsonc` with the dependency rules of 14.3 as one table, and CI on Windows, macOS and Linux.
-- **The thirteen library packages**, each with its allowed dependencies declared. `protocol`, `core`, `store`, `client`, `tokens` and `ui-web` hold code; the others are empty projects.
-- **`protocol`**: the handshake, then commands, results and events. Two commands exist: read the settings, and name the personas and pick the one that answers.
-- **`core`**: admission of clients, execution of commands, and the user's settings, built from the defaults and from the choices recorded.
-- **`store`**: one SQLite file per user, holding immutable records that each carry an identifier, the core that wrote them and a sequence number.
-- **`apps/server`**: the core as a process. It opens the user's data folder, picks a local endpoint, announces it, admits or refuses each client, carries out commands and sends every event to every client.
-- **`client`**: the connection, the session on top of it, and the settings kept current from events.
-- **`tokens` and `ui-web`**: the design values, and the first screens: first launch, the assistant present with its persona, and settings.
-- **`apps/desktop`**: the Electron app. It starts the core, connects to it through `client`, and shows the interface. `--self-check` does what a first launch does against the real core, with no window, and exits with the result. `build/` packages it for the three systems.
+- **Conversation.** The user types, or talks (Ctrl+Space in the window, Ctrl+Shift+Space from any app); the take ends after a pause. The orchestrator answers small things itself and passes the rest to threads, which answer aloud sentence by sentence while the rest is still being written. Saying something during an answer takes its place.
+- **Threads.** Topics, asides in the margin, topics brought back with their view, and answers finished in the background waiting as "ready" (section 7). Every request carries the moment and the time zone.
+- **Generated interface.** Views composed from the generic blocks of section 9.6, checked by the core, drawn by our web renderer; buttons, choices and fields speak to the assistant.
+- **Personas.** Named by the user at first launch and in settings; the critical stance objects with a decision card and remembers decisions made despite it (section 11).
+- **Voice.** Local recognition and voice (section 8.2), downloaded once from first launch or settings.
+- **Harnesses.** Claude Code, verified for real, isolation included; Codex, written from Speak's proven code and tested against a stand-in, never run against the real CLI.
+- **Interface.** First launch in steps, the main screen around the living core, settings (personalities, voice, engine), and a side panel with the transcript, the threads and an inspector of raw events.
+- **Packaging.** Windows, macOS and Linux packages, made in CI on each system and downloadable from the run's page; a Windows package can also be made on Linux.
 
 Three checks guard the rules of this section: the compiler presets (code that must run anywhere cannot name a Node or DOM API, and a package's internal files cannot be imported from outside), the table in `biome.jsonc` (a forbidden import fails), and pnpm (a package cannot import what its `package.json` does not declare).
 
-Not built: voice, harnesses, threads, memory beyond settings, generated views. Not created yet: `native/`, `scripts/` and `e2e/` appear with their first content, `apps/mobile` and `packages/ui-native` with the phone app. Signing, an application icon and the release workflow come with the first release.
+Not built yet: memory beyond the transcript (in progress), vector search, files and their previews (section 9.7), permissions and approvals for actions (section 12.2), proactive turns such as the briefing (section 7.7), live data feeds (section 9.4), the phone app and the paid service. Nothing is signed yet.
 
 ## 15. Decisions
 
