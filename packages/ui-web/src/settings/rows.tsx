@@ -23,15 +23,22 @@ export interface SettingRowProps {
   children?: ReactNode
   /** The control goes under the words, for one too wide to sit beside them. */
   stacked?: boolean
+  /** What went wrong with the setting, in words for the user, under what it does. */
+  problem?: string | undefined
 }
 
 /** One setting: what it is and what it does on the left, how to set it on the right. */
-export function SettingRow({ title, detail, children, stacked = false }: SettingRowProps) {
+export function SettingRow({ title, detail, children, stacked = false, problem }: SettingRowProps) {
   return (
     <div className={cn('px-4 py-3', stacked ? 'grid gap-3' : 'flex items-center justify-between gap-8')}>
       <div className="grid min-w-0 gap-0.5">
         <span className="text-[0.8125rem]">{title}</span>
         {detail && <span className="max-w-xl text-text-faint text-xs leading-relaxed">{detail}</span>}
+        {problem && (
+          <span role="alert" className="max-w-xl text-danger text-xs leading-relaxed">
+            {problem}
+          </span>
+        )}
       </div>
       {children !== undefined && <div className={cn('min-w-0', !stacked && 'shrink-0')}>{children}</div>}
     </div>

@@ -31,10 +31,13 @@
     "@repo/tsconfig": "workspace:*",
     "@types/d3-geo": "catalog:",
     "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
     "react": "catalog:",
+    "react-dom": "catalog:",
     "vitest": "catalog:"
   },
   "peerDependencies": {
-    "react": "catalog:"
+    "react": "catalog:",
+    "react-dom": "catalog:"
   }
 }

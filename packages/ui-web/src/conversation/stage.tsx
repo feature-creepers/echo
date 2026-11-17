@@ -19,6 +19,7 @@ import { Asides } from '../view/asides.tsx'
 import type { ViewActions } from '../view/context.ts'
 import { ViewPanel } from '../view/view-panel.tsx'
 import { doing } from './activity.ts'
+import { EngineIndicator } from './engine-indicator.tsx'
 import { InputLine } from './input-line.tsx'
 import { SpokenLine } from './spoken-line.tsx'
 import { Suggestions } from './suggestions.tsx'
@@ -373,21 +374,10 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-8 pt-10 pb-4 [background:linear-gradient(to_top,var(--color-ground)_22%,color-mix(in_srgb,var(--color-ground)_55%,transparent)_60%,transparent)]">
         <div className={cn('pointer-events-auto mx-auto grid w-full gap-1.5', COLUMN)}>
           {composer}
-          {/* Which AI program answers: there to read, rarely to press. */}
-          <div className="flex justify-end px-1">
+          {/* What it may reach and what it thinks with: there to read, and changed on the spot from their menus. */}
+          <div className="-mt-0.5 flex justify-end gap-2">
             <AccessIndicator client={client} />
-            <button
-              type="button"
-              onClick={onSetUpEngine}
-              className="flex h-4 items-center gap-1.5 text-[0.6875rem] text-text-faint transition-colors duration-(--duration-quick) hover:text-text-soft"
-            >
-              <span className={cn('size-1.5 rounded-full', engines === undefined ? 'bg-text-faint/50' : noEngine ? 'bg-warn' : 'bg-ok/80')} />
-              {engines === undefined
-                ? 'Looking…'
-                : noEngine
-                  ? 'No AI program ready'
-                  : (engines.harnesses.find((harness) => harness.id === engines.active)?.name ?? 'Ready')}
-            </button>
+            <EngineIndicator client={client} onOpenSettings={onSetUpEngine} />
           </div>
         </div>
       </div>

@@ -61,8 +61,8 @@ export const CloseGlyph = () => (
   </Glyph>
 )
 
-export const CheckGlyph = () => (
-  <Glyph>
+export const CheckGlyph = ({ size = 16 }: { size?: number }) => (
+  <Glyph size={size}>
     <path d="m3.5 8.5 3 3 6-7" />
   </Glyph>
 )

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { useDevice } from '../device/device.tsx'
 import type { ShortcutName } from '../device/host.ts'
 import { Button } from '../primitives/button.tsx'
-import { SettingGroup } from './rows.tsx'
+import { SettingGroup, SettingRow } from './rows.tsx'
 import { ShortcutRecorder } from './shortcut-recorder.tsx'
 
 const SHORTCUTS: { name: ShortcutName; title: string; detail: string }[] = [
@@ -50,36 +50,27 @@ export function ShortcutsSection({ productName }: { productName: string }) {
           const usual = DEFAULT_DEVICE_SETTINGS.shortcuts[name]
           const problem = problems[name]
           return (
-            <div key={name} className="grid gap-2.5 px-5 py-4">
-              <div className="flex items-center justify-between gap-8">
-                <div className="grid min-w-0 gap-1">
-                  <span className="font-medium text-sm">{title}</span>
-                  <span className="max-w-md text-text-soft text-xs leading-relaxed">{detail}</span>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  {value !== usual && (
-                    <Button
-                      kind="quiet"
-                      size="sm"
-                      onClick={() => void record(name, usual).then((refused) => setProblems((before) => ({ ...before, [name]: refused })))}
-                    >
-                      Reset
-                    </Button>
-                  )}
-                  <ShortcutRecorder
-                    label={title}
-                    value={value}
-                    onRecord={(accelerator) => record(name, accelerator)}
-                    onProblem={(found) => setProblems((before) => ({ ...before, [name]: found }))}
-                  />
-                </div>
+            <SettingRow key={name} title={title} detail={detail} problem={problem}>
+              <div className="flex items-center gap-2">
+                {/* Back to the usual keys; for a shortcut that is off until set, the cross in the field does that. */}
+                {value !== usual && usual !== '' && (
+                  <Button
+                    kind="quiet"
+                    size="sm"
+                    onClick={() => void record(name, usual).then((refused) => setProblems((before) => ({ ...before, [name]: refused })))}
+                  >
+                    Reset
+                  </Button>
+                )}
+                <ShortcutRecorder
+                  label={title}
+                  value={value}
+                  onRecord={(accelerator) => record(name, accelerator)}
+                  onProblem={(found) => setProblems((before) => ({ ...before, [name]: found }))}
+                  onClear={() => void record(name, '').then((refused) => setProblems((before) => ({ ...before, [name]: refused })))}
+                />
               </div>
-              {problem && (
-                <p role="alert" className="text-danger text-xs">
-                  {problem}
-                </p>
-              )}
-            </div>
+            </SettingRow>
           )
         })}
       </SettingGroup>
