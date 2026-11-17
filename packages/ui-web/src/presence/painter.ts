@@ -1,5 +1,6 @@
 /**
- * Draws the core: the assistant's presence, and the one thing on screen that glows and moves.
+ * Draws the core the simpler way, on a 2D canvas, where the system has no graphics card to draw the lens with
+ * (`lens.ts`).
  *
  * It is a set of rings around a bright centre, like echoes of a sound. What the assistant is doing shows in
  * how they move: they breathe at rest, lean in and tremble with the user's voice while listening, carry a
