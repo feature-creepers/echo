@@ -16,6 +16,15 @@ export const conversationCommands = {
     output: z.object({ turn: turnIdSchema })
   },
 
+  /**
+   * The app has opened on the main screen. The assistant greets the user and gives a short briefing, unless
+   * it did so a little while ago or is already answering. Says which turn it started, if any.
+   */
+  'assistant.greet': {
+    input: z.object({}),
+    output: z.object({ turn: turnIdSchema.optional() })
+  },
+
   /** Stop the answer under way, if there is one. */
   'turn.stop': {
     input: z.object({}),

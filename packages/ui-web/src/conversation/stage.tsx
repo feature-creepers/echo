@@ -106,6 +106,15 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
     stop()
     void start()
   }, [listening, finish, start, stop])
+  // Once the assistant can think, it greets the user when the app opens: the core decides whether it is time to.
+  const greeted = useRef(false)
+  const canThink = engines?.active !== undefined
+  useEffect(() => {
+    if (!canThink || greeted.current) return
+    greeted.current = true
+    client.channel.greet().catch(() => undefined)
+  }, [canThink, client])
+
   // The app asks to talk when its global shortcut is pressed from another app.
   useEffect(() => {
     const onTalk = () => toggle()
@@ -138,7 +147,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
         >
           {speaking.sentence.text}
         </motion.p>
-      ) : running && last ? (
+      ) : running && last?.trigger === 'greeting' ? null : running && last ? (
         <motion.p
           key={`said:${last.turn}`}
           initial={{ opacity: 0 }}

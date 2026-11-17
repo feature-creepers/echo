@@ -14,6 +14,7 @@ function setup(overrides: Partial<Handlers> = {}) {
     'personas.set': () => ({ ok: false, error: { code: 'name-taken', message: 'taken' } }),
     'utterance.send': () => ({ ok: true, output: { turn: 't1' } }),
     'turn.stop': () => ({ ok: true, output: {} }),
+    'assistant.greet': () => ({ ok: true, output: {} }),
     'channel.read': () => ({ ok: true, output: { exchanges: [] } }),
     'engines.read': async () => ({ ok: true, output: { engines: { harnesses: [] } } }),
     'engines.sign-in': async () => ({ ok: true, output: {} }),

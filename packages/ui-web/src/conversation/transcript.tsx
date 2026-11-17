@@ -114,9 +114,9 @@ export function Transcript({ exchanges, personas, threads, events, onFocus, onCl
                   <li key={exchange.turn} className="grid gap-2" style={accentStyle(persona?.accent)}>
                     <div className="grid gap-1">
                       <span className="flex items-baseline gap-2 font-mono text-label text-text-faint uppercase">
-                        You <time dateTime={exchange.at}>{clock.format(new Date(exchange.at))}</time>
+                        {exchange.trigger === 'greeting' ? 'Briefing' : 'You'} <time dateTime={exchange.at}>{clock.format(new Date(exchange.at))}</time>
                       </span>
-                      <p className="text-sm text-text-soft leading-relaxed">{exchange.said}</p>
+                      {exchange.said && <p className="text-sm text-text-soft leading-relaxed">{exchange.said}</p>}
                     </div>
                     <div className="grid gap-1 border-accent/50 border-l pl-3">
                       <span className="font-mono text-accent text-label uppercase">{persona?.name ?? 'Assistant'}</span>

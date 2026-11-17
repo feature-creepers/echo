@@ -127,6 +127,10 @@ export function createCore(options: CoreOptions): Core {
         return change.ok ? { ok: true, output: { settings: change.settings } } : change
       },
       'utterance.send': (input) => ({ ok: true, output: { turn: channel.say(input.text, input.language) } }),
+      'assistant.greet': () => {
+        const turn = channel.greet()
+        return { ok: true, output: turn === undefined ? {} : { turn } }
+      },
       'turn.stop': () => {
         channel.stop()
         return { ok: true, output: {} }

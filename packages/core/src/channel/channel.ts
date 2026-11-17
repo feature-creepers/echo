@@ -15,6 +15,12 @@ import { instructionsFor, orchestratorInstructions, threadInstructions } from '.
 /** The type of the record written when a turn is over: one line of the channel log, word for word. */
 export const EXCHANGE = 'channel.exchange'
 
+/** The type of the record written each time the assistant greets the user. */
+export const GREETING = 'channel.greeting'
+
+/** How long after a greeting the assistant does not greet again, in milliseconds. */
+const GREETING_GAP_MS = 6 * 60 * 60 * 1000
+
 /** How many of the latest lines a new session is told about, so it carries on where the last one stopped. */
 const RECAP_EXCHANGES = 8
 
@@ -69,6 +75,8 @@ export function moment(at: Date, timeZone?: string): string {
 export interface Channel {
   /** The user said something. The answer follows as events. Said during an answer, it takes the answer's place. */
   say(text: string, language?: string): TurnId
+  /** Greet the user and brief them, unless it was done a little while ago or a turn is under way. */
+  greet(): TurnId | undefined
   /** Stop the answer under way, if there is one. */
   stop(): void
   /** The latest lines of the transcript, oldest first. */
@@ -427,11 +435,17 @@ export function createChannel(options: ChannelOptions): Channel {
   /** The moment and the place a turn happens in: a model has no clock of its own. */
   const context = () => `(Now: ${moment(now(), options.timeZone)})`
 
+  /** What the person said, or what the assistant starts on by itself. */
+  const what = (turn: Turn) =>
+    turn.exchange.trigger === 'greeting'
+      ? 'The person has just opened the app; nobody has said anything yet. Greet them by their name if you know it, in one short sentence, then give a brief briefing for today: the day, the weather where they are if you can find it (their time zone says roughly where), and anything left pending from earlier topics. Keep it short. Pass it to a thread if a view of the day would help.'
+      : `The person says: ${turn.exchange.said}`
+
   /** What the orchestrator reads for each turn: the moment, the threads, then what the person said. */
   const message = (turn: Turn) =>
     abilities?.server() === undefined
-      ? `${context()}\n${turn.exchange.said}`
-      : `${context()}\nThreads:\n${registry.index()}\n\nThe person says: ${turn.exchange.said}`
+      ? `${context()}\n${turn.exchange.trigger === 'greeting' ? what(turn) : turn.exchange.said}`
+      : `${context()}\nThreads:\n${registry.index()}\n\n${what(turn)}`
 
   const decide = async (turn: Turn) => {
     deciding = turn
@@ -492,6 +506,20 @@ export function createChannel(options: ChannelOptions): Channel {
       pending = undefined
       if (deciding) pending = turn
       else void decide(turn)
+      return exchange.turn
+    },
+
+    greet() {
+      if (current || deciding || pending) return undefined
+      const last = records.read([GREETING]).at(-1)
+      if (last && now().getTime() - new Date(last.at).getTime() < GREETING_GAP_MS) return undefined
+      records.append([{ type: GREETING, payload: {} }])
+      const persona = activePersona()
+      const exchange: Exchange = { turn: newId(), at: now().toISOString(), persona: persona.id, said: '', trigger: 'greeting', replied: '', outcome: 'running' }
+      const turn: Turn = { exchange, language: undefined, cutter: createSentenceCutter(), stopped: false, routed: undefined }
+      transcript.push(exchange)
+      current = turn
+      void decide(turn)
       return exchange.turn
     },
 

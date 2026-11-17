@@ -21,6 +21,8 @@ export interface Sentence {
 export interface ChannelState extends Followed<ChannelSnapshot> {
   /** Say something to the assistant. Rejects with `CommandFailed` when the core does not take it. */
   say(text: string, language?: string): Promise<void>
+  /** The app has opened: let the assistant greet and brief the user, if it is time to. */
+  greet(): Promise<void>
   /** Stop the answer under way. */
   stop(): Promise<void>
   /** Be given each sentence to say aloud, as it is announced. Returns a function that stops the giving. */
@@ -82,6 +84,9 @@ export function followChannel(session: Session): ChannelState {
     subscribe: state.subscribe,
     async say(text, language) {
       await session.run('utterance.send', language === undefined ? { text } : { text, language })
+    },
+    async greet() {
+      await session.run('assistant.greet', {})
     },
     async stop() {
       await session.run('turn.stop', {})

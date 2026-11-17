@@ -390,3 +390,27 @@ describe('new sessions', () => {
     expect(harness.sessions.every((session) => session.closed)).toBe(true)
   })
 })
+
+describe('the greeting', () => {
+  it('starts a turn of its own that asks for a short briefing, shown as such in the transcript', async () => {
+    const { channel, harness, ended } = setup()
+    const turn = channel.greet()
+    await settled()
+    expect(turn).toBeDefined()
+    expect(harness.sessions[0]?.sent[0]).toContain('The person has just opened the app')
+    harness.sessions[0]?.reply('Good morning. It is Tuesday.')
+    expect(ended()).toMatchObject([{ turn, said: '', trigger: 'greeting', replied: 'Good morning. It is Tuesday.', outcome: 'done' }])
+  })
+
+  it('does not greet again a little while later, nor while a turn is under way', async () => {
+    const { channel, harness } = setup()
+    channel.say('Hello')
+    await settled()
+    expect(channel.greet()).toBeUndefined()
+    harness.sessions[0]?.reply('Hi.')
+    expect(channel.greet()).toBeDefined()
+    await settled()
+    harness.sessions[0]?.reply('Good morning.')
+    expect(channel.greet()).toBeUndefined()
+  })
+})
