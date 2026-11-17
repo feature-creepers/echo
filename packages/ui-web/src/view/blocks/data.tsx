@@ -108,6 +108,10 @@ export function Progress({ props }: { props: BlockProps<'Progress'> }) {
 const HEIGHT = { short: 110, normal: 170, tall: 250 } as const
 
 /** Round numbers for an axis: a step of 1, 2 or 5 times a power of ten, so the scale reads at a glance. */
+/** An axis's value as a person reads it: 2.5M rather than 2500000, 12,000 with its separator. */
+const axisNumber = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 })
+const formatTick = (value: number) => (Math.abs(value) >= 10_000 ? axisNumber.format(value) : value.toLocaleString())
+
 function niceScale(min: number, max: number, ticks = 4): { low: number; high: number; step: number } {
   const span = max - min || Math.abs(max) || 1
   const raw = span / ticks
@@ -162,7 +166,7 @@ export function Chart({ props }: { props: BlockProps<'Chart'> }) {
           <g key={tick}>
             <line x1={pad.left} x2={width - pad.right} y1={y(tick)} y2={y(tick)} stroke="var(--color-line)" />
             <text x={pad.left - 8} y={y(tick)} dy="0.32em" textAnchor="end" className="fill-text-faint text-[10px]">
-              {tick}
+              {formatTick(tick)}
             </text>
           </g>
         ))}
