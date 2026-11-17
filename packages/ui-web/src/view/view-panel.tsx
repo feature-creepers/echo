@@ -4,17 +4,18 @@ import { AnimatePresence, motion } from 'motion/react'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { IconButton } from '../primitives/icon-button.tsx'
 import { CloseGlyph } from '../primitives/icons.tsx'
+import type { ViewActions } from './context.ts'
 import { ViewRenderer } from './view-renderer.tsx'
 
 export interface ViewPanelProps {
   view: ShownView
-  /** Say something to the assistant, from a button or a choice of the view. */
-  onSay(text: string): void
+  /** What the view's blocks can do: speak to the assistant, read its files. */
+  actions: ViewActions
   onClose(): void
 }
 
 /** The stage: what the assistant composed for the answer, under its title. A new view slides in over the last. */
-export function ViewPanel({ view, onSay, onClose }: ViewPanelProps) {
+export function ViewPanel({ view, actions, onClose }: ViewPanelProps) {
   return (
     <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto px-8 pb-6">
       <AnimatePresence mode="wait">
@@ -33,7 +34,7 @@ export function ViewPanel({ view, onSay, onClose }: ViewPanelProps) {
             </IconButton>
           </header>
           {/* The core checked the view against the catalogue before sending it. */}
-          <ViewRenderer spec={view.spec as ViewSpec} actions={{ say: onSay }} />
+          <ViewRenderer spec={view.spec as ViewSpec} actions={actions} />
         </motion.article>
       </AnimatePresence>
     </div>

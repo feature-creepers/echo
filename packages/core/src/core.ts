@@ -4,7 +4,9 @@ import { createChannel } from './channel/channel.ts'
 import { createExecutor } from './commands/execute.ts'
 import { type Admission, admit } from './devices/admission.ts'
 import { createEngineRoom } from './engines/engines.ts'
+import { createFiles } from './files/files.ts'
 import { createObjections } from './personas/objection.ts'
+import type { Blobs } from './ports/blobs.ts'
 import type { Harness } from './ports/harness.ts'
 import type { Log } from './ports/log.ts'
 import type { Records } from './ports/records.ts'
@@ -20,6 +22,8 @@ export interface CoreOptions {
   /** Whether a credential is one this core accepts. How it is checked depends on where the core runs. */
   acceptsCredential: (credential: string) => boolean
   records: Records
+  /** Files' contents. */
+  blobs: Blobs
   log: Log
   /** The harnesses the assistant can run on, in order of preference. */
   harnesses: readonly Harness[]
@@ -86,6 +90,7 @@ export function createCore(options: CoreOptions): Core {
   ]
 
   const objections = createObjections({ records: options.records, screen, now })
+  const files = createFiles({ records: options.records, blobs: options.blobs, now, newId: options.newId })
 
   const channel = createChannel({
     engines,
@@ -99,7 +104,11 @@ export function createCore(options: CoreOptions): Core {
       server: () => toolServer,
       grant: (granted) => tools.grant(granted),
       // A critical persona objects through a decision card; an accommodating one only mentions its concern.
-      threadTools: (showing, stance) => (stance === 'critical' ? [...screenTools(showing), ...objections.tools(showing)] : screenTools(showing)),
+      threadTools: (showing, stance) => [
+        ...screenTools(showing),
+        ...files.tools(() => showing().thread),
+        ...(stance === 'critical' ? objections.tools(showing) : [])
+      ],
       instructions: describeCatalog(),
       standing: () => objections.standing()
     }
@@ -133,6 +142,12 @@ export function createCore(options: CoreOptions): Core {
         return { ok: true, output: {} }
       },
       'threads.read': () => ({ ok: true, output: channel.threads() }),
+      'file.read': (input) => {
+        const file = files.read(input.file)
+        return file
+          ? { ok: true, output: { name: file.name, mime: file.mime, format: file.format, version: file.version, text: file.text } }
+          : { ok: false, error: { code: 'invalid-input', message: `There is no file "${input.file}".` } }
+      },
       'thread.focus': (input) =>
         channel.focus(input.thread)
           ? { ok: true, output: {} }

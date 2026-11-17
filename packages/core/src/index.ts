@@ -1,5 +1,6 @@
 export { type Core, type CoreOptions, createCore } from './core.ts'
 export type { Admission } from './devices/admission.ts'
+export type { Blobs } from './ports/blobs.ts'
 export type { Harness, HarnessStatus, OneShot, Role, Session, SessionEvent, SessionRequest, ToolServer } from './ports/harness.ts'
 export type { Log } from './ports/log.ts'
 export type { NewRecord, Records, StoredRecord } from './ports/records.ts'

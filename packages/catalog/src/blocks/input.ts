@@ -22,6 +22,11 @@ export const inputBlocks = {
     }),
     children: false
   },
+  FilePreview: {
+    description: 'A document you wrote with file_write, shown to read, with a button to download it. Use it whenever you wrote one; say aloud only what it is.',
+    props: z.object({ file: z.string(), height: z.enum(['short', 'normal', 'tall']).default('normal') }),
+    children: false
+  },
   Field: {
     description: 'A line the user types an answer into. What they type is said to you after `say`, which introduces it: "My postcode is".',
     props: z.object({ label: z.string(), placeholder: z.string().optional(), say: z.string() }),

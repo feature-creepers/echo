@@ -97,6 +97,7 @@ export function orchestratorInstructions({ persona, earlier, abilities }: Instru
       "- Pass the request on in the person's own words, adding only what the thread could not know from its own history."
     ].join('\n')
   ]
+  if (abilities) parts.push(abilities)
   const before = recap(earlier)
   if (before) parts.push(before)
   return parts.join('\n\n')

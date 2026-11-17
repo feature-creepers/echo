@@ -10,6 +10,7 @@ function start(records = memoryRecords(), harness = scriptedHarness()) {
     version: '1.2.3',
     acceptsCredential: (credential) => credential === 'right',
     records,
+    blobs: { put: () => 'hash', get: () => undefined },
     log: { error: vi.fn() },
     harnesses: [harness],
     newId: () => `id-${++ids}`,
@@ -172,7 +173,7 @@ describe('threads and the screen through the core', () => {
     const thread = harness.sessions[2]
     const token = thread?.request.tools?.token ?? ''
     expect(thread?.request.instructions).toContain('ui_render')
-    expect(core.toolHost.list(token)?.map((tool) => tool.name)).toEqual(['ui_render', 'ui_clear'])
+    expect(core.toolHost.list(token)?.map((tool) => tool.name)).toEqual(['ui_render', 'ui_clear', 'file_write', 'file_read'])
 
     const { EXAMPLE_VIEW } = await import('@repo/catalog')
     expect(await core.toolHost.call(token, 'ui_render', { title: 'The week', view: EXAMPLE_VIEW })).toEqual({ ok: true, text: 'Shown.' })

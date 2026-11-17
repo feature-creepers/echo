@@ -21,6 +21,7 @@ function setup(overrides: Partial<Handlers> = {}) {
     'view.clear': () => ({ ok: true, output: {} }),
     'threads.read': () => ({ ok: true, output: { threads: [] } }),
     'thread.focus': () => ({ ok: true, output: {} }),
+    'file.read': () => ({ ok: false, error: { code: 'invalid-input', message: 'none' } }),
     ...overrides
   }
   return { execute: createExecutor(handlers, log), log }

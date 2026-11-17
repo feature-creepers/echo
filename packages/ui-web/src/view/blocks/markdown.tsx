@@ -76,9 +76,10 @@ export function Markdown({ text }: { text: string }) {
     const paragraph: string[] = []
     while (index < lines.length && (lines[index] ?? '').trim() !== '' && !/^(#{1,4}\s|```|>|\s*([-*+]|\d+[.)])\s)/.test(lines[index] ?? ''))
       paragraph.push(lines[index++] ?? '')
+    // A line break inside a paragraph is kept, as in a letter's address block or a poem.
     blocks.push(
       <p key={key()} className="text-pretty leading-relaxed">
-        {inline(paragraph.join(' '))}
+        {paragraph.flatMap((line, at) => (at === 0 ? inline(line) : [<br key={`br-${at}`} />, ...inline(line)]))}
       </p>
     )
   }

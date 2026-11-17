@@ -2,7 +2,7 @@ import type { Client } from '@repo/client'
 import { useFollowed } from '@repo/client/react'
 import type { PersonaId, Settings } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { SpeechEngine } from '../audio/engine.ts'
 import { useTalk } from '../audio/use-talk.ts'
 import { refusalCopy } from '../personas/copy.ts'
@@ -72,6 +72,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
     },
     [client]
   )
+  const actions = useMemo(() => ({ say, readFile: (file: string) => client.session.run('file.read', { file }) }), [say, client])
   const stop = useCallback(() => {
     client.speech.stop()
     client.channel.stop().catch(() => undefined)
@@ -200,7 +201,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
                   </div>
                 </div>
               </motion.div>
-              <ViewPanel view={view} onSay={say} onClose={() => void client.view.clear().catch(() => undefined)} />
+              <ViewPanel view={view} actions={actions} onClose={() => void client.view.clear().catch(() => undefined)} />
             </div>
           ) : (
             <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-8">
@@ -231,7 +232,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
                 ready={ready}
                 onFocus={(thread) => void client.threads.focus(thread).catch(() => undefined)}
                 onClose={(id) => void client.view.clear(id).catch(() => undefined)}
-                onSay={say}
+                actions={actions}
               />
             </motion.div>
           )}

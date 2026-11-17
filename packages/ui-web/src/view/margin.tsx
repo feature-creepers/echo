@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { IconButton } from '../primitives/icon-button.tsx'
 import { CloseGlyph } from '../primitives/icons.tsx'
+import type { ViewActions } from './context.ts'
 import { ViewRenderer } from './view-renderer.tsx'
 
 export interface MarginProps {
@@ -13,11 +14,11 @@ export interface MarginProps {
   ready: readonly Thread[]
   onFocus(thread: string): void
   onClose(view: string): void
-  onSay(text: string): void
+  actions: ViewActions
 }
 
 /** Beside the stage: answers to side questions, and topics whose answer is waiting to be seen. */
-export function Margin({ cards, ready, onFocus, onClose, onSay }: MarginProps) {
+export function Margin({ cards, ready, onFocus, onClose, actions }: MarginProps) {
   return (
     <aside aria-label="Margin" className="scroll-quiet flex w-[22rem] shrink-0 flex-col gap-3 overflow-y-auto py-5 pr-6">
       <AnimatePresence initial={false}>
@@ -62,7 +63,7 @@ export function Margin({ cards, ready, onFocus, onClose, onSay }: MarginProps) {
             </header>
             {/* The core checked the view against the catalogue before sending it. */}
             <div className="text-[0.9375rem] [&_h2]:text-xl">
-              <ViewRenderer spec={card.spec as ViewSpec} actions={{ say: onSay }} />
+              <ViewRenderer spec={card.spec as ViewSpec} actions={actions} />
             </div>
           </motion.article>
         ))}

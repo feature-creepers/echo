@@ -26,6 +26,7 @@ export async function compose(config: Config): Promise<Composition> {
     version: manifest.version,
     acceptsCredential: localToken(config.token),
     records: store.records,
+    blobs: store.blobs,
     log,
     harnesses: createHarnesses({ folder: join(config.data, 'harness'), log }),
     newId: randomUUID
