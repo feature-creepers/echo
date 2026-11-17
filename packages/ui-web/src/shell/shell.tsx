@@ -1,4 +1,5 @@
 import type { Client, CoreLink } from '@repo/client'
+import { describeShortcut, matchesShortcut } from '@repo/client'
 import { useFollowed } from '@repo/client/react'
 import type { Accent, CommandInput, PersonaId } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
@@ -7,6 +8,8 @@ import type { SpeechEngine } from '../audio/engine.ts'
 import { useDeviceSpeech } from '../audio/use-speech.ts'
 import { Stage } from '../conversation/stage.tsx'
 import { Transcript } from '../conversation/transcript.tsx'
+import { DeviceProvider, keyPress, useDevice } from '../device/device.tsx'
+import type { DeviceHost } from '../device/host.ts'
 import { Onboarding } from '../onboarding/onboarding.tsx'
 import { Orb } from '../presence/orb.tsx'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
@@ -24,13 +27,26 @@ export interface ShellProps {
   client: Client | undefined
   /** The device's speech engines. Left out, the user types and the assistant's sentences are only shown. */
   speech?: SpeechEngine | undefined
+  /** The app's keeping of this device's settings, its version and its updates. Left out, the settings of the device last until the window closes. */
+  device?: DeviceHost | undefined
 }
+
+/** The event an app dispatches on the window to show the settings: from its tray, for instance. */
+export const OPEN_SETTINGS_EVENT = 'echo:open-settings'
 
 /**
  * The interface, whole: it decides what fills the window from where the app stands with its core and
  * from the user's settings.
  */
-export function Shell({ productName, link, client, speech }: ShellProps) {
+export function Shell({ device, ...rest }: ShellProps) {
+  return (
+    <DeviceProvider host={device}>
+      <Screens {...rest} />
+    </DeviceProvider>
+  )
+}
+
+function Screens({ productName, link, client, speech }: Omit<ShellProps, 'device'>) {
   if (link.state === 'failed') {
     return (
       <Frame productName={productName}>
@@ -81,16 +97,25 @@ function Connected({ productName, client, engine }: { productName: string; clien
     setScreen({ is: 'main' })
   }, [])
 
-  // Control or Command with T opens and closes the transcript.
+  // A key of this device's settings opens and closes the transcript: Control or Command with T, unless changed.
+  const device = useDevice()
+  const transcriptKey = device.settings.shortcuts.transcript
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 't') {
+      if (transcriptKey !== '' && matchesShortcut(keyPress(event), transcriptKey, device.mac)) {
         event.preventDefault()
         setTranscript((open) => !open)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
+  }, [transcriptKey, device.mac])
+
+  // The app asks for the settings: its tray's menu.
+  useEffect(() => {
+    const onOpen = () => setScreen({ is: 'settings', section: 'general' })
+    window.addEventListener(OPEN_SETTINGS_EVENT, onOpen)
+    return () => window.removeEventListener(OPEN_SETTINGS_EVENT, onOpen)
   }, [])
 
   if (snapshot.state === 'loading') {
@@ -133,13 +158,17 @@ function Connected({ productName, client, engine }: { productName: string; clien
 
   const actions = (
     <>
-      <IconButton label="Transcript (Ctrl+T)" active={transcript} onClick={() => setTranscript((open) => !open)}>
+      <IconButton
+        label={transcriptKey ? `Transcript (${describeShortcut(transcriptKey, device.mac)})` : 'Transcript'}
+        active={transcript}
+        onClick={() => setTranscript((open) => !open)}
+      >
         <TranscriptGlyph />
       </IconButton>
       <IconButton
         label="Settings"
         active={showing.is === 'settings'}
-        onClick={() => (showing.is === 'settings' ? toMain() : setScreen({ is: 'settings', section: 'personalities' }))}
+        onClick={() => (showing.is === 'settings' ? toMain() : setScreen({ is: 'settings', section: 'general' }))}
       >
         <SettingsGlyph />
       </IconButton>
@@ -162,8 +191,8 @@ function Connected({ productName, client, engine }: { productName: string; clien
               {showing.is === 'settings' ? (
                 <SettingsScreen
                   productName={productName}
-                  personas={personas}
-                  engines={client.engines}
+                  client={client}
+                  settings={snapshot.settings}
                   memory={client.memory}
                   speech={engine ? speech : undefined}
                   section={showing.section}
@@ -176,7 +205,7 @@ function Connected({ productName, client, engine }: { productName: string; clien
                   client={client}
                   personas={personas}
                   onSwitch={(persona) => setPersonas({ names: [], active: persona })}
-                  onSetUpEngine={() => setScreen({ is: 'settings', section: 'engine' })}
+                  onSetUpEngine={() => setScreen({ is: 'settings', section: 'models' })}
                   speech={speech.ready}
                   voiceLevel={speech.ready ? speech.level : undefined}
                   onSetUpVoice={engine ? () => setScreen({ is: 'settings', section: 'voice' }) : undefined}

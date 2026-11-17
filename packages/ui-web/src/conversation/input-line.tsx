@@ -1,4 +1,6 @@
+import { describeShortcut } from '@repo/client'
 import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from 'react'
+import { useDevice } from '../device/device.tsx'
 import { cn } from '../primitives/cn.ts'
 import { MicGlyph, SendGlyph, StopGlyph } from '../primitives/icons.tsx'
 import { Kbd } from '../primitives/kbd.tsx'
@@ -21,6 +23,11 @@ export interface InputLineProps {
 export function InputLine({ name, busy, onSay, onStop, talk }: InputLineProps) {
   const [text, setText] = useState('')
   const input = useRef<HTMLInputElement>(null)
+  // The keys shown in the hints are the ones set for this device.
+  const { settings, mac } = useDevice()
+  const talkKey = settings.shortcuts.talkInWindow && describeShortcut(settings.shortcuts.talkInWindow, mac)
+  const anywhereKey = settings.shortcuts.talk && describeShortcut(settings.shortcuts.talk, mac)
+  const pauses = settings.listening.pause !== 'never'
 
   useEffect(() => {
     const onKey = (event: globalThis.KeyboardEvent) => {
@@ -62,7 +69,15 @@ export function InputLine({ name, busy, onSay, onStop, talk }: InputLineProps) {
         autoComplete="off"
         spellCheck={false}
         aria-label={`Say something to ${name}`}
-        placeholder={talk?.listening ? 'Listening… speak, then pause' : talk ? `Ask ${name} anything · Ctrl+Space to talk` : `Ask ${name} anything`}
+        placeholder={
+          talk?.listening
+            ? pauses
+              ? 'Listening… speak, then pause'
+              : 'Listening… press again to send'
+            : talk && talkKey
+              ? `Ask ${name} anything · ${talkKey} to talk`
+              : `Ask ${name} anything`
+        }
         className="h-full min-w-0 flex-1 bg-transparent font-mono text-[0.9375rem] text-text outline-none placeholder:text-text-faint"
       />
       {talk && (
@@ -71,7 +86,11 @@ export function InputLine({ name, busy, onSay, onStop, talk }: InputLineProps) {
           onClick={talk.onPress}
           aria-label={talk.listening ? 'Send what was said' : 'Talk'}
           aria-pressed={talk.listening}
-          title={talk.listening ? 'Send (Ctrl+Space)' : 'Talk (Ctrl+Space, or Ctrl+Shift+Space from any app)'}
+          title={
+            talk.listening
+              ? `Send${talkKey ? ` (${talkKey})` : ''}`
+              : `Talk${talkKey ? ` (${talkKey}${anywhereKey ? `, or ${anywhereKey} from any app` : ''})` : ''}`
+          }
           className={cn(
             'relative flex size-9 items-center justify-center rounded-md transition duration-150 ease-soft',
             talk.listening ? 'bg-accent text-accent-ink shadow-[0_0_24px_-4px_var(--accent)]' : 'text-text-soft hover:bg-raised hover:text-text'

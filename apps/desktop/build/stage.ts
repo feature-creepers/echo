@@ -7,7 +7,7 @@ import { parseArgs } from 'node:util'
 
 /**
  * Lays out what the packager turns into an app, in `stage/`: the built program, a manifest with no
- * development dependencies, and the one native library the speech engines load at run time, for the system
+ * development dependencies and with the repository whose releases it updates from, and the one native library the speech engines load at run time, for the system
  * the package is for. That system need not be this one: a Windows package can be made on Linux.
  *
  *   node build/stage.ts --os win32 --arch x64
@@ -24,8 +24,25 @@ mkdirSync(join(stage, 'node_modules'), { recursive: true })
 // The program, as electron-vite built it.
 cpSync(here('out'), join(stage, 'out'), { recursive: true })
 
-// The manifest: what the packager reads for the name and version, and nothing it would try to install.
+/**
+ * The GitHub repository whose releases are the update feed: the one a GitHub Actions run belongs to, else the
+ * one this clone was taken from. The packager writes it into the package (app-update.yml), for the app to
+ * know where to look. Taken from where the code lives rather than written down, so a fork updates from itself.
+ */
+function repository(): string | undefined {
+  if (process.env.GITHUB_REPOSITORY) return process.env.GITHUB_REPOSITORY
+  try {
+    const origin = execFileSync('git', ['remote', 'get-url', 'origin'], { encoding: 'utf8' }).trim()
+    return /github\.com[:/]([^/]+\/[^/]+?)(\.git)?$/.exec(origin)?.[1]
+  } catch {
+    return undefined
+  }
+}
+
+// The manifest: what the packager reads for the name, the version and the feed, and nothing it would try to install.
 const manifest = JSON.parse(readFileSync(here('package.json'), 'utf8'))
+const feed = repository()
+if (!feed) process.stderr.write('No GitHub repository was found: the package will not look for updates.\n')
 const speech = createRequire(here('package.json'))
 const libraryFolder = dirname(speech.resolve('sherpa-onnx-node/package.json'))
 const library = JSON.parse(readFileSync(join(libraryFolder, 'package.json'), 'utf8'))
@@ -41,6 +58,7 @@ writeFileSync(
       license: manifest.license,
       type: manifest.type,
       main: manifest.main,
+      ...(feed ? { repository: { type: 'git', url: `https://github.com/${feed}` } } : {}),
       dependencies: { 'sherpa-onnx-node': library.version }
     },
     null,

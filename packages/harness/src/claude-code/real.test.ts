@@ -130,6 +130,7 @@ describe.runIf(real)('the real Claude Code', () => {
         input: 'Which family of Claude model are you running as: Haiku, Sonnet or Opus? Reply with that word only.'
       })
       expect(answer.toLowerCase()).toContain('haiku')
+      expect(answer.toLowerCase()).not.toMatch(/opus|sonnet/)
     },
     TIMEOUT_MS
   )

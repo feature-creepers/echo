@@ -6,14 +6,14 @@ import { Button } from '../primitives/button.tsx'
 import { cn } from '../primitives/cn.ts'
 
 /** Where a harness stands, in a few words and a colour. */
-function standing(harness: HarnessState): { tone: 'ok' | 'warn' | 'off'; text: string } {
+export function standing(harness: HarnessState): { tone: 'ok' | 'warn' | 'off'; text: string } {
   if (!harness.installed) return { tone: 'off', text: 'Not installed' }
   if (harness.problem) return { tone: 'warn', text: harness.problem }
   if (!harness.signedIn) return { tone: 'warn', text: 'Not signed in' }
   return { tone: 'ok', text: harness.account ? `Ready · ${harness.account}` : 'Ready' }
 }
 
-const TONES = { ok: 'bg-ok shadow-[0_0_10px_var(--color-ok)]', warn: 'bg-warn', off: 'bg-text-faint/50' }
+export const TONES = { ok: 'bg-ok shadow-[0_0_10px_var(--color-ok)]', warn: 'bg-warn', off: 'bg-text-faint/50' }
 
 /**
  * The AI programs the assistant can run on, one row each: whether it is installed and signed in, with a way

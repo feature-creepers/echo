@@ -1,5 +1,5 @@
 import { type Client, type CoreLink, openClient } from '@repo/client'
-import { Shell, type SpeechEngine, silentVoice, TALK_EVENT } from '@repo/ui-web'
+import { type DeviceHost, OPEN_SETTINGS_EVENT, Shell, type SpeechEngine, silentVoice, TALK_EVENT } from '@repo/ui-web'
 import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import manifest from '../../package.json'
@@ -43,14 +43,24 @@ const speech: SpeechEngine = {
   styles: () => window.desktop.speech.styles()
 }
 
+/** This device's settings, the app's version and its updates, as the window reaches them through the app. */
+const device: DeviceHost = {
+  settings: window.desktop.device,
+  about: () => window.desktop.app.about(),
+  openDataFolder: () => window.desktop.app.openDataFolder(),
+  openReleases: () => window.desktop.app.openReleases(),
+  updates: window.desktop.updates
+}
+
 function App() {
   const link = useCoreLink()
   const client = useClient(link.state === 'connected')
-  return <Shell productName={manifest.productName} link={link} client={client} speech={speech} />
+  return <Shell productName={manifest.productName} link={link} client={client} speech={speech} device={device} />
 }
 
-// The global shortcut, pressed in another app, reaches the interface as an event on the window.
+// The global shortcut, pressed in another app, reaches the interface as an event on the window; so does the tray's "Settings".
 window.desktop.onTalk(() => window.dispatchEvent(new Event(TALK_EVENT)))
+window.desktop.onOpenSettings(() => window.dispatchEvent(new Event(OPEN_SETTINGS_EVENT)))
 
 const root = document.getElementById('root')
 if (!root) throw new Error('The page has no #root element.')

@@ -2,6 +2,8 @@ import type { Client } from '@repo/client'
 import type { Persona } from '@repo/protocol'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { silentVoice } from '../conversation/silent-voice.ts'
+import { useDevice } from '../device/device.tsx'
+import { findDevice } from './devices.ts'
 import type { InstallProgress, SpeechEngine, SpeechReadiness } from './engine.ts'
 import { engineVoice, type SpeakingVoice } from './voice.ts'
 
@@ -43,8 +45,8 @@ export interface DeviceSpeech {
   styleOf(persona: Persona): string
   /** Pick a persona's voice. */
   pick(persona: string, style: string): void
-  /** Say a sentence in a style, to hear it before picking. */
-  preview(style: string, text: string): void
+  /** Say a sentence in a style, to hear it before picking, at the pace set or the one given. */
+  preview(style: string, text: string, speed?: number): void
 }
 
 /**
@@ -59,6 +61,30 @@ export function useDeviceSpeech(engine: SpeechEngine | undefined, client: Client
   const [styles, setStyles] = useState<{ id: string; name: string }[]>([])
   const speaking = useRef({ persona, picked })
   speaking.current = { persona, picked }
+  // How the voice speaks and where it plays are settings of this device, read for each sentence.
+  const { settings } = useDevice()
+  const manner = useRef({ speed: settings.voice.speed, sink: undefined as string | undefined })
+  manner.current.speed = settings.voice.speed
+  const { aloud } = settings.voice
+  const speaker = settings.speaker
+
+  // The speakers chosen, found again among those there now, and again when one is plugged in or out.
+  useEffect(() => {
+    let live = true
+    const find = () => {
+      findDevice(speaker, 'audiooutput')
+        .then((sink) => {
+          if (live) manner.current.sink = sink
+        })
+        .catch(() => undefined)
+    }
+    find()
+    navigator.mediaDevices?.addEventListener('devicechange', find)
+    return () => {
+      live = false
+      navigator.mediaDevices?.removeEventListener('devicechange', find)
+    }
+  }, [speaker])
 
   useEffect(() => {
     engine
@@ -89,24 +115,29 @@ export function useDeviceSpeech(engine: SpeechEngine | undefined, client: Client
   }, [])
 
   const preview = useCallback(
-    (style: string, text: string) => {
+    (style: string, text: string, speed?: number) => {
       if (!ready) return
-      const sample = engineVoice(ready, () => style)
+      const sample = engineVoice(ready, { style: () => style, speed: () => speed ?? manner.current.speed, sink: () => manner.current.sink })
       sample.say({ turn: 'preview', text, language: undefined })
     },
     [ready]
   )
 
+  // Answers are spoken once the voice is installed, unless the user wants them only shown.
   useEffect(() => {
-    if (!ready) return
-    const made = engineVoice(ready, () => styleOf(speaking.current.persona, speaking.current.picked))
+    if (!ready || !aloud) return
+    const made = engineVoice(ready, {
+      style: () => styleOf(speaking.current.persona, speaking.current.picked),
+      speed: () => manner.current.speed,
+      sink: () => manner.current.sink
+    })
     voice.current = made
     client.speech.use(made)
     return () => {
       voice.current = undefined
       client.speech.use(silentVoice())
     }
-  }, [ready, client])
+  }, [ready, aloud, client])
 
   const startInstall = useCallback(() => {
     if (!engine) return

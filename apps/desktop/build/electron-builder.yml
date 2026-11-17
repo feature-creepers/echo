@@ -41,9 +41,12 @@ nsis:
   allowToChangeInstallationDirectory: true
   artifactName: ${productName}-${version}-setup.${ext}
 
+# The ZIP is what the updater reads on a Mac (latest-mac.yml names it); people download the DMG.
 mac:
   target:
     - target: dmg
+      arch: [arm64]
+    - target: zip
       arch: [arm64]
   category: public.app-category.productivity
   # Unsigned for now: the user opens it the first time with a right click, then Open.
@@ -59,3 +62,12 @@ linux:
   category: Utility
   # The program's file name. Left out, it would be taken from the workspace package's name.
   executableName: echo
+
+# The GitHub releases of the project are the update feed: the packages, and the manifests that describe them
+# (latest.yml, latest-mac.yml, latest-linux.yml), which electron-updater reads. The release workflow uploads
+# them to a draft release; publishing the draft rolls the update out to every installed copy. The feed is also
+# written into each package (app-update.yml), so the app knows where to look. The repository is the one the
+# staged manifest names: build/stage.ts takes it from the GitHub Actions run, or from this clone's origin.
+publish:
+  provider: github
+  releaseType: draft

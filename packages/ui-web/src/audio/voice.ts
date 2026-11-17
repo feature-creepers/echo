@@ -1,4 +1,5 @@
 import type { DeviceVoice } from '@repo/client'
+import { route } from './devices.ts'
 import type { SpeechEngine } from './engine.ts'
 import { loudness } from './recorder.ts'
 
@@ -8,12 +9,24 @@ export interface SpeakingVoice extends DeviceVoice {
   level(): number
 }
 
+/** How the voice speaks, read for each sentence so that a change of settings applies to the next one. */
+export interface VoiceManner {
+  style(): string
+  /** The pace, 1 being the voice's own. */
+  speed?: () => number
+  /** The output device to play on. Nothing for the system's choice. */
+  sink?: () => string | undefined
+}
+
 /**
  * Says each sentence through the speech engine and the speakers. The next sentence is made while this one
  * plays, so there is no gap between them. When the engine fails, the sentence is held silent for the time it
  * would take to read, so the caption keeps its pace.
  */
-export function engineVoice(engine: SpeechEngine, style: () => string, fallbackLanguage = 'en'): SpeakingVoice {
+export function engineVoice(engine: SpeechEngine, manner: VoiceManner | (() => string), fallbackLanguage = 'en'): SpeakingVoice {
+  const how: VoiceManner = typeof manner === 'function' ? { style: manner } : manner
+  /** The device the sound goes to now, so that it is changed only when the setting is. */
+  let routed: string | undefined
   let context: AudioContext | undefined
   let analyser: AnalyserNode | undefined
   let buffer: Float32Array<ArrayBuffer> | undefined
@@ -35,7 +48,8 @@ export function engineVoice(engine: SpeechEngine, style: () => string, fallbackL
     const known = ahead.get(text)
     if (known) return known
     const { context: audio } = ready()
-    const made = engine.speak(text, { language: language ?? fallbackLanguage, style: style() }).then(
+    const speed = how.speed?.() ?? 1
+    const made = engine.speak(text, { language: language ?? fallbackLanguage, style: how.style(), ...(speed === 1 ? {} : { speed }) }).then(
       (sound) => {
         const out = audio.createBuffer(1, sound.samples.length, sound.sampleRate)
         out.copyToChannel(new Float32Array(sound.samples), 0)
@@ -72,6 +86,11 @@ export function engineVoice(engine: SpeechEngine, style: () => string, fallbackL
           return
         }
         const { context: out, analyser: meter } = ready()
+        const sink = how.sink?.()
+        if (sink !== routed) {
+          routed = sink
+          void route(out, sink)
+        }
         void out.resume()
         source = out.createBufferSource()
         source.buffer = audio

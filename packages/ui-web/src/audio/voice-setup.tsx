@@ -1,3 +1,5 @@
+import { describeShortcut } from '@repo/client'
+import { useDevice } from '../device/device.tsx'
 import { Button } from '../primitives/button.tsx'
 import { cn } from '../primitives/cn.ts'
 import type { DeviceSpeech } from './use-speech.ts'
@@ -10,6 +12,8 @@ const megabytes = (bytes: number) => `${Math.round(bytes / 1_000_000)} MB`
  */
 export function VoiceSetup({ speech }: { speech: DeviceSpeech }) {
   const { readiness, install } = speech
+  const { settings, mac } = useDevice()
+  const talkKey = settings.shortcuts.talkInWindow
   if (!readiness) return <p className="font-mono text-text-faint text-xs">Looking at the voice models on this computer…</p>
 
   const missing = readiness.models.filter((model) => !model.installed)
@@ -29,7 +33,7 @@ export function VoiceSetup({ speech }: { speech: DeviceSpeech }) {
       </ul>
 
       {readiness.ready ? (
-        <p className="text-sm text-text-soft">Ready. Press Ctrl+Space, or the microphone, to talk.</p>
+        <p className="text-sm text-text-soft">Ready. Press {talkKey ? `${describeShortcut(talkKey, mac)}, or ` : ''}the microphone, to talk.</p>
       ) : install.is === 'running' ? (
         <div className="grid gap-2">
           <div className="h-1.5 overflow-hidden rounded-full bg-raised">
