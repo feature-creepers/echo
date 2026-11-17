@@ -13,7 +13,7 @@ export interface SpeakingVoice extends DeviceVoice {
  * plays, so there is no gap between them. When the engine fails, the sentence is held silent for the time it
  * would take to read, so the caption keeps its pace.
  */
-export function engineVoice(engine: SpeechEngine): SpeakingVoice {
+export function engineVoice(engine: SpeechEngine, style: () => string, fallbackLanguage = 'en'): SpeakingVoice {
   let context: AudioContext | undefined
   let analyser: AnalyserNode | undefined
   let buffer: Float32Array<ArrayBuffer> | undefined
@@ -35,7 +35,7 @@ export function engineVoice(engine: SpeechEngine): SpeakingVoice {
     const known = ahead.get(text)
     if (known) return known
     const { context: audio } = ready()
-    const made = engine.speak(text, language).then(
+    const made = engine.speak(text, { language: language ?? fallbackLanguage, style: style() }).then(
       (sound) => {
         const out = audio.createBuffer(1, sound.samples.length, sound.sampleRate)
         out.copyToChannel(new Float32Array(sound.samples), 0)

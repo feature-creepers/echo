@@ -9,12 +9,15 @@ import { defineConfig } from 'electron-vite'
  */
 const coreEntry = fileURLToPath(import.meta.resolve('@repo/server/main'))
 
+/** The speech engines run in a process of their own too: out/main/speech.js. */
+const speechEntry = fileURLToPath(import.meta.resolve('@repo/speech/process'))
+
 const here = (path: string) => fileURLToPath(new URL(path, import.meta.url))
 
 export default defineConfig({
   main: {
     build: {
-      rollupOptions: { input: { index: here('src/main/index.ts'), core: coreEntry } }
+      rollupOptions: { input: { index: here('src/main/index.ts'), core: coreEntry, speech: speechEntry } }
     }
   },
   preload: {

@@ -25,6 +25,8 @@ export interface StageProps {
   speech?: SpeechEngine | undefined
   /** How loud the assistant's voice is right now, when the device speaks it. */
   voiceLevel?: (() => number) | undefined
+  /** Open the voice settings, when the device could talk once its models are downloaded. */
+  onSetUpVoice?: (() => void) | undefined
 }
 
 const MOODS: Record<Mood, string> = { idle: 'Ready', listening: 'Listening', thinking: 'Thinking', speaking: 'Speaking', asleep: 'Asleep' }
@@ -43,7 +45,7 @@ function syllables(): number {
  * The main screen: the assistant, present. The core in the middle, what it is saying under it as it says
  * it, and the line to talk to it at the bottom.
  */
-export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voiceLevel }: StageProps) {
+export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voiceLevel, onSetUpVoice }: StageProps) {
   const channel = useFollowed(client.channel)
   const speaking = useFollowed(client.speech)
   const engines = useFollowed(client.engines)
@@ -204,7 +206,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
           busy={running || speaking.sentence !== undefined}
           onSay={say}
           onStop={stop}
-          talk={canTalk ? { listening, onPress: toggle } : undefined}
+          talk={canTalk ? { listening, onPress: toggle } : onSetUpVoice ? { listening: false, onPress: onSetUpVoice } : undefined}
         />
         <div className="flex items-center justify-between gap-4 px-1">
           <div role="radiogroup" aria-label="Who answers" className="flex items-center gap-1">

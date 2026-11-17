@@ -2,12 +2,13 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { color, frame } from '@repo/tokens'
-import { app, BrowserWindow, ipcMain, nativeTheme } from 'electron'
-import { CORE_LINK_CHANNEL, CORE_MESSAGE_CHANNEL } from '../preload/bridge.ts'
+import { app, BrowserWindow, ipcMain, nativeTheme, session } from 'electron'
+import { type BridgeSound, CORE_LINK_CHANNEL, CORE_MESSAGE_CHANNEL, SPEECH_CHANNELS } from '../preload/bridge.ts'
 import { chrome } from './chrome/index.ts'
 import { type CoreProcess, startCore } from './core-process.ts'
 import { deviceId } from './device.ts'
 import { checkSettings } from './self-check.ts'
+import { type SpeechProcess, startSpeech } from './speech-process.ts'
 
 /**
  * The desktop app: a client of the core, on this device.
@@ -81,9 +82,29 @@ async function selfCheck(core: CoreProcess): Promise<void> {
   app.exit(passed ? 0 : 1)
 }
 
+/** Answer the window's speech calls with the engines' process. Errors cross as their message, written for the user. */
+function serveSpeech(speech: SpeechProcess): void {
+  const { service } = speech
+  ipcMain.handle(SPEECH_CHANNELS.status, () => service.status())
+  ipcMain.handle(SPEECH_CHANNELS.install, (event) => service.install((progress) => event.sender.send(SPEECH_CHANNELS.progress, progress)))
+  ipcMain.handle(SPEECH_CHANNELS.transcribe, (_event, sound: BridgeSound) =>
+    service.transcribe({ sampleRate: sound.sampleRate, samples: new Float32Array(sound.samples) })
+  )
+  ipcMain.handle(SPEECH_CHANNELS.speak, (_event, text: string, how: { style: string; language: string }) => service.speak(text, how))
+  // Load the engines while the user looks at the window, so the first sentence does not wait for them.
+  void service
+    .status()
+    .then((status) => (status.ready ? service.warmUp() : undefined))
+    .catch(() => undefined)
+  app.on('will-quit', () => speech.stop())
+}
+
 function start(): void {
   // The interface is dark. The window's frame follows, whatever the system's own setting.
   nativeTheme.themeSource = 'dark'
+  // The window may use the microphone, to hear the user, and nothing else of the kind.
+  session.defaultSession.setPermissionRequestHandler((_contents, permission, grant) => grant(permission === 'media'))
+  session.defaultSession.setPermissionCheckHandler((_contents, permission) => permission === 'media')
 
   const data = app.getPath('userData')
   const core = startCore({
@@ -93,6 +114,8 @@ function start(): void {
     capabilities: ['display']
   })
   ipcMain.handle(CORE_LINK_CHANNEL, () => core.link())
+
+  if (!selfChecking) serveSpeech(startSpeech(built('speech.js'), join(data, 'models')))
 
   // Quitting waits for the core to stop first, then goes ahead.
   let coreStopped = false

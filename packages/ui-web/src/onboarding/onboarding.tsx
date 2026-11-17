@@ -2,6 +2,8 @@ import type { EnginesState } from '@repo/client'
 import type { CommandInput, PersonaId, Settings } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useEffect, useState } from 'react'
+import type { DeviceSpeech } from '../audio/use-speech.ts'
+import { VoiceSetup } from '../audio/voice-setup.tsx'
 import { EngineRows } from '../conversation/engine-rows.tsx'
 import { PersonasForm } from '../personas/personas-form.tsx'
 import { Orb } from '../presence/orb.tsx'
@@ -13,20 +15,23 @@ export interface OnboardingProps {
   productName: string
   personas: Settings['personas']
   engines: EnginesState
+  /** The device's speech. Left out, the device has none and the voice step is skipped. */
+  speech?: DeviceSpeech | undefined
   setPersonas(choice: CommandInput<'personas.set'>): Promise<void>
   onPick(persona: PersonaId): void
   /** The user went through every step. */
   onDone(): void
 }
 
-const STEPS = ['welcome', 'personalities', 'engine'] as const
-type Step = (typeof STEPS)[number]
+const ALL_STEPS = ['welcome', 'personalities', 'voice', 'engine'] as const
+type Step = (typeof ALL_STEPS)[number]
 
 /**
  * First launch, one thing at a time: what this is, who the user will be talking to and what to call them,
  * and what the assistant thinks with.
  */
-export function Onboarding({ productName, personas, engines, setPersonas, onPick, onDone }: OnboardingProps) {
+export function Onboarding({ productName, personas, engines, speech, setPersonas, onPick, onDone }: OnboardingProps) {
+  const STEPS = ALL_STEPS.filter((name) => name !== 'voice' || speech !== undefined)
   // Someone who already named the personas, on this device or another, starts after that step.
   const [step, setStep] = useState<Step>(personas.confirmed ? 'engine' : 'welcome')
   const at = STEPS.indexOf(step)
@@ -71,9 +76,23 @@ export function Onboarding({ productName, personas, engines, setPersonas, onPick
                   onPick={onPick}
                   onSubmit={async (choice) => {
                     await setPersonas(choice)
-                    setStep('engine')
+                    setStep(speech ? 'voice' : 'engine')
                   }}
                 />
+              </Section>
+            )}
+            {step === 'voice' && speech && (
+              <Section
+                eyebrow="Voice"
+                title="So you can simply talk."
+                lead="To hear you and answer aloud, this computer runs its own speech models. Your voice never leaves it. The download happens once."
+              >
+                <VoiceSetup speech={speech} />
+                <div className="mt-8 flex items-center gap-4">
+                  <Button kind={speech.readiness?.ready ? 'primary' : 'secondary'} size="lg" onClick={() => setStep('engine')}>
+                    {speech.readiness?.ready ? 'Continue' : speech.install.is === 'running' ? 'Continue while it downloads' : 'Later'}
+                  </Button>
+                </div>
               </Section>
             )}
             {step === 'engine' && (

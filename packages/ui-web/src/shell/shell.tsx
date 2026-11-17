@@ -4,6 +4,7 @@ import type { Accent, CommandInput, PersonaId } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import type { SpeechEngine } from '../audio/engine.ts'
+import { useDeviceSpeech } from '../audio/use-speech.ts'
 import { Stage } from '../conversation/stage.tsx'
 import { Transcript } from '../conversation/transcript.tsx'
 import { Onboarding } from '../onboarding/onboarding.tsx'
@@ -21,17 +22,15 @@ export interface ShellProps {
   link: CoreLink
   /** What the app holds while it is connected to its core. */
   client: Client | undefined
-  /** The device's speech engines, when they are ready. */
+  /** The device's speech engines. Left out, the user types and the assistant's sentences are only shown. */
   speech?: SpeechEngine | undefined
-  /** How loud the assistant's voice is right now, when the device speaks it. */
-  voiceLevel?: (() => number) | undefined
 }
 
 /**
  * The interface, whole: it decides what fills the window from where the app stands with its core and
  * from the user's settings.
  */
-export function Shell({ productName, link, client, speech, voiceLevel }: ShellProps) {
+export function Shell({ productName, link, client, speech }: ShellProps) {
   if (link.state === 'failed') {
     return (
       <Frame productName={productName}>
@@ -46,22 +45,12 @@ export function Shell({ productName, link, client, speech, voiceLevel }: ShellPr
       </Frame>
     )
   }
-  return <Connected productName={productName} client={client} speech={speech} voiceLevel={voiceLevel} />
+  return <Connected productName={productName} client={client} engine={speech} />
 }
 
 type Screen = { is: 'main' } | { is: 'onboarding' } | { is: 'settings'; section: SettingsSection }
 
-function Connected({
-  productName,
-  client,
-  speech,
-  voiceLevel
-}: {
-  productName: string
-  client: Client
-  speech: SpeechEngine | undefined
-  voiceLevel: (() => number) | undefined
-}) {
+function Connected({ productName, client, engine }: { productName: string; client: Client; engine: SpeechEngine | undefined }) {
   const snapshot = useFollowed(client.settings)
   const channel = useFollowed(client.channel)
   const [screen, setScreen] = useState<Screen>()
@@ -70,6 +59,13 @@ function Connected({
   const [transcript, setTranscript] = useState(false)
   /** The persona the user is about to pick in a form, shown in its accent before anything is sent. */
   const [picked, setPicked] = useState<PersonaId>()
+
+  const settled = snapshot.state === 'ready' ? snapshot.settings.personas : undefined
+  const speech = useDeviceSpeech(
+    engine,
+    client,
+    settled?.available.find((persona) => persona.id === settled.active)
+  )
 
   const setPersonas = useCallback(
     async (choice: CommandInput<'personas.set'>) => {
@@ -120,7 +116,15 @@ function Connected({
   if (showing.is === 'onboarding') {
     return (
       <Frame productName={productName} accent={accent}>
-        <Onboarding productName={productName} personas={personas} engines={client.engines} setPersonas={setPersonas} onPick={setPicked} onDone={toMain} />
+        <Onboarding
+          productName={productName}
+          personas={personas}
+          engines={client.engines}
+          speech={engine ? speech : undefined}
+          setPersonas={setPersonas}
+          onPick={setPicked}
+          onDone={toMain}
+        />
       </Frame>
     )
   }
@@ -158,6 +162,7 @@ function Connected({
                   productName={productName}
                   personas={personas}
                   engines={client.engines}
+                  speech={engine ? speech : undefined}
                   section={showing.section}
                   setPersonas={setPersonas}
                   onPick={setPicked}
@@ -169,8 +174,9 @@ function Connected({
                   personas={personas}
                   onSwitch={(persona) => setPersonas({ names: [], active: persona })}
                   onSetUpEngine={() => setScreen({ is: 'settings', section: 'engine' })}
-                  speech={speech}
-                  voiceLevel={voiceLevel}
+                  speech={speech.ready}
+                  voiceLevel={speech.ready ? speech.level : undefined}
+                  onSetUpVoice={engine ? () => setScreen({ is: 'settings', section: 'voice' }) : undefined}
                 />
               )}
             </motion.div>

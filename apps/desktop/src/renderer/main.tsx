@@ -1,5 +1,5 @@
 import { type Client, type CoreLink, openClient } from '@repo/client'
-import { Shell, silentVoice } from '@repo/ui-web'
+import { Shell, type SpeechEngine, silentVoice } from '@repo/ui-web'
 import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import manifest from '../../package.json'
@@ -31,10 +31,21 @@ function useClient(connected: boolean): Client | undefined {
   return client
 }
 
+/** The device's speech engines, as the window reaches them through the app. */
+const speech: SpeechEngine = {
+  async status() {
+    const status = await window.desktop.speech.status()
+    return { ready: status.ready, models: status.sets.map((set) => ({ id: set.id, name: set.name, bytes: set.bytes, installed: set.installed })) }
+  },
+  install: (onProgress) => window.desktop.speech.install((progress) => onProgress({ received: progress.received, total: progress.total })),
+  transcribe: (sound) => window.desktop.speech.transcribe(sound),
+  speak: (text, how) => window.desktop.speech.speak(text, how)
+}
+
 function App() {
   const link = useCoreLink()
   const client = useClient(link.state === 'connected')
-  return <Shell productName={manifest.productName} link={link} client={client} />
+  return <Shell productName={manifest.productName} link={link} client={client} speech={speech} />
 }
 
 const root = document.getElementById('root')

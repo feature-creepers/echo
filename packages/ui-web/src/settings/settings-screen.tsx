@@ -1,6 +1,8 @@
 import type { EnginesState } from '@repo/client'
 import type { CommandInput, PersonaId, Settings } from '@repo/protocol'
 import { type ReactNode, useEffect, useState } from 'react'
+import type { DeviceSpeech } from '../audio/use-speech.ts'
+import { VoiceSetup } from '../audio/voice-setup.tsx'
 import { EngineRows } from '../conversation/engine-rows.tsx'
 import { PersonasForm } from '../personas/personas-form.tsx'
 import { cn } from '../primitives/cn.ts'
@@ -9,15 +11,17 @@ import { IconButton } from '../primitives/icon-button.tsx'
 import { CloseGlyph } from '../primitives/icons.tsx'
 import { Kbd } from '../primitives/kbd.tsx'
 
-export const SETTINGS_SECTIONS = ['personalities', 'engine'] as const
+export const SETTINGS_SECTIONS = ['personalities', 'voice', 'engine'] as const
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number]
 
-const TITLES: Record<SettingsSection, string> = { personalities: 'Personalities', engine: 'Engine' }
+const TITLES: Record<SettingsSection, string> = { personalities: 'Personalities', voice: 'Voice', engine: 'Engine' }
 
 export interface SettingsScreenProps {
   productName: string
   personas: Settings['personas']
   engines: EnginesState
+  /** The device's speech. Left out, the device has none and the section says so. */
+  speech?: DeviceSpeech | undefined
   /** The section to open on. */
   section: SettingsSection
   setPersonas(choice: CommandInput<'personas.set'>): Promise<void>
@@ -26,7 +30,7 @@ export interface SettingsScreenProps {
 }
 
 /** The user's settings, one section at a time, with the sections listed on the left. Escape goes back. */
-export function SettingsScreen({ productName, personas, engines, section: first, setPersonas, onPick, onClose }: SettingsScreenProps) {
+export function SettingsScreen({ productName, personas, engines, speech, section: first, setPersonas, onPick, onClose }: SettingsScreenProps) {
   const [section, setSection] = useState<SettingsSection>(first)
 
   useEffect(() => {
@@ -81,6 +85,11 @@ export function SettingsScreen({ productName, personas, engines, section: first,
               onSubmit={setPersonas}
               onPick={onPick}
             />
+          </Block>
+        )}
+        {section === 'voice' && (
+          <Block lead="To hear you and answer aloud, this computer runs its own speech models. Your voice never leaves it.">
+            {speech ? <VoiceSetup speech={speech} /> : <p className="text-sm text-text-soft">This device cannot run speech models.</p>}
           </Block>
         )}
         {section === 'engine' && (

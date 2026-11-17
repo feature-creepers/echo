@@ -7,5 +7,5 @@
     "resolveJsonModule": true
   },
   "include": ["src/renderer", "src/preload/bridge.ts", "package.json"],
-  "references": [{ "path": "../../packages/client" }, { "path": "../../packages/ui-web" }]
+  "references": [{ "path": "../../packages/client" }, { "path": "../../packages/ui-web" }, { "path": "../../packages/speech" }]
 }

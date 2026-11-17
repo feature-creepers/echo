@@ -1,6 +1,6 @@
 import type { CoreLink } from '@repo/client'
 import { contextBridge, type IpcRendererEvent, ipcRenderer } from 'electron'
-import { CORE_LINK_CHANNEL, CORE_MESSAGE_CHANNEL, type DesktopBridge } from './bridge.ts'
+import { CORE_LINK_CHANNEL, CORE_MESSAGE_CHANNEL, type DesktopBridge, SPEECH_CHANNELS } from './bridge.ts'
 
 /** The one listener for messages from the core, replaced each time the window opens a session. */
 let onCoreMessage: (message: unknown) => void = () => undefined
@@ -18,6 +18,20 @@ const bridge: DesktopBridge = {
     onMessage: (listener) => {
       onCoreMessage = listener
     }
+  },
+  speech: {
+    status: () => ipcRenderer.invoke(SPEECH_CHANNELS.status),
+    async install(onProgress) {
+      const handler = (_event: IpcRendererEvent, progress: Parameters<typeof onProgress>[0]) => onProgress(progress)
+      ipcRenderer.on(SPEECH_CHANNELS.progress, handler)
+      try {
+        await ipcRenderer.invoke(SPEECH_CHANNELS.install)
+      } finally {
+        ipcRenderer.removeListener(SPEECH_CHANNELS.progress, handler)
+      }
+    },
+    transcribe: (sound) => ipcRenderer.invoke(SPEECH_CHANNELS.transcribe, sound),
+    speak: (text, how) => ipcRenderer.invoke(SPEECH_CHANNELS.speak, text, how)
   }
 }
 

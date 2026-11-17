@@ -103,16 +103,26 @@ importers:
         version: 7.0.2
 
   apps/desktop:
+    dependencies:
+      sherpa-onnx-node:
+        specifier: 'catalog:'
+        version: 2.0.1
     devDependencies:
       '@repo/client':
         specifier: workspace:*
         version: link:../../packages/client
+      '@repo/models':
+        specifier: workspace:*
+        version: link:../../packages/models
       '@repo/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
       '@repo/server':
         specifier: workspace:*
         version: link:../server
+      '@repo/speech':
+        specifier: workspace:*
+        version: link:../../packages/speech
       '@repo/tokens':
         specifier: workspace:*
         version: link:../../packages/tokens

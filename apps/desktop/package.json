@@ -15,10 +15,15 @@
     "self-check": "electron . --self-check",
     "package": "electron-builder --config build/electron-builder.yml"
   },
+  "dependencies": {
+    "sherpa-onnx-node": "catalog:"
+  },
   "devDependencies": {
     "@repo/client": "workspace:*",
+    "@repo/models": "workspace:*",
     "@repo/protocol": "workspace:*",
     "@repo/server": "workspace:*",
+    "@repo/speech": "workspace:*",
     "@repo/tokens": "workspace:*",
     "@repo/tsconfig": "workspace:*",
     "@repo/ui-web": "workspace:*",
