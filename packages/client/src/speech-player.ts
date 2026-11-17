@@ -9,6 +9,8 @@ import { cell, type Followed } from './state/followed.ts'
 export interface DeviceVoice {
   /** Start saying a sentence. `done` resolves when it has been said, or when it was cancelled. */
   say(sentence: Sentence): { done: Promise<void>; cancel(): void }
+  /** Start making the sound of a sentence that will be said soon, so it follows the current one with no gap. */
+  prepare?(sentence: Sentence): void
 }
 
 /** What is being said right now. */
@@ -72,6 +74,7 @@ export function playSpeech(channel: ChannelState, initial: DeviceVoice): SpeechP
     // A new turn's first sentence replaces whatever an earlier turn was still saying.
     if (playing && playing.sentence.turn !== sentence.turn) drop((kept) => kept.turn === sentence.turn)
     queue.push(sentence)
+    if (playing) voice.prepare?.(sentence)
     next()
     publish()
   })

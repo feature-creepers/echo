@@ -3,6 +3,7 @@ import { useFollowed } from '@repo/client/react'
 import type { Accent, CommandInput, PersonaId } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import type { SpeechEngine } from '../audio/engine.ts'
 import { Stage } from '../conversation/stage.tsx'
 import { Transcript } from '../conversation/transcript.tsx'
 import { Onboarding } from '../onboarding/onboarding.tsx'
@@ -20,13 +21,17 @@ export interface ShellProps {
   link: CoreLink
   /** What the app holds while it is connected to its core. */
   client: Client | undefined
+  /** The device's speech engines, when they are ready. */
+  speech?: SpeechEngine | undefined
+  /** How loud the assistant's voice is right now, when the device speaks it. */
+  voiceLevel?: (() => number) | undefined
 }
 
 /**
  * The interface, whole: it decides what fills the window from where the app stands with its core and
  * from the user's settings.
  */
-export function Shell({ productName, link, client }: ShellProps) {
+export function Shell({ productName, link, client, speech, voiceLevel }: ShellProps) {
   if (link.state === 'failed') {
     return (
       <Frame productName={productName}>
@@ -41,12 +46,22 @@ export function Shell({ productName, link, client }: ShellProps) {
       </Frame>
     )
   }
-  return <Connected productName={productName} client={client} />
+  return <Connected productName={productName} client={client} speech={speech} voiceLevel={voiceLevel} />
 }
 
 type Screen = { is: 'main' } | { is: 'onboarding' } | { is: 'settings'; section: SettingsSection }
 
-function Connected({ productName, client }: { productName: string; client: Client }) {
+function Connected({
+  productName,
+  client,
+  speech,
+  voiceLevel
+}: {
+  productName: string
+  client: Client
+  speech: SpeechEngine | undefined
+  voiceLevel: (() => number) | undefined
+}) {
   const snapshot = useFollowed(client.settings)
   const channel = useFollowed(client.channel)
   const [screen, setScreen] = useState<Screen>()
@@ -154,6 +169,8 @@ function Connected({ productName, client }: { productName: string; client: Clien
                   personas={personas}
                   onSwitch={(persona) => setPersonas({ names: [], active: persona })}
                   onSetUpEngine={() => setScreen({ is: 'settings', section: 'engine' })}
+                  speech={speech}
+                  voiceLevel={voiceLevel}
                 />
               )}
             </motion.div>

@@ -2,7 +2,9 @@ import type { Client } from '@repo/client'
 import { useFollowed } from '@repo/client/react'
 import type { PersonaId, Settings } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { SpeechEngine } from '../audio/engine.ts'
+import { useTalk } from '../audio/use-talk.ts'
 import { refusalCopy } from '../personas/copy.ts'
 import { Orb } from '../presence/orb.tsx'
 import type { Mood } from '../presence/painter.ts'
@@ -19,6 +21,10 @@ export interface StageProps {
   onSwitch(persona: PersonaId): Promise<void>
   /** Open the settings, on the engine, when the assistant has nothing to think with. */
   onSetUpEngine(): void
+  /** The device's speech engines. Left out, the user types and the assistant's sentences are only shown. */
+  speech?: SpeechEngine | undefined
+  /** How loud the assistant's voice is right now, when the device speaks it. */
+  voiceLevel?: (() => number) | undefined
 }
 
 const MOODS: Record<Mood, string> = { idle: 'Ready', listening: 'Listening', thinking: 'Thinking', speaking: 'Speaking', asleep: 'Asleep' }
@@ -37,19 +43,16 @@ function syllables(): number {
  * The main screen: the assistant, present. The core in the middle, what it is saying under it as it says
  * it, and the line to talk to it at the bottom.
  */
-export function Stage({ client, personas, onSwitch, onSetUpEngine }: StageProps) {
+export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voiceLevel }: StageProps) {
   const channel = useFollowed(client.channel)
   const speaking = useFollowed(client.speech)
   const engines = useFollowed(client.engines)
   const view = useFollowed(client.view)
   const [problem, setProblem] = useState<string>()
-  const level = useRef(syllables)
 
   const active = personas.available.find((persona) => persona.id === personas.active) ?? personas.available[0]
   const last = channel.exchanges.at(-1)
   const running = channel.running !== undefined
-  const mood: Mood = speaking.sentence ? 'speaking' : running ? 'thinking' : 'idle'
-  const failed = !running && !speaking.sentence && last?.outcome === 'failed' ? (last.problem ?? 'It could not answer.') : undefined
   const noEngine = engines !== undefined && engines.active === undefined
 
   const say = useCallback(
@@ -64,6 +67,45 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine }: StageProps)
     client.speech.stop()
     client.channel.stop().catch(() => undefined)
   }, [client])
+
+  const {
+    talk,
+    start,
+    finish,
+    cancel,
+    level: heardLevel,
+    available: canTalk
+  } = useTalk(speech, (text, language) => {
+    setProblem(undefined)
+    client.speech.stop()
+    client.channel.say(text, language).catch(() => setProblem(refusalCopy('failed')))
+  })
+  const listening = talk.is === 'listening'
+  const mood: Mood = listening ? 'listening' : talk.is === 'transcribing' ? 'thinking' : speaking.sentence ? 'speaking' : running ? 'thinking' : 'idle'
+  const failed =
+    talk.is === 'failed' ? talk.reason : !running && !speaking.sentence && last?.outcome === 'failed' ? (last.problem ?? 'It could not answer.') : undefined
+
+  // The core moves with the voice it hears, or the voice it speaks; with no sound, with the rhythm of syllables.
+  const moods = useRef({ listening, voiceLevel })
+  moods.current = { listening, voiceLevel }
+  const level = useRef(() => (moods.current.listening ? heardLevel() : (moods.current.voiceLevel?.() ?? syllables())))
+
+  // Starting to talk stops the assistant. Ctrl+Space (or Cmd+Space on a Mac) starts listening, and again sends.
+  const toggle = useCallback(() => {
+    if (listening) return void finish()
+    stop()
+    void start()
+  }, [listening, finish, start, stop])
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.code === 'Space' && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault()
+        toggle()
+      } else if (event.key === 'Escape' && listening) cancel()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [toggle, listening, cancel])
 
   if (!active) return null
 
@@ -157,7 +199,13 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine }: StageProps)
       )}
 
       <div className="mx-auto grid w-full max-w-3xl gap-3 px-8 pb-7">
-        <InputLine name={active.name} busy={running || speaking.sentence !== undefined} onSay={say} onStop={stop} />
+        <InputLine
+          name={active.name}
+          busy={running || speaking.sentence !== undefined}
+          onSay={say}
+          onStop={stop}
+          talk={canTalk ? { listening, onPress: toggle } : undefined}
+        />
         <div className="flex items-center justify-between gap-4 px-1">
           <div role="radiogroup" aria-label="Who answers" className="flex items-center gap-1">
             {personas.available.map((persona) => {
