@@ -22,7 +22,7 @@ function setup(options: { write?: boolean; refuse?: string } = {}) {
   writeFileSync(join(granted, 'a.txt'), 'a')
   const asked: ComputerUse[] = []
   const signals: AbortSignal[] = []
-  let answer: (verdict: { allow: true } | { allow: false; reason: string }) => void = () => undefined
+  let answer: (verdict: { allow: true; use?: string } | { allow: false; reason: string }) => void = () => undefined
   const scope: Scope = {
     places: [
       { path: home, kind: 'folder', write: true },
@@ -110,15 +110,15 @@ describe('Claude Code on the computer', () => {
     expect(followed.text()).toBe('Refused: The person said no.')
   })
 
-  it('names the file it wrote, absolute, once the change is made', async () => {
+  it('names the file it wrote, absolute, and the use the core allowed, once the change is made', async () => {
     const { session, home, answer, asked } = setup()
     const followed = follow(session)
     session.send(`use Write ${JSON.stringify({ file_path: 'trip.md', content: 'x' })}`)
     await eventually(() => asked.length === 1)
-    answer({ allow: true })
+    answer({ allow: true, use: 'use-1' })
     await followed.until('turn-end')
     const ended = followed.events.filter((event) => event.type === 'tool' && event.phase === 'ended')
-    expect(ended).toEqual([expect.objectContaining({ name: 'computer_write', wrote: [join(home, 'trip.md')] })])
+    expect(ended).toEqual([expect.objectContaining({ name: 'computer_write', wrote: [join(home, 'trip.md')], use: 'use-1' })])
   })
 
   it('names no file when a change was refused', async () => {
