@@ -19,6 +19,8 @@ import type { Search } from './ports/search.ts'
 import type { ToolHost } from './ports/tools.ts'
 import type { Web } from './ports/web.ts'
 import { memorySearch } from './records/memory-search.ts'
+import { createSchedule } from './schedule/schedule.ts'
+import { SCHEDULE_INSTRUCTIONS, SCHEDULE_ROUTING, scheduleTools } from './schedule/tools.ts'
 import { createUserSettings } from './settings/settings.ts'
 import { createTools, type Tool } from './tools/tools.ts'
 import { createMaps } from './views/maps.ts'
@@ -44,6 +46,8 @@ export interface CoreOptions {
   newId: () => string
   /** The time now. Left out, the machine's clock. */
   now?: () => Date
+  /** The person's time zone, as an IANA name: reminders ring by its clock. Left out, the zone of the machine the core runs on. */
+  timeZone?: () => string
   /** Public web addresses, read by the core itself: the shapes of a map. Left out, maps are shown unchecked. */
   web?: Web
   /** The computer the core runs on, whose files the assistant may reach as the user grants. Left out, it reaches none. */
@@ -76,6 +80,7 @@ export function createCore(options: CoreOptions): Core {
   }
 
   const now = options.now ?? (() => new Date())
+  const zone = options.timeZone ?? (() => Intl.DateTimeFormat().resolvedOptions().timeZone)
   const settings = createUserSettings(options.records, undefined, options.computer?.workspace)
   const engines = createEngineRoom(options.harnesses, {
     preferred: () => settings.read().engines.preferred,
@@ -151,6 +156,23 @@ export function createCore(options: CoreOptions): Core {
   })
   memory.onEvent(emit)
 
+  // Reminders and scheduled tasks (docs/SPEC.md, section 7.10): they ring as turns the assistant starts itself, through
+  // the channel made below. Nothing rings before a client has sent a command, by which time the channel is there.
+  const schedule = createSchedule({
+    records: options.records,
+    now,
+    zone,
+    timers: options.timers,
+    newId: options.newId,
+    proactive: {
+      busy: () => channel.busy(),
+      remind: (reminder) => void channel.remind(reminder),
+      run: (task) => void channel.task(task),
+      notify: (notification) => emit({ type: 'event', name: 'device.notify', notification })
+    }
+  })
+  const timeTools = scheduleTools({ schedule, now, zone })
+
   const channel = createChannel({
     engines,
     settings,
@@ -169,17 +191,25 @@ export function createCore(options: CoreOptions): Core {
         ...memory.tools,
         ...library.tools(showing),
         ...access.tools(showing),
+        ...timeTools,
         ...(stance === 'critical' ? objections.tools(showing) : [])
       ],
-      instructions: `${describeCatalog()}\n\n${library.instructions}\n\n${memory.instructions}`,
+      // A reminder needs no screen and no research: the orchestrator sets it itself, which answers sooner.
+      orchestratorTools: () => timeTools,
+      instructions: `${describeCatalog()}\n\n${library.instructions}\n\n${memory.instructions}\n\n${SCHEDULE_INSTRUCTIONS}`,
       standing: (role) =>
-        [objections.standing(), library.standing(role), role === 'thread' ? access.standing() : undefined].filter(Boolean).join('\n\n') || undefined,
+        [objections.standing(), library.standing(role), role === 'thread' ? access.standing() : `${SCHEDULE_INSTRUCTIONS}\n${SCHEDULE_ROUTING}`]
+          .filter(Boolean)
+          .join('\n\n') || undefined,
       // The person's files and commands, within what they granted (docs/SPEC.md, section 12.2).
       reach: (showing) => access.reach(showing),
       version: () => access.version(),
       hear: (said) => access.hear(said)
     },
-    memory
+    memory,
+    // A notification for what finished while the person may not be looking: only when the window is not in front of
+    // them, and with no sound in the quiet hours.
+    notify: (notice) => emit({ type: 'event', name: 'device.notify', notification: { ...notice, silent: schedule.quiet(), unlessFocused: true } })
   })
   currentTurn = channel.turn
 
@@ -192,6 +222,7 @@ export function createCore(options: CoreOptions): Core {
   channel.onEvent(emit)
   screen.onEvent(emit)
   library.onEvent(emit)
+  schedule.onEvent(emit)
 
   const execute = createExecutor(
     {
@@ -248,6 +279,17 @@ export function createCore(options: CoreOptions): Core {
           : { ok: false, error: { code: 'invalid-input', message: `The map's shapes could not be read: ${read.problem}` } }
       },
       'library.read': () => ({ ok: true, output: { library: library.read() } }),
+      'schedule.read': () => ({ ok: true, output: { schedule: schedule.read() } }),
+      'schedule.pause': (input) => {
+        const change = schedule.change(input.job, { paused: input.paused })
+        return change.ok ? { ok: true, output: { schedule: schedule.read() } } : { ok: false, error: { code: 'invalid-input', message: change.problem } }
+      },
+      'schedule.delete': (input) => {
+        const change = schedule.remove(input.jobs)
+        return change.ok ? { ok: true, output: { schedule: change.schedule } } : change
+      },
+      'schedule.quiet.set': (input) => ({ ok: true, output: { schedule: schedule.setQuiet(input) } }),
+      'schedule.hold': (input) => ({ ok: true, output: { schedule: schedule.hold(input.held) } }),
       'library.save': (input) => {
         const saved = library.save(input)
         return saved.ok ? { ok: true, output: { widget: saved.widget, library: saved.library } } : saved
@@ -310,7 +352,11 @@ export function createCore(options: CoreOptions): Core {
 
   return {
     admit: (message) => admit(message, { coreVersion: options.version, acceptsCredential: options.acceptsCredential }),
-    execute,
+    execute(message) {
+      // A client that sends commands is there to hear what rings: from then on, reminders and tasks ring.
+      schedule.listen()
+      return execute(message)
+    },
     onEvent(listener) {
       listeners.add(listener)
       return () => void listeners.delete(listener)
@@ -320,6 +366,7 @@ export function createCore(options: CoreOptions): Core {
       toolServer = url
     },
     close() {
+      schedule.close()
       channel.close()
       memory.close()
     }

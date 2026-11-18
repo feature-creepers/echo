@@ -2,6 +2,7 @@ import { COMMANDS, type CommandInput, type CommandName, type CommandOutput, type
 import { describe, expect, it, vi } from 'vitest'
 import { createCore } from './core.ts'
 import { memoryRecords } from './records/memory.ts'
+import { manualTimers } from './replay/manual-timers.ts'
 import { scriptedHarness } from './replay/scripted-harness.ts'
 
 function start(records = memoryRecords(), harness = scriptedHarness()) {
@@ -207,7 +208,16 @@ describe('threads and the screen through the core', () => {
     const orchestrator = harness.sessions[1]
     expect(orchestrator?.request.role).toBe('orchestrator')
     const routing = orchestrator?.request.tools?.token ?? ''
-    expect(core.toolHost.list(routing)?.map((tool) => tool.name)).toEqual(['thread_open', 'thread_send', 'thread_focus'])
+    // It passes turns on, and sets reminders itself, which need no screen.
+    expect(core.toolHost.list(routing)?.map((tool) => tool.name)).toEqual([
+      'thread_open',
+      'thread_send',
+      'thread_focus',
+      'schedule_create',
+      'schedule_list',
+      'schedule_update',
+      'schedule_cancel'
+    ])
 
     await core.toolHost.call(routing, 'thread_open', { title: 'The week' })
     orchestrator?.emit({ type: 'turn-end' })
@@ -229,6 +239,10 @@ describe('threads and the screen through the core', () => {
       'library_save',
       'library_update',
       'library_delete',
+      'schedule_create',
+      'schedule_list',
+      'schedule_update',
+      'schedule_cancel',
       'answer_write'
     ])
 
@@ -344,5 +358,69 @@ describe('the library through the core', () => {
     await run(core, 'library.show', { widget: widget.id })
     expect((await run(core, 'view.read', {})).view).toMatchObject({ widget: widget.id, title: 'Jazz radio' })
     expect((await core.execute({ type: 'command', id: 'c2', name: 'library.show', input: { widget: 'nothing' } }))?.ok).toBe(false)
+  })
+})
+
+describe('reminders through the core', () => {
+  /** A core whose clock and timers are moved by hand, starting on Tuesday 17 November 2026, 9:00 in Paris. */
+  function timed(records = memoryRecords(), harness = scriptedHarness(), from = 0) {
+    const timers = manualTimers()
+    let ids = 0
+    const core = createCore({
+      version: '1.2.3',
+      acceptsCredential: () => true,
+      records,
+      blobs: { put: () => 'hash', get: () => undefined },
+      log: { error: vi.fn() },
+      harnesses: [harness],
+      newId: () => `id-${from}-${++ids}`,
+      now: () => new Date(Date.parse('2026-11-17T08:00:00Z') + from + timers.elapsed()),
+      timeZone: () => 'Europe/Paris',
+      timers
+    })
+    const events: Event[] = []
+    core.onEvent((event) => events.push(event))
+    core.serveToolsAt('http://127.0.0.1:5000/mcp')
+    return { core, harness, timers, events }
+  }
+
+  it('sets a reminder the orchestrator heard, and says it at its time after a restart, with a notification', async () => {
+    const records = memoryRecords()
+    const first = timed(records)
+    await run(first.core, 'utterance.send', { text: 'Remind me in two minutes to stretch' })
+    await settled()
+    const orchestrator = first.harness.sessions[0]
+    expect(orchestrator?.request.instructions).toContain('do not pass them to a thread')
+    const set = await first.core.toolHost.call(orchestrator?.request.tools?.token ?? '', 'schedule_create', {
+      kind: 'reminder',
+      title: 'Stretch',
+      sentence: 'Time to stretch.',
+      timing: { kind: 'once', inMinutes: 2 }
+    })
+    expect(set.text).toContain('today at 09:02')
+    orchestrator?.reply('Okay, 9:02: stretch.')
+    expect((await run(first.core, 'schedule.read', {})).schedule.jobs).toMatchObject([{ title: 'Stretch', next: '2026-11-17T08:02:00.000Z' }])
+    first.core.close()
+
+    // The app is restarted a minute later, and its window opens: the reminder rings at its time.
+    const second = timed(records, scriptedHarness(), 60_000)
+    await run(second.core, 'schedule.read', {})
+    second.timers.advance(59_000)
+    expect(second.events.filter((event) => event.name === 'speech.say')).toEqual([])
+    second.timers.advance(1_000)
+    const said = second.events.filter((event) => event.name === 'speech.say' || event.name === 'device.notify')
+    expect(said).toMatchObject([
+      { name: 'device.notify', notification: { title: 'Stretch', body: 'Time to stretch.', silent: false, unlessFocused: false } },
+      { name: 'speech.say', text: 'Time to stretch.' }
+    ])
+    expect(second.events.some((event) => event.name === 'view.shown' && event.view.title === 'Reminder')).toBe(true)
+    expect(second.harness.sessions).toHaveLength(0)
+  })
+
+  it('pauses everything and resumes on command, and keeps the quiet hours', async () => {
+    const { core } = timed()
+    expect((await run(core, 'schedule.hold', { held: true })).schedule.held).toBe(true)
+    expect((await run(core, 'schedule.quiet.set', { from: '22:30' })).schedule.quiet).toEqual({ on: true, from: '22:30', until: '07:30' })
+    expect((await run(core, 'schedule.hold', { held: false })).schedule.held).toBe(false)
   })
 })

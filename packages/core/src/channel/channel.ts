@@ -24,7 +24,7 @@ import { languageOf } from '../speech/language.ts'
 import { createSentenceCutter, type SentenceCutter, speakable } from '../speech/sentences.ts'
 import { createThreadRegistry } from '../threads/registry.ts'
 import type { Grant, Tool } from '../tools/tools.ts'
-import type { Screen, Showing } from '../views/screen.ts'
+import type { Checked, Screen, Showing } from '../views/screen.ts'
 import { instructionsFor, orchestratorInstructions, SPEAK_FIRST, threadInstructions } from './instructions.ts'
 
 /** The type of the record written when a turn is over: one line of the channel log, word for word. */
@@ -51,6 +51,15 @@ const GREETING_GAP_MS = 6 * 60 * 60 * 1000
 /** How many of the latest lines a new session is told about, so it carries on where the last one stopped. */
 const RECAP_EXCHANGES = 8
 
+/**
+ * How long an answer takes before the person is likely to have turned to something else: a notification then says
+ * it is done when they are not looking ("tell me when it's done").
+ */
+const LONG_ANSWER_MS = 30_000
+
+/** How much of an answer a notification carries, in characters. */
+const NOTICE_LENGTH = 240
+
 /** What sessions can do besides speak, given by the core. */
 export interface Abilities {
   /** Where the tool server listens. Nothing while it is not running: there are then no threads, and one session answers. */
@@ -59,6 +68,8 @@ export interface Abilities {
   grant(tools: readonly Tool[]): Grant
   /** The tools a thread works with, for the persona's stance: the screen, bound to where its views go, and more. */
   threadTools(showing: () => Showing, stance: Persona['stance']): Tool[]
+  /** Tools the orchestrator works with itself, besides passing turns on: what needs no screen, such as setting a reminder. */
+  orchestratorTools?(): Tool[]
   /** What a thread is told about its tools, added to its instructions. */
   instructions: string
   /** What every session must keep in mind, such as decisions already made and widgets saved. Read each time a session opens. */
@@ -86,6 +97,11 @@ export interface ChannelOptions {
   timeZone?: string
   /** What the assistant remembers. Left out, it knows only the latest lines of the transcript. */
   memory?: Remembering
+  /**
+   * Tell the person something finished while they may not be looking: a scheduled task's answer, a long answer, an
+   * answer finished in the background (docs/SPEC.md, section 7.4). Left out, nothing is told.
+   */
+  notify?(notice: { title: string; body: string }): void
 }
 
 /** What the channel asks of the memory (docs/SPEC.md, section 10.5). */
@@ -122,6 +138,15 @@ export interface Channel {
   say(text: string, language?: string): TurnId
   /** Greet the user and brief them, unless it was done a little while ago or a turn is under way. */
   greet(): TurnId | undefined
+  /**
+   * Say a reminder whose time has come: a turn of its own, started by the assistant, with nothing to work out, so no
+   * model is asked. Its card goes on top of the stream. Silent, it is shown and kept, and not said.
+   */
+  remind(reminder: { sentence: string; language: string | undefined; card: Checked; silent: boolean }): TurnId
+  /** Carry out a task the person scheduled, as if they had just asked it. Silent, its answer is shown and not said. */
+  task(task: { title: string; request: string; language: string | undefined; silent: boolean }): TurnId
+  /** Whether the person is being answered: a turn on the stage, or one waiting to be. Work in the background does not count. */
+  busy(): boolean
   /** Stop the answer under way, if there is one. */
   stop(): void
   /** The latest lines of the transcript, oldest first. */
@@ -171,6 +196,12 @@ interface Turn {
   held: string[]
   /** It has spoken and then shown its view: anything it writes after that would only say the answer again. */
   shown: boolean
+  /** Its answer is kept and shown, and not said: a scheduled task during the quiet hours. */
+  silent: boolean
+  /** What a notification calls it, for a turn the person did not start: the scheduled task's title. */
+  title: string | undefined
+  /** A notification already told the person it is done. */
+  noticed: boolean
 }
 
 /** A live session, and what it was opened for. When any of that changes, the session is replaced. */
@@ -195,7 +226,7 @@ const sendInput = z.object({ thread: z.string().min(1), request: z.string().opti
 const focusInput = z.object({ thread: z.string().min(1) })
 const answerInput = z.object({ text: z.string().trim().min(1) })
 
-const newTurn = (exchange: Exchange, language: string | undefined): Turn => ({
+const newTurn = (exchange: Exchange, language: string | undefined, silent = false, title?: string): Turn => ({
   exchange,
   language,
   cutter: createSentenceCutter(),
@@ -209,7 +240,10 @@ const newTurn = (exchange: Exchange, language: string | undefined): Turn => ({
   next: undefined,
   after: undefined,
   held: [],
-  shown: false
+  shown: false,
+  silent,
+  title,
+  noticed: false
 })
 
 /**
@@ -281,6 +315,7 @@ export function createChannel(options: ChannelOptions): Channel {
 
   const voice = (turn: Turn, text: string) => {
     turn.heard += 1
+    if (turn.silent) return
     const language = answerIn(text, turn.language)
     emit({ type: 'event', name: 'speech.say', turn: turn.exchange.turn, text, ...(language === undefined ? {} : { language }) })
   }
@@ -315,13 +350,17 @@ export function createChannel(options: ChannelOptions): Channel {
 
   const finish = (turn: Turn, outcome: Exchange['outcome'], problem?: string) => {
     if (turn.exchange.outcome !== 'running') return
-    memory?.wake()
+    // A reminder said by itself does not wake an assistant asleep at its work: nobody spoke to it.
+    if (turn.exchange.trigger !== 'reminder') memory?.wake()
     for (const sentence of turn.cutter.flush()) say(turn, sentence)
     // A call cut short has no end of its own: it is recorded as it stood.
     for (const open of [...turn.steps.values()]) step(turn, open.thread, { type: 'tool', name: open.tool, phase: 'ended', call: open.call })
     turn.exchange = problem === undefined ? { ...turn.exchange, outcome } : { ...turn.exchange, outcome, problem }
     replace(turn.exchange)
     records.append([{ type: EXCHANGE, payload: turn.exchange }])
+    // A scheduled task's answer, or one that took long, is told in a notification too: the person may have turned away.
+    const long = now().getTime() - new Date(turn.exchange.at).getTime() > LONG_ANSWER_MS
+    if (turn.exchange.outcome === 'done' && (turn.exchange.trigger === 'task' || long)) notice(turn)
     if (current === turn) {
       current = undefined
       // The second request of the same words is heard now: what its thread said meanwhile first.
@@ -332,6 +371,18 @@ export function createChannel(options: ChannelOptions): Channel {
       }
     }
     emit({ type: 'event', name: 'turn.ended', exchange: turn.exchange })
+  }
+
+  /** Tell the person, in a notification, that an answer is there: once per turn, and only for an answer with words. */
+  const notice = (turn: Turn) => {
+    const body = turn.exchange.replied.trim()
+    if (turn.noticed || turn.stopped || body === '' || !options.notify) return
+    turn.noticed = true
+    const thread = turn.exchange.thread === undefined ? undefined : registry.get(turn.exchange.thread)
+    options.notify({
+      title: turn.title ?? thread?.title ?? activePersona().name,
+      body: body.length > NOTICE_LENGTH ? `${body.slice(0, NOTICE_LENGTH - 1).trimEnd()}…` : body
+    })
   }
 
   const recapFor = (thread: string | undefined) =>
@@ -440,6 +491,8 @@ export function createChannel(options: ChannelOptions): Channel {
         const missed = (unheard.get(turn.exchange.turn)?.length ?? 0) > 0 || (outOfSight && turn.heard === 0)
         runtime.answering = undefined
         registry.setState(runtime.thread, missed && !turn.stopped ? 'ready' : 'parked')
+        // An answer finished out of sight waits, marked ready; a notification says so to a person not looking.
+        if (missed) notice(turn)
         return void next(runtime)
       }
       case 'failed':
@@ -645,7 +698,7 @@ export function createChannel(options: ChannelOptions): Channel {
     end(orchestrator)
     const routing = abilities !== undefined && server !== undefined
     const standing = abilities?.standing?.('orchestrator')
-    const grant = routing ? abilities.grant(orchestratorTools()) : undefined
+    const grant = routing ? abilities.grant([...orchestratorTools(), ...(abilities.orchestratorTools?.() ?? [])]) : undefined
     const session = grant
       ? engine.open({
           role: 'orchestrator',
@@ -718,14 +771,16 @@ export function createChannel(options: ChannelOptions): Channel {
 
   /** What the person said, or what the assistant starts on by itself. */
   const what = (turn: Turn) =>
-    turn.exchange.trigger === 'greeting'
-      ? 'The person has just opened the app; nobody has said anything yet. Greet them by their name if you know it, in one short sentence, then give a brief briefing for today: the day, the weather where they are if you can find it (their time zone says roughly where), and anything left pending from earlier topics. Keep it short. Either say it all yourself, or pass it whole to a thread if a view of the day would help, saying nothing yourself.'
-      : `The person says: ${turn.exchange.said}`
+    turn.exchange.trigger === 'task'
+      ? `A task the person scheduled is due now ("${turn.title ?? turn.exchange.said}"). Nobody has said anything: carry it out as if they had just asked it, and answer them as usual. They may be away from the screen: if something needs their approval, ask as usual; unanswered, it counts as no.\nThe request: ${turn.exchange.said}`
+      : turn.exchange.trigger === 'greeting'
+        ? 'The person has just opened the app; nobody has said anything yet. Greet them by their name if you know it, in one short sentence, then give a brief briefing for today: the day, the weather where they are if you can find it (their time zone says roughly where), and anything left pending from earlier topics. Keep it short. Either say it all yourself, or pass it whole to a thread if a view of the day would help, saying nothing yourself.'
+        : `The person says: ${turn.exchange.said}`
 
   /** What the orchestrator reads for each turn: the moment, the threads, then what the person said. */
   const message = (turn: Turn) =>
     abilities?.server() === undefined
-      ? `${context()}\n${turn.exchange.trigger === 'greeting' ? what(turn) : turn.exchange.said}`
+      ? `${context()}\n${turn.exchange.trigger === undefined ? turn.exchange.said : what(turn)}`
       : `${context()}\nThreads:\n${registry.index()}\n\n${what(turn)}`
 
   const decide = async (turn: Turn) => {
@@ -744,7 +799,9 @@ export function createChannel(options: ChannelOptions): Channel {
       return void decideNext()
     }
     const session = orchestratorSession(engine)
-    const recalled = turn.exchange.trigger ? undefined : memory?.recall(turn.exchange.said, orchestrator?.knownSince)
+    // A briefing has nothing to recall by; a scheduled task is recalled by its request, as if the person had said it.
+    const asked = turn.exchange.trigger === undefined || turn.exchange.trigger === 'task'
+    const recalled = asked ? memory?.recall(turn.exchange.said, orchestrator?.knownSince) : undefined
     session.send(recalled ? `${recalled}\n\n${message(turn)}` : message(turn))
   }
 
@@ -816,6 +873,47 @@ export function createChannel(options: ChannelOptions): Channel {
       void decide(turn)
       return exchange.turn
     },
+
+    remind({ sentence, language, card, silent }) {
+      const persona = activePersona()
+      const at = now().toISOString()
+      const exchange: Exchange = { turn: newId(), at, persona: persona.id, said: '', trigger: 'reminder', replied: '', outcome: 'running' }
+      const turn = newTurn(exchange, language, silent)
+      transcript.push(exchange)
+      emit({ type: 'event', name: 'turn.started', exchange })
+      // Said whole, as one turn the assistant started; the card shows what it is about while it is heard.
+      const cutter = createSentenceCutter()
+      for (const text of [...cutter.push(sentence), ...cutter.flush()]) {
+        const spoken = speakable(text)
+        if (spoken === '') continue
+        turn.exchange = { ...turn.exchange, replied: turn.exchange.replied ? `${turn.exchange.replied} ${spoken}` : spoken }
+        voice(turn, spoken)
+      }
+      screen.present(card, { thread: undefined, turn: exchange.turn, slot: 'stage', focused: true })
+      finish(turn, 'done')
+      return exchange.turn
+    },
+
+    task({ title, request, language, silent }) {
+      const persona = activePersona()
+      const exchange: Exchange = {
+        turn: newId(),
+        at: now().toISOString(),
+        persona: persona.id,
+        said: request,
+        trigger: 'task',
+        replied: '',
+        outcome: 'running'
+      }
+      const turn = newTurn(exchange, language, silent, title)
+      transcript.push(exchange)
+      current = turn
+      if (deciding) pending = turn
+      else void decide(turn)
+      return exchange.turn
+    },
+
+    busy: () => (current !== undefined && current.exchange.outcome === 'running') || deciding !== undefined || pending !== undefined,
 
     stop() {
       if (current) halt(current)

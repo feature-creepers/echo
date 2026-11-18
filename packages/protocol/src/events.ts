@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { activitySchema, answerWrittenSchema, enginesChangedSchema, speechSaySchema, turnEndedSchema, turnStartedSchema } from './events/conversation.ts'
 import { libraryChangedSchema } from './events/library.ts'
 import { assistantStateChangedSchema, memoryChangedSchema } from './events/memory.ts'
+import { deviceNotifySchema, scheduleChangedSchema } from './events/schedule.ts'
 import { settingsChangedSchema } from './events/settings.ts'
 import { threadsChangedSchema } from './events/threads.ts'
 import { mediaControlSchema, viewClearedSchema, viewShownSchema } from './events/views.ts'
@@ -21,7 +22,9 @@ export const eventSchema = z.discriminatedUnion('name', [
   threadsChangedSchema,
   memoryChangedSchema,
   assistantStateChangedSchema,
-  libraryChangedSchema
+  libraryChangedSchema,
+  scheduleChangedSchema,
+  deviceNotifySchema
 ])
 export type Event = z.infer<typeof eventSchema>
 export type EventName = Event['name']
