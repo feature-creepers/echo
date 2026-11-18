@@ -23,6 +23,20 @@ export const viewCommands = {
   },
 
   /**
+   * The JSON document a block's feed names, read by the core and kept half a minute: what a Metric, a Progress or
+   * a Chart's series kept current shows (docs/SPEC.md, section 9.4).
+   */
+  'feed.read': {
+    input: z.object({
+      url: z
+        .string()
+        .regex(/^https:\/\/\S+$/)
+        .max(2048)
+    }),
+    output: z.object({ document: z.unknown() })
+  },
+
+  /**
    * Read what the assistant is showing now, if anything: for a client that connects after it was shown. The stream
    * is every view of the conversation still open, newest first, so the main screen opens as it was left.
    */

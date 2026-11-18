@@ -36,6 +36,7 @@ import { createSchedule } from './schedule/schedule.ts'
 import { SCHEDULE_INSTRUCTIONS, SCHEDULE_ROUTING, scheduleTools } from './schedule/tools.ts'
 import { createUserSettings } from './settings/settings.ts'
 import { createTools, type Tool } from './tools/tools.ts'
+import { createFeeds } from './views/feeds.ts'
 import { createMaps } from './views/maps.ts'
 import { createScreen, type Showing } from './views/screen.ts'
 
@@ -117,6 +118,7 @@ export function createCore(options: CoreOptions): Core {
   let toolServer: string | undefined
   const screen = createScreen({ records: options.records, newId: options.newId, timers: options.timers, now })
   const mapsOf = createMaps(options.web)
+  const feeds = createFeeds(options.web, now)
 
   /** The screen's tools, for one thread: its views go where `showing` says. */
   const screenTools = (showing: () => Showing): Tool[] => [
@@ -130,8 +132,10 @@ export function createCore(options: CoreOptions): Core {
       async run(input) {
         // A map is checked against the shapes it names first, so a join that finds nothing comes back to be corrected.
         const written = validateView((input as { view?: unknown } | undefined)?.view)
-        const maps = written.ok ? await mapsOf.check(written.spec) : { problems: [], notes: [] }
-        if (maps.problems.length > 0) return { ok: false, text: `The view was not shown. Correct this and show it again:\n- ${maps.problems.join('\n- ')}` }
+        // Its feeds too, so a path that finds nothing is corrected before the person sees it.
+        const [maps, fed] = written.ok ? await Promise.all([mapsOf.check(written.spec), feeds.check(written.spec)]) : [{ problems: [], notes: [] }, []]
+        const problems = [...maps.problems, ...fed]
+        if (problems.length > 0) return { ok: false, text: `The view was not shown. Correct this and show it again:\n- ${problems.join('\n- ')}` }
         const shown = screen.show(input, showing())
         return shown.ok && maps.notes.length > 0 ? { ...shown, text: `${shown.text} Note: ${maps.notes.join(' ')}` } : shown
       }
@@ -430,6 +434,12 @@ export function createCore(options: CoreOptions): Core {
         return read.ok
           ? { ok: true, output: { shapes: read.regions } }
           : { ok: false, error: { code: 'invalid-input', message: `The map's shapes could not be read: ${read.problem}` } }
+      },
+      'feed.read': async (input) => {
+        const read = await feeds.read(input.url)
+        return read.ok
+          ? { ok: true, output: { document: read.document } }
+          : { ok: false, error: { code: 'invalid-input', message: `The feed could not be read: ${read.problem}` } }
       },
       'library.read': () => ({ ok: true, output: { library: library.read() } }),
       'schedule.read': () => ({ ok: true, output: { schedule: schedule.read() } }),

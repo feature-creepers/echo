@@ -1,11 +1,21 @@
-import type { BlockProps } from '@repo/catalog'
+import { type BlockProps, feedFigure, feedPoints } from '@repo/catalog'
 import { cn } from '../../primitives/cn.ts'
 import { Eyebrow } from '../../primitives/eyebrow.tsx'
 import { TONE_COLOR, TONE_TEXT } from '../tones.ts'
+import { useFeedDocument, useFeedDocuments } from '../use-feed.ts'
 
 const TREND = { up: '↑', down: '↓', flat: '→' } as const
 
+/** The figure a fed block shows: the one its feed gives, once read, else the one it was given. */
+function useFedFigure(feed: BlockProps<'Metric'>['feed']): { text: string; number?: number } | undefined {
+  const document = useFeedDocument(feed)
+  if (!feed || document === undefined) return undefined
+  const taken = feedFigure(document, feed)
+  return taken.ok ? taken.value : undefined
+}
+
 export function Metric({ props }: { props: BlockProps<'Metric'> }) {
+  const fed = useFedFigure(props.feed)
   // Its figure is sized by its own width, so it measures nothing from its content: in a row it would shrink to
   // nothing. It keeps a width a figure reads at, a row that has no room for it puts it on the next line, and the
   // figures of a line share it.
@@ -19,7 +29,7 @@ export function Metric({ props }: { props: BlockProps<'Metric'> }) {
             TONE_TEXT[props.tone]
           )}
         >
-          {props.value}
+          {fed?.text ?? props.value}
         </span>
         {props.unit && <span className="text-sm text-text-soft">{props.unit}</span>}
         {props.trend && (
@@ -87,18 +97,20 @@ export function Timeline({ props }: { props: BlockProps<'Timeline'> }) {
 }
 
 export function Progress({ props }: { props: BlockProps<'Progress'> }) {
+  const fed = useFedFigure(props.feed)?.number
+  const value = fed === undefined ? props.value : Math.min(1, Math.max(0, fed))
   return (
     <div className="grid gap-1.5">
       {(props.label || props.detail) && (
         <div className="flex items-baseline justify-between gap-4">
           {props.label && <span className="text-[0.8125rem]">{props.label}</span>}
-          <span className="font-mono text-[0.6875rem] text-text-soft tabular-nums">{props.detail ?? `${Math.round(props.value * 100)} %`}</span>
+          <span className="font-mono text-[0.6875rem] text-text-soft tabular-nums">{props.detail ?? `${Math.round(value * 100)} %`}</span>
         </div>
       )}
       <div className="h-1 overflow-hidden rounded-full bg-white/[0.06]">
         <div
           className="h-full origin-left rounded-full transition-[width] duration-700 ease-soft"
-          style={{ width: `${props.value * 100}%`, background: TONE_COLOR[props.tone] }}
+          style={{ width: `${value * 100}%`, background: TONE_COLOR[props.tone] }}
         />
       </div>
     </div>
@@ -120,7 +132,18 @@ function niceScale(min: number, max: number, ticks = 4): { low: number; high: nu
   return { low: Math.floor(min / step) * step, high: Math.ceil(max / step) * step, step }
 }
 
-export function Chart({ props }: { props: BlockProps<'Chart'> }) {
+export function Chart({ props: given }: { props: BlockProps<'Chart'> }) {
+  // A fed series draws the points its feed gives once read, and the ones it was given until then.
+  const documents = useFeedDocuments(given.series.map((series) => series.feed))
+  const props = {
+    ...given,
+    series: given.series.map((series, index) => {
+      const document = documents[index]
+      if (!series.feed || document === undefined) return series
+      const taken = feedPoints(document, series.feed)
+      return taken.ok ? { ...series, points: taken.value } : series
+    })
+  }
   const width = 640
   const height = HEIGHT[props.height]
   const pad = { top: 12, right: 12, bottom: 26, left: 44 }

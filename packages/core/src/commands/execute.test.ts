@@ -33,6 +33,7 @@ function setup(overrides: Partial<Handlers> = {}) {
     'view.read': () => ({ ok: true, output: { margin: [], stream: [] } }),
     'view.clear': () => ({ ok: true, output: {} }),
     'shapes.read': () => ({ ok: true, output: { shapes: {} } }),
+    'feed.read': () => ({ ok: true, output: { document: {} } }),
     'access.set': async () => ({ ok: true, output: { settings } }),
     'access.read': () => ({ ok: true, output: { allowances: [], protected: [] } }),
     'access.forget': () => ({ ok: true, output: { allowances: [], protected: [] } }),

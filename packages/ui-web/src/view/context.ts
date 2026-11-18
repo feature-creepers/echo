@@ -18,6 +18,8 @@ export interface ViewActions {
    * Left out, a map fetches it itself.
    */
   readShapes?(url: string): Promise<unknown>
+  /** The JSON document a block's feed names, read by the core. Left out, a fed block shows the figure it was given. */
+  readFeed?(url: string): Promise<unknown>
   /**
    * Set when the view may start what it plays by itself: it was just shown in answer to the person. The value
    * is a key for that showing, so drawing the view again does not start it again. Left out, nothing starts.

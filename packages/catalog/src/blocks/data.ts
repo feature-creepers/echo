@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { type Block, TONES } from '../block.ts'
+import { feedSchema, seriesFeedSchema } from '../feed.ts'
 
 const tone = z.enum(TONES).default('normal')
 const cell = z.union([z.string(), z.number()])
@@ -14,7 +15,8 @@ export const dataBlocks = {
       /** A few words under the figure: what it compares to, or when it was measured. */
       detail: z.string().optional(),
       trend: z.enum(['up', 'down', 'flat']).optional(),
-      tone
+      tone,
+      feed: feedSchema.optional()
     }),
     children: false
   },
@@ -32,7 +34,7 @@ export const dataBlocks = {
     props: z.object({
       kind: z.enum(['line', 'area', 'bar']),
       series: z
-        .array(z.object({ name: z.string(), points: z.array(z.object({ x: z.string(), y: z.number() })).min(1), tone }))
+        .array(z.object({ name: z.string(), points: z.array(z.object({ x: z.string(), y: z.number() })).min(1), tone, feed: seriesFeedSchema.optional() }))
         .min(1)
         .max(3),
       /** The unit of the values, shown on the axis: '°C', '€', '%'. */
@@ -48,7 +50,13 @@ export const dataBlocks = {
   },
   Progress: {
     description: 'How far along something is, from 0 to 1, as a bar.',
-    props: z.object({ value: z.number().min(0).max(1), label: z.string().optional(), detail: z.string().optional(), tone: z.enum(TONES).default('accent') }),
+    props: z.object({
+      value: z.number().min(0).max(1),
+      feed: feedSchema.optional(),
+      label: z.string().optional(),
+      detail: z.string().optional(),
+      tone: z.enum(TONES).default('accent')
+    }),
     children: false
   }
 } satisfies Record<string, Block>

@@ -29,9 +29,9 @@ describe('describeCatalog', () => {
     expect(text).toContain('never say you cannot show one')
   })
 
-  // About 3,400 tokens. A new block is worth its words; a catalogue that keeps growing is not.
+  // About 3,550 tokens, live figures included. A new block is worth its words; a catalogue that keeps growing is not.
   it('stays short enough to be part of every prompt', () => {
-    expect(text.length).toBeLessThan(13_700)
+    expect(text.length).toBeLessThan(14_300)
   })
 })
 
