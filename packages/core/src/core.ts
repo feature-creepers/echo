@@ -1,5 +1,5 @@
 import { CLEAR_TOOL, describeCatalog, MEDIA_TOOL, SHOW_TOOL, SHOW_TOOL_INPUT, validateView } from '@repo/catalog'
-import { type Event, MEDIA_ACTIONS, type Result } from '@repo/protocol'
+import { type Capability, type Event, MEDIA_ACTIONS, type Result } from '@repo/protocol'
 import { createAccess } from './access/access.ts'
 import { createAttachments } from './attachments/attachments.ts'
 import { giveFolders } from './attachments/folders.ts'
@@ -231,12 +231,22 @@ export function createCore(options: CoreOptions): Core {
     mark: (control) => emit({ type: 'event', name: 'device.desktop', control })
   })
   const clipboard = options.clipboard ? createClipboardControl({ clipboard: options.clipboard, ask: access.ask, uses: access }) : undefined
+  // What the connected devices declared they can do: a camera is used only where one said it has one.
+  const declared = new Set<Capability>()
   const device = createDeviceControl({
     access,
     level: () => settings.read().access.approvals,
     computer: options.computer,
     printers: options.printers,
-    drives: options.drives
+    drives: options.drives,
+    camera: {
+      available: () => declared.has('camera'),
+      request: (request, camera) => emit({ type: 'event', name: 'device.camera', request, ...(camera === undefined ? {} : { camera }) }),
+      newId: options.newId,
+      timers: options.timers,
+      workspace: options.workspace,
+      stamp: () => pictureStamp(now(), zone())
+    }
   })
   const objections = createObjections({ records: options.records, screen, now })
   const files = createFiles({ records: options.records, blobs: options.blobs, now, newId: options.newId })
@@ -427,6 +437,10 @@ export function createCore(options: CoreOptions): Core {
         await attachments.discard(input.attachment)
         return { ok: true, output: {} }
       },
+      'camera.picture': (input) => {
+        device.pictureTaken(input)
+        return { ok: true, output: {} }
+      },
       'workspace.list': (input) => browsing.list(input.path),
       'workspace.read': (input) => browsing.read(input.path, input.offset, input.length),
       'assistant.greet': () => {
@@ -604,7 +618,11 @@ export function createCore(options: CoreOptions): Core {
   )
 
   return {
-    admit: (message) => admit(message, { coreVersion: options.version, acceptsCredential: options.acceptsCredential }),
+    admit(message) {
+      const admission = admit(message, { coreVersion: options.version, acceptsCredential: options.acceptsCredential })
+      if (admission.admitted) for (const capability of admission.hello.capabilities) declared.add(capability)
+      return admission
+    },
     execute(message) {
       // A client that sends commands is there to hear what rings: from then on, reminders and tasks ring, and the work
       // the last run of the app left is taken up again.
@@ -632,4 +650,20 @@ export function createCore(options: CoreOptions): Core {
       void desktop.close()
     }
   }
+}
+
+/** A moment as the person's clock reads it, for the name of a file: "2026-11-18 23.52.10". */
+function pictureStamp(at: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23'
+  }).formatToParts(at)
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((one) => one.type === type)?.value ?? '00'
+  return `${part('year')}-${part('month')}-${part('day')} ${part('hour')}.${part('minute')}.${part('second')}`
 }

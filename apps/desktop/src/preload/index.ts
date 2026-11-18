@@ -1,6 +1,6 @@
 import type { CoreLink } from '@repo/client'
 import { contextBridge, type IpcRendererEvent, ipcRenderer, webUtils } from 'electron'
-import { APP_CHANNELS, CORE_LINK_CHANNEL, CORE_MESSAGE_CHANNEL, type DesktopBridge, SPEECH_CHANNELS, TALK_CHANNEL } from './bridge.ts'
+import { APP_CHANNELS, CAMERA_CHANNELS, CORE_LINK_CHANNEL, CORE_MESSAGE_CHANNEL, type DesktopBridge, SPEECH_CHANNELS, TALK_CHANNEL } from './bridge.ts'
 
 /** Be told of what comes on a channel. Returns a function that stops the telling. */
 function listen<Payload>(channel: string, listener: (payload: Payload) => void): () => void {
@@ -61,6 +61,10 @@ const bridge: DesktopBridge = {
     check: () => ipcRenderer.invoke(APP_CHANNELS.updateCheck),
     download: () => ipcRenderer.invoke(APP_CHANNELS.updateDownload),
     install: () => ipcRenderer.invoke(APP_CHANNELS.updateInstall)
+  },
+  camera: {
+    onCapture: (listener) => listen(CAMERA_CHANNELS.capture, listener),
+    answer: (answer) => ipcRenderer.send(CAMERA_CHANNELS.picture, answer)
   },
   files: {
     pick: (kind) => ipcRenderer.invoke(APP_CHANNELS.filesPick, kind),

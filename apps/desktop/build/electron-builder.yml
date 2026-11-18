@@ -58,6 +58,7 @@ mac:
   identity: null
   extendInfo:
     NSMicrophoneUsageDescription: Echo listens to you when you talk to it. Your voice is turned into text on this computer.
+    NSCameraUsageDescription: Echo takes a picture with your camera when you allow it, each time, to see what you show it.
 dmg:
   artifactName: ${productName}-${version}-${arch}.${ext}
 

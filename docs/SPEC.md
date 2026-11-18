@@ -879,22 +879,24 @@ Example: "Send this to my landlord now." The critical persona: "I'd hold it. The
 
 The harness calls tools served by the core over MCP on the loopback address with a token, as Speak does. The harness's own tools are off, except web search where it exists, and its tools for files and commands within what the user granted (section 12.2). A tool either runs in the core, or is forwarded to a device capability of a connected client.
 
-| Family                        | Purpose                                          | Runs                                         | Who may call it   |
-| ----------------------------- | ------------------------------------------------ | -------------------------------------------- | ----------------- |
-| `ui`                          | Render, patch and clear views                    | Core; drawn by clients                       | Any session       |
-| `memory`                      | Search, remember, forget                         | Core                                         | Any session       |
-| `thread`                      | Open, send, focus, search                        | Core                                         | Orchestrator only |
-| `files`                       | Read and write the thread's own files            | Core                                         | Threads           |
-| `web`                         | Search and fetch                                 | Core, or the harness's own                   | Threads           |
-| `browser`                     | Open, read, see and act on pages in a browser    | Core, driving the browser of its computer    | Threads           |
-| `calendar` and other services | Read, and write with approval                    | Core                                         | Threads           |
-| `device.files`                | The user's own files, within the granted scope   | The harness's own tools, checked by the core | Threads           |
-| `device.media`                | Music player                                     | The device                                   | Any session       |
-| `device.system`               | Machine readings, time zone, place               | The device                                   | Any session       |
-| `device.cursor`               | The selection, and writing at the cursor         | A desktop                                    | Threads           |
-| `device.screen`               | See and operate other apps                       | Core, driving the apps of its computer       | Threads           |
-| `schedule`                    | Set, list, change and cancel reminders and tasks | Core                                         | Any session       |
-| `device.notify`               | Notifications: reminders, answers out of sight   | The device, with the system's own            | The core          |
+| Family                          | Purpose                                          | Runs                                         | Who may call it   |
+| ------------------------------- | ------------------------------------------------ | -------------------------------------------- | ----------------- |
+| `ui`                            | Render, patch and clear views                    | Core; drawn by clients                       | Any session       |
+| `memory`                        | Search, remember, forget                         | Core                                         | Any session       |
+| `thread`                        | Open, send, focus, search                        | Core                                         | Orchestrator only |
+| `files`                         | Read and write the thread's own files            | Core                                         | Threads           |
+| `web`                           | Search and fetch                                 | Core, or the harness's own                   | Threads           |
+| `browser`                       | Open, read, see and act on pages in a browser    | Core, driving the browser of its computer    | Threads           |
+| `calendar` and other services   | Read, and write with approval                    | Core                                         | Threads           |
+| `device.files`                  | The user's own files, within the granted scope   | The harness's own tools, checked by the core | Threads           |
+| `device.media`                  | Music player                                     | The device                                   | Any session       |
+| `device.system`                 | Machine readings, time zone, place               | The device                                   | Any session       |
+| `device.cursor`                 | The selection, and writing at the cursor         | A desktop                                    | Threads           |
+| `device.screen`                 | See and operate other apps                       | Core, driving the apps of its computer       | Threads           |
+| `schedule`                      | Set, list, change and cancel reminders and tasks | Core                                         | Any session       |
+| `device.notify`                 | Notifications: reminders, answers out of sight   | The device, with the system's own            | The core          |
+| `device.camera`                 | A picture, each time the person allows it        | A device that declared `camera`              | Threads           |
+| `device.print`, `device.drives` | Printing, and the removable drives               | Core, on the computer it runs on             | Threads           |
 
 Files the person hands over with what they say are read with the harness's own tools too, by the thread they go to, and pictures among them are shown to the model with the message (sections 9.7 and 12.2); the files a thread writes there are shown on a card of its turn. The assistant's folder is listed and read for the person by the core itself (`workspace.list`, `workspace.read`), never by a session.
 
@@ -1028,7 +1030,7 @@ On 18 November 2026 the assistant, running in the app on the owner's Windows com
 - The clipboard, read on a card and written freely (item 6 below).
 - Threads side by side, with stopping one thread or all of them, and a composer of several lines (sections 7.3 and 13.2).
 - The media player's volume, seeking and queue, by voice (item 6 below).
-- Printers and removable drives (item 6 below).
+- Printers, removable drives and the camera (item 6 below).
 - Guardrails as settings: deleting and publishing always asked unless the owner turns it off, and how long a question waits (section 12.2).
 
 Two of the report's findings were mistaken. A question can already be answered aloud ("yes, go ahead"). Its web search returning American results comes from the harness's own tool, not from this product.
@@ -1052,7 +1054,7 @@ The rest is designed here and built in this order, each behind the same gate as 
    - **Clipboard**, built: reading asks; writing is free. `clipboard_read` puts a card ("Read your clipboard?") whose yes for the session lasts until the app quits or everything stops; `clipboard_write` replaces what the clipboard held, 100,000 characters at most. Both are kept in the activity. The core reaches it through its `Clipboard` port, which `@repo/screen` implements with each system's own programs (`screen/src/clipboard/`): Windows PowerShell's `Get-Clipboard` and `Set-Clipboard`, the text crossing as Base64 of UTF-8 so every character survives the console; `pbpaste` and `pbcopy` on macOS; `wl-paste` and `wl-copy` under Wayland, `xclip` under X11, which the person installs when missing. Verified on Windows 11 against the real clipboard (accents, Chinese and an emoji written and read back, what was copied put back after); macOS and Linux by tables.
    - **Printers**, built. `printers_list` names the printers, the default first, each ready, printing, offline or needing attention. `print` prints a file the assistant may read (its folder, a place granted, or anywhere with the whole computer to read): a PDF, a picture (PNG, JPEG, GIF, BMP, TIFF) or plain text (`.txt`, `.md`, `.csv` and the like), on the printer named or the default one, up to 20 copies; anything else is written as a PDF first. It follows the approval level as a command does: asked at `ask` and `trust` (`Print “report.pdf”?`, the printer as its subject, the copies as a fact, and a warning when the printer is offline), carried out at `auto`, and covered by a yes for the session; kept in the activity whatever was decided. A printer that makes a file, such as Microsoft Print to PDF, writes it in the assistant's folder under `printed/` rather than opening a dialog nobody may be watching. The core reaches them through its `Printers` port, which `@repo/screen` implements (`screen/src/printers/`): on Windows, .NET's own printing from Windows PowerShell, with no app to install and nothing on screen, a PDF's pages drawn by Windows' own renderer (`Windows.Data.Pdf`) at 200 dots per inch, a picture filling the page and turned to suit it, text set in Consolas over as many pages as it takes; the fax is left out, and when Windows manages the default printer (making the last one used the default), the person's default is put back once the job is taken. On macOS and Linux, CUPS's `lpstat` and `lp`, text named as such so a `.md` prints. Verified on Windows 11 on 18 November 2026: the printers listed with their states, a text with accents and an emoji, a PDF and a wide picture printed to Microsoft Print to PDF and looked at, the default printer unchanged after; paper was not printed. macOS and Linux by tables.
    - **Removable drives**, built: asked like any change. A drive's files are a place like any other, given with `computer_grant` or in Settings, Access, read only until the person allows changes, each change then decided by the level. `drives_list` names the USB keys, memory cards and external disks plugged in and opened, each with where it is, its space, and whether the assistant may read or change it; `drive_eject` lets one go so it can be unplugged, decided as printing is (`Eject “KINGSTON”?`), and says so when the system keeps it because a file on it is open. The core reaches them through its `Drives` port, which `@repo/screen` implements (`screen/src/drives/`): WMI on Windows, the volumes it calls removable and those of a disk on USB, let go with Explorer's own Eject and looked at again to see it went; `diskutil` on macOS, a disk image or the system's own disk never among them; `lsblk` and `udisks` on Linux. Verified on Windows 11 that a computer with no drive plugged in lists none and that a letter not there is refused; the drives themselves, macOS and Linux by tables.
-   - **The camera:** always asked, with a marker while in use.
+   - **The camera**, built: always asked, with a marker while in use. `camera_capture` takes a picture and shows it to the model, for "look at this" or "what am I holding". It is asked every time, whatever the level, and never for the session (`Take a picture with your camera?`, saying the AI program sees it and where it is kept), since a picture may show the person and their home. The core owns no camera: it asks a connected device that declared `camera` (`device.camera`, with an identifier), which answers with `camera.picture`, the picture as a JPEG in base64 (1280 px wide at most, made smaller until it fits one line of the protocol) or why there is none; with no answer in 30 seconds, or everything stopped, the tool says so, and a late answer is dropped. The tool is offered only once a device that declared a camera has connected. Each picture is kept in the assistant's folder under `camera/` ("Picture 2026-11-18 23.52.10.jpg"), so the person can see what was seen, and every use is kept in the activity. The desktop takes it in the window, from the window's own code (`renderer/camera.ts`, the Image Capture API after the camera has a moment to settle its light), and its main process lets the window use the camera only while such a request waits: the permission for video is refused at any other time, so nothing in the window turns the camera on by itself. While it is on, and a moment and a half after, a marker at the top of the screen says "Assistant using the camera" with a dot in the persona's accent, above every window, letting every click through and never taking the focus (`main/camera.ts`). macOS asks the person once, with the package's `NSCameraUsageDescription`. Tested by tables; not seen with a real camera, since the Windows computer it was built on has none.
    - **The media player**, built: volume, seeking and a queue. `media_control` takes `volume` (a level, or a step such as -20 for "a bit lower"), `seek` (to a position, or by seconds forward or back), `queue` (a stream or file to play after the current one), `next` and `clear-queue`, beside pause, resume and stop; the player goes on to what is queued at the end of a file, a Media block says what is next with a button to skip to it, and stopping empties the queue.
 7. **Raw audio, by choice.** Recognising the speaker and a song, and a vocabulary of the owner's own words for the recogniser. It is off by default, since audio would then leave the transcript.
 8. **Approvals away from the screen.** A phone notification that approves or refuses, once the phone app exists (section 5). An act with an outside effect (sending, paying, publishing) also asks, said aloud, for a confirmation phrase the owner sets: built (section 12.2, a confirmation phrase).
@@ -1417,7 +1419,7 @@ packages/core/src/
 ├── access/                 what the assistant may reach on the computer: a command line read, the levels, approvals for the session, the activity and undo, the versions a change left and their diffs, stop everything, cards answered by click or voice, computer_grant
 ├── browser/                the browser's tools, what an action on a page reads as and what is asked or refused, a page's words fenced, the record of each action
 ├── devices/                connected devices, the active one, routing of capability requests
-├── device/                 more of the device: printers, removable drives, and the one rule an act on them is decided by (acts.ts)
+├── device/                 more of the device: printers, removable drives, the camera of a device, and the one rule an act on them is decided by (acts.ts)
 ├── records/                the record types, the "what is true now" readers built on them, and records and search kept in memory
 ├── replay/                 a scripted harness and timers moved by hand, for tests and replays
 └── usage/                  tokens, cost, timings
@@ -1602,6 +1604,8 @@ apps/desktop/
 │   │   ├── global-shortcut.ts  the one shortcut taken from the whole system: talking from any app
 │   │   ├── tray.ts  tray-icon.ts   the app in the tray, and its mark, drawn rather than shipped
 │   │   ├── updater.ts      new versions from the GitHub releases
+│   │   ├── desktop-marker.ts  the frame around the window of another app the assistant operates
+│   │   ├── camera.ts       the camera allowed to the window only while the core waits for a picture, and its marker
 │   │   ├── autostart/      opening at login: darwin.ts · win32.ts · linux.ts · index.ts
 │   │   ├── load/           how hard the computer works, for the core: measure.ts, and graphics/ per system: darwin.ts · win32.ts · linux.ts · index.ts
 │   │   ├── windows.ts      (later: Mini and the pill)
@@ -1611,7 +1615,7 @@ apps/desktop/
 │   │       ├── cursor/     the selection and writing at the cursor, per system
 │   │       └── screen/     seeing and operating other apps, per system (later, from Speak)
 │   ├── preload/            the typed bridge to the renderer
-│   └── renderer/           mounts ui-web; captures the microphone
+│   └── renderer/           mounts ui-web; captures the microphone; camera.ts takes a picture when the app asks
 ├── resources/              icons and sounds
 └── build/                  how the app is packaged for each system, entitlements and signing
 ```

@@ -38,6 +38,7 @@ function setup(overrides: Partial<Handlers> = {}) {
     'access.set': async () => ({ ok: true, output: { settings } }),
     'access.read': () => ({ ok: true, output: { allowances: [], protected: [] } }),
     'access.forget': () => ({ ok: true, output: { allowances: [], protected: [] } }),
+    'camera.picture': () => ({ ok: true, output: {} }),
     'activity.read': () => ({ ok: true, output: { uses: [], more: false } }),
     'activity.check': () => ({ ok: true, output: { state: 'empty', sealed: 0, unsealed: 0, head: null } }),
     'activity.export': () => ({ ok: true, output: { name: 'activity.json', text: '{}' } }),

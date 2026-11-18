@@ -26,7 +26,9 @@ export const CAPABILITIES = [
   /** Seeing and operating other apps. */
   'screen',
   /** Notifications. */
-  'notify'
+  'notify',
+  /** A camera, which takes a picture when the core asks for one. */
+  'camera'
 ] as const
 
 export const capabilitySchema = z.enum(CAPABILITIES)

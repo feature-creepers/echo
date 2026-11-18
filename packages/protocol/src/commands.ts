@@ -1,6 +1,7 @@
 import type { z } from 'zod'
 import { accessCommands } from './commands/access.ts'
 import { browserCommands } from './commands/browser.ts'
+import { cameraCommands } from './commands/camera.ts'
 import { conversationCommands } from './commands/conversation.ts'
 import { desktopCommands } from './commands/desktop.ts'
 import { fileCommands } from './commands/files.ts'
@@ -29,7 +30,8 @@ export const COMMANDS = {
   ...desktopCommands,
   ...scheduleCommands,
   ...fileCommands,
-  ...accessCommands
+  ...accessCommands,
+  ...cameraCommands
 } satisfies Record<string, CommandDefinition>
 
 export type CommandName = keyof typeof COMMANDS

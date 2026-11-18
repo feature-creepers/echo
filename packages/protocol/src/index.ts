@@ -39,6 +39,7 @@ export {
 } from './activity.ts'
 export { decodeBase64, encodeBase64 } from './base64.ts'
 export { type BrowserState, browserStateSchema } from './browser.ts'
+export { type CameraPicture, cameraPictureSchema, MAX_PICTURE_LENGTH } from './camera.ts'
 export { CAPABILITIES, type Capability, capabilitySchema } from './capabilities.ts'
 export { createLineDecoder, type DecodedLine, encodeEvent, encodeLine, encodeResult, type LineDecoder, MAX_LINE_LENGTH } from './codec.ts'
 export {
@@ -81,6 +82,7 @@ export {
   type Result,
   resultSchema
 } from './envelope.ts'
+export { deviceCameraSchema } from './events/camera.ts'
 export { deviceDesktopSchema, deviceNotifySchema } from './events/schedule.ts'
 export { MEDIA_ACTIONS, type MediaControl, type MediaSourceShown, mediaSourceSchema } from './events/views.ts'
 export { type Event, type EventName, type EventOf, eventSchema } from './events.ts'

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { activityUsedSchema, allowancesChangedSchema } from './events/access.ts'
+import { deviceCameraSchema } from './events/camera.ts'
 import { activitySchema, answerWrittenSchema, enginesChangedSchema, speechSaySchema, turnEndedSchema, turnStartedSchema } from './events/conversation.ts'
 import { workspaceChangedSchema } from './events/files.ts'
 import { libraryChangedSchema } from './events/library.ts'
@@ -28,6 +29,7 @@ export const eventSchema = z.discriminatedUnion('name', [
   scheduleChangedSchema,
   deviceNotifySchema,
   deviceDesktopSchema,
+  deviceCameraSchema,
   workspaceChangedSchema,
   allowancesChangedSchema,
   activityUsedSchema

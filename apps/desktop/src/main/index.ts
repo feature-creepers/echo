@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { basename, isAbsolute, join } from 'node:path'
 import { type DeviceSettingsChange, isShortcut, runsWhenOpened, shortcutClash } from '@repo/client'
 import { type AccentName, accents, color, frame } from '@repo/tokens'
-import { app, BrowserWindow, dialog, ipcMain, nativeImage, nativeTheme, session, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, nativeTheme, session, shell, type WebContents } from 'electron'
 import {
   type About,
   APP_CHANNELS,
@@ -16,6 +16,7 @@ import {
   TALK_CHANNEL
 } from '../preload/bridge.ts'
 import { setLaunchAtLogin, startedAtLogin } from './autostart/index.ts'
+import { serveCamera } from './camera.ts'
 import { chrome } from './chrome/index.ts'
 import { type CoreProcess, startCore } from './core-process.ts'
 import { serveDesktopMarker } from './desktop-marker.ts'
@@ -160,17 +161,26 @@ function start(): void {
   // The interface is dark. The window's frame follows, whatever the system's own setting.
   nativeTheme.themeSource = 'dark'
   // The window may use the microphone, to hear the user, choose the speakers its voice plays on, and put text on the
-  // clipboard when the user copies an answer; it never reads the clipboard, and nothing else of the kind.
+  // clipboard when the user copies an answer; it never reads the clipboard, and nothing else of the kind. The camera
+  // only while the core waits for a picture the person allowed on a card, and only in the window.
   const allowed = new Set(['media', 'speaker-selection', 'clipboard-sanitized-write'])
-  session.defaultSession.setPermissionRequestHandler((_contents, permission, grant) => grant(allowed.has(permission)))
-  session.defaultSession.setPermissionCheckHandler((_contents, permission) => allowed.has(permission))
+  let cameraAllows: (contents: WebContents | null) => boolean = () => false
+  session.defaultSession.setPermissionRequestHandler((contents, permission, grant, details) => {
+    if (!allowed.has(permission)) return grant(false)
+    const video = permission === 'media' && 'mediaTypes' in details && (details.mediaTypes ?? []).includes('video')
+    grant(!video || cameraAllows(contents))
+  })
+  session.defaultSession.setPermissionCheckHandler((contents, permission, _origin, details) => {
+    if (!allowed.has(permission)) return false
+    return permission !== 'media' || details.mediaType !== 'video' || cameraAllows(contents)
+  })
 
   const data = app.getPath('userData')
   const core = startCore({
     script: built('core.js'),
     data: join(data, 'core'),
     client: { kind: 'desktop', version: app.getVersion(), device: deviceId(data) },
-    capabilities: ['display', 'notify', 'screen']
+    capabilities: ['display', 'notify', 'screen', 'camera']
   })
   ipcMain.handle(CORE_LINK_CHANNEL, () => core.link())
 
@@ -216,6 +226,9 @@ function start(): void {
   serveNotifications(core, window, bringForward)
   // A frame around the window of another app the assistant operates, while it does.
   const marker = serveDesktopMarker(core)
+  // A picture the person allowed, taken in the window, with a marker on the screen while the camera is on.
+  const camera = serveCamera(core, window)
+  cameraAllows = (contents) => contents !== null && camera.allows(contents)
 
   // Talk from anywhere: the shortcut brings the window forward and starts listening, and pressed again, sends.
   // Some Linux desktops (Wayland) do not let an app take a global shortcut: the one inside the window remains.
@@ -278,6 +291,7 @@ function start(): void {
     const look = trayLook(presence)
     tray.look(look)
     marker.accent(look.accent)
+    camera.accent(look.accent)
   })
   // How hard the computer works, for the window's core: read only while the window asks for it and is seen.
   const load = followLoad(() => !window.isDestroyed() && window.isVisible() && !window.isMinimized())

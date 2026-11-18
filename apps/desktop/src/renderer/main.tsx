@@ -4,6 +4,7 @@ import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import manifest from '../../package.json'
 import '../preload/bridge.ts'
+import { serveCamera } from './camera.ts'
 
 /** Where the app stands with its core, as the main process reports it. */
 function useCoreLink(): CoreLink {
@@ -64,6 +65,8 @@ function App() {
 // The global shortcut, pressed in another app, reaches the interface as an event on the window; so does the tray's "Settings".
 window.desktop.onTalk(() => window.dispatchEvent(new Event(TALK_EVENT)))
 window.desktop.onOpenSettings(() => window.dispatchEvent(new Event(OPEN_SETTINGS_EVENT)))
+// A picture the person allowed on a card, taken when the app asks: the window turns the camera on for nothing else.
+serveCamera()
 
 // Where the system draws a translucent material behind the window, the page lets it through its side panes.
 const material = new URLSearchParams(location.search).get('material')

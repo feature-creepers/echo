@@ -29,6 +29,15 @@ export interface DesktopBridge {
   updates: UpdatesBridge
   /** The files of this computer, as the user picks them for the assistant. */
   files: FilesBridge
+  /** The camera, used only when the app asks for a picture the person allowed. */
+  camera: CameraBridge
+}
+
+export interface CameraBridge {
+  /** Be told when the app asks for a picture. Returns a function that stops the telling. */
+  onCapture(listener: (request: CameraRequest) => void): () => void
+  /** Give the app the picture, or why there is none. */
+  answer(answer: CameraAnswer): void
 }
 
 export interface FilesBridge {
@@ -129,6 +138,23 @@ export const APP_CHANNELS = {
 
 /** The channel the global shortcut to talk comes on. */
 export const TALK_CHANNEL = 'talk'
+
+/**
+ * A picture asked of the window's camera, and the window's answer. The app asks only once the person allowed it on a
+ * card, and lets the window use the camera only while a request waits.
+ */
+export const CAMERA_CHANNELS = {
+  capture: 'camera:capture',
+  picture: 'camera:picture'
+} as const
+
+export interface CameraRequest {
+  id: string
+  /** Words of the camera's name. Left out, the system's first. */
+  camera?: string
+}
+
+export type CameraAnswer = { id: string; picture: { bytes: Uint8Array; width: number; height: number; camera?: string } } | { id: string; problem: string }
 
 /** Sound as it crosses to and from the window. */
 export interface BridgeSound {
