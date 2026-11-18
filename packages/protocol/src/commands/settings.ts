@@ -37,7 +37,7 @@ export const settingsCommands = {
 
   /**
    * What the assistant may reach on the computer: its own folder, the folders and files granted, the whole
-   * computer, and whether changes are asked first. What is left out keeps its value. A place is checked by the
+   * computer, whether changes are asked first, and whether it may drive a browser. What is left out keeps its value. A place is checked by the
    * core, which refuses one that does not exist. Takes effect at once, for the session under way too.
    */
   'access.set': {
@@ -45,7 +45,8 @@ export const settingsCommands = {
       workspace: z.boolean().optional(),
       places: z.array(placeSchema).max(MAX_PLACES).optional(),
       computer: z.enum(COMPUTER_REACH).optional(),
-      approvals: z.enum(APPROVALS).optional()
+      approvals: z.enum(APPROVALS).optional(),
+      browser: z.boolean().optional()
     }),
     output: settingsOutput
   },

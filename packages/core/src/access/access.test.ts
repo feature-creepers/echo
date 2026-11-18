@@ -60,7 +60,7 @@ describe('access to the computer', () => {
   it('starts with the assistant’s own folder and nothing else, every change asked first', () => {
     const { reach, settings } = setup()
     expect(reach.scope()).toEqual({ places: [{ path: WORKSPACE, kind: 'folder', write: true }], computer: 'off', home: WORKSPACE })
-    expect(settings.read().access).toEqual({ workspace: true, places: [], computer: 'off', approvals: 'ask', folder: WORKSPACE })
+    expect(settings.read().access).toEqual({ workspace: true, places: [], computer: 'off', approvals: 'ask', browser: true, folder: WORKSPACE })
   })
 
   it('reaches nothing on a core with no computer of its own', () => {

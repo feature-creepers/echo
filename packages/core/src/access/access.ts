@@ -6,7 +6,7 @@ import type { ComputerUse, Reach, Scope, Verdict } from '../ports/harness.ts'
 import type { SettingsChange, UserSettings } from '../settings/settings.ts'
 import type { Tool } from '../tools/tools.ts'
 import type { Screen, Showing } from '../views/screen.ts'
-import { type Answer, createApprovals, type Question } from './approvals.ts'
+import { type Answer, type Approvals, createApprovals, type Question } from './approvals.ts'
 
 /**
  * What the assistant may reach on the person's computer, and the questions it asks before acting there
@@ -29,6 +29,8 @@ export interface AccessControl {
   version(): string
   /** Something the person said, which may answer a question on screen. True when it did. */
   hear(said: string): boolean
+  /** Ask the person something else before acting, with the same cards: one queue, so a yes said aloud answers the latest. */
+  ask: Approvals['ask']
   /** Change the access, checking each new place exists. */
   set(asked: CommandInput<'access.set'>): Promise<SettingsChange>
 }
@@ -186,6 +188,8 @@ export function createAccess({ settings, screen, computer, timers }: AccessOptio
     version: () => JSON.stringify([access(), computer?.workspace ?? null]),
 
     hear: (said) => approvals.hear(said),
+
+    ask: (question, showing, signal) => approvals.ask(question, showing, signal),
 
     async set(asked) {
       if (asked.places === undefined) return { ok: true, settings: settings.setAccess(asked) }

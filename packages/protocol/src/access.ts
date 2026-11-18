@@ -27,10 +27,12 @@ export const accessSchema = z.object({
   places: z.array(placeSchema).max(MAX_PLACES).default([]),
   computer: z.enum(COMPUTER_REACH).default('off'),
   approvals: z.enum(APPROVALS).default('ask'),
+  /** Whether the assistant may drive a web browser on the computer, in a window the person sees (docs/SPEC.md, section 12.1). */
+  browser: z.boolean().default(true),
   /** Where the assistant's own folder is. Told by the core, which knows the computer it runs on; not a choice. */
   folder: z.string().optional()
 })
 export type Access = z.infer<typeof accessSchema>
 
-/** A fresh install: the assistant's own folder, nothing else, and every change asked first. */
-export const DEFAULT_ACCESS: Access = { workspace: true, places: [], computer: 'off', approvals: 'ask' }
+/** A fresh install: the assistant's own folder, nothing else, every change asked first, and its browser. */
+export const DEFAULT_ACCESS: Access = { workspace: true, places: [], computer: 'off', approvals: 'ask', browser: true }

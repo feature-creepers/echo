@@ -1,4 +1,5 @@
 export { type Access, APPROVALS, accessSchema, COMPUTER_REACH, DEFAULT_ACCESS, MAX_PLACES, type Place, placeSchema } from './access.ts'
+export { type BrowserState, browserStateSchema } from './browser.ts'
 export { CAPABILITIES, type Capability, capabilitySchema } from './capabilities.ts'
 export { createLineDecoder, type DecodedLine, encodeLine, type LineDecoder, MAX_LINE_LENGTH } from './codec.ts'
 export {
