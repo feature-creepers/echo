@@ -763,20 +763,22 @@ Example: "Send this to my landlord now." The critical persona: "I'd hold it. The
 
 The harness calls tools served by the core over MCP on the loopback address with a token, as Speak does. The harness's own tools are off, except web search where it exists, and its tools for files and commands within what the user granted (section 12.2). A tool either runs in the core, or is forwarded to a device capability of a connected client.
 
-| Family                        | Purpose                                                                      | Runs                                         | Who may call it   |
-| ----------------------------- | ---------------------------------------------------------------------------- | -------------------------------------------- | ----------------- |
-| `ui`                          | Render, patch and clear views                                                | Core; drawn by clients                       | Any session       |
-| `memory`                      | Search, remember, forget                                                     | Core                                         | Any session       |
-| `thread`                      | Open, send, focus, search                                                    | Core                                         | Orchestrator only |
-| `files`                       | Read and write the thread's own files                                        | Core                                         | Threads           |
-| `web`                         | Search and fetch                                                             | Core, or the harness's own                   | Threads           |
-| `calendar` and other services | Read, and write with approval                                                | Core                                         | Threads           |
-| `device.files`                | The user's own files, within the granted scope, and the files they hand over | The harness's own tools, checked by the core | Threads           |
-| `device.media`                | Music player                                                                 | The device                                   | Any session       |
-| `device.system`               | Machine readings, time zone, place                                           | The device                                   | Any session       |
-| `device.cursor`               | The selection, and writing at the cursor                                     | A desktop                                    | Threads           |
-| `device.screen`               | See and operate other apps (Speak's control mode)                            | A desktop, later                             | Threads           |
-| `device.notify`               | Notifications                                                                | The device                                   | Triggers          |
+| Family                        | Purpose                                           | Runs                                         | Who may call it   |
+| ----------------------------- | ------------------------------------------------- | -------------------------------------------- | ----------------- |
+| `ui`                          | Render, patch and clear views                     | Core; drawn by clients                       | Any session       |
+| `memory`                      | Search, remember, forget                          | Core                                         | Any session       |
+| `thread`                      | Open, send, focus, search                         | Core                                         | Orchestrator only |
+| `files`                       | Read and write the thread's own files             | Core                                         | Threads           |
+| `web`                         | Search and fetch                                  | Core, or the harness's own                   | Threads           |
+| `calendar` and other services | Read, and write with approval                     | Core                                         | Threads           |
+| `device.files`                | The user's own files, within the granted scope    | The harness's own tools, checked by the core | Threads           |
+| `device.media`                | Music player                                      | The device                                   | Any session       |
+| `device.system`               | Machine readings, time zone, place                | The device                                   | Any session       |
+| `device.cursor`               | The selection, and writing at the cursor          | A desktop                                    | Threads           |
+| `device.screen`               | See and operate other apps (Speak's control mode) | A desktop, later                             | Threads           |
+| `device.notify`               | Notifications                                     | The device                                   | Triggers          |
+
+Files the person hands over with what they say are read with the harness's own tools too, by the thread they go to, and pictures among them are shown to the model with the message (sections 9.7 and 12.2); the files a thread writes there are shown on a card of its turn. The assistant's folder is listed and read for the person by the core itself (`workspace.list`, `workspace.read`), never by a session.
 
 Services such as the calendar are reached through our own tools, so they work on every harness. The proof of concept's route, the claude.ai connector, works with Claude Code only.
 
