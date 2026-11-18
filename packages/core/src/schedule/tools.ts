@@ -65,7 +65,7 @@ export function scheduleTools({ schedule, now, zone }: ScheduleToolsOptions): To
   /** A job in one line, for a model: its id, what it is, and when it rings. */
   const line = (job: Job) => {
     const next = job.next === undefined ? undefined : Date.parse(job.next)
-    const what = job.kind === 'reminder' ? `reminder "${job.title}"` : `task "${job.title}": ${job.request ?? ''}`
+    const what = job.kind === 'reminder' ? `reminder "${job.title}"` : `task "${job.title}" (${(job.request ?? '').replace(/[.!?]+$/, '')})`
     const state = job.state === 'paused' ? ' (paused)' : ''
     return `- [${job.id}] ${what}, ${timingWords(job.timing, next, now().getTime(), zone())}${state}`
   }

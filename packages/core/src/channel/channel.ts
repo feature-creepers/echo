@@ -55,7 +55,7 @@ const RECAP_EXCHANGES = 8
  * How long an answer takes before the person is likely to have turned to something else: a notification then says
  * it is done when they are not looking ("tell me when it's done").
  */
-const LONG_ANSWER_MS = 30_000
+const LONG_ANSWER_MS = 20_000
 
 /** How much of an answer a notification carries, in characters. */
 const NOTICE_LENGTH = 240
