@@ -1,7 +1,7 @@
 import type { Client, CoreLink } from '@repo/client'
 import { describeShortcut, matchesShortcut, pinnedOf } from '@repo/client'
 import { useFollowed } from '@repo/client/react'
-import type { Accent, CommandInput, PersonaId } from '@repo/protocol'
+import type { Accent, CommandInput, Look, PersonaId } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { OPEN_ACCESS_EVENT } from '../access/access-indicator.tsx'
@@ -219,7 +219,8 @@ function Connected({ productName, client, engine }: { productName: string; clien
   }
 
   const { personas } = snapshot.settings
-  const accent = personas.available.find((persona) => persona.id === (picked ?? personas.active))?.accent
+  const shownPersona = personas.available.find((persona) => persona.id === (picked ?? personas.active))
+  const { accent, look } = shownPersona ?? {}
   // First launch is for someone whose personas were not confirmed when the app opened. Once in it, the user
   // stays in it until its last step, although the personas are confirmed halfway through.
   entered.current ??= personas.confirmed ? { is: 'main' } : { is: 'onboarding' }
@@ -228,7 +229,7 @@ function Connected({ productName, client, engine }: { productName: string; clien
 
   if (showing.is === 'onboarding') {
     return (
-      <Frame productName={productName} accent={accent}>
+      <Frame productName={productName} accent={accent} look={look}>
         <Onboarding
           productName={productName}
           personas={personas}
@@ -289,7 +290,7 @@ function Connected({ productName, client, engine }: { productName: string; clien
 
   return (
     <LibraryContext.Provider value={controls}>
-      <Frame productName={productName} accent={accent} actions={titleActions}>
+      <Frame productName={productName} accent={accent} look={look} actions={titleActions}>
         <div className="relative h-full">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
@@ -354,6 +355,8 @@ interface FrameProps {
   productName: string
   /** The accent everything inside shows. Left out, the neutral one. */
   accent?: Accent | undefined
+  /** The look of the core drawn inside. */
+  look?: Look | undefined
   /** What the title row offers on the right. */
   actions?: ReactNode
   children: ReactNode
@@ -367,9 +370,9 @@ interface FrameProps {
  * (close, minimise, maximise) over it, on no colour of their own: the titlebar-area values say which part of the
  * row those leave free. Where the system draws a material behind the page, the ground tints it.
  */
-function Frame({ productName, accent, actions, children }: FrameProps) {
+function Frame({ productName, accent, look, actions, children }: FrameProps) {
   return (
-    <div className="accent-shift relative flex h-screen flex-col overflow-hidden bg-(--window)" style={accentStyle(accent)}>
+    <div className="accent-shift relative flex h-screen flex-col overflow-hidden bg-(--window)" style={accentStyle(accent, look)}>
       <Ground />
       <header className="drag relative h-[env(titlebar-area-height,var(--frame-title-bar))] shrink-0">
         <div className="absolute top-[env(titlebar-area-y,0px)] left-[env(titlebar-area-x,0px)] flex h-[env(titlebar-area-height,var(--frame-title-bar))] w-[env(titlebar-area-width,100%)] items-center justify-between pr-2 pl-4">

@@ -1,4 +1,5 @@
 import { describeShortcut } from '@repo/client'
+import type { Look } from '@repo/protocol'
 import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from 'react'
 import { useDevice } from '../device/device.tsx'
 import { Eye } from '../presence/eye.tsx'
@@ -18,8 +19,8 @@ export interface InputLineProps {
   pause?: { paused: boolean; onToggle(): void } | undefined
   /** Talking instead of typing, when the device can hear. */
   talk?: { listening: boolean; onPress(): void } | undefined
-  /** The persona that answers, what it is doing, and the one a press of the toggle hands over to. */
-  persona?: { name: string; mood: Mood; next: { name: string } | undefined; onToggle(): void } | undefined
+  /** The persona that answers, its look, what it is doing, and the one a press of the toggle hands over to. */
+  persona?: { name: string; look: Look; mood: Mood; next: { name: string } | undefined; onToggle(): void } | undefined
 }
 
 /**
@@ -72,7 +73,7 @@ export function InputLine({ name, busy, onSay, onStop, talk, persona, pause }: I
           title={persona.next ? `${persona.name} · click for ${persona.next.name}` : persona.name}
           className="flex size-9 shrink-0 items-center justify-center rounded-md transition-colors duration-(--duration-quick) ease-soft hover:not-disabled:bg-white/[0.05]"
         >
-          <Eye mood={persona.mood} />
+          <Eye mood={persona.mood} look={persona.look} />
         </button>
       ) : (
         <span className="w-2" />

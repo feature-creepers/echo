@@ -1,8 +1,9 @@
+import { LOOKS, type Look } from '@repo/protocol'
 import { useEffect, useRef } from 'react'
 import { cn } from '../primitives/cn.ts'
-import { createLens } from './lens.ts'
-import { createLife } from './life.ts'
-import { createPainter, type Mood } from './painter.ts'
+import { createGpuCore } from './gpu.ts'
+import { createLife, type Mood } from './life.ts'
+import { createPainter } from './painter.ts'
 
 export interface OrbProps {
   mood: Mood
@@ -16,6 +17,16 @@ export interface OrbProps {
   className?: string
 }
 
+/** The look drawn before any persona is known: the instrument, which reads as something getting ready. */
+const NEUTRAL_LOOK: Look = 'hud'
+
+/**
+ * A development switch: `?core=shader` in the page's address draws the core on the graphics card even where only
+ * the processor would draw it, so the shaders can be seen on a machine without a graphics card. Nothing in the
+ * product sets it.
+ */
+const forceShader = () => new URLSearchParams(window.location.search).get('core') === 'shader'
+
 /** Reads a CSS colour, whatever way it is written, as red, green and blue from 0 to 255. */
 function readColor(probe: CanvasRenderingContext2D, value: string): [number, number, number] {
   probe.fillStyle = '#000'
@@ -24,6 +35,12 @@ function readColor(probe: CanvasRenderingContext2D, value: string): [number, num
   probe.fillRect(0, 0, 1, 1)
   const [r = 0, g = 0, b = 0] = probe.getImageData(0, 0, 1, 1).data
   return [r, g, b]
+}
+
+/** Reads the look the surrounding element asks for, as `--look`. */
+function readLook(element: Element): Look {
+  const value = getComputedStyle(element).getPropertyValue('--look').trim()
+  return (LOOKS as readonly string[]).includes(value) ? (value as Look) : NEUTRAL_LOOK
 }
 
 /** A canvas filling its box, made for one drawing and thrown away with it. */
@@ -35,13 +52,14 @@ function addCanvas(box: HTMLElement) {
 }
 
 /**
- * The core, in whatever accent surrounds it. It is decoration for a screen reader: the name and the state
- * written beside it say the same thing in words.
+ * The core, in whatever accent and look surround it (`--accent`, and `--look`, which `accentStyle` sets from the
+ * persona). It is decoration for a screen reader: the name and the state written beside it say the same thing in
+ * words.
  *
- * It is drawn as a lens on the graphics card (`lens.ts`), moved by the life behind it (`life.ts`). Where the
- * graphics card cannot draw it, the simpler rings of `painter.ts` stand in. Drawing stops while the window is
- * hidden or the core is out of view, and with less motion asked for, the lens holds still and is only drawn
- * again while a mood fades.
+ * It is drawn on the graphics card (`gpu.ts`), moved by the life behind it (`life.ts`). Where the graphics card
+ * cannot draw it, the same looks are painted on a 2D canvas (`painter.ts`) from the same life. Drawing stops while
+ * the window is hidden or the core is out of view, and with less motion asked for, the core holds still and is
+ * only drawn again while a mood, a look or an accent changes.
  */
 export function Orb({ mood, size, level, className }: OrbProps) {
   const box = useRef<HTMLSpanElement>(null)
@@ -56,21 +74,24 @@ export function Orb({ mood, size, level, className }: OrbProps) {
     // The canvas is made here rather than by React: one that gave the graphics card's context can never give a 2D
     // one, and one whose context was let go cannot be drawn on again, so each drawing gets its own.
     let canvas = addCanvas(element)
-    const lens = createLens(canvas)
+    const gpu = createGpuCore(canvas, forceShader())
     let flat: CanvasRenderingContext2D | null = null
-    if (!lens) {
+    if (!gpu) {
       canvas.remove()
       canvas = addCanvas(element)
       flat = canvas.getContext('2d')
     }
-    const life = createLife(live.current.mood)
     const painter = createPainter()
+    let look = readLook(element)
+    const life = createLife(live.current.mood, look)
     const still = window.matchMedia('(prefers-reduced-motion: reduce)')
-    const started = performance.now()
-    let previous = started
-    let accent: readonly number[] = [164, 173, 187]
-    let target: readonly number[] | undefined
-    let accentReadAt = -Infinity
+    // Each look keeps the accent it was last shown in, so while one gives way to the other, each fades in its own.
+    let target = readColor(probe, getComputedStyle(element).getPropertyValue('--accent').trim() || '#a4adbb')
+    const accents = Object.fromEntries(LOOKS.map((each) => [each, [...target]])) as Record<Look, [number, number, number]>
+    const shown = Object.fromEntries(LOOKS.map((each) => [each, [...target]])) as Record<Look, [number, number, number]>
+    let readAt = performance.now()
+    let previous = readAt
+    let fading = false
     let drawn = ''
     let frame = 0
     let onScreen = true
@@ -86,39 +107,33 @@ export function Orb({ mood, size, level, className }: OrbProps) {
         drawn = ''
       }
       const delta = Math.min(0.1, (now - previous) / 1000)
-      // The accent is whatever the surrounding element says it is. It changes rarely, so it is read a few times a
-      // second, and the colour drawn eases towards each reading: a change of persona fades as a mood does.
-      if (now - accentReadAt > 200) {
-        const first = !target
+      previous = now
+      // The accent and the look are whatever the surrounding element says. The look is a word, read every frame so a
+      // change of persona morphs the core in the same frame as the rest of the window changes. The accent changes
+      // rarely and costs more to read, so it is read a few times a second, and every frame while a look comes in;
+      // the colour drawn eases towards each reading.
+      const asked = readLook(element)
+      if (asked !== look || now - readAt > 200 || fading) {
         target = readColor(probe, getComputedStyle(element).getPropertyValue('--accent').trim() || '#a4adbb')
-        if (first) accent = target
-        accentReadAt = now
+        // A look coming in starts in the accent it comes with; the one giving way keeps its own.
+        if (asked !== look) accents[asked] = [...target]
+        look = asked
+        readAt = now
       }
       const ease = 1 - Math.exp(-delta * 12)
-      accent = accent.map((value, index) => value + ((target?.[index] ?? value) - value) * ease)
-      const [red = 0, green = 0, blue = 0] = accent
-      const heard = Math.max(0, Math.min(1, live.current.level?.() ?? 0))
-      previous = now
+      accents[look] = accents[look].map((value, channel) => value + ((target[channel] ?? value) - value) * ease) as [number, number, number]
+      for (const each of LOOKS) shown[each] = accents[each].map(Math.round) as [number, number, number]
 
-      if (lens) {
-        const pose = life.step({ mood: live.current.mood, level: heard, delta, still: still.matches })
-        // Holding still, a frame is only drawn while something changes: the size, the accent, or a mood fading.
-        const settled = Math.abs(pose.weights[live.current.mood] - 1) < 0.002
-        const state = `${pixels} ${accent.map(Math.round).join()} ${live.current.mood}`
-        if (!(still.matches && settled && drawn === state)) {
-          lens.paint(pose, [red, green, blue], pixels)
-          drawn = settled ? state : ''
-        }
-      } else if (flat) {
-        painter.paint(flat, {
-          time: (now - started) / 1000,
-          delta,
-          mood: live.current.mood,
-          level: heard,
-          accent: [red, green, blue],
-          size: pixels,
-          still: still.matches
-        })
+      const heard = Math.max(0, Math.min(1, live.current.level?.() ?? 0))
+      const pose = life.step({ mood: live.current.mood, look, level: heard, delta, still: still.matches })
+      fading = pose.looks[look] < 1
+      // Holding still, a frame is only drawn while something changes: the size, the accent, a mood or a look fading.
+      const settled = Math.abs(pose.weights[live.current.mood] - 1) < 0.002 && Math.abs(pose.looks[look] - 1) < 0.002
+      const state = `${pixels} ${shown[look].join()} ${live.current.mood} ${look}`
+      if (!(still.matches && settled && drawn === state)) {
+        if (gpu) gpu.paint(pose, shown, pixels)
+        else if (flat) painter.paint(flat, pose, shown, pixels)
+        drawn = settled ? state : ''
       }
       run()
     }
@@ -151,7 +166,7 @@ export function Orb({ mood, size, level, className }: OrbProps) {
       pause()
       document.removeEventListener('visibilitychange', onVisibility)
       watch.disconnect()
-      lens?.dispose()
+      gpu?.dispose()
       canvas.remove()
     }
   }, [])
