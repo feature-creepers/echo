@@ -427,7 +427,13 @@ describe('a Claude Code session', () => {
 
     for (const name of ['CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_SESSION_ID', 'CLAUDE_AGENT_SDK_VERSION', 'AI_AGENT'])
       expect(env).not.toHaveProperty(name)
-    expect(env).toMatchObject({ CLAUDE_CONFIG_DIR: '/somewhere/else', UNRELATED: 'kept', CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1', MCP_TOOL_TIMEOUT: '3600000' })
+    expect(env).toMatchObject({
+      CLAUDE_CONFIG_DIR: '/somewhere/else',
+      UNRELATED: 'kept',
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
+      MCP_TOOL_TIMEOUT: '3600000',
+      CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'
+    })
   })
 
   it('reports a CLI that starts with more than it was given', async () => {

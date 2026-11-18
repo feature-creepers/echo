@@ -49,7 +49,15 @@ const TOOL_TIMEOUT_MS = 3_600_000
  * How long a command may run. A project's build or test suite takes minutes; the CLI's own two minutes would stop it
  * half way. The person can stop a turn at any time, and the command with it.
  */
-const COMMAND_VARIABLES = { BASH_DEFAULT_TIMEOUT_MS: String(10 * 60_000), BASH_MAX_TIMEOUT_MS: String(30 * 60_000) }
+const COMMAND_VARIABLES = {
+  BASH_DEFAULT_TIMEOUT_MS: String(10 * 60_000),
+  BASH_MAX_TIMEOUT_MS: String(30 * 60_000),
+  // A command left running in the background, or a tool call of the core moved there after two minutes (an
+  // approval the person has not answered yet), would finish after the turn the core is following has ended,
+  // and the CLI would answer it on its own, out of turn. Nothing runs in the background: the person waits for
+  // what they asked, sees it on screen, and can stop it.
+  CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'
+}
 
 /** How long the CLI has to stop by itself once its input is closed, before it is stopped. */
 const CLOSE_GRACE_MS = 1500
