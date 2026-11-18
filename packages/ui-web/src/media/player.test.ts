@@ -144,4 +144,30 @@ describe('the media player', () => {
     player.seek(30)
     expect(element.currentTime).toBe(0)
   })
+
+  it('plays a queue in order, going on by itself at the end of each file', () => {
+    const { element, log } = fakeElement()
+    const player = createMediaPlayer({ element, later: () => undefined })
+    const first: MediaSource = { url: 'https://example.org/1.mp3', kind: 'audio', title: 'One', live: false }
+    const second: MediaSource = { url: 'https://example.org/2.mp3', kind: 'audio', title: 'Two', live: false }
+    const third: MediaSource = { url: 'https://example.org/3.mp3', kind: 'audio', title: 'Three', live: false }
+    player.enqueue(first)
+    expect(player.current().source?.title).toBe('One')
+    player.enqueue(second)
+    player.enqueue(third)
+    expect(player.current().queue.map((one) => one.title)).toEqual(['Two', 'Three'])
+    element.fire('ended')
+    expect(player.current().source?.title).toBe('Two')
+    player.next()
+    expect(player.current().source?.title).toBe('Three')
+    expect(log.filter((line) => line.startsWith('play'))).toHaveLength(3)
+    element.fire('ended')
+    expect(player.current().status).toBe('paused')
+    player.enqueue(first)
+    player.clearQueue()
+    expect(player.current().queue).toEqual([])
+    player.enqueue(second)
+    player.stop()
+    expect(player.current().queue).toEqual([])
+  })
 })

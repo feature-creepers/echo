@@ -14,6 +14,7 @@ import { createBrowsing } from './files/browse.ts'
 import { createFiles } from './files/files.ts'
 import { createWrittenFiles } from './files/written.ts'
 import { createLibrary } from './library/library.ts'
+import { mediaControlOf } from './media/control.ts'
 import { createMemory } from './memory/memory.ts'
 import { createObjections } from './personas/objection.ts'
 import type { Blobs } from './ports/blobs.ts'
@@ -149,13 +150,28 @@ export function createCore(options: CoreOptions): Core {
       definition: {
         name: MEDIA_TOOL,
         description:
-          'Pause, resume or stop what the media player plays (a radio, a podcast, a video). It plays on when its view is cleared or replaced, so stop it with this when the person asks.',
-        inputSchema: { type: 'object', properties: { action: { type: 'string', enum: [...MEDIA_ACTIONS] } }, required: ['action'] }
+          'Drive the media player (a radio, a podcast, a video): pause, resume or stop it; "volume" with "level" (0 to 100) or "step" (-100 to 100, such as -20 for "a bit lower"); "seek" a file "to" a position or "by" seconds (-30 to go back); "queue" a stream or file to play after the current one (url, kind, title, live), "next" to skip to it, "clear-queue". It plays on when its view is cleared or replaced, so stop it with this when the person asks.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            action: { type: 'string', enum: [...MEDIA_ACTIONS] },
+            level: { type: 'number', description: 'For volume: 0 to 100.' },
+            step: { type: 'number', description: 'For volume: a change, -100 to 100.' },
+            to: { type: 'number', description: 'For seek: the position, in seconds.' },
+            by: { type: 'number', description: 'For seek: seconds from where it is, forward or back.' },
+            url: { type: 'string', description: 'For queue: the stream or file itself.' },
+            kind: { type: 'string', enum: ['audio', 'video'] },
+            title: { type: 'string' },
+            subtitle: { type: 'string' },
+            live: { type: 'boolean' }
+          },
+          required: ['action']
+        }
       },
       run: (input) => {
-        const action = (input as { action?: unknown } | undefined)?.action
-        if (!MEDIA_ACTIONS.includes(action as (typeof MEDIA_ACTIONS)[number])) return { ok: false, text: `action is one of: ${MEDIA_ACTIONS.join(', ')}.` }
-        emit({ type: 'event', name: 'media.control', action: action as (typeof MEDIA_ACTIONS)[number] })
+        const control = mediaControlOf(input)
+        if (typeof control === 'string') return { ok: false, text: control }
+        emit({ type: 'event', name: 'media.control', ...control })
         return { ok: true, text: 'Done.' }
       }
     }

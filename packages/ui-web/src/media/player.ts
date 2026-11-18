@@ -29,6 +29,8 @@ export interface PlayerState {
   /** For a file: where it is, and how long it lasts, in seconds. */
   position: number
   duration: number | undefined
+  /** What plays after the current source ends, in order. */
+  queue: MediaSource[]
 }
 
 /** The part of an HTMLMediaElement the player uses: small enough for a test to stand in for it. */
@@ -57,6 +59,11 @@ export interface MediaPlayer extends Followed<PlayerState> {
   stop(): void
   seek(seconds: number): void
   setVolume(volume: number): void
+  /** Add a source to the queue: it plays once what plays now ends, or at once when nothing plays. */
+  enqueue(source: MediaSource): void
+  /** Play what the queue has next; nothing playing is left when it is empty. */
+  next(): void
+  clearQueue(): void
   setMuted(muted: boolean): void
   /** Lower the sound for a reason (the assistant speaking, the user talking), until every reason is gone. */
   duck(reason: string, on: boolean): void
@@ -107,7 +114,8 @@ export function createMediaPlayer({ element, volume = 0.8, later = (step, ms) =>
     muted: false,
     ducked: false,
     position: 0,
-    duration: undefined
+    duration: undefined,
+    queue: []
   })
   const set = (change: Partial<PlayerState>) => state.set({ ...state.current(), ...change })
   const ducking = new Set<string>()
@@ -162,7 +170,11 @@ export function createMediaPlayer({ element, volume = 0.8, later = (step, ms) =>
   element.addEventListener('waiting', () => {
     if (state.current().status === 'playing' || state.current().status === 'loading') set({ buffering: true })
   })
-  element.addEventListener('ended', () => set({ status: 'paused', buffering: false }))
+  // At the end of a file, the queue goes on by itself.
+  element.addEventListener('ended', () => {
+    if (state.current().queue.length > 0) player.next()
+    else set({ status: 'paused', buffering: false })
+  })
   element.addEventListener('timeupdate', () => {
     const { source, position } = state.current()
     if (source && !source.live && Math.abs(element.currentTime - position) >= 0.5) set({ position: element.currentTime })
@@ -204,10 +216,27 @@ export function createMediaPlayer({ element, volume = 0.8, later = (step, ms) =>
 
     stop() {
       if (!state.current().source) return
-      set({ source: undefined, status: 'idle', buffering: false, problem: undefined, position: 0, duration: undefined })
+      set({ source: undefined, status: 'idle', buffering: false, problem: undefined, position: 0, duration: undefined, queue: [] })
       element.pause()
       element.removeAttribute('src')
       element.load()
+    },
+
+    enqueue(source) {
+      const now = state.current()
+      if (!now.source || now.status === 'idle') return player.play(source)
+      set({ queue: [...now.queue, source] })
+    },
+
+    next() {
+      const [first, ...rest] = state.current().queue
+      if (!first) return player.stop()
+      set({ queue: rest })
+      start(first, true)
+    },
+
+    clearQueue() {
+      set({ queue: [] })
     },
 
     seek(seconds) {

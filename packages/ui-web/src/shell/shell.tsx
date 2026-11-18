@@ -155,10 +155,25 @@ function Connected({ productName, client, engine }: { productName: string; clien
     () =>
       client.session.onEvent((event) => {
         if (event.name !== 'media.control') return
-        const { source } = player.current()
-        if (event.action === 'stop') player.stop()
-        else if (event.action === 'pause') player.pause()
-        else if (source) player.play(source)
+        const { source, volume, position } = player.current()
+        switch (event.action) {
+          case 'stop':
+            return player.stop()
+          case 'pause':
+            return player.pause()
+          case 'resume':
+            return source && player.play(source)
+          case 'volume':
+            return player.setVolume(event.level ?? volume + (event.step ?? 0))
+          case 'seek':
+            return player.seek(event.to ?? position + (event.by ?? 0))
+          case 'queue':
+            return event.source && player.enqueue(event.source)
+          case 'next':
+            return player.next()
+          case 'clear-queue':
+            return player.clearQueue()
+        }
       }),
     [client, player]
   )

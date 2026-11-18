@@ -981,6 +981,7 @@ On 18 November 2026 the assistant, running in the app on the owner's Windows com
 - Other apps, seen and operated through the accessibility tree, with their guardrails (section 12.1).
 - The signed log: the activity chained by hash, checked and exported (section 12.2).
 - The clipboard, read on a card and written freely (item 6 below).
+- The media player's volume, seeking and queue, by voice (item 6 below).
 - Guardrails as settings: deleting and publishing always asked unless the owner turns it off, and how long a question waits (section 12.2).
 
 Two of the report's findings were mistaken. A question can already be answered aloud ("yes, go ahead"). Its web search returning American results comes from the harness's own tool, not from this product.
@@ -1005,7 +1006,7 @@ The rest is designed here and built in this order, each behind the same gate as 
    - **Printers.**
    - **Removable drives:** asked like any change.
    - **The camera:** always asked, with a marker while in use.
-   - **The media player:** volume, seeking and a queue.
+   - **The media player**, built: volume, seeking and a queue. `media_control` takes `volume` (a level, or a step such as -20 for "a bit lower"), `seek` (to a position, or by seconds forward or back), `queue` (a stream or file to play after the current one), `next` and `clear-queue`, beside pause, resume and stop; the player goes on to what is queued at the end of a file, a Media block says what is next with a button to skip to it, and stopping empties the queue.
 7. **Raw audio, by choice.** Recognising the speaker and a song, and a vocabulary of the owner's own words for the recogniser. It is off by default, since audio would then leave the transcript.
 8. **Approvals away from the screen.** A phone notification that approves or refuses, once the phone app exists (section 5). An act with an outside effect (sending, paying, publishing) also asks for a spoken confirmation phrase the owner sets.
 9. **A signed log**, built (section 12.2, the signed log). The activity records are chained by hash, so the log cannot be changed unseen. It can be exported.

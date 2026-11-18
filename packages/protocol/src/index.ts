@@ -75,7 +75,7 @@ export {
   resultSchema
 } from './envelope.ts'
 export { deviceDesktopSchema, deviceNotifySchema } from './events/schedule.ts'
-export { MEDIA_ACTIONS } from './events/views.ts'
+export { MEDIA_ACTIONS, type MediaControl, type MediaSourceShown, mediaSourceSchema } from './events/views.ts'
 export { type Event, type EventName, type EventOf, eventSchema } from './events.ts'
 export {
   ATTACHMENT_MAX_BYTES,

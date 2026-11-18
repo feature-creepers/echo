@@ -117,6 +117,18 @@ export function Media({ props }: { props: BlockProps<'Media'> }) {
           </div>
         )
       )}
+
+      {held && state.queue.length > 0 && (
+        <div className="flex items-center justify-between gap-2 px-0.5 text-xs">
+          <p className="min-w-0 truncate text-text-faint">
+            Next: <span className="text-text-soft">{state.queue[0]?.title}</span>
+            {state.queue.length > 1 && ` and ${state.queue.length - 1} more`}
+          </p>
+          <button type="button" onClick={() => player.next()} className="shrink-0 text-label text-text-soft hover:text-text">
+            Skip
+          </button>
+        </div>
+      )}
     </div>
   )
 }
