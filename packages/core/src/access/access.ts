@@ -154,8 +154,12 @@ function workedLine(use: AccessUse, path: (path: string) => string): string {
     use.action === 'run' ? (use.paths.length === 0 ? `on the web: ${use.command ?? use.tool}` : `\`${use.command ?? ''}\``) : use.paths.map(path).join(', ')
   if (use.decision === 'refused') return `not done, ${DOING[use.action]} ${what}: ${use.detail ?? use.reason}`
   const outcome = use.outcome === undefined ? '' : use.outcome.ok ? '' : ` (it failed${use.outcome.error ? `: ${use.outcome.error}` : ''})`
+  // How much a change changed, in lines: enough to tell a one-line fix from a rewrite.
+  const lines = (use.changes ?? []).filter((change) => !change.binary && !change.large)
+  const size =
+    lines.length === 0 ? '' : ` (+${lines.reduce((sum, change) => sum + change.added, 0)} −${lines.reduce((sum, change) => sum + change.removed, 0)})`
   const undone = use.undo?.done ? ' (the person undid it since)' : ''
-  return `${DONE[use.action]} ${what}${outcome}${undone}`
+  return `${DONE[use.action]} ${what}${size}${outcome}${undone}`
 }
 
 /** Keeps nothing: for a core with no records, which has no computer either. */

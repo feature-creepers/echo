@@ -19,6 +19,9 @@ Sections 2 and 3 describe what existed before the rewrite. Section 14.8 says wha
 - Access has three approval levels, approvals for the session, places never reached, commands checked by the paths they name, an Activity page with undo, and a way to stop everything (section 12.2).
 - The catalogue has a Media block, and one player serves the app (section 9.6). Saved widgets form a library the assistant brings back from (section 9.8). Everything the assistant shows stays in the centre, as one stream of views, newest first, that turns like a dial; pinned widgets sit in docks on both sides of it, and a sheet over the stage holds the advanced views (sections 9.3 and 13.2).
 - The settings became Library and settings, a hub of pages whose sidebar starts with the way back. The side sheet opens over any screen, is resized by its edge and is never widened by what it holds, and a full answer opens whole in it, to copy or export (sections 13.2 and 13.3).
+- Projects: a thread works in a folder of the person's as a senior developer would, with the project's own instructions, says what it does and how it went, and carries its work on across restarts. Echo is developed this way (section 7.11, decision 18).
+- What publishes to others (a push, a release, a pull request, a deployment) is asked at every level, and what the assistant changed is shown as diffs in the side sheet and on the Activity page (section 12.2).
+- The rewrite was merged into `main`, where work goes on for every system at once, and the repository is named `echo` (decisions 18 and 19).
 
 ## 0. Summary
 

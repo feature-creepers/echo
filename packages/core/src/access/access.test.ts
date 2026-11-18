@@ -664,9 +664,11 @@ describe('a project folder to work in', () => {
 
 describe('what a thread did', () => {
   it('is told back to a new session: changes, commands and refusals, from its folder, and nothing of other threads', async () => {
-    const { access, reach, settings } = setup()
+    const { access, reach, settings, files } = setup()
     settings.setAccess({ approvals: 'auto' })
+    files.set(`${WORKSPACE}/list.md`, text('one\ntwo\n'))
     const changed = await reach.approve(change, signal())
+    files.set(`${WORKSPACE}/list.md`, text('one\n2\nthree\n'))
     if (changed.allow && changed.use) access.report(changed.use, { ok: true })
     const ran = await reach.approve(command('pnpm test'), signal())
     if (ran.allow && ran.use) access.report(ran.use, { ok: false, error: 'Exit code 1' })
@@ -674,7 +676,7 @@ describe('what a thread did', () => {
     await reach.approve({ action: 'read', tool: 'Read', paths: [`${WORKSPACE}/list.md`] }, signal())
     await settle()
     expect(access.worked('t', WORKSPACE)?.split('\n')).toEqual([
-      '- changed list.md',
+      '- changed list.md (+2 −1)',
       '- ran `pnpm test` (it failed: Exit code 1)',
       '- not done, running `cat ~/.ssh/id_rsa`: It holds SSH keys, never reached.'
     ])
