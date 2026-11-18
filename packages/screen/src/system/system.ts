@@ -1,4 +1,4 @@
-import type { DesktopFound } from '@repo/core'
+import type { DesktopFound, SystemKey } from '@repo/core'
 import type { Combination } from '../keys.ts'
 import type { TreeNode } from '../outline.ts'
 
@@ -14,6 +14,12 @@ export interface ScreenSystem {
   helper(folder: string): Helper
   /** A combination as this system's helper presses it. */
   keys(combination: Combination): unknown
+  /**
+   * The keys of the whole system a widget's button presses, as this system's helper presses them, and whether its
+   * helper opens a link with its app (docs/SPEC.md, section 9.5). Left out where its helper does neither yet:
+   * buttons that act on the computer are Windows' only, for now.
+   */
+  acts?: { systemKeys: Readonly<Record<SystemKey, unknown>> } | undefined
 }
 
 /** The helper that reads and acts, on one system. */
@@ -59,4 +65,8 @@ export interface Questions {
   screenshot: { input: { window: string }; output: { data: string; mime: 'image/png' | 'image/jpeg' } }
   /** Milliseconds since the last input of the mouse or the keyboard, by anyone; `null` when the system does not say. */
   idle: { input: Record<string, never>; output: number | null }
+  /** A key of the whole system, as `acts.systemKeys` gives it, pressed `times` times with no window brought to the front. */
+  systemKey: { input: { key: unknown; times: number }; output: null }
+  /** Open a link with the app the system gives it. */
+  open: { input: { link: string }; output: null }
 }

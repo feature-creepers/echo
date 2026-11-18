@@ -45,6 +45,17 @@ export const viewCommands = {
     output: z.object({ view: viewSchema.optional(), margin: z.array(viewSchema).default([]), stream: z.array(viewSchema).default([]) })
   },
 
+  /**
+   * Carry out what a Button of a view does on the computer, pressed by the person: its `act`, at once and with no
+   * turn of the conversation (docs/SPEC.md, section 9.5). The steps are a view's, which the catalogue checks
+   * (`@repo/catalog`); here they are only given their shape, as a view's properties are. A step that cannot be done
+   * comes back as an error in words for the person.
+   */
+  'view.act': {
+    input: z.object({ act: z.array(z.record(z.string(), z.unknown())).min(1).max(12) }),
+    output: z.object({})
+  },
+
   /** Remove a view from the screen: the one given, wherever it is in the stream, or, left out, the one on the stage. */
   'view.clear': {
     input: z.object({ view: z.string().min(1).max(64).optional() }),

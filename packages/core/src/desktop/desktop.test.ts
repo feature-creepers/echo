@@ -54,6 +54,9 @@ function standIn(found: DesktopFound = { available: true }) {
     press: async (window, key) => void done.push(`press ${window} ${key}`),
     scroll: async (window, direction) => void done.push(`scroll ${window} ${direction}`),
     idle: async () => idle,
+    seek: async (window, name) => Object.entries(ELEMENTS).find(([, element]) => element.window.id === window && element.name === name)?.[0],
+    systemKey: async (key, times) => void done.push(`key ${key} ×${times}`),
+    open: async (link) => void done.push(`open ${link}`),
     close: async () => void done.push('close')
   }
   return {
@@ -235,5 +238,58 @@ describe('other apps', () => {
     settings.setAccess({ desktop: false })
     expect(marks.at(-1)).toBeNull()
     await expect(call('desktop_windows', {})).rejects.toThrow('No tool')
+  })
+})
+
+describe("a button's act, pressed by the person", () => {
+  const notepad = { program: 'notepad', name: 'Notepad' }
+
+  it.each([
+    [
+      'presses media and sound keys, with no window brought forward',
+      [{ key: 'MediaPlayPause' }, { key: 'VolumeUp', times: 3 }],
+      ['key MediaPlayPause ×1', 'key VolumeUp ×3']
+    ],
+    ['opens a link with its app', [{ open: 'spotify:playlist:37i9dQZF1DX4kZR8vL5oVX' }], ['open spotify:playlist:37i9dQZF1DX4kZR8vL5oVX']],
+    [
+      'opens, waits, then clicks by name in an app the person lets it use',
+      [{ open: 'notes:today' }, { wait: 1 }, { click: 'Bold', app: 'Notepad' }],
+      ['open notes:today', 'click e1']
+    ]
+  ])('%s', async (_what, act, expected) => {
+    const { control, settings, done, ready } = setup()
+    settings.setAccess({ apps: [notepad] })
+    await ready
+    expect(await control.act(act)).toEqual({ ok: true })
+    expect(done).toEqual(expected)
+  })
+
+  it.each([
+    ['a step that is not one', [{ run: 'shutdown /s' }], 'This button cannot act'],
+    ['a link to a file, though the view was checked', [{ open: 'file:///C:/Windows/System32/calc.exe' }], 'A widget never opens file: links'],
+    ['a click in an app the person has not listed', [{ click: 'Bold', app: 'Notepad' }], 'Notepad is not among the apps the assistant may use'],
+    ['a click in an app with no window', [{ click: 'Play', app: 'Spotify', within: 0 }], 'Spotify has no window open.'],
+    ['a click on what the window does not show', [{ click: 'Italic', app: 'Notepad', within: 0.5 }], 'Notepad shows no "Italic" now.'],
+    ['a click on what deletes', [{ click: 'Delete', app: 'Notepad' }], 'a widget never presses that']
+  ])('refuses %s, and says why', async (_what, act, problem) => {
+    const { control, settings, done, ready } = setup()
+    if (!problem.includes('not among')) settings.setAccess({ apps: [notepad] })
+    await ready
+    const result = await control.act(act)
+    expect(result.ok).toBe(false)
+    expect(result.ok ? '' : result.problem).toContain(problem)
+    expect(done.filter((step) => step.startsWith('click'))).toEqual([])
+  })
+
+  it('clicks in no app while the person turned the use of other apps off, though keys still go', async () => {
+    const { control, settings, done, ready } = setup({ on: false })
+    settings.setAccess({ apps: [notepad] })
+    await ready
+    expect(await control.act([{ key: 'MediaNext' }])).toEqual({ ok: true })
+    expect(await control.act([{ click: 'Bold', app: 'Notepad' }])).toMatchObject({
+      ok: false,
+      problem: expect.stringContaining('Let the assistant use other apps')
+    })
+    expect(done).toEqual(['key MediaNext ×1'])
   })
 })

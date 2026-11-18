@@ -1,4 +1,8 @@
+import type { SystemKey } from '@repo/catalog'
 import type { Bounds } from '@repo/protocol'
+
+/** A key of the whole system a widget's button presses: the media keys and the sound's (`@repo/catalog`). */
+export type { SystemKey }
 
 /**
  * The other apps of the computer, as the assistant sees and operates them (docs/SPEC.md, section 12.1,
@@ -40,6 +44,16 @@ export interface Desktop {
    * itself left out. Nothing when the system does not say.
    */
   idle(): Promise<number | undefined>
+  /**
+   * The element of a window with this name, and this role when given, as the accessibility tree names them: a
+   * reference to it, as an outline gives one, or nothing when the window shows none. What a widget's button clicks
+   * by name (docs/SPEC.md, section 9.5).
+   */
+  seek(window: string, name: string, role?: string): Promise<string | undefined>
+  /** Press a key of the whole system, `times` times, without bringing any window to the front: a media or a sound key. */
+  systemKey(key: SystemKey, times: number): Promise<void>
+  /** Open a link with the app the system gives it: `spotify:playlist:<id>`, an https page. The core has checked it. */
+  open(link: string): Promise<void>
   /** Let go of everything: the helper that reads the screen stops. The next use starts it again. */
   close(): Promise<void>
 }

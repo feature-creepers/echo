@@ -15,6 +15,11 @@ export interface Block {
   props: z.ZodObject
   /** Whether other blocks go inside it. */
   children: boolean
+  /**
+   * What is wrong with properties that each passed, taken together, in a sentence a model acts on: a Button needs
+   * `say` or `act`, one of the two. Nothing when they hold together.
+   */
+  check?: (props: Record<string, unknown>) => string | undefined
 }
 
 /** The colours a block may be given: the ones of the app, by role, so everything the assistant composes looks like the app. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { outlineOf, roleOf, type TreeNode } from './outline.ts'
+import { outlineOf, roleOf, seekIn, type TreeNode } from './outline.ts'
 
 describe('the outline of a window', () => {
   it.each([
@@ -47,5 +47,25 @@ describe('the outline of a window', () => {
     expect(outline.cut).toBe(true)
     expect(outline.text.split('\n')).toEqual(['- menu bar "Application" [e40]', '  - menu item "File" [e41]'])
     expect([...outline.keys.keys()]).toEqual(['e40', 'e41'])
+  })
+})
+
+describe('an element sought by name, as a widget clicks it', () => {
+  const nodes: TreeNode[] = [
+    { key: 'k1', role: 'ControlType.Button', name: 'Play', enabled: false, depth: 0 },
+    { key: 'k2', role: 'ControlType.Button', name: 'Play', depth: 1 },
+    { key: 'k3', role: 'ControlType.Hyperlink', name: 'Play  later', depth: 1 },
+    { key: 'k4', role: 'ControlType.ListItem', name: 'Jazz classics', depth: 1 }
+  ]
+
+  it.each([
+    ['an enabled one before a disabled one of the same name', 'Play', undefined, 'k2'],
+    ['whatever the case', 'PLAY', undefined, 'k2'],
+    ['with its spaces gathered, as the outline shows them', 'Play later', undefined, 'k3'],
+    ['of the role given', 'Jazz classics', 'list item', 'k4'],
+    ['nothing of another role', 'Jazz classics', 'button', undefined],
+    ['nothing the window does not show', 'Pause', undefined, undefined]
+  ])('finds %s', (_what, name, role, key) => {
+    expect(seekIn(nodes, name, role)).toBe(key)
   })
 })

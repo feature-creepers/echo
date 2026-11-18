@@ -107,4 +107,39 @@ describe('validateView', () => {
     expect(media('https://example.org/live.aac')).toEqual([])
     expect(media('http://example.org/live.aac')[0]).toMatch(/^"all" \(Media\): url: Give an https:\/\/ address/)
   })
+
+  describe('a button', () => {
+    const button = (props: Record<string, unknown>) => problems(view({ all: { type: 'Button', props: { label: 'Play', ...props } } }))
+
+    it.each([
+      ['says something to the assistant', { say: 'Play the next one.' }],
+      ['presses a media key', { act: [{ key: 'MediaPlayPause' }] }],
+      ['raises the sound by a few steps', { act: [{ key: 'VolumeUp', times: 5 }] }],
+      [
+        'opens a playlist, then starts it',
+        { act: [{ open: 'spotify:playlist:37i9dQZF1DX4kZR8vL5oVX' }, { click: 'Play', app: 'Spotify', role: 'button', within: 8 }] }
+      ],
+      ['opens a page', { act: [{ open: 'https://example.org/live' }] }],
+      ['waits between two steps', { act: [{ open: 'zoommtg://zoom.us/join?confno=1' }, { wait: 2 }, { key: 'VolumeMute' }] }]
+    ])('that %s is accepted', (_what, props) => {
+      expect(button(props)).toEqual([])
+    })
+
+    it.each([
+      ['neither says nor acts', {}, 'Give the button `say` or `act`, one of the two.'],
+      ['both says and acts', { say: 'Pause.', act: [{ key: 'MediaPlayPause' }] }, 'Give the button `say` or `act`, one of the two.'],
+      ['presses a key that is not a system key', { act: [{ key: 'Control+W' }] }, 'act.0'],
+      ['opens a file', { act: [{ open: 'file:///C:/Windows/System32/calc.exe' }] }, 'A widget never opens file: links'],
+      ['opens a page of the system', { act: [{ open: 'ms-settings:privacy' }] }, 'A widget never opens ms-settings: links'],
+      ['opens a script', { act: [{ open: 'javascript:alert(1)' }] }, 'A widget never opens javascript: links'],
+      ['opens a page over an open connection', { act: [{ open: 'http://example.org' }] }, 'Give the https:// address of the page.'],
+      ['opens what is not a link', { act: [{ open: 'my playlist' }] }, 'Give a link with its scheme'],
+      ['clicks with no app named', { act: [{ click: 'Play' }] }, 'act.0'],
+      ['carries a step of its own invention', { act: [{ run: 'shutdown /s' }] }, 'act.0'],
+      ['takes too many steps', { act: Array.from({ length: 7 }, () => ({ key: 'VolumeUp' })) }, 'act'],
+      ['waits too long in all', { act: [{ wait: 10 }, { click: 'Play', app: 'Spotify', within: 15 }] }, 'A press waits 20 seconds at most in all']
+    ])('that %s is refused', (_what, props, problem) => {
+      expect(button(props).join(' ')).toContain(problem)
+    })
+  })
 })

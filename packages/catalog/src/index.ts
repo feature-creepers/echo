@@ -1,3 +1,15 @@
+export {
+  type Act,
+  type ActStep,
+  actSchema,
+  actStepSchema,
+  appLinkSchema,
+  linkProblem,
+  MAX_ACT_SECONDS,
+  MAX_ACT_STEPS,
+  SYSTEM_KEYS,
+  type SystemKey
+} from './act.ts'
 export { type Block, TONES } from './block.ts'
 export { type Shape, shapeSchema } from './blocks/drawing.ts'
 export { BLOCKS, type BlockName, isBlockName } from './catalog.ts'

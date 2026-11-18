@@ -199,6 +199,7 @@ function Connected({ productName, client, engine }: { productName: string; clien
       readFile: (file: string) => client.session.run('file.read', { file }),
       readShapes: (url: string) => client.session.run('shapes.read', { url }).then((read) => read.shapes),
       readFeed: (url: string) => client.session.run('feed.read', { url }).then((read) => read.document),
+      act: (act) => client.session.run('view.act', { act: [...act] }).then(() => undefined),
       files
     }),
     [say, client, files]

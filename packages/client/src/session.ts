@@ -14,11 +14,14 @@ export type CommandFailure =
 
 export class CommandFailed extends Error {
   readonly code: CommandFailure
+  /** What the core said about it, when it said something: often written for the person, as a button's act is. */
+  readonly detail: string | undefined
 
   constructor(command: string, code: CommandFailure, detail?: string) {
     super(`The command "${command}" failed: ${detail ?? code}`)
     this.name = 'CommandFailed'
     this.code = code
+    this.detail = detail
   }
 }
 

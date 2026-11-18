@@ -1,3 +1,4 @@
+import type { Block } from './block.ts'
 import { BLOCKS, type BlockName, isBlockName } from './catalog.ts'
 import { type ViewElement, type ViewSpec, viewSpecSchema } from './view.ts'
 
@@ -40,6 +41,8 @@ export function validateView(written: unknown): Validation {
         problems.push(`"${id}" (${element.type}): ${where}${issue.message}`)
       }
     }
+    const together = props.success ? (block as Block).check?.(props.data) : undefined
+    if (together) problems.push(`"${id}" (${element.type}): ${together}`)
     if (!block.children && element.children.length > 0) problems.push(`"${id}" (${element.type}) cannot contain other elements.`)
     for (const child of element.children) {
       if (!Object.hasOwn(elements, child)) problems.push(`"${id}" contains "${child}", which is not one of the elements.`)

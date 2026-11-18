@@ -52,6 +52,18 @@ export interface Outline {
 }
 
 /**
+ * The helper's key of the element of a tree with this name, and this role when given, read as an outline shows them
+ * (spaces gathered, case aside): what a widget's button clicks by name. An enabled one is taken before a disabled
+ * one of the same name. Nothing when the tree has none.
+ */
+export function seekIn(nodes: readonly TreeNode[], name: string, role?: string): string | undefined {
+  const plain = (text: string) => text.replace(/\s+/g, ' ').trim().toLowerCase()
+  const wanted = plain(name)
+  const found = nodes.filter((node) => plain(node.name) === wanted && (role === undefined || roleOf(node.role) === plain(role)))
+  return (found.find((node) => node.enabled !== false) ?? found[0])?.key
+}
+
+/**
  * The outline of a tree, at most `length` characters. An element with neither a name nor a role a person uses is
  * left out and its children rise to its place, so a window's many unnamed panes do not bury what matters.
  * References are numbered from `first`, so those of two looks never clash.

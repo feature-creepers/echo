@@ -1,16 +1,59 @@
 import type { BlockProps } from '@repo/catalog'
-import { type FormEvent, useState } from 'react'
+import { CommandFailed } from '@repo/client'
+import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { Button as AppButton } from '../../primitives/button.tsx'
 import { cn } from '../../primitives/cn.ts'
 import { Eyebrow } from '../../primitives/eyebrow.tsx'
 import { useViewActions } from '../context.ts'
 
+/** How long a button's failure stays under it, in milliseconds: long enough to read, gone at the next press. */
+const PROBLEM_MS = 6_000
+
+/**
+ * A button that says something to the assistant, or acts on the computer at once (docs/SPEC.md, section 9.5). Acting,
+ * it is busy until the steps are done, so a press is not sent twice by accident; failing, it says why under it.
+ */
 export function Button({ props }: { props: BlockProps<'Button'> }) {
-  const { say } = useViewActions()
+  const { say, act } = useViewActions()
+  const [busy, setBusy] = useState(false)
+  const [problem, setProblem] = useState<string>()
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  useEffect(() => () => clearTimeout(timer.current), [])
+
+  const press = () => {
+    if (props.say !== undefined) return say(props.say)
+    if (!props.act || !act) return
+    clearTimeout(timer.current)
+    setProblem(undefined)
+    setBusy(true)
+    act(props.act)
+      .catch((error: unknown) => {
+        setProblem(error instanceof CommandFailed && error.detail ? error.detail : 'It could not be done.')
+        timer.current = setTimeout(() => setProblem(undefined), PROBLEM_MS)
+      })
+      .finally(() => setBusy(false))
+  }
+
+  // An act needs a computer: where none can be reached, the button stays, unpressable.
+  const unpressable = props.say === undefined && !act
   return (
-    <AppButton kind={props.emphasis === 'primary' ? 'primary' : 'secondary'} size="sm" className="w-fit" onClick={() => say(props.say)}>
-      {props.label}
-    </AppButton>
+    <div className="grid w-fit max-w-full gap-1">
+      <AppButton
+        kind={props.emphasis === 'primary' ? 'primary' : 'secondary'}
+        size="sm"
+        className={cn('w-fit', busy && 'cursor-progress')}
+        disabled={unpressable}
+        aria-busy={busy}
+        onClick={busy ? undefined : press}
+      >
+        {props.label}
+      </AppButton>
+      {problem && (
+        <p role="alert" className="max-w-64 text-danger text-xs break-words">
+          {problem}
+        </p>
+      )}
+    </div>
   )
 }
 

@@ -1,15 +1,25 @@
 import { z } from 'zod'
+import { actSchema } from '../act.ts'
 import type { Block } from '../block.ts'
 
 /**
- * Blocks the user can act on. Each ends in something the user says to the assistant: pressing a button or
- * picking an option is a turn of the conversation, in the words given in `say`.
+ * Blocks the user can act on. Most end in something the user says to the assistant: pressing a button or picking
+ * an option is a turn of the conversation, in the words given in `say`. A Button may instead act on the computer
+ * itself (`act`), at once and with no turn, so a widget the person keeps drives an app or the sound without asking
+ * anyone (docs/SPEC.md, section 9.5).
  */
 export const inputBlocks = {
   Button: {
-    description: 'Something the user can press. `say` is what pressing it tells you, as if the user had said it: write it in the first person.',
-    props: z.object({ label: z.string(), say: z.string(), emphasis: z.enum(['primary', 'secondary']).default('secondary') }),
-    children: false
+    description:
+      "Something the user can press. Give `say` or `act`. `say` is what pressing it tells you, as if the user had said it: write it in the first person. `act` is done on the computer at once, with no call to you, for controls kept on a widget: `key` presses a system key (media keys drive the app that plays, volume keys the sound); `open` opens a link in its app (spotify:playlist:<id>); `click` presses an element of an allowed app's window by the name desktop_look shows, waiting up to `within` seconds. Steps run in order.",
+    props: z.object({
+      label: z.string(),
+      say: z.string().optional(),
+      act: actSchema.optional(),
+      emphasis: z.enum(['primary', 'secondary']).default('secondary')
+    }),
+    children: false,
+    check: (props) => ((props.say === undefined) === (props.act === undefined) ? 'Give the button `say` or `act`, one of the two.' : undefined)
   },
   Choice: {
     description: 'A question with a few answers to pick from. Picking one tells you its `say`, as if the user had said it.',

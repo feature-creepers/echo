@@ -1,8 +1,14 @@
 import type { Desktop, DesktopElement, WindowFacts } from '@repo/core'
 import { readKey } from './keys.ts'
-import { outlineOf } from './outline.ts'
+import { outlineOf, seekIn } from './outline.ts'
 import { system as thisSystem } from './system/index.ts'
 import type { Helper, RawWindow, ScreenSystem } from './system/system.ts'
+
+/** What a system's helper does for a widget's buttons, or why not, in words for the person who pressed one. */
+const actsOf = (system: ScreenSystem) => {
+  if (!system.acts) throw new Error('Buttons that act on the computer work on Windows only, for now.')
+  return system.acts
+}
 
 /** How many elements of a window are read at most: a large app's tree has thousands, most of them never used. */
 const ELEMENT_LIMIT = 1_500
@@ -118,6 +124,23 @@ export function createDesktop({ folder, own = [], system = thisSystem }: Desktop
 
     async scroll(window, direction, screens, ref) {
       await acted(ask('scroll', { window, direction, screens, key: ref === undefined ? undefined : keyOf(ref).key }))
+    },
+
+    async seek(window, name, role) {
+      const key = seekIn(await ask('tree', { window, limit: ELEMENT_LIMIT }), name, role)
+      if (key === undefined) return undefined
+      const ref = `e${next++}`
+      references.set(ref, { key, window })
+      return ref
+    },
+
+    async systemKey(key, times) {
+      await acted(ask('systemKey', { key: actsOf(system).systemKeys[key], times }))
+    },
+
+    async open(link) {
+      actsOf(system)
+      await ask('open', { link })
     },
 
     async idle() {
