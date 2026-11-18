@@ -7,11 +7,11 @@ import { useCoreLight } from './light.ts'
 
 /**
  * The ground's light is drawn this many times a second at most while only its pools drift: they are slow, and the
- * core's light is soft. While the core's field shows, something travels through the ground, and every frame is drawn.
+ * core's light is soft. While the core's voice travels through the ground, every frame is drawn.
  */
 const FRAMES_A_SECOND = 30
 
-const UNIFORMS = ['size', 'ratio', 'time', 'live', 'accent', 'core', 'glow', 'spot', 'voice', 'voiceShift', 'fine', 'phase', 'phaseAt'] as const
+const UNIFORMS = ['size', 'ratio', 'time', 'live', 'accent', 'core', 'glow', 'spot', 'voice', 'voiceShift', 'fine', 'voices', 'travel'] as const
 
 function setUp(canvas: HTMLCanvasElement) {
   const gl = canvas.getContext('webgl2', {
@@ -69,8 +69,8 @@ function setUp(canvas: HTMLCanvasElement) {
 
 /**
  * The ground of every screen: fine, faint dots under a light that lives. Pools of light drift over them, the core
- * lights the dots round it, where it looks a pool of its light falls, and what the core does goes on through the
- * dots round it: its voice, its sweep, its beat, its waking (`ground-shader.ts`). Where the graphics card cannot
+ * lights the dots round it, where it looks a pool of its light falls, and its voice goes on through the dots round
+ * it (`ground-shader.ts`). Where the graphics card cannot
  * draw it, or less motion is asked for and nothing would move, the still CSS ground is drawn instead. Nothing is
  * drawn while the window is hidden.
  */
@@ -139,13 +139,13 @@ export function LivingGround({ className }: { className?: string }) {
       const ease = 1 - Math.exp(-delta * 8)
       accent = accent.map((value, channel) => value + ((target[channel] ?? value) - value) * ease) as [number, number, number]
       const power = light?.power ?? 0.3
-      if (moving) time += delta * (0.75 + 0.7 * power)
+      // The pools drift a little faster as the computer works harder, never so fast that the ground seems to stir.
+      if (moving) time += delta * (0.85 + 0.35 * power)
       const core = light?.core
       const spot = light?.spot
       const field = light?.field
-      // While something of the core's field travels through the ground, every frame counts.
-      const fielded =
-        moving && core !== undefined && field !== undefined && (field.speaking + field.listening + field.sweep + field.beat > 0.001 || field.wave < 0.999)
+      // While the core's voice travels through the ground, every frame counts.
+      const fielded = moving && core !== undefined && field !== undefined && field.speaking + field.listening > 0.001
       const shown = `${core?.x.toFixed(1)} ${core?.y.toFixed(1)} ${core?.radius.toFixed(1)} ${light?.glow.toFixed(3)} ${spot?.x.toFixed(1)} ${spot?.y.toFixed(1)} ${spot?.strength.toFixed(3)} ${accent.map((value) => value.toFixed(3)).join()}`
       // Moving, a frame is drawn at a steady, low pace; held still, only when the core's light or the size changes.
       const due = fielded || (moving ? now - drawnAt >= 1000 / FRAMES_A_SECOND - 2 : dirty || shown !== lastLight)
@@ -174,11 +174,10 @@ export function LivingGround({ className }: { className?: string }) {
           gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, ECHO_LENGTH, 1, gl.RG, gl.UNSIGNED_BYTE, heard)
           gl.uniform1f(at.voiceShift, light?.voiceShift ?? 0)
           gl.uniform1f(at.fine, field.fine)
-          gl.uniform4f(at.phase, field.speaking, field.listening, field.sweep, field.beat)
-          gl.uniform4f(at.phaseAt, field.sweepAt, field.beatAt, field.wave, field.travel)
+          gl.uniform2f(at.voices, field.speaking, field.listening)
+          gl.uniform1f(at.travel, field.travel)
         } else {
-          gl.uniform4f(at.phase, 0, 0, 0, 0)
-          gl.uniform4f(at.phaseAt, 0, 1, 1, 0)
+          gl.uniform2f(at.voices, 0, 0)
         }
         gl.drawArrays(gl.TRIANGLES, 0, 3)
       }

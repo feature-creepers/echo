@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { FIELD_GAP, FIELD_SPEED, type Field, fieldOf, restingField } from './field.ts'
-import { createLife, type Input, type Mood, type Pose, WAKE, WORK_PERIOD } from './life.ts'
+import { createLife, type Input, type Mood, type Pose, WAKE } from './life.ts'
 
 const FRAME = 1 / 60
 
@@ -18,59 +18,33 @@ function fields(seconds: number, input: Partial<Input> & { mood: Mood }, life = 
 const last = (each: Field[]) => each.at(-1) as Field
 
 describe('the field round the core', () => {
-  it('rests with nothing showing and its wave spent', () => {
+  it('rests with nothing showing', () => {
     const resting = restingField()
-    expect([resting.speaking, resting.listening, resting.sweep, resting.beat]).toEqual([0, 0, 0, 0])
-    expect(resting.wave).toBe(1)
+    expect([resting.speaking, resting.listening]).toEqual([0, 0])
   })
 
-  const phases: { mood: Mood; shows: keyof Field }[] = [
-    { mood: 'speaking', shows: 'speaking' },
-    { mood: 'listening', shows: 'listening' },
-    { mood: 'thinking', shows: 'sweep' },
-    { mood: 'working', shows: 'beat' }
-  ]
-  it.each(phases)('shows only what the core does while $mood', ({ mood, shows }) => {
-    const field = last(fields(2, { mood }).each)
-    for (const phase of phases) {
-      if (phase.shows === shows) expect(field[phase.shows]).toBeGreaterThan(0.99)
-      else expect(field[phase.shows]).toBeLessThan(0.01)
+  it.each([
+    { mood: 'speaking', speaking: 1, listening: 0 },
+    { mood: 'listening', speaking: 0, listening: 1 }
+  ] satisfies { mood: Mood; speaking: number; listening: number }[])('carries only the voice of the core while $mood', ({ mood, speaking, listening }) => {
+    const field = last(fields(3, { mood }).each)
+    expect(field.speaking).toBeCloseTo(speaking, 2)
+    expect(field.listening).toBeCloseTo(listening, 2)
+  })
+
+  // What the core does without a voice stays inside it, so the ground stays calm under it.
+  it.each([{ mood: 'idle' }, { mood: 'thinking' }, { mood: 'working' }, { mood: 'asleep' }] satisfies { mood: Mood }[])(
+    'shows nothing while $mood, waking included',
+    ({ mood }) => {
+      for (const field of fields(WAKE.lens + 1, { mood }).each) expect(field.speaking + field.listening).toBeLessThan(0.01)
     }
-  })
-
-  it.each([{ mood: 'idle' }, { mood: 'asleep' }] satisfies { mood: Mood }[])('shows none of them while $mood', ({ mood }) => {
-    const field = last(fields(WAKE.lens + 1, { mood }).each)
-    expect(field.speaking + field.listening + field.sweep + field.beat).toBeLessThan(0.01)
-    expect(field.wave).toBe(1)
-  })
+  )
 
   it.each([
     { look: 'hud', fine: 1 },
     { look: 'lens', fine: 0 }
   ] as const)('is drawn in fine lines for the instrument and in soft light for the lens: $look', ({ look, fine }) => {
     expect(last(fields(1, { mood: 'idle', look }).each).fine).toBe(fine)
-  })
-
-  it.each(['hud', 'lens'] as const)('throws one wave as the %s wakes, once its light has ignited, and never again', (look) => {
-    const { each } = fields(WAKE[look] + 0.5, { mood: 'idle', look })
-    const wave = each.map((field) => field.wave)
-    expect(wave[0]).toBe(0)
-    // It only ever goes out.
-    for (let index = 1; index < wave.length; index++) expect(wave[index] ?? 0).toBeGreaterThanOrEqual(wave[index - 1] ?? 0)
-    expect(wave[Math.round(WAKE[look] * 30)]).toBeGreaterThan(0.2)
-    expect(wave[Math.round(WAKE[look] * 30)]).toBeLessThan(0.8)
-    expect(last(each).wave).toBe(1)
-  })
-
-  it('sends a ring out with each beat of its work, from the core to where it is gone', () => {
-    const { each } = fields(WORK_PERIOD * 3, { mood: 'working', look: 'lens' })
-    const period = each.slice(-Math.round(WORK_PERIOD * 60)).map((field) => field.beatAt)
-    expect(Math.min(...period)).toBeLessThan(0.05)
-    expect(Math.max(...period)).toBeGreaterThan(0.95)
-    for (const at of period) {
-      expect(at).toBeGreaterThanOrEqual(0)
-      expect(at).toBeLessThanOrEqual(1)
-    }
   })
 
   it('carries the voice on rings that leave one after the other, at the pace the voice travels', () => {
@@ -90,8 +64,8 @@ describe('the field round the core', () => {
 
   it('writes into the field it is given, so a frame makes nothing new', () => {
     const into = restingField()
-    const { pose } = fields(0.5, { mood: 'thinking' })
+    const { pose } = fields(0.5, { mood: 'speaking' })
     expect(fieldOf(pose, into)).toBe(into)
-    expect(into.sweep).toBeGreaterThan(0.5)
+    expect(into.speaking).toBeGreaterThan(0.5)
   })
 })

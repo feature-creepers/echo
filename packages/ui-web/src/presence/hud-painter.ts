@@ -44,10 +44,7 @@ function spoke(path: Path2D, around: number, inner: number, outer: number) {
 }
 
 /** The fine hairline rings between the main ones, as the shader draws them. */
-const HAIRLINES = [0.315, 0.345, 0.405, 0.59, 0.69] as const
-
-/** The rings the motes ride (`HUD_MOTES` in `life.ts`), as the shader's. */
-const MOTE_RINGS = [RADII.broken, RADII.bezel, RADII.arcs] as const
+const HAIRLINES = [0.315, 0.405, RADII.rule] as const
 
 /** How far the bezel's ticks hang in: the plain ones, every sixth, and every thirtieth. */
 const TICK_LENGTHS = [0.012, 0.02, 0.034] as const
@@ -91,19 +88,6 @@ function shapes(radius: number) {
     if (hash(index, 23) > 0.84) arc(blocks, RADII.data * radius, (index + 0.3) / 36, (index + 0.7) / 36)
   }
 
-  const glyphs = new Path2D()
-  const height = 0.022 * radius
-  const middle = RADII.glyphs * radius
-  for (let index = 0; index < 160; index++) {
-    if (hash(Math.floor(index / 8), 5) <= 0.3 || index % 8 > 6) continue
-    const around = (index + 0.5) / 160
-    const kind = hash(index, 41)
-    if (kind < 0.45) spoke(glyphs, around, middle - height, middle + height)
-    else if (kind < 0.75) spoke(glyphs, around, middle, middle + height)
-    else if (kind < 0.9) spoke(glyphs, around, middle - 0.75, middle + 0.75)
-    else arc(glyphs, middle - height * 0.6, around - 0.35 / 160, around + 0.35 / 160)
-  }
-
   const arcs = new Path2D()
   const caps = new Path2D()
   for (const [from, to] of HUD_ARCS) {
@@ -117,7 +101,7 @@ function shapes(radius: number) {
   const frameTicks = new Path2D()
   for (let index = 0; index < 8; index++) spoke(frameTicks, index / 8, RADII.frame * radius, (RADII.frame + 0.025) * radius)
 
-  return { broken, band, lit, ticks, markers, data, blocks, glyphs, arcs, caps, frame, frameTicks }
+  return { broken, band, lit, ticks, markers, data, blocks, arcs, caps, frame, frameTicks }
 }
 
 /** The dark field behind the rings, drawn once for a size. */
@@ -249,37 +233,31 @@ export function createHudPainting(): HudPainting {
       context.arc(0, 0, RADII.bezel * radius - 0.5, 0, TAU)
       context.stroke()
       place(RADII.bezel, turns[2] ?? 0)
-      context.fillStyle = css(whiter, 0.75 * rings * lesser)
+      context.fillStyle = css(whiter, 0.6 * rings * lesser)
       context.fill(ring.markers)
 
       place(RADII.data, turns[4] ?? 0)
       stroke(ring.data, 1, color, 0.45 * rings * lesser)
       stroke(ring.blocks, 3, color, 0.6 * rings * lesser)
-      if (fine > 0.01) {
-        place(RADII.glyphs, turns[5] ?? 0)
-        stroke(ring.glyphs, 1, color, 0.44 * rings * fine)
-      }
 
-      place(RADII.arcs, turns[6] ?? 0)
+      place(RADII.arcs, turns[5] ?? 0)
       stroke(ring.arcs, 1.5, color, 0.55 * rings)
       stroke(ring.arcs, 0.044 * radius, color, 0.06 * rings)
-      stroke(ring.caps, 1, whiter, 0.5 * rings)
+      stroke(ring.caps, 1, whiter, 0.4 * rings)
 
-      // Thinking, a scan sweeps along the outer arcs, its tail fading behind it.
+      // Thinking, the outer circle lights softly behind a scan that goes slowly round: no bright tip, only the light
+      // passing.
       if (hud.scan > 0.01) {
         place(RADII.arcs, 0)
         const head = hud.scanAngle / TAU
         for (let step = 0; step < 18; step++) {
           const from = head + step * 0.012
-          context.lineWidth = 2
-          context.strokeStyle = css(whiter, Math.exp(-(step + 0.5) * 0.012 * 7) * 0.9 * hud.scan)
+          context.lineWidth = 1.5
+          context.strokeStyle = css(whiter, Math.exp(-(step + 0.5) * 0.012 * 5) * 0.4 * hud.scan)
           context.beginPath()
           context.arc(0, 0, RADII.arcs * radius, from * TAU, (from + 0.012) * TAU)
           context.stroke()
         }
-        const tip = new Path2D()
-        spoke(tip, head, (RADII.arcs - 0.032) * radius, (RADII.arcs + 0.032) * radius)
-        stroke(tip, 2, whiter, hud.scan)
       }
 
       // Fine hairline rings between the main ones, as the scales of an instrument, and deeper in colour outwards.
@@ -293,26 +271,6 @@ export function createHudPainting(): HudPainting {
           context.stroke()
         }
       }
-
-      // Motes of light riding three rings, each with a short tail behind it.
-      MOTE_RINGS.forEach((at, index) => {
-        const head = (hud.motes[index] ?? 0) * TAU
-        const way = index === 1 ? -1 : 1
-        place(at, 0)
-        const tail = 9 / (at * radius)
-        for (let step = 0; step < 6; step++) {
-          const from = head - way * step * (tail / 6)
-          context.lineWidth = 2
-          context.strokeStyle = css(whiter, 0.55 * Math.exp(-step / 2) * rings * lesser)
-          context.beginPath()
-          context.arc(0, 0, at * radius, Math.min(from, from - way * (tail / 6)), Math.max(from, from - way * (tail / 6)))
-          context.stroke()
-        }
-        context.fillStyle = css(whiter, Math.min(1, 1.6 * rings * lesser))
-        context.beginPath()
-        context.arc(Math.cos(head) * at * radius, Math.sin(head) * at * radius, 1.4, 0, TAU)
-        context.fill()
-      })
 
       place(RADII.frame, 0)
       stroke(ring.frame, 1, deep, 0.14 * rings)

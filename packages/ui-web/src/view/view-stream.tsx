@@ -4,7 +4,7 @@ import { type CSSProperties, memo, useLayoutEffect, useMemo, useRef, useState } 
 import { cn } from '../primitives/cn.ts'
 import { DURATION, EASE } from '../styles/motion.ts'
 import type { ViewActions } from './context.ts'
-import { type Band, dialOf, roomOf } from './dial.ts'
+import { type Band, dialOf, maskOf, roomOf, sinkOf } from './dial.ts'
 import { createPush, scrollsUnder, wheelTravel } from './push.ts'
 import { ViewCard } from './view-card.tsx'
 
@@ -18,8 +18,13 @@ export interface ViewStreamProps {
   /** What the blocks of a view can do. Kept the same between renders, so a card is drawn again only when it changes. */
   actions(view: ShownView): ViewActions
   onClose(view: ShownView): void
-  /** How far up from the bottom of the stream's box the composer reaches, in pixels: cards sink under it. */
+  /** How far up from the bottom of the stream's box the composer reaches, in pixels: cards fade out above it. */
   under: number
+  /**
+   * How far the stage has gone home, from 0 in the stream to 1 at home. At home the stream sinks under the core, so
+   * that only the top `HOME_PEEK` pixels of its newest view show above the composer, fading out into it.
+   */
+  home?: MotionValue<number> | undefined
   /** The person scrolled on up past the newest view, by wheel or key: the stage goes back to its large core. */
   onPastTop?: (() => void) | undefined
   className?: string | undefined
@@ -27,6 +32,18 @@ export interface ViewStreamProps {
 
 /** The room under the header where what rises fades out, before the band a card is read in starts. */
 const INSET = 48
+
+/**
+ * The room above the composer where what sinks fades out, after the band a card is read in ends: nothing of a card
+ * is seen behind the composer.
+ */
+const OUTSET = 40
+
+/**
+ * How much of the newest view shows at home, in pixels above the composer: its bar and the start of what it holds,
+ * fading out into the composer, as a hint of what waits rather than a second thing to read.
+ */
+export const HOME_PEEK = 96
 
 /** How the stream turns to a new place: soft enough to follow with the eye, damped so it never bounces. */
 const TURN = { type: 'spring', stiffness: 240, damping: 32, mass: 1 } as const
@@ -42,9 +59,9 @@ const SETTLE = { share: 0.2, most: 120, after: 140 } as const
  * The views of the conversation, newest first, turning like a dial. The newest rests in the middle of the band
  * between the header and the composer and the older ones follow under it; scrolling down brings them up to the
  * middle. Each card shrinks a little and fades the further it is from the middle, up towards the header and down
- * under the composer. A new view comes in at the middle and pushes the others down.
+ * towards the composer, above which it is gone. A new view comes in at the middle and pushes the others down.
  */
-export function ViewStream({ views, arrived, attended, actions, onClose, under, onPastTop, className }: ViewStreamProps) {
+export function ViewStream({ views, arrived, attended, actions, onClose, under, home, onPastTop, className }: ViewStreamProps) {
   const [dial] = useState(createDial)
   const shown = useRef(views)
   const pastTop = useRef(onPastTop)
@@ -64,12 +81,13 @@ export function ViewStream({ views, arrived, attended, actions, onClose, under, 
   }, [views, dial])
 
   useLayoutEffect(() => dial.setUnder(under), [under, dial])
+  useLayoutEffect(() => dial.setHome(home), [home, dial])
   useLayoutEffect(() => dial.dispose, [dial])
 
   return (
     <div
       ref={dial.attachScroller}
-      // Each card fades by itself, and the box ends behind the composer, so nothing is cut where it is seen.
+      // Each card fades by itself, above the composer and under the header, so nothing is cut where it is seen.
       data-stream=""
       className={cn('scroll-none overflow-y-auto overscroll-contain px-8 [overflow-anchor:none]', className)}
     >
@@ -129,9 +147,9 @@ const StreamCard = memo(function StreamCard({ view, dial, appear, lit, actions, 
   return (
     <div ref={element} data-view={view.id} className="group/card relative shrink-0 origin-center will-change-[transform,opacity]">
       <ViewCard view={view} actions={can} onClose={() => onClose(view)} />
-      {/* The core's light on the card it looks at: its edge in the accent, as under the pointer, and a little of the
-          light falling on it from above, where the core is. Faintly the same under the pointer, which the core follows.
-          Only its opacity moves. */}
+      {/* The core's light on the card it looks at: its edge in the accent, and a little of the light falling on it
+          from above, where the core is. Faintly the same under the pointer, as a card shows it is there to use. Only
+          its opacity moves. */}
       <span
         aria-hidden="true"
         style={CORE_LIGHT}
@@ -195,6 +213,12 @@ function createDial() {
   let column: HTMLElement | null = null
   let scroll = 0
   let under = 0
+  // Where the composer's top is, from the top of the box; and how far the stream sinks at home.
+  let floor = INSET + 1
+  let depth = 0
+  let home: MotionValue<number> | undefined
+  let leaveHome: () => void = () => undefined
+  let sunk = ''
   let band: Band = { top: INSET, bottom: INSET + 1 }
   let settling: { stop(): void } | undefined
   let pending: ReturnType<typeof setTimeout> | undefined
@@ -203,6 +227,9 @@ function createDial() {
   let pastTop: () => void = () => undefined
   const push = createPush(PUSH.far, PUSH.within)
   const still = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+
+  /** How far the stage has gone home, from 0 to 1. */
+  const homeward = () => Math.min(1, Math.max(0, home?.get() ?? 0))
 
   const paint = (slot: Slot) => {
     const offset = slot.offset.get()
@@ -213,12 +240,11 @@ function createDial() {
     const scale = look.scale * (0.96 + 0.04 * presence)
     const transform = `translate3d(0,${offset.toFixed(2)}px,0) scale(${scale.toFixed(4)})`
     const opacity = (look.opacity * presence).toFixed(3)
-    // Where the box cuts a card rising past its top, the card fades out over the room above the band instead. Only
-    // that card carries a mask, in its own coordinates: one over the whole stream is drawn again on every frame of a
-    // scroll, which costs frames.
-    const cut = slot.height / 2 - middle / scale
-    const mask =
-      cut > -INSET / scale && cut < slot.height ? `linear-gradient(to bottom,transparent ${cut.toFixed(1)}px,black ${(cut + INSET / scale).toFixed(1)}px)` : ''
+    // Where the box cuts a card rising past its top, the card fades out over the room above the band instead; and
+    // towards the composer it fades out above the composer's top, over all that shows of it at home. The stream sunk
+    // at home moves the composer's top up the card by as much.
+    const going = homeward()
+    const mask = maskOf(middle, slot.height, scale, { inset: INSET, floor: floor - going * depth, fade: OUTSET + (HOME_PEEK - OUTSET) * going })
     if (transform !== slot.transform) {
       slot.transform = transform
       slot.element.style.transform = transform
@@ -234,6 +260,22 @@ function createDial() {
   }
   const paintAll = () => {
     for (const slot of slots.values()) paint(slot)
+  }
+
+  /**
+   * Sinks the stream as far as the stage has gone home, and draws every card for it. The whole scroller moves, a
+   * transform only, so the scroll and every card's place in it stay as they are.
+   */
+  const sink = () => {
+    if (scroller) {
+      const by = homeward() * depth
+      const transform = by > 0.01 ? `translate3d(0,${by.toFixed(2)}px,0)` : ''
+      if (transform !== sunk) {
+        sunk = transform
+        scroller.style.transform = transform
+      }
+    }
+    paintAll()
   }
 
   /**
@@ -264,13 +306,16 @@ function createDial() {
       if (slot) ordered.push(slot)
     }
     const height = scroller.clientHeight
-    band = { top: INSET, bottom: Math.max(INSET + 1, height - under) }
+    floor = Math.max(INSET + 1, height - under)
+    band = { top: INSET, bottom: Math.max(INSET + 1, floor - OUTSET) }
     const first = ordered[0]
     const last = ordered.at(-1)
     if (first && last) {
       const room = roomOf(first.element.offsetHeight, last.element.offsetHeight, band, height)
       column.style.paddingTop = `${room.top}px`
       column.style.paddingBottom = `${room.bottom}px`
+      // At home the stream is at its top, where the newest card's top rests where the room above it ends.
+      depth = sinkOf(room.top, floor, HOME_PEEK)
     }
     // The scroll this layout was last drawn at: a change of the layout can move it before the scroll event says so.
     const was = scroll
@@ -298,7 +343,7 @@ function createDial() {
       if (Math.abs(shift) > 0.5) glideFrom(slot, shift)
     }
     if (toTop && was > 1 && turn !== undefined) for (const slot of arriving) glideFrom(slot, turn)
-    paintAll()
+    sink()
   }
 
   const onScroll = () => {
@@ -398,6 +443,13 @@ function createDial() {
       under = px
       measure()
     },
+    setHome(value: MotionValue<number> | undefined) {
+      if (value === home) return
+      leaveHome()
+      home = value
+      leaveHome = value?.on('change', sink) ?? (() => undefined)
+      sink()
+    },
     /** A card is drawn: it is measured with the others, and comes in if it arrived just now. */
     add(element: HTMLElement, appear: boolean) {
       const slot: Slot = {
@@ -432,6 +484,7 @@ function createDial() {
     },
     dispose() {
       release()
+      leaveHome()
       resized.disconnect()
       for (const slot of slots.values()) slot.stop()
       slots.clear()

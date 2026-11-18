@@ -15,7 +15,7 @@ export interface CoreLight {
   spot: { x: number; y: number; radius: number; strength: number } | undefined
   /** How hard the computer works, as the core shows it, from 0 to 1: the ground's light drifts faster with it. */
   power: number
-  /** What the core does, for the ground round it to show: its voice going out, its sweep, its beat, its waking. */
+  /** What the core does, for the ground round it to show: its voice going out, and the voice it hears coming in. */
   field: Field
   /**
    * The voice over the last second, as the core's life keeps it (`Pose.echo`): its own and the one it hears, newest

@@ -6,8 +6,7 @@ import { type Drawing, PRELUDE } from './glsl.ts'
  *
  * The ray first meets a dome of glass standing out of a thin flat seat of dark polished metal. The dome reflects the
  * room it is in: a nearly dark room with a row of light panels in its ceiling, as on the film's set, which its curve
- * draws out along its upper rim; and, of the screen it lives on, the pointer as a small glint and the view it looks at
- * as a faint lit pane. The ray then bends into the glass and goes down the barrel: a tunnel of stops, each a dark
+ * draws out along its upper rim; and, of the screen it lives on, the view it looks at as a faint lit pane. The ray then bends into the glass and goes down the barrel: a tunnel of stops, each a dark
  * ring whose inner edge the lamp lights red, narrower the deeper it is, and in the deeper ones a lens element whose
  * curved face reflects the ceiling's panels again, small: the film's catchlights, which here are what they were on
  * the set. At the bottom is the lamp: a disc of amber yellow in a saturated red that fills the glass round it and
@@ -120,9 +119,8 @@ uniform float u_scan;
 uniform float u_scanAt;
 // How far it has woken, from 0 to 1.
 uniform float u_wake;
-// Of the screen round it: where the pointer is, in the lens's radii from its middle, and how much of it shows; and
-// the view it looks at, its middle and half its size, and how much of it shows.
-uniform vec3 u_pointer;
+// Of the screen round it: the view it looks at, its middle and half its size in the lens's radii from its middle,
+// and how much of it shows.
 uniform vec4 u_view;
 uniform float u_viewShown;
 
@@ -138,8 +136,8 @@ const float SCALES[${STOPS.length}] = float[${STOPS.length}](${STOPS.map((stop) 
 const vec3 KEY = vec3(-0.2425, 0.9285, 0.2814);
 
 // The room the lens is in, as its glass reflects it, in a direction: nearly dark, with a faint glow from above and
-// a little to the left; the strip of light in its ceiling; and of the screen in front of it, the pointer and the
-// view it looks at. Everything in it is soft: nothing a dark glass reflects has a hard edge.
+// a little to the left; the strip of light in its ceiling; and of the screen in front of it, the view it looks at.
+// Everything in it is soft: nothing a dark glass reflects has a hard edge.
 vec3 room(vec3 dir, float soft) {
   vec3 light = vec3(0.004, 0.0055, 0.008) * (1.0 + dir.y);
   light += vec3(0.5, 0.68, 1.0) * (0.8 * pow(max(dot(dir, KEY), 0.0), 5.0));
@@ -151,17 +149,15 @@ vec3 room(vec3 dir, float soft) {
     float lit = smoothstep(-soft, soft, at.y) * exp(-pow(max(at.y, 0.0) / reach, 1.6));
     light += vec3(0.62, 0.82, 1.0) * (${glsl(SOFTBOX.bright)} * lit * along * sqrt(along));
   }
-  // Thinking, a small light goes round the lens, low over its rim: the dome and each element behind it show it as
-  // a glint going round.
+  // Thinking, a small faint light goes slowly round the lens, low over its rim: the dome and each element behind
+  // it show it as a soft glint going round.
   if (u_scan > 0.001) {
     float round = u_scanAt * TAU;
     vec3 toScan = vec3(cos(round) * ${glsl(Math.sin(SCAN_LOW))}, sin(round) * ${glsl(Math.sin(SCAN_LOW))}, ${glsl(Math.cos(SCAN_LOW))});
-    light += vec3(0.7, 0.86, 1.0) * (7.0 * u_scan * exp(-(1.0 - dot(dir, toScan)) / (0.004 + soft * 0.3)));
+    light += vec3(0.7, 0.86, 1.0) * (3.5 * u_scan * exp(-(1.0 - dot(dir, toScan)) / (0.006 + soft * 0.3)));
   }
-  if (dir.z > 0.05) {
+  if (dir.z > 0.05 && u_viewShown > 0.001) {
     vec2 at = dir.xy * (${glsl(SCREEN)} / dir.z);
-    vec2 off = at - u_pointer.xy;
-    light += vec3(0.86, 0.94, 1.0) * (9.0 * u_pointer.z * exp(-dot(off, off) / 0.05));
     vec2 q = abs(at - u_view.xy) - u_view.zw;
     float edge = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0);
     light += vec3(0.52, 0.7, 1.0) * (3.2 * u_viewShown * (1.0 - smoothstep(-soft * 4.0, soft * 4.0, edge)));
@@ -220,7 +216,7 @@ void main() {
     vec3 metal = mix(vec3(0.33, 0.42, 0.55), vec3(0.66, 0.77, 0.9), clamp(wedges, 0.0, 1.0)) * shade * u_room;
     // Thinking, the light that goes round the lens glints on the metal as it passes.
     float passing = max(dot(toward, vec2(cos(u_scanAt * TAU), sin(u_scanAt * TAU))), 0.0);
-    metal += vec3(0.66, 0.8, 1.0) * (u_scan * u_room * (pow(passing, 40.0) * 0.5 * (0.6 + 0.6 * grain) + pow(passing, 8.0) * 0.05) * (plain + outer * 0.8));
+    metal += vec3(0.66, 0.8, 1.0) * (u_scan * u_room * (pow(passing, 40.0) * 0.3 * (0.6 + 0.6 * grain) + pow(passing, 8.0) * 0.04) * (plain + outer * 0.8));
     // The lamp's red reaches its inner chamfer from inside the glass, faintly.
     metal += hue * u_lamp * inner * 0.05;
     light = metal * lip;
@@ -281,7 +277,7 @@ void main() {
         float edge = stroke((rq - stop.y) / fine - 1.0, 1.2) * through;
         float facing = max(dot(outward, key), 0.0);
         float passing = max(dot(outward, vec2(cos(u_scanAt * TAU), sin(u_scanAt * TAU))), 0.0);
-        inner += vec3(0.6, 0.78, 1.0) * (edge * u_room * (pow(facing, 3.0) * (0.34 - 0.2 * order) + pow(passing, 24.0) * u_scan * 0.7) * lit);
+        inner += vec3(0.6, 0.78, 1.0) * (edge * u_room * (pow(facing, 3.0) * (0.34 - 0.2 * order) + pow(passing, 24.0) * u_scan * 0.4) * lit);
         // The first stop is the lens's index ring, under the glass: fine marks engraved round it and filled with
         // a pale paint, a longer one every sixth. It turns slowly, as a ring that sets the focus, and faster while
         // the lens thinks. A small lens has none: they would only blur.
@@ -387,13 +383,12 @@ const UNIFORMS = [
   'scan',
   'scanAt',
   'wake',
-  'pointer',
   'view',
   'viewShown'
 ] as const
 
-/** How far the lens turns towards what it looks at, in radians, at the edge of its gaze. */
-const TURN = 0.2
+/** How far the lens turns towards what it looks at, in radians, at the edge of its gaze: a glance, not a lean. */
+const TURN = 0.14
 
 export const LENS: Drawing<(typeof UNIFORMS)[number]> = {
   fragment: FRAGMENT,
@@ -404,7 +399,7 @@ export const LENS: Drawing<(typeof UNIFORMS)[number]> = {
   uniforms: UNIFORMS,
   // Towards what it looks at, and a little with the drift of the view.
   turn: ({ gaze, lens }) => [gaze[0] * TURN + lens.sway[0], gaze[1] * TURN + lens.sway[1]],
-  set(gl, at, { lens, wake, pointer, view }) {
+  set(gl, at, { lens, wake, view }) {
     gl.uniform1f(at.lamp, lens.lamp)
     gl.uniform1f(at.heart, lens.heart)
     gl.uniform1f(at.iris, lens.iris)
@@ -421,7 +416,6 @@ export const LENS: Drawing<(typeof UNIFORMS)[number]> = {
     gl.uniform1f(at.scanAt, lens.scanAngle / (Math.PI * 2))
     gl.uniform1f(at.wake, wake.lens)
     // What is round it is told in the core's radii; the lens is a little smaller than the core.
-    gl.uniform3f(at.pointer, (pointer[0] ?? 0) / LENS_SIZE, (pointer[1] ?? 0) / LENS_SIZE, pointer[2] ?? 0)
     gl.uniform4f(at.view, (view[0] ?? 0) / LENS_SIZE, (view[1] ?? 0) / LENS_SIZE, (view[2] ?? 0) / LENS_SIZE, (view[3] ?? 0) / LENS_SIZE)
     gl.uniform1f(at.viewShown, view[4] ?? 0)
   }

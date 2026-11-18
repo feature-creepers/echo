@@ -1,4 +1,4 @@
-import { FIELD_GAP, FIELD_REACH, FIELD_SPEED, WAVE_REACH } from './field.ts'
+import { FIELD_GAP, FIELD_REACH, FIELD_SPEED } from './field.ts'
 import { ECHO_LENGTH, ECHO_STEP } from './life.ts'
 
 /**
@@ -7,11 +7,10 @@ import { ECHO_LENGTH, ECHO_STEP } from './life.ts'
  * lives. Soft pools of light drift over them, so the dots grow a little brighter and dimmer as they pass; the core
  * lights the dots round it in its accent; and where the core looks, a pool of its light falls.
  *
- * What the core does goes on through the ground round it (`field.ts`). Its own voice travels out through the dots,
- * which light and swell as it passes; the voice it hears travels in; thinking, a sweep goes round it, a tail of
- * lit dots behind its head; working, a ring goes out with each beat; and as it wakes, one wave runs far across the
- * window. The lens does it in soft light, as a lamp lights a wall; the instrument draws it too, in fine rings and a
- * fine spoke of light.
+ * The voice goes on through the ground round the core (`field.ts`): its own voice travels out through the dots,
+ * which light and swell a little as it passes, and the voice it hears travels in. The lens does it in soft light, as
+ * a lamp lights a wall; the instrument draws it too, in fine rings of light. Nothing else the core does crosses its
+ * edge, so the ground stays calm while it thinks and works.
  *
  * A pixel that is no dot and has none of that light is left at once, after a few operations: at rest only about one
  * pixel in three hundred works out the light, so the whole window costs little more than the dots did.
@@ -58,11 +57,10 @@ uniform sampler2D u_voice;
 uniform float u_voiceShift;
 // How much of the field is drawn in fine lines, as the instrument's, rather than in soft light, as the lens's.
 uniform float u_fine;
-// How much of each phase shows: its own voice going out, the voice it hears coming in, the sweep, the beat.
-uniform vec4 u_phase;
-// Where the sweep's head is, in turns counter-clockwise from the right; how far the beat's ring has gone; how far
-// the waking's wave has gone; and how far the voice's rings have travelled since the last one left; each to 1.
-uniform vec4 u_phaseAt;
+// How much of each voice shows: its own going out, and the one it hears coming in.
+uniform vec2 u_voices;
+// How far the voice's rings have travelled since the last one left, to 1.
+uniform float u_travel;
 
 out vec4 color;
 
@@ -70,7 +68,6 @@ const float TAU = 6.28318530718;
 const float REACH = ${FIELD_REACH.toFixed(3)};
 const float SPEED = ${FIELD_SPEED.toFixed(3)};
 const float GAP = ${FIELD_GAP.toFixed(3)};
-const float WAVE = ${WAVE_REACH.toFixed(3)};
 
 float hash(vec2 p) {
   vec3 q = fract(p.xyx * 0.1031);
@@ -107,7 +104,7 @@ float fineLine(float apart) {
   return clamp(1.2 - abs(apart), 0.0, 1.0);
 }
 
-// What the core's phases light at a place round it: x, how much light falls there; y, how much of one of the
+// What the voice lights at a place round the core: x, how much light falls there; y, how much of one of the
 // instrument's fine lines passes there.
 vec2 field(vec2 place) {
   vec2 rel = place - u_core.xy;
@@ -115,51 +112,28 @@ vec2 field(vec2 place) {
   float far = length(rel) / radius;
   // From just inside the core's edge, so the field starts under it.
   float beyond = far - 0.94;
-  if (beyond < 0.0 || beyond > WAVE) return vec2(0.0);
+  if (beyond < 0.0 || beyond > REACH) return vec2(0.0);
   // How many device pixels one of the core's radii is.
   float px = radius * u_ratio;
   float near = exp(-beyond / (REACH * 0.4));
+  float edge = 1.0 - smoothstep(REACH * 0.7, REACH, beyond);
   float light = 0.0;
   float lines = 0.0;
-
-  if (beyond < REACH) {
-    float edge = 1.0 - smoothstep(REACH * 0.7, REACH, beyond);
-    // Its own voice, going out: what it said a moment ago is here now, carried on rings that leave it one after
-    // the other.
-    if (u_phase.x > 0.001) {
-      float said = voice(beyond / SPEED).x;
-      float cell = fract(beyond / GAP - u_phaseAt.w);
-      light += said * near * edge * 1.6;
-      lines += fineLine(min(cell, 1.0 - cell) * GAP * px) * said * near * edge * 1.3;
-    }
-    // The voice it hears, coming in: it shows at the field's edge and reaches the core a moment later.
-    if (u_phase.y > 0.001) {
-      float heard = voice((REACH - beyond) / SPEED).y;
-      float cell = fract(beyond / GAP + u_phaseAt.w);
-      float coming = smoothstep(REACH, REACH * 0.45, beyond) * (0.35 + 0.65 * near);
-      light += heard * coming * 1.5;
-      lines += fineLine(min(cell, 1.0 - cell) * GAP * px) * heard * coming * 1.2;
-    }
-    // Thinking, a sweep goes round it, the way the instrument's scan does: a tail of light fading behind its head.
-    if (u_phase.z > 0.001) {
-      float behind = fract(atan(-rel.y, rel.x) / TAU - u_phaseAt.x);
-      light += exp(-behind * 6.5) * near * edge * 0.85 * u_phase.z;
-      lines += fineLine(min(behind, 1.0 - behind) * TAU * far * px) * near * edge * 0.9 * u_phase.z;
-    }
-    // Working, a ring goes out with each beat, fading as it goes.
-    if (u_phase.w > 0.001) {
-      float at = u_phaseAt.y * REACH;
-      float fading = pow(1.0 - u_phaseAt.y, 1.5) * u_phase.w;
-      light += exp(-pow((beyond - at) / 0.22, 2.0)) * fading * 1.1;
-      lines += fineLine((beyond - at) * px) * fading * 0.9;
-    }
+  // Its own voice, going out: what it said a moment ago is here now, carried on rings that leave it one after the
+  // other.
+  if (u_voices.x > 0.001) {
+    float said = voice(beyond / SPEED).x;
+    float cell = fract(beyond / GAP - u_travel);
+    light += said * near * edge * 1.1;
+    lines += fineLine(min(cell, 1.0 - cell) * GAP * px) * said * near * edge * 0.9;
   }
-  // Waking, one wave is thrown far across the window.
-  if (u_phaseAt.z < 0.999) {
-    float at = u_phaseAt.z * WAVE;
-    float fading = pow(1.0 - u_phaseAt.z, 2.0) * smoothstep(0.0, 0.04, u_phaseAt.z);
-    light += exp(-pow((beyond - at) / 0.4, 2.0)) * fading * 1.5;
-    lines += fineLine((beyond - at) * px) * fading * 1.2;
+  // The voice it hears, coming in: it shows at the field's edge and reaches the core a moment later.
+  if (u_voices.y > 0.001) {
+    float heard = voice((REACH - beyond) / SPEED).y;
+    float cell = fract(beyond / GAP + u_travel);
+    float coming = smoothstep(REACH, REACH * 0.45, beyond) * (0.35 + 0.65 * near);
+    light += heard * coming;
+    lines += fineLine(min(cell, 1.0 - cell) * GAP * px) * heard * coming * 0.8;
   }
   return vec2(light, lines);
 }
@@ -172,9 +146,9 @@ void main() {
   vec2 at = floor(css / ${PITCH.toFixed(1)}) * ${PITCH.toFixed(1)} + ${DOT_AT.toFixed(1)};
   float apart = length(within);
 
-  // The core's field, where any of it shows: between the dots, the lens's soft light and the instrument's fine
+  // The voice's field, where any of it shows: between the dots, the lens's soft light and the instrument's fine
   // lines; on a dot, the light that falls where the dot sits, under which it swells a little.
-  bool fielded = u_live > 0.0 && u_core.z > 0.0 && (u_phase.x + u_phase.y + u_phase.z + u_phase.w > 0.001 || u_phaseAt.z < 0.999);
+  bool fielded = u_live > 0.0 && u_core.z > 0.0 && u_voices.x + u_voices.y > 0.001;
   vec2 here = fielded ? field(css) : vec2(0.0);
   float falling = fielded && apart < 1.8 ? min(field(at).x, 1.4) : 0.0;
   float between = here.x * mix(0.05, 0.014, u_fine) + here.y * u_fine * 0.3;

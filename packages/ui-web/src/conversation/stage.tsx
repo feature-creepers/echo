@@ -2,8 +2,8 @@ import type { Client } from '@repo/client'
 import { matchesShortcut } from '@repo/client'
 import { useFollowed } from '@repo/client/react'
 import type { Look, PersonaId, Settings, ShownView, TurnId } from '@repo/protocol'
-import { AnimatePresence, motion } from 'motion/react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AnimatePresence, animate, motion, useMotionValue } from 'motion/react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { AccessIndicator } from '../access/access-indicator.tsx'
 import { type Dropped, DropState, useWindowDrop } from '../attachments/drop-state.tsx'
 import { useAttachments } from '../attachments/use-attachments.ts'
@@ -28,7 +28,7 @@ import { ArrowGlyph } from '../primitives/icons.tsx'
 import { DURATION, EASE, settle } from '../styles/motion.ts'
 import type { ViewActions } from '../view/context.ts'
 import { createPush, scrollsUnder, wheelTravel } from '../view/push.ts'
-import { ViewStream } from '../view/view-stream.tsx'
+import { HOME_PEEK, ViewStream } from '../view/view-stream.tsx'
 import { doing } from './activity.ts'
 import { EngineIndicator } from './engine-indicator.tsx'
 import { InputLine } from './input-line.tsx'
@@ -91,10 +91,10 @@ const CASTS: Record<Look, number> = { hud: 1, lens: 0.35 }
 /** How far the core looks: at this many pixels away, its eye is turned about seven tenths of the way. */
 const GAZE_REACH = 460
 
-/** What the core looks at on the screen: a point, and the box of the view there when it is a view. */
+/** What the core looks at on the screen: the view it talks about, its box and the middle of it. */
 export interface Sight {
   point: Point
-  box?: DOMRect | undefined
+  box: DOMRect
 }
 
 /**
@@ -114,6 +114,12 @@ const TRAVEL = { stiffness: 210, damping: 30 } as const
  * many milliseconds.
  */
 const LEAVE = { far: 40, within: 450 } as const
+
+/** How much of the stream shows at home, under the fade above the composer: a hint of what waits, not a second thing to read. */
+const HOME_DIM = 0.45
+
+/** The room between what is written under the core at home and the top of the view that waits under it. */
+const HOME_AIR = 20
 const travel = { type: 'spring', stiffness: TRAVEL.stiffness, damping: TRAVEL.damping, mass: 1 } as const
 
 interface CoreProps {
@@ -133,10 +139,10 @@ interface CoreProps {
  * The core, one for the whole stage, never drawn twice: it travels between the places the stage keeps for it (the
  * middle of an empty stage, home, the top of the column) on a spring, and is drawn again at each size on its way, so
  * nothing is stretched or swapped. With it goes the soft light it casts on the ground: the accent, faint, fading to
- * nothing well before any edge, leaning a little towards where the core looks, brighter as the computer works
- * harder. All of it is written on every frame the core draws, as a transform and an opacity only, so it costs no
- * layout and React draws nothing for it. The same frame tells the ground where the core is, how much light it casts
- * and where it looks, so the dots round it and round what it looks at light up with it.
+ * nothing well before any edge, leaning a little towards where the core looks, a little brighter as the computer
+ * works harder. All of it is written on every frame the core draws, as a transform and an opacity only, so it costs
+ * no layout and React draws nothing for it. The same frame tells the ground where the core is, how much light it
+ * casts and where it looks, so the dots round it and round what it looks at light up with it.
  */
 function Core({ mood, level, bands, load, sight, place, onArrive }: CoreProps) {
   const box = useRef<HTMLDivElement>(null)
@@ -239,15 +245,14 @@ function Core({ mood, level, bands, load, sight, place, onArrive }: CoreProps) {
     return gazeAt(from, now.point, GAZE_REACH)
   }, [sight, middle])
   const scale = useCallback(() => at.current.size / LARGEST, [])
-  // What is round it, for its glass to reflect: the pointer while it moves, and the view it looks at, each told
-  // from the core's middle in its own radii, up as up.
+  // What is round it, for its glass to reflect: the view it looks at, told from the core's middle in its own radii,
+  // up as up.
   const around = useCallback((): Around | undefined => {
     const now = seen.current
     const from = middle()
     if (!now || !from) return undefined
     const radius = at.current.size / 2
     const told = (point: Point): [number, number] => [(point.x - from.x) / radius, (from.y - point.y) / radius]
-    if (!now.box) return { pointer: told(now.point) }
     return { view: [...told(middleOf(now.box)), now.box.width / 2 / radius, now.box.height / 2 / radius] }
   }, [middle])
   const onFrame = useCallback(
@@ -255,7 +260,7 @@ function Core({ mood, level, bands, load, sight, place, onArrive }: CoreProps) {
       settleCore(true)
       const here = at.current
       const cast = (Object.keys(CASTS) as Look[]).reduce((sum, look) => sum + CASTS[look] * pose.looks[look], 0)
-      const glow = ALL_MOODS.reduce((sum, each) => sum + HALO[each] * pose.weights[each], 0) * (0.75 + 0.6 * pose.power)
+      const glow = ALL_MOODS.reduce((sum, each) => sum + HALO[each] * pose.weights[each], 0) * (0.85 + 0.3 * pose.power)
       const shown = here.size / LARGEST
       if (halo.current) {
         halo.current.style.opacity = (glow * cast).toFixed(3)
@@ -266,7 +271,7 @@ function Core({ mood, level, bands, load, sight, place, onArrive }: CoreProps) {
       light.core = { x: from.x, y: from.y, radius: here.size / 2 }
       light.glow = glow * (0.4 + 0.6 * cast)
       light.power = pose.power
-      // What it does goes on through the ground round it: its voice, its sweep, its beat, its waking.
+      // Its voice goes on through the ground round it.
       fieldOf(pose, light.field)
       light.voice = pose.echo
       light.voiceShift = pose.echoShift
@@ -320,9 +325,6 @@ function Core({ mood, level, bands, load, sight, place, onArrive }: CoreProps) {
   )
 }
 
-/** How long after the pointer last moved the core still follows it, in milliseconds; then it rests its gaze. */
-const POINTER_HOLD = 4500
-
 /**
  * The core's size over the stream: large enough to read as the presence at the top of the screen, small enough to
  * leave the stream its room in a short window.
@@ -339,23 +341,10 @@ function useTopCoreSize(): number {
   return size
 }
 
-/** How far the stream sinks while the core rests large at home: the newest view waits under the core's caption. */
-const homeShiftOf = (height: number) => Math.round(height * 0.46)
-
-function useHomeShift(): number {
-  const [shift, setShift] = useState(() => homeShiftOf(window.innerHeight))
-  useEffect(() => {
-    const onResize = () => setShift(homeShiftOf(window.innerHeight))
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [])
-  return shift
-}
-
 /**
- * Where the floating composer sits, kept current: the stream's box ends behind the middle of the composer, so the
- * edge where it cuts the cards is under the composer's material, and the top half of the composer is what the
- * cards sink under. Measured on the block that holds the composer and the row under it.
+ * Where the floating composer sits, kept current: the stream's box ends behind the middle of the composer, and the
+ * cards fade out above the composer's top, half the composer up from there, so nothing is seen behind it. Measured
+ * on the block that holds the composer and the row under it.
  */
 function useComposerRoom(): [(element: HTMLElement | null) => void, { end: number; under: number }] {
   const [element, setElement] = useState<HTMLElement | null>(null)
@@ -498,7 +487,6 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
   // an empty stage and the newest view waits under it. The app opens there; scrolling on up past the newest view
   // goes back there; scrolling down, pressing the view that waits, or a new view arriving goes on to the stream.
   const [home, setHome] = useState(true)
-  const homeShift = useHomeShift()
   const newest = stream[0]?.id
   const newestArrived = newest !== undefined && shown.arrived.includes(newest)
   useEffect(() => {
@@ -556,6 +544,25 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
     }
   }, [atHome])
   const [composerBox, composerRoom] = useComposerRoom()
+  // How far the stage has gone home, from 0 in the stream to 1 at home, on the core's own spring: the stream sinks
+  // under the core by it, so only the top of its newest view shows above the composer. The stream comes in where it
+  // belongs, and only a change of place glides.
+  const homing = useMotionValue(1)
+  const streamed = useRef(false)
+  useLayoutEffect(() => {
+    if (!streaming) {
+      streamed.current = false
+      return
+    }
+    const target = atHome ? 1 : 0
+    if (!streamed.current || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      streamed.current = true
+      homing.jump(target)
+      return
+    }
+    const glide = animate(homing, target, travel)
+    return () => glide.stop()
+  }, [streaming, atHome, homing])
 
   // What plays goes quiet while the person talks, so the music does not drown what they say.
   const player = usePlayer()
@@ -596,37 +603,19 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
   )
   const load = useLoad()
 
-  // What the core looks at: the view it is talking about, else the pointer while it moves, else nothing, and it
-  // rests its gaze by itself.
+  // What the core looks at: the view it is talking about, else nothing, and it faces the front. It never follows the
+  // pointer: an eye that chases the mouse is a toy.
   const spoken = speaking.sentence?.turn
   const attendedNow = attendedView(stream, spoken, channel.running, shown.arrived)
   const attended = useLingering(attendedNow, (id) => stream.some((view) => view.id === id))
-  const pointer = useRef({ x: 0, y: 0, at: Number.NEGATIVE_INFINITY })
-  useEffect(() => {
-    const onMove = (event: PointerEvent) => {
-      pointer.current = { x: event.clientX, y: event.clientY, at: performance.now() }
-    }
-    const onLeave = () => {
-      pointer.current.at = Number.NEGATIVE_INFINITY
-    }
-    window.addEventListener('pointermove', onMove, { passive: true })
-    document.documentElement.addEventListener('pointerleave', onLeave)
-    return () => {
-      window.removeEventListener('pointermove', onMove)
-      document.documentElement.removeEventListener('pointerleave', onLeave)
-    }
-  }, [])
   const looking = useRef(attended)
   looking.current = attended
   const sight = useCallback((): Sight | undefined => {
     const view = looking.current
     const card = view === undefined ? null : document.querySelector(`[data-view="${CSS.escape(view)}"]`)
-    if (card) {
-      const box = card.getBoundingClientRect()
-      if (box.bottom > 0 && box.top < window.innerHeight) return { point: middleOf(box), box }
-    }
-    if (performance.now() - pointer.current.at < POINTER_HOLD) return { point: pointer.current }
-    return undefined
+    if (!card) return undefined
+    const box = card.getBoundingClientRect()
+    return box.bottom > 0 && box.top < window.innerHeight ? { point: middleOf(box), box } : undefined
   }, [])
 
   // Starting to talk stops the assistant. The talk key (Ctrl+Space by default) starts listening, and again sends.
@@ -668,6 +657,8 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
 
   // Over the stream, what is said is smaller; at home and on an empty stage, as large as the core is.
   const compact = streaming && !home
+  // Where what was asked came from, when not from the person just now.
+  const origin = last?.trigger === 'task' ? 'Scheduled' : last?.trigger === 'resume' ? 'Resumed' : undefined
   const caption = (
     <AnimatePresence mode="wait">
       {speaking.sentence ? (
@@ -688,10 +679,11 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0, transition: { duration: 0.12 } }}
-          className={cn('text-balance text-text-faint', compact ? 'line-clamp-2 text-[0.9375rem] leading-relaxed' : 'text-lg leading-snug')}
+          // What was asked is a reminder of what the core works on, not something to read again: two quiet lines at
+          // most, wherever it is shown, however long it was.
+          className={cn('line-clamp-2 text-balance text-text-faint', compact ? 'text-[0.9375rem] leading-relaxed' : 'text-base leading-relaxed')}
         >
-          {last.trigger === 'task' && <span className="text-label">Scheduled · </span>}
-          {last.trigger === 'resume' && <span className="text-label">Resumed · </span>}
+          {origin && <span className="font-medium text-text-soft">{origin} · </span>}
           {/* Files handed over without a word are named instead. */}
           {last.said === '' ? (last.attached?.map((one) => one.name).join(', ') ?? '') : `“${last.said}”`}
         </motion.p>
@@ -710,8 +702,9 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          // Over the stream, two lines at most: the room kept for the caption, so it never runs onto the cards.
-          className={cn('text-balance text-text-soft', compact ? 'line-clamp-2 text-[0.9375rem] leading-relaxed' : 'line-clamp-3 text-lg leading-snug')}
+          // Two lines at most: over the stream, the room kept for the caption, so it never runs onto the cards; at
+          // home, so what rests under the core stays a few lines, whatever was said.
+          className={cn('line-clamp-2 text-balance text-text-soft', compact ? 'text-[0.9375rem] leading-relaxed' : 'text-lg leading-snug')}
         >
           {last.replied}
         </motion.p>
@@ -807,7 +800,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
       {atHome && (
         <div
           className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-col items-center px-8"
-          style={{ bottom: composerRoom.end + homeShift * 0.32 }}
+          style={{ bottom: composerRoom.end + composerRoom.under + HOME_PEEK + HOME_AIR }}
         >
           <div className="flex min-h-0 w-full flex-1 flex-col items-center justify-center">
             <div ref={keep('home')} aria-hidden="true" className="-my-7" style={{ width: LARGEST, height: LARGEST }} />
@@ -842,9 +835,10 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
               key="stream"
               className="absolute inset-x-0 top-0"
               style={{ bottom: composerRoom.end }}
-              // At home, the stream sinks and dims under the core; pressing the view that waits goes on to it.
+              // At home, the stream dims under the core, and sinks there by the dial's own measure; pressing the view
+              // that waits goes on to it.
               initial={false}
-              animate={{ y: atHome ? homeShift : 0, opacity: atHome ? 0.55 : 1 }}
+              animate={{ opacity: atHome ? HOME_DIM : 1 }}
               transition={travel}
               exit={{ opacity: 0, transition: { duration: DURATION.quick, ease: EASE } }}
               onPointerDownCapture={(event) => {
@@ -887,6 +881,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
                 actions={actionsFor}
                 onClose={close}
                 under={composerRoom.under}
+                home={homing}
                 onPastTop={() => setHome(true)}
               />
             </motion.div>
