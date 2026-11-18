@@ -7,10 +7,11 @@
       https addresses it found (an Image, a Media block): those are data, never code, and never over plain http.
       HLS playlists are played by Chromium itself, which fetches their segments as media. A map's shapes are read
       through the core; connect-src allows https so a map can still read them itself where there is no core to ask.
+      A PDF from the assistant's folder is shown in the window's own viewer, from its bytes: frame-src allows blob.
     -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws://localhost:* https:; img-src 'self' https: data: blob:; media-src 'self' https: blob:"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws://localhost:* https:; img-src 'self' https: data: blob:; media-src 'self' https: blob:; frame-src blob:"
     />
   </head>
   <body>

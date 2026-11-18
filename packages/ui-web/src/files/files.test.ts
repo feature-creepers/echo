@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { badgeOf, extensionOf, kindOf, previewTypeOf } from './kinds.ts'
+import { type Listing, moveFor, parentOf, type Row, visibleRows } from './tree.ts'
 import { itemsWords, modifiedWords, sizeWords, tableRows } from './words.ts'
 
 describe('what a file is', () => {
@@ -104,5 +105,68 @@ describe('the rows of a table', () => {
       ['1', '2']
     ])
     expect(tableRows('1\n2\n3\n4', ',', 2)).toEqual([['1'], ['2']])
+  })
+})
+
+describe('the folder’s tree', () => {
+  const entry = (path: string, kind: 'folder' | 'file' = 'file') => ({
+    path,
+    name: path.split('/').at(-1) ?? path,
+    kind,
+    size: 0,
+    modified: '',
+    location: `/w/${path}`
+  })
+  const root = { path: '', name: 'workspace', kind: 'folder' as const, size: 3, modified: '', location: '/w' }
+  const listings = new Map<string, Listing>([
+    ['', { is: 'listed', folder: root, entries: [entry('inbox', 'folder'), entry('notes', 'folder'), entry('plan.md')] }],
+    ['inbox', { is: 'listed', folder: entry('inbox', 'folder'), entries: [entry('inbox/2026-11-18', 'folder')] }],
+    ['inbox/2026-11-18', { is: 'listed', folder: entry('inbox/2026-11-18', 'folder'), entries: [entry('inbox/2026-11-18/photo.png')] }],
+    ['notes', { is: 'reading' }]
+  ])
+  const outline = (rows: Row[]) => rows.map((row) => `${'  '.repeat(row.depth)}${row.entry.name}${row.open ? ' (open)' : ''}${row.reading ? ' …' : ''}`)
+
+  it('shows each open folder’s contents under it', () => {
+    expect(outline(visibleRows(listings, new Set()))).toEqual(['inbox', 'notes', 'plan.md'])
+    expect(outline(visibleRows(listings, new Set(['inbox', 'inbox/2026-11-18', 'notes'])))).toEqual([
+      'inbox (open)',
+      '  2026-11-18 (open)',
+      '    photo.png',
+      'notes (open) …',
+      'plan.md'
+    ])
+  })
+
+  it.each([
+    ['ArrowDown', undefined, { to: 'inbox' }],
+    ['ArrowDown', 'inbox', { to: 'inbox/2026-11-18' }],
+    ['ArrowDown', 'plan.md', { to: 'plan.md' }],
+    ['ArrowUp', undefined, { to: 'plan.md' }],
+    ['ArrowUp', 'inbox/2026-11-18/photo.png', { to: 'inbox/2026-11-18' }],
+    ['Home', 'plan.md', { to: 'inbox' }],
+    ['End', 'inbox', { to: 'plan.md' }],
+    ['ArrowRight', 'inbox', { to: 'inbox/2026-11-18' }],
+    ['ArrowRight', 'notes', undefined],
+    ['ArrowRight', 'plan.md', undefined],
+    ['ArrowLeft', 'inbox/2026-11-18', { toggle: 'inbox/2026-11-18' }],
+    ['ArrowLeft', 'inbox/2026-11-18/photo.png', { to: 'inbox/2026-11-18' }],
+    ['ArrowLeft', 'plan.md', undefined],
+    ['Enter', 'plan.md', { open: 'plan.md' }],
+    ['Enter', 'inbox', { toggle: 'inbox' }],
+    ['p', 'inbox', { to: 'inbox/2026-11-18/photo.png' }],
+    ['P', 'inbox/2026-11-18/photo.png', { to: 'plan.md' }],
+    ['z', 'inbox', undefined],
+    ['Tab', 'inbox', undefined]
+  ])('moves on %s from %s to %j', (key, selected, move) => {
+    const rows = visibleRows(listings, new Set(['inbox', 'inbox/2026-11-18', 'notes']))
+    expect(moveFor(key, rows, selected)).toEqual(move)
+  })
+
+  it('opens a closed folder on ArrowRight', () => {
+    expect(moveFor('ArrowRight', visibleRows(listings, new Set()), 'inbox')).toEqual({ toggle: 'inbox' })
+  })
+
+  it('names the folder a path is in', () => {
+    expect([parentOf('plan.md'), parentOf('inbox/2026-11-18/photo.png')]).toEqual(['', 'inbox/2026-11-18'])
   })
 })

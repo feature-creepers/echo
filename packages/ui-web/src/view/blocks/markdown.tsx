@@ -55,11 +55,26 @@ export function Markdown({ text }: { text: string }) {
           key={key()}
           className={`grid gap-1 pl-5 ${ordered ? 'list-decimal marker:font-mono marker:text-text-faint marker:text-xs' : 'list-disc marker:text-text-faint'}`}
         >
-          {items.map((item, at) => (
-            <li key={at} className="pl-1 leading-relaxed">
-              {inline(item)}
-            </li>
-          ))}
+          {items.map((item, at) => {
+            // A task of a checklist ("- [ ] passport", "- [x] tickets") shows its box in place of the bullet.
+            const task = /^\[([ xX])\]\s+/.exec(item)
+            if (!task)
+              return (
+                <li key={at} className="pl-1 leading-relaxed">
+                  {inline(item)}
+                </li>
+              )
+            const done = task[1] !== ' '
+            return (
+              <li key={at} className="-ml-5 flex list-none items-baseline gap-2.5 leading-relaxed">
+                <span
+                  aria-hidden="true"
+                  className={`relative top-[0.1875rem] size-3 shrink-0 rounded-xs border ${done ? 'border-accent bg-accent/80' : 'border-line-strong'}`}
+                />
+                <span className={done ? 'text-text-faint line-through decoration-text-faint/60' : undefined}>{inline(item.slice(task[0].length))}</span>
+              </li>
+            )
+          })}
         </List>
       )
       continue

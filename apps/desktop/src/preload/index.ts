@@ -1,5 +1,5 @@
 import type { CoreLink } from '@repo/client'
-import { contextBridge, type IpcRendererEvent, ipcRenderer } from 'electron'
+import { contextBridge, type IpcRendererEvent, ipcRenderer, webUtils } from 'electron'
 import { APP_CHANNELS, CORE_LINK_CHANNEL, CORE_MESSAGE_CHANNEL, type DesktopBridge, SPEECH_CHANNELS, TALK_CHANNEL } from './bridge.ts'
 
 /** Be told of what comes on a channel. Returns a function that stops the telling. */
@@ -51,7 +51,10 @@ const bridge: DesktopBridge = {
   },
   files: {
     pick: (kind) => ipcRenderer.invoke(APP_CHANNELS.filesPick, kind),
-    reveal: (path) => ipcRenderer.invoke(APP_CHANNELS.filesReveal, path)
+    reveal: (path) => ipcRenderer.invoke(APP_CHANNELS.filesReveal, path),
+    open: (path) => ipcRenderer.invoke(APP_CHANNELS.filesOpen, path),
+    // Only the preload can ask where a dropped file is: the window itself is never told a path it was not given.
+    pathOf: (file) => webUtils.getPathForFile(file) || undefined
   },
   speech: {
     status: () => ipcRenderer.invoke(SPEECH_CHANNELS.status),

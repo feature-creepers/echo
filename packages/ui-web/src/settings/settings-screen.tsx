@@ -3,6 +3,7 @@ import type { CommandInput, PersonaId, Settings } from '@repo/protocol'
 import { type ReactNode, useEffect, useState } from 'react'
 import { AccessSection } from '../access/access-section.tsx'
 import type { DeviceSpeech } from '../audio/use-speech.ts'
+import { FilesSection } from '../files/files-section.tsx'
 import { WidgetsSection, type WidgetsSectionProps } from '../library/widgets-section.tsx'
 import { MemorySection } from '../memory/memory-section.tsx'
 import { PersonasForm } from '../personas/personas-form.tsx'
@@ -15,7 +16,19 @@ import { ModelsSection } from './models-section.tsx'
 import { ShortcutsSection } from './shortcuts-section.tsx'
 import { VoiceSection } from './voice-section.tsx'
 
-export const SETTINGS_SECTIONS = ['general', 'voice', 'microphone', 'shortcuts', 'personalities', 'models', 'access', 'memory', 'widgets', 'about'] as const
+export const SETTINGS_SECTIONS = [
+  'general',
+  'voice',
+  'microphone',
+  'shortcuts',
+  'personalities',
+  'models',
+  'access',
+  'memory',
+  'widgets',
+  'files',
+  'about'
+] as const
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number]
 
 const TITLES: Record<SettingsSection, string> = {
@@ -28,6 +41,7 @@ const TITLES: Record<SettingsSection, string> = {
   access: 'Access',
   memory: 'Memory',
   widgets: 'Widgets',
+  files: 'Files',
   about: 'Updates & about'
 }
 
@@ -37,7 +51,7 @@ const TITLES: Record<SettingsSection, string> = {
  */
 const GROUPS: { title?: string; sections: SettingsSection[] }[] = [
   { title: 'This computer', sections: ['general', 'voice', 'microphone', 'shortcuts'] },
-  { title: 'Your assistant', sections: ['personalities', 'models', 'access', 'memory', 'widgets'] },
+  { title: 'Your assistant', sections: ['personalities', 'models', 'access', 'memory', 'widgets', 'files'] },
   { sections: ['about'] }
 ]
 
@@ -85,6 +99,7 @@ export function SettingsScreen({ productName, client, settings, memory, speech, 
     access: `What ${productName} may reach on this computer: its own folder, the folders and files you give it, or everything. It is held to this on every use, whatever it is asked.`,
     memory: `${productName} keeps every word of your conversations, and while it sleeps it works out what is worth remembering about you. Here is what it knows, where it learned it, and when it sleeps.`,
     widgets: `The views you saved from what ${productName} showed you. Pin them beside the conversation, sort them into collections, or ask for a change.`,
+    files: `What ${productName} keeps in its own folder: the files you hand it, in its inbox, and the files it writes for you.`,
     about: `The version of ${productName} on this computer, and its updates.`
   }
 
@@ -132,6 +147,7 @@ export function SettingsScreen({ productName, client, settings, memory, speech, 
             {section === 'access' && <AccessSection client={client} settings={settings} productName={productName} />}
             {section === 'memory' && <MemorySection memory={memory} productName={productName} />}
             {section === 'widgets' && <WidgetsSection {...widgets} onShown={onClose} />}
+            {section === 'files' && <FilesSection client={client} productName={productName} />}
             {section === 'about' && <AboutSection productName={productName} />}
           </Block>
         </div>
