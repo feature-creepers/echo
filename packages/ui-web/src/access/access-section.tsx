@@ -10,6 +10,7 @@ import { IconButton } from '../primitives/icon-button.tsx'
 import { CloseGlyph } from '../primitives/icons.tsx'
 import { Switch } from '../primitives/switch.tsx'
 import { SettingGroup, SettingRow } from '../settings/rows.tsx'
+import { BrowserGroup } from './browser-group.tsx'
 import { lastPart } from './words.ts'
 
 /** A path shown in full when it fits, and by its end when it does not: the end says which folder it is. */
@@ -157,6 +158,8 @@ export function AccessSection({ client, settings, productName }: { client: Clien
           />
         </SettingRow>
       </SettingGroup>
+
+      <BrowserGroup client={client} access={access} productName={productName} />
 
       <SettingGroup title="Before acting">
         <SettingRow

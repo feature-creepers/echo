@@ -7,7 +7,7 @@ import type { Log, ToolHost, ToolResult } from '@repo/core'
 
 /**
  * The revisions of MCP this server speaks, most recent first. It answers the same in all of them: tools with
- * a name, a description and an input schema, and results made of one text.
+ * a name, a description and an input schema, and results made of one text and the pictures that go with it.
  */
 export const PROTOCOL_VERSIONS: readonly [string, ...string[]] = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05']
 
@@ -97,7 +97,10 @@ async function call(name: string, input: unknown, caller: Caller): Promise<ToolR
   }
 }
 
-/** A result as MCP carries it. */
-function shown(result: ToolResult): { content: [{ type: 'text'; text: string }]; isError: boolean } {
-  return { content: [{ type: 'text', text: result.text }], isError: !result.ok }
+type Content = { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }
+
+/** A result as MCP carries it: its text, then its pictures. */
+function shown(result: ToolResult): { content: Content[]; isError: boolean } {
+  const images = (result.images ?? []).map((image): Content => ({ type: 'image', data: image.data, mimeType: image.mime }))
+  return { content: [{ type: 'text', text: result.text }, ...images], isError: !result.ok }
 }

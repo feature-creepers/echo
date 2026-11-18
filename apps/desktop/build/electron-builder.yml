@@ -10,8 +10,9 @@ directories:
   buildResources: build
 electronVersion: 45.3.2
 
-# The app is bundled by electron-vite into out/. The one thing read from node_modules at run time is the
-# speech library, whose native part must sit outside the archive to be loaded.
+# The app is bundled by electron-vite into out/. Two things are read from node_modules at run time: the
+# speech library, whose native part must sit outside the archive to be loaded, and Playwright, which the core
+# loads from the archive to drive the browser (the browser itself is the one installed on the computer).
 files:
   - out/**
   - package.json

@@ -21,6 +21,9 @@
     },
     {
       "path": "../../packages/tools"
+    },
+    {
+      "path": "../../packages/browser"
     }
   ]
 }

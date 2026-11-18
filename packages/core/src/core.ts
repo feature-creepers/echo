@@ -1,6 +1,7 @@
 import { CLEAR_TOOL, describeCatalog, MEDIA_TOOL, SHOW_TOOL, SHOW_TOOL_INPUT, validateView } from '@repo/catalog'
 import { type Event, MEDIA_ACTIONS, type Result } from '@repo/protocol'
 import { createAccess } from './access/access.ts'
+import { createBrowserControl } from './browser/browser.ts'
 import { createChannel } from './channel/channel.ts'
 import { createExecutor } from './commands/execute.ts'
 import { type Admission, admit } from './devices/admission.ts'
@@ -10,6 +11,7 @@ import { createLibrary } from './library/library.ts'
 import { createMemory } from './memory/memory.ts'
 import { createObjections } from './personas/objection.ts'
 import type { Blobs } from './ports/blobs.ts'
+import type { Browser } from './ports/browser.ts'
 import type { Timers } from './ports/clock.ts'
 import type { Computer } from './ports/computer.ts'
 import type { Harness } from './ports/harness.ts'
@@ -48,6 +50,8 @@ export interface CoreOptions {
   web?: Web
   /** The computer the core runs on, whose files the assistant may reach as the user grants. Left out, it reaches none. */
   computer?: Computer
+  /** The web browser of the computer the core runs on, which the assistant drives as the user allows. Left out, it has none. */
+  browser?: Browser
 }
 
 /** The core as the listeners see it. */
@@ -133,6 +137,7 @@ export function createCore(options: CoreOptions): Core {
 
   const library = createLibrary({ records: options.records, screen, now, newId: options.newId })
   const access = createAccess({ settings, screen, computer: options.computer, timers: options.timers })
+  const browser = createBrowserControl({ browser: options.browser, settings, ask: access.ask, records: options.records, computer: options.computer })
   const objections = createObjections({ records: options.records, screen, now })
   const files = createFiles({ records: options.records, blobs: options.blobs, now, newId: options.newId })
 
@@ -169,14 +174,16 @@ export function createCore(options: CoreOptions): Core {
         ...memory.tools,
         ...library.tools(showing),
         ...access.tools(showing),
+        ...browser.tools(showing),
         ...(stance === 'critical' ? objections.tools(showing) : [])
       ],
       instructions: `${describeCatalog()}\n\n${library.instructions}\n\n${memory.instructions}`,
       standing: (role) =>
-        [objections.standing(), library.standing(role), role === 'thread' ? access.standing() : undefined].filter(Boolean).join('\n\n') || undefined,
+        [objections.standing(), library.standing(role), ...(role === 'thread' ? [access.standing(), browser.standing()] : [])].filter(Boolean).join('\n\n') ||
+        undefined,
       // The person's files and commands, within what they granted (docs/SPEC.md, section 12.2).
       reach: (showing) => access.reach(showing),
-      version: () => access.version(),
+      version: () => `${access.version()} ${browser.version()}`,
       hear: (said) => access.hear(said)
     },
     memory
@@ -288,6 +295,11 @@ export function createCore(options: CoreOptions): Core {
         return change.ok ? { ok: true, output: { settings: change.settings } } : change
       },
       'languages.set': (input) => ({ ok: true, output: { settings: settings.setLanguages(input) } }),
+      'browser.read': async () => ({ ok: true, output: { browser: await browser.state() } }),
+      'browser.show': async () => {
+        const shown = await browser.show()
+        return shown.ok ? { ok: true, output: { browser: shown.browser } } : shown
+      },
       'engines.model.set': async (input) => {
         const harness = (await engines.read()).harnesses.find((known) => known.id === input.harness)
         if (!harness) return { ok: false, error: { code: 'unknown-harness', message: `There is no harness "${input.harness}".` } }
@@ -322,6 +334,7 @@ export function createCore(options: CoreOptions): Core {
     close() {
       channel.close()
       memory.close()
+      void browser.close()
     }
   }
 }
