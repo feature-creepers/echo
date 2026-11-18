@@ -60,7 +60,19 @@ describe('the words for a step', () => {
     { name: 'a key', step: step('browser_press', { key: 'Escape' }), title: 'Pressed a key', summary: 'Escape' },
     { name: 'a look at the page says no more', step: step('browser_snapshot', {}), title: 'Looked at the page', summary: undefined },
     { name: 'a tool of the core', step: step('web_search', { query: 'weather in Lyon' }), title: 'Searched the web', summary: 'weather in Lyon' },
-    { name: 'a tool not known', step: step('something_new', { anything: 'here' }), title: 'something_new', summary: 'here' }
+    { name: 'a tool not known', step: step('something_new', { anything: 'here' }), title: 'something_new', summary: 'here' },
+    {
+      name: 'a turn passed on, never by its thread’s identifier',
+      step: step('thread_send', { thread: 'a2bac25c-2fd9' }),
+      title: 'Passed it to this thread',
+      summary: undefined
+    },
+    {
+      name: 'a turn passed on with words of its own',
+      step: step('thread_send', { thread: 'a2bac25c-2fd9', request: 'Run the tests.' }),
+      title: 'Passed it to this thread',
+      summary: 'Run the tests.'
+    }
   ]
   for (const { name, step: one, use: made, title, summary } of cases) {
     it(name, () => {

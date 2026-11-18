@@ -100,6 +100,10 @@ export function stepSummary(step: Step, relative: Relative = whole): string | un
     }
     case 'computer_grant':
       return text(fields?.path)
+    case 'thread_send':
+    case 'thread_focus':
+      // A thread is named by its identifier, which says nothing to the person: what was passed on, when written, does.
+      return text(fields?.request)
     case 'browser_click':
     case 'browser_select': {
       const quoted = quotedIn(step.output)
@@ -132,7 +136,7 @@ export function stepSummary(step: Step, relative: Relative = whole): string | un
   }
   if (typeof step.input === 'string') return step.input
   if (!fields) return undefined
-  for (const name of ['query', 'url', 'title', 'request', 'name', 'thread']) {
+  for (const name of ['query', 'url', 'title', 'request', 'name']) {
     const value = text(fields[name])
     if (value) return value
   }
