@@ -12,7 +12,6 @@ import { useTalk } from '../audio/use-talk.ts'
 import { keyPress, useDevice } from '../device/device.tsx'
 import { useShownPresence } from '../device/presence.ts'
 import { useFileActions } from '../files/file-actions.ts'
-import { QuickLook } from '../files/quick-look.tsx'
 import { usePlayer } from '../media/player-provider.tsx'
 import { refusalCopy } from '../personas/copy.ts'
 import { Orb } from '../presence/orb.tsx'
@@ -179,8 +178,9 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
       setProblem(undefined)
       client.speech.stop()
       const handed = attachments.pending.length > 0 ? await attachments.take() : {}
-      if (handed === undefined) return
+      if (handed === undefined) return false
       client.channel.say(text, undefined, handed).catch(() => setProblem(refusalCopy('failed')))
+      return true
     },
     [client, attachments]
   )
@@ -355,7 +355,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
     <InputLine
       name={active.name}
       busy={running || voicing}
-      onSay={(text) => void send(text)}
+      onSay={send}
       onStop={stop}
       attachments={attachments}
       pause={
@@ -483,7 +483,6 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
         </div>
       </div>
       <DropState over={dropping} name={active.name} />
-      <QuickLook client={client} />
     </div>
   )
 }

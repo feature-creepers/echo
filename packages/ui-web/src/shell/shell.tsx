@@ -11,6 +11,7 @@ import { Stage } from '../conversation/stage.tsx'
 import { DeviceProvider, keyPress, useDevice } from '../device/device.tsx'
 import type { DeviceHost } from '../device/host.ts'
 import { useFileActions } from '../files/file-actions.ts'
+import { QuickLook } from '../files/quick-look.tsx'
 import { LibraryContext, type LibraryControls } from '../library/library-context.ts'
 import { PinnedDocksView, usePinnedDocks } from '../library/pinned-docks.tsx'
 import { PlayerProvider, usePlayer } from '../media/player-provider.tsx'
@@ -341,6 +342,8 @@ function Connected({ productName, client, engine }: { productName: string; clien
               )}
             </motion.div>
           </AnimatePresence>
+          {/* A file shown from any view, the stream's, a pinned widget's or a saved one's, opens in one quick look. */}
+          <QuickLook client={client} />
           {/* The sheet slides over whatever screen is there: it never pushes the stage off centre. */}
           <AnimatePresence initial={false}>
             {sheet && (

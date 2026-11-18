@@ -15,7 +15,8 @@ export interface InputLineProps {
   name: string
   /** The assistant is answering or speaking: the line then offers to stop it. */
   busy: boolean
-  onSay(text: string): void
+  /** Say it. Resolving to false when it could not go, such as a file handed over that did not arrive: the words come back to the line. */
+  onSay(text: string): void | Promise<boolean>
   onStop(): void
   /** Pausing what is being said, while something is. */
   pause?: { paused: boolean; onToggle(): void } | undefined
@@ -58,8 +59,11 @@ export function InputLine({ name, busy, onSay, onStop, talk, persona, pause, att
     event.preventDefault()
     const said = text.trim()
     if (said === '' && waiting === 0) return
-    onSay(said)
+    const sent = onSay(said)
     setText('')
+    void sent?.then((went) => {
+      if (!went) setText((now) => (now === '' ? said : now))
+    })
   }
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
