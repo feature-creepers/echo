@@ -133,8 +133,18 @@ export function browserTools(options: BrowserToolsOptions): Tool[] {
     const verdict = decidePageAct(request, settings.read().access.approvals)
     // Kept in the activity too, as a line the person reads: what was done, on which site.
     const line = `${detail}${base.site ? ` on ${base.site}` : ''}`
+    const thread = showing().thread
     const use = (decision: 'ran' | 'approved' | 'refused', reason: AccessUseReason, refusal?: string) =>
-      uses?.record({ tool, action: 'run', command: line, paths: [], decision, reason, ...(refusal === undefined ? {} : { detail: refusal }) })
+      uses?.record({
+        ...(thread === undefined ? {} : { thread }),
+        tool,
+        action: 'run',
+        command: line,
+        paths: [],
+        decision,
+        reason,
+        ...(refusal === undefined ? {} : { detail: refusal })
+      })
     if (verdict.verdict === 'refuse') {
       record({ ...base, decision: 'refused', because: verdict.secret })
       use('refused', 'protected', SECRET_REFUSAL[verdict.secret])
