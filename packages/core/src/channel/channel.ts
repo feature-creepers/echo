@@ -168,8 +168,13 @@ export interface Channel {
   task(task: { title: string; request: string; language: string | undefined; silent: boolean }): TurnId
   /** Whether the person is being answered: a turn on the stage, or one waiting to be. Work in the background does not count. */
   busy(): boolean
-  /** Stop the answer under way, if there is one. */
+  /**
+   * Stop the answer on the stage, if there is one. A project's thread at work is left to work: stopping a long piece
+   * of work is done on purpose, with `stopThread` or `stopAll`, never by quieting the voice.
+   */
   stop(): void
+  /** Stop one thread: the request it is answering and those waiting for it. False when it has nothing to stop. */
+  stopThread(thread: string): boolean
   /**
    * Stop everything: every turn, the one on the stage, those waiting and every thread's, is recorded as stopped, and
    * every session ends with what it still runs. The next thing said opens new ones.
@@ -270,7 +275,10 @@ const openInput = z.object({
   request: z.string().optional(),
   folder: z.string().trim().min(1).max(4096).optional()
 })
-const sendInput = z.object({ thread: z.string().min(1), request: z.string().optional() })
+const sendInput = z.object({ thread: z.string().min(1), request: z.string().optional(), wait: z.boolean().optional() })
+
+/** How much of what a working thread answers the orchestrator is told, in characters. */
+const DOING_LENGTH = 120
 const focusInput = z.object({ thread: z.string().min(1) })
 const answerInput = z.object({ text: z.string().trim().min(1) })
 
@@ -642,6 +650,24 @@ export function createChannel(options: ChannelOptions): Channel {
     )
   }
 
+  /** What a thread is answering now, in the words it was given, for the index the orchestrator reads. */
+  const doing = (thread: string): string | undefined => {
+    const said = runtimes.get(thread)?.answering?.exchange.said.replace(/\s+/g, ' ').trim()
+    if (said === undefined || said === '') return undefined
+    return said.length > DOING_LENGTH ? `${said.slice(0, DOING_LENGTH - 1)}…` : said
+  }
+
+  /** The other threads at work in a folder now, told to a project's thread that starts beside them. */
+  const besideIn = (thread: Thread): string => {
+    if (thread.folder === undefined) return ''
+    const others = registry
+      .read()
+      .threads.filter((other) => other.id !== thread.id && other.folder === thread.folder && other.state === 'working')
+      .map((other) => `"${other.title}"${doing(other.id) ? `, on: ${doing(other.id)}` : ''}`)
+    if (others.length === 0) return ''
+    return `\n\n(Other threads are working in this folder at the same time: ${others.join('; ')}. Change only what your task needs, leave their files alone, and commit only your own changes, naming each file.)`
+  }
+
   /** Pass a turn to a thread, which answers it as soon as it is free. */
   const route = (turn: Turn, thread: Thread, request: string) => {
     const runtime = runtimeFor(thread.id)
@@ -650,7 +676,8 @@ export function createChannel(options: ChannelOptions): Channel {
     for (const sentence of turn.cutter.flush()) say(turn, sentence)
     turn.cutter = createSentenceCutter()
     const said = turn.exchange.replied.trim()
-    const text = said === '' ? request : `${request}\n\n(You have already said this aloud: "${said}". Do not say it again; carry on from there.)`
+    const told = said === '' ? request : `${request}\n\n(You have already said this aloud: "${said}". Do not say it again; carry on from there.)`
+    const text = `${told}${besideIn(thread)}`
     turn.routed = runtime
     turn.exchange = { ...turn.exchange, thread: thread.id }
     replace(turn.exchange)
@@ -790,7 +817,8 @@ export function createChannel(options: ChannelOptions): Channel {
           type: 'object',
           properties: {
             thread: { type: 'string', description: 'The thread id, from the list.' },
-            request: { type: 'string', description: 'What to pass on. Left out, what the person said.' }
+            request: { type: 'string', description: 'What to pass on. Left out, what the person said.' },
+            wait: { type: 'boolean', description: 'For a thread at work: let this wait until it is done, rather than run beside it.' }
           },
           required: ['thread']
         }
@@ -800,7 +828,15 @@ export function createChannel(options: ChannelOptions): Channel {
         const asked = sendInput.safeParse(input)
         if (!turn) return { ok: false, text: 'There is nothing to pass on.' }
         const thread = asked.success ? registry.get(asked.data.thread) : undefined
-        if (!asked.success || !thread) return { ok: false, text: `There is no such thread. The threads are:\n${registry.index()}` }
+        if (!asked.success || !thread) return { ok: false, text: `There is no such thread. The threads are:\n${registry.index(doing)}` }
+        // A thread at work answers one thing at a time: what is sent to it waits until it is done. Unless the request
+        // follows from that work, it is better run beside it, in a thread of its own.
+        const busyWith = runtimes.get(thread.id)?.answering
+        if (busyWith && busyWith !== turn && asked.data.wait !== true)
+          return {
+            ok: false,
+            text: `Not sent: thread ${thread.id} is working now${doing(thread.id) ? ` on: ${doing(thread.id)}` : ''}, and would answer this only once that is done. If it continues that work or must come after it, call thread_send again with wait: true. Otherwise call thread_open, with the same folder for a project, so it runs at the same time.`
+          }
         return passOn(turn, thread, asked.data.request ?? turn.exchange.said)
       }
     },
@@ -918,7 +954,7 @@ export function createChannel(options: ChannelOptions): Channel {
    * it is the one session that answers, and is given the files itself.
    */
   const message = (turn: Turn, images: boolean) => {
-    if (abilities?.server() !== undefined) return `${context()}\nThreads:\n${registry.index()}\n\n${what(turn)}`
+    if (abilities?.server() !== undefined) return `${context()}\nThreads:\n${registry.index(doing)}\n\n${what(turn)}`
     if (turn.exchange.trigger !== undefined) return `${context()}\n${what(turn)}`
     const note = noteForThread(turn.handed, turn.exchange.said, images)
     return `${context()}\n${[turn.exchange.said, note].filter(Boolean).join('\n\n')}`
@@ -1071,7 +1107,18 @@ export function createChannel(options: ChannelOptions): Channel {
     busy: () => (current !== undefined && current.exchange.outcome === 'running') || deciding !== undefined || pending !== undefined,
 
     stop() {
-      if (current) halt(current)
+      if (current && !current.working) halt(current)
+    },
+
+    stopThread(thread) {
+      const runtime = runtimes.get(thread)
+      if (!runtime || (!runtime.answering && runtime.queue.length === 0)) return false
+      for (const waiting of runtime.queue.splice(0)) {
+        waiting.turn.stopped = true
+        finish(waiting.turn, 'stopped')
+      }
+      if (runtime.answering) halt(runtime.answering)
+      return true
     },
 
     stopAll() {

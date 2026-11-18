@@ -18,8 +18,8 @@ export interface ThreadRegistry {
   /** Bring a topic to the stage. An aside never takes the focus. */
   focus(id: string): void
   focused(): Thread | undefined
-  /** The recent threads, as the orchestrator reads them: one line each. */
-  index(): string
+  /** The recent threads, as the orchestrator reads them: one line each, with what each at work is answering when `doing` says. */
+  index(doing?: (thread: string) => string | undefined): string
   onEvent(listener: (event: Event) => void): () => void
 }
 
@@ -88,13 +88,13 @@ export function createThreadRegistry({ records, now, newId }: RegistryOptions): 
       announce()
     },
     focused: () => (focus === undefined ? undefined : threads.get(focus)),
-    index() {
+    index(doing) {
       const recent = read().threads.slice(0, INDEXED)
       if (recent.length === 0) return 'There are no threads yet.'
       return recent
         .map(
           (thread) =>
-            `- ${thread.id}: "${thread.title}" (${thread.kind}, ${thread.state}${thread.folder === undefined ? '' : `, working in ${thread.folder}`}${thread.id === focus ? ', on screen' : ''}, last used ${thread.at.slice(0, 16).replace('T', ' ')})`
+            `- ${thread.id}: "${thread.title}" (${thread.kind}, ${thread.state}${thread.folder === undefined ? '' : `, working in ${thread.folder}`}${thread.id === focus ? ', on screen' : ''}${thread.state === 'working' && doing?.(thread.id) ? `, answering: ${doing(thread.id)}` : ''}, last used ${thread.at.slice(0, 16).replace('T', ' ')})`
         )
         .join('\n')
     },

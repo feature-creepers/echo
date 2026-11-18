@@ -380,6 +380,12 @@ export function createCore(options: CoreOptions): Core {
         const turn = channel.greet()
         return { ok: true, output: turn === undefined ? {} : { turn } }
       },
+      'threads.stop': (input) => {
+        if (input.thread !== undefined) return { ok: true, output: { stopped: channel.stopThread(input.thread) } }
+        const stopped = channel.busy() || channel.threads().threads.some((thread) => thread.state === 'working')
+        channel.stopAll()
+        return { ok: true, output: { stopped } }
+      },
       'turn.stop': () => {
         channel.stop()
         return { ok: true, output: {} }

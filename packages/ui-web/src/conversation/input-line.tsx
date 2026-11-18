@@ -1,6 +1,6 @@
 import { describeShortcut } from '@repo/client'
 import type { Look } from '@repo/protocol'
-import { type ClipboardEvent, type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from 'react'
+import { type ClipboardEvent, type FormEvent, type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { AttachmentChips } from '../attachments/attachment-chips.tsx'
 import type { Attachments } from '../attachments/use-attachments.ts'
 import { useDevice } from '../device/device.tsx'
@@ -8,16 +8,20 @@ import { PaperclipGlyph } from '../files/glyphs.tsx'
 import { Eye } from '../presence/eye.tsx'
 import type { Mood } from '../presence/painter.ts'
 import { cn } from '../primitives/cn.ts'
-import { MicGlyph, PauseGlyph, PlayGlyph, SendGlyph, StopGlyph } from '../primitives/icons.tsx'
-import { Kbd } from '../primitives/kbd.tsx'
+import { MicGlyph, PauseGlyph, PlayGlyph, SendGlyph } from '../primitives/icons.tsx'
+import { StopAllButton } from './stop-all-button.tsx'
 
 export interface InputLineProps {
   /** The name of the persona that will answer, for the hint in the empty line. */
   name: string
-  /** The assistant is answering or speaking: the line then offers to stop it. */
-  busy: boolean
+  /**
+   * Work under way, threads at work or an answer being given: the line then offers, beside sending, to stop it all,
+   * held for two seconds. `working` is how many pieces of work that stops.
+   */
+  stopAll?: { working: number; onStop(): void } | undefined
   /** Say it. Resolving to false when it could not go, such as a file handed over that did not arrive: the words come back to the line. */
   onSay(text: string): void | Promise<boolean>
+  /** Escape: quiet what is being said and stop the answer on the stage. Work in a project goes on. */
   onStop(): void
   /** Pausing what is being said, while something is. */
   pause?: { paused: boolean; onToggle(): void } | undefined
@@ -29,14 +33,18 @@ export interface InputLineProps {
   attachments?: Attachments | undefined
 }
 
+/** The most the line grows to, in pixels, before it scrolls: about eight lines. */
+const TALLEST = 192
+
 /**
- * The line the user types on. It keeps the keyboard: typing anywhere in the window lands here.
- * Enter sends; Escape stops the answer under way. Files pasted or picked wait above the line, and go with what
+ * The line the user types on, growing with what is written. It keeps the keyboard: typing anywhere in the window
+ * lands here. Enter sends and Shift+Enter starts a new line; Escape stops the answer under way. Sending is always
+ * there, even while the assistant works: what is said next runs beside what is under way. Files pasted or picked wait above the line, and go with what
  * is sent; Backspace on an empty line takes the last one back.
  */
-export function InputLine({ name, busy, onSay, onStop, talk, persona, pause, attachments }: InputLineProps) {
+export function InputLine({ name, stopAll, onSay, onStop, talk, persona, pause, attachments }: InputLineProps) {
   const [text, setText] = useState('')
-  const input = useRef<HTMLInputElement>(null)
+  const input = useRef<HTMLTextAreaElement>(null)
   const picker = useRef<HTMLInputElement>(null)
   const waiting = attachments?.pending.length ?? 0
   // The keys shown in the hints are the ones set for this device.
@@ -56,6 +64,14 @@ export function InputLine({ name, busy, onSay, onStop, talk, persona, pause, att
     return () => window.removeEventListener('keydown', onKey)
   }, [onStop])
 
+  // The line grows with its text, up to about eight lines, then scrolls.
+  useLayoutEffect(() => {
+    const line = input.current
+    if (!line) return
+    line.style.height = 'auto'
+    line.style.height = `${Math.min(line.scrollHeight, TALLEST)}px`
+  }, [text])
+
   const send = (event: FormEvent) => {
     event.preventDefault()
     const said = text.trim()
@@ -67,8 +83,14 @@ export function InputLine({ name, busy, onSay, onStop, talk, persona, pause, att
     })
   }
 
-  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Escape') event.currentTarget.blur()
+    // Enter sends; Shift+Enter, or Enter while a character is being composed, stays in the text.
+    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+      event.preventDefault()
+      event.currentTarget.form?.requestSubmit()
+      return
+    }
     const { selectionStart, selectionEnd } = event.currentTarget
     if (event.key === 'Backspace' && waiting > 0 && selectionStart === 0 && selectionEnd === 0) {
       event.preventDefault()
@@ -77,7 +99,7 @@ export function InputLine({ name, busy, onSay, onStop, talk, persona, pause, att
   }
 
   // Pictures and files pasted go with the message; text pasted is text, as always.
-  const onPaste = (event: ClipboardEvent<HTMLInputElement>) => {
+  const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
     const files = [...event.clipboardData.files]
     if (!attachments || files.length === 0) return
     event.preventDefault()
@@ -87,7 +109,7 @@ export function InputLine({ name, busy, onSay, onStop, talk, persona, pause, att
   return (
     <form onSubmit={send} className="material shadow-float group grid rounded-lg transition-shadow duration-(--duration-calm) ease-soft">
       {attachments && waiting > 0 && <AttachmentChips pending={attachments.pending} onRemove={attachments.remove} />}
-      <div className="flex h-12 items-center gap-1 px-1.5">
+      <div className="flex min-h-12 items-end gap-1 px-1.5 py-1.5">
         {persona ? (
           // The eye says which persona answers and what it is doing; pressing it hands over to the other one.
           <button
@@ -103,8 +125,9 @@ export function InputLine({ name, busy, onSay, onStop, talk, persona, pause, att
         ) : (
           <span className="w-2" />
         )}
-        <input
+        <textarea
           ref={input}
+          rows={1}
           value={text}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={onKeyDown}
@@ -125,7 +148,7 @@ export function InputLine({ name, busy, onSay, onStop, talk, persona, pause, att
                   ? `Ask ${name} anything, or press ${talkKey} to talk`
                   : `Ask ${name} anything`
           }
-          className="h-full min-w-0 flex-1 bg-transparent pl-1 text-[0.9375rem] text-text outline-none placeholder:text-text-faint focus-visible:outline-none"
+          className="scroll-quiet min-h-9 min-w-0 flex-1 resize-none bg-transparent py-[0.4375rem] pl-1 text-[0.9375rem] text-text leading-[1.375rem] outline-none placeholder:text-text-faint focus-visible:outline-none"
         />
         {attachments && (
           <>
@@ -146,7 +169,7 @@ export function InputLine({ name, busy, onSay, onStop, talk, persona, pause, att
               onClick={() => picker.current?.click()}
               aria-label="Attach files"
               title="Attach files"
-              className="flex size-8 items-center justify-center rounded-md text-text-faint transition-colors duration-(--duration-quick) ease-soft hover:bg-white/[0.05] hover:text-text"
+              className="mb-0.5 flex size-8 items-center justify-center rounded-md text-text-faint transition-colors duration-(--duration-quick) ease-soft hover:bg-white/[0.05] hover:text-text"
             >
               <PaperclipGlyph />
             </button>
@@ -164,7 +187,7 @@ export function InputLine({ name, busy, onSay, onStop, talk, persona, pause, att
                 : `Talk${talkKey ? ` (${talkKey}${anywhereKey ? `, or ${anywhereKey} from any app` : ''})` : ''}`
             }
             className={cn(
-              'flex size-8 items-center justify-center rounded-md transition-colors duration-(--duration-quick) ease-soft',
+              'mb-0.5 flex size-8 items-center justify-center rounded-md transition-colors duration-(--duration-quick) ease-soft',
               talk.listening ? 'bg-accent text-accent-ink' : 'text-text-faint hover:bg-white/[0.05] hover:text-text'
             )}
           >
@@ -177,29 +200,19 @@ export function InputLine({ name, busy, onSay, onStop, talk, persona, pause, att
             onClick={pause.onToggle}
             aria-label={pause.paused ? 'Continue' : 'Pause'}
             title={pause.paused ? 'Continue' : 'Pause'}
-            className="flex size-8 items-center justify-center rounded-md text-text-faint transition-colors duration-(--duration-quick) ease-soft hover:bg-white/[0.05] hover:text-text"
+            className="mb-0.5 flex size-8 items-center justify-center rounded-md text-text-faint transition-colors duration-(--duration-quick) ease-soft hover:bg-white/[0.05] hover:text-text"
           >
             {pause.paused ? <PlayGlyph /> : <PauseGlyph />}
           </button>
         )}
-        {busy ? (
-          <button
-            type="button"
-            onClick={onStop}
-            aria-label="Stop"
-            className="ml-0.5 flex h-8 items-center gap-2 rounded-md bg-white/[0.08] pr-1.5 pl-2.5 text-text-soft text-xs shadow-[inset_0_0_0_0.5px_rgb(255_255_255/0.1)] transition-colors duration-(--duration-quick) ease-soft hover:bg-white/[0.12] hover:text-text [&_svg]:size-3.5"
-          >
-            <StopGlyph />
-            Stop
-            <Kbd>esc</Kbd>
-          </button>
-        ) : (
+        {stopAll && <StopAllButton working={stopAll.working} onStop={stopAll.onStop} />}
+        {(!stopAll || text.trim() !== '' || waiting > 0) && (
           <button
             type="submit"
             aria-label="Send"
             disabled={text.trim() === '' && waiting === 0}
             className={cn(
-              'ml-0.5 flex size-8 items-center justify-center rounded-md transition-colors duration-(--duration-quick) ease-soft',
+              'mb-0.5 ml-0.5 flex size-8 items-center justify-center rounded-md transition-colors duration-(--duration-quick) ease-soft',
               text.trim() === '' && waiting === 0 ? 'text-text-faint/60' : 'bg-accent text-accent-ink hover:brightness-110'
             )}
           >

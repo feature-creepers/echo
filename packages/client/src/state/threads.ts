@@ -9,6 +9,8 @@ export type ThreadRead = CommandOutput<'thread.read'>
 export interface ThreadsState extends Followed<Threads> {
   /** Bring a thread back: a topic to the stage, an aside's card beside it. */
   focus(thread: string): Promise<void>
+  /** Stop one thread's work, or with none named, every thread's. */
+  stop(thread?: string): Promise<void>
   /** One thread whole: its exchanges with their full answers, its tool calls, its views. */
   read(thread: string): Promise<ThreadRead>
   unfollow(): void
@@ -33,6 +35,9 @@ export function followThreads(session: Session): ThreadsState {
     subscribe: state.subscribe,
     async focus(thread) {
       await session.run('thread.focus', { thread })
+    },
+    async stop(thread) {
+      await session.run('threads.stop', thread === undefined ? {} : { thread })
     },
     read: (thread) => session.run('thread.read', { thread }),
     unfollow: stopEvents

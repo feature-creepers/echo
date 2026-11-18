@@ -1032,4 +1032,58 @@ describe('a project', () => {
     expect(instructions).toContain('Your report:\nChanged the handle in src/handle.tsx.')
     expect(instructions).toContain('(It failed: Claude Code stopped unexpectedly.)')
   })
+
+  it('works on in the background while the person asks something else, and stops on purpose only', async () => {
+    const { channel, harness, call, ended, thread } = await openProject(projectAbilities())
+    // At work: a tool call has started.
+    thread?.emit({ type: 'text', text: 'I will make it wider. ' })
+    thread?.emit({ type: 'tool', name: 'Edit', phase: 'started', call: 'e1' })
+    // Escape quiets what is said; it does not throw away a piece of work.
+    channel.stop()
+    expect(thread?.interrupted ?? 0).toBe(0)
+
+    // The orchestrator is told what the working thread is doing, and cannot queue something new behind it by mistake.
+    channel.say('Also add a dark mode to the settings.')
+    await settled()
+    expect(harness.sessions[0]?.sent.at(-1)).toContain(
+      'working, working in /home/ada/code/echo, on screen, answering: In the echo repo, make the handle wider.'
+    )
+    const id = channel.threads().threads[0]?.id as string
+    const refused = await call(0, 'thread_send', { thread: id })
+    expect(refused).toMatchObject({ ok: false })
+    expect(refused.text).toContain('call thread_open, with the same folder')
+
+    // Opened beside it, the second thread runs at once, told who else works in the folder.
+    expect(await call(0, 'thread_open', { title: 'Dark mode', folder: '~/code/echo' })).toMatchObject({ ok: true })
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+    const beside = harness.sessions[2]
+    expect(beside?.sent[0]).toContain('Other threads are working in this folder at the same time: "Echo", on: In the echo repo, make the handle wider.')
+    expect(channel.threads().threads.filter((one) => one.state === 'working')).toHaveLength(2)
+
+    // Stopping one thread leaves the other at work.
+    expect(channel.stopThread(id)).toBe(true)
+    expect(thread?.interrupted).toBe(1)
+    thread?.emit({ type: 'turn-end' })
+    expect(ended().map((line) => [line.said, line.outcome])).toEqual([['In the echo repo, make the handle wider.', 'stopped']])
+    expect(beside?.interrupted ?? 0).toBe(0)
+    expect(channel.stopThread(id)).toBe(false)
+  })
+
+  it('lets a request wait behind the work it follows, when the orchestrator says so', async () => {
+    const { channel, harness, call, thread } = await openProject(projectAbilities())
+    thread?.emit({ type: 'tool', name: 'Edit', phase: 'started', call: 'e1' })
+    channel.say('And then commit it.')
+    await settled()
+    const id = channel.threads().threads[0]?.id as string
+    expect(await call(0, 'thread_send', { thread: id, wait: true })).toMatchObject({ ok: true })
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+    expect(thread?.sent).toHaveLength(1)
+    thread?.emit({ type: 'tool', name: 'Edit', phase: 'ended', call: 'e1' })
+    thread?.emit({ type: 'turn-end' })
+    await settled()
+    expect(thread?.sent).toHaveLength(2)
+    expect(thread?.sent[1]).toContain('And then commit it.')
+  })
 })

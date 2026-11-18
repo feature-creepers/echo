@@ -143,7 +143,7 @@ export function SideSheet({ client, personas, tab, onTab, answer, onAnswer, onCl
         opened && threads.threads.some((thread) => thread.id === opened) ? (
           <ThreadView key={opened} client={client} thread={opened} personas={personas} onBack={() => setOpened(undefined)} />
         ) : (
-          <ThreadList threads={threads} onOpen={setOpened} />
+          <ThreadList threads={threads} onOpen={setOpened} onStop={(thread) => void client.threads.stop(thread).catch(() => undefined)} />
         )
       ) : (
         <Inspector events={events} />

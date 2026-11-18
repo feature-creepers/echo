@@ -26,6 +26,7 @@ import { doing } from './activity.ts'
 import { EngineIndicator } from './engine-indicator.tsx'
 import { InputLine } from './input-line.tsx'
 import { ReadyChips } from './ready-chips.tsx'
+import { RunningThreads } from './running-threads.tsx'
 import { type ScrollEdges, useScrollEdges } from './scroll-edges.ts'
 import { SpokenLine } from './spoken-line.tsx'
 import { Suggestions } from './suggestions.tsx'
@@ -155,6 +156,8 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
   const threads = useFollowed(client.threads)
   const asleep = useFollowed(client.memory.asleep)
   const ready = threads.threads.filter((thread) => thread.state === 'ready')
+  /** The threads at work, behind or on the stage: each goes on while the person asks for something else. */
+  const working = threads.threads.filter((thread) => thread.state === 'working').length
   const [problem, setProblem] = useState<string>()
 
   const active = personas.available.find((persona) => persona.id === personas.active) ?? personas.available[0]
@@ -218,6 +221,11 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
   const stop = useCallback(() => {
     client.speech.stop()
     client.channel.stop().catch(() => undefined)
+  }, [client])
+  // Held to the end, the composer's stop ends all work: every thread's, and the answer on the stage.
+  const stopAll = useCallback(() => {
+    client.speech.stop()
+    client.threads.stop().catch(() => setProblem(refusalCopy('failed')))
   }, [client])
 
   const {
@@ -369,7 +377,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
   const composer = (
     <InputLine
       name={active.name}
-      busy={running || voicing}
+      stopAll={running || voicing || working > 0 ? { working: Math.max(working, 1), onStop: stopAll } : undefined}
       onSay={send}
       onStop={stop}
       attachments={attachments}
@@ -484,6 +492,12 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
           {/* Why a file was not added, quietly on the left; what it may reach and what it thinks with on the right, changed
               on the spot from their menus. */}
           <div className="-mt-0.5 flex items-start justify-between gap-4">
+            <RunningThreads
+              threads={threads.threads}
+              exchanges={channel.exchanges}
+              onFocus={(thread) => void client.threads.focus(thread).catch(() => undefined)}
+              onStop={(thread) => void client.threads.stop(thread).catch(() => setProblem(refusalCopy('failed')))}
+            />
             <AnimatePresence>
               {attachments.notice && (
                 <motion.span

@@ -19,6 +19,16 @@ export const threadCommands = {
     output: z.object({ thread: threadSchema, exchanges: z.array(exchangeSchema), steps: z.array(stepSchema), views: z.array(viewSchema) })
   },
 
+  /**
+   * Stop work: one thread's, the request it answers and those waiting for it; or, with no thread, every thread's and
+   * the answer on the stage, every session ending with what it still runs. Reminders and approvals are left as they
+   * are: that is `everything.stop`. Says whether there was anything to stop.
+   */
+  'threads.stop': {
+    input: z.object({ thread: threadIdSchema.optional() }),
+    output: z.object({ stopped: z.boolean() })
+  },
+
   /** Bring a thread to the stage: its view, and its last answer as the caption. An aside's card comes back beside the topic. */
   'thread.focus': {
     input: z.object({ thread: threadIdSchema }),
