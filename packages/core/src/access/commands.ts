@@ -4,8 +4,8 @@ export type { Shell }
 
 /**
  * What a command line does, read before it runs (docs/SPEC.md, section 12.2): its simple commands and their
- * programs, whether it only reads, whether it destroys, whether it reaches the network, whether some of it
- * cannot be read in advance, and the paths it names.
+ * programs, whether it only reads, whether it destroys, whether it reaches the network, whether it publishes to
+ * others, whether some of it cannot be read in advance, and the paths it names.
  *
  * It reads the line as the shell would, and decides from what is written: a program can still compute other
  * paths, or do more than its name says. What it cannot tell, it never calls read-only. The adapter, where the
@@ -24,6 +24,8 @@ export interface ReadCommand {
   readOnly: boolean
   destructive: boolean
   network: boolean
+  /** It puts something before others, beyond this computer: a push, a package or a release, a post, a deployment. */
+  publishes: boolean
   /** What it runs cannot be read in advance: a script, code given inline, `eval`. */
   opaque: boolean
   /** It goes through the folders it names and everything in them. */
@@ -45,6 +47,7 @@ export interface CommandReading {
   readOnly: boolean
   destructive: boolean
   network: boolean
+  publishes: boolean
   opaque: boolean
   /** A path it uses could not be told from the line: a variable only the shell knows, the output of another command. */
   unresolved: boolean
@@ -107,6 +110,7 @@ export function readCommand(line: string, shell: Shell = 'posix'): CommandReadin
     readOnly: true,
     destructive: false,
     network: false,
+    publishes: false,
     opaque: false,
     unresolved: false,
     paths: [],
@@ -118,8 +122,9 @@ export function readCommand(line: string, shell: Shell = 'posix'): CommandReadin
   reading.readOnly = reading.readOnly && !reading.opaque && !reading.unresolved && reading.commands.every((command) => command.readOnly)
   reading.destructive = reading.commands.some((command) => command.destructive)
   reading.network = reading.commands.some((command) => command.network)
+  reading.publishes = reading.commands.some((command) => command.publishes)
   reading.opaque = reading.opaque || reading.commands.some((command) => command.opaque)
-  if (reading.network || reading.destructive || reading.opaque) reading.readOnly = false
+  if (reading.network || reading.destructive || reading.opaque || reading.publishes) reading.readOnly = false
   return reading
 }
 
@@ -245,6 +250,7 @@ interface Kind {
   readOnly?: boolean
   destructive?: boolean
   network?: boolean
+  publishes?: boolean
   opaque?: boolean
   recursive?: boolean
   /** The subcommand that makes its key, when it has one: `commit` for `git commit`. */
@@ -389,6 +395,8 @@ const POWERSHELL_NETWORK = new Set([
   'find-package',
   'find-script'
 ])
+/** PowerShell commands that put something before others: a module or a script in a gallery. */
+const POWERSHELL_PUBLISHING = new Set(['publish-module', 'publish-script', 'publish-psresource'])
 const POWERSHELL_DESTROYING = new Set([
   'remove-item',
   'remove-itemproperty',
@@ -578,6 +586,15 @@ const WITH_SUBCOMMANDS = new Set([
   'snap',
   'flatpak',
   'gh',
+  'twine',
+  'vsce',
+  'ovsx',
+  'vercel',
+  'netlify',
+  'firebase',
+  'wrangler',
+  'fly',
+  'flyctl',
   'systemctl',
   'conda',
   'poetry',
@@ -850,7 +867,9 @@ function git(args: readonly string[]): Kind {
       kind.destructive = has(rest, '--hard', '--keep', '--merge')
       break
     case 'push':
+    case 'send-email':
       kind.network = true
+      kind.publishes = true
       kind.destructive =
         has(rest, '--force', '-f', '--force-with-lease', '--mirror', '--delete', '-d') ||
         rest.some((word) => word.startsWith('--force') || word.startsWith('+') || word.startsWith(':'))
@@ -916,7 +935,11 @@ function packages(program: string, args: readonly string[]): Kind {
           'exec'
         ].includes(word) ||
         (program === 'yarn' && sub === undefined)
-      kind.destructive = ['uninstall', 'remove', 'rm', 'un', 'r', 'unlink'].includes(word) && has(args, '-g', '--global')
+      kind.destructive = (['uninstall', 'remove', 'rm', 'un', 'r', 'unlink'].includes(word) && has(args, '-g', '--global')) || word === 'unpublish'
+      // Yarn's second version publishes with `yarn npm publish`.
+      kind.publishes =
+        (['publish', 'unpublish', 'deprecate', 'dist-tag'].includes(word) && !(word === 'dist-tag' && has(args, 'ls', 'list'))) ||
+        (program === 'yarn' && word === 'npm' && has(args, 'publish', 'tag'))
       // A package's scripts are code of its own, not read here.
       kind.opaque =
         ['run', 'run-script', 'test', 't', 'start', 'exec', 'x', 'dlx', 'create'].includes(word) ||
@@ -968,11 +991,13 @@ function packages(program: string, args: readonly string[]): Kind {
         'create'
       ].includes(word)
       kind.destructive = ['uninstall', 'remove', 'rm', 'purge', 'autoremove', 'erase'].includes(word)
+      kind.publishes = (program === 'gem' && word === 'push') || (program === 'poetry' && word === 'publish')
       kind.readOnly =
         (program === 'conda' && (word === 'list' || word === 'info')) || (program === 'brew' && (word === 'list' || word === '--prefix' || word === 'config'))
       break
     case 'cargo':
       kind.network = ['install', 'add', 'fetch', 'update', 'publish', 'search', 'login'].includes(word)
+      kind.publishes = word === 'publish' || word === 'yank' || word === 'owner'
       kind.destructive = word === 'uninstall'
       kind.opaque = ['run', 'build', 'test', 'bench'].includes(word)
       break
@@ -983,6 +1008,46 @@ function packages(program: string, args: readonly string[]): Kind {
       break
   }
   return kind
+}
+
+/** What GitHub's command line does: it always reaches the network, and puts before others what it creates or changes. */
+function github(args: readonly string[]): Kind {
+  const lower = args.map((word) => word.toLowerCase())
+  const [area = '', action = ''] = lower.filter((word) => !word.startsWith('-'))
+  const kind: Kind = { sub: area, network: true }
+  if (area === 'api') {
+    // A call to the API reads unless it says otherwise: another method, or fields, which make it a POST.
+    const method = lower.findIndex((word) => word === '-x' || word === '--method')
+    const written = method >= 0 ? (lower[method + 1] ?? 'get') : lower.find((word) => word.startsWith('--method='))?.slice(9)
+    const fields = lower.some((word) => ['-f', '--field', '--raw-field', '--input'].includes(word))
+    kind.publishes = written !== undefined ? written !== 'get' : fields
+    kind.destructive = written === 'delete'
+    return kind
+  }
+  // What only reads, or works on this computer: the rest creates or changes something others see.
+  const reading = ['view', 'list', 'status', 'diff', 'checks', 'watch', 'download', 'checkout', 'clone', 'verify']
+  if (['auth', 'browse', 'search', 'status', 'help', 'version', 'config', 'completion', 'extension', 'alias'].includes(area)) return kind
+  kind.publishes = action !== '' && !reading.includes(action)
+  kind.destructive = action === 'delete' || (area === 'repo' && action === 'archive')
+  return kind
+}
+
+/** Whether a hosting service's command line deploys: it puts a site or an app before others. */
+function deploys(program: string, lower: readonly string[]): boolean {
+  const words = lower.filter((word) => !word.startsWith('-'))
+  const first = words[0] ?? ''
+  switch (program) {
+    case 'vercel':
+      // Bare, it deploys the folder it runs in.
+      return first === '' || first === 'deploy' || first === 'promote' || first === 'alias'
+    case 'netlify':
+    case 'firebase':
+      return first === 'deploy'
+    case 'wrangler':
+      return first === 'deploy' || first === 'publish' || (first === 'pages' && words[1] === 'deploy')
+    default:
+      return first === 'deploy'
+  }
 }
 
 /** What a program does with its words. `program` is in lower case, without its folder or `.exe`. */
@@ -1139,6 +1204,7 @@ function kindOf(program: string, args: readonly string[], context: Context): Kin
         ...(sub === undefined ? {} : { sub }),
         readOnly: ['ps', 'images', 'inspect', 'logs', 'version', 'info', 'stats', 'top', 'port', 'history'].includes(word),
         network: ['pull', 'push', 'login', 'search', 'build'].includes(word),
+        publishes: word === 'push',
         destructive:
           ['rm', 'rmi', 'prune', 'kill'].includes(word) ||
           ((word === 'system' || word === 'volume' || word === 'image' || word === 'container' || word === 'network') && has(args, 'prune', 'rm'))
@@ -1149,7 +1215,19 @@ function kindOf(program: string, args: readonly string[], context: Context): Kin
       return { ...(sub === undefined ? {} : { sub }), network: true, destructive: sub === 'delete' }
     }
     case 'gh':
-      return { sub: first, network: true }
+      return github(args)
+    case 'twine':
+      return { sub: first, network: true, publishes: first === 'upload' }
+    case 'vsce':
+    case 'ovsx':
+      return { sub: first, network: true, publishes: first === 'publish' || first === 'unpublish', destructive: first === 'unpublish' }
+    case 'vercel':
+    case 'netlify':
+    case 'firebase':
+    case 'wrangler':
+    case 'fly':
+    case 'flyctl':
+      return { sub: first, network: true, publishes: deploys(program, lower) }
     case 'curl':
     case 'wget':
     case 'aria2c':
@@ -1409,6 +1487,7 @@ function powershellKind(name: string, args: readonly string[]): Kind {
   const kind: Kind = {}
   if (POWERSHELL_READING.has(lower) || (READING_VERBS.test(lower) && !POWERSHELL_NETWORK.has(lower))) kind.readOnly = true
   if (POWERSHELL_NETWORK.has(lower)) kind.network = true
+  if (POWERSHELL_PUBLISHING.has(lower)) kind.publishes = true
   if (POWERSHELL_DESTROYING.has(lower)) kind.destructive = true
   if (POWERSHELL_OPAQUE.has(lower)) kind.opaque = true
   if (lower === 'stop-process') kind.destructive = parameter(args, 'force')
@@ -1637,9 +1716,15 @@ function readStage(stage: Stage, context: Context): void {
   const key = kind.sub && WITH_SUBCOMMANDS.has(found.name) ? `${program} ${kind.sub.toLowerCase()}` : program
   reading.commands.push(
     command(program, key, argTexts, {
-      readOnly: (kind.readOnly === true || kind.launcher === true) && kind.network !== true && kind.destructive !== true && kind.opaque !== true,
+      readOnly:
+        (kind.readOnly === true || kind.launcher === true) &&
+        kind.network !== true &&
+        kind.publishes !== true &&
+        kind.destructive !== true &&
+        kind.opaque !== true,
       destructive: kind.destructive === true,
-      network: kind.network === true,
+      network: kind.network === true || kind.publishes === true,
+      publishes: kind.publishes === true,
       opaque: kind.opaque === true,
       recursive: kind.recursive === true
     })
@@ -1659,6 +1744,7 @@ function command(program: string, key: string, args: string[], flags: Partial<Om
     readOnly: flags.readOnly ?? false,
     destructive: flags.destructive ?? false,
     network: flags.network ?? false,
+    publishes: flags.publishes ?? false,
     opaque: flags.opaque ?? false,
     recursive: flags.recursive ?? false
   }

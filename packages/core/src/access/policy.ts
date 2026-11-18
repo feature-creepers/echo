@@ -10,9 +10,11 @@ import type { CommandReading } from './commands.ts'
  * | ------- | -------------------------------------------------------------------- | ---------------------------------------- |
  * | `ask`   | Reading, and commands that only read                                 | Every change, every other command        |
  * | `trust` | The same, and changes to files where they may be changed             | Every other command                      |
- * | `auto`  | Everything, commands naming only places that may be changed included | Commands that destroy, and deleting files |
+ * | `auto`  | Everything, commands naming only places that may be changed included | Commands that destroy or publish, deleting files |
  *
- * What destroys is asked at every level, and never covered by a yes for the session.
+ * What destroys is asked at every level, and never covered by a yes for the session. What publishes, putting
+ * something before others beyond this computer (a push, a release, a post), is asked at every level too; a yes
+ * for the session covers it, for those who push often.
  */
 export type Decision =
   | { run: true; because: 'read-only' | 'level' | 'session' }
@@ -26,6 +28,7 @@ export function decide(use: ComputerUse, level: Access['approvals'], reading: Co
     if (!reading) return { run: false, destructive: false, session: false }
     if (reading.readOnly) return { run: true, because: 'read-only' }
     if (reading.destructive) return { run: false, destructive: true, session: false }
+    if (reading.publishes) return coveredForSession ? { run: true, because: 'session' } : { run: false, destructive: false, session: reading.keys.length > 0 }
     // A command can change what it names: without asking, only where things may be changed.
     if (level === 'auto' && use.reach === 'write') return { run: true, because: 'level' }
     if (coveredForSession) return { run: true, because: 'session' }

@@ -30,9 +30,26 @@ export interface AccessControl {
   reach(showing: () => Showing): Reach | undefined
   /** The tool a thread asks for a folder or a file with, when the person gives one by voice. */
   tools(showing: () => Showing): Tool[]
+  /**
+   * Have a place within reach: nothing to do when it already is, else the person is asked on screen, where
+   * `showing` says, and it is granted once they agree. `purpose` words the card: a place to give, or a project's
+   * folder to work in.
+   */
+  grant(asked: { path: string; write: boolean; purpose?: 'grant' | 'work' }, showing: Showing): Promise<Granted>
   /** What a thread is told about its access, as it stands now. */
   standing(): string | undefined
-  /** Changes when what a session is given changes: it is then opened again, with the new access. */
+  /** The folders the person lets the assistant change, besides its own: where it may work on a project. */
+  projects(): string[]
+  /**
+   * What a thread did on the computer, most recent last, in lines a session reads: what it changed and ran, how it
+   * went, and what was refused and why. Paths inside `folder` are written from it. Nothing when it did nothing.
+   */
+  worked(thread: string, folder?: string): string | undefined
+  /**
+   * Changes when what a session is given at its start changes: the places, the reach beyond them, the assistant's
+   * own folder. It is then opened again. The approval level is not part of it: a session is told of a new one with
+   * its next message (`standing`), so work under way keeps its context.
+   */
   version(): string
   /** Something the person said, which may answer a question on screen, or stop everything. True when it did. */
   hear(said: string): boolean
@@ -82,6 +99,12 @@ export interface AccessOptions {
 
 const grantInput = z.object({ path: z.string().trim().min(1).max(4096), write: z.boolean().default(false) })
 
+/** A place asked for: within reach now, as the system names it, or why not, in words the model can tell the person. */
+export type Granted = { ok: true; path: string; kind: 'folder' | 'file'; already: boolean } | { ok: false; text: string }
+
+/** How many of a thread's uses it is reminded of when a new session carries on its work. */
+const WORKED_LINES = 40
+
 /** The last part of a path, and the folder it is in, whatever the system's separator. */
 const parts = (path: string) => {
   const at = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
@@ -107,6 +130,26 @@ const REASON_OF: Record<Exclude<Answer, 'yes' | 'session'>, NewUse['reason']> = 
   'moved-on': 'unanswered',
   stopped: 'stopped',
   unanswered: 'unanswered'
+}
+
+/** A path as a thread working in `folder` writes it: from that folder when it is inside it. */
+const relative = (path: string, folder: string | undefined) => {
+  if (folder === undefined || !inside(path, folder)) return path
+  const rest = path.slice(folder.replace(/[\\/]+$/, '').length + 1)
+  return rest === '' ? '.' : rest
+}
+
+const DONE: Record<AccessUse['action'], string> = { read: 'read', create: 'created', change: 'changed', delete: 'deleted', run: 'ran' }
+const DOING: Record<AccessUse['action'], string> = { read: 'reading', create: 'creating', change: 'changing', delete: 'deleting', run: 'running' }
+
+/** One use, as a session carrying on a thread's work is reminded of it. */
+function workedLine(use: AccessUse, path: (path: string) => string): string {
+  const what =
+    use.action === 'run' ? (use.paths.length === 0 ? `on the web: ${use.command ?? use.tool}` : `\`${use.command ?? ''}\``) : use.paths.map(path).join(', ')
+  if (use.decision === 'refused') return `not done, ${DOING[use.action]} ${what}: ${use.detail ?? use.reason}`
+  const outcome = use.outcome === undefined ? '' : use.outcome.ok ? '' : ` (it failed${use.outcome.error ? `: ${use.outcome.error}` : ''})`
+  const undone = use.undo?.done ? ' (the person undid it since)' : ''
+  return `${DONE[use.action]} ${what}${outcome}${undone}`
 }
 
 /** Keeps nothing: for a core with no records, which has no computer either. */
@@ -162,11 +205,13 @@ export function createAccess({ settings, screen, computer, timers, records, vers
         const keys = reading?.keys ?? []
         const note = reading?.destructive
           ? { text: 'It deletes or overwrites something for good, or changes the system. This is always asked.', tone: 'danger' as const }
-          : reading?.network
-            ? { text: 'It uses the network.', tone: 'soft' as const }
-            : reading?.opaque
-              ? { text: 'Part of what it runs cannot be read in advance.', tone: 'soft' as const }
-              : undefined
+          : reading?.publishes
+            ? { text: 'It puts something before others, beyond this computer. This is always asked.', tone: 'soft' as const }
+            : reading?.network
+              ? { text: 'It uses the network.', tone: 'soft' as const }
+              : reading?.opaque
+                ? { text: 'Part of what it runs cannot be read in advance.', tone: 'soft' as const }
+                : undefined
         return {
           heading: 'Run this command?',
           subject: 'On your computer',
@@ -250,6 +295,43 @@ export function createAccess({ settings, screen, computer, timers, records, vers
     for (const listener of [...stopping]) listener()
   }
 
+  /** A place within reach: found first, never one that is never reached, and asked of the person unless it already is. */
+  const grant = async (
+    { path, write, purpose = 'grant' }: { path: string; write: boolean; purpose?: 'grant' | 'work' },
+    showing: Showing
+  ): Promise<Granted> => {
+    if (!computer) return { ok: false, text: 'This assistant runs where it cannot reach files.' }
+    const found = await computer.locate(path)
+    if (!found) return { ok: false, text: `There is nothing at ${path}. Ask the person where it is.` }
+    if (purpose === 'work' && found.kind !== 'folder') return { ok: false, text: `${found.path} is a file: a project is a folder.` }
+    // A place never reached is not given either. A folder that holds one may be: what is inside stays refused.
+    const never = computer.protected.find(
+      (place) => place.path !== undefined && inside(found.path, place.path) && !(place.except ?? []).some((open) => inside(found.path, open))
+    )
+    if (never) return { ok: false, text: `${found.path} holds ${never.label.toLowerCase()}, which is never reached, whatever is granted.` }
+    const current = scope()
+    const covered =
+      current.computer === 'write' ||
+      (current.computer === 'read' && !write) ||
+      current.places.some((place) => inside(found.path, place.path) && (place.write || !write))
+    if (covered) return { ok: true, path: found.path, kind: found.kind, already: true }
+    const working = purpose === 'work'
+    const { answer } = await approvals.ask(
+      {
+        heading: working ? 'Work in this folder?' : found.kind === 'folder' ? 'Give access to this folder?' : 'Give access to this file?',
+        subject: found.path,
+        facts: [{ label: 'Access', value: write ? 'Read and change' : 'Read only' }],
+        ...(working ? { note: { text: 'Changes and commands there are decided by your approval level, and kept in Activity.', tone: 'soft' as const } } : {}),
+        allow: working ? 'Work here' : 'Give access'
+      },
+      showing
+    )
+    if (answer !== 'yes' && answer !== 'session') return { ok: false, text: REFUSED[answer] }
+    const places = access().places.filter((place) => place.path !== found.path)
+    settings.setAccess({ places: [...places, { path: found.path, kind: found.kind, write }] })
+    return { ok: true, path: found.path, kind: found.kind, already: false }
+  }
+
   return {
     reach(showing) {
       if (!computer) return undefined
@@ -295,37 +377,20 @@ export function createAccess({ settings, screen, computer, timers, records, vers
           async run(input) {
             const asked = grantInput.safeParse(input)
             if (!asked.success) return { ok: false, text: 'computer_grant takes a path, absolute or from ~, and whether you may change things there.' }
-            const found = await computer.locate(asked.data.path)
-            if (!found) return { ok: false, text: `There is nothing at ${asked.data.path}. Ask the person where it is.` }
-            // A place never reached is not given either. A folder that holds one may be: what is inside stays refused.
-            const never = computer.protected.find(
-              (place) => place.path !== undefined && inside(found.path, place.path) && !(place.except ?? []).some((open) => inside(found.path, open))
-            )
-            if (never) return { ok: false, text: `${found.path} holds ${never.label.toLowerCase()}, which is never reached, whatever is granted.` }
-            const { write } = asked.data
-            const current = scope()
-            const covered =
-              current.computer === 'write' ||
-              (current.computer === 'read' && !write) ||
-              current.places.some((place) => inside(found.path, place.path) && (place.write || !write))
-            if (covered) return { ok: true, text: `${found.path} is already within your reach.` }
-            const { answer } = await approvals.ask(
-              {
-                heading: found.kind === 'folder' ? 'Give access to this folder?' : 'Give access to this file?',
-                subject: found.path,
-                facts: [{ label: 'Access', value: write ? 'Read and change' : 'Read only' }],
-                allow: 'Give access'
-              },
-              showing()
-            )
-            if (answer !== 'yes' && answer !== 'session') return { ok: false, text: REFUSED[answer] }
-            const places = access().places.filter((place) => place.path !== found.path)
-            settings.setAccess({ places: [...places, { path: found.path, kind: found.kind, write }] })
-            return { ok: true, text: `Granted: ${found.path}, ${write ? 'read and write' : 'read only'}. You can use it now.` }
+            const granted = await grant(asked.data, showing())
+            if (!granted.ok) return { ok: false, text: granted.text }
+            return {
+              ok: true,
+              text: granted.already
+                ? `${granted.path} is already within your reach.`
+                : `Granted: ${granted.path}, ${asked.data.write ? 'read and write' : 'read only'}. You can use it now.`
+            }
           }
         }
       ]
     },
+
+    grant,
 
     standing() {
       if (!computer) return undefined
@@ -354,6 +419,7 @@ export function createAccess({ settings, screen, computer, timers, records, vers
         'How each use is decided:',
         `- ${asking}`,
         '- A command that deletes, formats, shuts the computer down, changes permissions, the registry or services, force-stops a process, or rewrites git history is always asked, whatever they chose, and is never covered for the session.',
+        '- A command that puts something before others, beyond this computer, is always asked too, whatever they chose: a git push, a package published, a release, a pull request, an issue or a comment, a deployment. They may allow it for the session.',
         '- When a card asks them, your call returns once they answered. They can allow it once, or for the session: the same program and subcommand (git commit, npm run, python), or any change in the same folder, then runs at once until the app quits.',
         '- Every use is checked first against what they granted. A command is checked by the paths it names, with ~, variables and .. read: one that names a place outside, or a place never reached, is refused before anyone is asked. This reads what the command names, not what a program works out once it runs, so never use a command to reach around it: name the places you work on.',
         '- A use that is refused comes back with the reason: tell them in a sentence, and that they can grant more in Settings, Access.',
@@ -366,7 +432,28 @@ export function createAccess({ settings, screen, computer, timers, records, vers
       ].join('\n')
     },
 
-    version: () => JSON.stringify([access(), computer?.workspace ?? null]),
+    projects() {
+      if (!computer) return []
+      return access()
+        .places.filter((place) => place.kind === 'folder' && place.write)
+        .map((place) => place.path)
+    },
+
+    worked(thread, folder) {
+      // Reading is left out: it changes nothing, and is quickly done again. What changed, ran or was refused is kept.
+      const uses = activity
+        .read(Number.MAX_SAFE_INTEGER)
+        .uses.filter((use) => use.thread === thread && (use.action !== 'read' || use.decision === 'refused'))
+        .slice(0, WORKED_LINES)
+        .reverse()
+      if (uses.length === 0) return undefined
+      return uses.map((use) => `- ${workedLine(use, (path) => relative(path, folder))}`).join('\n')
+    },
+
+    version: () => {
+      const { workspace, places, computer: reach } = access()
+      return JSON.stringify([workspace, places, reach, computer?.workspace ?? null])
+    },
 
     hear(said) {
       if (stopsEverything(said)) {

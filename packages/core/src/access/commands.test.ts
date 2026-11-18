@@ -246,6 +246,63 @@ describe('readCommand: what reaches the network', () => {
   })
 })
 
+describe('readCommand: what publishes', () => {
+  it.each([
+    ['git push', 'posix'],
+    ['git push origin main', 'posix'],
+    ['git -C repo push --tags', 'posix'],
+    ['npm publish', 'posix'],
+    ['pnpm publish --access public', 'posix'],
+    ['yarn npm publish', 'posix'],
+    ['cargo publish', 'posix'],
+    ['docker push registry.example/app:1', 'posix'],
+    ['gh pr create --fill', 'posix'],
+    ['gh pr merge 12 --squash', 'posix'],
+    ['gh release create v1.0.0 dist/*', 'posix'],
+    ['gh issue comment 3 --body "done"', 'posix'],
+    ['gh api -X POST repos/x/y/issues', 'posix'],
+    ['gh api repos/x/y/issues -f title=Bug', 'posix'],
+    ['gh workflow run ci.yml', 'posix'],
+    ['twine upload dist/*', 'posix'],
+    ['vercel', 'posix'],
+    ['vercel --prod', 'posix'],
+    ['wrangler deploy', 'posix'],
+    ['firebase deploy --only hosting', 'posix'],
+    ['Publish-Module -Name Tools', 'powershell']
+  ] as const)('`%s` publishes, and is never read-only', (line, shell) => {
+    const reading = readCommand(line, shell)
+    expect(reading.publishes).toBe(true)
+    expect(reading.network).toBe(true)
+    expect(reading.readOnly).toBe(false)
+  })
+
+  it.each([
+    'git status',
+    'git commit -m "push it"',
+    'git fetch',
+    'gh pr view 3',
+    'gh pr list',
+    'gh pr checks 12',
+    'gh run watch',
+    'gh api repos/x/y',
+    'gh api -X GET repos/x/y/pulls',
+    'gh auth status',
+    'npm install',
+    'npm dist-tag ls',
+    'docker pull node:22',
+    'wrangler dev',
+    'firebase emulators:start'
+  ])('`%s` does not', (line) => {
+    expect(readCommand(line).publishes).toBe(false)
+  })
+
+  it('reads a removal from a registry or a repository as destroying too', () => {
+    expect(readCommand('npm unpublish pkg@1.0.0')).toMatchObject({ publishes: true, destructive: true })
+    expect(readCommand('gh repo delete x/y --yes')).toMatchObject({ publishes: true, destructive: true })
+    expect(readCommand('gh api -X DELETE repos/x/y/releases/1')).toMatchObject({ publishes: true, destructive: true })
+  })
+})
+
 describe('readCommand: nested shells', () => {
   it('reads PowerShell given to it with -Command, -c and -EncodedCommand', () => {
     expect(readCommand('powershell -Command "Remove-Item a.txt"').destructive).toBe(true)

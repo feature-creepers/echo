@@ -227,7 +227,9 @@ describe('the three levels', () => {
     ['a command naming a place only read, not asking', command('cp a ~/Documents/', 'read'), 'auto', false],
     ['a command that destroys, not asking', command('rm notes.txt'), 'auto', false],
     ['a command that only reads, asking', command('ls'), 'ask', true],
-    ['a command using the network, not asking', command('curl -O https://example.com/a.zip'), 'auto', true]
+    ['a command using the network, not asking', command('curl -O https://example.com/a.zip'), 'auto', true],
+    ['a push, not asking', command('git push origin main'), 'auto', false],
+    ['a release, not asking', command('gh release create v1'), 'auto', false]
   ]
 
   it.each(cases)('%s', async (_name, use, level, runs) => {
@@ -253,6 +255,19 @@ describe('the three levels', () => {
     await settle()
     expect(screen.current()).toBeDefined()
     expect(access.standingRules().allowances).toEqual([])
+  })
+
+  it('asks before what publishes at every level, says why, and lets a yes for the session cover the next push', async () => {
+    const { reach, access, settings, screen } = setup()
+    settings.setAccess({ approvals: 'auto' })
+    const first = reach.approve(command('git push origin main'), signal())
+    await settle()
+    expect(cardText(screen)).toContain('puts something before others')
+    expect(cardText(screen)).toContain('git push')
+    access.hear('yes, for the session')
+    expect(await first).toMatchObject({ allow: true })
+    expect(await reach.approve(command('git push'), signal())).toMatchObject({ allow: true })
+    expect(access.activity(1).uses[0]).toMatchObject({ decision: 'ran', reason: 'session' })
   })
 
   it('reads an access recorded before the third level as it behaved then', () => {
@@ -487,17 +502,68 @@ describe('a folder named by voice', () => {
   })
 })
 
+describe('a project folder to work in', () => {
+  it('asks to work in a folder not yet changeable, and grants it read and write', async () => {
+    const { access, settings, screen } = setup()
+    const showing = { thread: undefined, turn: 'turn', slot: 'stage' as const, focused: true }
+    const granted = access.grant({ path: '~/Documents', write: true, purpose: 'work' }, showing)
+    await settle()
+    expect(cardText(screen)).toContain('Work in this folder?')
+    expect(cardText(screen)).toContain('Read and change')
+    access.hear('yes')
+    expect(await granted).toEqual({ ok: true, path: '/home/ada/Documents', kind: 'folder', already: false })
+    expect(settings.read().access.places).toEqual([{ path: '/home/ada/Documents', kind: 'folder', write: true }])
+    expect(access.projects()).toEqual(['/home/ada/Documents'])
+    // Already changeable: nothing is asked.
+    expect(await access.grant({ path: '/home/ada/Documents', write: true, purpose: 'work' }, showing)).toMatchObject({ ok: true, already: true })
+  })
+
+  it('refuses a file, and a place never reached, before anyone is asked', async () => {
+    const { access, screen } = setup()
+    const showing = { thread: undefined, turn: 'turn', slot: 'stage' as const, focused: true }
+    expect(await access.grant({ path: '~/notes.txt', write: true, purpose: 'work' }, showing)).toEqual({
+      ok: false,
+      text: expect.stringContaining('a project is a folder')
+    })
+    expect(await access.grant({ path: '~/.ssh', write: true, purpose: 'work' }, showing)).toEqual({ ok: false, text: expect.stringContaining('never reached') })
+    expect(screen.current()).toBeUndefined()
+  })
+})
+
+describe('what a thread did', () => {
+  it('is told back to a new session: changes, commands and refusals, from its folder, and nothing of other threads', async () => {
+    const { access, reach, settings } = setup()
+    settings.setAccess({ approvals: 'auto' })
+    const changed = await reach.approve(change, signal())
+    if (changed.allow && changed.use) access.report(changed.use, { ok: true })
+    const ran = await reach.approve(command('pnpm test'), signal())
+    if (ran.allow && ran.use) access.report(ran.use, { ok: false, error: 'Exit code 1' })
+    await reach.approve({ ...command('cat ~/.ssh/id_rsa'), refused: { why: 'protected', reason: 'It holds SSH keys, never reached.' } }, signal())
+    await reach.approve({ action: 'read', tool: 'Read', paths: [`${WORKSPACE}/list.md`] }, signal())
+    await settle()
+    expect(access.worked('t', WORKSPACE)?.split('\n')).toEqual([
+      '- changed list.md',
+      '- ran `pnpm test` (it failed: Exit code 1)',
+      '- not done, running `cat ~/.ssh/id_rsa`: It holds SSH keys, never reached.'
+    ])
+    expect(access.worked('another')).toBeUndefined()
+  })
+})
+
 describe('what a thread is told', () => {
-  it('says what it may reach and how each use is decided, and changes its version when that changes', () => {
+  it('says what it may reach and how each use is decided, and changes its version when what a session is given changes', () => {
     const { access, settings } = setup()
     const before = access.version()
     expect(access.standing()).toContain(`Your own folder, ${WORKSPACE}: read and write`)
     expect(access.standing()).toContain('Every change to a file, and every other command, waits for their approval')
     expect(access.standing()).toContain('never reached')
     expect(access.standing()).toContain('Commands may use the network when the task needs it')
+    expect(access.standing()).toContain('a git push')
     expect(access.standing()).not.toContain('never use them to reach the web')
     settings.setAccess({ approvals: 'auto' })
     expect(access.standing()).toContain('Everything within what they granted runs at once')
+    // A new level is told to a session with its next message: it is not opened again for it.
+    expect(access.version()).toBe(before)
     settings.setAccess({ places: [{ path: '/home/ada/Documents', kind: 'folder', write: false }], workspace: false })
     expect(access.standing()).toContain('- /home/ada/Documents (folder): read only.')
     expect(access.version()).not.toBe(before)
