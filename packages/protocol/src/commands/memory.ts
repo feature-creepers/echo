@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { assistantStateSchema, FACT_MAX_LENGTH, factIdSchema, factKindSchema, memoryViewSchema, sleepSettingsSchema } from '../memory.ts'
+import { assistantStateSchema, FACT_MAX_LENGTH, factIdSchema, factKindSchema, memoryViewSchema, retentionDaysSchema, sleepSettingsSchema } from '../memory.ts'
 
 const memoryOutput = z.object({ memory: memoryViewSchema })
 
@@ -25,6 +25,15 @@ export const memoryCommands = {
   /** Choose when the assistant sleeps. What is left out keeps its value. */
   'memory.sleep-settings.set': {
     input: sleepSettingsSchema.partial(),
+    output: memoryOutput
+  },
+
+  /**
+   * Choose how many days the conversation's words are kept, or null to keep them for good. The words older than
+   * that are erased at once, and from then on as they pass it; what was learned from them stays.
+   */
+  'memory.retention.set': {
+    input: z.object({ days: retentionDaysSchema.nullable() }),
     output: memoryOutput
   },
 

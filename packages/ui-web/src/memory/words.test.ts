@@ -1,6 +1,6 @@
 import type { Fact, SleepSettings } from '@repo/protocol'
 import { describe, expect, it } from 'vitest'
-import { ago, dayOf, learnedFrom, sleepStatus, whenItSleeps } from './words.ts'
+import { ago, dayOf, keptFor, learnedFrom, retentionChoices, retentionDetail, retentionOf, retentionWarning, sleepStatus, whenItSleeps } from './words.ts'
 
 const now = new Date('2026-11-17T12:00:00Z')
 const sleep: SleepSettings = { when: 'quiet', quietMinutes: 10, time: '03:00' }
@@ -36,5 +36,32 @@ describe('the words of the memory section', () => {
     const fact: Fact = { id: 'f', text: 't', kind: 'other', origin: 'told', since: '2026-11-17T08:00:00Z', at: '2026-11-17T08:00:00Z', sources: [] }
     expect(learnedFrom(fact)).toBe(`You asked it to remember · ${dayOf(fact.since)}`)
     expect(learnedFrom({ ...fact, origin: 'conversation' })).toMatch(/^Learned · /)
+  })
+
+  it('say how long what was said is kept', () => {
+    expect(keptFor(null)).toBe('For good')
+    expect(keptFor(365)).toBe('A year')
+    expect(keptFor(45)).toBe('45 days')
+    expect(retentionDetail(null)).toBe('Every word said is kept, and can be searched.')
+    expect(retentionDetail(90)).toBe('Words older than three months are erased. What was learned from them stays.')
+  })
+
+  it('offer for good and each period, with the one set even when it is not among them', () => {
+    expect(retentionChoices(null).map((choice) => choice.label)).toEqual(['For good', 'A month', 'Three months', 'Six months', 'A year', 'Two years'])
+    expect(retentionChoices(45).map((choice) => choice.value)).toEqual(['for-good', '30', '45', '90', '180', '365', '730'])
+    expect(retentionOf('for-good')).toBeNull()
+    expect(retentionOf('90')).toBe(90)
+  })
+
+  it.each([
+    [null, 30, true],
+    [365, 30, true],
+    [30, 365, false],
+    [30, null, false],
+    [90, 90, false]
+  ])('warn, going from %j to %j days, only when words would be erased: %j', (from, to, warned) => {
+    const warning = retentionWarning(from, to, now)
+    expect(warning !== undefined).toBe(warned)
+    if (warning) expect(warning).toContain(dayOf(new Date(now.getTime() - (to as number) * 86_400_000).toISOString()))
   })
 })

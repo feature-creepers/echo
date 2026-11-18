@@ -2,7 +2,7 @@ import { DEFAULT_ACCESS, DEFAULT_LANGUAGES, type LibraryView, type MemoryView, t
 import { describe, expect, it, vi } from 'vitest'
 import { createExecutor, type Handlers } from './execute.ts'
 
-const memory: MemoryView = { revision: 0, groups: [], sleep: { when: 'quiet', quietMinutes: 10, time: '03:00' } }
+const memory: MemoryView = { revision: 0, groups: [], sleep: { when: 'quiet', quietMinutes: 10, time: '03:00' }, retentionDays: null }
 
 const library: LibraryView = { revision: 0, widgets: [] }
 
@@ -57,6 +57,7 @@ function setup(overrides: Partial<Handlers> = {}) {
     'memory.edit': () => ({ ok: true, output: { memory } }),
     'memory.forget': () => ({ ok: true, output: { memory } }),
     'memory.sleep-settings.set': () => ({ ok: true, output: { memory } }),
+    'memory.retention.set': () => ({ ok: true, output: { memory } }),
     'memory.sleep-now': () => ({ ok: true, output: {} }),
     'library.read': () => ({ ok: true, output: { library } }),
     'library.save': () => ({ ok: false, error: { code: 'unknown-widget', message: 'none' } }),

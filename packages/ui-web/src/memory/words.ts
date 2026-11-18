@@ -1,4 +1,4 @@
-import type { AssistantState, Fact, SleepMode, SleepSettings } from '@repo/protocol'
+import { type AssistantState, type Fact, RETENTION_CHOICES, type SleepMode, type SleepSettings } from '@repo/protocol'
 
 /** The choices of when the assistant sleeps, as the user reads them, each with what it means. */
 export const SLEEP_CHOICES: readonly { mode: SleepMode; label: string; description: string }[] = [
@@ -62,4 +62,44 @@ export function sleepStatus(state: AssistantState, sleep: SleepSettings, now: Da
 export function learnedFrom(fact: Fact): string {
   const how = fact.origin === 'told' ? 'You asked it to remember' : fact.origin === 'edited' ? 'Corrected by you' : 'Learned'
   return `${how} · ${dayOf(fact.since)}`
+}
+
+/** The periods offered for keeping what was said, as the person reads them. */
+const PERIODS: Readonly<Record<number, string>> = { 30: 'A month', 90: 'Three months', 180: 'Six months', 365: 'A year', 730: 'Two years' }
+
+/** How long what was said is kept, in a few words: "A year", "For good". */
+export function keptFor(days: number | null): string {
+  if (days === null) return 'For good'
+  return PERIODS[days] ?? plural(days, 'day')
+}
+
+/** The choices of how long what was said is kept: for good first, then each period, and the period set if it is none of them. */
+export function retentionChoices(current: number | null): { value: string; label: string; description: string }[] {
+  const periods = [...RETENTION_CHOICES, ...(current === null || RETENTION_CHOICES.some((days) => days === current) ? [] : [current])].sort(
+    (one, other) => one - other
+  )
+  return [
+    { value: 'for-good', label: keptFor(null), description: 'Every word, searchable for as long as you use it' },
+    ...periods.map((days) => ({ value: String(days), label: keptFor(days), description: 'Then the words are erased' }))
+  ]
+}
+
+/** A choice of the list, as the period it stands for. */
+export function retentionOf(value: string): number | null {
+  return value === 'for-good' ? null : Number(value)
+}
+
+/** What the period means, as a sentence under the choice. */
+export function retentionDetail(days: number | null): string {
+  if (days === null) return 'Every word said is kept, and can be searched.'
+  return `Words older than ${keptFor(days).toLowerCase()} are erased. What was learned from them stays.`
+}
+
+/**
+ * What a new period would erase at once, said before it is set. Nothing when it erases nothing: the words are
+ * kept for good, or longer than before.
+ */
+export function retentionWarning(from: number | null, to: number | null, now: Date): string | undefined {
+  if (to === null || (from !== null && to >= from)) return undefined
+  return `What was said before ${dayOf(new Date(now.getTime() - to * DAY).toISOString())} is erased now, for good.`
 }

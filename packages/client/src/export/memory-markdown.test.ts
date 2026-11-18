@@ -31,7 +31,8 @@ describe('the memory as Markdown', () => {
           ]
         }
       ],
-      sleep: { when: 'quiet', quietMinutes: 10, time: '03:00' }
+      sleep: { when: 'quiet', quietMinutes: 10, time: '03:00' },
+      retentionDays: null
     }
 
     expect(memoryMarkdown(memory, { title: 'What I know about you', now })).toBe(
@@ -57,7 +58,7 @@ describe('the memory as Markdown', () => {
   })
 
   it('says when nothing is known', () => {
-    const empty: MemoryView = { revision: 0, groups: [], sleep: { when: 'asked', quietMinutes: 10, time: '03:00' } }
+    const empty: MemoryView = { revision: 0, groups: [], sleep: { when: 'asked', quietMinutes: 10, time: '03:00' }, retentionDays: null }
     expect(memoryMarkdown(empty, { title: 'Memory', now })).toBe('# Memory\n\nExported on 2026-11-17.\n\nNothing is known yet.\n')
   })
 })

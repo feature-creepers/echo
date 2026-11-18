@@ -7,11 +7,13 @@ import { memoryRecords } from '../records/memory.ts'
 import { memorySearch } from '../records/memory-search.ts'
 import { manualTimers } from '../replay/manual-timers.ts'
 import { scriptedHarness } from '../replay/scripted-harness.ts'
+import { VIEW_CLEARED, VIEW_SHOWN } from '../views/screen.ts'
 import { EXTRACT_INSTRUCTIONS } from './extract.ts'
 import { FACT } from './facts.ts'
 import { createMemory } from './memory.ts'
 import { PROFILE, PROFILE_INSTRUCTIONS } from './profile.ts'
 import { RECONCILE_INSTRUCTIONS } from './reconcile.ts'
+import { RETENTION_PASS_MS, RETENTION_SET } from './retention.ts'
 import { SUMMARY_INSTRUCTIONS, THREAD_SUMMARY } from './summary.ts'
 
 const NOW = new Date('2026-11-17T10:00:00Z')
@@ -308,6 +310,73 @@ describe('forgetting and summaries', () => {
     memory.wake()
     await sleep(memory)
     expect(memory.summary('family')).toBe('About Ana, the sister, in Porto.')
+  })
+})
+
+describe('keeping the conversation for a period', () => {
+  const DAY = 24 * 60 * 60_000
+
+  it('erases the words older than the period at once, keeps what was learned from them, and keeps the period', () => {
+    let clock = new Date('2026-09-01T10:00:00Z')
+    const records = memoryRecords({ now: () => clock })
+    const old = say(records, 'My locker code is pineapple.')
+    records.append([
+      { type: VIEW_SHOWN, payload: { id: 'closed', root: 'r', elements: {} } },
+      { type: VIEW_CLEARED, payload: { view: 'closed' } },
+      { type: VIEW_SHOWN, payload: { id: 'open', root: 'r', elements: {} } }
+    ])
+    clock = NOW
+    const recent = say(records, 'Pineapple juice is on the list.')
+    const { memory } = setup({ records, turn: () => old.turn })
+    const fact = memory.remember('The user has a locker.')
+    expect(memory.read().groups[0]?.facts[0]?.sources[0]?.said).toBe('My locker code is pineapple.')
+    const erased: string[][] = []
+    const opened = createMemory({ ...setupOptions(records, scriptedHarness()), erased: (turns) => void erased.push([...turns]) })
+
+    expect(opened.setRetention(30).retentionDays).toBe(30)
+    expect(records.read([EXCHANGE]).map((record) => (record.payload as Exchange | null)?.turn ?? null)).toEqual([null, recent.turn])
+    expect(records.read([VIEW_SHOWN]).map((record) => (record.payload as { id: string } | null)?.id ?? null)).toEqual([null, 'open'])
+    expect(erased).toEqual([[old.turn]])
+    expect(opened.recall('pineapple') ?? '').not.toContain('locker code')
+    expect(opened.read().groups[0]?.facts[0]).toMatchObject({ id: fact.fact, sources: [{ turn: old.turn }] })
+    expect(opened.read().groups[0]?.facts[0]?.sources[0]?.said).toBeUndefined()
+    expect(createMemory(setupOptions(records, scriptedHarness())).read().retentionDays).toBe(30)
+  })
+
+  it('applies the period as the memory is made, and twice a day while the app stays open', () => {
+    const records = memoryRecords({ now: () => NOW })
+    const timers = manualTimers()
+    const now = () => new Date(NOW.getTime() + timers.elapsed())
+    const line = say(records, 'Something said today.')
+    const erased: string[][] = []
+    const memory = createMemory({ ...setupOptions(records, scriptedHarness()), now, timers, erased: (turns) => void erased.push([...turns]) })
+    memory.setRetention(30)
+    expect(erased).toEqual([])
+
+    timers.advance(30 * DAY)
+    expect(erased).toEqual([])
+    timers.advance(RETENTION_PASS_MS)
+    expect(erased).toEqual([[line.turn]])
+    expect(records.read([EXCHANGE]).map((record) => record.payload)).toEqual([null])
+    memory.close()
+
+    // Made again later, as after a restart: what is older is erased before anything reads the log, and no one is told.
+    const later = memoryRecords({ now: () => new Date('2026-09-01T10:00:00Z') })
+    say(later, 'An old line.')
+    later.append([{ type: RETENTION_SET, payload: { days: 30 } }])
+    const told: string[][] = []
+    createMemory({ ...setupOptions(later, scriptedHarness()), erased: (turns) => void told.push([...turns]) })
+    expect(later.read([EXCHANGE]).map((record) => record.payload)).toEqual([null])
+    expect(told).toEqual([])
+  })
+
+  it('keeps everything for good by default, and again once the period is taken away', () => {
+    const records = memoryRecords({ now: () => new Date('2020-01-01T00:00:00Z') })
+    say(records, 'A line from long ago.')
+    const memory = createMemory(setupOptions(records, scriptedHarness()))
+    expect(memory.read().retentionDays).toBeNull()
+    expect(memory.setRetention(null).retentionDays).toBeNull()
+    expect(records.read([EXCHANGE]).map((record) => record.payload)).not.toEqual([null])
   })
 })
 

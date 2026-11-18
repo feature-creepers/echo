@@ -211,6 +211,8 @@ export interface Channel {
   stopAll(): void
   /** The latest lines of the transcript, oldest first. */
   read(limit: number): Exchange[]
+  /** Lines the retention period erased from the log: they leave the transcript too, and no session is told them again. */
+  forgetLines(turns: ReadonlySet<string>): void
   /** The threads, and the one in focus. */
   threads(): Threads
   /** The turn on the stage, if any. */
@@ -1321,6 +1323,11 @@ export function createChannel(options: ChannelOptions): Channel {
     },
 
     read: (limit) => transcript.slice(-limit),
+
+    forgetLines(turns) {
+      for (let at = transcript.length - 1; at >= 0; at--) if (turns.has((transcript[at] as Exchange).turn)) transcript.splice(at, 1)
+      for (const turn of turns) unheard.delete(turn)
+    },
 
     threads: () => registry.read(),
 

@@ -13,6 +13,8 @@ export interface MemoryState extends Followed<MemoryView | undefined> {
   forget(fact: string): Promise<void>
   /** Choose when the assistant sleeps. What is left out keeps its value. */
   setSleep(settings: Partial<SleepSettings>): Promise<void>
+  /** Keep the conversation's words for so many days, or for good with null. */
+  setRetention(days: number | null): Promise<void>
   /** Put the assistant to sleep now. Its progress arrives in `assistant`. */
   sleepNow(): Promise<void>
   unfollow(): void
@@ -68,6 +70,9 @@ export function followMemory(session: Session): MemoryState {
     },
     async setSleep(settings) {
       accept((await session.run('memory.sleep-settings.set', settings)).memory)
+    },
+    async setRetention(days) {
+      accept((await session.run('memory.retention.set', { days })).memory)
     },
     async sleepNow() {
       await session.run('memory.sleep-now', {})

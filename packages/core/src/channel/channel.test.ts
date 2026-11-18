@@ -1164,3 +1164,25 @@ describe('a project', () => {
     expect(second.channel.read(10).at(-1)).toMatchObject({ trigger: 'resume', said: 'Check the installed build, then go on with the plan.' })
   })
 })
+
+describe('lines the retention period erased', () => {
+  it('leave the transcript, and the others stay', () => {
+    const records = memoryRecords()
+    const line = (turn: string): Exchange => ({
+      turn,
+      at: '2026-11-17T07:00:00Z',
+      persona: 'first',
+      said: `Said in ${turn}.`,
+      replied: 'Noted.',
+      outcome: 'done'
+    })
+    records.append([
+      { type: EXCHANGE, payload: line('old') },
+      { type: EXCHANGE, payload: line('kept') }
+    ])
+    const { channel } = setup({ records })
+    expect(channel.read(10).map((one) => one.turn)).toEqual(['old', 'kept'])
+    channel.forgetLines(new Set(['old', 'unknown']))
+    expect(channel.read(10).map((one) => one.turn)).toEqual(['kept'])
+  })
+})

@@ -3,6 +3,7 @@ import { useFollowed } from '@repo/client/react'
 import { Button } from '../primitives/button.tsx'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { FactRow } from './fact-row.tsx'
+import { RetentionPanel } from './retention-panel.tsx'
 import { SleepPanel } from './sleep-panel.tsx'
 
 const TITLE = 'What I know about you'
@@ -36,7 +37,10 @@ export function MemorySection({ memory, productName }: { memory: MemoryState; pr
 
   return (
     <div className="grid gap-10">
-      <SleepPanel memory={memory} sleep={view.sleep} />
+      <div className="grid gap-3">
+        <SleepPanel memory={memory} sleep={view.sleep} />
+        <RetentionPanel memory={memory} days={view.retentionDays} />
+      </div>
 
       {view.profile && (
         <section className="grid gap-3" aria-label="Portrait">

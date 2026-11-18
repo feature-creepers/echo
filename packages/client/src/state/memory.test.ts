@@ -6,7 +6,8 @@ import { followMemory } from './memory.ts'
 const view = (revision: number, text = 'The user likes tea.'): MemoryView => ({
   revision,
   groups: [{ kind: 'preference', facts: [{ id: 'f1', text, kind: 'preference', origin: 'told', since: '2026-11-17', at: '2026-11-17', sources: [] }] }],
-  sleep: { when: 'quiet', quietMinutes: 10, time: '03:00' }
+  sleep: { when: 'quiet', quietMinutes: 10, time: '03:00' },
+  retentionDays: null
 })
 
 function fakeSession() {
@@ -82,11 +83,13 @@ describe('followMemory', () => {
     expect(memory.current()?.revision).toBe(9)
     await memory.forget('f1')
     await memory.setSleep({ when: 'time', time: '02:30' })
+    await memory.setRetention(90)
     await memory.sleepNow()
     expect(core.ran.slice(1)).toEqual([
       { name: 'memory.edit', input: { fact: 'f1', text: 'Changed.', kind: 'other' } },
       { name: 'memory.forget', input: { fact: 'f1' } },
       { name: 'memory.sleep-settings.set', input: { when: 'time', time: '02:30' } },
+      { name: 'memory.retention.set', input: { days: 90 } },
       { name: 'memory.sleep-now', input: {} }
     ])
   })

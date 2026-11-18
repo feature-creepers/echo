@@ -155,6 +155,8 @@ export {
   factSourceSchema,
   type MemoryView,
   memoryViewSchema,
+  RETENTION_CHOICES,
+  retentionDaysSchema,
   SLEEP_MODES,
   type SleepMode,
   type SleepSettings,

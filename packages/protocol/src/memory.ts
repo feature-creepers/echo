@@ -88,6 +88,12 @@ export const sleepSettingsSchema = z.object({
 })
 export type SleepSettings = z.infer<typeof sleepSettingsSchema>
 
+/** How many days the conversation's words are kept, from a month to ten years. */
+export const retentionDaysSchema = z.number().int().min(1).max(3650)
+
+/** The periods a client offers for keeping the conversation, in days, shortest first. Kept for good is offered besides. */
+export const RETENTION_CHOICES = [30, 90, 180, 365, 730] as const
+
 /** Everything the assistant knows about the user, as a client shows it. */
 export const memoryViewSchema = z.object({
   /** Goes up with each change, so a client holding two copies keeps the later one. */
@@ -96,7 +102,9 @@ export const memoryViewSchema = z.object({
   groups: z.array(z.object({ kind: factKindSchema, facts: z.array(factSchema) })),
   /** The short portrait drawn from the facts and given to every session. Left out until there is one. */
   profile: z.string().optional(),
-  sleep: sleepSettingsSchema
+  sleep: sleepSettingsSchema,
+  /** How many days the conversation's words are kept, or null to keep them for good. */
+  retentionDays: retentionDaysSchema.nullable()
 })
 export type MemoryView = z.infer<typeof memoryViewSchema>
 

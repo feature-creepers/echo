@@ -252,6 +252,8 @@ export function createCore(options: CoreOptions): Core {
     busy: () => currentTurn() !== undefined,
     // The channel is made below; sleep, which asks for a title, never runs before it is.
     titleOf: (thread) => channel.threads().threads.find((one) => one.id === thread)?.title,
+    // Lines erased while the app is open leave the transcript too; those erased as memory is made were never read.
+    erased: (turns) => channel.forgetLines(turns),
     ...(options.timers ? { timers: options.timers } : {})
   })
   memory.onEvent(emit)
@@ -421,6 +423,7 @@ export function createCore(options: CoreOptions): Core {
         return change.ok ? { ok: true, output: { memory: change.memory } } : change
       },
       'memory.sleep-settings.set': (input) => ({ ok: true, output: { memory: memory.setSleep(input) } }),
+      'memory.retention.set': (input) => ({ ok: true, output: { memory: memory.setRetention(input.days) } }),
       'memory.sleep-now': () => {
         const asked = memory.sleepNow()
         return asked.ok ? { ok: true, output: {} } : asked

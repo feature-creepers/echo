@@ -26,6 +26,7 @@ import { createFactBook, FACT, type FactRecord, type KnownFact } from './facts.t
 import { basisOf, PROFILE, profileFor, readProfileRecord, writeProfile } from './profile.ts'
 import { recallBlock, recallFor } from './recall.ts'
 import { type Decision, reconcile } from './reconcile.ts'
+import { expiredNow, RETENTION_PASS_MS, RETENTION_SET, readRetention } from './retention.ts'
 import { foldWord } from './searchable.ts'
 import { createSleepSchedule, DEFAULT_SLEEP, readSleepSettings, SLEEP_SET } from './sleep.ts'
 import { readSummaryRecord, type SummaryRecord, summariesDue, THREAD_SUMMARY, writeSummary } from './summary.ts'
@@ -72,6 +73,11 @@ export interface MemoryOptions {
   busy?: () => boolean
   /** A thread's title, for its summary. */
   titleOf?: (thread: string) => string | undefined
+  /**
+   * Lines of the log the retention period erased while the app was open, for whoever keeps them in memory. Not
+   * called for what is erased as the memory is made: nothing has read the log yet.
+   */
+  erased?: (turns: ReadonlySet<string>) => void
 }
 
 export type MemoryChange = { ok: true; memory: MemoryView } | { ok: false; error: CommandError }
@@ -101,6 +107,8 @@ export interface Memory {
   edit(input: CommandInput<'memory.edit'>): MemoryChange
   forget(fact: string): MemoryChange
   setSleep(input: CommandInput<'memory.sleep-settings.set'>): MemoryView
+  /** Keep the conversation's words for so many days, or for good with null. What is older is erased at once. */
+  setRetention(days: number | null): MemoryView
   /** Be told `memory.changed` and `assistant.state`. Returns a function that stops the telling. */
   onEvent(listener: (event: Event) => void): () => void
   /** Stop the timers. */
@@ -127,12 +135,14 @@ export function createMemory(options: MemoryOptions): Memory {
   }
 
   // What the records say, read once. From here on, each record written is taken in as it is written.
-  const stored = records.read([FACT, PROFILE, SLEEP_SET, SLEPT, THREAD_SUMMARY])
+  const stored = records.read([FACT, PROFILE, SLEEP_SET, SLEPT, THREAD_SUMMARY, RETENTION_SET])
   const book = createFactBook(stored)
   let profiles: Profile[] = []
   /** Each thread's latest summary, with the record that keeps it. */
   const summaries = new Map<string, SummaryRecord & { record: string }>()
   let settings: SleepSettings = DEFAULT_SLEEP
+  /** How many days the conversation's words are kept; null keeps them for good, as by default. */
+  let retentionDays: number | null = null
   let cursor: { through: string; at: string } | undefined
   let lastSlept: string | undefined
   for (const record of stored) {
@@ -144,6 +154,8 @@ export function createMemory(options: MemoryOptions): Memory {
       if (summary) summaries.set(summary.thread, { ...summary, record: record.id })
     } else if (record.type === SLEEP_SET) {
       settings = readSleepSettings(record.payload) ?? settings
+    } else if (record.type === RETENTION_SET) {
+      retentionDays = readRetention(record.payload) ?? retentionDays
     } else if (record.type === SLEPT) {
       const slept = sleptSchema.safeParse(record.payload)
       if (slept.success) {
@@ -217,7 +229,7 @@ export function createMemory(options: MemoryOptions): Memory {
       return ofKind.length === 0 ? [] : [{ kind, facts: ofKind }]
     })
     const profile = profiles.at(-1)
-    return { revision, groups, ...(profile ? { profile: profile.text } : {}), sleep: settings }
+    return { revision, groups, ...(profile ? { profile: profile.text } : {}), sleep: settings, retentionDays }
   }
 
   const find = (query: string, after?: string, before?: string) => {
@@ -266,6 +278,27 @@ export function createMemory(options: MemoryOptions): Memory {
     profiles = []
     summaries.clear()
     changed()
+    return true
+  }
+
+  // —— Keeping the words for a period ——
+
+  /**
+   * Erase the words older than the period, with one tombstone. True when anything was erased. The facts keep the
+   * turns they came from; their words are simply no longer there to show.
+   */
+  const applyRetention = (tell: boolean): boolean => {
+    let expired: ReturnType<typeof expiredNow>
+    try {
+      expired = expiredNow(records, retentionDays, now())
+    } catch (error) {
+      log.error(`The retention period could not be applied: ${error instanceof Error ? error.message : String(error)}`)
+      return false
+    }
+    if (expired.records.length === 0) return false
+    records.append([{ type: ERASURE, payload: { records: expired.records } }])
+    for (const turn of expired.turns) said.delete(turn)
+    if (tell && expired.turns.size > 0) options.erased?.(expired.turns)
     return true
   }
 
@@ -432,6 +465,18 @@ export function createMemory(options: MemoryOptions): Memory {
     return running
   }
 
+  // The period is applied as the memory is made, before anything reads the log, then twice a day while the app stays open.
+  applyRetention(false)
+  let cancelRetention = () => {}
+  const armRetention = () => {
+    cancelRetention =
+      options.timers?.after(RETENTION_PASS_MS, () => {
+        if (applyRetention(true)) changed()
+        armRetention()
+      }) ?? (() => {})
+  }
+  armRetention()
+
   const schedule = createSleepSchedule(settings, {
     now,
     timers: options.timers,
@@ -510,11 +555,22 @@ export function createMemory(options: MemoryOptions): Memory {
       changed()
       return read()
     },
+    setRetention(days) {
+      if (days === retentionDays) return read()
+      records.append([{ type: RETENTION_SET, payload: { days } }])
+      retentionDays = days
+      applyRetention(true)
+      changed()
+      return read()
+    },
     onEvent(listener) {
       listeners.add(listener)
       return () => void listeners.delete(listener)
     },
-    close: () => schedule.close()
+    close() {
+      schedule.close()
+      cancelRetention()
+    }
   }
 }
 
