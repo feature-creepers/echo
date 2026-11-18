@@ -1028,6 +1028,7 @@ On 18 November 2026 the assistant, running in the app on the owner's Windows com
 - The clipboard, read on a card and written freely (item 6 below).
 - Threads side by side, with stopping one thread or all of them, and a composer of several lines (sections 7.3 and 13.2).
 - The media player's volume, seeking and queue, by voice (item 6 below).
+- Printers and removable drives (item 6 below).
 - Guardrails as settings: deleting and publishing always asked unless the owner turns it off, and how long a question waits (section 12.2).
 
 Two of the report's findings were mistaken. A question can already be answered aloud ("yes, go ahead"). Its web search returning American results comes from the harness's own tool, not from this product.
@@ -1049,8 +1050,8 @@ The rest is designed here and built in this order, each behind the same gate as 
 5. **Elevation.** A signed helper that accepts only typed operations: install a package with the system's installer, set a firewall rule, start or stop a service, write a registry value under the machine's key. Each always asks, and no free administrator shell exists outside an explicit expert mode.
 6. **More of the device.**
    - **Clipboard**, built: reading asks; writing is free. `clipboard_read` puts a card ("Read your clipboard?") whose yes for the session lasts until the app quits or everything stops; `clipboard_write` replaces what the clipboard held, 100,000 characters at most. Both are kept in the activity. The core reaches it through its `Clipboard` port, which `@repo/screen` implements with each system's own programs (`screen/src/clipboard/`): Windows PowerShell's `Get-Clipboard` and `Set-Clipboard`, the text crossing as Base64 of UTF-8 so every character survives the console; `pbpaste` and `pbcopy` on macOS; `wl-paste` and `wl-copy` under Wayland, `xclip` under X11, which the person installs when missing. Verified on Windows 11 against the real clipboard (accents, Chinese and an emoji written and read back, what was copied put back after); macOS and Linux by tables.
-   - **Printers.**
-   - **Removable drives:** asked like any change.
+   - **Printers**, built. `printers_list` names the printers, the default first, each ready, printing, offline or needing attention. `print` prints a file the assistant may read (its folder, a place granted, or anywhere with the whole computer to read): a PDF, a picture (PNG, JPEG, GIF, BMP, TIFF) or plain text (`.txt`, `.md`, `.csv` and the like), on the printer named or the default one, up to 20 copies; anything else is written as a PDF first. It follows the approval level as a command does: asked at `ask` and `trust` (`Print “report.pdf”?`, the printer as its subject, the copies as a fact, and a warning when the printer is offline), carried out at `auto`, and covered by a yes for the session; kept in the activity whatever was decided. A printer that makes a file, such as Microsoft Print to PDF, writes it in the assistant's folder under `printed/` rather than opening a dialog nobody may be watching. The core reaches them through its `Printers` port, which `@repo/screen` implements (`screen/src/printers/`): on Windows, .NET's own printing from Windows PowerShell, with no app to install and nothing on screen, a PDF's pages drawn by Windows' own renderer (`Windows.Data.Pdf`) at 200 dots per inch, a picture filling the page and turned to suit it, text set in Consolas over as many pages as it takes; the fax is left out, and when Windows manages the default printer (making the last one used the default), the person's default is put back once the job is taken. On macOS and Linux, CUPS's `lpstat` and `lp`, text named as such so a `.md` prints. Verified on Windows 11 on 18 November 2026: the printers listed with their states, a text with accents and an emoji, a PDF and a wide picture printed to Microsoft Print to PDF and looked at, the default printer unchanged after; paper was not printed. macOS and Linux by tables.
+   - **Removable drives**, built: asked like any change. A drive's files are a place like any other, given with `computer_grant` or in Settings, Access, read only until the person allows changes, each change then decided by the level. `drives_list` names the USB keys, memory cards and external disks plugged in and opened, each with where it is, its space, and whether the assistant may read or change it; `drive_eject` lets one go so it can be unplugged, decided as printing is (`Eject “KINGSTON”?`), and says so when the system keeps it because a file on it is open. The core reaches them through its `Drives` port, which `@repo/screen` implements (`screen/src/drives/`): WMI on Windows, the volumes it calls removable and those of a disk on USB, let go with Explorer's own Eject and looked at again to see it went; `diskutil` on macOS, a disk image or the system's own disk never among them; `lsblk` and `udisks` on Linux. Verified on Windows 11 that a computer with no drive plugged in lists none and that a letter not there is refused; the drives themselves, macOS and Linux by tables.
    - **The camera:** always asked, with a marker while in use.
    - **The media player**, built: volume, seeking and a queue. `media_control` takes `volume` (a level, or a step such as -20 for "a bit lower"), `seek` (to a position, or by seconds forward or back), `queue` (a stream or file to play after the current one), `next` and `clear-queue`, beside pause, resume and stop; the player goes on to what is queued at the end of a file, a Media block says what is next with a button to skip to it, and stopping empties the queue.
 7. **Raw audio, by choice.** Recognising the speaker and a song, and a vocabulary of the owner's own words for the recogniser. It is off by default, since audio would then leave the transcript.
@@ -1362,6 +1363,8 @@ packages/core/src/
 │   ├── workspace.ts        the assistant's folder as the person browses it and hands files into it
 │   ├── web.ts              public addresses the core reads itself: a map's shapes
 │   ├── browser.ts          the browser the assistant drives: pages, outlines, pictures, actions, what an element is
+│   ├── printers.ts         the printers, and a file sent to one
+│   ├── drives.ts           the removable drives plugged in, and letting one go
 │   └── ids.ts  log.ts
 ├── channel/                the single conversation
 │   ├── channel.ts          intake and ordering of turns
@@ -1414,6 +1417,7 @@ packages/core/src/
 ├── access/                 what the assistant may reach on the computer: a command line read, the levels, approvals for the session, the activity and undo, the versions a change left and their diffs, stop everything, cards answered by click or voice, computer_grant
 ├── browser/                the browser's tools, what an action on a page reads as and what is asked or refused, a page's words fenced, the record of each action
 ├── devices/                connected devices, the active one, routing of capability requests
+├── device/                 more of the device: printers, removable drives, and the one rule an act on them is decided by (acts.ts)
 ├── records/                the record types, the "what is true now" readers built on them, and records and search kept in memory
 ├── replay/                 a scripted harness and timers moved by hand, for tests and replays
 └── usage/                  tokens, cost, timings
@@ -1473,7 +1477,10 @@ packages/screen/src/
 ├── desktop.ts              the adapter: references given here, the helper's keys behind them, its own input told apart
 ├── outline.ts              a window's tree as an outline, the same on every system
 ├── keys.ts                 a key or a combination as the assistant names it
+├── program.ts              a program of the system run with a time limit, and Windows PowerShell scripts run encoded
 ├── clipboard/              the clipboard through each system's own programs: commands.ts · clipboard.ts
+├── printers/               the printers: win32.ts (.NET printing) · unix.ts (CUPS) · index.ts
+├── drives/                 the removable drives: win32.ts · darwin.ts · linux.ts · index.ts
 └── system/                 each system's helper: system.ts · helpers.ts · win32.ts · darwin.ts · linux.ts · index.ts
 ```
 

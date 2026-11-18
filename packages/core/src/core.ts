@@ -8,6 +8,7 @@ import { createChannel } from './channel/channel.ts'
 import { createClipboardControl } from './clipboard/tools.ts'
 import { createExecutor } from './commands/execute.ts'
 import { createDesktopControl } from './desktop/desktop.ts'
+import { createDeviceControl } from './device/device.ts'
 import { type Admission, admit } from './devices/admission.ts'
 import { createEngineRoom } from './engines/engines.ts'
 import { createBrowsing } from './files/browse.ts'
@@ -23,8 +24,10 @@ import type { Clipboard } from './ports/clipboard.ts'
 import type { Timers } from './ports/clock.ts'
 import type { Computer } from './ports/computer.ts'
 import type { Desktop } from './ports/desktop.ts'
+import type { Drives } from './ports/drives.ts'
 import type { Harness } from './ports/harness.ts'
 import type { Log } from './ports/log.ts'
+import type { Printers } from './ports/printers.ts'
 import type { Records } from './ports/records.ts'
 import type { Search } from './ports/search.ts'
 import type { ToolHost } from './ports/tools.ts'
@@ -72,6 +75,10 @@ export interface CoreOptions {
   desktop?: Desktop
   /** The clipboard of the computer the core runs on. Left out, the assistant has none. */
   clipboard?: Clipboard
+  /** The printers of the computer the core runs on. Left out, the assistant prints nothing. */
+  printers?: Printers
+  /** The removable drives of the computer the core runs on. Left out, the assistant sees none. */
+  drives?: Drives
   /**
    * The assistant's own folder, as the person browses it and hands files into it. Left out, nothing can be handed
    * over and there is nothing to browse.
@@ -224,6 +231,13 @@ export function createCore(options: CoreOptions): Core {
     mark: (control) => emit({ type: 'event', name: 'device.desktop', control })
   })
   const clipboard = options.clipboard ? createClipboardControl({ clipboard: options.clipboard, ask: access.ask, uses: access }) : undefined
+  const device = createDeviceControl({
+    access,
+    level: () => settings.read().access.approvals,
+    computer: options.computer,
+    printers: options.printers,
+    drives: options.drives
+  })
   const objections = createObjections({ records: options.records, screen, now })
   const files = createFiles({ records: options.records, blobs: options.blobs, now, newId: options.newId })
 
@@ -322,6 +336,7 @@ export function createCore(options: CoreOptions): Core {
         ...browser.tools(showing),
         ...desktop.tools(showing),
         ...(clipboard?.tools(showing) ?? []),
+        ...device.tools(showing),
         ...timeTools,
         ...(stance === 'critical' ? objections.tools(showing) : [])
       ],
@@ -376,6 +391,7 @@ export function createCore(options: CoreOptions): Core {
     schedule.hold(true)
     desktop.letGo()
     clipboard?.forget()
+    device.forget()
   })
 
   settings.onChange((changed) => {

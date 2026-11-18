@@ -3,7 +3,7 @@ import { basename, extname, join } from 'node:path'
 import { createBrowser } from '@repo/browser'
 import { type Core, createCore } from '@repo/core'
 import { createComputer, createHarnesses, createWorkspace } from '@repo/harness'
-import { createClipboard, createDesktop } from '@repo/screen'
+import { createClipboard, createDesktop, createDrives, createPrinters } from '@repo/screen'
 import { openStore } from '@repo/store'
 import { serveTools } from '@repo/tools'
 import manifest from '../package.json' with { type: 'json' }
@@ -51,6 +51,9 @@ export async function compose(config: Config): Promise<Composition> {
     browser,
     desktop,
     clipboard: createClipboard(),
+    // What a printer that makes files (Microsoft Print to PDF) makes lands in the assistant's folder, never in a dialog.
+    printers: createPrinters({ files: join(computer.workspace, 'printed') }),
+    drives: createDrives(),
     workspace,
     timers: {
       after(ms, work) {

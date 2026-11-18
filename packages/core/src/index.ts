@@ -23,6 +23,7 @@ export type { Clipboard } from './ports/clipboard.ts'
 export type { Timers } from './ports/clock.ts'
 export type { Computer } from './ports/computer.ts'
 export type { Desktop, DesktopElement, DesktopFound, SystemKey, WindowFacts, WindowImage, WindowOutline } from './ports/desktop.ts'
+export type { Drive, Drives } from './ports/drives.ts'
 export type {
   Attachment,
   ComputerUse,
@@ -46,6 +47,7 @@ export type {
   Verdict
 } from './ports/harness.ts'
 export type { Log } from './ports/log.ts'
+export { PRINTABLE, type Printable, type Printed, type Printer, type Printers, type PrintJob } from './ports/printers.ts'
 export { ERASURE, type Erasure, erasedBy, type NewRecord, type Records, type StoredRecord } from './ports/records.ts'
 export type { Search, SearchHit, SearchQuery } from './ports/search.ts'
 export type { ToolDefinition, ToolHost, ToolImage, ToolResult } from './ports/tools.ts'
