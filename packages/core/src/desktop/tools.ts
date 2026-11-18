@@ -21,6 +21,14 @@ const SETTLE_MS = 400
  * assistant, typed before it began, do not stop it.
  */
 export const PAUSE_MS = 1_500
+/**
+ * How long an act waits for the person's hands to rest before it gives up, in milliseconds. The person often types
+ * or clicks a moment longer, finishing a word to the assistant itself; waiting a little lets the work go on smoothly,
+ * while a person who keeps working stops the assistant all the same.
+ */
+export const HANDS_WAIT_MS = 6_000
+/** How often the act looks again whether the person's hands rest, in milliseconds. */
+const HANDS_POLL_MS = 250
 
 type AccessUseReason = (typeof USE_REASONS)[number]
 
@@ -75,7 +83,7 @@ const SECRET_REFUSAL = {
 }
 
 const PAUSED =
-  'Paused: the person is using the mouse or the keyboard right now, so nothing was done. Stop, tell them in one short sentence that you let go, and go on only when they say so.'
+  'Paused: the person kept using the mouse or the keyboard, so nothing was done. Stop, tell them in one short sentence that you let go, and go on only when they say so.'
 
 /** Why a card is shown whatever the person's choice of trust, said for them. */
 const WHY = { pays: 'It may pay for something', sends: 'It may send or publish something as you', deletes: 'It may delete something' }
@@ -230,10 +238,14 @@ export function desktopTools(options: DesktopToolsOptions): Tool[] {
     }
   }
 
-  /** Whether the person has their hands on the mouse or the keyboard right now. */
+  /** Whether the person keeps their hands on the mouse or the keyboard, once they had a few seconds to let go. */
   const theirs = async () => {
-    const idle = await desktop.idle()
-    return idle !== undefined && idle < PAUSE_MS
+    for (let waited = 0; ; waited += HANDS_POLL_MS) {
+      const idle = await desktop.idle()
+      if (idle === undefined || idle >= PAUSE_MS) return false
+      if (waited >= HANDS_WAIT_MS) return true
+      await options.pause(HANDS_POLL_MS)
+    }
   }
 
   /**

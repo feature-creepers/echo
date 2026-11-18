@@ -95,7 +95,7 @@ function setup({ found, on = true }: { found?: DesktopFound; on?: boolean } = {}
   }
   const heading = () => (screen.current()?.spec as { elements: Record<string, { props: Record<string, unknown> }> } | undefined)?.elements.heading?.props.text
   const asked = () => vi.waitFor(() => expect(heading()).toBeDefined())
-  return { control, settings, access, done, touch, call, heading, asked, marks, timers, ready }
+  return { control, settings, access, desktop, done, touch, call, heading, asked, marks, timers, ready }
 }
 
 const anywhere = () => ({ thread: 't', turn: undefined, slot: 'stage' as const, focused: true })
@@ -214,6 +214,18 @@ describe('other apps', () => {
     touch(5_000)
     expect((await call('desktop_type', { ref: 'e2', text: 'hello', submit: true })).ok).toBe(true)
     expect(done).toEqual(['type e2 hello ⏎'])
+  })
+
+  it('waits a moment for the person to let go of the mouse or the keyboard, then acts', async () => {
+    const { call, settings, done, touch, desktop } = setup()
+    settings.setAccess({ apps: [{ program: 'notepad', name: 'Notepad' }] })
+    let looks = 0
+    const idle = desktop.idle
+    desktop.idle = async () => (++looks < 4 ? 300 : idle())
+    touch(5_000)
+    expect((await call('desktop_type', { ref: 'e2', text: 'hello' })).ok).toBe(true)
+    expect(looks).toBeGreaterThanOrEqual(4)
+    expect(done).toEqual(['type e2 hello'])
   })
 
   it('lets go when the person turns it off, and gives no tool after', async () => {
