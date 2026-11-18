@@ -1,5 +1,5 @@
 import { burn, css, light, type Rgb } from './color.ts'
-import { CATCHES, ELEMENTS, GLASS, LENS_SIZE, PANELS } from './lens-shader.ts'
+import { CATCHES, COATS, ELEMENTS, GLASS, LENS_SIZE, PANELS } from './lens-shader.ts'
 import type { LensPose } from './life.ts'
 
 /**
@@ -145,22 +145,30 @@ export function createLensPainting(): LensPainting {
       }
       context.lineCap = 'butt'
 
-      // The lens elements: a faint full edge each, and the lamp's red on its far side. The shimmer of thinking runs
-      // through them from the outside in.
+      // The optical stack: a faint full edge each, the lamp's red on its far side, and the thin crescent of its
+      // coating's colour on the side that faces the room's light. The shimmer of thinking runs through them.
       const caught = burn(lens.lamp * 0.9, hue)
       ELEMENTS.forEach((element, index) => {
-        const shimmer = lens.shimmer * Math.exp(-(((index / 3 - lens.shimmerAt) * 3.5) ** 2))
+        const order = index / (ELEMENTS.length - 1)
+        const shimmer = lens.shimmer * Math.exp(-(((order - lens.shimmerAt) * 3.2) ** 2))
         const centre: [number, number] = [lens.depth[0] * element.depth * glass, lens.depth[1] * element.depth * glass]
         const at = element.radius * lens.focus * glass
         const facing = element.catches + lens.turn * element.turn
         context.lineWidth = 1.1 + shimmer * 1.2
-        context.strokeStyle = css(caught, (0.04 + (lens.voice[index] ?? 0) * 0.5) * lens.catch)
+        const voice = lens.voice[Math.min(3, Math.floor((index * 4) / ELEMENTS.length))] ?? 0
+        context.strokeStyle = css(caught, (0.04 + voice * 0.5) * lens.catch * element.strength)
         context.beginPath()
         context.arc(centre[0], centre[1], at, 0, Math.PI * 2)
         context.stroke()
-        context.strokeStyle = css(caught, 0.14 * lens.catch)
+        context.strokeStyle = css(caught, 0.14 * lens.catch * element.strength)
         context.beginPath()
         context.arc(centre[0], centre[1], at, facing + Math.PI - 0.9, facing + Math.PI + 0.9)
+        context.stroke()
+        const coat = COATS[element.coat] ?? COATS[0]
+        context.lineWidth = 2.5 + shimmer * 1.5
+        context.strokeStyle = css(coat, (0.22 + 0.25 * shimmer) * lens.catch * lens.room * element.strength)
+        context.beginPath()
+        context.arc(centre[0], centre[1], Math.max(1, at - 1.8), facing - 0.75, facing + 0.75)
         context.stroke()
       })
       context.restore()
