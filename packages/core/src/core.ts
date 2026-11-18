@@ -456,6 +456,8 @@ export function createCore(options: CoreOptions): Core {
           ? { ok: true, output: access.standingRules() }
           : { ok: false, error: { code: 'invalid-input', message: `Nothing "${input.allowance}" is allowed for the session.` } },
       'activity.read': (input) => ({ ok: true, output: access.activity(input.limit, input.before) }),
+      'activity.check': () => ({ ok: true, output: access.check() }),
+      'activity.export': () => ({ ok: true, output: access.exportActivity() }),
       'activity.undo': async (input) => {
         const undone = await access.undo(input.use, input.anyway)
         return { ok: true, output: undone.use ? { outcome: undone.outcome, use: undone.use } : { outcome: undone.outcome } }

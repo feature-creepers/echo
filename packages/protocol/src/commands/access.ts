@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { allowanceSchema, protectedPlaceSchema } from '../access.ts'
-import { accessUseSchema, fileChangeSchema, fileDiffSchema, useIdSchema } from '../activity.ts'
+import { accessUseSchema, activityCheckSchema, fileChangeSchema, fileDiffSchema, useIdSchema } from '../activity.ts'
 import { turnIdSchema } from '../conversation.ts'
 
 const standingOutput = z.object({ allowances: z.array(allowanceSchema), protected: z.array(protectedPlaceSchema) })
@@ -52,6 +52,21 @@ export const accessCommands = {
     output: z.object({
       turns: z.array(z.object({ turn: turnIdSchema, uses: z.array(accessUseSchema), files: z.array(fileChangeSchema) }))
     })
+  },
+
+  /** Check the activity's chain: whether any record kept was changed, taken out or erased before its time. */
+  'activity.check': {
+    input: z.object({}),
+    output: activityCheckSchema
+  },
+
+  /**
+   * The whole activity kept, with its seals and the chain's check, as one JSON document to save: `name` is the file
+   * name it suggests.
+   */
+  'activity.export': {
+    input: z.object({}),
+    output: z.object({ name: z.string(), text: z.string() })
   },
 
   /**

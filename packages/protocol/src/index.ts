@@ -19,7 +19,9 @@ export {
 } from './access.ts'
 export {
   type AccessUse,
+  type ActivityCheck,
   accessUseSchema,
+  activityCheckSchema,
   type FileChange,
   type FileDiff,
   fileChangeSchema,

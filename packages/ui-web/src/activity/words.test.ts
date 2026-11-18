@@ -1,6 +1,6 @@
 import type { AccessUse } from '@repo/protocol'
 import { describe, expect, it } from 'vitest'
-import { dayOf, decisionInWords, shownUnder, summary } from './words.ts'
+import { checkInWords, dayOf, decisionInWords, shownUnder, summary } from './words.ts'
 
 const use = (fields: Partial<AccessUse>): AccessUse => ({
   id: 'u',
@@ -61,5 +61,30 @@ describe('the activity, in words', () => {
     expect(dayOf(new Date(2026, 10, 18, 9, 0).toISOString(), now)).toBe('Today')
     expect(dayOf(new Date(2026, 10, 17, 23, 0).toISOString(), now)).toBe('Yesterday')
     expect(dayOf(new Date(2026, 10, 16, 9, 0).toISOString(), now)).toBe('Monday 16 November')
+  })
+})
+
+describe('the check of the activity, in words', () => {
+  const now = new Date('2026-11-18T18:00:00')
+  it.each([
+    [{ state: 'empty', sealed: 0, unsealed: 0, head: null }, 'Nothing to check yet.', 'soft'],
+    [{ state: 'intact', sealed: 1, unsealed: 0, head: 'h' }, 'Intact: 1 record, none changed or taken out.', 'ok'],
+    [
+      { state: 'intact', sealed: 12, unsealed: 3, head: 'h' },
+      'Intact: 12 records, none changed or taken out. 3 from before the log was sealed are not checked.',
+      'ok'
+    ],
+    [
+      { state: 'broken', sealed: 2, unsealed: 0, head: 'h', problem: { at: '2026-11-18T09:05:00', reason: 'changed' } },
+      'A record was changed after it was written, today at 09:05.',
+      'danger'
+    ],
+    [
+      { state: 'broken', sealed: 0, unsealed: 0, head: null, problem: { at: '2026-11-16T09:05:00', reason: 'missing' } },
+      'A record was taken out or moved, on Monday 16 November at 09:05.',
+      'danger'
+    ]
+  ] as const)('says %j', (check, text, tone) => {
+    expect(checkInWords({ ...check }, now)).toEqual({ text, tone })
   })
 })

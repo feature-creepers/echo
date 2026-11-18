@@ -1,8 +1,9 @@
-import { type AccessUse, accessUseSchema, type FileChange, type FileDiff } from '@repo/protocol'
+import { type AccessUse, type ActivityCheck, accessUseSchema, type FileChange, type FileDiff } from '@repo/protocol'
 import { z } from 'zod'
 import type { Blobs } from '../ports/blobs.ts'
 import type { Computer } from '../ports/computer.ts'
-import { ERASURE, type Records } from '../ports/records.ts'
+import { ERASURE, type NewRecord, type Records } from '../ports/records.ts'
+import { ACCESS_SEAL, checkChain, GENESIS, sealOf, sealSchema } from './chain.ts'
 import { COMPARED_LIMIT, countChanges, DIFF_LIMITS, diffText, textOf } from './diff.ts'
 
 /**
@@ -14,6 +15,9 @@ import { COMPARED_LIMIT, countChanges, DIFF_LIMITS, diffText, textOf } from './d
  * as a diff at any time, one use at a time or a whole turn at once, even after the file changed again.
  *
  * Kept 30 days: older records are erased when the core starts, and the versions only they kept with them.
+ *
+ * Every record is written with a seal that chains it to the one before (`chain.ts`), so the log can be checked and
+ * exported, and a record changed or taken out shows.
  */
 
 /** The type of the record written when a use is decided. */
@@ -85,6 +89,10 @@ export interface Activity {
   diff(of: { use: string } | { turn: string }): Promise<FileDiff[] | undefined>
   /** For each turn, its uses that changed files, and the files as the turn left them, with the lines added and removed in all. */
   changes(turns: readonly string[]): Promise<{ turn: string; uses: AccessUse[]; files: FileChange[] }[]>
+  /** Whether the chain of the records kept holds. */
+  check(): ActivityCheck
+  /** The whole activity kept, with its seals and the check, as one JSON document. */
+  export(): { name: string; text: string }
   /** Erase what is older than 30 days. */
   expire(): void
   onUse(listener: (use: AccessUse) => void): () => void
@@ -131,8 +139,20 @@ const NOTHING = new Uint8Array()
 export function createActivity({ records, versions, computer, now, newId }: ActivityOptions): Activity {
   const entries = new Map<string, Entry>()
   const listeners = new Set<(use: AccessUse) => void>()
+  const KINDS = [ACCESS_USE, ACCESS_OUTCOME, ACCESS_UNDO]
 
-  for (const record of records.read([ACCESS_USE, ACCESS_OUTCOME, ACCESS_UNDO])) {
+  // The chain goes on from the last seal kept; with none, or the last one erased, it starts again.
+  let head = GENESIS
+  const lastSeal = records.read([ACCESS_SEAL]).at(-1)
+  if (lastSeal) head = sealSchema.safeParse(lastSeal.payload).data?.hash ?? GENESIS
+  /** Write a record of the activity and its seal, both or neither. */
+  const append = (record: NewRecord) => {
+    const seal = sealOf(head, record)
+    records.append([record, { type: ACCESS_SEAL, payload: seal }])
+    head = seal.hash
+  }
+
+  for (const record of records.read(KINDS)) {
     if (record.payload === null) continue
     if (record.type === ACCESS_USE) {
       const read = useRecordSchema.safeParse(record.payload)
@@ -246,7 +266,7 @@ export function createActivity({ records, versions, computer, now, newId }: Acti
 
     record(asked) {
       const use: UseRecord = { id: newId(), at: now().toISOString(), ...withoutEmpty(asked) }
-      records.append([{ type: ACCESS_USE, payload: use }])
+      append({ type: ACCESS_USE, payload: use })
       const entry: Entry = { use }
       entries.set(use.id, entry)
       return tell(entry)
@@ -264,7 +284,7 @@ export function createActivity({ records, versions, computer, now, newId }: Acti
         ...(error === undefined || ok ? {} : { error: error.slice(0, ERROR_KEPT) }),
         ...(after ? { after } : {})
       }
-      records.append([{ type: ACCESS_OUTCOME, payload: outcome }])
+      append({ type: ACCESS_OUTCOME, payload: outcome })
       entry.outcome = outcome
       tell(entry)
     },
@@ -321,7 +341,7 @@ export function createActivity({ records, versions, computer, now, newId }: Acti
         at: now().toISOString(),
         ...(moved.length > 0 ? { moved } : {})
       }
-      records.append([{ type: ACCESS_UNDO, payload: undo }])
+      append({ type: ACCESS_UNDO, payload: undo })
       entry.undo = undo
       return { outcome: 'done', use: tell(entry) }
     },
@@ -401,9 +421,29 @@ export function createActivity({ records, versions, computer, now, newId }: Acti
       return answer
     },
 
+    check() {
+      return checkChain(records.read([...KINDS, ACCESS_SEAL]), now().getTime() - KEPT_MS)
+    },
+
+    export() {
+      const at = now()
+      const kept = records.read([...KINDS, ACCESS_SEAL]).filter((record) => record.payload !== null)
+      const document = {
+        exported: at.toISOString(),
+        check: checkChain(records.read([...KINDS, ACCESS_SEAL]), at.getTime() - KEPT_MS),
+        records: kept.map(({ type, at: written, payload }) => ({ type, at: written, payload }))
+      }
+      return {
+        name: `activity-${at.toISOString().slice(0, 10)}.json`,
+        text: `${JSON.stringify(document, null, 2)}
+`
+      }
+    },
+
     expire() {
       const before = now().getTime() - KEPT_MS
-      const all = records.read([ACCESS_USE, ACCESS_OUTCOME, ACCESS_UNDO]).filter((record) => record.payload !== null)
+      const written = records.read([...KINDS, ACCESS_SEAL])
+      const all = written.filter((record) => record.type !== ACCESS_SEAL && record.payload !== null)
       const old = all.filter((record) => Date.parse(record.at) < before)
       if (old.length === 0) return
       // The versions a record keeps: those before a change, and those it left.
@@ -419,7 +459,12 @@ export function createActivity({ records, versions, computer, now, newId }: Acti
         )
       const going = hashes(old)
       const staying = hashes(all.filter((record) => !old.includes(record)))
-      records.append([{ type: ERASURE, payload: { records: old.map((record) => record.id) } }])
+      // Each record goes with its seal, written just after it, so the chain is checked from the first seal kept.
+      const seals = old.flatMap((record) => {
+        const next = written[written.indexOf(record) + 1]
+        return next?.type === ACCESS_SEAL ? [next.id] : []
+      })
+      records.append([{ type: ERASURE, payload: { records: [...old.map((record) => record.id), ...seals] } }])
       for (const record of old) {
         const id = (record.payload as { id?: unknown; use?: unknown }).id ?? (record.payload as { use?: unknown }).use
         if (record.type === ACCESS_USE && typeof id === 'string') entries.delete(id)

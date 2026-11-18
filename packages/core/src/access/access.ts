@@ -81,6 +81,10 @@ export interface AccessControl {
   undo(use: string, anyway: boolean): Promise<UndoResult>
   /** What a use, or a whole turn, changed in each file, as diffs. Nothing when there is no such use. */
   diff: Activity['diff']
+  /** Whether the activity's chain holds. */
+  check: Activity['check']
+  /** The whole activity, sealed, as a document to save. */
+  exportActivity: Activity['export']
   /** What each turn given changed: its uses that changed files, and the files as it left them, counted. */
   changes: Activity['changes']
   /**
@@ -539,6 +543,10 @@ export function createAccess({ settings, screen, computer, timers, records, vers
     undo: (use, anyway) => activity.undo(use, anyway),
 
     diff: (of) => activity.diff(of),
+
+    check: () => activity.check(),
+
+    exportActivity: () => activity.export(),
 
     changes: (turns) => activity.changes(turns),
 

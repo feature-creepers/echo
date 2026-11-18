@@ -12,6 +12,7 @@ import { Choice } from '../primitives/choice.tsx'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { settle } from '../styles/motion.ts'
+import { ChainCheck } from './chain-check.tsx'
 import { useActivity } from './use-activity.ts'
 import { dayOf, decisionInWords, FILTER_LABELS, FILTERS, type Filter, shownUnder, summary, timeOf } from './words.ts'
 
@@ -93,6 +94,8 @@ export function ActivitySection({ client, productName }: { client: Client; produ
         <Choice<Filter> label="Show" value={filter} options={FILTERS.map((value) => ({ value, label: FILTER_LABELS[value] }))} onChange={setFilter} />
         <span className="text-text-faint text-xs">Kept 30 days · commands cannot be undone</span>
       </div>
+
+      <ChainCheck client={client} />
 
       {days.length === 0 ? (
         <div className="grid gap-1 rounded-lg border border-line-strong border-dashed px-6 py-8 text-center">

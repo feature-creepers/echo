@@ -117,3 +117,24 @@ export const fileDiffSchema = fileChangeSchema.extend({
   missing: z.boolean().optional()
 })
 export type FileDiff = z.infer<typeof fileDiffSchema>
+
+/**
+ * Whether the activity's chain holds (docs/SPEC.md, section 12.2, the signed log): `intact` when every record kept
+ * since the first sealed one matches its seal, `broken` with where and why when one does not, `empty` with nothing
+ * kept. `head` is the last hash, to hold the log to later; records from before the chain are counted apart.
+ */
+export const activityCheckSchema = z.object({
+  state: z.enum(['intact', 'broken', 'empty']),
+  sealed: z.number().int().min(0),
+  unsealed: z.number().int().min(0),
+  head: z.string().nullable(),
+  since: z.string().optional(),
+  problem: z
+    .object({
+      at: z.string(),
+      /** `changed`: a record no longer matches its seal; `missing`: one was taken out or moved; `erased`: emptied before its 30 days; `unsealed`: written without a seal. */
+      reason: z.enum(['changed', 'missing', 'erased', 'unsealed'])
+    })
+    .optional()
+})
+export type ActivityCheck = z.infer<typeof activityCheckSchema>
