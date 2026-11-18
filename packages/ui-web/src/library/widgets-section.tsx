@@ -23,7 +23,7 @@ export interface WidgetsSectionProps {
   selected?: string | undefined
   /** Ask the assistant something, from the main screen: to change a widget. */
   onAsk(text: string): void
-  /** A widget was put on the stage: the settings close to show it. */
+  /** A widget was put on the stage: the library goes back to the conversation to show it. */
   onShown(): void
 }
 
@@ -42,9 +42,9 @@ function wordsOf(widget: SavedWidget): string {
 }
 
 /**
- * The widgets section of the settings: the views the user bookmarked, to find again, sort into their own
+ * The widgets page of the library: the views the user bookmarked, to find again, sort into their own
  * collections, rename, pin to the main screen, or delete. Each one is drawn live, as it was saved. Opened, a
- * widget covers the settings in a dialog, which Escape closes before the settings.
+ * widget covers the library in a dialog, which Escape closes before the library.
  */
 export function WidgetsSection({ controls, actions, selected, onAsk, onShown }: WidgetsSectionProps) {
   const library = useFollowed(controls.library)

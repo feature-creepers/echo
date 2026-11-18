@@ -22,11 +22,14 @@ function Glyph({ children, size = 16 }: { children: ReactNode; size?: number }) 
   )
 }
 
-export const SettingsGlyph = () => (
+/**
+ * Library and settings: a page of content, as a rounded square with three lines of text in it, the last one
+ * shorter. Its strokes sit on half pixels, so at 16 pixels each one covers a whole row of the screen.
+ */
+export const LibraryGlyph = () => (
   <Glyph>
-    <path d="M2.5 4.5h6M11.5 4.5h2M2.5 11.5h2M7.5 11.5h6" />
-    <circle cx="10" cy="4.5" r="1.5" />
-    <circle cx="6" cy="11.5" r="1.5" />
+    <rect x="2.5" y="2.5" width="11" height="11" rx="2.5" />
+    <path d="M5.5 5.5h5M5.5 8h5M5.5 10.5h3" />
   </Glyph>
 )
 
@@ -174,11 +177,15 @@ export const CollapseGlyph = () => (
   </Glyph>
 )
 
-/** The pinned widgets: a window with a panel down each side of its content, as the docks stand beside the conversation. */
+/**
+ * The pinned widgets: four tiles of different heights in two columns, a tall one over a short one and a short one
+ * over a tall one, as widgets of different sizes docked in columns. Four equal squares would read as a grid view.
+ */
 export const WidgetsGlyph = () => (
   <Glyph>
-    <rect x="2" y="3" width="12" height="10" rx="1.5" />
-    <rect x="4" y="5.25" width="2" height="5.5" rx="0.5" />
-    <rect x="10" y="5.25" width="2" height="5.5" rx="0.5" />
+    <rect x="2.5" y="2.5" width="4.5" height="6" rx="1" />
+    <rect x="9" y="2.5" width="4.5" height="3" rx="1" />
+    <rect x="9" y="7.5" width="4.5" height="6" rx="1" />
+    <rect x="2.5" y="10.5" width="4.5" height="3" rx="1" />
   </Glyph>
 )

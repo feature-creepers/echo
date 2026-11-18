@@ -7,6 +7,7 @@ import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { BackGlyph } from '../primitives/icons.tsx'
 import { accentStyle } from '../styles/accent.ts'
 import { Markdown } from '../view/blocks/markdown.tsx'
+import { AnswerActions } from './full-answer.tsx'
 import { StateDot } from './thread-list.tsx'
 
 const clock = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' })
@@ -95,7 +96,7 @@ export function ThreadView({ client, thread, personas, onBack }: ThreadViewProps
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="grid gap-2 border-line border-b px-4 py-3">
+      <div className="grid grid-cols-1 gap-2 border-line border-b px-4 py-3">
         <button
           type="button"
           onClick={onBack}
@@ -106,7 +107,7 @@ export function ThreadView({ client, thread, personas, onBack }: ThreadViewProps
         {header && (
           <div className="flex items-start justify-between gap-3">
             <div className="grid min-w-0 gap-1">
-              <span className="font-medium text-[0.9375rem] leading-snug">{header.title}</span>
+              <span className="font-medium text-[0.9375rem] leading-snug [overflow-wrap:anywhere]">{header.title}</span>
               <span className="flex items-center gap-2 text-label text-text-faint">
                 <StateDot state={header.state} />
                 {header.kind === 'aside' ? 'Aside' : 'Topic'} · {STATE[header.state]}
@@ -118,15 +119,15 @@ export function ThreadView({ client, thread, personas, onBack }: ThreadViewProps
           </div>
         )}
       </div>
-      <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4">
         {read === undefined ? (
           <p className="text-sm text-text-faint">Reading…</p>
         ) : 'problem' in read ? (
-          <p className="text-danger text-sm">{read.problem}</p>
+          <p className="text-danger text-sm [overflow-wrap:anywhere]">{read.problem}</p>
         ) : read.exchanges.length === 0 ? (
           <p className="text-sm text-text-faint">Nothing has been answered here yet.</p>
         ) : (
-          <ol className="grid gap-6">
+          <ol className="grid grid-cols-1 gap-6">
             {read.exchanges.map((exchange) => (
               <ExchangeEntry
                 key={exchange.turn}
@@ -134,6 +135,7 @@ export function ThreadView({ client, thread, personas, onBack }: ThreadViewProps
                 steps={read.steps.filter((step) => step.turn === exchange.turn)}
                 views={read.views.filter((view) => view.turn === exchange.turn).map((view) => view.title)}
                 persona={personas.find((candidate) => candidate.id === exchange.persona)}
+                about={header?.title}
               />
             ))}
           </ol>
@@ -143,22 +145,33 @@ export function ThreadView({ client, thread, personas, onBack }: ThreadViewProps
   )
 }
 
-function ExchangeEntry({ exchange, steps, views, persona }: { exchange: Exchange; steps: Step[]; views: string[]; persona: Persona | undefined }) {
+interface ExchangeEntryProps {
+  exchange: Exchange
+  steps: Step[]
+  views: string[]
+  persona: Persona | undefined
+  /** What the thread is about, to name its full answer when it is saved. */
+  about: string | undefined
+}
+
+// Every stack here is one column that is never wider than the sheet, whatever it holds: a long address, a path or
+// a command wraps, or scrolls in its own box, instead of widening the column and the sheet with it.
+function ExchangeEntry({ exchange, steps, views, persona, about }: ExchangeEntryProps) {
   // Views shown before calls were kept have no call to show them by.
   const shownByCalls = steps.some((step) => step.tool === 'ui_render')
   return (
-    <li className="grid gap-3" style={accentStyle(persona?.accent)}>
-      <div className="grid gap-1">
+    <li className="grid grid-cols-1 gap-3" style={accentStyle(persona?.accent)}>
+      <div className="grid grid-cols-1 gap-1">
         <span className="flex items-baseline gap-2 text-label text-text-faint">
           {exchange.trigger === 'greeting' ? 'Briefing' : 'You'} <time dateTime={exchange.at}>{clock.format(new Date(exchange.at))}</time>
         </span>
-        {exchange.said && <p className="text-sm text-text-soft leading-relaxed">{exchange.said}</p>}
+        {exchange.said && <p className="text-sm text-text-soft leading-relaxed [overflow-wrap:anywhere]">{exchange.said}</p>}
       </div>
 
       {(steps.length > 0 || (!shownByCalls && views.length > 0)) && (
-        <div className="grid gap-1">
+        <div className="grid grid-cols-1 gap-1">
           <Eyebrow>Work</Eyebrow>
-          <ul className="grid overflow-hidden rounded-md border border-line">
+          <ul className="grid grid-cols-1 overflow-hidden rounded-md border border-line">
             {steps.map((step) => (
               <StepRow key={step.call} step={step} />
             ))}
@@ -166,28 +179,33 @@ function ExchangeEntry({ exchange, steps, views, persona }: { exchange: Exchange
               views.map((title) => (
                 <li key={title} className="flex items-baseline gap-2 border-line border-t px-3 py-2 text-xs first:border-t-0">
                   <span className="shrink-0 text-text-soft">Showed a view</span>
-                  <span className="truncate text-text-faint">{title}</span>
+                  <span className="min-w-0 truncate text-text-faint">{title}</span>
                 </li>
               ))}
           </ul>
         </div>
       )}
 
-      <div className="grid gap-1 border-accent/50 border-l pl-3">
+      <div className="grid grid-cols-1 gap-1 border-accent/50 border-l pl-3">
         <span className="text-accent text-label">{persona?.name ?? 'Assistant'} said</span>
         {exchange.replied ? (
-          <p className="text-sm leading-relaxed">{exchange.replied}</p>
+          <p className="text-sm leading-relaxed [overflow-wrap:anywhere]">{exchange.replied}</p>
         ) : exchange.outcome === 'running' ? (
           <p className="text-sm text-text-faint">…</p>
         ) : null}
         {exchange.outcome === 'stopped' && <p className="text-label text-text-faint">Stopped</p>}
-        {exchange.outcome === 'failed' && <p className="text-danger text-sm leading-relaxed">{exchange.problem ?? 'It could not answer.'}</p>}
+        {exchange.outcome === 'failed' && (
+          <p className="text-danger text-sm leading-relaxed [overflow-wrap:anywhere]">{exchange.problem ?? 'It could not answer.'}</p>
+        )}
       </div>
 
       {exchange.written && (
-        <div className="grid gap-2">
-          <Eyebrow>Full answer</Eyebrow>
-          <div className="grid gap-3 rounded-md border border-line bg-ground/60 px-4 py-3 text-sm leading-relaxed [&_h3]:text-lg [&_h4]:text-base">
+        <div className="grid grid-cols-1 gap-1.5">
+          <div className="flex items-center justify-between gap-3">
+            <Eyebrow>Full answer</Eyebrow>
+            <AnswerActions text={exchange.written} about={about} />
+          </div>
+          <div className="grid grid-cols-1 gap-3 rounded-md border border-line bg-ground/60 px-4 py-3 text-sm leading-relaxed [&_h3]:text-lg [&_h4]:text-base">
             <Markdown text={exchange.written} />
           </div>
         </div>
@@ -220,7 +238,7 @@ function StepRow({ step }: { step: Step }) {
         </span>
       </button>
       {open && (
-        <div className="grid gap-2 px-3 pb-3">
+        <div className="grid grid-cols-1 gap-2 px-3 pb-3">
           <Detail label={`${step.tool} · input`} text={step.input === undefined ? '—' : JSON.stringify(step.input, null, 2)} />
           <Detail label="Output" text={step.output ?? (running ? 'Still running.' : '—')} />
         </div>
@@ -231,7 +249,7 @@ function StepRow({ step }: { step: Step }) {
 
 function Detail({ label, text }: { label: string; text: string }) {
   return (
-    <div className="grid gap-1">
+    <div className="grid grid-cols-1 gap-1">
       <span className="text-[0.6875rem] text-text-faint">{label}</span>
       <pre className="scroll-quiet max-h-72 overflow-auto whitespace-pre-wrap rounded-sm bg-ground p-2.5 font-mono text-[0.6875rem] text-text-soft leading-relaxed [overflow-wrap:anywhere]">
         {text}

@@ -152,8 +152,9 @@ function start(): void {
   if (process.platform === 'win32') app.setAppUserModelId(WINDOWS_APP_ID)
   // The interface is dark. The window's frame follows, whatever the system's own setting.
   nativeTheme.themeSource = 'dark'
-  // The window may use the microphone, to hear the user, and choose the speakers its voice plays on, and nothing else of the kind.
-  const allowed = new Set(['media', 'speaker-selection'])
+  // The window may use the microphone, to hear the user, choose the speakers its voice plays on, and put text on the
+  // clipboard when the user copies an answer; it never reads the clipboard, and nothing else of the kind.
+  const allowed = new Set(['media', 'speaker-selection', 'clipboard-sanitized-write'])
   session.defaultSession.setPermissionRequestHandler((_contents, permission, grant) => grant(allowed.has(permission)))
   session.defaultSession.setPermissionCheckHandler((_contents, permission) => allowed.has(permission))
 

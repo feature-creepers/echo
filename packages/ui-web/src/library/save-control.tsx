@@ -20,7 +20,7 @@ const asks = (spec: unknown) =>
 
 /**
  * The bookmark on every view: one press saves it to the library. Once saved, the same place holds what to do
- * with it: pin it to the main screen, open it in the settings' widgets, or take it out.
+ * with it: pin it to the main screen, open it among the library's widgets, or take it out.
  */
 export function SaveControl({ view }: { view: Saveable }) {
   const controls = useLibraryControls()
@@ -83,7 +83,7 @@ function Control({ view, controls }: { view: Saveable; controls: LibraryControls
           saved.pinned
             ? { label: 'Unpin from the main screen', onSelect: () => act(controls.library.update({ widget: saved.id, pinned: false })) }
             : { label: 'Pin to the main screen', onSelect: () => act(controls.library.update({ widget: saved.id, pinned: true })) },
-          { label: 'Open in settings', onSelect: () => controls.open(saved.id) },
+          { label: 'Open in library', onSelect: () => controls.open(saved.id) },
           { label: 'Remove from the library', danger: true, onSelect: () => act(controls.library.remove(saved.id)) }
         ]}
       />
