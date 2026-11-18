@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import { AttachedLine } from '../attachments/attached-line.tsx'
 import { Changes } from '../changes/changes.tsx'
-import { Counts, type Relative } from '../changes/diff-view.tsx'
+import { Counts, PathLine, type Relative } from '../changes/diff-view.tsx'
 import { type Undo, UndoAction } from '../changes/undo-action.tsx'
 import { useAssistantFolder } from '../changes/use-assistant-folder.ts'
 import { type ThreadChanges, useThreadChanges } from '../changes/use-thread-changes.ts'
@@ -231,6 +231,9 @@ function ExchangeEntry({ exchange, steps, views, persona, about, client, changes
   )
 }
 
+/** The calls whose summary is a file's path. */
+const FILE_TOOLS = new Set(['computer_read', 'computer_write'])
+
 /** Whether a use made a change to files that can be shown: allowed, and not reported failed. */
 const changedFiles = (use: AccessUse | undefined): use is AccessUse =>
   use !== undefined && use.action !== 'read' && use.action !== 'run' && use.decision !== 'refused' && use.outcome?.ok !== false
@@ -306,9 +309,14 @@ function StepRow({ step, use, context }: { step: Step; use: AccessUse | undefine
       >
         <Chevron open={open} />
         <span className={cn('shrink-0', step.failed ? 'text-danger' : 'text-text-soft')}>{stepTitle(step, use)}</span>
-        <span className={cn('min-w-0 flex-1 truncate text-text-faint', (command || step.tool.startsWith('computer_')) && 'font-mono text-[0.6875rem]')}>
-          {summary}
-        </span>
+        {summary && FILE_TOOLS.has(step.tool) ? (
+          // A path gives way from its start, so the file's name stays in sight.
+          <PathLine path={summary} className="flex-1 text-[0.6875rem] text-text-faint" />
+        ) : (
+          <span className={cn('min-w-0 flex-1 truncate text-text-faint', (command || step.tool.startsWith('computer_')) && 'font-mono text-[0.6875rem]')}>
+            {summary}
+          </span>
+        )}
         {total && <Counts change={total} className="text-[0.6875rem]" />}
         {changed?.undo?.done && <span className="shrink-0 text-[0.6875rem] text-accent">undone</span>}
         <span className="shrink-0 font-mono text-[0.625rem] text-text-faint tabular-nums">
