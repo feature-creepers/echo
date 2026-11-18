@@ -43,7 +43,16 @@ export interface ScriptOptions {
 const SCRIPTED_MODELS: HarnessModels = {
   models: [
     { id: 'quick', name: 'Quick', description: 'Fast and inexpensive.' },
-    { id: 'deep', name: 'Deep', description: 'Slower, for harder questions.' }
+    {
+      id: 'deep',
+      name: 'Deep',
+      description: 'Slower, for harder questions.',
+      efforts: [
+        { id: 'light', name: 'Light', description: 'Thinks a little.' },
+        { id: 'hard', name: 'Hard', description: 'Thinks hard.' }
+      ],
+      defaultEffort: 'light'
+    }
   ],
   default: 'quick'
 }

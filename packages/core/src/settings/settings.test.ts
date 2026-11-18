@@ -2,7 +2,7 @@ import { DEFAULT_ACCESS, DEFAULT_LANGUAGES, type Persona, type Settings } from '
 import { describe, expect, it, vi } from 'vitest'
 import { PERSONAS_SET } from '../personas/choice.ts'
 import { memoryRecords } from '../records/memory.ts'
-import { createUserSettings, ENGINES_MODEL, ENGINES_PREFERRED } from './settings.ts'
+import { createUserSettings, ENGINES_EFFORT, ENGINES_MODEL, ENGINES_PREFERRED } from './settings.ts'
 
 const first: Persona = { id: 'first', name: 'ADA', stance: 'accommodating', accent: 'cyan', look: 'hud' }
 const second: Persona = { id: 'second', name: 'GRACE', stance: 'critical', accent: 'red', look: 'lens' }
@@ -14,7 +14,7 @@ describe('the settings of a new user', () => {
     expect(settings.read()).toEqual({
       revision: 0,
       personas: { available: [first, second], active: 'first', confirmed: false },
-      engines: { models: {} },
+      engines: { models: {}, efforts: {} },
       access: DEFAULT_ACCESS,
       languages: DEFAULT_LANGUAGES
     })
@@ -33,7 +33,7 @@ describe('setPersonas', () => {
       settings: {
         revision: 1,
         personas: { available: [first, second], active: 'first', confirmed: true },
-        engines: { models: {} },
+        engines: { models: {}, efforts: {} },
         access: DEFAULT_ACCESS,
         languages: DEFAULT_LANGUAGES
       }
@@ -51,7 +51,7 @@ describe('setPersonas', () => {
     const expected: Settings = {
       revision: 1,
       personas: { available: [first, { ...second, name: 'MARVIN' }], active: 'second', confirmed: true },
-      engines: { models: {} },
+      engines: { models: {}, efforts: {} },
       access: DEFAULT_ACCESS,
       languages: DEFAULT_LANGUAGES
     }
@@ -134,7 +134,7 @@ describe('settings read back from the records', () => {
     expect(settings.read()).toEqual({
       revision: 1,
       personas: { available: [first, second], active: 'second', confirmed: true },
-      engines: { models: {} },
+      engines: { models: {}, efforts: {} },
       access: DEFAULT_ACCESS,
       languages: DEFAULT_LANGUAGES
     })
@@ -143,7 +143,7 @@ describe('settings read back from the records', () => {
 
 describe('the engines the user chose', () => {
   it('are none at first: the first harness ready, on its default model', () => {
-    expect(createUserSettings(memoryRecords(), defaults).read().engines).toEqual({ models: {} })
+    expect(createUserSettings(memoryRecords(), defaults).read().engines).toEqual({ models: {}, efforts: {} })
   })
 
   it('keep the harness preferred and the model of each, tell the listeners, and read back the same', () => {
@@ -170,8 +170,8 @@ describe('the engines the user chose', () => {
     settings.prefer(null)
     settings.chooseModel('claude-code', null)
 
-    expect(settings.read().engines).toEqual({ models: {} })
-    expect(createUserSettings(records, defaults).read().engines).toEqual({ models: {} })
+    expect(settings.read().engines).toEqual({ models: {}, efforts: {} })
+    expect(createUserSettings(records, defaults).read().engines).toEqual({ models: {}, efforts: {} })
   })
 
   it('write nothing and tell nobody when the choice is the one already made', () => {
@@ -196,15 +196,32 @@ describe('the engines the user chose', () => {
     expect(settings.read()).toMatchObject({ personas: { active: 'second' }, engines: { models: { 'claude-code': 'opus' } } })
   })
 
+  it('keep how hard each harness reasons, across a change of model, and go back to the default', () => {
+    const records = memoryRecords()
+    const settings = createUserSettings(records, defaults)
+    settings.chooseEffort('claude-code', 'xhigh')
+    settings.chooseModel('claude-code', 'sonnet')
+    settings.chooseEffort('codex', 'high')
+    settings.chooseEffort('codex', 'high')
+
+    expect(settings.read().engines).toEqual({ models: { 'claude-code': 'sonnet' }, efforts: { 'claude-code': 'xhigh', codex: 'high' } })
+    expect(records.read([ENGINES_EFFORT])).toHaveLength(2)
+    expect(createUserSettings(records, defaults).read()).toEqual(settings.read())
+
+    settings.chooseEffort('claude-code', null)
+    expect(createUserSettings(records, defaults).read().engines.efforts).toEqual({ codex: 'high' })
+  })
+
   it('skip an engine record this version cannot read', () => {
     const records = memoryRecords()
     records.append([
       { type: ENGINES_MODEL, payload: { harness: 'claude-code' } },
       { type: ENGINES_PREFERRED, payload: { harness: 7 } },
-      { type: ENGINES_MODEL, payload: { harness: 'codex', model: 'gpt-6-luna' } }
+      { type: ENGINES_MODEL, payload: { harness: 'codex', model: 'gpt-6-luna' } },
+      { type: ENGINES_EFFORT, payload: { harness: 'codex', effort: '' } }
     ])
 
-    expect(createUserSettings(records, defaults).read().engines).toEqual({ models: { codex: 'gpt-6-luna' } })
+    expect(createUserSettings(records, defaults).read().engines).toEqual({ models: { codex: 'gpt-6-luna' }, efforts: {} })
   })
 })
 

@@ -37,7 +37,7 @@ export function createClaudeCode(options: HarnessOptions): Harness {
         env
       })
     },
-    open: (request) => openSession(request, { cli, folder, model: request.model ?? models[request.role], log }),
-    complete: (request) => complete(request, { cli, folder, model: request.model ?? models[request.role], log })
+    open: (request) => openSession(request, { cli, folder, model: request.model ?? models[request.role], effort: request.effort, log }),
+    complete: (request) => complete(request, { cli, folder, model: request.model ?? models[request.role], effort: request.effort, log })
   }
 }

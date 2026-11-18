@@ -73,5 +73,15 @@ export const settingsCommands = {
   'engines.model.set': {
     input: z.object({ harness: z.string().min(1).max(64), model: z.string().min(1).max(100).nullable() }),
     output: settingsOutput
+  },
+
+  /**
+   * How hard a harness's answers reason, from the levels its model offers. `null` goes back to the model's
+   * default. Kept across a change of model, and used while the model offers it. Takes effect from the next
+   * question, as a change of model does.
+   */
+  'engines.effort.set': {
+    input: z.object({ harness: z.string().min(1).max(64), effort: z.string().min(1).max(32).nullable() }),
+    output: settingsOutput
   }
 }

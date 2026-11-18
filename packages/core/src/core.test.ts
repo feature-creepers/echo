@@ -181,6 +181,26 @@ describe('a conversation through the core', () => {
     expect((await run(core, 'engines.prefer', { harness: 'scripted' })).settings.engines.preferred).toBe('scripted')
   })
 
+  it('reasons at the level the user chose for the model in use, keeps its default as no choice, and refuses another', async () => {
+    const records = memoryRecords()
+    const { core } = start(records)
+    const refused = (input: object) => core.execute({ type: 'command', id: 'c1', name: 'engines.effort.set', input })
+
+    // The default model offers no level to choose.
+    expect(await refused({ harness: 'scripted', effort: 'hard' })).toMatchObject({ ok: false, error: { code: 'unknown-effort' } })
+    await run(core, 'engines.model.set', { harness: 'scripted', model: 'deep' })
+    expect((await run(core, 'engines.effort.set', { harness: 'scripted', effort: 'hard' })).settings.engines.efforts).toEqual({ scripted: 'hard' })
+    expect(await refused({ harness: 'scripted', effort: 'gigantic' })).toMatchObject({ ok: false, error: { code: 'unknown-effort' } })
+    expect(await refused({ harness: 'nobody', effort: 'hard' })).toMatchObject({ ok: false, error: { code: 'unknown-harness' } })
+
+    const after = start(records)
+    await run(after.core, 'utterance.send', { text: 'Hello.' })
+    await settled()
+    expect(after.harness.sessions[0]?.request).toMatchObject({ role: 'thread', model: 'deep', effort: 'hard' })
+
+    expect((await run(core, 'engines.effort.set', { harness: 'scripted', effort: 'light' })).settings.engines.efforts).toEqual({})
+  })
+
   it("opens a harness's sign-in, and refuses one it does not have", async () => {
     const { core, harness } = start()
     await run(core, 'engines.sign-in', { harness: 'scripted' })

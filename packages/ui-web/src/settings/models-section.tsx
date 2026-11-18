@@ -51,6 +51,7 @@ export function ModelsSection({ client, settings }: { client: Client; settings: 
               inUse={harness.id === known.active}
               onSignIn={() => run(client.engines.signIn(harness.id))}
               onModel={(model) => run(client.session.run('engines.model.set', { harness: harness.id, model }))}
+              onEffort={(effort) => run(client.session.run('engines.effort.set', { harness: harness.id, effort }))}
             />
           ))}
         </div>
@@ -100,13 +101,19 @@ interface HarnessCardProps {
   inUse: boolean
   onSignIn(): void
   onModel(model: string): void
+  onEffort(effort: string | null): void
 }
 
-/** One AI program: where it stands, and the model it answers with, picked from those it offers. */
-function HarnessCard({ harness, inUse, onSignIn, onModel }: HarnessCardProps) {
+/** The value of the level of reasoning that lets the program decide. */
+const AUTOMATIC = '*'
+
+/** One AI program: where it stands, the model it answers with, picked from those it offers, and how hard it reasons. */
+function HarnessCard({ harness, inUse, onSignIn, onModel, onEffort }: HarnessCardProps) {
   const { tone, text } = standing(harness)
   const choosable = harness.installed && harness.models.length > 0
   const chosen = harness.models.find((model) => model.id === harness.model)
+  const efforts = chosen?.efforts ?? []
+  const effort = efforts.find((one) => one.id === harness.effort)
 
   return (
     <section
@@ -148,6 +155,26 @@ function HarnessCard({ harness, inUse, onSignIn, onModel }: HarnessCardProps) {
               hint: model.id === harness.defaultModel ? 'Default' : undefined
             }))}
             onChange={onModel}
+          />
+        </SettingRow>
+      )}
+
+      {choosable && efforts.length > 0 && (
+        <SettingRow title="Reasoning" detail={effort?.description ?? `${harness.name} decides how hard ${chosen?.name ?? 'it'} thinks.`}>
+          <Select
+            label={`How hard ${harness.name} reasons`}
+            className="w-52"
+            value={harness.effort ?? AUTOMATIC}
+            options={[
+              ...efforts.map((one) => ({
+                value: one.id,
+                label: one.name,
+                description: one.description,
+                hint: one.id === chosen?.defaultEffort ? 'Default' : undefined
+              })),
+              ...(chosen?.defaultEffort === undefined ? [{ value: AUTOMATIC, label: 'Automatic', description: `${harness.name} decides` }] : [])
+            ]}
+            onChange={(value) => onEffort(value === AUTOMATIC ? null : value)}
           />
         </SettingRow>
       )}

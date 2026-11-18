@@ -25,6 +25,8 @@ export interface SessionContext {
   /** The adapter's working folder. */
   folder: string
   model: string
+  /** How hard the model reasons. Left out, the CLI's own choice. */
+  effort?: string | undefined
   log: Log
 }
 
@@ -135,7 +137,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
         computer: { tools: computer, folders: computer.length > 0 ? folders : [] }
       }
       if (closed) return void files.remove()
-      running = start(launch.command, [...SESSION_ARGUMENTS, ...isolationArguments(context.model, paths)], {
+      running = start(launch.command, [...SESSION_ARGUMENTS, ...isolationArguments(context.model, paths, context.effort)], {
         cwd: workingFolder,
         env: { ...launch.env, ...ISOLATION_VARIABLES, ...COMMAND_VARIABLES, MCP_TOOL_TIMEOUT: String(TOOL_TIMEOUT_MS) }
       })

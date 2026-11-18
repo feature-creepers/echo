@@ -24,9 +24,14 @@ export const settingsSchema = z.object({
       /** The harness to run on whenever it is ready, by id. Left out, the first one ready, in the core's order. */
       preferred: z.string().min(1).max(64).optional(),
       /** The model the answers use, by harness id. A harness left out answers with its default model. */
-      models: z.record(z.string().min(1).max(64), z.string().min(1).max(100)).default({})
+      models: z.record(z.string().min(1).max(64), z.string().min(1).max(100)).default({}),
+      /**
+       * How hard the answers reason, by harness id: a level such as "high" or "xhigh". A harness left out, or whose
+       * model does not offer the level, reasons at its model's default.
+       */
+      efforts: z.record(z.string().min(1).max(64), z.string().min(1).max(32)).default({})
     })
-    .default({ models: {} }),
+    .default({ models: {}, efforts: {} }),
   /** What the assistant may reach on the computer its core runs on, and what it asks first. */
   access: accessSchema.default(DEFAULT_ACCESS),
   /** The language the person speaks, and the one the assistant answers in. */

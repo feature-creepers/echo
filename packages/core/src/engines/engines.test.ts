@@ -77,9 +77,12 @@ describe('the engine room', () => {
 })
 
 describe('the user’s choice of engine', () => {
-  const choosing = (preferred?: string, models: Record<string, string> = {}) => {
-    const chosen = { preferred, models }
-    return { chosen, choice: { preferred: () => chosen.preferred, model: (harness: string) => chosen.models[harness] } }
+  const choosing = (preferred?: string, models: Record<string, string> = {}, efforts: Record<string, string> = {}) => {
+    const chosen = { preferred, models, efforts }
+    return {
+      chosen,
+      choice: { preferred: () => chosen.preferred, model: (harness: string) => chosen.models[harness], effort: (harness: string) => chosen.efforts[harness] }
+    }
   }
 
   it('runs on the harness the user prefers when it is ready, and on the first ready when it is not', async () => {
@@ -150,6 +153,34 @@ describe('the user’s choice of engine', () => {
     expect(room.chosenModel('scripted')).toBeUndefined()
     chosen.models = {}
     expect(room.chosenModel('scripted')).toBeUndefined()
+  })
+
+  it('runs the answers at the level chosen while their model offers it, and shows the level in use', async () => {
+    const harness = scriptedHarness()
+    const { chosen, choice } = choosing(undefined, { scripted: 'deep' }, { scripted: 'hard' })
+    const room = createEngineRoom([harness], choice)
+
+    expect((await room.read()).harnesses[0]).toMatchObject({ model: 'deep', effort: 'hard' })
+    const active = await room.active()
+    active?.open({ role: 'thread', instructions: '' })
+    active?.open({ role: 'orchestrator', instructions: '' })
+    expect(harness.sessions.map((session) => session.request.effort)).toEqual(['hard', undefined])
+
+    // Without a choice, the model's default is shown and the harness is left to it.
+    chosen.efforts = {}
+    await room.reconsider()
+    expect((await room.read()).harnesses[0]?.effort).toBe('light')
+    expect(room.chosenEffort('scripted')).toBeUndefined()
+
+    // A model that offers no level ignores the choice, which comes back with a model that offers it.
+    chosen.efforts = { scripted: 'hard' }
+    chosen.models = {}
+    expect(room.chosenEffort('scripted')).toBeUndefined()
+    expect((await room.read()).harnesses[0]).not.toHaveProperty('effort')
+    active?.open({ role: 'thread', instructions: '' })
+    expect(harness.sessions[2]?.request).not.toHaveProperty('effort')
+    chosen.models = { scripted: 'deep' }
+    expect(room.chosenEffort('scripted')).toBe('hard')
   })
 
   it('leaves the harness to its default when the model chosen is no longer offered', async () => {

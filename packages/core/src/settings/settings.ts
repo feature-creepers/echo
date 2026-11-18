@@ -23,6 +23,8 @@ export type SettingsChange = { ok: true; settings: Settings } | { ok: false; err
 export const ENGINES_PREFERRED = 'engines.preferred'
 /** The type of the record written when the user picks the model a harness answers with, or goes back to its default. */
 export const ENGINES_MODEL = 'engines.model'
+/** The type of the record written when the user picks how hard a harness's answers reason, or goes back to the model's default. */
+export const ENGINES_EFFORT = 'engines.effort'
 /** The type of the record written when the user changes what the assistant may reach on the computer. It carries the whole of it. */
 export const ACCESS_SET = 'access.set'
 /**
@@ -35,6 +37,7 @@ export const LANGUAGES_SET = 'languages.set'
 
 const preferredSchema = z.object({ harness: z.string().min(1).nullable() })
 const modelSchema = z.object({ harness: z.string().min(1), model: z.string().min(1).nullable() })
+const effortSchema = z.object({ harness: z.string().min(1), effort: z.string().min(1).nullable() })
 
 /** The user's settings, as the rest of the core reads and changes them. */
 export interface UserSettings {
@@ -45,6 +48,8 @@ export interface UserSettings {
   prefer(harness: string | null): Settings
   /** The model a harness answers with, or its default (`null`). Neither is checked here. */
   chooseModel(harness: string, model: string | null): Settings
+  /** How hard a harness's answers reason, or the model's default (`null`). Neither is checked here. */
+  chooseEffort(harness: string, effort: string | null): Settings
   /** What the assistant may reach on the computer. What is left out keeps its value. The places are not checked here. */
   setAccess(change: AccessChange): Settings
   /** The language the person speaks and the one the assistant answers in. What is left out keeps its value. */
@@ -69,14 +74,14 @@ export function createUserSettings(
   let settings: Settings = {
     revision: 0,
     personas: { available: [...defaults], active: defaults[0].id, confirmed: false },
-    engines: { models: {} },
+    engines: { models: {}, efforts: {} },
     access: accessSchema.parse(folder === undefined ? {} : { folder }),
     languages: DEFAULT_LANGUAGES
   }
   const listeners = new Set<(settings: Settings) => void>()
 
   // A record this version cannot read is skipped, so one written by another version never breaks this one.
-  for (const record of records.read([PERSONAS_SET, ENGINES_PREFERRED, ENGINES_MODEL, ACCESS_SET, LANGUAGES_SET])) {
+  for (const record of records.read([PERSONAS_SET, ENGINES_PREFERRED, ENGINES_MODEL, ENGINES_EFFORT, ACCESS_SET, LANGUAGES_SET])) {
     if (record.type === LANGUAGES_SET) {
       const read = languagesSchema.safeParse(record.payload)
       if (read.success) settings = { ...settings, revision: settings.revision + 1, languages: read.data }
@@ -89,6 +94,9 @@ export function createUserSettings(
     } else if (record.type === ENGINES_PREFERRED) {
       const read = preferredSchema.safeParse(record.payload)
       if (read.success) settings = withPreferred(settings, read.data.harness)
+    } else if (record.type === ENGINES_EFFORT) {
+      const read = effortSchema.safeParse(record.payload)
+      if (read.success) settings = withEffort(settings, read.data.harness, read.data.effort)
     } else {
       const read = modelSchema.safeParse(record.payload)
       if (read.success) settings = withModel(settings, read.data.harness, read.data.model)
@@ -124,6 +132,11 @@ export function createUserSettings(
       return change(withModel(settings, harness, model), { type: ENGINES_MODEL, payload: { harness, model } })
     },
 
+    chooseEffort(harness, effort) {
+      if ((settings.engines.efforts[harness] ?? null) === effort) return settings
+      return change(withEffort(settings, harness, effort), { type: ENGINES_EFFORT, payload: { harness, effort } })
+    },
+
     setAccess(asked) {
       const next = withAccess(settings, asked)
       if (JSON.stringify(chosen(next.access)) === JSON.stringify(chosen(settings.access))) return settings
@@ -156,6 +169,15 @@ function withPreferred(settings: Settings, harness: string | null): Settings {
 function withModel(settings: Settings, harness: string, model: string | null): Settings {
   const { [harness]: _, ...others } = settings.engines.models
   return { ...settings, revision: settings.revision + 1, engines: { ...settings.engines, models: model === null ? others : { ...others, [harness]: model } } }
+}
+
+function withEffort(settings: Settings, harness: string, effort: string | null): Settings {
+  const { [harness]: _, ...others } = settings.engines.efforts
+  return {
+    ...settings,
+    revision: settings.revision + 1,
+    engines: { ...settings.engines, efforts: effort === null ? others : { ...others, [harness]: effort } }
+  }
 }
 
 /** What the user chose about access: all of it but where the assistant's folder is, which the core tells. */

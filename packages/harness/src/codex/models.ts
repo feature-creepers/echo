@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { HarnessModel, HarnessModels, Role } from '@repo/core'
+import type { HarnessEffort, HarnessModel, HarnessModels, Role } from '@repo/core'
 import type { Environment } from '../process/environment.ts'
 import { asArray, asObject, asString } from '../process/json.ts'
 import { platform } from '../process/platform/index.ts'
@@ -23,6 +23,41 @@ const FAMILIES: { family: string; description: string }[] = [
 
 /** The family the assistant answers with by default: balanced, and inexpensive enough to talk to all day. */
 const DEFAULT_FAMILY = 'terra'
+
+/** The levels of reasoning Codex names, in plain words. A level not here keeps the words Codex gives. */
+const LEVELS: Record<string, { name: string; description: string }> = {
+  none: { name: 'None', description: 'Answers at once, without thinking first.' },
+  minimal: { name: 'Minimal', description: 'Barely thinks before answering. Quickest.' },
+  low: { name: 'Low', description: 'Answers quickly, thinking little first.' },
+  medium: { name: 'Medium', description: 'Some thought before answering.' },
+  high: { name: 'High', description: 'Thinks things through. Slower, uses more of your plan.' },
+  xhigh: { name: 'Extra high', description: 'As deep as it goes, for hard problems. Slowest.' }
+}
+
+/** The levels offered when Codex has not written its list, and the one it uses by default. */
+const USUAL_LEVELS = ['low', 'medium', 'high', 'xhigh']
+const USUAL_LEVEL = 'medium'
+
+/** A level as Codex names it: lower-case letters, which also keeps it safe to hand back to Codex in its settings. */
+const LEVEL = /^[a-z]{1,32}$/
+
+function level(id: string, given?: string): HarnessEffort {
+  const known = LEVELS[id]
+  return { id, name: known?.name ?? id.charAt(0).toUpperCase() + id.slice(1), description: known?.description ?? given ?? '' }
+}
+
+/** The levels a model of Codex's list offers, from `supported_reasoning_levels`, and its default. */
+function levelsOf(model: Record<string, unknown> | undefined): Pick<HarnessModel, 'efforts' | 'defaultEffort'> {
+  const efforts = asArray(model?.supported_reasoning_levels)
+    .map(asObject)
+    .flatMap((one) => {
+      const id = asString(one?.effort)
+      return id !== undefined && LEVEL.test(id) ? [level(id, asString(one?.description))] : []
+    })
+  if (efforts.length === 0) return {}
+  const fallback = asString(model?.default_reasoning_level)
+  return { efforts, ...(fallback !== undefined && efforts.some((one) => one.id === fallback) ? { defaultEffort: fallback } : {}) }
+}
 
 /** The folder where Codex keeps the user's settings, sign-in and list of models. */
 export function codexHome(env: Environment): string {
@@ -54,13 +89,19 @@ export async function listedModels(home: string): Promise<HarnessModel[]> {
         if (slug === undefined || slug === '') return []
         const shown = asString(model?.display_name)
         const name = shown && shown !== slug ? shown : modelName(slug)
-        return [{ id: slug, name, description: describe(slug, asString(model?.description)) }]
+        return [{ id: slug, name, description: describe(slug, asString(model?.description)), ...levelsOf(model) }]
       })
     if (listed.length > 0) return listed
   } catch {
     // Codex has not written its list yet, or writes it another way now.
   }
-  return CODEX_MODELS.map((slug) => ({ id: slug, name: modelName(slug), description: describe(slug, undefined) }))
+  return CODEX_MODELS.map((slug) => ({
+    id: slug,
+    name: modelName(slug),
+    description: describe(slug, undefined),
+    efforts: USUAL_LEVELS.map((id) => level(id)),
+    defaultEffort: USUAL_LEVEL
+  }))
 }
 
 /** The models the user can choose from for the answers, and the balanced one as the default, else Codex's first. */

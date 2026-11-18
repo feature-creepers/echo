@@ -34,7 +34,11 @@ function setup({ harness = scriptedHarness(), records = memoryRecords(), server 
   const notices: { title: string; body: string }[] = []
   const channel = createChannel({
     // The user's choice of program and model, read from the settings as the core does.
-    engines: createEngineRoom([harness], { preferred: () => settings.read().engines.preferred, model: (id) => settings.read().engines.models[id] }),
+    engines: createEngineRoom([harness], {
+      preferred: () => settings.read().engines.preferred,
+      model: (id) => settings.read().engines.models[id],
+      effort: (id) => settings.read().engines.efforts[id]
+    }),
     settings,
     records,
     screen,

@@ -14,6 +14,8 @@ export interface EngineRoom {
   signIn(id: string): Promise<void>
   /** The model a harness's answers run on: the user's choice while the harness offers it. Nothing for its default. */
   chosenModel(id: string): string | undefined
+  /** How hard a harness's answers reason: the user's choice while the model they run on offers it. Nothing for its default. */
+  chosenEffort(id: string): string | undefined
   /** The user changed their choice: decide again from the last look, without looking again. */
   reconsider(): Promise<void>
   /** Be told each time a look or a choice gives something different. Returns a function that stops the telling. */
@@ -26,15 +28,17 @@ export interface EngineChoice {
   preferred(): string | undefined
   /** The model a harness answers with, as the user chose it. */
   model(harness: string): string | undefined
+  /** How hard a harness's answers reason, as the user chose it. */
+  effort(harness: string): string | undefined
 }
 
-const NO_CHOICE: EngineChoice = { preferred: () => undefined, model: () => undefined }
+const NO_CHOICE: EngineChoice = { preferred: () => undefined, model: () => undefined, effort: () => undefined }
 
 const usable = (state: HarnessState) => state.installed && state.signedIn && state.problem === undefined
 
 /** What a look found: where each harness stands and the models it offers, before the user's choice is applied. */
 interface Look {
-  states: Omit<HarnessState, 'models' | 'defaultModel' | 'model'>[]
+  states: Omit<HarnessState, 'models' | 'defaultModel' | 'model' | 'effort'>[]
   models: Map<string, HarnessModels>
 }
 
@@ -72,6 +76,17 @@ export function createEngineRoom(harnesses: readonly Harness[], choice: EngineCh
     return chosen !== undefined && offered?.models.some((model) => model.id === chosen) ? chosen : offered?.default
   }
 
+  /** The level the user chose for a harness, when the model its answers run on offers it. */
+  const offeredEffort = (id: string, offered: HarnessModels | undefined, model: string | undefined) => {
+    const chosen = choice.effort(id)
+    const efforts = offered?.models.find((one) => one.id === model)?.efforts ?? []
+    return chosen !== undefined && efforts.some((effort) => effort.id === chosen) ? chosen : undefined
+  }
+
+  /** How hard a harness's answers reason: the user's choice when its model offers it, else the model's default. */
+  const reasoning = (id: string, offered: HarnessModels | undefined, model: string | undefined) =>
+    offeredEffort(id, offered, model) ?? offered?.models.find((one) => one.id === model)?.defaultEffort
+
   /** What the clients are shown: the look with the user's choice applied. Tells the listeners when it changed. */
   const decide = (look: Look): Engines => {
     seen = look
@@ -79,11 +94,13 @@ export function createEngineRoom(harnesses: readonly Harness[], choice: EngineCh
     const harnessStates = states.map((state): HarnessState => {
       const offered = models.get(state.id)
       const model = answering(state.id, offered)
+      const effort = reasoning(state.id, offered, model)
       return {
         ...state,
         models: offered?.models ?? [],
         ...(offered ? { defaultModel: offered.default } : {}),
-        ...(model === undefined ? {} : { model })
+        ...(model === undefined ? {} : { model }),
+        ...(effort === undefined ? {} : { effort })
       }
     })
     const preferred = harnessStates.find((state) => state.id === choice.preferred() && usable(state))
@@ -105,7 +122,12 @@ export function createEngineRoom(harnesses: readonly Harness[], choice: EngineCh
     return model !== undefined && seen?.models.get(id)?.models.some((one) => one.id === model) ? model : undefined
   }
 
-  /** Each harness as the core uses it: the same, except that its answers run on the model the user chose. */
+  const chosenEffort = (id: string) => {
+    const offered = seen?.models.get(id)
+    return offeredEffort(id, offered, answering(id, offered))
+  }
+
+  /** Each harness as the core uses it: the same, except that its answers run on the model and the level the user chose. */
   const wrapped = new Map<string, Harness>()
   const answeringHarness = (harness: Harness): Harness => {
     const known = wrapped.get(harness.id)
@@ -115,7 +137,8 @@ export function createEngineRoom(harnesses: readonly Harness[], choice: EngineCh
     const withModel = <Request extends SessionRequest | OneShot>(request: Request): Request => {
       if (request.role !== 'thread' || request.model !== undefined) return request
       const model = chosenModel(harness.id)
-      return model === undefined ? request : { ...request, model }
+      const effort = request.effort ?? chosenEffort(harness.id)
+      return { ...request, ...(model === undefined ? {} : { model }), ...(effort === undefined ? {} : { effort }) }
     }
     const made: Harness = {
       id: harness.id,
@@ -144,6 +167,7 @@ export function createEngineRoom(harnesses: readonly Harness[], choice: EngineCh
       await harness.signIn()
     },
     chosenModel,
+    chosenEffort,
     async reconsider() {
       if (looked) decide(await looked)
     },

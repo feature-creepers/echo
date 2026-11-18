@@ -110,11 +110,12 @@ export function createCore(options: CoreOptions): Core {
   const settings = createUserSettings(options.records, undefined, options.computer?.workspace)
   const engines = createEngineRoom(options.harnesses, {
     preferred: () => settings.read().engines.preferred,
-    model: (harness) => settings.read().engines.models[harness]
+    model: (harness) => settings.read().engines.models[harness],
+    effort: (harness) => settings.read().engines.efforts[harness]
   })
   const tools = createTools(options.newId)
   let toolServer: string | undefined
-  const screen = createScreen({ records: options.records, newId: options.newId })
+  const screen = createScreen({ records: options.records, newId: options.newId, timers: options.timers, now })
   const mapsOf = createMaps(options.web)
 
   /** The screen's tools, for one thread: its views go where `showing` says. */
@@ -516,6 +517,17 @@ export function createCore(options: CoreOptions): Core {
         // The default is kept as no choice at all, so a user who picks it follows the default as it changes.
         const model = input.model === harness.defaultModel ? null : input.model
         return { ok: true, output: { settings: settings.chooseModel(input.harness, model) } }
+      },
+      'engines.effort.set': async (input) => {
+        const harness = (await engines.read()).harnesses.find((known) => known.id === input.harness)
+        if (!harness) return { ok: false, error: { code: 'unknown-harness', message: `There is no harness "${input.harness}".` } }
+        const model = harness.models.find((one) => one.id === harness.model)
+        if (input.effort !== null && !(model?.efforts ?? []).some((effort) => effort.id === input.effort)) {
+          return { ok: false, error: { code: 'unknown-effort', message: `${model?.name ?? harness.name} does not offer the level "${input.effort}".` } }
+        }
+        // The model's default is kept as no choice at all, so it follows the default of whichever model answers.
+        const effort = input.effort === model?.defaultEffort ? null : input.effort
+        return { ok: true, output: { settings: settings.chooseEffort(input.harness, effort) } }
       },
       'engines.sign-in': async (input) => {
         const known = (await engines.read()).harnesses.some((harness) => harness.id === input.harness)

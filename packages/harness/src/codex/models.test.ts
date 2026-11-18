@@ -36,10 +36,46 @@ describe('the models Codex offers', () => {
     expect(choices.models[2]).toEqual({ id: 'gpt-7-nova', name: 'Nova', description: 'Something new.' })
   })
 
+  it('offer the levels of reasoning Codex lists for each model, in plain words, with its default', async () => {
+    const choices = await codexChoices(
+      home({
+        models: [
+          {
+            slug: 'gpt-7-terra',
+            visibility: 'list',
+            default_reasoning_level: 'medium',
+            supported_reasoning_levels: [
+              { effort: 'low', description: 'Fast responses.' },
+              { effort: 'medium' },
+              { effort: 'xhigh' },
+              { effort: 'ultra', description: 'Newer.' },
+              { effort: 'bad"level' }
+            ]
+          },
+          { slug: 'gpt-7-sol', visibility: 'list', default_reasoning_level: 'max', supported_reasoning_levels: [{ effort: 'high' }] },
+          { slug: 'gpt-7-luna', visibility: 'list' }
+        ]
+      })
+    )
+    const [terra, sol, luna] = choices.models
+    expect(terra?.efforts?.map((effort) => [effort.id, effort.name])).toEqual([
+      ['low', 'Low'],
+      ['medium', 'Medium'],
+      ['xhigh', 'Extra high'],
+      ['ultra', 'Ultra']
+    ])
+    expect(terra?.efforts?.[3]?.description).toBe('Newer.')
+    expect(terra?.defaultEffort).toBe('medium')
+    // A default the model does not list is no default; a model that lists no level offers no choice.
+    expect(sol).not.toHaveProperty('defaultEffort')
+    expect(luna).not.toHaveProperty('efforts')
+  })
+
   it('fall back to a built-in list when Codex has not written its own', async () => {
     const choices = await codexChoices(home())
     expect(choices.default).toBe('gpt-6.1-terra')
     expect(choices.models.map((model) => model.id)).toEqual(['gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-luna'])
+    expect(choices.models[1]).toMatchObject({ defaultEffort: 'medium', efforts: [{ id: 'low' }, { id: 'medium' }, { id: 'high' }, { id: 'xhigh' }] })
   })
 
   it('give the roles their model: the balanced one answers, the fast one routes and summarises', async () => {

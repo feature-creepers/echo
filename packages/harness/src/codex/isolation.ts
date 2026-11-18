@@ -81,6 +81,8 @@ export function threadSettings(options: {
   /** A project's folder, which the session works in when it has the command line. */
   project?: string | undefined
   model: string
+  /** How hard the model reasons. Left out, the model's own default. */
+  effort?: string | undefined
   instructions: string
   tools?: ToolServer | undefined
   scope?: Scope | undefined
@@ -99,7 +101,8 @@ export function threadSettings(options: {
           }
         }
       : {}),
-    ...(sandbox === 'workspace-write' ? { sandbox_workspace_write: { writable_roots: writable, network_access: false } } : {})
+    ...(sandbox === 'workspace-write' ? { sandbox_workspace_write: { writable_roots: writable, network_access: false } } : {}),
+    ...(options.effort === undefined ? {} : { model_reasoning_effort: options.effort })
   }
   return {
     cwd: shell ? (options.project ?? scope?.home ?? options.folder) : options.folder,
@@ -118,10 +121,12 @@ export function threadSettings(options: {
  * The arguments of a single question. The instructions replace Codex's own system prompt; the user's
  * settings and rules are not read at all, so neither are their tool servers.
  */
-export function execArguments(options: { model: string; instructions: string; answer: string }): string[] {
+export function execArguments(options: { model: string; effort?: string | undefined; instructions: string; answer: string }): string[] {
   return [
     'exec',
     ['-m', options.model],
+    // A level Codex reads as a TOML string.
+    options.effort === undefined ? [] : settings([`model_reasoning_effort="${options.effort}"`]),
     // A string in TOML. Forward slashes keep a Windows path free of escapes.
     settings([`model_instructions_file="${options.instructions.replace(/\\/g, '/')}"`, SHELL_OFF, ...SETTINGS_OFF]),
     '--ignore-user-config',

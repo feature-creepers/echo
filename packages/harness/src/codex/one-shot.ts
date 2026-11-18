@@ -25,7 +25,7 @@ export async function complete(request: OneShot, context: OneShotContext): Promi
   try {
     const instructions = await files.write('instructions.txt', request.instructions)
     const answer = files.path('answer.txt')
-    const result = await run(launch.command, execArguments({ model: request.model ?? models[request.role], instructions, answer }), {
+    const result = await run(launch.command, execArguments({ model: request.model ?? models[request.role], effort: request.effort, instructions, answer }), {
       cwd: context.folder,
       env: launch.env,
       input: request.input,

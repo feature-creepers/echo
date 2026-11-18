@@ -59,13 +59,26 @@ export const exchangeSchema = z.object({
 })
 export type Exchange = z.infer<typeof exchangeSchema>
 
+/** How hard a model reasons before it answers: a level the user can choose, described in plain words. */
+export const harnessEffortSchema = z.object({
+  /** What the harness's program is given for it: "high", "xhigh". */
+  id: z.string().min(1).max(32),
+  name: z.string(),
+  description: z.string()
+})
+export type HarnessEffort = z.infer<typeof harnessEffortSchema>
+
 /** A model the user can choose for the assistant's answers, described in plain words. */
 export const harnessModelSchema = z.object({
   /** What the harness's program is given to run on it. */
   id: z.string().min(1).max(100),
   name: z.string(),
   /** What it is good for, in a few words for someone who does not follow AI news. */
-  description: z.string()
+  description: z.string(),
+  /** The levels of reasoning it offers, from the lightest to the deepest. Empty when it offers no choice. */
+  efforts: z.array(harnessEffortSchema).optional(),
+  /** The level it reasons at when the user has not chosen, when the harness says. */
+  defaultEffort: z.string().optional()
 })
 export type HarnessModel = z.infer<typeof harnessModelSchema>
 
@@ -86,7 +99,12 @@ export const harnessStateSchema = z.object({
   /** The one the answers use when the user has not chosen. */
   defaultModel: z.string().optional(),
   /** The one the answers use now: the user's choice, or the default. */
-  model: z.string().optional()
+  model: z.string().optional(),
+  /**
+   * The level of reasoning the answers use now, among those of `model`: the user's choice, else the model's
+   * default when the harness says. Left out, the program decides.
+   */
+  effort: z.string().optional()
 })
 export type HarnessState = z.infer<typeof harnessStateSchema>
 

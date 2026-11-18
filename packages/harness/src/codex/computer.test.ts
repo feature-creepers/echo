@@ -4,7 +4,7 @@ import type { ComputerUse, Reach, Scope, Session } from '@repo/core'
 import { afterEach, describe, expect, it } from 'vitest'
 import { fake, folder, follow, recordingLog, removeFolders } from '../../test/sessions.ts'
 import { createCodex } from './adapter.ts'
-import { appServerArguments, shellAllowed, threadSettings } from './isolation.ts'
+import { appServerArguments, execArguments, shellAllowed, threadSettings } from './isolation.ts'
 
 /**
  * Codex on the computer, against the stand-in (test/fake-codex.ts). Codex is not installed where these were
@@ -98,6 +98,14 @@ describe('Codex’s sandbox, from what the person granted', () => {
     const scope: Scope = { places: [{ path: '/home/ada/code/echo', kind: 'folder', write: true }], computer: 'read', home }
     expect(threadSettings({ ...base, scope, project: '/home/ada/code/echo' })).toMatchObject({ cwd: '/home/ada/code/echo' })
     expect(threadSettings({ ...base, scope: { ...scope, computer: 'off' }, project: '/home/ada/code/echo' })).toMatchObject({ cwd: '/data/codex' })
+  })
+
+  it('reasons at the level chosen, and at the model’s default when none was', () => {
+    expect(threadSettings({ ...base, effort: 'xhigh' })).toMatchObject({ config: { model_reasoning_effort: 'xhigh' } })
+    expect(threadSettings(base)).not.toHaveProperty('config')
+    const single = execArguments({ model: 'gpt-7-terra', effort: 'high', instructions: 'i.txt', answer: 'a.txt' })
+    expect(single.join(' ')).toContain('-c model_reasoning_effort="high"')
+    expect(execArguments({ model: 'gpt-7-terra', instructions: 'i.txt', answer: 'a.txt' }).join(' ')).not.toContain('model_reasoning_effort')
   })
 
   it('has no sandbox when the whole computer may be changed', () => {

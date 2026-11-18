@@ -119,6 +119,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
           folder: context.folder,
           project: request.folder,
           model: request.model ?? models[request.role],
+          effort: request.effort,
           instructions: request.instructions,
           tools: request.tools,
           scope: shell ? scope : undefined

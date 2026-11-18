@@ -75,10 +75,11 @@ export interface IsolationFiles {
   computer?: { tools: readonly string[]; folders: readonly string[] } | undefined
 }
 
-/** The arguments every call shares, live session or single question. */
-export function isolationArguments(model: string, files: IsolationFiles): string[] {
+/** The arguments every call shares, live session or single question. Left out, the effort is the CLI's own choice. */
+export function isolationArguments(model: string, files: IsolationFiles, effort?: string): string[] {
   return [
     ['--model', model],
+    effort === undefined ? [] : ['--effort', effort],
     // Replaces the CLI's own system prompt instead of adding to it.
     ['--system-prompt-file', files.instructions],
     // None of its own tools but those given: the web, and the computer within what the person granted. No sub-agent.

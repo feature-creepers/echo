@@ -117,6 +117,8 @@ export interface SessionRequest {
   web?: boolean
   /** The model to run on, as the harness names it, in place of the one it gives the role. */
   model?: string
+  /** How hard the model reasons, as the harness names the level, in place of the model's own default. */
+  effort?: string
   /** The person's files and commands, within what they granted. Left out, the session reaches nothing of the computer. */
   computer?: Reach
   /**
@@ -190,6 +192,17 @@ export interface OneShot {
   timeoutMs?: number
   /** The model to run on, as the harness names it, in place of the one it gives the role. */
   model?: string
+  /** How hard the model reasons, as the harness names the level, in place of the model's own default. */
+  effort?: string
+}
+
+/** How hard a model reasons before it answers: a level the user can choose, described in plain words. */
+export interface HarnessEffort {
+  /** What the harness's program is given for it: "high", "xhigh". */
+  id: string
+  name: string
+  /** What it is good for, in a few plain words. */
+  description: string
 }
 
 /** A model the user can choose for the assistant, described for someone who does not follow AI news. */
@@ -199,6 +212,10 @@ export interface HarnessModel {
   name: string
   /** What it is good for, in a few plain words. */
   description: string
+  /** The levels of reasoning it offers, from the lightest to the deepest. Left out, it offers no choice. */
+  efforts?: HarnessEffort[]
+  /** The `id` of the level it reasons at when the user has not chosen, when the harness says. */
+  defaultEffort?: string
 }
 
 /** The models a harness offers for the assistant's answers, and the one it uses unless told otherwise. */

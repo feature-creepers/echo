@@ -28,6 +28,7 @@ export type {
   ComputerUse,
   Harness,
   HarnessCapabilities,
+  HarnessEffort,
   HarnessModel,
   HarnessModels,
   HarnessStatus,

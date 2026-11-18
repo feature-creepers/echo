@@ -37,6 +37,8 @@ export const COMMAND_ERRORS = [
   'unknown-harness',
   /** The command names a model the harness does not offer. */
   'unknown-model',
+  /** The command names a level of reasoning the model in use does not offer. */
+  'unknown-effort',
   /** The command names a fact the assistant does not know, or no longer knows. */
   'unknown-fact',
   /** The command names a view, or a saved widget, that does not exist. */

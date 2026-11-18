@@ -16,7 +16,7 @@ const settings: Settings = {
     active: 'one',
     confirmed: true
   },
-  engines: { models: {} },
+  engines: { models: {}, efforts: {} },
   access: DEFAULT_ACCESS,
   languages: DEFAULT_LANGUAGES
 }

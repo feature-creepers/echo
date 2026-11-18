@@ -47,6 +47,13 @@ describe('the isolation of Claude Code', () => {
     expect(reportedToolName('mcp__core__ui_render', true)).toBe('ui_render')
   })
 
+  it('sets how hard the model reasons only when a level was chosen', () => {
+    const files = { instructions: 'i.txt', settings: 's.json' }
+    const effort = (args: string[]) => (args.includes('--effort') ? args[args.indexOf('--effort') + 1] : undefined)
+    expect(effort(isolationArguments('opus', files))).toBeUndefined()
+    expect(effort(isolationArguments('opus', files, 'xhigh'))).toBe('xhigh')
+  })
+
   it('takes the web tools for a leak only when the session was not given the web', () => {
     const init = { tools: ['WebSearch', 'WebFetch', 'mcp__core__ui_render'] }
     expect(isolationLeaks(init, true)).toEqual([])

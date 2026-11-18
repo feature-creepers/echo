@@ -1,4 +1,4 @@
-import type { HarnessModels, Role } from '@repo/core'
+import type { HarnessEffort, HarnessModels, Role } from '@repo/core'
 
 /**
  * The model each role runs on unless the user chose otherwise. These are the CLI's own aliases, which
@@ -15,12 +15,34 @@ export const CLAUDE_CODE_MODELS: Record<Role, string> = {
   utility: 'haiku'
 }
 
-/** The models the user can choose from for the answers, from the quickest to the most capable. */
+/**
+ * The levels of reasoning the CLI takes with `--effort`, from the lightest to the deepest. None is the default
+ * here: left alone, the CLI picks the level for the model and the account.
+ */
+const EFFORTS: Record<'low' | 'medium' | 'high' | 'xhigh' | 'max', HarnessEffort> = {
+  low: { id: 'low', name: 'Low', description: 'Answers quickest, thinking little first.' },
+  medium: { id: 'medium', name: 'Medium', description: 'Some thought before answering.' },
+  high: { id: 'high', name: 'High', description: 'Thinks things through. Slower, uses more of your plan.' },
+  xhigh: { id: 'xhigh', name: 'Extra high', description: 'Deeper still, for hard problems.' },
+  max: { id: 'max', name: 'Max', description: 'As deep as it goes. Slowest, and uses the most of your plan.' }
+}
+
+/** The models the user can choose from for the answers, from the quickest to the most capable. Haiku has no level to choose. */
 export const CLAUDE_CODE_CHOICES: HarnessModels = {
   models: [
     { id: 'haiku', name: 'Haiku', description: 'Fast and inexpensive. Right for most of what you ask.' },
-    { id: 'sonnet', name: 'Sonnet', description: 'More thorough, a little slower. Uses more of your plan.' },
-    { id: 'opus', name: 'Opus', description: 'The most capable, for hard problems. Slowest, and uses the most of your plan.' }
+    {
+      id: 'sonnet',
+      name: 'Sonnet',
+      description: 'More thorough, a little slower. Uses more of your plan.',
+      efforts: [EFFORTS.low, EFFORTS.medium, EFFORTS.high, EFFORTS.max]
+    },
+    {
+      id: 'opus',
+      name: 'Opus',
+      description: 'The most capable, for hard problems. Slowest, and uses the most of your plan.',
+      efforts: [EFFORTS.low, EFFORTS.medium, EFFORTS.high, EFFORTS.xhigh, EFFORTS.max]
+    }
   ],
   default: CLAUDE_CODE_MODELS.thread
 }

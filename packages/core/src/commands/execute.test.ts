@@ -11,7 +11,7 @@ const schedule: ScheduleView = { revision: 0, jobs: [], quiet: { on: true, from:
 const settings: Settings = {
   revision: 0,
   personas: { available: [{ id: 'first', name: 'Ada', stance: 'accommodating', accent: 'cyan', look: 'hud' }], active: 'first', confirmed: false },
-  engines: { models: {} },
+  engines: { models: {}, efforts: {} },
   access: DEFAULT_ACCESS,
   languages: DEFAULT_LANGUAGES
 }
@@ -29,6 +29,7 @@ function setup(overrides: Partial<Handlers> = {}) {
     'engines.sign-in': async () => ({ ok: true, output: {} }),
     'engines.prefer': async () => ({ ok: true, output: { settings } }),
     'engines.model.set': async () => ({ ok: true, output: { settings } }),
+    'engines.effort.set': async () => ({ ok: true, output: { settings } }),
     'view.read': () => ({ ok: true, output: { margin: [], stream: [] } }),
     'view.clear': () => ({ ok: true, output: {} }),
     'shapes.read': () => ({ ok: true, output: { shapes: {} } }),

@@ -7,7 +7,7 @@ function at(revision: number): Settings {
   return {
     revision,
     personas: { available: [{ id: 'first', name: 'Ada', stance: 'accommodating', accent: 'cyan', look: 'hud' }], active: 'first', confirmed: revision > 0 },
-    engines: { models: {} },
+    engines: { models: {}, efforts: {} },
     access: DEFAULT_ACCESS,
     languages: DEFAULT_LANGUAGES
   }

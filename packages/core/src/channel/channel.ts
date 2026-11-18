@@ -487,10 +487,11 @@ export function createChannel(options: ChannelOptions): Channel {
     const granted = abilities?.reach?.(() => showing())
     // Files handed to the thread are readable by it, whatever else it may reach: the person gave them.
     const computer: Reach | undefined = granted && { ...granted, scope: () => withReadable(granted.scope(), runtime.readable) }
-    // A change of program, model or persona opens a new session for the next question, told what was said before.
+    // A change of program, model, level of reasoning or persona opens a new session for the next question, told what was said before.
     const key = JSON.stringify([
       engine.id,
       engines.chosenModel(engine.id) ?? null,
+      engines.chosenEffort(engine.id) ?? null,
       persona.id,
       persona.name,
       persona.stance,

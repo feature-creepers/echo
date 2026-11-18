@@ -11,6 +11,8 @@ export interface OneShotContext {
   cli: Cli
   folder: string
   model: string
+  /** How hard the model reasons. Left out, the CLI's own choice. */
+  effort?: string | undefined
   log: Log
 }
 
@@ -28,7 +30,7 @@ export async function complete(request: OneShot, context: OneShotContext): Promi
       instructions: await files.write('instructions.txt', request.instructions),
       settings: await files.write('settings.json', JSON.stringify(ISOLATION_SETTINGS))
     }
-    const result = await run(launch.command, [...ONE_SHOT_ARGUMENTS, ...isolationArguments(context.model, paths)], {
+    const result = await run(launch.command, [...ONE_SHOT_ARGUMENTS, ...isolationArguments(context.model, paths, context.effort)], {
       cwd: context.folder,
       env: { ...launch.env, ...ISOLATION_VARIABLES },
       input: request.input,
