@@ -34,6 +34,8 @@ function setup(options: { write?: boolean; refuse?: string } = {}) {
   const reach: Reach = {
     scope: () => scope,
     approve: (use, signal) => {
+      // What the adapter found beyond the scope comes refused: the core keeps it and asks nobody.
+      if (use.refused) return Promise.resolve({ allow: false, reason: use.refused.reason })
       asked.push(use)
       signals.push(signal as AbortSignal)
       if (use.action === 'read') return Promise.resolve({ allow: true })
@@ -89,7 +91,7 @@ describe('Claude Code on the computer', () => {
     session.send(`use Read ${JSON.stringify({ file_path: join(root, 'harness', 'secret.tools.json') })}`)
     await followed.until('turn-end')
     expect(followed.text()).toContain('Refused:')
-    expect(followed.text()).toContain('belongs to the assistant')
+    expect(followed.text()).toContain('never reached')
 
     session.send(`use Edit ${JSON.stringify({ file_path: join(root, 'granted', 'a.txt') })}`)
     await followed.until('turn-end', 2)

@@ -1,4 +1,18 @@
-export { type Access, APPROVALS, accessSchema, COMPUTER_REACH, DEFAULT_ACCESS, MAX_PLACES, type Place, placeSchema } from './access.ts'
+export {
+  type Access,
+  type Allowance,
+  APPROVALS,
+  accessSchema,
+  allowanceSchema,
+  COMPUTER_REACH,
+  DEFAULT_ACCESS,
+  MAX_PLACES,
+  type Place,
+  type ProtectedPlace,
+  placeSchema,
+  protectedPlaceSchema
+} from './access.ts'
+export { type AccessUse, accessUseSchema, USE_DECISIONS, USE_REASONS, useIdSchema } from './activity.ts'
 export { decodeBase64, encodeBase64 } from './base64.ts'
 export { type BrowserState, browserStateSchema } from './browser.ts'
 export { CAPABILITIES, type Capability, capabilitySchema } from './capabilities.ts'

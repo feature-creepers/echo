@@ -4,7 +4,7 @@ import type { CommandInput } from '@repo/protocol'
 import { useState } from 'react'
 import { cn } from '../primitives/cn.ts'
 import { Menu } from '../primitives/menu.tsx'
-import { reachInWords } from './words.ts'
+import { LEVELS, reachInWords } from './words.ts'
 
 /** The event that asks the app to show the Access settings. */
 export const OPEN_ACCESS_EVENT = 'echo:open-access'
@@ -56,7 +56,7 @@ export function AccessIndicator({ client }: { client: Client }) {
           </svg>
           <span className={cn(wide && 'text-warn/80')}>{reach}</span>
           <span aria-hidden="true">·</span>
-          {failed ? <span className="text-danger">not changed</span> : <span>{approvals}</span>}
+          {failed ? <span className="text-danger">not changed</span> : <span className={cn(access.approvals === 'auto' && 'text-warn/80')}>{approvals}</span>}
         </button>
       )}
       items={[
@@ -84,16 +84,23 @@ export function AccessIndicator({ client }: { client: Client }) {
         { divider: true },
         { heading: 'Before acting' },
         {
-          label: 'Ask me first',
-          detail: 'Before each change and each command',
+          label: LEVELS.ask.label,
+          detail: 'Changes and commands are asked',
           checked: access.approvals === 'ask',
           onSelect: () => change({ approvals: 'ask' })
         },
         {
-          label: 'Allow within what I gave',
-          detail: access.computer === 'write' ? 'Changes and commands, without asking' : 'Changes without asking, commands still asked',
+          label: LEVELS.trust.label,
+          detail: 'Changes within what you gave go ahead',
           checked: access.approvals === 'trust',
           onSelect: () => change({ approvals: 'trust' })
+        },
+        {
+          label: LEVELS.auto.label,
+          detail: 'Only what deletes is still asked',
+          checked: access.approvals === 'auto',
+          warn: access.approvals === 'auto',
+          onSelect: () => change({ approvals: 'auto' })
         },
         { divider: true },
         { label: 'Access settings…', onSelect: () => window.dispatchEvent(new Event(OPEN_ACCESS_EVENT)) }

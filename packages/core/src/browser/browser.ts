@@ -1,4 +1,4 @@
-import type { BrowserState, CommandError } from '@repo/protocol'
+import type { Access, BrowserState, CommandError } from '@repo/protocol'
 import type { Approvals } from '../access/approvals.ts'
 import type { Browser, BrowserFound } from '../ports/browser.ts'
 import type { Computer } from '../ports/computer.ts'
@@ -6,7 +6,7 @@ import type { Records } from '../ports/records.ts'
 import type { UserSettings } from '../settings/settings.ts'
 import type { Tool } from '../tools/tools.ts'
 import type { Showing } from '../views/screen.ts'
-import { browserTools } from './tools.ts'
+import { type BrowserToolsOptions, browserTools } from './tools.ts'
 
 /**
  * The web browser the assistant drives (docs/SPEC.md, sections 12.1 and 12.2): the tools a thread gets while
@@ -35,6 +35,8 @@ export interface BrowserControlOptions {
   /** The questions asked before acting: the same cards and queue as the access to files. */
   ask: Approvals['ask']
   records: Records
+  /** The activity of the computer, where each action on a page is kept beside the uses of files and commands. */
+  uses?: BrowserToolsOptions['uses']
   /** Where files given to a page may come from: the assistant's own folder and what the person granted. */
   computer?: Computer | undefined
 }
@@ -42,7 +44,7 @@ export interface BrowserControlOptions {
 /** Said when the assistant runs where no browser can be opened for the person. */
 const NO_BROWSER = 'This assistant runs where it cannot open a browser for you.'
 
-export function createBrowserControl({ browser, settings, ask, records, computer }: BrowserControlOptions): BrowserControl {
+export function createBrowserControl({ browser, settings, ask, records, uses, computer }: BrowserControlOptions): BrowserControl {
   // Which browser this computer has is found once, without starting it; until it is known, there is none.
   let found: BrowserFound | undefined
   const finding = (browser ? browser.find() : Promise.resolve<BrowserFound>({ found: false, problem: NO_BROWSER })).then(
@@ -73,7 +75,7 @@ export function createBrowserControl({ browser, settings, ask, records, computer
   return {
     tools(showing) {
       if (!browser || !usable() || found?.found !== true) return []
-      return browserTools({ browser, name: found.name, settings, ask, records, computer, showing, usable })
+      return browserTools({ browser, name: found.name, settings, ask, records, uses, computer, showing, usable })
     },
 
     standing() {
@@ -108,7 +110,7 @@ export function createBrowserControl({ browser, settings, ask, records, computer
 }
 
 /** What a thread is told about the browser, as the person's trust stands. */
-function standingFor(name: string, approvals: 'ask' | 'trust'): string {
+function standingFor(name: string, approvals: Access['approvals']): string {
   return [
     'The browser',
     '',

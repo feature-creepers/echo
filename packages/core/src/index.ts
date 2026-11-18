@@ -1,3 +1,4 @@
+export { type CommandReading, type NamedPath, type ReadCommand, readCommand, type Shell } from './access/commands.ts'
 export { BROWSER_ACTION, type BrowserAction } from './browser/log.ts'
 export { decidePageAct, type PageAct, type PageVerdict } from './browser/policy.ts'
 export { type Consequence, consequenceOf, type Secret, secretOf } from './browser/sensitive.ts'
@@ -29,6 +30,7 @@ export type {
   HarnessModels,
   HarnessStatus,
   OneShot,
+  ProtectedPath,
   Reach,
   Role,
   Scope,

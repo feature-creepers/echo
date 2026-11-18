@@ -155,6 +155,11 @@ export interface Channel {
   busy(): boolean
   /** Stop the answer under way, if there is one. */
   stop(): void
+  /**
+   * Stop everything: every turn, the one on the stage, those waiting and every thread's, is recorded as stopped, and
+   * every session ends with what it still runs. The next thing said opens new ones.
+   */
+  stopAll(): void
   /** The latest lines of the transcript, oldest first. */
   read(limit: number): Exchange[]
   /** The threads, and the one in focus. */
@@ -966,6 +971,31 @@ export function createChannel(options: ChannelOptions): Channel {
 
     stop() {
       if (current) halt(current)
+    },
+
+    stopAll() {
+      const running = new Set<Turn>()
+      for (const turn of [pending, current, deciding]) if (turn) running.add(turn)
+      for (const runtime of runtimes.values()) {
+        if (runtime.answering) running.add(runtime.answering)
+        for (const waiting of runtime.queue.splice(0)) running.add(waiting.turn)
+      }
+      pending = undefined
+      for (const turn of running) {
+        turn.stopped = true
+        finish(turn, 'stopped')
+      }
+      // Every session ends, and with it whatever it still runs, a command left in the background included. The
+      // next request opens new ones, told what was said.
+      end(orchestrator)
+      orchestrator = undefined
+      deciding = undefined
+      for (const runtime of runtimes.values()) {
+        end(runtime.live)
+        runtime.live = undefined
+        if (runtime.answering) registry.setState(runtime.thread, 'parked')
+        runtime.answering = undefined
+      }
     },
 
     read: (limit) => transcript.slice(-limit),

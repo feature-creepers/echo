@@ -1,6 +1,7 @@
 import { realpath, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { system } from './system/index.ts'
 
 /**
  * Paths as the system reaches them. A path a model writes may be relative, start with `~`, pass through `..`
@@ -8,7 +9,7 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
  */
 
 /** Windows and macOS do not tell a name from the same name in other capitals, by default. */
-const CASELESS = process.platform === 'win32' || process.platform === 'darwin'
+const CASELESS = system.caseless
 
 /** A path from the home folder (`~`, `~/Documents`) as an absolute one; any other path as it is. */
 export function expandHome(path: string, home = homedir()): string {
@@ -21,6 +22,27 @@ export function expandHome(path: string, home = homedir()): string {
 export function absolute(path: string, base: string): string {
   const expanded = expandHome(path.trim())
   return isAbsolute(expanded) ? resolve(expanded) : resolve(base, expanded)
+}
+
+/**
+ * A path a command names, as the command analysis wrote it (`~`, `${HOME}/x`, `/c/Users/me`, `../a`), where it
+ * is on this computer: its variables given their values here, Git Bash's way of writing a drive read on
+ * Windows, and a relative path read from the folder the command runs in. A variable with no value is empty,
+ * as the shell would make it.
+ */
+export function namedPath(path: string, folder: string, env: Readonly<Record<string, string | undefined>> = process.env, home = homedir()): string {
+  const value = (name: string) => {
+    if (name === 'PWD') return folder
+    if (name === 'HOME' || name === 'USERPROFILE') return env[name] ?? home
+    if (name === 'HOMEPATH') return env.HOMEPATH ?? home.replace(/^[A-Za-z]:/, '')
+    const found = Object.entries(env).find(([key]) => (CASELESS ? key.toUpperCase() === name : key === name))
+    return found?.[1] ?? ''
+  }
+  let written = path.replace(/\$\{([^}]+)\}/g, (_whole, name: string) => value(name))
+  // Someone else's home folder: `~ada`.
+  const other = /^~([\w.-]+)(.*)$/.exec(written)
+  if (other) written = join(dirname(home), other[1] as string, other[2] ?? '')
+  return absolute(system.shellPath(written), folder)
 }
 
 /**

@@ -7,6 +7,8 @@ import { type Rgba, rgba, trayMark } from './mark.ts'
 export interface TrayActions {
   show(): void
   talk(): void
+  /** Interrupt everything the assistant is doing, withdraw its questions, forget what was allowed for the session. */
+  stopEverything(): void
   settings(): void
   quit(): void
   /** Restart into the downloaded version, when there is one. */
@@ -49,8 +51,8 @@ function icon({ accent, state }: TrayLook): Electron.NativeImage {
 
 /**
  * The app in the system tray (the menu bar on macOS), where it waits for its shortcut while the window is
- * closed. A click shows the window; the menu talks, opens the settings on their general page, restarts for an
- * update, or quits.
+ * closed. A click shows the window; the menu talks, stops everything the assistant does, opens the settings,
+ * restarts for an update, or quits.
  */
 export function createTray(talkShortcut: string, actions: TrayActions): TrayMenu {
   let shown: TrayLook = { accent: undefined, state: 'awake' }
@@ -63,6 +65,7 @@ export function createTray(talkShortcut: string, actions: TrayActions): TrayMenu
     const items: MenuItemConstructorOptions[] = [
       { label: `Show ${app.getName()}`, click: () => doing.show() },
       { label: shortcut ? `Talk    ${describeShortcut(shortcut, mac)}` : 'Talk', click: () => doing.talk() },
+      { label: 'Stop everything', click: () => doing.stopEverything() },
       { label: 'Settings…', click: () => doing.settings() },
       { type: 'separator' }
     ]

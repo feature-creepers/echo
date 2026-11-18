@@ -25,6 +25,11 @@ export const ENGINES_PREFERRED = 'engines.preferred'
 export const ENGINES_MODEL = 'engines.model'
 /** The type of the record written when the user changes what the assistant may reach on the computer. It carries the whole of it. */
 export const ACCESS_SET = 'access.set'
+/**
+ * Written in each `access.set` record since approvals have three levels. Before, `trust` with the whole computer
+ * to change let commands run without asking: a record without it reads that as `auto`.
+ */
+const ACCESS_LEVELS = 3
 /** The type of the record written when the user sets the languages of the conversation. It carries both. */
 export const LANGUAGES_SET = 'languages.set'
 
@@ -77,7 +82,7 @@ export function createUserSettings(
       if (read.success) settings = { ...settings, revision: settings.revision + 1, languages: read.data }
     } else if (record.type === ACCESS_SET) {
       const read = accessSchema.omit({ folder: true }).safeParse(record.payload)
-      if (read.success) settings = withAccess(settings, read.data)
+      if (read.success) settings = withAccess(settings, migrated(read.data, record.payload))
     } else if (record.type === PERSONAS_SET) {
       const choice = readChoice(record.payload)
       if (choice) settings = choose(settings, choice)
@@ -122,7 +127,7 @@ export function createUserSettings(
     setAccess(asked) {
       const next = withAccess(settings, asked)
       if (JSON.stringify(chosen(next.access)) === JSON.stringify(chosen(settings.access))) return settings
-      return change(next, { type: ACCESS_SET, payload: chosen(next.access) })
+      return change(next, { type: ACCESS_SET, payload: { ...chosen(next.access), levels: ACCESS_LEVELS } })
     },
 
     setLanguages(asked) {
@@ -155,6 +160,13 @@ function withModel(settings: Settings, harness: string, model: string | null): S
 
 /** What the user chose about access: all of it but where the assistant's folder is, which the core tells. */
 const chosen = ({ folder: _, ...choices }: Access) => choices
+
+/** Access as recorded before approvals had three levels, read as it behaved then. */
+export function migrated(access: Omit<Access, 'folder'>, payload: unknown): Omit<Access, 'folder'> {
+  const levels = (payload as { levels?: unknown } | null)?.levels
+  if (levels === undefined && access.approvals === 'trust' && access.computer === 'write') return { ...access, approvals: 'auto' }
+  return access
+}
 
 function withAccess(settings: Settings, asked: AccessChange): Settings {
   const defined = Object.fromEntries(Object.entries(asked).filter(([, value]) => value !== undefined))

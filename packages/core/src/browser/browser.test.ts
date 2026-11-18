@@ -73,6 +73,11 @@ function standIn(found: BrowserFound = { found: true, name: 'Microsoft Edge', pa
 
 const computer: Computer = {
   workspace: WORKSPACE,
+  protected: [],
+  read: async () => undefined,
+  write: async () => undefined,
+  fingerprint: async () => undefined,
+  trash: async (path) => path,
   async locate(path) {
     const absolute = path.startsWith('/') ? path : `${WORKSPACE}/${path}`
     const known: Record<string, 'folder' | 'file'> = { [WORKSPACE]: 'folder', [`${WORKSPACE}/cv.pdf`]: 'file', '/home/ada/secret.txt': 'file' }

@@ -83,8 +83,9 @@ describe('what the core does with an action on a page', () => {
       { verdict: 'refuse', secret: 'card' },
       { verdict: 'refuse', secret: 'card' }
     ]
-  ])('%s: asked first, then trusted', (_case, act, whenAsking, whenTrusting) => {
+  ])('%s: asked first, then trusted, and the same when nothing is asked', (_case, act, whenAsking, whenTrusting) => {
     expect(decidePageAct(act, 'ask')).toEqual(whenAsking)
     expect(decidePageAct(act, 'trust')).toEqual(whenTrusting)
+    expect(decidePageAct(act, 'auto')).toEqual(whenTrusting)
   })
 })

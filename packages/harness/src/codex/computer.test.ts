@@ -125,8 +125,15 @@ describe('Codex asking to act', () => {
 
     expect(followed.text()).toBe('Decisions: accept, decline, approved. Unknown: -32601.')
     expect(asked).toEqual([
-      { action: 'run', tool: 'shell', paths: [workspace], command: 'rm -rf /' },
-      { action: 'run', tool: 'shell', paths: [workspace], command: 'ls' }
+      // It would go through the adapter's own folder: refused before anyone is asked.
+      {
+        action: 'run',
+        tool: 'shell',
+        paths: [workspace],
+        command: 'rm -rf /',
+        refused: { why: 'protected', reason: expect.stringContaining('would go through') }
+      },
+      { action: 'run', tool: 'shell', paths: [workspace], command: 'ls', reach: 'write' }
     ])
   })
 })

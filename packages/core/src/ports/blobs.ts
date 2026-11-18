@@ -7,4 +7,6 @@ export interface Blobs {
   put(bytes: Uint8Array): string
   /** The bytes with this hash, or nothing when they are not here. */
   get(hash: string): Uint8Array | undefined
+  /** Let go of the bytes with this hash, where a store can: versions of files kept for undo, once they expire. */
+  remove?(hash: string): void
 }

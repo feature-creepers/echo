@@ -3,6 +3,7 @@ import type { CommandInput, PersonaId, Settings } from '@repo/protocol'
 import { motion } from 'motion/react'
 import { type ReactNode, useEffect, useLayoutEffect, useRef } from 'react'
 import { AccessSection } from '../access/access-section.tsx'
+import { ActivitySection } from '../activity/activity-section.tsx'
 import type { DeviceSpeech } from '../audio/use-speech.ts'
 import { useDevice } from '../device/device.tsx'
 import { FilesSection } from '../files/files-section.tsx'
@@ -67,6 +68,12 @@ const PAGES = {
     lead: (name) =>
       `${name} keeps every word of your conversations, and while it sleeps it works out what is worth remembering about you. Here is what it knows, where it learned it, and when it sleeps.`,
     render: (hub) => <MemorySection memory={hub.memory} productName={hub.productName} />
+  },
+  activity: {
+    title: 'Activity',
+    lead: (name) =>
+      `Everything ${name} did on this computer: each file it read or changed, each command it ran and each action on a web page, what was decided, and how it went.`,
+    render: (hub) => <ActivitySection client={hub.client} productName={hub.productName} />
   },
   reminders: {
     title: 'Reminders',
@@ -141,7 +148,7 @@ export const HUB_PAGES = Object.keys(PAGES) as HubPage[]
  * to the next (docs/SPEC.md, section 5.2).
  */
 const GROUPS: { title: string; pages: HubPage[] }[] = [
-  { title: 'Library', pages: ['widgets', 'files', 'memory', 'reminders'] },
+  { title: 'Library', pages: ['widgets', 'files', 'memory', 'reminders', 'activity'] },
   { title: 'This computer', pages: ['general', 'voice', 'microphone', 'shortcuts'] },
   { title: 'Your assistant', pages: ['personalities', 'models', 'access'] }
 ]

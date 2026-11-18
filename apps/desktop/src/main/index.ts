@@ -219,6 +219,8 @@ function start(): void {
   const trayActions = (): TrayActions => ({
     show: bringForward,
     talk,
+    // Straight to the core, as any client asks it: it works with the window closed. Its result goes unread.
+    stopEverything: () => core.send({ type: 'command', id: `tray-stop-${Date.now()}`, name: 'everything.stop', input: {} }),
     settings: () => {
       bringForward()
       toWindow(APP_CHANNELS.openSettings)

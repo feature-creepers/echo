@@ -1,6 +1,7 @@
 /**
- * Whether something the person said answers a question on screen: yes, no, or neither. Spoken or pressed, an
- * answer is a few words; anything longer, or both at once, is something else they want to say.
+ * Whether something the person said answers a question on screen: yes, yes for the whole session, no, or
+ * neither. Spoken or pressed, an answer is a few words; anything longer, or both at once, is something else
+ * they want to say. And whether they asked to stop everything.
  */
 
 const NO = [
@@ -65,8 +66,25 @@ const YES = [
   'fais le'
 ]
 
+/** Said with a yes, or alone, a yes that lasts until the app quits: "yes, for the session", "oui, pour la session". */
+const SESSION = [
+  'for the session',
+  'for this session',
+  'for the whole session',
+  'for the rest of the session',
+  'pour la session',
+  'pour cette session',
+  'pour toute la session',
+  'pour le reste de la session'
+]
+
+/** "Stop everything", in the languages the assistant hears, alone or after its name. */
+const STOP_EVERYTHING = ['stop everything', 'stop it all', 'stop all of it', 'arrête tout', 'arrêtez tout', 'arrete tout', 'stoppe tout', 'stop tout']
+
 /** The longest an answer is, in words. */
-const MAX_WORDS = 6
+const MAX_WORDS = 7
+/** The longest "stop everything" is, with the assistant's name or a word before it. */
+const MAX_STOP_WORDS = 5
 
 const normal = (text: string) =>
   ` ${text
@@ -78,7 +96,7 @@ const normal = (text: string) =>
 
 const says = (text: string, words: readonly string[]) => words.some((word) => text.includes(` ${word} `))
 
-export function answerOf(said: string): 'yes' | 'no' | undefined {
+export function answerOf(said: string): 'yes' | 'session' | 'no' | undefined {
   const text = normal(said)
   if (text.trim().split(' ').length > MAX_WORDS) return undefined
   // "Don't allow" says "allow" too: a refusal is looked for first, and a sentence that says both is neither.
@@ -89,5 +107,12 @@ export function answerOf(said: string): 'yes' | 'no' | undefined {
     )
       ? undefined
       : 'no'
+  if (says(text, SESSION)) return 'session'
   return says(text, YES) ? 'yes' : undefined
+}
+
+/** Whether the person asked to stop everything the assistant is doing. */
+export function stopsEverything(said: string): boolean {
+  const text = normal(said)
+  return text.trim().split(' ').length <= MAX_STOP_WORDS && says(text, STOP_EVERYTHING)
 }

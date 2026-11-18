@@ -25,7 +25,8 @@ export async function compose(config: Config): Promise<Composition> {
   const store = openStore({ folder: config.data })
   const log = { error: (message: string) => void process.stderr.write(`${message}\n`) }
   // The assistant's own folder, where it keeps the files it makes for the user: in the data folder, created now.
-  const computer = await createComputer({ workspace: join(config.data, 'workspace') })
+  // The rest of the data folder is never reached by a session; what the person moves to the trash goes in it.
+  const computer = await createComputer({ workspace: join(config.data, 'workspace'), data: config.data })
   // The browser the assistant drives, with a profile of its own beside the user's data; what it downloads goes to the assistant's folder.
   const browser = createBrowser({ profile: join(config.data, 'browser'), downloads: join(computer.workspace, 'downloads'), log })
   // The same folder, as the person browses it and hands files into it.
@@ -35,6 +36,7 @@ export async function compose(config: Config): Promise<Composition> {
     acceptsCredential: localToken(config.token),
     records: store.records,
     blobs: store.blobs,
+    versions: store.versions,
     search: store.search,
     log,
     harnesses: createHarnesses({ folder: join(config.data, 'harness'), log }),

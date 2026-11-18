@@ -38,7 +38,7 @@ const isEnter = (key: string) => key.toLowerCase() === 'enter'
  * 2. Giving a file to a page, and an action that reads as paying, sending or deleting, is asked first at
  *    every level.
  * 3. Keys that only move about the page go ahead, as scrolling does.
- * 4. Anything else follows the person's choice: asked first (`ask`), or carried out (`trust`).
+ * 4. Anything else follows the person's choice: asked first (`ask`), or carried out (`trust` and `auto`).
  */
 export function decidePageAct(act: PageAct, approvals: Access['approvals']): PageVerdict {
   const key = act.kind === 'press' ? act.key.toLowerCase().replace(/\s+/g, '') : ''
@@ -57,6 +57,6 @@ export function decidePageAct(act: PageAct, approvals: Access['approvals']): Pag
         : undefined
   if (consequence) return { verdict: 'ask', always: true, because: consequence }
 
-  // A level of trust this does not know yet asks, which is never the wrong way to err.
-  return approvals === 'trust' ? { verdict: 'go' } : { verdict: 'ask', always: false }
+  // Trusted, or trusted with everything: an ordinary action goes ahead; what pays, sends or deletes was asked above.
+  return approvals === 'ask' ? { verdict: 'ask', always: false } : { verdict: 'go' }
 }

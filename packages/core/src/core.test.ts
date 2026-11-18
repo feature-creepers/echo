@@ -443,7 +443,12 @@ describe('files between the person and the assistant', () => {
       workspace,
       computer: {
         workspace: workspace.location,
-        locate: async (path) => (path.startsWith('/home/ada/') ? { path, kind: 'folder' } : undefined)
+        locate: async (path) => (path.startsWith('/home/ada/') ? { path, kind: 'folder' } : undefined),
+        protected: [{ label: 'SSH keys', path: '/home/ada/.ssh' }],
+        read: async () => undefined,
+        write: async () => undefined,
+        fingerprint: async () => undefined,
+        trash: async (path) => path
       }
     })
     const events: Event[] = []
@@ -493,6 +498,14 @@ describe('files between the person and the assistant', () => {
     const { settings } = await run(core, 'settings.read', {})
     expect(settings.access.places).toEqual([{ path: '/home/ada/Projects', kind: 'folder', write: false }])
     expect(harness.sessions[0]?.sent[0]).toContain('The folder /home/ada/Projects: yours to read from now on, read only.')
+  })
+
+  it('never grants a folder handed over inside a place never reached', async () => {
+    const { core } = withFolder()
+    await run(core, 'utterance.send', { text: 'Look at these', folders: ['/home/ada/.ssh/keys', '/home/ada/Projects'] })
+    await settled()
+    const { settings } = await run(core, 'settings.read', {})
+    expect(settings.access.places).toEqual([{ path: '/home/ada/Projects', kind: 'folder', write: false }])
   })
 
   it('refuses something said with nothing in it', async () => {

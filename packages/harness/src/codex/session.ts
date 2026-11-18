@@ -2,7 +2,7 @@ import type { ChildProcess } from 'node:child_process'
 import { mkdir } from 'node:fs/promises'
 import type { Attachment, ComputerUse, Log, Role, Session, SessionRequest } from '@repo/core'
 import { absolute } from '../computer/paths.ts'
-import { outsideScope } from '../computer/scope.ts'
+import { checkUse } from '../computer/scope.ts'
 import { type Cli, NotInstalled } from '../process/cli.ts'
 import { createSessionEvents } from '../process/events.ts'
 import { asArray, asObject, asString, type JsonObject } from '../process/json.ts'
@@ -40,8 +40,11 @@ const input = (value: string, attachments: readonly Attachment[]) => [
 /** The name the core reports a change of files under. */
 const WRITE_TOOL = 'computer_write'
 
-/** A command as Codex gives it, a line or its words, as one line to show the person. */
-const commandLine = (value: unknown) => (Array.isArray(value) ? value.map(String).join(' ') : typeof value === 'string' ? value : '')
+/** A word written back into a POSIX line, quoted so it reads as the one word it was. */
+const quoted = (word: string) => (/^[\w./~:=@%+-]+$/.test(word) ? word : `'${word.replace(/'/g, `'\\''`)}'`)
+
+/** A command as Codex gives it, a line or its words, as one line to show the person and to read. */
+const commandLine = (value: unknown) => (Array.isArray(value) ? value.map((word) => quoted(String(word))).join(' ') : typeof value === 'string' ? value : '')
 
 /**
  * A live session with Codex, run as a server: requests and notifications go both ways as JSON lines, in
@@ -75,6 +78,8 @@ export function openSession(request: SessionRequest, context: SessionContext): S
   const changes = new Map<string, ComputerUse>()
   /** Questions to the core about a use of the computer, waiting for the person: withdrawn when the turn stops. */
   const asking = new Set<AbortController>()
+  /** Uses of the computer allowed, by the item that makes them: how each went is told to the core once it completes. */
+  const allowedUses = new Map<string, string>()
   const scope = request.computer?.scope()
   const shell = shellAllowed(scope)
 
@@ -244,23 +249,23 @@ export function openSession(request: SessionRequest, context: SessionContext): S
     const folder = asString(params.cwd) ?? (shell && scope?.home ? scope.home : context.folder)
     switch (method) {
       case 'item/commandExecution/requestApproval':
-        return decide({ action: 'run', tool: 'shell', paths: [folder], command: commandLine(params.command) }).then((yes) => ({
+        return decide({ action: 'run', tool: 'shell', paths: [folder], command: commandLine(params.command) }, asString(params.itemId)).then((yes) => ({
           result: { decision: yes ? 'accept' : 'decline' }
         }))
       case 'item/fileChange/requestApproval': {
-        const use = changes.get(asString(params.itemId) ?? '')
-        return decide(use).then((yes) => ({ result: { decision: yes ? 'accept' : 'decline' } }))
+        const item = asString(params.itemId)
+        return decide(changes.get(item ?? ''), item).then((yes) => ({ result: { decision: yes ? 'accept' : 'decline' } }))
       }
       case 'item/permissions/requestApproval':
         return { result: { decision: 'decline' } }
       // The same questions, as older versions ask them.
       case 'execCommandApproval':
-        return decide({ action: 'run', tool: 'shell', paths: [folder], command: commandLine(params.command) }).then((yes) => ({
+        return decide({ action: 'run', tool: 'shell', paths: [folder], command: commandLine(params.command) }, asString(params.callId)).then((yes) => ({
           result: { decision: yes ? 'approved' : 'denied' }
         }))
       case 'applyPatchApproval': {
         const paths = Object.keys(asObject(params.fileChanges) ?? {}).map((path) => absolute(path, folder))
-        return decide(paths.length > 0 ? { action: 'change', tool: 'apply_patch', paths } : undefined).then((yes) => ({
+        return decide(paths.length > 0 ? { action: 'change', tool: 'apply_patch', paths } : undefined, asString(params.callId)).then((yes) => ({
           result: { decision: yes ? 'approved' : 'denied' }
         }))
       }
@@ -273,16 +278,22 @@ export function openSession(request: SessionRequest, context: SessionContext): S
     }
   }
 
-  /** Whether a use of the computer may go ahead: within what was granted, and approved when it must be. */
-  async function decide(use: ComputerUse | undefined): Promise<boolean> {
+  /**
+   * Whether a use of the computer may go ahead: within what was granted, and approved when it must be. The same
+   * boundary as every tool, a command by the paths it names; the core refuses what is beyond it.
+   */
+  async function decide(found: ComputerUse | undefined, item: string | undefined): Promise<boolean> {
     const reach = request.computer
-    if (!shell || !reach || !use) return false
-    if (await outsideScope(use, reach.scope(), [context.folder])) return false
+    if (!shell || !reach || !found) return false
+    const use = await checkUse(found, reach.scope(), [context.folder])
     const controller = new AbortController()
     asking.add(controller)
-    const stopped = new Promise<boolean>((resolve) => controller.signal.addEventListener('abort', () => resolve(false), { once: true }))
+    const stopped = new Promise<false>((resolve) => controller.signal.addEventListener('abort', () => resolve(false), { once: true }))
     try {
-      return (await Promise.race([reach.approve(use, controller.signal).then((verdict) => verdict.allow), stopped])) === true
+      const verdict = await Promise.race([reach.approve(use, controller.signal), stopped])
+      if (verdict === false || !verdict.allow) return false
+      if (verdict.use !== undefined && item !== undefined) allowedUses.set(item, verdict.use)
+      return true
     } catch {
       return false
     } finally {
@@ -298,6 +309,22 @@ export function openSession(request: SessionRequest, context: SessionContext): S
   function withdraw(): void {
     for (const controller of asking) controller.abort()
     asking.clear()
+  }
+
+  /** A command or a change that was allowed has completed: the core is told how it went. */
+  function reportUse(item: JsonObject): void {
+    const id = asString(item.id) ?? ''
+    const use = allowedUses.get(id)
+    if (use === undefined) return
+    allowedUses.delete(id)
+    const status = asString(item.status)
+    const exit = typeof item.exitCode === 'number' ? item.exitCode : undefined
+    const ok = status !== 'failed' && status !== 'declined' && (exit === undefined || exit === 0)
+    const output = asString(item.aggregatedOutput)?.trim()
+    request.computer?.report?.(
+      use,
+      ok ? { ok } : { ok, error: exit === undefined ? `It ${status ?? 'failed'}.` : `It ended with code ${exit}.${output ? ` ${lastLines(output)}` : ''}` }
+    )
   }
 
   function notified(method: string, params: JsonObject): void {
@@ -346,6 +373,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
         }
         return
       case 'item/completed':
+        reportUse(item)
         if (ours !== undefined) events.emit({ type: 'tool', name: ours, phase: 'ended', ...callOf(item), ...outcomeOf(item) })
         else if (item.type === 'fileChange') {
           // A change made is named, so the person is shown the files; one declined or failed is not.

@@ -1,4 +1,6 @@
+import type { USE_REASONS } from '@repo/protocol'
 import { z } from 'zod'
+import type { AccessControl } from '../access/access.ts'
 import type { Answer, Approvals } from '../access/approvals.ts'
 import type { ActionOutcome, Browser, ElementFacts, PageFacts } from '../ports/browser.ts'
 import type { Computer } from '../ports/computer.ts'
@@ -17,6 +19,9 @@ const READ_LENGTH = 8_000
 /** The longest outline a snapshot gives, in characters. */
 const OUTLINE_LENGTH = 12_000
 /** The longest a wait lasts, in seconds. */
+/** Why a use was decided as it was, as the activity keeps it. */
+type AccessUseReason = (typeof USE_REASONS)[number]
+
 const WAIT_SECONDS = 30
 /** How many lines of what changed an action reports. The rest is in a new snapshot. */
 const CHANGES_SHOWN = 30
@@ -28,6 +33,8 @@ export interface BrowserToolsOptions {
   settings: UserSettings
   ask: Approvals['ask']
   records: Records
+  /** The activity of the computer, where each action on a page is kept beside the uses of files and commands. */
+  uses?: Pick<AccessControl, 'record' | 'report'> | undefined
   computer?: Computer | undefined
   showing: () => Showing
   /** Whether the browser may be used now: the person can turn it off during a turn. */
@@ -50,7 +57,7 @@ const pressInput = z.object({ key: z.string().trim().min(1).max(60), ref: ref.op
 const uploadInput = z.object({ ref, paths: z.array(z.string().trim().min(1).max(4096)).min(1).max(20) })
 
 /** What the model is told when the person did not say yes. */
-const NOT_DONE: Record<Exclude<Answer, 'yes'>, string> = {
+const NOT_DONE: Record<Exclude<Answer, 'yes' | 'session'>, string> = {
   no: 'The person said no, so it was not done. Do not try it again unless they ask.',
   'moved-on': 'The person moved on to something else without answering, so it was not done.',
   stopped: 'The turn was stopped, so it was not done.',
@@ -90,7 +97,7 @@ const inside = (path: string, place: string) => {
  * `decidePageAct`, asked on a card when it says so, and recorded (`browser.action`), whatever the outcome.
  */
 export function browserTools(options: BrowserToolsOptions): Tool[] {
-  const { browser, settings, records, computer, showing, usable } = options
+  const { browser, settings, records, uses, computer, showing, usable } = options
 
   const record = (action: BrowserAction) => void records.append([{ type: BROWSER_ACTION, payload: action }])
 
@@ -124,26 +131,40 @@ export function browserTools(options: BrowserToolsOptions): Tool[] {
       decision: 'allowed'
     }
     const verdict = decidePageAct(request, settings.read().access.approvals)
+    // Kept in the activity too, as a line the person reads: what was done, on which site.
+    const line = `${detail}${base.site ? ` on ${base.site}` : ''}`
+    const use = (decision: 'ran' | 'approved' | 'refused', reason: AccessUseReason, refusal?: string) =>
+      uses?.record({ tool, action: 'run', command: line, paths: [], decision, reason, ...(refusal === undefined ? {} : { detail: refusal }) })
     if (verdict.verdict === 'refuse') {
       record({ ...base, decision: 'refused', because: verdict.secret })
+      use('refused', 'protected', SECRET_REFUSAL[verdict.secret])
       return refused(SECRET_REFUSAL[verdict.secret])
     }
     let decision: BrowserAction['decision'] = 'allowed'
+    let kept: string | undefined
     if (verdict.verdict === 'ask') {
-      const answer = await options.ask(questionFor(request, verdict.because), showing())
-      if (answer !== 'yes') {
+      const { answer, pressed } = await options.ask(questionFor(request, verdict.because), showing())
+      // A page's card offers no yes for the session; said aloud, it is a yes for this action.
+      if (answer !== 'yes' && answer !== 'session') {
         record({ ...base, decision: 'declined', answer, ...(verdict.because ? { because: verdict.because } : {}) })
+        use('refused', answer === 'no' ? 'declined' : answer === 'stopped' ? 'stopped' : 'unanswered', NOT_DONE[answer])
         return refused(NOT_DONE[answer])
       }
       decision = 'approved'
+      kept = use('approved', pressed ? 'pressed' : 'said')
+    } else {
+      kept = use('ran', 'level')
     }
     const because = verdict.verdict === 'ask' && verdict.because ? { because: verdict.because } : {}
     try {
       const outcome = await perform()
       record({ ...base, decision, ...because, outcome: 'done', after: { url: outcome.url, title: outcome.title } })
+      if (kept !== undefined) uses?.report(kept, { ok: true })
       return { ok: true, text: outcomeText(done, outcome) }
     } catch (error) {
-      record({ ...base, decision, ...because, outcome: 'failed', error: error instanceof Error ? error.message : String(error) })
+      const message = error instanceof Error ? error.message : String(error)
+      record({ ...base, decision, ...because, outcome: 'failed', error: message })
+      if (kept !== undefined) uses?.report(kept, { ok: false, error: message })
       return failed(error)
     }
   }

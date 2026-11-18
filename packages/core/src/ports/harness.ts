@@ -44,9 +44,23 @@ export interface Scope {
   computer: 'off' | 'read' | 'write'
   /** The folder a session works in: the assistant's own folder. Left out when it is off. */
   home?: string | undefined
+  /** Places never reached, whatever was granted: keys, credentials, browser profiles, the app's own data. */
+  protected?: readonly ProtectedPath[] | undefined
 }
 
-/** One use of a harness's own tool on the computer, within the scope, as the core is asked about it. */
+/** A place never reached: a folder or a file, or every file whose name ends a certain way. */
+export interface ProtectedPath {
+  /** What it holds, in a few words: "SSH keys". */
+  label: string
+  /** An absolute folder or file. */
+  path?: string | undefined
+  /** Or every file whose name ends so, whatever the capitals: `.kdbx`. */
+  ending?: string | undefined
+  /** Folders inside it that are reached all the same: the assistant's own folder, inside the app's data. */
+  except?: readonly string[] | undefined
+}
+
+/** One use of a harness's own tool on the computer, as the core is asked about it. */
 export interface ComputerUse {
   /** What it does: `create` a file, `change` one, `delete` one, `run` a command, or `read`. */
   action: 'read' | 'create' | 'change' | 'delete' | 'run'
@@ -56,9 +70,19 @@ export interface ComputerUse {
   paths: string[]
   /** For a command, the command line. */
   command?: string | undefined
+  /** For a command, the shell that reads it. Left out, the POSIX shell, which is how Claude Code runs one. */
+  shell?: 'posix' | 'powershell' | 'cmd' | undefined
+  /** For a command, whether every path it names may be changed (`write`), or some may only be read. */
+  reach?: 'read' | 'write' | undefined
+  /**
+   * The adapter found it beyond what was granted, or reaching a place never reached: the core refuses it with
+   * this reason, and keeps the refusal in the activity.
+   */
+  refused?: { why: 'outside' | 'protected'; reason: string } | undefined
 }
 
-export type Verdict = { allow: true } | { allow: false; reason: string }
+/** Whether a use may go ahead. Allowed, it carries the use's identifier, which the adapter reports its outcome with. */
+export type Verdict = { allow: true; use?: string | undefined } | { allow: false; reason: string }
 
 /** Told when what was asked is no longer wanted: the turn stopped. A standard AbortSignal is one. */
 export interface Signal {
@@ -76,6 +100,8 @@ export interface Reach {
   scope(): Scope
   /** Resolves when the use may go ahead, or why not, in words the model can tell the person. Aborted when the turn stops. */
   approve(use: ComputerUse, signal: Signal): Promise<Verdict>
+  /** How a use that was allowed went, once the harness says: done, or failed with a short error. */
+  report?(use: string, outcome: { ok: boolean; error?: string | undefined }): void
 }
 
 export interface SessionRequest {
