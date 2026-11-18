@@ -263,7 +263,7 @@ export function createCore(options: CoreOptions): Core {
       // told to it apart, so a session kept open hears when it changes.
       told: () => access.standing(),
       reach: (showing) => access.reach(showing),
-      // Projects (docs/SPEC.md, section 7.9): a thread works in a folder the person lets it change, follows the
+      // Projects (docs/SPEC.md, section 7.11): a thread works in a folder the person lets it change, follows the
       // project's own instructions, and is reminded of what it did there when a new session carries on.
       workIn: async (path, showing) => {
         const granted = await access.grant({ path, write: true, purpose: 'work' }, showing)

@@ -189,7 +189,7 @@ export const SPEAK_FIRST =
   '(Do what you must first, without a word about it. Then say the short answer, as plain text, before ui_render and answer_write: the person hears it while the rest is prepared. Then call them, if they help, and stop there without writing more.)'
 
 /**
- * How a project's thread works and speaks (docs/SPEC.md, section 7.9): as a senior developer would, in a folder of
+ * How a project's thread works and speaks (docs/SPEC.md, section 7.11): as a senior developer would, in a folder of
  * the person's, on work that takes minutes rather than seconds. It says in a sentence what it is about to do, works
  * without a word, says how it went, and leaves a report to read.
  */

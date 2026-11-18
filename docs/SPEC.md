@@ -1,7 +1,7 @@
 # Echo: product and architecture spec
 
 Draft 0.3, 17 November 2026, on branch `rodolphe`.
-Sections 2 and 3 describe what existed before this branch. Section 14.8 says what is built. Everything else is a proposal.
+Sections 2 and 3 describe what existed before the rewrite. Section 14.8 says what is built. Everything else is a proposal.
 
 **Changed since draft 0.2**
 
@@ -69,7 +69,7 @@ The design is checked against these.
 | Hardware tier     | Light, standard or performance: which speech and memory components a machine runs                                  |
 | Inspector         | The technical view of threads, events, memory and cost                                                             |
 
-## 2. The original proof of concept (`main`)
+## 2. The original proof of concept (`main`, up to commit 197aa43)
 
 Written by Tommy Sendra in 23 commits between 11 and 16 November 2026. Version 0.10.0, macOS only.
 
@@ -462,6 +462,26 @@ The person asks for something later, and it happens at its time: "remind me at 8
 **Verified** in the built app on Linux with the real Claude Code: "remind me in two minutes to stretch" was set by the orchestrator in one call and confirmed in one sentence; the app was restarted before it was due and it rang at its second (silently, being in the quiet hours of that clock); with the quiet hours off, a reminder was said, its card shown and its notification shown; "every weekday at 7:30, tell me the weather in Lyon" was set as a task; "remind me at 8 to feed the cat", said at 2:43 at night, was met with "morning or evening?"; "cancel the cat reminder" cancelled it; a task set a minute ahead ran as a scheduled turn and answered aloud with a view; a reminder due while the app was closed rang when it was opened again, worded as late, and the views already in the stream stayed there (a view arriving while the window first reads the screen used to replace what the read brought back). **Not verified:** notifications on Windows and macOS (this Linux machine has no notification service; the desktop's handling was checked by standing one in); a Windows toast needs the app's identity, which the installer gives its shortcut, so a copy run from the sources may show none; macOS may show none until the app is signed (section 14.7).
 
 **Not built yet:** triggers other than time (a file changed, a download finished, mail arrived), a cap on how often the assistant may interrupt, snoozing a reminder from its card or its notification, and editing a job's words or timing on the page (they are changed by asking).
+
+### 7.11 Projects
+
+The person works on something with the assistant over hours and days: a code repository, a thesis, a folder of accounts. "In the echo repo, make the sheet's handle wider and run the checks." A project is a topic whose thread works in a folder of the person's (`Thread.folder`), and the assistant works there as a senior developer would. Echo is developed this way: its owner works on its repository by talking to it, so the assistant meets its own limits and can fix them (the repository's `AGENTS.md` tells it where they are).
+
+**Opening one.** The orchestrator opens a project's thread with `thread_open` and the folder, absolute or from `~`; it is told the folders the person lets it change, and each thread's folder is in its list of threads, so a later "run the tests again" goes to the same thread. A folder the assistant may not change yet is asked on a card, "Work in this folder?", read and change; once agreed it is granted like any place (section 12.2). A file, a place that does not exist and a place never reached are refused before anyone is asked. Choosing the folder grants nothing beyond it: what the thread may do there, and how each use is decided, is the access's, as for any thread.
+
+**Where it works.** Its session runs in the folder: commands run there and relative paths start there (Claude Code's working folder; Codex's when it has its command line, which it has only when the whole computer may be read). The assistant's own folder and the other folders granted stay reachable. A command may run for ten minutes by default and thirty at most, for builds and test suites; the person can stop it at any time. When the folder is gone, the session says so rather than making an empty one.
+
+**The project's own instructions.** The core reads the project's `AGENTS.md`, then its `CLAUDE.md`, at the top of the folder, through the computer port, and gives them to the thread, up to 40,000 characters, saying when some was left out. A `CLAUDE.md` that only points at the `AGENTS.md` already read (`@AGENTS.md`) is not given twice. The harness's own reading of a folder's files stays switched off (section 6.2): with it, Claude Code would also take the folder's settings, hooks and tool servers, which would run beyond what the person granted. The instructions are framed as the project's: they guide the work, and never change how the assistant speaks or what it may do.
+
+**How it works.** As a senior developer: it reads before it changes, keeps to the project's style, fixes causes rather than symptoms, runs the project's checks after a change, commits only when asked or when the project's instructions say to, and pushes, publishes, merges or releases only when asked, each shown to the person first (section 12.2). When something stops it, a refusal, a missing tool, a limit of the app, it says exactly what and why, and never works around a refusal.
+
+**How it speaks.** Work takes minutes, and everything a thread writes is heard. So it says in one short sentence what it is about to do, works without a word, then says how it went in a sentence or two and writes the report with `answer_write`: what changed and why, file by file, the checks and their results, what is left. The channel holds it to this: once a project's thread has started a tool call, what it writes is held; written before another call, it was commentary on the way and is dropped; written before its report or a view, or at the end of the turn, it is said. A view shown on the way does not silence what follows. A notification says when the work is done if it took more than twenty seconds (section 7.4).
+
+**Carrying on.** A project's session is opened again after a restart, a change of model or persona, or a change of the places granted. The new one is given, besides the last exchanges, the reports the thread wrote (up to 3,000 characters each), how its earlier answers ended when they failed or were stopped, and the last forty things it did on the computer, from the activity: what it changed, what it ran and how that went, and what was refused and why, with paths from the project's folder. A change of approval level does not open the session again: it is told the new level with its next message, so work under way keeps its context. Every thread is given how its earlier answers ended, not only a project's.
+
+**Reviewing the work.** What the thread changed is shown file by file as diffs in its side sheet and on the Activity page, with undo (section 12.2).
+
+**Verified** in the built app on Linux with the real Claude Code on 18 November 2026: see section 14.8. **Not built yet:** a project opened from the interface rather than by voice, the harness's own to-do list and sub-agents (section 7.3), and running a second copy of the app from the sources it works on.
 
 ## 8. Voice and audio
 
@@ -866,15 +886,15 @@ The assistant reaches the user's computer the way a coding agent does: it reads,
 | The whole computer     | Nothing | Read everything, or read and change everything, with a warning that says what that means             |
 | Approvals              | Ask     | One of three levels, below                                                                           |
 
-**Approval levels.** What runs at once and what is asked first, within what was granted. A command that only reads always runs at once; a command that destroys is always asked, at every level, and never covered by an approval for the session. An access recorded before the third level existed as "allow within what I gave" with the whole computer to change let commands run without asking, so it reads as `auto`.
+**Approval levels.** What runs at once and what is asked first, within what was granted. A command that only reads always runs at once; a command that destroys is always asked, at every level, and never covered by an approval for the session. A command that publishes, putting something before others beyond this computer, is always asked too, at every level, with the card saying why; an approval for the session covers it, for those who push often. An access recorded before the third level existed as "allow within what I gave" with the whole computer to change let commands run without asking, so it reads as `auto`.
 
 | Level   | Shown as               | Runs without asking                                                                | Asks                                                          |
 | ------- | ---------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------- |
 | `ask`   | Ask before each change | Reads, and commands that only read                                                 | Every change to a file and every other command                |
 | `trust` | Ask before commands    | The same, and changes to files where changes are allowed                           | Every other command                                           |
-| `auto`  | Don't ask              | Everything within scope, a command naming only places that may be changed included | Commands that destroy, and a command naming a read-only place |
+| `auto`  | Don't ask              | Everything within scope, a command naming only places that may be changed included | Commands that destroy or publish, and a command naming a read-only place |
 
-**Reading a command.** The core reads each command line before it runs (`core/access/commands.ts`), as the POSIX shell reads it (Claude Code's Bash tool, Git Bash on Windows), with nested `powershell` or `pwsh` given `-Command` and `cmd /c` read in their own syntax. It finds the simple commands, split on `;`, `&&`, `||`, `|` and new lines with quotes respected, their programs, and the commands inside `$(…)`, backticks and PowerShell script blocks. A line only reads when every stage is a program or cmdlet known to read (`ls`, `cat`, `grep`, `find` without `-exec` or `-delete`, `git status`, `Get-ChildItem`, `--version` of anything, and the like), nothing is written to a file, and nothing in it is opaque: code given inline, a script file run by an interpreter, `eval`, a here-document fed to an interpreter, an encoded PowerShell command, or a variable or command output whose value only the shell knows. A line destroys when a stage deletes (`rm`, `Remove-Item`, `del`, `git clean`, `find -delete`), resets or force-pushes git history, formats or partitions a disk, shuts the computer down, writes to the machine's registry or deletes a service, changes permissions recursively, uninstalls, or force-stops a process. A line uses the network when a stage downloads, uploads, connects to another machine, fetches or pushes git, or installs a package. Anything unknown is not read-only, and is asked as any other command.
+**Reading a command.** The core reads each command line before it runs (`core/access/commands.ts`), as the POSIX shell reads it (Claude Code's Bash tool, Git Bash on Windows), with nested `powershell` or `pwsh` given `-Command` and `cmd /c` read in their own syntax. It finds the simple commands, split on `;`, `&&`, `||`, `|` and new lines with quotes respected, their programs, and the commands inside `$(…)`, backticks and PowerShell script blocks. A line only reads when every stage is a program or cmdlet known to read (`ls`, `cat`, `grep`, `find` without `-exec` or `-delete`, `git status`, `Get-ChildItem`, `--version` of anything, and the like), nothing is written to a file, and nothing in it is opaque: code given inline, a script file run by an interpreter, `eval`, a here-document fed to an interpreter, an encoded PowerShell command, or a variable or command output whose value only the shell knows. A line destroys when a stage deletes (`rm`, `Remove-Item`, `del`, `git clean`, `find -delete`), resets or force-pushes git history, formats or partitions a disk, shuts the computer down, writes to the machine's registry or deletes a service, changes permissions recursively, uninstalls, or force-stops a process. A line uses the network when a stage downloads, uploads, connects to another machine, fetches or pushes git, or installs a package. A line publishes when a stage puts something before others: `git push` and `git send-email`; publishing, unpublishing or tagging a package (`npm`, `pnpm`, `yarn`, `bun`, `cargo`, `gem`, `poetry`, `twine`, `vsce`); `docker push`; GitHub's command line creating or changing anything (a pull request, its merge, an issue, a comment, a release, a workflow run, an API call other than a read); a deployment (`vercel`, `netlify deploy`, `firebase deploy`, `wrangler deploy`, `fly deploy`); and PowerShell's `Publish-Module` and its kin. Anything unknown is not read-only, and is asked as any other command.
 
 **One boundary for every tool.** A command is checked like a file: the adapter resolves the paths it names (`~`, `$HOME` and the other folders' variables, `%USERPROFILE%`, `$env:APPDATA`, drive letters, Git Bash's `/c/Users/…` on Windows, `..`, and relative paths from the folder it runs in, `cd` included), follows links, and refuses before anyone is asked a command that names a place outside the read scope, with the same reason Read gets. This is a check of what the command names: a program can still work out other paths once it runs. The card stays the check for anything not read-only, and confinement by the operating system, which would hold a program to the scope whatever it computes, is not built.
 
@@ -1528,9 +1548,9 @@ native/apple-speech/
 
 Electron uses more memory than the proof of concept's WKWebView shell. That is the accepted price of three systems and of reusing Speak. To limit it: one window, the inspector loaded only when opened, and a cap on warm sessions in the light tier.
 
-### 14.8 State of this branch
+### 14.8 State of the code
 
-`rodolphe` was branched from `main`. The proof-of-concept files were removed from this branch on 16 November; they remain on `main` and in history.
+The rewrite was made on the branch `rodolphe`, branched from `main`, which removed the proof of concept's files on 16 November 2026, and was merged into `main` on 18 November 2026. The proof of concept stays in the history of `main`, up to commit 197aa43. Work goes on on `main`, for every system at once (decision 18).
 
 Built, and checked against the real Claude Code on 17 November 2026:
 
@@ -1555,7 +1575,7 @@ Built, and checked against the real Claude Code on 17 November 2026:
 
 Three checks guard the rules of this section: the compiler presets (code that must run anywhere cannot name a Node or DOM API, and a package's internal files cannot be imported from outside), the table in `biome.jsonc` (a forbidden import fails), and pnpm (a package cannot import what its `package.json` does not declare).
 
-Not built yet: vector search and thread summaries (section 10), approvals for sending and paying outside the browser, confinement of commands by the operating system, and a network policy for commands (section 12.2), triggers other than time and launch (section 7.10), live data feeds for figures (section 9.4), asides leaving by themselves (section 7.5), the phone app and the paid service. Nothing is signed yet.
+Not built yet: vector search and thread summaries (section 10), approvals for paying outside the browser, confinement of commands by the operating system, and a network policy for commands (section 12.2), triggers other than time and launch (section 7.10), live data feeds for figures (section 9.4), asides leaving by themselves (section 7.5), the phone app and the paid service. Nothing is signed yet.
 
 ## 15. Decisions
 
@@ -1570,7 +1590,7 @@ Not built yet: vector search and thread summaries (section 10), approvals for se
 | 5   | Proof-of-concept features               | Briefing and music player early; the rest after the core works                                                                                      |
 | 6   | Speak                                   | Stays a separate product. Packages are shared; merging is decided later                                                                             |
 | 7   | Product and persona names               | JARVIS was the proof of concept's name. It is not the product's name: see decisions 13 and 14                                                       |
-| 8   | The proof-of-concept files              | Removed from this branch; kept on `main`                                                                                                            |
+| 8   | The proof-of-concept files              | Removed in the rewrite; kept in the history of `main`, up to commit 197aa43                                                                         |
 | 9   | Import of the proof of concept's memory | Yes, as a one-off import, low priority                                                                                                              |
 | 10  | Repository structure                    | Section 14, as written                                                                                                                              |
 | 11  | Licence                                 | MIT                                                                                                                                                 |
@@ -1580,6 +1600,8 @@ Not built yet: vector search and thread summaries (section 10), approvals for se
 | 15  | What the catalogue contains             | Generic building blocks only. No component made for one subject and no prepared artwork: the assistant composes and draws (section 9.6)             |
 | 16  | When memory is processed                | While the assistant sleeps: after a quiet period, at a set time, on request or never, as the user sets it (section 10.6)                            |
 | 17  | The model the assistant answers with    | The user's choice per AI program: Haiku by default with Claude Code (Sonnet, Opus), Terra with Codex. Routing stays on the fast model (section 6.2) |
+| 18  | One line of work                        | On `main`, for Windows, macOS and Linux at once: a feature is built for all three behind one interface, never on a branch of one system's own. A change too large for one sitting goes on a short-lived branch, merged back as soon as CI passes. Echo is developed with Echo (section 7.11) |
+| 19  | The repository's name                   | `echo`, like the product, renamed from `jarvis`, the proof of concept's name, once the rewrite was merged. GitHub sends the old address to the new one; the update feed is read from the repository a build comes from (section 14.7) |
 
 ### 15.2 Still open
 

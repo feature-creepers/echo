@@ -2,7 +2,7 @@ import '../encoding.ts'
 import type { Computer } from '../ports/computer.ts'
 
 /**
- * What a project tells those who work in it (docs/SPEC.md, section 7.9): the instruction files its developers keep
+ * What a project tells those who work in it (docs/SPEC.md, section 7.11): the instruction files its developers keep
  * for agents, at the top of its folder.
  *
  * The core reads them itself and gives them to the thread. The harness's own reading of a folder's files stays
