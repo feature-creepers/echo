@@ -2,8 +2,8 @@ import type { Persona } from '@repo/protocol'
 import { describe, expect, it } from 'vitest'
 import { applyChoice, type Cast, checkChoice, readChoice } from './choice.ts'
 
-const first: Persona = { id: 'first', name: 'ADA', stance: 'accommodating', accent: 'cyan' }
-const second: Persona = { id: 'second', name: 'GRACE', stance: 'critical', accent: 'red' }
+const first: Persona = { id: 'first', name: 'ADA', stance: 'accommodating', accent: 'cyan', look: 'hud' }
+const second: Persona = { id: 'second', name: 'GRACE', stance: 'critical', accent: 'red', look: 'lens' }
 const cast: Cast = { available: [first, second], active: 'first' }
 
 describe('checkChoice', () => {

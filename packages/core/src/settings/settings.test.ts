@@ -4,8 +4,8 @@ import { PERSONAS_SET } from '../personas/choice.ts'
 import { memoryRecords } from '../records/memory.ts'
 import { createUserSettings, ENGINES_MODEL, ENGINES_PREFERRED } from './settings.ts'
 
-const first: Persona = { id: 'first', name: 'ADA', stance: 'accommodating', accent: 'cyan' }
-const second: Persona = { id: 'second', name: 'GRACE', stance: 'critical', accent: 'red' }
+const first: Persona = { id: 'first', name: 'ADA', stance: 'accommodating', accent: 'cyan', look: 'hud' }
+const second: Persona = { id: 'second', name: 'GRACE', stance: 'critical', accent: 'red', look: 'lens' }
 const defaults: readonly [Persona, ...Persona[]] = [first, second]
 
 describe('the settings of a new user', () => {

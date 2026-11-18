@@ -354,6 +354,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
       talk={canTalk ? { listening, onPress: toggle } : onSetUpVoice ? { listening: false, onPress: onSetUpVoice } : undefined}
       persona={{
         name: active.name,
+        look: active.look,
         mood,
         next: other && other.id !== active.id ? { name: other.name } : undefined,
         onToggle: () => {

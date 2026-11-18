@@ -70,7 +70,7 @@ export function PersonasForm({ personas, active, submitLabel, busyLabel, doneLab
           return (
             <div
               key={persona.id}
-              style={accentStyle(persona.accent)}
+              style={accentStyle(persona.accent, persona.look)}
               className={cn(
                 'relative grid gap-4 rounded-lg border bg-raised/95 p-5 transition-colors duration-300 ease-soft',
                 answers ? 'border-accent/50 bg-accent/[0.03]' : 'border-line hover:border-line-strong'
