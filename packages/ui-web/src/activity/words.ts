@@ -44,13 +44,18 @@ export function decisionInWords(use: AccessUse): { word: string; why: string; to
     said: 'you said yes',
     outside: 'outside what you gave',
     protected: 'never reached',
+    destination: 'a destination you refused',
     declined: 'you said no',
     unanswered: 'no answer',
     stopped: 'stopped'
   }
   // Refused by the boundary is in the danger colour; refused by the person, or for want of an answer, is quiet.
   if (use.decision === 'refused')
-    return { word: 'Refused', why: why[use.reason], tone: use.reason === 'outside' || use.reason === 'protected' ? 'danger' : 'soft' }
+    return {
+      word: 'Refused',
+      why: why[use.reason],
+      tone: use.reason === 'outside' || use.reason === 'protected' || use.reason === 'destination' ? 'danger' : 'soft'
+    }
   if (use.decision === 'approved') return { word: 'Approved', why: why[use.reason], tone: 'accent' }
   return { word: 'Ran', why: why[use.reason], tone: 'ok' }
 }

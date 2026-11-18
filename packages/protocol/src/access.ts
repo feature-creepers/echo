@@ -39,6 +39,21 @@ export const appSchema = z.object({
 })
 export type App = z.infer<typeof appSchema>
 
+/** The most destinations each list of the network policy holds. */
+export const MAX_HOSTS = 100
+
+/**
+ * A destination on the network, as the person writes it in a list: a name, which covers the names under it
+ * ("github.com" covers "api.github.com"), or an address.
+ */
+export const hostSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .min(1)
+  .max(253)
+  .regex(/^(\*\.)?[a-z0-9.:[\]-]+$/)
+
 /** How long a question waits for the person, in minutes, when they do not say otherwise. */
 export const DEFAULT_APPROVAL_WAIT = 10
 /** The longest wait the person may choose, in minutes: a day. */
@@ -57,6 +72,17 @@ export const accessSchema = z.object({
   askDestroying: z.boolean().default(true),
   /** Whether what publishes to others (a push, a release, a post) is asked at every level. Off, it follows the level. */
   askPublishing: z.boolean().default(true),
+  /**
+   * Whether a command that reaches the network is asked at every level, unless every destination it names is one
+   * the person allows. Off, it follows the level, like any other command.
+   */
+  askNetwork: z.boolean().default(false),
+  /** Whether a command that reaches a device of the local network (a private address, "nas", "printer.local") is asked at every level. */
+  askLocalNetwork: z.boolean().default(true),
+  /** Destinations a command may reach without the network's guardrails asking: the level decides. */
+  allowedHosts: z.array(hostSchema).max(MAX_HOSTS).default([]),
+  /** Destinations no command may reach: refused before anyone is asked, whatever the level. */
+  refusedHosts: z.array(hostSchema).max(MAX_HOSTS).default([]),
   /** How many minutes a question waits for an answer before it counts as a no. `null`: until the person answers. */
   approvalWait: z.number().int().min(1).max(MAX_APPROVAL_WAIT).nullable().default(DEFAULT_APPROVAL_WAIT),
   /** Whether the assistant may drive a web browser on the computer, in a window the person sees (docs/SPEC.md, section 12.1). */
@@ -84,6 +110,10 @@ export const DEFAULT_ACCESS: Access = {
   approvals: 'ask',
   askDestroying: true,
   askPublishing: true,
+  askNetwork: false,
+  askLocalNetwork: true,
+  allowedHosts: [],
+  refusedHosts: [],
   approvalWait: DEFAULT_APPROVAL_WAIT,
   browser: true,
   desktop: false,

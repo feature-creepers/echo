@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { APPROVALS, appSchema, COMPUTER_REACH, MAX_APPROVAL_WAIT, MAX_APPS, MAX_PLACES, placeSchema } from '../access.ts'
+import { APPROVALS, appSchema, COMPUTER_REACH, hostSchema, MAX_APPROVAL_WAIT, MAX_APPS, MAX_HOSTS, MAX_PLACES, placeSchema } from '../access.ts'
 import { answerLanguageSchema, spokenLanguageSchema } from '../languages.ts'
 import { personaIdSchema } from '../personas.ts'
 import { settingsSchema } from '../settings.ts'
@@ -49,6 +49,10 @@ export const settingsCommands = {
       approvals: z.enum(APPROVALS).optional(),
       askDestroying: z.boolean().optional(),
       askPublishing: z.boolean().optional(),
+      askNetwork: z.boolean().optional(),
+      askLocalNetwork: z.boolean().optional(),
+      allowedHosts: z.array(hostSchema).max(MAX_HOSTS).optional(),
+      refusedHosts: z.array(hostSchema).max(MAX_HOSTS).optional(),
       approvalWait: z.number().int().min(1).max(MAX_APPROVAL_WAIT).nullable().optional(),
       browser: z.boolean().optional(),
       desktop: z.boolean().optional(),

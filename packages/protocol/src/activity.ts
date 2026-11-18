@@ -25,6 +25,8 @@ export const USE_REASONS = [
   'outside',
   /** Refused: it reaches a place that is never reached. */
   'protected',
+  /** Refused: it reaches a destination on the network the person refused. */
+  'destination',
   /** Refused: the person said no. */
   'declined',
   /** Refused: nobody answered in time, or the person moved on. */

@@ -1,6 +1,7 @@
 import type { Access } from '@repo/protocol'
 import type { ComputerUse } from '../ports/harness.ts'
 import type { CommandReading } from './commands.ts'
+import { isLocalNetwork, isLoopback, listedHost } from './hosts.ts'
 
 /**
  * Whether a use within what was granted runs at once or is asked first (docs/SPEC.md, section 12.2). Uses
@@ -17,6 +18,11 @@ import type { CommandReading } from './commands.ts'
  * publishes, putting something before others beyond this computer (a push, a release, a post), is asked at
  * every level too; a yes for the session covers it, for those who push often. The person may turn either off:
  * what it guarded then follows the level like any other change.
+ *
+ * The network has two guardrails of its own. With `askLocalNetwork`, on by default, a command that reaches a device
+ * of the local network is asked at every level. With `askNetwork`, off by default, so is a command that reaches
+ * the network anywhere, this computer itself aside, unless every destination it names is one the person allows;
+ * a line that names none goes somewhere it cannot tell, and is asked. A yes for the session covers either.
  */
 export type Decision =
   | { run: true; because: 'read-only' | 'level' | 'session' }
@@ -24,7 +30,17 @@ export type Decision =
   | { run: false; destructive: boolean; session: boolean }
 
 /** What the policy reads of the access: the level and the two guardrails above it. */
-export type Policy = Pick<Access, 'approvals' | 'askDestroying' | 'askPublishing'>
+export type Policy = Pick<Access, 'approvals' | 'askDestroying' | 'askPublishing'> & Partial<Pick<Access, 'askNetwork' | 'askLocalNetwork' | 'allowedHosts'>>
+
+/** Why a command that reaches the network is asked at every level, if it is: the guardrail that holds it. */
+export function networkGuard(reading: CommandReading, policy: Policy): 'local' | 'network' | undefined {
+  if (!reading.network) return undefined
+  const allowed = policy.allowedHosts ?? []
+  const held = reading.hosts.filter((host) => !isLoopback(host) && !listedHost(host, allowed))
+  if ((policy.askLocalNetwork ?? true) && held.some(isLocalNetwork)) return 'local'
+  if (policy.askNetwork && (reading.hosts.length === 0 || held.length > 0)) return 'network'
+  return undefined
+}
 
 export function decide(use: ComputerUse, policy: Policy, reading: CommandReading | undefined, coveredForSession: boolean): Decision {
   const level = policy.approvals
@@ -37,7 +53,7 @@ export function decide(use: ComputerUse, policy: Policy, reading: CommandReading
     if (!reading) return { run: false, destructive: false, session: false }
     if (reading.readOnly) return { run: true, because: 'read-only' }
     if (reading.destructive && policy.askDestroying) return { run: false, destructive: true, session: false }
-    if (reading.publishes && policy.askPublishing) {
+    if ((reading.publishes && policy.askPublishing) || networkGuard(reading, policy)) {
       return coveredForSession ? { run: true, because: 'session' } : { run: false, destructive: false, session: reading.keys.length > 0 }
     }
     // A command can change what it names: without asking, only where things may be changed.

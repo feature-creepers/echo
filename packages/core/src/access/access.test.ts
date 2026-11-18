@@ -151,6 +151,10 @@ describe('access to the computer', () => {
       approvals: 'ask',
       askDestroying: true,
       askPublishing: true,
+      askNetwork: false,
+      askLocalNetwork: true,
+      allowedHosts: [],
+      refusedHosts: [],
       approvalWait: 10,
       browser: true,
       desktop: false,
@@ -313,6 +317,25 @@ describe('the three levels', () => {
     expect(await first).toMatchObject({ allow: true })
     expect(await reach.approve(command('git push'), signal())).toMatchObject({ allow: true })
     expect(access.activity(1).uses[0]).toMatchObject({ decision: 'ran', reason: 'session' })
+  })
+
+  it('refuses a destination the person refused before anyone is asked, and asks before the local network, naming it', async () => {
+    const { reach, access, settings, screen } = setup()
+    settings.setAccess({ approvals: 'auto', refusedHosts: ['tracker.example'] })
+    expect(await reach.approve(command('curl -s https://api.tracker.example/ping'), signal())).toEqual({
+      allow: false,
+      reason: 'It reaches api.tracker.example, which the person refused in Settings, Access. Do not try another way there.'
+    })
+    expect(access.activity(1).uses[0]).toMatchObject({ decision: 'refused', reason: 'destination' })
+    expect(screen.current()).toBeUndefined()
+
+    const asked = reach.approve(command('curl http://192.168.1.20/status'), signal())
+    await settle()
+    expect(cardText(screen)).toContain('It reaches 192.168.1.20 (on your local network). This is always asked.')
+    access.hear('no')
+    expect(await asked).toMatchObject({ allow: false })
+    expect(access.standing()).toContain('a device of their local network')
+    expect(access.standing()).toContain('Commands never reach tracker.example')
   })
 
   it('reads an access recorded before the third level as it behaved then', () => {

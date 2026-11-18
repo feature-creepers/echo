@@ -35,7 +35,34 @@ const CASES: [string, ComputerUse, Policy, boolean, Decision][] = [
   ['a file deleted, unguarded: asked at ask', file('delete'), open('ask'), false, ASKS(false, true)],
   ['publishing, unguarded: run at auto', run('git push'), open('auto'), false, RUNS('level')],
   ['publishing, unguarded: asked at trust', run('git push'), open('trust'), false, ASKS(false, true)],
-  ['deleting with only publishing unguarded: still asked', run('rm notes.md'), { ...guarded('auto'), askPublishing: false }, false, ASKS(true, false)]
+  ['deleting with only publishing unguarded: still asked', run('rm notes.md'), { ...guarded('auto'), askPublishing: false }, false, ASKS(true, false)],
+  ['a download, with the network unguarded: run at auto', run('curl -O https://example.com/a.zip'), guarded('auto'), false, RUNS('level')],
+  ['a device of the local network: asked at auto', run('curl http://192.168.1.20/status'), guarded('auto'), false, ASKS(false, true)],
+  ['a device of the local network: covered for the session', run('ssh ada@nas uptime'), guarded('auto'), true, RUNS('session')],
+  [
+    'a device of the local network, the guardrail off: run at auto',
+    run('ssh ada@nas uptime'),
+    { ...guarded('auto'), askLocalNetwork: false },
+    false,
+    RUNS('level')
+  ],
+  ['a device of the local network the person allows: run at auto', run('ping -c 1 nas'), { ...guarded('auto'), allowedHosts: ['nas'] }, false, RUNS('level')],
+  ['this computer, over the network: run at auto', run('curl localhost:3000/health'), { ...guarded('auto'), askNetwork: true }, false, RUNS('level')],
+  ['the internet, guarded: asked at auto', run('curl -O https://example.com/a.zip'), { ...guarded('auto'), askNetwork: true }, false, ASKS(false, true)],
+  [
+    'the internet, guarded, to a destination the person allows: run at auto',
+    run('curl https://api.github.com/repos'),
+    { ...guarded('auto'), askNetwork: true, allowedHosts: ['github.com'] },
+    false,
+    RUNS('level')
+  ],
+  [
+    'the internet, guarded, to somewhere the line does not name: asked at auto',
+    run('npm install'),
+    { ...guarded('auto'), askNetwork: true },
+    false,
+    ASKS(false, true)
+  ]
 ]
 
 describe('deciding a use', () => {

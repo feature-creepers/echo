@@ -12,6 +12,7 @@ import { Switch } from '../primitives/switch.tsx'
 import { SettingGroup, SettingRow } from '../settings/rows.tsx'
 import { AppsGroup } from './apps-group.tsx'
 import { BrowserGroup } from './browser-group.tsx'
+import { NetworkGroup } from './network-group.tsx'
 import { useStandingRules } from './use-standing-rules.ts'
 import { LEVELS, lastPart, WAITS, waitInWords } from './words.ts'
 
@@ -266,6 +267,8 @@ export function AccessSection({ client, settings, productName }: { client: Clien
           </Button>
         </SettingRow>
       </SettingGroup>
+
+      <NetworkGroup access={access} busy={busy} change={change} />
 
       <SettingGroup title="Allowed for this session" note="Until you quit, or change these settings">
         {rules.allowances.length === 0 ? (

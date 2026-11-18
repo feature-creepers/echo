@@ -1,4 +1,5 @@
 import { isPlain, type Piece, type Shell, type Stage, scan, textOf, type Word } from './command-words.ts'
+import { hostsOf } from './hosts.ts'
 
 export type { Shell }
 
@@ -53,6 +54,8 @@ export interface CommandReading {
   unresolved: boolean
   /** The paths it names, in order, each once. Variables the adapter knows are written `${NAME}`. */
   paths: NamedPath[]
+  /** Where on the network its commands that reach it go, as far as the line names it, each once: `github.com`, `192.168.1.20`. */
+  hosts: string[]
   /** The keys of its commands that are not read-only: what a session approval of this line would cover. */
   keys: string[]
 }
@@ -114,7 +117,8 @@ export function readCommand(line: string, shell: Shell = 'posix'): CommandReadin
     opaque: false,
     unresolved: false,
     paths: [],
-    keys: []
+    keys: [],
+    hosts: []
   }
   readLine(line, { shell, folder: undefined, bound: new Set(), reading, depth: 0 })
   reading.programs = [...new Set(reading.commands.map((command) => command.program))]
@@ -122,6 +126,7 @@ export function readCommand(line: string, shell: Shell = 'posix'): CommandReadin
   reading.readOnly = reading.readOnly && !reading.opaque && !reading.unresolved && reading.commands.every((command) => command.readOnly)
   reading.destructive = reading.commands.some((command) => command.destructive)
   reading.network = reading.commands.some((command) => command.network)
+  reading.hosts = [...new Set(reading.commands.filter((command) => command.network).flatMap((command) => hostsOf(command.program, command.args)))]
   reading.publishes = reading.commands.some((command) => command.publishes)
   reading.opaque = reading.opaque || reading.commands.some((command) => command.opaque)
   if (reading.network || reading.destructive || reading.opaque || reading.publishes) reading.readOnly = false

@@ -13,7 +13,8 @@ import { type Activity, createActivity, type NewUse, type UndoResult } from './a
 import { createAllowances } from './allowances.ts'
 import { type Answer, type Answered, type Approvals, createApprovals, type Question } from './approvals.ts'
 import { type CommandReading, readCommand } from './commands.ts'
-import { decide } from './policy.ts'
+import { isLocalNetwork, isLoopback, listedHost } from './hosts.ts'
+import { decide, networkGuard } from './policy.ts'
 import { stopsEverything } from './words.ts'
 
 /**
@@ -152,6 +153,40 @@ const relative = (path: string, folder: string | undefined) => (folder === undef
 const DONE: Record<AccessUse['action'], string> = { read: 'read', create: 'created', change: 'changed', delete: 'deleted', run: 'ran' }
 const DOING: Record<AccessUse['action'], string> = { read: 'reading', create: 'creating', change: 'changing', delete: 'deleting', run: 'running' }
 
+/** Where a command goes on the network, for the card: the destinations it names, a device of the local network said so. */
+function reachesWords(hosts: readonly string[]): string {
+  const named = hosts.filter((host) => !isLoopback(host))
+  if (named.length === 0) return hosts.length > 0 ? 'It reaches this computer over the network.' : 'It uses the network; where, the command does not say.'
+  const shown = named.slice(0, 4).map((host) => (isLocalNetwork(host) ? `${host} (on your local network)` : host))
+  return `It reaches ${shown.join(', ')}${named.length > 4 ? `, and ${named.length - 4} more` : ''}.`
+}
+
+/** What a session is told of the network policy: only what the person set beyond what any command does. */
+function networkLines({
+  askNetwork,
+  askLocalNetwork,
+  allowedHosts,
+  refusedHosts
+}: {
+  askNetwork: boolean
+  askLocalNetwork: boolean
+  allowedHosts: readonly string[]
+  refusedHosts: readonly string[]
+}): string[] {
+  const allowed = allowedHosts.length > 0 ? ` except ${allowedHosts.join(', ')}` : ''
+  return [
+    ...(askNetwork
+      ? [
+          `- A command that reaches the network is always asked, whatever they chose${allowed}: a download, an API call, a package installed, a git fetch or push. Name the address on the line when you can; a command that names none is asked too. They may allow it for the session.`
+        ]
+      : []),
+    ...(askLocalNetwork
+      ? ['- A command that reaches a device of their local network (a private address, a name such as nas or printer.local) is always asked.']
+      : []),
+    ...(refusedHosts.length > 0 ? [`- Commands never reach ${refusedHosts.join(', ')}: they refused these, and a command naming one is refused.`] : [])
+  ]
+}
+
 /** One use, as a session carrying on a thread's work is reminded of it. */
 function workedLine(use: AccessUse, path: (path: string) => string): string {
   const what =
@@ -222,6 +257,7 @@ export function createAccess({ settings, screen, computer, timers, records, vers
       case 'run': {
         const keys = reading?.keys ?? []
         const { askDestroying, askPublishing } = access()
+        const guard = reading ? networkGuard(reading, access()) : undefined
         const note = reading?.destructive
           ? {
               text: `It deletes or overwrites something for good, or changes the system.${askDestroying ? ' This is always asked.' : ''}`,
@@ -230,7 +266,7 @@ export function createAccess({ settings, screen, computer, timers, records, vers
           : reading?.publishes
             ? { text: `It puts something before others, beyond this computer.${askPublishing ? ' This is always asked.' : ''}`, tone: 'soft' as const }
             : reading?.network
-              ? { text: 'It uses the network.', tone: 'soft' as const }
+              ? { text: `${reachesWords(reading.hosts)}${guard ? ' This is always asked.' : ''}`, tone: 'soft' as const }
               : reading?.opaque
                 ? { text: 'Part of what it runs cannot be read in advance.', tone: 'soft' as const }
                 : undefined
@@ -375,6 +411,13 @@ export function createAccess({ settings, screen, computer, timers, records, vers
             return { allow: false, reason: use.refused.reason }
           }
           const reading = use.action === 'run' ? readCommand(use.command ?? '', use.shell ?? 'posix') : undefined
+          // A destination the person refused is refused before anyone is asked, whatever the level.
+          const refusedHost = reading?.network ? reading.hosts.find((host) => listedHost(host, access().refusedHosts)) : undefined
+          if (refusedHost !== undefined) {
+            const reason = `It reaches ${refusedHost}, which the person refused in Settings, Access. Do not try another way there.`
+            refusal(use, by, reading, { decision: 'refused', reason: 'destination', detail: reason })
+            return { allow: false, reason }
+          }
           const decision = decide(use, access(), reading, allowances.covers(use, reading))
           if (decision.run) return allowed(use, by, reading, decision.because)
 
@@ -425,7 +468,19 @@ export function createAccess({ settings, screen, computer, timers, records, vers
 
     standing() {
       if (!computer) return undefined
-      const { places, computer: reach, approvals: level, workspace, askDestroying, askPublishing, approvalWait } = access()
+      const {
+        places,
+        computer: reach,
+        approvals: level,
+        workspace,
+        askDestroying,
+        askPublishing,
+        askNetwork,
+        askLocalNetwork,
+        allowedHosts,
+        refusedHosts,
+        approvalWait
+      } = access()
       if (!workspace && places.length === 0 && reach === 'off') {
         return "The computer\n\nYou have no access to the person's files. If they want you to work with some, they can grant a folder in Settings, Access, or tell you which one: then call computer_grant."
       }
@@ -455,6 +510,7 @@ export function createAccess({ settings, screen, computer, timers, records, vers
         askPublishing
           ? '- A command that puts something before others, beyond this computer, is always asked too, whatever they chose: a git push, a package published, a release, a pull request, an issue or a comment, a deployment. They may allow it for the session.'
           : '- They chose not to have what publishes asked every time: a git push, a package published, a release, a pull request, an issue or a comment, or a deployment follows the level above, like any other command.',
+        ...networkLines({ askNetwork, askLocalNetwork, allowedHosts, refusedHosts }),
         `- When a card asks them, your call returns once they answered${approvalWait === null ? '' : `, or after ${approvalWait} minutes without an answer, which counts as a no`}. They can allow it once, or for the session: the same program and subcommand (git commit, npm run, python), or any change in the same folder, then runs at once until the app quits.`,
         '- Every use is checked first against what they granted. A command is checked by the paths it names, with ~, variables and .. read: one that names a place outside, or a place never reached, is refused before anyone is asked. This reads what the command names, not what a program works out once it runs, so never use a command to reach around it: name the places you work on.',
         ...(computer?.confines
