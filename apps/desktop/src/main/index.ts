@@ -22,6 +22,7 @@ import { deviceId } from './device.ts'
 import { openDeviceSettings } from './device-settings.ts'
 import { createGlobalShortcut } from './global-shortcut.ts'
 import { appIcon } from './mark.ts'
+import { serveNotifications } from './notifications.ts'
 import { checkSettings } from './self-check.ts'
 import { type SpeechProcess, startSpeech } from './speech-process.ts'
 import { createTray, type TrayActions, type TrayLook } from './tray.ts'
@@ -162,7 +163,7 @@ function start(): void {
     script: built('core.js'),
     data: join(data, 'core'),
     client: { kind: 'desktop', version: app.getVersion(), device: deviceId(data) },
-    capabilities: ['display']
+    capabilities: ['display', 'notify']
   })
   ipcMain.handle(CORE_LINK_CHANNEL, () => core.link())
 
@@ -204,6 +205,8 @@ function start(): void {
     bringForward()
     toWindow(TALK_CHANNEL)
   }
+  // Reminders, scheduled answers and answers finished out of sight, as the system's notifications.
+  serveNotifications(core, window, bringForward)
 
   // Talk from anywhere: the shortcut brings the window forward and starts listening, and pressed again, sends.
   // Some Linux desktops (Wayland) do not let an app take a global shortcut: the one inside the window remains.
