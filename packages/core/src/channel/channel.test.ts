@@ -968,6 +968,16 @@ describe('a project', () => {
     expect(spoken()).toEqual(['I will run the checks.', 'The checks pass.'])
   })
 
+  it('answers a quick question about the project aloud, and writes its report without being asked for more', async () => {
+    const { thread, spoken, call } = await openProject(projectAbilities())
+    thread?.emit({ type: 'text', text: 'It greets someone by name. ' })
+    thread?.emit({ type: 'tool', name: 'answer_write', phase: 'started', call: 'a1' })
+    expect((await call(1, 'answer_write', { text: 'greet(name) returns a greeting.' })).ok).toBe(true)
+    thread?.emit({ type: 'turn-end' })
+    await settled()
+    expect(spoken()).toEqual(['It greets someone by name.'])
+  })
+
   it('tells a session kept open that its approval level changed, instead of opening it again', async () => {
     const told = { text: 'Every change waits for approval.' }
     const { channel, harness, thread, call } = await openProject(projectAbilities([], told))

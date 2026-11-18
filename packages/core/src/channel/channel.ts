@@ -559,7 +559,8 @@ export function createChannel(options: ChannelOptions): Channel {
             const held = turn.narration.splice(0)
             if (SPOKEN_FIRST.has(event.name)) for (const sentence of held) say(turn, sentence)
           }
-          if (project && !turn.working) {
+          // Its work begins with its first call that is not the report or a view: a quick answer has none.
+          if (project && !turn.working && !SPOKEN_FIRST.has(event.name)) {
             turn.working = true
             turn.saidBeforeWork = turn.sentences.size
           }
