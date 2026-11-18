@@ -38,8 +38,29 @@ export const GREETING = 'channel.greeting'
 /** The type of the record written when a tool call ends: what went in and what came out, for the side sheet. */
 export const STEP = 'channel.step'
 
+/**
+ * The type of the record written when a thread starts on a request: what it was asked, so that work the app's
+ * restart cut short is taken up again when it opens.
+ */
+export const WORK = 'channel.work'
+
+/** The type of the record a thread writes to be woken when the app opens again: what to carry on with. */
+export const RESUME = 'channel.resume'
+
+/** The type of the record written once work cut short, or planned for after a restart, is taken up again. */
+export const RESUMED = 'channel.resumed'
+
+/** Work cut short longer ago than this is not taken up again by itself: the person has moved on. */
+export const RESUME_WITHIN_MS = 24 * 60 * 60_000
+
 /** The name of the tool a thread writes its full answer with. */
 export const ANSWER_TOOL = 'answer_write'
+
+/** The name of the tool a thread reads what the other threads are doing with. */
+export const BESIDE_TOOL = 'threads_beside'
+
+/** The name of the tool a thread asks to be woken with when the app opens again. */
+export const RESUME_TOOL = 'resume_after_restart'
 
 /** The tools a thread calls only once it has said its short answer. */
 const SPOKEN_FIRST = new Set([SHOW_TOOL, ANSWER_TOOL])
@@ -167,6 +188,11 @@ export interface Channel {
   remind(reminder: { sentence: string; language: string | undefined; card: Checked; silent: boolean }): TurnId
   /** Carry out a task the person scheduled, as if they had just asked it. Silent, its answer is shown and not said. */
   task(task: { title: string; request: string; language: string | undefined; silent: boolean }): TurnId
+  /**
+   * Take up what the last run of the app left: each request a thread was answering when it stopped, and what a
+   * thread asked to be woken with, each run by its thread out of sight, as if just asked. Once only.
+   */
+  resume(): TurnId[]
   /** Whether the person is being answered: a turn on the stage, or one waiting to be. Work in the background does not count. */
   busy(): boolean
   /**
@@ -192,7 +218,6 @@ export interface Channel {
    * heard yet. False when there is no such thread.
    */
   focus(thread: string): boolean
-  /** A thread whole, for the side sheet: what it answered, the calls it made, the views it showed. */
   /**
    * One thread, for the side sheet: its requests with their steps, cut to fit one message. `earlier` says how many of
    * its oldest requests were left out to fit.
@@ -249,6 +274,8 @@ interface Turn {
   narration: string[]
   /** How many sentences it had said when its work began: more must follow, saying how the work went. */
   saidBeforeWork: number
+  /** The files its calls changed so far, for the other threads working beside it. */
+  touched: Set<string>
 }
 
 /** A live session, and what it was opened for. When any of that changes, the session is replaced. */
@@ -286,6 +313,21 @@ const sendInput = z.object({ thread: z.string().min(1), request: z.string().opti
 const DOING_LENGTH = 120
 const focusInput = z.object({ thread: z.string().min(1) })
 const answerInput = z.object({ text: z.string().trim().min(1) })
+const resumeInput = z.object({ request: z.string().trim().min(1).max(4000) })
+const workRecord = z.object({ thread: z.string().min(1), request: z.string(), exchange: exchangeSchema })
+const resumeRecord = z.object({ id: z.string().min(1), thread: z.string().min(1), request: z.string() })
+const resumedRecord = z.object({ id: z.string().min(1) })
+
+/** Work to take up again when the app opens: a request cut short by the restart, or one a thread planned for it. */
+interface Resumption {
+  /** The turn cut short, or the plan's own identifier. */
+  id: string
+  thread: string
+  /** What the thread is told. */
+  request: string
+  /** For a request cut short: its line of the transcript, recorded as stopped once it is taken up. */
+  cut?: Exchange | undefined
+}
 
 const newTurn = (exchange: Exchange, language: string | undefined, handed: Handed = NOTHING_HANDED, silent = false, title?: string): Turn => ({
   exchange,
@@ -308,7 +350,8 @@ const newTurn = (exchange: Exchange, language: string | undefined, handed: Hande
   noticed: false,
   working: false,
   narration: [],
-  saidBeforeWork: 0
+  saidBeforeWork: 0,
+  touched: new Set()
 })
 
 /**
@@ -334,6 +377,31 @@ export function createChannel(options: ChannelOptions): Channel {
   }
   const registry = createThreadRegistry({ records, now, newId })
   registry.onEvent(emit)
+
+  /**
+   * What the last run of the app left to do: the requests its threads were answering when it stopped, and what a
+   * thread asked to be woken with. Taken up once, by `resume`, when a client is there.
+   */
+  const resumptions: Resumption[] = (() => {
+    const answered = new Set(transcript.map((line) => line.turn))
+    const done = new Set<string>()
+    const found = new Map<string, Resumption>()
+    const recent = (at: string) => now().getTime() - Date.parse(at) <= RESUME_WITHIN_MS
+    for (const record of records.read([WORK, RESUME, RESUMED])) {
+      if (record.type === RESUMED) {
+        const read = resumedRecord.safeParse(record.payload)
+        if (read.success) done.add(read.data.id)
+      } else if (record.type === WORK) {
+        const read = workRecord.safeParse(record.payload)
+        if (read.success && !answered.has(read.data.exchange.turn) && recent(record.at))
+          found.set(read.data.exchange.turn, { id: read.data.exchange.turn, thread: read.data.thread, request: read.data.request, cut: read.data.exchange })
+      } else {
+        const read = resumeRecord.safeParse(record.payload)
+        if (read.success && recent(record.at)) found.set(read.data.id, read.data)
+      }
+    }
+    return [...found.values()].filter((one) => !done.has(one.id) && registry.get(one.thread) !== undefined)
+  })()
   /**
    * Sentences of an answer written while another turn was on the stage, by turn: what is said when its thread is
    * brought back. Only what was not heard, so nothing is ever said twice.
@@ -404,6 +472,7 @@ export function createChannel(options: ChannelOptions): Channel {
       ...((event.input ?? known?.input) === undefined ? {} : { input: event.input ?? known?.input })
     }
     if (event.phase === 'ended') {
+      for (const file of event.wrote ?? []) turn.touched.add(file)
       if (event.output !== undefined) next.output = event.output.length > OUTPUT_KEPT ? `${event.output.slice(0, OUTPUT_KEPT)}\n[…cut]` : event.output
       if (event.failed) next.failed = true
       if (event.use !== undefined) next.use = event.use
@@ -517,7 +586,7 @@ export function createChannel(options: ChannelOptions): Channel {
     })
     runtime.showing = showing
     const grant = abilities?.grant(
-      [...abilities.threadTools(showing, persona.stance), answerTool(runtime)].map((tool) =>
+      [...abilities.threadTools(showing, persona.stance), answerTool(runtime), besideTool(runtime), resumeTool(runtime)].map((tool) =>
         SPOKEN_FIRST.has(tool.definition.name) ? speakFirst(runtime, tool) : tool
       )
     )
@@ -649,9 +718,14 @@ export function createChannel(options: ChannelOptions): Channel {
     const { handed } = waiting.turn
     const images = engine.capabilities?.images === true
     const note = noteForThread(handed, waiting.text, images)
-    const reminder = registry.get(runtime.thread)?.folder === undefined ? SPEAK_FIRST : WORK_FIRST
+    const working = registry.get(runtime.thread)
+    const reminder = working?.folder === undefined ? SPEAK_FIRST : WORK_FIRST
+    // What it is asked is kept until it is answered, so a restart of the app does not lose it (`resume`). Who works
+    // beside it is told now, when it starts, rather than when it was asked: others may have started meanwhile.
+    records.append([{ type: WORK, payload: { thread: runtime.thread, request: waiting.text, exchange: waiting.turn.exchange } }])
+    const beside = working ? besideIn(working) : ''
     session.send(
-      `${context()}\n${changed}${recalled ? `${recalled}\n\n` : ''}${waiting.text}\n\n${note ? `${note}\n\n` : ''}${reminder}`,
+      `${context()}\n${changed}${recalled ? `${recalled}\n\n` : ''}${waiting.text}${beside}\n\n${note ? `${note}\n\n` : ''}${reminder}`,
       attachmentsFor(handed, images)
     )
   }
@@ -671,8 +745,59 @@ export function createChannel(options: ChannelOptions): Channel {
       .threads.filter((other) => other.id !== thread.id && other.folder === thread.folder && other.state === 'working')
       .map((other) => `"${other.title}"${doing(other.id) ? `, on: ${doing(other.id)}` : ''}`)
     if (others.length === 0) return ''
-    return `\n\n(Other threads are working in this folder at the same time: ${others.join('; ')}. Change only what your task needs, leave their files alone, and commit only your own changes, naming each file.)`
+    return `\n\n(Other threads are working in this folder at the same time: ${others.join('; ')}. Change only what your task needs, leave their files alone, and commit only your own changes, naming each file. Call ${BESIDE_TOOL} to see where they stand before you commit, and before anything that restarts the app.)`
   }
+
+  /** The other threads at work now, wherever they work: what each answers, and the files it changed so far. */
+  const besideTool = (runtime: Runtime): Tool => ({
+    definition: {
+      name: BESIDE_TOOL,
+      description:
+        'What the other threads are doing now: each one at work, its folder, what it is answering and the files it changed so far. Call it before you commit, push or build, and before anything that restarts the app you run in, so that you neither undo nor cut short their work.',
+      inputSchema: { type: 'object', properties: {} }
+    },
+    run() {
+      const others = registry.read().threads.filter((other) => other.id !== runtime.thread && other.state === 'working')
+      if (others.length === 0) return { ok: true, text: 'No other thread is at work.' }
+      const own = registry.get(runtime.thread)?.folder
+      const lines = others.map((other) => {
+        const files = [...(runtimes.get(other.id)?.answering?.touched ?? [])]
+        const where = other.folder === undefined ? '' : ` in ${other.folder}${other.folder === own ? ' (your folder)' : ''}`
+        const answering = doing(other.id)
+        return [
+          `- "${other.title}"${where}`,
+          answering ? `  answering: ${answering}` : '',
+          files.length > 0 ? `  changed so far: ${files.slice(-20).join(', ')}` : '  changed no file so far'
+        ]
+          .filter(Boolean)
+          .join('\n')
+      })
+      return {
+        ok: true,
+        text: `${lines.join('\n')}\nLeave their files alone and commit only yours. Restarting or updating the app you run in cuts their work short: while they work, do it only if the person asked, and call ${RESUME_TOOL} first.`
+      }
+    }
+  })
+
+  /** Ask to be woken when the app opens again, with what to carry on with: for a thread about to restart it. */
+  const resumeTool = (runtime: Runtime): Tool => ({
+    definition: {
+      name: RESUME_TOOL,
+      description:
+        'Before you do something that restarts the app you run in (installing a new build of it, for instance), say what to carry on with once it opens again: you are then woken with it, without the person having to tell you. Work cut short by a restart is taken up again by itself; this is for what comes after, such as checking the new build and going on with the plan.',
+      inputSchema: {
+        type: 'object',
+        properties: { request: { type: 'string', description: 'What to do once the app has opened again, as the person would ask it.' } },
+        required: ['request']
+      }
+    },
+    run(input) {
+      const asked = resumeInput.safeParse(input)
+      if (!asked.success) return { ok: false, text: `${RESUME_TOOL} takes what to carry on with, as text.` }
+      records.append([{ type: RESUME, payload: { id: newId(), thread: runtime.thread, request: asked.data.request } }])
+      return { ok: true, text: 'Kept: when the app opens again, you are woken with it.' }
+    }
+  })
 
   /** Pass a turn to a thread, which answers it as soon as it is free. */
   const route = (turn: Turn, thread: Thread, request: string) => {
@@ -683,7 +808,7 @@ export function createChannel(options: ChannelOptions): Channel {
     turn.cutter = createSentenceCutter()
     const said = turn.exchange.replied.trim()
     const told = said === '' ? request : `${request}\n\n(You have already said this aloud: "${said}". Do not say it again; carry on from there.)`
-    const text = `${told}${besideIn(thread)}`
+    const text = told
     turn.routed = runtime
     turn.exchange = { ...turn.exchange, thread: thread.id }
     replace(turn.exchange)
@@ -1089,6 +1214,43 @@ export function createChannel(options: ChannelOptions): Channel {
       screen.present(card, { thread: undefined, turn: exchange.turn, slot: 'stage', focused: true })
       finish(turn, 'done')
       return exchange.turn
+    },
+
+    resume() {
+      const started: TurnId[] = []
+      for (const resumption of resumptions.splice(0)) {
+        records.append([{ type: RESUMED, payload: { id: resumption.id } }])
+        const thread = registry.get(resumption.thread)
+        if (!thread) continue
+        // The request cut short is closed as stopped, and taken up again as a turn of its own.
+        if (resumption.cut) {
+          const cut: Exchange = { ...resumption.cut, outcome: 'stopped', problem: 'The app restarted.' }
+          transcript.push(cut)
+          records.append([{ type: EXCHANGE, payload: cut }])
+        }
+        const exchange: Exchange = {
+          turn: newId(),
+          at: now().toISOString(),
+          persona: resumption.cut?.persona ?? activePersona().id,
+          thread: thread.id,
+          said: resumption.cut?.said ?? resumption.request,
+          trigger: 'resume',
+          replied: '',
+          outcome: 'running'
+        }
+        const turn = newTurn(exchange, undefined, NOTHING_HANDED, false, thread.title)
+        transcript.push(exchange)
+        emit({ type: 'event', name: 'turn.started', exchange })
+        const runtime = runtimeFor(thread.id)
+        turn.routed = runtime
+        const request = resumption.cut
+          ? `(The app restarted while you were working on this: it was updated, or reopened. Your session is new. Check where the work stands, in the files and what you did above, then carry it on to the end without redoing what is done.)\n\n${resumption.request}`
+          : `(The app has opened again, as you planned before it restarted. Carry on with this:)\n\n${resumption.request}`
+        runtime.queue.push({ turn, text: request })
+        void next(runtime)
+        started.push(exchange.turn)
+      }
+      return started
     },
 
     task({ title, request, language, silent }) {

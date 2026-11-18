@@ -332,6 +332,8 @@ export function createCore(options: CoreOptions): Core {
     notify: (notice) => emit({ type: 'event', name: 'device.notify', notification: { ...notice, silent: schedule.quiet(), unlessFocused: true } })
   })
   currentTurn = channel.turn
+  /** Whether the work the last run left was taken up: once, with the first command of a client. */
+  let resumed = false
   // Stop everything (docs/SPEC.md, section 12.2): every turn and thread of the conversation is interrupted, and the
   // reminders and scheduled tasks are held, so nothing starts again by itself until the person resumes them on the
   // Reminders page. What else runs on its own registers here with `access.onStopEverything`.
@@ -542,8 +544,13 @@ export function createCore(options: CoreOptions): Core {
   return {
     admit: (message) => admit(message, { coreVersion: options.version, acceptsCredential: options.acceptsCredential }),
     execute(message) {
-      // A client that sends commands is there to hear what rings: from then on, reminders and tasks ring.
+      // A client that sends commands is there to hear what rings: from then on, reminders and tasks ring, and the work
+      // the last run of the app left is taken up again.
       schedule.listen()
+      if (!resumed) {
+        resumed = true
+        channel.resume()
+      }
       return execute(message)
     },
     onEvent(listener) {

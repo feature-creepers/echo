@@ -1090,4 +1090,77 @@ describe('a project', () => {
     expect(thread?.sent).toHaveLength(2)
     expect(thread?.sent[1]).toContain('And then commit it.')
   })
+
+  it('shows each working thread what the others are doing and the files they changed', async () => {
+    const { channel, harness, call, thread } = await openProject(projectAbilities())
+    thread?.emit({ type: 'tool', name: 'Edit', phase: 'started', call: 'e1' })
+    thread?.emit({ type: 'tool', name: 'Edit', phase: 'ended', call: 'e1', output: 'ok', wrote: ['/home/ada/code/echo/src/handle.tsx'] })
+    channel.say('Also add a dark mode to the settings.')
+    await settled()
+    await call(0, 'thread_open', { title: 'Dark mode', folder: '~/code/echo' })
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+    const seen = await call(2, 'threads_beside', {})
+    expect(seen.text).toContain('- "Echo" in /home/ada/code/echo (your folder)')
+    expect(seen.text).toContain('answering: In the echo repo, make the handle wider.')
+    expect(seen.text).toContain('changed so far: /home/ada/code/echo/src/handle.tsx')
+    // The first thread sees the second, which changed nothing yet.
+    expect((await call(1, 'threads_beside', {})).text).toContain('- "Dark mode" in /home/ada/code/echo (your folder)\n  answering: Also add a dark mode')
+    thread?.emit({ type: 'turn-end' })
+    await settled()
+    expect((await call(2, 'threads_beside', {})).text).toBe('No other thread is at work.')
+  })
+
+  it('takes up again, once, the work a restart of the app cut short', async () => {
+    const records = memoryRecords()
+    const first = setup({ records, more: projectAbilities() })
+    first.channel.say('In the echo repo, make the handle wider.')
+    await settled()
+    await first.call(0, 'thread_open', { title: 'Echo', folder: '~/code/echo' })
+    first.harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+    first.harness.sessions[1]?.emit({ type: 'tool', name: 'Edit', phase: 'started', call: 'e1' })
+    // The app stops here, its thread at work.
+
+    const second = setup({ records, more: projectAbilities(), run: 'again-' })
+    expect(second.channel.threads().threads[0]?.state).toBe('parked')
+    expect(second.channel.resume()).toHaveLength(1)
+    await settled()
+    const resumed = second.harness.sessions[0]
+    expect(resumed?.request.folder).toBe('/home/ada/code/echo')
+    expect(resumed?.sent[0]).toContain('The app restarted while you were working on this')
+    expect(resumed?.sent[0]).toContain('In the echo repo, make the handle wider.')
+    expect(second.channel.read(10).map((line) => [line.said, line.trigger, line.outcome])).toEqual([
+      ['In the echo repo, make the handle wider.', undefined, 'stopped'],
+      ['In the echo repo, make the handle wider.', 'resume', 'running']
+    ])
+    expect(second.channel.resume()).toEqual([])
+    resumed?.emit({ type: 'turn-end' })
+    await settled()
+
+    // Taken up once: the next start finds nothing left.
+    expect(setup({ records, more: projectAbilities(), run: 'third-' }).channel.resume()).toEqual([])
+  })
+
+  it('wakes a thread with what it planned for after the restart it caused', async () => {
+    const records = memoryRecords()
+    const first = setup({ records, more: projectAbilities() })
+    first.channel.say('Build the app and install it.')
+    await settled()
+    await first.call(0, 'thread_open', { title: 'Echo', folder: '~/code/echo' })
+    first.harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+    expect(await first.call(1, 'resume_after_restart', { request: 'Check the installed build, then go on with the plan.' })).toMatchObject({ ok: true })
+    first.harness.sessions[1]?.emit({ type: 'text', text: 'Installing now.' })
+    first.harness.sessions[1]?.emit({ type: 'turn-end' })
+    await settled()
+
+    const second = setup({ records, more: projectAbilities(), run: 'again-' })
+    expect(second.channel.resume()).toHaveLength(1)
+    await settled()
+    expect(second.harness.sessions[0]?.sent[0]).toContain(
+      '(The app has opened again, as you planned before it restarted. Carry on with this:)\n\nCheck the installed build'
+    )
+    expect(second.channel.read(10).at(-1)).toMatchObject({ trigger: 'resume', said: 'Check the installed build, then go on with the plan.' })
+  })
 })

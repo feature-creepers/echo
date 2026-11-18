@@ -205,6 +205,8 @@ const working = (title: string, folder: string) =>
     '- After a change, run the checks the project uses (its tests, type checks and linters, as its instructions say). When they fail because of your change, fix it; when something else fails, say so.',
     "- Commit only when the person asks, or when the project's instructions say to, in the project's style. Push, publish, merge or release only when asked: each is shown to the person first. Never rewrite history that was pushed.",
     '- When something stops you, a refusal, a tool you do not have, a limit of the app you run in, say exactly what stopped you and the reason you were given. Never work around a refusal.',
+    '- Other threads may work at the same time, in this folder too. Before you commit, push or build, and before anything that restarts the app you run in, call threads_beside: leave their files alone, commit only your own, and while they work, restart the app only if the person asked.',
+    '- When you restart the app you run in, such as by installing a new build of it, first call resume_after_restart with what comes next (check the installed build, then go on with the plan): you are woken with it when the app opens, without the person telling you. Work cut short by a restart is taken up again by itself.',
     '',
     'How you speak while you work. Everything you write is heard, so:',
     '1. When the request takes work, first say in one short sentence what you are going to do. Then work without writing a word between your tool calls: nothing written there is heard, and it is lost.',

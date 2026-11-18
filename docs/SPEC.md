@@ -368,6 +368,10 @@ The order is held by the instructions, by a reminder at the end of each request,
 
 **Threads run side by side.** A thread at work goes on while the person asks for something else: what they say next takes the stage, and the work carries on out of sight until it is done, its answer then marked ready (section 7.4). The orchestrator knows what is under way: the list of threads it reads gives each one at work and what it is answering, so "what are you working on?" is answered from it. A thread answers one request at a time, so something new sent to a thread at work would only wait behind it; the core refuses that once, saying what the thread is doing, and the orchestrator either opens a thread of its own for it, in the same folder for a project, so both go on at once, or sends it again with `wait` when it follows from that work ("and then commit it"). A project's thread that starts while others work in the same folder is told what they are doing, to change only what its task needs and to commit only its own files. Built, and tested through the scripted harness.
 
+**Threads see each other.** Who works beside a thread is told when it starts on each request, not when the request was passed on, since others may have started meanwhile. While it works, a thread reads where the others stand with `threads_beside`: each thread at work, its folder, what it is answering and the files its calls changed so far. A project's thread calls it before it commits, pushes or builds, and before anything that restarts the app, which cuts every thread's work short: while others work, it restarts the app only if the person asked.
+
+**After a restart.** Work a restart of the app cut short is taken up again by itself, so the person never has to say "the app was updated". When a thread starts on a request, the request is recorded (`channel.work`); when the app opens again, each request recorded and never answered, from the last day, is closed as stopped ("The app restarted.") and run again by its thread, out of sight, as a turn the assistant starts itself (`trigger: 'resume'`, labelled "Resumed"), told to check where the work stands and carry it on without redoing it. A thread about to restart the app itself, by installing a new build, first says what comes next with `resume_after_restart` (`channel.resume`): it is woken with it when the app opens. Each is taken up once (`channel.resumed`), when the first client sends a command, as reminders are. Built, and tested through the scripted harness.
+
 **Stopping.** Quieting the voice and stopping work are kept apart, so that a long piece of work is never lost by a stray key:
 
 - **Escape** stops what is being said and the answer on the stage; a project's thread at work goes on (`turn.stop`).
@@ -417,7 +421,7 @@ An aside is a question that does not change the topic: "By the way, what time is
 
 ### 7.8 Proactive turns
 
-The assistant can start a turn itself: the briefing at launch or on greeting, a reminder, a scheduled task, a background result. Each is started by a trigger (time, app start, greeting, thread finished) rather than by an utterance, and the line of the transcript says which (`trigger` on the exchange: `greeting`, `reminder`, `task`), so the transcript and the threads label it "Briefing", "Reminder" or "Scheduled" where they would say "You". The proof of concept's briefing and daily news become two such triggers.
+The assistant can start a turn itself: the briefing at launch or on greeting, a reminder, a scheduled task, a background result. Each is started by a trigger (time, app start, greeting, thread finished) rather than by an utterance, and the line of the transcript says which (`trigger` on the exchange: `greeting`, `reminder`, `task`, `resume`), so the transcript and the threads label it "Briefing", "Reminder", "Scheduled" or "Resumed" where they would say "You". The proof of concept's briefing and daily news become two such triggers.
 
 As built:
 

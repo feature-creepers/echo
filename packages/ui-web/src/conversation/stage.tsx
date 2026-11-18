@@ -334,6 +334,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
           className={cn('text-balance text-text-faint', streaming ? 'line-clamp-2 text-[0.9375rem] leading-relaxed' : 'text-lg leading-snug')}
         >
           {last.trigger === 'task' && <span className="text-label">Scheduled · </span>}
+          {last.trigger === 'resume' && <span className="text-label">Resumed · </span>}
           {/* Files handed over without a word are named instead. */}
           {last.said === '' ? (last.attached?.map((one) => one.name).join(', ') ?? '') : `“${last.said}”`}
         </motion.p>

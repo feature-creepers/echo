@@ -12,6 +12,8 @@ export function whoAsked(exchange: Exchange): string {
       return 'Reminder'
     case 'task':
       return 'Scheduled'
+    case 'resume':
+      return 'Resumed'
     default:
       return 'You'
   }
