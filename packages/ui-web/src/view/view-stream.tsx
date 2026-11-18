@@ -1,6 +1,6 @@
 import type { ShownView } from '@repo/protocol'
 import { AnimatePresence, animate, type MotionValue, motionValue, usePresence } from 'motion/react'
-import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { type CSSProperties, memo, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { cn } from '../primitives/cn.ts'
 import { DURATION, EASE } from '../styles/motion.ts'
 import type { ViewActions } from './context.ts'
@@ -12,11 +12,15 @@ export interface ViewStreamProps {
   views: readonly ShownView[]
   /** The views that arrived while the app was open: they come in, where the ones read on opening are simply there. */
   arrived: readonly string[]
+  /** The view the core looks at, the one it is talking about: it is lit, as by the core's own light. */
+  attended?: string | undefined
   /** What the blocks of a view can do. Kept the same between renders, so a card is drawn again only when it changes. */
   actions(view: ShownView): ViewActions
   onClose(view: ShownView): void
   /** How far up from the bottom of the stream's box the composer reaches, in pixels: cards sink under it. */
   under: number
+  /** The person scrolled on up past the newest view, by wheel or key: the stage goes back to its large core. */
+  onPastTop?: (() => void) | undefined
   className?: string | undefined
 }
 
@@ -39,9 +43,12 @@ const SETTLE = { share: 0.2, most: 120, after: 140 } as const
  * middle. Each card shrinks a little and fades the further it is from the middle, up towards the header and down
  * under the composer. A new view comes in at the middle and pushes the others down.
  */
-export function ViewStream({ views, arrived, actions, onClose, under, className }: ViewStreamProps) {
+export function ViewStream({ views, arrived, attended, actions, onClose, under, onPastTop, className }: ViewStreamProps) {
   const [dial] = useState(createDial)
   const shown = useRef(views)
+  const pastTop = useRef(onPastTop)
+  pastTop.current = onPastTop
+  useLayoutEffect(() => dial.onPastTop(() => pastTop.current?.()), [dial])
 
   // After each change of the list, the dial measures where everything now is, so nothing jumps. A view put on top
   // turns the dial back to it, wherever the person had scrolled to.
@@ -67,7 +74,15 @@ export function ViewStream({ views, arrived, actions, onClose, under, className 
       <div ref={dial.attachColumn} className="relative mx-auto flex w-full max-w-[45rem] flex-col gap-6">
         <AnimatePresence initial={false}>
           {views.map((view) => (
-            <StreamCard key={view.id} view={view} dial={dial} appear={arrived.includes(view.id)} actions={actions} onClose={onClose} />
+            <StreamCard
+              key={view.id}
+              view={view}
+              dial={dial}
+              appear={arrived.includes(view.id)}
+              lit={attended === view.id}
+              actions={actions}
+              onClose={onClose}
+            />
           ))}
         </AnimatePresence>
       </div>
@@ -80,6 +95,8 @@ interface StreamCardProps {
   dial: Dial
   /** Whether it comes in: it arrived while the app was open. */
   appear: boolean
+  /** Whether the core looks at it. */
+  lit: boolean
   actions(view: ShownView): ViewActions
   onClose(view: ShownView): void
 }
@@ -88,7 +105,7 @@ interface StreamCardProps {
  * One card of the stream. Drawn again only when its own view or what it can do changes, not each time the screen
  * around it does (a sentence spoken, a change of mood): a view can be a large tree.
  */
-const StreamCard = memo(function StreamCard({ view, dial, appear, actions, onClose }: StreamCardProps) {
+const StreamCard = memo(function StreamCard({ view, dial, appear, lit, actions, onClose }: StreamCardProps) {
   const element = useRef<HTMLDivElement>(null)
   const [present, safeToRemove] = usePresence()
   const entering = useRef(appear)
@@ -105,13 +122,36 @@ const StreamCard = memo(function StreamCard({ view, dial, appear, actions, onClo
     if (!present && element.current) dial.leave(element.current, safeToRemove)
   }, [present, dial, safeToRemove])
 
-  // The dial draws the card's transform and opacity itself, on every frame it moves: React never sets them.
+  // The dial draws the card's transform and opacity itself, on every frame it moves: React never sets them. The
+  // core finds the card by its view, to look at it.
   return (
-    <div ref={element} className="shrink-0 origin-center will-change-[transform,opacity]">
+    <div ref={element} data-view={view.id} className="group/card relative shrink-0 origin-center will-change-[transform,opacity]">
       <ViewCard view={view} actions={can} onClose={() => onClose(view)} />
+      {/* The core's light on the card it looks at: its edge in the accent, as under the pointer, and a little of the
+          light falling on it from above, where the core is. Faintly the same under the pointer, which the core follows.
+          Only its opacity moves. */}
+      <span
+        aria-hidden="true"
+        style={CORE_LIGHT}
+        className={cn(
+          'pointer-events-none absolute -inset-px rounded-[7px] transition-opacity duration-(--duration-slow) ease-soft',
+          lit ? 'opacity-100' : 'opacity-0 group-hover/card:opacity-40'
+        )}
+      />
     </div>
   )
 })
+
+/**
+ * The light the core casts on a card it looks at: a ring of the accent where the card's hairline is, brightest
+ * along its top edge, which faces the core, and a faint wash of the accent falling from the top, gone before the
+ * middle of the card, so what is in it reads as it always does.
+ */
+const CORE_LIGHT: CSSProperties = {
+  boxShadow:
+    'inset 0 0 0 1px color-mix(in oklab, var(--accent) 46%, transparent), inset 0 1px 0 color-mix(in oklab, var(--accent) 72%, transparent), 0 0 0 1px color-mix(in oklab, var(--accent) 12%, transparent)',
+  background: 'radial-gradient(90% 55% at 50% 0%, color-mix(in oklab, var(--accent) 8%, transparent), transparent 75%)'
+}
 
 /** What the dial knows of a card. */
 interface Slot {
@@ -133,6 +173,12 @@ interface Slot {
 
 type Dial = ReturnType<typeof createDial>
 
+/**
+ * How firmly the person must scroll on up past the newest view to go home: this many pixels of wheel within this
+ * many milliseconds, so the overshoot of a quick scroll to the top stays at the top.
+ */
+const PUSH = { far: 90, within: 450 } as const
+
 /** What the person does to move the stream themselves. */
 const INPUTS = ['wheel', 'pointerdown', 'touchstart', 'keydown'] as const
 
@@ -150,6 +196,11 @@ function createDial() {
   let band: Band = { top: INSET, bottom: INSET + 1 }
   let settling: { stop(): void } | undefined
   let pending: ReturnType<typeof setTimeout> | undefined
+  // Past the top: how far the person has scrolled on up from the newest view, and when, so a firm push goes home
+  // and a wheel that only overshot does not.
+  let pastTop: () => void = () => undefined
+  let pushed = 0
+  let pushedAt = 0
   const still = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
   const paint = (slot: Slot) => {
@@ -296,11 +347,33 @@ function createDial() {
   }
   const resized = new ResizeObserver(() => measure())
 
+  /** A wheel going on up at the top, a firm push of it, or a key that would go further up, goes home. */
+  const onWheel = (event: WheelEvent) => {
+    if (!scroller || scroller.scrollTop > 0 || event.deltaY >= 0) {
+      pushed = 0
+      return
+    }
+    const now = performance.now()
+    if (now - pushedAt > PUSH.within) pushed = 0
+    pushedAt = now
+    pushed += -event.deltaY * (event.deltaMode === 1 ? 16 : 1)
+    if (pushed >= PUSH.far) {
+      pushed = 0
+      pastTop()
+    }
+  }
+  const onKey = (event: KeyboardEvent) => {
+    if (!scroller || scroller.scrollTop > 0 || event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return
+    if (event.key === 'Home' || event.key === 'PageUp' || event.key === 'ArrowUp') pastTop()
+  }
+
   return {
     attachScroller(element: HTMLDivElement | null) {
       if (scroller) {
         scroller.removeEventListener('scroll', onScroll)
         scroller.removeEventListener('scrollend', ended)
+        scroller.removeEventListener('wheel', onWheel)
+        scroller.removeEventListener('keydown', onKey)
         for (const input of INPUTS) scroller.removeEventListener(input, release)
         resized.unobserve(scroller)
       }
@@ -308,6 +381,8 @@ function createDial() {
       if (!element) return
       element.addEventListener('scroll', onScroll, { passive: true })
       element.addEventListener('scrollend', ended)
+      element.addEventListener('wheel', onWheel, { passive: true })
+      element.addEventListener('keydown', onKey)
       for (const input of INPUTS) element.addEventListener(input, release, { passive: true })
       resized.observe(element)
     },
@@ -317,6 +392,9 @@ function createDial() {
       if (element) resized.observe(element)
     },
     measure,
+    onPastTop(listener: () => void) {
+      pastTop = listener
+    },
     setUnder(px: number) {
       if (px === under) return
       under = px

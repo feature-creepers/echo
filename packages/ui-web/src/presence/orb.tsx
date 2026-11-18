@@ -2,7 +2,7 @@ import { LOOKS, type Look } from '@repo/protocol'
 import { useEffect, useRef } from 'react'
 import { cn } from '../primitives/cn.ts'
 import { createGpuCore } from './gpu.ts'
-import { createLife, type Mood } from './life.ts'
+import { createLife, type Mood, type Pose } from './life.ts'
 import { createPainter } from './painter.ts'
 
 export interface OrbProps {
@@ -14,6 +14,17 @@ export interface OrbProps {
    * can drive the core without the interface being drawn again.
    */
   level?: () => number
+  /** The voice's spectrum right now, `BANDS` numbers from 0 to 1 from the low notes to the high. Asked for at every frame. */
+  bands?: () => ArrayLike<number> | undefined
+  /**
+   * Where the core looks, as a direction from its centre across the screen, up as up, each from -1 to 1; nothing
+   * when it has nothing to look at. Asked for at every frame.
+   */
+  gaze?: () => readonly [number, number] | undefined
+  /** How hard the computer works, from 0 to 1; nothing when it is not known. Asked for at every frame. */
+  load?: () => number | undefined
+  /** Told every pose drawn, so what moves with the core (the light it casts) can follow it in the same frame. */
+  onFrame?: (pose: Pose) => void
   className?: string
 }
 
@@ -61,10 +72,10 @@ function addCanvas(box: HTMLElement) {
  * the window is hidden or the core is out of view, and with less motion asked for, the core holds still and is
  * only drawn again while a mood, a look or an accent changes.
  */
-export function Orb({ mood, size, level, className }: OrbProps) {
+export function Orb({ mood, size, level, bands, gaze, load, onFrame, className }: OrbProps) {
   const box = useRef<HTMLSpanElement>(null)
-  const live = useRef({ mood, level, size })
-  live.current = { mood, level, size }
+  const live = useRef({ mood, level, size, bands, gaze, load, onFrame })
+  live.current = { mood, level, size, bands, gaze, load, onFrame }
 
   useEffect(() => {
     const element = box.current
@@ -125,7 +136,17 @@ export function Orb({ mood, size, level, className }: OrbProps) {
       for (const each of LOOKS) shown[each] = accents[each].map(Math.round) as [number, number, number]
 
       const heard = Math.max(0, Math.min(1, live.current.level?.() ?? 0))
-      const pose = life.step({ mood: live.current.mood, look, level: heard, delta, still: still.matches })
+      const pose = life.step({
+        mood: live.current.mood,
+        look,
+        level: heard,
+        bands: live.current.bands?.(),
+        gaze: live.current.gaze?.(),
+        load: live.current.load?.(),
+        delta,
+        still: still.matches
+      })
+      live.current.onFrame?.(pose)
       fading = pose.looks[look] < 1
       // Holding still, a frame is only drawn while something changes: the size, the accent, a mood or a look fading.
       const settled = Math.abs(pose.weights[live.current.mood] - 1) < 0.002 && Math.abs(pose.looks[look] - 1) < 0.002

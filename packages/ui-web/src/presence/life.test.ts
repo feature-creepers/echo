@@ -1,6 +1,25 @@
 import type { Look } from '@repo/protocol'
 import { describe, expect, it } from 'vitest'
-import { BREATH_PERIOD, createLife, ECHO_STEP, FOCUS_PERIOD, flicker, HUD_RINGS, type Input, LOOK_FADE, type Mood, type Pose, SWELL_PERIOD } from './life.ts'
+import {
+  BANDS,
+  BREATH_PERIOD,
+  createLife,
+  ECHO_STEP,
+  FOCUS_PERIOD,
+  flicker,
+  GLINT_PERIOD,
+  HUD_MOTES,
+  HUD_RINGS,
+  type Input,
+  LOOK_FADE,
+  type Mood,
+  type Pose,
+  RESTING_LOAD,
+  SWELL_PERIOD,
+  spectrumOf,
+  WORK_PERIOD,
+  wander
+} from './life.ts'
 
 const FRAME = 1 / 60
 
@@ -9,9 +28,11 @@ const keep = (pose: Pose): Pose => ({
   ...pose,
   weights: { ...pose.weights },
   looks: { ...pose.looks },
-  lens: { ...pose.lens },
-  hud: { ...pose.hud, turns: pose.hud.turns.slice() },
-  echo: pose.echo.slice()
+  gaze: [pose.gaze[0], pose.gaze[1]],
+  lens: { ...pose.lens, depth: [pose.lens.depth[0], pose.lens.depth[1]], voice: [...pose.lens.voice] },
+  hud: { ...pose.hud, turns: pose.hud.turns.slice(), motes: pose.hud.motes.slice() },
+  echo: pose.echo.slice(),
+  spectrum: pose.spectrum.slice()
 })
 
 /** Lives through some seconds at sixty frames a second, and gives every pose on the way. */
@@ -65,11 +86,11 @@ describe('the life behind the core', () => {
 })
 
 describe('the lens', () => {
-  it('pulses slowly at rest, by a little, about once in its period', () => {
+  it('swells slowly at rest, by a little, about once in its period: steady, never a warning light', () => {
     const lamp = live(SWELL_PERIOD * 3, { mood: 'idle', look: 'lens' }).poses.map((pose) => pose.lens.lamp)
     const steady = lamp.filter((_, index) => flicker(index * FRAME) === 0)
-    expect(Math.max(...steady) / Math.min(...steady)).toBeGreaterThan(1.12)
-    expect(Math.max(...steady) / Math.min(...steady)).toBeLessThan(1.3)
+    expect(Math.max(...steady) / Math.min(...steady)).toBeGreaterThan(1.04)
+    expect(Math.max(...steady) / Math.min(...steady)).toBeLessThan(1.12)
     // Count the swells: a peak is higher than everything a second either side of it.
     const peaks = steady.filter(
       (value, index) => index > 60 && index < steady.length - 60 && steady.slice(index - 60, index + 61).every((other) => other <= value)
@@ -78,11 +99,11 @@ describe('the lens', () => {
     expect(peaks.length).toBeLessThanOrEqual(3)
   })
 
-  it('flickers now and then, briefly, as a lamp does, and the same way every time', () => {
+  it('flickers now and then, briefly and faintly, as a filament does, and the same way every time', () => {
     const samples = Array.from({ length: 120_000 }, (_, index) => flicker(index / 1000))
     const dipping = samples.map((value) => value > 0.01)
     expect(dipping.filter(Boolean).length / samples.length).toBeLessThan(0.02)
-    expect(samples.reduce((highest, value) => Math.max(highest, value), 0)).toBeLessThan(0.4)
+    expect(samples.reduce((highest, value) => Math.max(highest, value), 0)).toBeLessThan(0.25)
     // Each dip starts and ends within a third of a second, and there are a good few of them in two minutes.
     const starts = dipping.flatMap((on, index) => (on && !dipping[index - 1] ? [index] : []))
     expect(starts.length).toBeGreaterThan(8)
@@ -91,19 +112,20 @@ describe('the lens', () => {
     expect(flicker(37.4)).toBe(flicker(37.4))
   })
 
-  it('tightens and brightens its light to listen, and its elements catch more of it', () => {
+  it('draws its disc and its red in to listen, brightens, and its glass catches more of the room', () => {
     const idle = last(live(2, { mood: 'idle', look: 'lens' }).poses).lens
     const listening = last(live(2, { mood: 'listening', look: 'lens', level: 0.5 }).poses).lens
-    expect(listening.focus).toBeLessThan(idle.focus * 0.85)
-    expect(listening.lamp).toBeGreaterThan(idle.lamp * 1.15)
-    expect(listening.catch).toBeGreaterThan(idle.catch * 1.8)
-    expect(listening.spread).toBeLessThan(idle.spread)
+    expect(listening.heart).toBeLessThan(idle.heart * 0.95)
+    expect(listening.iris).toBeLessThan(idle.iris * 0.95)
+    expect(listening.lamp).toBeGreaterThan(idle.lamp * 1.08)
+    expect(listening.catch).toBeGreaterThan(idle.catch * 1.6)
   })
 
   it('hunts for focus while thinking, a shimmer running through its elements from the outside in', () => {
     const { poses } = live(FOCUS_PERIOD * 2 + 1, { mood: 'thinking', look: 'lens' })
     const period = poses.slice(-Math.round(FOCUS_PERIOD * 60))
-    expect(range(period.map((pose) => pose.lens.focus)) / (period[0]?.lens.focus ?? 1)).toBeGreaterThan(0.2)
+    expect(range(period.map((pose) => pose.lens.heart)) / (period[0]?.lens.heart ?? 1)).toBeGreaterThan(0.08)
+    expect(range(period.map((pose) => pose.lens.focus))).toBeGreaterThan(0.04)
     const where = period.map((pose) => pose.lens.shimmerAt)
     expect(Math.min(...where)).toBeLessThan(0)
     expect(Math.max(...where)).toBeGreaterThan(1)
@@ -112,12 +134,30 @@ describe('the lens', () => {
     expect(steps.filter((step) => step < 0).length).toBeLessThanOrEqual(1)
   })
 
-  it('swells with its own voice', () => {
+  it('sends a beat out through its light while it works, once a period', () => {
+    const { poses } = live(WORK_PERIOD * 3, { mood: 'working', look: 'lens' })
+    const period = poses.slice(-Math.round(WORK_PERIOD * 60))
+    expect(last(period).lens.beat).toBeGreaterThan(0.99)
+    const where = period.map((pose) => pose.lens.beatAt)
+    expect(Math.min(...where)).toBeLessThan(0)
+    expect(Math.max(...where)).toBeGreaterThan(1)
+    expect(last(live(2, { mood: 'idle', look: 'lens' }).poses).lens.beat).toBeLessThan(0.01)
+  })
+
+  it('swells with its own voice, but only a little: its red never spreads like a lamp', () => {
     const quiet = last(live(1, { mood: 'speaking', look: 'lens', level: 0 }).poses).lens
     const loud = last(live(1, { mood: 'speaking', look: 'lens', level: 1 }).poses).lens
-    expect(loud.lamp).toBeGreaterThan(quiet.lamp * 1.4)
-    expect(loud.spread).toBeGreaterThan(quiet.spread * 1.2)
-    expect(loud.focus).toBeGreaterThan(quiet.focus)
+    expect(loud.lamp).toBeGreaterThan(quiet.lamp * 1.3)
+    expect(loud.iris).toBeGreaterThan(quiet.iris * 1.04)
+    expect(loud.iris).toBeLessThan(quiet.iris * 1.15)
+    expect(loud.heart).toBeGreaterThan(quiet.heart)
+  })
+
+  it('lets each element catch its own notes of the voice, the low ones outermost', () => {
+    const low = Array.from({ length: BANDS }, (_, band) => (band < BANDS / 4 ? 1 : 0))
+    const { voice } = last(live(1, { mood: 'speaking', look: 'lens', level: 0.8, bands: low }).poses).lens
+    expect(voice[0]).toBeGreaterThan(0.9)
+    expect(voice[3]).toBeLessThan(0.01)
   })
 
   it('sinks to an ember asleep, still breathing', () => {
@@ -177,6 +217,91 @@ describe('the instrument', () => {
   })
 })
 
+describe('the instrument at work', () => {
+  it('runs a chase round its data ring and steps its markers round, a quick move each beat', () => {
+    const { life } = live(1, { mood: 'working' })
+    const { poses } = live(WORK_PERIOD, { mood: 'working' }, life)
+    expect(last(poses).hud.chase).toBeGreaterThan(0.99)
+    const markers = poses.map((pose) => pose.hud.turns[2] ?? 0)
+    const moves = markers.slice(1).map((value, index) => Math.abs(value - (markers[index] ?? 0)))
+    // Most of the step is taken in a third of the beat, then the markers rest.
+    const moving = moves.filter((move) => move > 1e-4).length
+    expect(moving).toBeLessThan(poses.length * 0.45)
+    expect(moves.reduce((sum, move) => sum + move, 0)).toBeGreaterThan(Math.PI / 10)
+  })
+
+  it('sends its motes round their rings, faster while thinking, and a glint along its arcs once a period', () => {
+    const idle = live(2, { mood: 'idle' }).poses
+    const thinking = live(2, { mood: 'thinking' }, live(1, { mood: 'thinking' }).life).poses
+    const travelled = (poses: Pose[]) => {
+      let sum = 0
+      for (let index = 1; index < poses.length; index++) {
+        const step = (poses[index]?.hud.motes[0] ?? 0) - (poses[index - 1]?.hud.motes[0] ?? 0)
+        sum += Math.abs(step) > 0.5 ? Math.abs(step) - 1 : Math.abs(step)
+      }
+      return Math.abs(sum)
+    }
+    expect(travelled(idle)).toBeCloseTo(Math.abs(HUD_MOTES[0].pace) * 2, 1)
+    expect(travelled(thinking)).toBeGreaterThan(travelled(idle) * 2.5)
+    const glint = live(GLINT_PERIOD, { mood: 'idle' }).poses.map((pose) => pose.hud.glintAt)
+    expect(Math.min(...glint)).toBeLessThan(0)
+    expect(Math.max(...glint)).toBeGreaterThan(1)
+  })
+})
+
+describe('where the core looks', () => {
+  it('turns towards what it is given on a spring, settling without a jump or much overshoot', () => {
+    const { poses } = live(1.2, { mood: 'idle', gaze: [0.6, -0.4] })
+    for (let index = 1; index < poses.length; index++) {
+      const step = Math.hypot((poses[index]?.gaze[0] ?? 0) - (poses[index - 1]?.gaze[0] ?? 0), (poses[index]?.gaze[1] ?? 0) - (poses[index - 1]?.gaze[1] ?? 0))
+      // A glance is quick, a tenth of its way in a frame at most, but it never jumps there.
+      expect(step).toBeLessThan(0.1)
+    }
+    expect(Math.max(...poses.map((pose) => pose.gaze[0]))).toBeLessThan(0.6 * 1.15)
+    expect(last(poses).gaze[0]).toBeCloseTo(0.6, 1)
+    expect(last(poses).gaze[1]).toBeCloseTo(-0.4, 1)
+    expect(last(poses).attention).toBeGreaterThan(0.95)
+    // The lens's deep light follows the gaze; the instrument's turn comes from the same gaze.
+    expect(last(live(1.2, { mood: 'idle', look: 'lens', gaze: [0.6, -0.4] }).poses).lens.depth[0]).toBeGreaterThan(0.05)
+  })
+
+  it('with nothing to look at, rests its gaze here and there by itself, near the middle, the same way every time', () => {
+    const resting = live(12, { mood: 'idle' }).poses
+    expect(last(resting).attention).toBeLessThan(0.01)
+    expect(Math.max(...resting.map((pose) => Math.hypot(pose.gaze[0], pose.gaze[1])))).toBeLessThan(0.35)
+    const places = new Set(Array.from({ length: 60 }, (_, second) => wander(second).join()))
+    expect(places.size).toBeGreaterThan(5)
+    expect(wander(12.3)).toEqual(wander(12.3))
+  })
+
+  it('looks to the middle asleep', () => {
+    const asleep = last(live(3, { mood: 'asleep', gaze: [0.8, 0.5] }).poses)
+    expect(Math.hypot(asleep.gaze[0], asleep.gaze[1])).toBeLessThan(0.05)
+  })
+})
+
+describe('the computer at work', () => {
+  it('brightens the core as the computer works harder, and dims it as it rests', () => {
+    for (const look of ['lens', 'hud'] satisfies Look[]) {
+      const busy = last(live(8, { mood: 'idle', look, load: 1 }).poses)
+      const resting = last(live(8, { mood: 'idle', look, load: 0.02 }).poses)
+      const light = (pose: Pose) => (look === 'lens' ? pose.lens.lamp : pose.hud.core)
+      expect(light(busy) / light(resting)).toBeGreaterThan(1.3)
+      expect(busy.power).toBeGreaterThan(0.95)
+      expect(resting.power).toBeLessThan(0.05)
+    }
+  })
+
+  it('follows a burst of work quickly and a pause slowly, and looks as it always has when the load is not known', () => {
+    const { life } = live(6, { mood: 'idle', load: 0 })
+    const rising = last(live(1.5, { mood: 'idle', load: 1 }, life).poses).power
+    const { life: busy } = live(6, { mood: 'idle', load: 1 })
+    const falling = 1 - last(live(1.5, { mood: 'idle', load: 0 }, busy).poses).power
+    expect(rising).toBeGreaterThan(falling)
+    expect(last(live(2, { mood: 'idle' }).poses).power).toBeCloseTo(RESTING_LOAD, 6)
+  })
+})
+
 describe('the voice', () => {
   it('sends its own voice and the voice it hears into the past at a steady pace, whatever the frame rate', () => {
     const speaking = last(live(1, { mood: 'speaking', level: 0.8 }).poses)
@@ -192,6 +317,25 @@ describe('the voice', () => {
   })
 })
 
+describe("the voice's spectrum", () => {
+  it('follows the notes of the voice it speaks and the one it hears, each in its own place', () => {
+    const notes = Array.from({ length: BANDS }, (_, band) => (band === 3 ? 1 : 0))
+    const speaking = last(live(1, { mood: 'speaking', level: 0.8, bands: notes }).poses).spectrum
+    expect(speaking[3 * 2]).toBeGreaterThan(0.9)
+    expect(speaking[3 * 2 + 1]).toBe(0)
+    expect(speaking[8 * 2]).toBeLessThan(0.01)
+    const listening = last(live(1, { mood: 'listening', level: 0.8, bands: notes }).poses).spectrum
+    expect(listening[3 * 2 + 1]).toBeGreaterThan(0.9)
+  })
+
+  it('makes one from the level when there is none to read, silent when the voice is', () => {
+    const made = spectrumOf(0.7, 3.1, new Float32Array(BANDS))
+    expect(made.reduce((sum, band) => sum + band, 0)).toBeGreaterThan(1)
+    expect(Math.max(...made)).toBeLessThanOrEqual(1)
+    expect(spectrumOf(0, 3.1, new Float32Array(BANDS)).every((band) => band === 0)).toBe(true)
+  })
+})
+
 describe('with less motion asked for', () => {
   it('holds everything still, and still fades between moods and looks', () => {
     const { life, poses } = live(1, { mood: 'thinking', look: 'lens', level: 1, still: true })
@@ -200,6 +344,7 @@ describe('with less motion asked for', () => {
     }
     expect(poses.every((pose) => pose.hud.turns.every((turn) => turn === 0))).toBe(true)
     expect(poses.every((pose) => pose.level === 0 && pose.echo.every((value) => value === 0))).toBe(true)
+    expect(poses.every((pose) => pose.gaze[0] === 0 && pose.gaze[1] === 0 && pose.hud.motes.every((mote) => mote === 0))).toBe(true)
     const after = live(0.5, { mood: 'asleep', look: 'hud', still: true }, life).poses
     expect(last(after).weights.asleep).toBeGreaterThan(0.9)
     expect(last(after).looks.hud).toBe(1)

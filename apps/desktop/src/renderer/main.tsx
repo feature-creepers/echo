@@ -50,6 +50,7 @@ const device: DeviceHost = {
   openDataFolder: () => window.desktop.app.openDataFolder(),
   openReleases: () => window.desktop.app.openReleases(),
   showPresence: (presence) => window.desktop.app.showPresence(presence),
+  load: (listener) => window.desktop.app.onLoad(listener),
   updates: window.desktop.updates,
   files: window.desktop.files
 }

@@ -41,6 +41,12 @@ export interface DeviceHost {
   openReleases(): Promise<void>
   /** Show how the assistant is outside the window: the desktop app's tray. Left out, nothing does. */
   showPresence?(presence: { accent: Accent | undefined; mood: Mood }): void
+  /**
+   * Be told how hard this computer works, from 0 to 1: the busiest of its processor, its graphics card and its
+   * memory, about once a second. Returns a function that stops the telling. Left out, the load is not known, and
+   * the core looks as it does on a computer at rest.
+   */
+  load?(listener: (load: number) => void): () => void
   /** The files of this computer, picked by the user for the assistant. Left out, folders cannot be picked here. */
   files?: {
     /** The system's own picker, for folders or files. Nothing when the user cancels. */

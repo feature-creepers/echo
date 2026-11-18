@@ -1,7 +1,7 @@
 import type { Client } from '@repo/client'
 import { matchesShortcut } from '@repo/client'
 import { useFollowed } from '@repo/client/react'
-import type { PersonaId, Settings, ShownView, TurnId } from '@repo/protocol'
+import type { Look, PersonaId, Settings, ShownView, TurnId } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AccessIndicator } from '../access/access-indicator.tsx'
@@ -10,10 +10,15 @@ import { useAttachments } from '../attachments/use-attachments.ts'
 import type { SpeechEngine } from '../audio/engine.ts'
 import { useTalk } from '../audio/use-talk.ts'
 import { keyPress, useDevice } from '../device/device.tsx'
+import { useLoad } from '../device/load.ts'
 import { useShownPresence } from '../device/presence.ts'
 import { useFileActions } from '../files/file-actions.ts'
 import { usePlayer } from '../media/player-provider.tsx'
 import { refusalCopy } from '../personas/copy.ts'
+import { attendedView, useLingering } from '../presence/attention.ts'
+import { gazeAt, middleOf, type Point } from '../presence/gaze.ts'
+import { MOODS as ALL_MOODS, BANDS, type Pose } from '../presence/life.ts'
+import { useCoreLight } from '../presence/light.ts'
 import { Orb } from '../presence/orb.tsx'
 import type { Mood } from '../presence/painter.ts'
 import { cn } from '../primitives/cn.ts'
@@ -42,6 +47,8 @@ export interface StageProps {
   speech?: SpeechEngine | undefined
   /** How loud the assistant's voice is right now, when the device speaks it. */
   voiceLevel?: (() => number) | undefined
+  /** The assistant's voice's spectrum right now, read into the bands given, when the device speaks it. */
+  voiceBands?: ((into: Float32Array) => Float32Array | undefined) | undefined
   /** Open the voice settings, when the device could talk once its models are downloaded. */
   onSetUpVoice?: (() => void) | undefined
   /** Show the full answer a line's thread wrote, whole, in the side sheet. */
@@ -68,29 +75,106 @@ const FADES = {
 } as const
 const fade = ({ above, below }: ScrollEdges) => FADES[above ? (below ? 'both' : 'above') : below ? 'below' : 'none']
 
-const MOODS: Record<Mood, string> = { idle: 'Ready', listening: 'Listening', thinking: 'Thinking', speaking: 'Speaking', asleep: 'Asleep' }
+const MOODS: Record<Mood, string> = { idle: 'Ready', listening: 'Listening', thinking: 'Thinking', working: 'Working', speaking: 'Speaking', asleep: 'Asleep' }
 
 /** How strongly the light around the core shows in each mood: brighter while it hears or speaks, dim asleep. */
-const HALO: Record<Mood, number> = { idle: 0.7, listening: 1, thinking: 0.85, speaking: 1, asleep: 0.3 }
+const HALO: Record<Mood, number> = { idle: 0.7, listening: 1, thinking: 0.85, working: 0.9, speaking: 1, asleep: 0.3 }
+
+/**
+ * How much of its light each look casts on the ground round it. The lens keeps its light inside its glass, as the
+ * eye it is after does: a red cast on everything round it would read as a warning light.
+ */
+const CASTS: Record<Look, number> = { hud: 1, lens: 0.35 }
+
+/** How far the core looks: at this many pixels away, its eye is turned about seven tenths of the way. */
+const GAZE_REACH = 460
+
+/** What the core looks at on the screen: a point, and the box of the view there when it is a view. */
+export interface Sight {
+  point: Point
+  box?: DOMRect | undefined
+}
+
+interface CoreProps {
+  size: number
+  mood: Mood
+  level: () => number
+  bands: () => ArrayLike<number> | undefined
+  load: () => number | undefined
+  /** Where the core looks now, read on every frame; nothing when it has nothing to look at. */
+  sight: () => Sight | undefined
+}
 
 /**
  * The core with the soft light it casts on the ground around it: the accent, faint, fading to nothing well
- * before any edge. It follows the core wherever it goes and only changes in opacity, so it costs no layout.
+ * before any edge, leaning a little towards where the core looks, brighter as the computer works harder. It
+ * follows the core wherever it goes and is written on every frame the core draws, as an opacity and a transform
+ * only, so it costs no layout and React draws nothing for it. The same frame tells the ground where the core is,
+ * how much light it casts and where it looks, so the dots round it and round what it looks at light up with it.
  */
-function Core({ size, mood, level }: { size: number; mood: Mood; level: () => number }) {
+function Core({ size, mood, level, bands, load, sight }: CoreProps) {
+  const box = useRef<HTMLDivElement>(null)
+  const halo = useRef<HTMLSpanElement>(null)
+  const light = useCoreLight()
+  const seen = useRef<Sight | undefined>(undefined)
+  const gaze = useCallback((): readonly [number, number] | undefined => {
+    const now = sight()
+    seen.current = now
+    const at = box.current?.getBoundingClientRect()
+    if (!now || !at) return undefined
+    return gazeAt(middleOf(at), now.point, GAZE_REACH)
+  }, [sight])
+  const onFrame = useCallback(
+    (pose: Pose) => {
+      const cast = (Object.keys(CASTS) as Look[]).reduce((sum, look) => sum + CASTS[look] * pose.looks[look], 0)
+      const glow = ALL_MOODS.reduce((sum, each) => sum + HALO[each] * pose.weights[each], 0) * (0.75 + 0.6 * pose.power)
+      const element = halo.current
+      if (element) {
+        element.style.opacity = (glow * cast).toFixed(3)
+        element.style.transform = `translate3d(${(pose.gaze[0] * size * 0.12).toFixed(1)}px,${(-pose.gaze[1] * size * 0.12).toFixed(1)}px,0)`
+      }
+      const at = box.current?.getBoundingClientRect()
+      if (!light || !at) return
+      light.core = { x: at.left + at.width / 2, y: at.top + at.height / 2, radius: at.width / 2 }
+      light.glow = glow * (0.4 + 0.6 * cast)
+      light.power = pose.power
+      const target = seen.current?.box
+      light.spot =
+        target && pose.attention > 0.01
+          ? {
+              x: target.left + target.width / 2,
+              y: target.top + target.height / 2,
+              radius: Math.max(target.width, target.height) * 0.62,
+              strength: pose.attention
+            }
+          : undefined
+    },
+    [light, size]
+  )
+  // When the core leaves the screen, it lights nothing round it any more.
+  useEffect(
+    () => () => {
+      if (light) {
+        light.core = undefined
+        light.spot = undefined
+      }
+    },
+    [light]
+  )
   return (
-    <div className="relative">
-      <motion.span
+    <div ref={box} className="relative">
+      <span
+        ref={halo}
         aria-hidden="true"
-        initial={false}
-        animate={{ opacity: HALO[mood] }}
-        transition={{ duration: DURATION.slow * 2, ease: EASE }}
-        className="pointer-events-none absolute -inset-[42%] bg-[radial-gradient(closest-side,color-mix(in_oklab,var(--accent)_15%,transparent),color-mix(in_oklab,var(--accent)_6%,transparent)_45%,transparent)]"
+        className="pointer-events-none absolute -inset-[42%] bg-[radial-gradient(closest-side,color-mix(in_oklab,var(--accent)_15%,transparent),color-mix(in_oklab,var(--accent)_6%,transparent)_45%,transparent)] will-change-[transform,opacity]"
       />
-      <Orb size={size} mood={mood} level={level} className="relative" />
+      <Orb size={size} mood={mood} level={level} bands={bands} gaze={gaze} load={load} onFrame={onFrame} className="relative" />
     </div>
   )
 }
+
+/** How long after the pointer last moved the core still follows it, in milliseconds; then it rests its gaze. */
+const POINTER_HOLD = 4500
 
 /**
  * The core's size over the stream: large enough to read as the presence at the top of the screen, small enough to
@@ -106,6 +190,19 @@ function useTopCoreSize(): number {
     return () => window.removeEventListener('resize', onResize)
   }, [])
   return size
+}
+
+/** How far the stream sinks while the core rests large at home: the newest view waits under the core's caption. */
+const homeShiftOf = (height: number) => Math.round(height * 0.46)
+
+function useHomeShift(): number {
+  const [shift, setShift] = useState(() => homeShiftOf(window.innerHeight))
+  useEffect(() => {
+    const onResize = () => setShift(homeShiftOf(window.innerHeight))
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  return shift
 }
 
 /**
@@ -145,7 +242,7 @@ function syllables(): number {
  * The main screen: the assistant, present. The core in the middle, what it is saying under it as it says
  * it, and the line to talk to it at the bottom.
  */
-export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voiceLevel, onSetUpVoice, onOpenAnswer }: StageProps) {
+export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voiceLevel, voiceBands, onSetUpVoice, onOpenAnswer }: StageProps) {
   const channel = useFollowed(client.channel)
   const speaking = useFollowed(client.speech)
   const activity = useFollowed(client.activity)
@@ -236,6 +333,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
     finish,
     cancel,
     level: heardLevel,
+    bands: heardBands,
     available: canTalk
   } = useTalk(speech, (text, language) => {
     setProblem(undefined)
@@ -244,8 +342,45 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
     client.channel.say(text, language, undefined, true).catch(() => setProblem(refusalCopy('failed')))
   })
   const listening = talk.is === 'listening'
+  // A tool at work for the answer: the core works rather than thinks. Routing a turn is part of thinking.
+  const tool = activity.running.at(-1)?.tool
+  const atWork = running && doing(tool) !== undefined
   const [stageScroll, stageEdges] = useScrollEdges()
   const coreSize = useTopCoreSize()
+  // With views, the stream has a notch above its newest view: home, where the core rests large in the middle as on
+  // an empty stage and the newest view waits under it. The app opens there; scrolling on up past the newest view
+  // goes back there; scrolling down, pressing the view that waits, or a new view arriving goes on to the stream.
+  const [home, setHome] = useState(true)
+  const homeShift = useHomeShift()
+  const newest = stream[0]?.id
+  const newestArrived = newest !== undefined && shown.arrived.includes(newest)
+  useEffect(() => {
+    if (newestArrived) setHome(false)
+  }, [newest, newestArrived])
+  const atHome = streaming && home
+  useEffect(() => {
+    if (!atHome) return
+    let pushed = 0
+    let pushedAt = 0
+    const onWheel = (event: WheelEvent) => {
+      if (event.deltaY <= 0) return
+      const now = performance.now()
+      if (now - pushedAt > 450) pushed = 0
+      pushedAt = now
+      pushed += event.deltaY * (event.deltaMode === 1 ? 16 : 1)
+      if (pushed >= 40) setHome(false)
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return
+      if (event.key === 'PageDown' || event.key === 'ArrowDown' || event.key === 'End') setHome(false)
+    }
+    window.addEventListener('wheel', onWheel, { passive: true })
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('wheel', onWheel)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [atHome])
   const [composerBox, composerRoom] = useComposerRoom()
 
   // What plays goes quiet while the person talks, so the music does not drown what they say.
@@ -264,11 +399,13 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
           : speaking.sentence
             ? 'speaking'
             : running || voicing
-              ? 'thinking'
+              ? atWork
+                ? 'working'
+                : 'thinking'
               : 'idle'
   useShownPresence(active?.accent, mood)
-  // While it thinks, the word under the core says what it is doing: searching the web, preparing the view.
-  const moodWord = (mood === 'thinking' ? doing(activity.running.at(-1)?.tool) : undefined) ?? MOODS[mood]
+  // While it works, the word under the core says what it is doing: searching the web, preparing the view.
+  const moodWord = (mood === 'working' ? doing(tool) : undefined) ?? MOODS[mood]
   const failed =
     talk.is === 'failed' ? talk.reason : !running && !speaking.sentence && last?.outcome === 'failed' ? (last.problem ?? 'It could not answer.') : undefined
 
@@ -276,6 +413,47 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
   const moods = useRef({ listening, voiceLevel })
   moods.current = { listening, voiceLevel }
   const level = useRef(() => (moods.current.listening ? heardLevel() : (moods.current.voiceLevel?.() ?? syllables())))
+  // Its spectrum the same way; with no sound to read, the life makes one from the level.
+  const spectrum = useRef(new Float32Array(BANDS))
+  const voices = useRef({ heardBands, voiceBands })
+  voices.current = { heardBands, voiceBands }
+  const bands = useRef(() =>
+    moods.current.listening ? voices.current.heardBands(spectrum.current) : moods.current.voiceLevel ? voices.current.voiceBands?.(spectrum.current) : undefined
+  )
+  const load = useLoad()
+
+  // What the core looks at: the view it is talking about, else the pointer while it moves, else nothing, and it
+  // rests its gaze by itself.
+  const spoken = speaking.sentence?.turn
+  const attendedNow = attendedView(stream, spoken, channel.running, shown.arrived)
+  const attended = useLingering(attendedNow, (id) => stream.some((view) => view.id === id))
+  const pointer = useRef({ x: 0, y: 0, at: Number.NEGATIVE_INFINITY })
+  useEffect(() => {
+    const onMove = (event: PointerEvent) => {
+      pointer.current = { x: event.clientX, y: event.clientY, at: performance.now() }
+    }
+    const onLeave = () => {
+      pointer.current.at = Number.NEGATIVE_INFINITY
+    }
+    window.addEventListener('pointermove', onMove, { passive: true })
+    document.documentElement.addEventListener('pointerleave', onLeave)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      document.documentElement.removeEventListener('pointerleave', onLeave)
+    }
+  }, [])
+  const looking = useRef(attended)
+  looking.current = attended
+  const sight = useCallback((): Sight | undefined => {
+    const view = looking.current
+    const card = view === undefined ? null : document.querySelector(`[data-view="${CSS.escape(view)}"]`)
+    if (card) {
+      const box = card.getBoundingClientRect()
+      if (box.bottom > 0 && box.top < window.innerHeight) return { point: middleOf(box), box }
+    }
+    if (performance.now() - pointer.current.at < POINTER_HOLD) return { point: pointer.current }
+    return undefined
+  }, [])
 
   // Starting to talk stops the assistant. The talk key (Ctrl+Space by default) starts listening, and again sends.
   const toggle = useCallback(() => {
@@ -314,6 +492,8 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
 
   if (!active) return null
 
+  // Over the stream, what is said is smaller; at home and on an empty stage, as large as the core is.
+  const compact = streaming && !home
   const caption = (
     <AnimatePresence mode="wait">
       {speaking.sentence ? (
@@ -324,7 +504,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
           // A sentence leaves quickly, so the next one is shown as its sound starts.
           exit={{ opacity: 0, y: -3, transition: { duration: 0.12 } }}
           transition={settle}
-          className={cn('text-balance', streaming ? 'text-[0.9375rem] leading-relaxed' : 'text-xl leading-snug tracking-[-0.01em]')}
+          className={cn('text-balance', compact ? 'text-[0.9375rem] leading-relaxed' : 'text-xl leading-snug tracking-[-0.01em]')}
         >
           <SpokenLine text={speaking.sentence.text} since={speaking.since} seconds={speaking.seconds} paused={speaking.paused} />
         </motion.p>
@@ -334,7 +514,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0, transition: { duration: 0.12 } }}
-          className={cn('text-balance text-text-faint', streaming ? 'line-clamp-2 text-[0.9375rem] leading-relaxed' : 'text-lg leading-snug')}
+          className={cn('text-balance text-text-faint', compact ? 'line-clamp-2 text-[0.9375rem] leading-relaxed' : 'text-lg leading-snug')}
         >
           {last.trigger === 'task' && <span className="text-label">Scheduled · </span>}
           {last.trigger === 'resume' && <span className="text-label">Resumed · </span>}
@@ -357,7 +537,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           // Over the stream, two lines at most: the room kept for the caption, so it never runs onto the cards.
-          className={cn('text-balance text-text-soft', streaming ? 'line-clamp-2 text-[0.9375rem] leading-relaxed' : 'line-clamp-3 text-lg leading-snug')}
+          className={cn('text-balance text-text-soft', compact ? 'line-clamp-2 text-[0.9375rem] leading-relaxed' : 'line-clamp-3 text-lg leading-snug')}
         >
           {last.replied}
         </motion.p>
@@ -411,13 +591,23 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
       {streaming && (
         <header className="relative z-10 shrink-0 px-8 pt-1">
           <div className={cn('mx-auto grid w-full justify-items-center text-center', COLUMN)}>
-            <motion.div layoutId="stage-core" transition={glide} style={{ marginBlock: -Math.round(coreSize * 0.1) }}>
-              <Core size={coreSize} mood={mood} level={level.current} />
-            </motion.div>
-            <motion.span layoutId="stage-name" transition={glide} className="mt-1.5 font-semibold text-[1.0625rem] leading-tight tracking-[-0.015em]">
+            {/* At home, the core, its name and its state glide to the middle of the stage, and their places here stay
+                kept, so the stream under them never moves. */}
+            {atHome ? (
+              <div aria-hidden="true" style={{ height: coreSize - 2 * Math.round(coreSize * 0.1) }} />
+            ) : (
+              <motion.div layoutId="stage-core" transition={glide} style={{ marginBlock: -Math.round(coreSize * 0.1) }}>
+                <Core size={coreSize} mood={mood} level={level.current} bands={bands.current} load={load} sight={sight} />
+              </motion.div>
+            )}
+            <motion.span
+              {...(atHome ? {} : { layoutId: 'stage-name' })}
+              transition={glide}
+              className={cn('mt-1.5 font-semibold text-[1.0625rem] leading-tight tracking-[-0.015em]', atHome && 'invisible')}
+            >
               {active.name}
             </motion.span>
-            <motion.span layoutId="stage-mood" transition={glide} className="mt-1">
+            <motion.span {...(atHome ? {} : { layoutId: 'stage-mood' })} transition={glide} className={cn('mt-1', atHome && 'invisible')}>
               <Eyebrow accent={mood !== 'idle'} className="transition-colors duration-(--duration-calm)">
                 {moodWord}
               </Eyebrow>
@@ -426,22 +616,52 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
                 once the core, rising from the middle of the screen, has passed where they are. */}
             <motion.div
               initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: DURATION.calm, delay: 0.18, ease: EASE }}
+              animate={{ opacity: atHome ? 0 : 1 }}
+              transition={{ duration: DURATION.calm, delay: atHome ? 0 : 0.18, ease: EASE }}
               className="mt-3 grid w-full justify-items-center gap-1"
             >
               <div className="relative w-full max-w-[38rem]">
-                <div className="h-[3.25rem] text-text" aria-live="polite">
-                  {caption}
+                <div className="h-[3.25rem] text-text" aria-live={atHome ? undefined : 'polite'}>
+                  {!atHome && caption}
                 </div>
                 {/* Under the two lines kept for what is said, over the room above the stream, so it moves nothing. With
                     topics ready, it sits in their row instead. */}
-                {!chips && <div className="absolute inset-x-0 top-full flex justify-center">{answerLink}</div>}
+                {!chips && !atHome && <div className="absolute inset-x-0 top-full flex justify-center">{answerLink}</div>}
               </div>
-              {chips}
+              {!atHome && chips}
             </motion.div>
           </div>
         </header>
+      )}
+      {/* Home: the core large in the middle, its name, its state and what it says under it, as on an empty stage,
+          over the stream, which waits further down. */}
+      {atHome && (
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-col items-center px-8"
+          style={{ bottom: composerRoom.end + homeShift * 0.32 }}
+        >
+          <div className="flex min-h-0 w-full flex-1 flex-col items-center justify-center">
+            <motion.div layoutId="stage-core" transition={glide} className="-my-7">
+              <Core size={280} mood={mood} level={level.current} bands={bands.current} load={load} sight={sight} />
+            </motion.div>
+            <div className="grid justify-items-center gap-2">
+              <motion.h1 layoutId="stage-name" transition={glide} className="font-semibold text-[1.875rem] leading-none tracking-[-0.025em]">
+                {active.name}
+              </motion.h1>
+              <motion.span layoutId="stage-mood" transition={glide}>
+                <Eyebrow accent={mood !== 'idle'} className="transition-colors duration-(--duration-calm)">
+                  {moodWord}
+                </Eyebrow>
+              </motion.span>
+            </div>
+            <div className={cn('pointer-events-auto mt-7 flex min-h-[5.5rem] w-full flex-col items-center gap-1.5 text-center', COLUMN)}>
+              <div className="flex w-full justify-center" aria-live="polite">
+                {caption}
+              </div>
+              {chips ?? answerLink}
+            </div>
+          </div>
+        </div>
       )}
       <div className="relative min-h-0 flex-1">
         <AnimatePresence initial={false}>
@@ -450,9 +670,28 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
               key="stream"
               className="absolute inset-x-0 top-0"
               style={{ bottom: composerRoom.end }}
+              // At home, the stream sinks and dims under the core; pressing the view that waits goes on to it.
+              initial={false}
+              animate={{ y: atHome ? homeShift : 0, opacity: atHome ? 0.55 : 1 }}
+              transition={glide}
               exit={{ opacity: 0, transition: { duration: DURATION.quick, ease: EASE } }}
+              onPointerDownCapture={(event) => {
+                if (!atHome) return
+                event.preventDefault()
+                event.stopPropagation()
+                setHome(false)
+              }}
             >
-              <ViewStream className="h-full" views={stream} arrived={shown.arrived} actions={actionsFor} onClose={close} under={composerRoom.under} />
+              <ViewStream
+                className="h-full"
+                views={stream}
+                arrived={shown.arrived}
+                attended={attended}
+                actions={actionsFor}
+                onClose={close}
+                under={composerRoom.under}
+                onPastTop={() => setHome(true)}
+              />
             </motion.div>
           )}
         </AnimatePresence>
@@ -460,7 +699,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
           <div ref={stageScroll} className={cn('scroll-none h-full overflow-y-auto px-8', fade(stageEdges))}>
             <div className="flex min-h-full w-full flex-col items-center justify-center pt-6 pb-32">
               <motion.div layoutId="stage-core" transition={glide} className="-my-7">
-                <Core size={280} mood={mood} level={level.current} />
+                <Core size={280} mood={mood} level={level.current} bands={bands.current} load={load} sight={sight} />
               </motion.div>
               <div className="grid justify-items-center gap-2">
                 <motion.h1 layoutId="stage-name" transition={glide} className="font-semibold text-[1.875rem] leading-none tracking-[-0.025em]">

@@ -10,6 +10,7 @@
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
+    "test": "vitest run",
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "self-check": "electron . --self-check",
@@ -43,6 +44,7 @@
     "react": "catalog:",
     "react-dom": "catalog:",
     "tailwindcss": "catalog:",
-    "vite": "catalog:"
+    "vite": "catalog:",
+    "vitest": "catalog:"
   }
 }

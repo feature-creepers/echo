@@ -1,4 +1,4 @@
-import { ECHO_LENGTH, ECHO_STEP, type Pose } from './life.ts'
+import { BANDS, ECHO_LENGTH, ECHO_STEP, type Pose } from './life.ts'
 
 /**
  * What the two drawings of the core share on the graphics card: the polygon they are shaded in, the helpers
@@ -34,10 +34,17 @@ uniform vec3 u_accent;
 // How far this drawing is in effect, while one look gives way to the other.
 uniform float u_weight;
 uniform float u_grain;
-// The voice over the last second, one texel a sample, newest first: its own voice in red, the voice it hears in
-// green, halved to fit. The texture's own filtering blends neighbouring samples.
+// The voice over the last second, one texel a sample, newest first, on the first row; its spectrum now, from the
+// low notes to the high, on the second. Its own voice in red, the voice it hears in green, halved to fit. The
+// texture's own filtering blends neighbouring samples.
 uniform sampler2D u_echo;
 uniform float u_echoShift;
+// Where the core looks, as a direction across the screen, up as up, each from -1 to 1.
+uniform vec2 u_gaze;
+// How hard the computer works, from 0 to 1, followed over a few seconds.
+uniform float u_power;
+// How far the drawing's face is turned, in radians: x to face right, y to face up.
+uniform vec2 u_tilt;
 
 out vec4 color;
 
@@ -59,6 +66,19 @@ float noise(vec2 p, float period) {
   return mix(mix(hash(vec2(x0, cell.y)), hash(vec2(x1, cell.y)), u.x), mix(hash(vec2(x0, cell.y + 1.0)), hash(vec2(x1, cell.y + 1.0)), u.x), u.y);
 }
 
+// Where a point of the screen, in the drawing's radii from its centre, falls on the drawing's face as the face
+// turns: the ray from a small camera in front of it, through the point, meets the turned face there. Unturned, a
+// point is where it was; turned, the near side grows a little and the far side shrinks, as a real face would.
+vec2 face(vec2 screen) {
+  const float CAMERA = 5.0;
+  float ca = cos(u_tilt.x), sa = sin(u_tilt.x), cb = cos(u_tilt.y), sb = sin(u_tilt.y);
+  vec3 normal = vec3(sa, sb * ca, cb * ca);
+  float t = normal.z * CAMERA / (normal.z * CAMERA - normal.x * screen.x - normal.y * screen.y);
+  vec3 at = vec3(t * screen, CAMERA - t * CAMERA);
+  float depth = sb * at.y + cb * at.z;
+  return vec2(ca * at.x - sa * depth, cb * at.y - sb * at.z);
+}
+
 // How much of a pixel a line covers, from its distance to the line's middle and its width, both in device
 // pixels. A line one pixel wide covers exactly one pixel's worth, spread over two where it falls between them.
 float stroke(float distance, float width) {
@@ -68,7 +88,13 @@ float stroke(float distance, float width) {
 // What the voice was a delay in seconds ago: x its own, y the one it hears.
 vec2 echo(float delay) {
   float at = clamp(delay / ${ECHO_STEP.toFixed(6)} - u_echoShift, 0.0, ${(ECHO_LENGTH - 1).toFixed(1)});
-  return texture(u_echo, vec2((at + 0.5) / ${ECHO_LENGTH.toFixed(1)}, 0.5)).rg * 2.0;
+  return texture(u_echo, vec2((at + 0.5) / ${ECHO_LENGTH.toFixed(1)}, 0.25)).rg * 2.0;
+}
+
+// The voice's spectrum at a note, from the lowest (0) to the highest (1): x its own, y the one it hears.
+vec2 spectrum(float note) {
+  float at = clamp(note, 0.0, 1.0) * ${(BANDS - 1).toFixed(1)};
+  return texture(u_echo, vec2((at + 0.5) / ${ECHO_LENGTH.toFixed(1)}, 0.75)).rg * 2.0;
 }
 
 // Light from a source as warm as it is strong: its colour where faint, through the colours its filter leaks, to
@@ -93,8 +119,10 @@ export interface Drawing<Name extends string = string> {
   size: number
   /** How far out it is shaded, in its own radii: whatever it draws beyond its edge is gone by then. */
   reach: number
+  /** How strongly its light blooms into a halo, from 0. */
+  bloom: number
   /** The uniforms of its own, each written `u_` and this name in the shader. */
   uniforms: readonly Name[]
-  /** Sets those uniforms for one frame. */
-  set(gl: WebGL2RenderingContext, at: Record<Name, WebGLUniformLocation | null>, pose: Pose): void
+  /** Sets those uniforms for one frame, the drawing's radius given in device pixels. */
+  set(gl: WebGL2RenderingContext, at: Record<Name, WebGLUniformLocation | null>, pose: Pose, radius: number): void
 }

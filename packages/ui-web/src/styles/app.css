@@ -27,6 +27,9 @@
   --animate-eye-spin: eye-spin 1.1s linear infinite;
   /* Speaking: the eye beats with the syllables. */
   --animate-eye-speak: eye-speak 0.46s ease-in-out infinite alternate;
+  /* Working: an arc steps round the ring, as a mechanism counts, and the eye beats steadily, as the core does. */
+  --animate-eye-step: eye-spin 3s steps(12) infinite;
+  --animate-eye-work: eye-work 1.25s ease-out infinite;
 
   @keyframes level {
     0%,
@@ -84,6 +87,15 @@
   @keyframes eye-spin {
     to {
       transform: rotate(360deg);
+    }
+  }
+  @keyframes eye-work {
+    0%,
+    100% {
+      transform: scale(1);
+    }
+    12% {
+      transform: scale(1.16);
     }
   }
   @keyframes eye-speak {

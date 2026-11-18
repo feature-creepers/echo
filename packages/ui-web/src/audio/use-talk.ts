@@ -107,5 +107,13 @@ export function useTalk(engine: SpeechEngine | undefined, onHeard: (text: string
 
   useEffect(() => cancel, [cancel])
 
-  return { talk, start, finish, cancel, level: () => take.current?.take.level() ?? 0, available: engine !== undefined }
+  return {
+    talk,
+    start,
+    finish,
+    cancel,
+    level: () => take.current?.take.level() ?? 0,
+    bands: (into: Float32Array) => take.current?.take.bands(into),
+    available: engine !== undefined
+  }
 }

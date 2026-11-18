@@ -18,6 +18,8 @@ import { LibraryContext, type LibraryControls } from '../library/library-context
 import { PinnedDocksView, usePinnedDocks } from '../library/pinned-docks.tsx'
 import { PlayerProvider, usePlayer } from '../media/player-provider.tsx'
 import { Onboarding } from '../onboarding/onboarding.tsx'
+import { LivingGround } from '../presence/ground.tsx'
+import { CoreLightContext, createCoreLight } from '../presence/light.ts'
 import { Orb } from '../presence/orb.tsx'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { IconButton } from '../primitives/icon-button.tsx'
@@ -52,9 +54,13 @@ const HUB_NAME = 'Library and settings'
  * from the user's settings.
  */
 export function Shell({ device, ...rest }: ShellProps) {
+  // The light the core casts on the ground: written by the core each frame it draws, read by the ground.
+  const [light] = useState(createCoreLight)
   return (
     <DeviceProvider host={device}>
-      <Screens {...rest} />
+      <CoreLightContext.Provider value={light}>
+        <Screens {...rest} />
+      </CoreLightContext.Provider>
     </DeviceProvider>
   )
 }
@@ -366,6 +372,7 @@ function Connected({ productName, client, engine }: { productName: string; clien
                     onSetUpEngine={() => openHub('models')}
                     speech={speech.ready}
                     voiceLevel={speech.ready ? speech.level : undefined}
+                    voiceBands={speech.ready ? speech.bands : undefined}
                     onSetUpVoice={engine ? () => openHub('voice') : undefined}
                     onOpenAnswer={openAnswer}
                   />
@@ -457,13 +464,13 @@ function Frame({ productName, accent, look, actions, children }: FrameProps) {
 }
 
 /**
- * The ground of every screen, title row included: fine, faint dots, and a little of the accent's light from the
- * top of the window.
+ * The ground of every screen, title row included: fine, faint dots under a light that drifts over them, lit round
+ * the core and where it looks, and a little of the accent's light from the top of the window.
  */
 function Ground() {
   return (
     <>
-      <div aria-hidden="true" className="dot-ground pointer-events-none absolute inset-0" />
+      <LivingGround />
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(56%_42%_at_50%_0%,color-mix(in_oklab,var(--accent)_8%,transparent),transparent_100%)]"

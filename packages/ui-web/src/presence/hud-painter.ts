@@ -1,6 +1,6 @@
 import { burn, css, light, type Rgb } from './color.ts'
 import { HUD_ARCS, HUD_SIZE, meterBars, HUD_RADII as RADII } from './hud-shader.ts'
-import { ECHO_STEP, type Pose } from './life.ts'
+import { BANDS, ECHO_STEP, type Pose } from './life.ts'
 
 /**
  * The instrument drawn the simpler way, on a 2D canvas, as the shader draws it (`hud-shader.ts`): the same rings
@@ -42,6 +42,12 @@ function spoke(path: Path2D, around: number, inner: number, outer: number) {
   path.moveTo(x * inner, y * inner)
   path.lineTo(x * outer, y * outer)
 }
+
+/** The fine hairline rings between the main ones, as the shader draws them. */
+const HAIRLINES = [0.315, 0.345, 0.405, 0.59, 0.69] as const
+
+/** The rings the motes ride (`HUD_MOTES` in `life.ts`), as the shader's. */
+const MOTE_RINGS = [RADII.broken, RADII.bezel, RADII.arcs] as const
 
 /** How far the bezel's ticks hang in: the plain ones, every sixth, and every thirtieth. */
 const TICK_LENGTHS = [0.012, 0.02, 0.034] as const
@@ -144,6 +150,8 @@ export function createHudPainting(): HudPainting {
       const { hud } = pose
       const color = accent.map((channel) => channel / 255) as [number, number, number]
       const whiter = color.map((channel) => channel + (1 - channel) * 0.3) as [number, number, number]
+      // Far out, the accent sinks to a deeper, bluer shade of itself, as the shader draws it.
+      const deep = [color[0] * 0.7, color[1] * 0.86, color[2]] as [number, number, number]
       const fine = smoothstep(40, 80, radius)
       const lesser = smoothstep(22, 44, radius)
       const rings = hud.rings
@@ -159,22 +167,27 @@ export function createHudPainting(): HudPainting {
       context.globalAlpha = weight
       context.globalCompositeOperation = 'lighter'
 
-      // The core: a white-hot point and a short glow, with a thin rim round it.
+      // The core: a tight white-hot heart, and round it the reactor, a crisp ring of light and a fainter one outside it.
       const size = hud.size
       const core = context.createRadialGradient(0, 0, 0, 0, 0, radius * 0.5)
       for (const stop of [0, 0.02, 0.04, 0.06, 0.09, 0.13, 0.18, 0.26, 0.36, 0.5, 0.7, 1]) {
         const at = stop * 0.5
         const intensity =
           hud.core *
-          (14 * Math.exp(-(at * at) / (0.0008 * size * size)) + 1.4 / (1 + (at * at) / (0.0026 * size * size)) ** 1.5 + 0.26 * Math.exp(-at / (0.12 * size)))
+          (11 * Math.exp(-(at * at) / (0.0006 * size * size)) + 0.8 / (1 + (at * at) / (0.0018 * size * size)) ** 1.6 + 0.06 * Math.exp(-at / (0.1 * size)))
         core.addColorStop(stop, light(burn(intensity, [color[0] + 0.08, color[1] + 0.08, color[2] + 0.08])))
       }
       context.fillStyle = core
       context.fillRect(-radius * 0.5, -radius * 0.5, radius, radius)
-      context.lineWidth = 1
-      context.strokeStyle = css(whiter, 0.6 * Math.min(hud.core, 1))
+      context.lineWidth = 1.6
+      context.strokeStyle = css(whiter, Math.min(1, 1.1 * Math.min(hud.core, 1.2)))
       context.beginPath()
       context.arc(0, 0, RADII.coreRim * size * radius, 0, TAU)
+      context.stroke()
+      context.lineWidth = 1
+      context.strokeStyle = css(whiter, 0.35 * Math.min(hud.core, 1.2))
+      context.beginPath()
+      context.arc(0, 0, (RADII.coreRim + 0.025) * size * radius, 0, TAU)
       context.stroke()
 
       // Each ring sits a little off the others as the view drifts, by its radius, and listening they all draw in.
@@ -196,8 +209,8 @@ export function createHudPainting(): HudPainting {
       stroke(ring.broken, 1, color, 0.62 * rings * lesser)
       place(RADII.band, turns[1] ?? 0)
       const bandWidth = Math.max(0.02 * radius, 2)
-      stroke(ring.band, bandWidth, color, 0.42 * rings)
-      stroke(ring.lit, bandWidth, whiter, 0.95 * rings)
+      stroke(ring.band, bandWidth, color, 0.62 * rings)
+      stroke(ring.lit, bandWidth, whiter, 1 * rings)
       stroke(ring.lit, bandWidth + 4, whiter, 0.06 * rings)
 
       // The meter: listening, its bars light from the top down both sides with the voice it hears; speaking,
@@ -211,7 +224,8 @@ export function createHudPainting(): HudPainting {
         const fromTop = Math.min(centre, 1 - centre) * 2
         const glowing = Math.min(1, Math.max(0, (hud.gauge * 1.2 - fromTop) * 12))
         const sample = Math.min(31, Math.round((fromTop * 0.9) / ECHO_STEP))
-        const said = (pose.echo[sample * 2] ?? 0) * hud.wave
+        const note = pose.spectrum[Math.min(BANDS - 1, Math.round(fromTop * (BANDS - 1))) * 2] ?? 0
+        const said = ((pose.echo[sample * 2] ?? 0) * 0.4 + note * 0.8) * hud.wave
         const reach = Math.min(RADII.meter + 0.02 + glowing * 0.03 + said * 0.07, RADII.meter + 0.095)
         spoke(glowing > 0.5 ? lit : resting, centre + 0.25, RADII.meter * radius, reach * radius)
       }
@@ -268,8 +282,40 @@ export function createHudPainting(): HudPainting {
         stroke(tip, 2, whiter, hud.scan)
       }
 
+      // Fine hairline rings between the main ones, as the scales of an instrument, and deeper in colour outwards.
+      if (fine > 0.01) {
+        place(0, 0)
+        for (const at of HAIRLINES) {
+          context.lineWidth = 1
+          context.strokeStyle = css(at > 0.5 ? deep : color, 0.09 * rings * fine)
+          context.beginPath()
+          context.arc(0, 0, at * radius, 0, TAU)
+          context.stroke()
+        }
+      }
+
+      // Motes of light riding three rings, each with a short tail behind it.
+      MOTE_RINGS.forEach((at, index) => {
+        const head = (hud.motes[index] ?? 0) * TAU
+        const way = index === 1 ? -1 : 1
+        place(at, 0)
+        const tail = 9 / (at * radius)
+        for (let step = 0; step < 6; step++) {
+          const from = head - way * step * (tail / 6)
+          context.lineWidth = 2
+          context.strokeStyle = css(whiter, 0.55 * Math.exp(-step / 2) * rings * lesser)
+          context.beginPath()
+          context.arc(0, 0, at * radius, Math.min(from, from - way * (tail / 6)), Math.max(from, from - way * (tail / 6)))
+          context.stroke()
+        }
+        context.fillStyle = css(whiter, Math.min(1, 1.6 * rings * lesser))
+        context.beginPath()
+        context.arc(Math.cos(head) * at * radius, Math.sin(head) * at * radius, 1.4, 0, TAU)
+        context.fill()
+      })
+
       place(RADII.frame, 0)
-      stroke(ring.frame, 1, color, 0.14 * rings)
+      stroke(ring.frame, 1, deep, 0.14 * rings)
       stroke(ring.frameTicks, 1, color, 0.32 * rings * lesser)
       context.restore()
     }

@@ -22,6 +22,7 @@ import { serveDesktopMarker } from './desktop-marker.ts'
 import { deviceId } from './device.ts'
 import { openDeviceSettings } from './device-settings.ts'
 import { createGlobalShortcut } from './global-shortcut.ts'
+import { followLoad } from './load/index.ts'
 import { appIcon } from './mark.ts'
 import { serveNotifications } from './notifications.ts'
 import { checkSettings } from './self-check.ts'
@@ -278,6 +279,15 @@ function start(): void {
     tray.look(look)
     marker.accent(look.accent)
   })
+  // How hard the computer works, for the window's core: read only while the window asks for it and is seen.
+  const load = followLoad(() => !window.isDestroyed() && window.isVisible() && !window.isMinimized())
+  ipcMain.on(APP_CHANNELS.loadFollow, (event, on: unknown) => {
+    if (event.sender !== window.webContents) return
+    if (on === true) load.start((value) => toWindow(APP_CHANNELS.load, value))
+    else load.stop()
+  })
+  window.webContents.on('render-process-gone', () => load.stop())
+  app.on('will-quit', () => load.stop())
   ipcMain.on(APP_CHANNELS.shortcutsSuspend, (_event, suspended: boolean) => shortcut.suspend(suspended === true))
   ipcMain.handle(APP_CHANNELS.shortcutProblem, () => shortcutProblem)
   ipcMain.handle(

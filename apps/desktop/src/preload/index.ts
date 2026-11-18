@@ -9,6 +9,12 @@ function listen<Payload>(channel: string, listener: (payload: Payload) => void):
   return () => ipcRenderer.removeListener(channel, handler)
 }
 
+/** Who listens to the computer's load: the app reads it only while someone does. */
+const loadListeners = new Set<(load: number) => void>()
+ipcRenderer.on(APP_CHANNELS.load, (_event, load: unknown) => {
+  if (typeof load === 'number') for (const listener of loadListeners) listener(load)
+})
+
 /** The one listener for messages from the core, replaced each time the window opens a session. */
 let onCoreMessage: (message: unknown) => void = () => undefined
 ipcRenderer.on(CORE_MESSAGE_CHANNEL, (_event, message: unknown) => onCoreMessage(message))
@@ -40,7 +46,14 @@ const bridge: DesktopBridge = {
     about: () => ipcRenderer.invoke(APP_CHANNELS.about),
     openDataFolder: () => ipcRenderer.invoke(APP_CHANNELS.openDataFolder),
     openReleases: () => ipcRenderer.invoke(APP_CHANNELS.openReleases),
-    showPresence: (presence) => ipcRenderer.send(APP_CHANNELS.presence, presence)
+    showPresence: (presence) => ipcRenderer.send(APP_CHANNELS.presence, presence),
+    onLoad: (listener) => {
+      loadListeners.add(listener)
+      if (loadListeners.size === 1) ipcRenderer.send(APP_CHANNELS.loadFollow, true)
+      return () => {
+        if (loadListeners.delete(listener) && loadListeners.size === 0) ipcRenderer.send(APP_CHANNELS.loadFollow, false)
+      }
+    }
   },
   updates: {
     state: () => ipcRenderer.invoke(APP_CHANNELS.updateState),

@@ -1,14 +1,16 @@
 import type { Look } from '@repo/protocol'
+import { createBloom } from './bloom.ts'
 import type { Rgb } from './color.ts'
 import { type Drawing, SIDES, VERTEX } from './glsl.ts'
 import { HUD } from './hud-shader.ts'
 import { LENS } from './lens-shader.ts'
-import { ECHO_LENGTH, LOOK_SHRINK, type Pose } from './life.ts'
+import { BANDS, ECHO_LENGTH, LOOK_SHRINK, type Pose, TILT } from './life.ts'
 
 /**
  * Draws the core on the graphics card: each look is one small fragment shader over a polygon just round it.
  * While one look gives way to another, both are drawn, each weighted by how far it is in effect, and added: a
- * cross-fade, with the outgoing look drawing back a little as the incoming one settles in.
+ * cross-fade, with the outgoing look drawing back a little as the incoming one settles in. Then its light blooms
+ * (`bloom.ts`), each look as much as it asks.
  */
 
 /** Each look's drawing on the graphics card. */
@@ -24,7 +26,7 @@ export interface GpuCore {
   dispose(): void
 }
 
-const SHARED = ['extent', 'center', 'radius', 'accent', 'weight', 'grain', 'echoShift'] as const
+const SHARED = ['extent', 'center', 'radius', 'accent', 'weight', 'grain', 'echoShift', 'gaze', 'power', 'tilt'] as const
 
 interface Program {
   program: WebGLProgram
@@ -70,13 +72,16 @@ function prepare(gl: WebGL2RenderingContext) {
   if (!lens || !hud) return undefined
 
   gl.bindTexture(gl.TEXTURE_2D, echo)
-  gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RG8, ECHO_LENGTH, 1)
+  // Two rows: the voice's past, and its spectrum now.
+  gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RG8, ECHO_LENGTH, 2)
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
   const programs: Record<Look, Program> = { lens, hud }
-  return { programs, echo }
+  // Without a bloom, the core is drawn straight onto the canvas, sharp and without its halo.
+  const bloom = createBloom(gl)
+  return { programs, echo, bloom }
 }
 
 /**
@@ -102,7 +107,7 @@ export function createGpuCore(canvas: HTMLCanvasElement, force = false): GpuCore
     return undefined
   }
 
-  const echo = new Uint8Array(ECHO_LENGTH * 2)
+  const echo = new Uint8Array(ECHO_LENGTH * 2 * 2)
   let grain = 0
 
   // A lost context (the graphics card reset, or too many canvases at once) comes back empty: it is all made again.
@@ -124,10 +129,18 @@ export function createGpuCore(canvas: HTMLCanvasElement, force = false): GpuCore
       gl.blendFunc(gl.ONE, gl.ONE)
       grain = (grain + 17.31) % 256
       // The voice goes up halved, so a loud voice still fits in a byte.
-      for (let index = 0; index < echo.length; index++) echo[index] = Math.round(Math.min(1, (pose.echo[index] ?? 0) / 2) * 255)
+      const byte = (value: number) => Math.round(Math.min(1, value / 2) * 255)
+      for (let index = 0; index < ECHO_LENGTH * 2; index++) echo[index] = byte(pose.echo[index] ?? 0)
+      for (let index = 0; index < ECHO_LENGTH * 2; index++) echo[ECHO_LENGTH * 2 + index] = index < BANDS * 2 ? byte(pose.spectrum[index] ?? 0) : 0
       gl.activeTexture(gl.TEXTURE0)
       gl.bindTexture(gl.TEXTURE_2D, ready.echo)
-      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, ECHO_LENGTH, 1, gl.RG, gl.UNSIGNED_BYTE, echo)
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, ECHO_LENGTH, 2, gl.RG, gl.UNSIGNED_BYTE, echo)
+      if (ready.bloom) {
+        ready.bloom.begin(side)
+        gl.enable(gl.BLEND)
+        gl.blendFunc(gl.ONE, gl.ONE)
+      }
+      let glow = 0
 
       for (const look of Object.keys(DRAWINGS) as Look[]) {
         const weight = pose.looks[look]
@@ -145,9 +158,14 @@ export function createGpuCore(canvas: HTMLCanvasElement, force = false): GpuCore
         gl.uniform1f(shared.weight, weight)
         gl.uniform1f(shared.grain, grain)
         gl.uniform1f(shared.echoShift, pose.echoShift)
-        drawing.set(gl, own, pose)
+        gl.uniform2f(shared.gaze, pose.gaze[0], pose.gaze[1])
+        gl.uniform1f(shared.power, pose.power)
+        gl.uniform2f(shared.tilt, pose.gaze[0] * TILT, pose.gaze[1] * TILT)
+        drawing.set(gl, own, pose, (side / 2) * size)
         gl.drawArrays(gl.TRIANGLE_FAN, 0, SIDES + 2)
+        glow += drawing.bloom * weight
       }
+      ready.bloom?.finish(glow, grain)
     },
     dispose() {
       canvas.removeEventListener('webglcontextlost', onLost)
@@ -155,6 +173,7 @@ export function createGpuCore(canvas: HTMLCanvasElement, force = false): GpuCore
       if (ready && !gl.isContextLost()) {
         for (const { program } of Object.values(ready.programs)) gl.deleteProgram(program)
         gl.deleteTexture(ready.echo)
+        ready.bloom?.dispose()
       }
       gl.getExtension('WEBGL_lose_context')?.loseContext()
     }

@@ -1,11 +1,14 @@
 import type { AudioDevice } from '@repo/client'
 import { openMicrophone } from './devices.ts'
 import type { Sound } from './engine.ts'
+import { readBands } from './spectrum.ts'
 
 /** A take from the microphone, under way. */
 export interface Take {
   /** How loud the voice is right now, from 0 to 1. */
   level(): number
+  /** Its spectrum right now, read into the bands given, from the low notes to the high. */
+  bands(into: Float32Array): Float32Array
   /** Stop and give what was recorded. */
   finish(): Promise<Sound>
   /** Stop and throw it away. */
@@ -46,17 +49,25 @@ export async function record(microphone: AudioDevice = { id: '', label: '' }): P
     current = loudness(event.data)
   }
   source.connect(node)
+  // An analyser beside the capture, connected to nothing else, so the core can follow the voice's notes.
+  const analyser = context.createAnalyser()
+  analyser.fftSize = 1024
+  analyser.smoothingTimeConstant = 0.5
+  source.connect(analyser)
+  const spectrum = new Float32Array(analyser.frequencyBinCount)
 
   const stop = () => {
     node.port.onmessage = null
     source.disconnect()
     node.disconnect()
+    analyser.disconnect()
     for (const track of stream.getTracks()) track.stop()
     void context.close()
   }
 
   return {
     level: () => current,
+    bands: (into) => readBands(analyser, spectrum, into),
     async finish() {
       stop()
       const length = blocks.reduce((total, block) => total + block.length, 0)

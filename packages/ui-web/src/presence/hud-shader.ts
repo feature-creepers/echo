@@ -1,5 +1,5 @@
 import { type Drawing, PRELUDE } from './glsl.ts'
-import { HUD_RINGS } from './life.ts'
+import { HUD_MOTES, HUD_RINGS } from './life.ts'
 
 /**
  * The instrument look: a holographic display. A small bright core is its one light source; round it, rings of
@@ -57,10 +57,18 @@ uniform float u_scanAt;
 uniform float u_gauge;
 uniform float u_wave;
 uniform float u_dormant;
+uniform float u_chase;
+uniform float u_chaseAt;
+// Where each mote is round its ring, in turns, and where the glint is along the outer arcs.
+uniform float u_motes[${HUD_MOTES.length}];
+uniform float u_glintAt;
 // How far each ring has turned, in turns.
 uniform float u_turns[${HUD_RINGS.length}];
 uniform vec2 u_parallax;
 
+const float HAIRLINES[5] = float[5](0.315, 0.345, 0.405, 0.59, 0.69);
+// The rings the motes ride: the broken circle, the bezel's circle and the long arcs' circle.
+const float MOTE_RINGS[3] = float[3](${glsl(R.broken)}, ${glsl(R.bezel)}, ${glsl(R.arcs)});
 const vec2 ARCS[4] = vec2[4](${HUD_ARCS.map(([from, to]) => `vec2(${glsl(from)}, ${glsl(to)})`).join(', ')});
 
 // How much of a pixel the ticks round a ring cover: a number of them, each a width in pixels, at a radius in
@@ -76,7 +84,10 @@ float between(float rr, float inner, float outer) {
 }
 
 void main() {
-  vec2 p = (gl_FragCoord.xy - u_center) / u_radius;
+  vec2 p = face((gl_FragCoord.xy - u_center) / u_radius);
+  // Where it looks, the core leans first and the rings after it by how near the core they are, the outermost
+  // staying put: layers at different depths, so the instrument seems to turn towards what it looks at.
+  p -= u_gaze * 0.06 * max(0.0, 1.0 - length(p) * 1.1);
   float r = length(p);
   vec2 toward = p / max(r, 1e-4);
   // Counter-clockwise from the right, in turns.
@@ -87,11 +98,16 @@ void main() {
   float fine = smoothstep(40.0, 80.0, u_radius);
   float lesser = smoothstep(22.0, 44.0, u_radius);
 
-  // The core: a white-hot point and a short glow, breathing; nothing else in the instrument glows.
+  // The core: a tight white-hot heart, and round it the reactor, a crisp ring of light and a fainter one outside
+  // it, breathing with it. Its glow is the bloom's: the heart itself stays small, so it reads as a light source
+  // rather than a ball of light.
   float size = u_size;
-  float core = u_core * (14.0 * exp(-r * r / (0.0008 * size * size)) + 1.4 / pow(1.0 + r * r / (0.0026 * size * size), 1.5)
-    + 0.26 * exp(-r / (0.12 * size)));
-  bright += stroke((r - ${glsl(R.coreRim)} * size) * u_radius, 1.0) * 0.6 * min(u_core, 1.0);
+  float core = u_core * (11.0 * exp(-r * r / (0.0006 * size * size)) + 0.8 / pow(1.0 + r * r / (0.0018 * size * size), 1.6)
+    + 0.06 * exp(-r / (0.1 * size)));
+  bright += stroke((r - ${glsl(R.coreRim)} * size) * u_radius, 1.6) * 1.1 * min(u_core, 1.2);
+  bright += stroke((r - ${glsl(R.coreRim + 0.025)} * size) * u_radius, 1.0) * 0.35 * min(u_core, 1.2);
+  // Between the heart and the reactor ring, a faint disc of the accent, as light held in a lens.
+  lines += (1.0 - smoothstep(${glsl(R.coreRim - 0.01)} * size, ${glsl(R.coreRim)} * size, r)) * 0.16 * min(u_core, 1.2);
 
   // Each ring shifts a little with the view by its radius, as layers at different depths would; listening, they
   // all draw in round the core.
@@ -114,8 +130,8 @@ void main() {
     float segment = clamp(open * TAU * ${glsl(R.band)} * u_radius + 0.5, 0.0, 1.0);
     float band = stroke((rr - ${glsl(R.band)}) * u_radius, max(0.02 * u_radius, 2.0)) * segment;
     float lit = step(0.72, hash(vec2(index, 9.0)));
-    lines += band * 0.42 * (1.0 - lit) * u_rings;
-    bright += (band + exp(-abs(rr - ${glsl(R.band)}) * u_radius / 2.5) * 0.12 * segment) * lit * 0.95 * u_rings;
+    lines += band * 0.62 * (1.0 - lit) * u_rings;
+    bright += (band + exp(-abs(rr - ${glsl(R.band)}) * u_radius / 2.5) * 0.12 * segment) * lit * 1.25 * u_rings;
   } else if (rr < ${glsl(R.meter + 0.1)}) {
     // The meter: bars round the core. At rest they are short and faint. Listening, they light from the top down
     // both sides with the voice it hears; speaking, each follows its own voice as it was a moment ago, the newest
@@ -125,9 +141,12 @@ void main() {
     float index = floor(v * count);
     float centre = (index + 0.5) / count;
     float fromTop = min(centre, 1.0 - centre) * 2.0;
+    // Each bar also follows a note of the voice: the low notes at the top, the high ones at the bottom, so a
+    // vowel opens the top and a hiss runs down the sides.
+    vec2 note = spectrum(fromTop);
     float lit = clamp((u_gauge * 1.2 - fromTop) * 12.0, 0.0, 1.0);
-    float said = echo(fromTop * 0.9).x * u_wave;
-    float reach = min(${glsl(R.meter)} + 0.02 + lit * 0.03 + said * 0.07, ${glsl(R.meter + 0.095)});
+    float said = (echo(fromTop * 0.9).x * 0.4 + note.x * 0.8) * u_wave;
+    float reach = min(${glsl(R.meter)} + 0.02 + lit * 0.03 + note.y * 0.04 + said * 0.07, ${glsl(R.meter + 0.095)});
     float bar = ticks(v, count, 1.6, rr * u_radius) * between(rr, ${glsl(R.meter)}, reach);
     lines += bar * (0.3 * mix(0.35, 1.0, lesser) + said * 0.7) * u_rings;
     bright += bar * lit * 0.8 * u_rings;
@@ -160,6 +179,10 @@ void main() {
     float block = hash(vec2(index, 23.0)) > 0.84 ? clamp((0.2 - abs(within - 0.5)) * cell + 0.5, 0.0, 1.0) : 0.0;
     float d = (rr - ${glsl(R.data)}) * u_radius;
     lines += (stroke(d, 1.0) * gap * 0.45 + stroke(d, 3.0) * block * 0.6) * u_rings * lesser;
+    // Working, a chase runs round it, counter-clockwise, its tail fading behind it, lighting the blocks it passes.
+    float behind = fract(u_chaseAt - around);
+    float trail = exp(-behind * 9.0) * u_chase;
+    bright += (stroke(d, 1.5) * gap * 0.75 + stroke(d, 3.0) * block * 0.9) * trail * u_rings * lesser;
   } else if (rr < ${glsl((R.glyphs + R.arcs) / 2)}) {
     // A ring of small glyphs, one to a cell: tall and short ticks, dots and dashes. They come in groups with a gap
     // between groups, and some groups are missing, so the ring reads as a written line, not as noise.
@@ -194,6 +217,9 @@ void main() {
     }
     lines += (stroke(d, 1.5) * 0.55 + between(rr, ${glsl(R.arcs - 0.022)}, ${glsl(R.arcs + 0.022)}) * 0.06) * arc * u_rings;
     bright += cap * between(rr, ${glsl(R.arcs - 0.02)}, ${glsl(R.arcs + 0.02)}) * 0.5 * u_rings;
+    // Now and then a glint runs along the arcs, as light along a wire.
+    float glint = exp(-pow((v - u_glintAt) / 0.018, 2.0));
+    bright += stroke(d, 1.5) * arc * glint * 1.1 * u_rings;
     float behind = fract(around - u_scanAt);
     bright += (stroke(d, 2.0) * exp(-behind * 7.0) * 0.9 + stroke(min(behind, 1.0 - behind) * turnPx, 2.0) * between(rr, ${glsl(R.arcs - 0.032)}, ${glsl(R.arcs + 0.032)})) * u_scan;
   } else {
@@ -203,17 +229,62 @@ void main() {
     float tick = ticks(around + 0.5 / 8.0, 8.0, 1.0, rr * u_radius) * between(rr, ${glsl(R.frame)}, ${glsl(R.frame + 0.025)});
     lines += tick * 0.32 * u_rings * lesser;
   }
+  // Motes of light riding three rings, each with a short tail behind it, the way it came.
+  for (int index = 0; index < 3; index++) {
+    float ring = MOTE_RINGS[index];
+    float across = (rr - ring) * u_radius;
+    if (abs(across) < 4.0) {
+      float way = index == 1 ? -1.0 : 1.0;
+      float behind = fract((u_motes[index] - around) * way);
+      float apart = min(behind, 1.0 - behind) * TAU * ring * u_radius;
+      float body = exp(-across * across / 1.4);
+      bright += body * (exp(-apart * apart / 2.2) * 1.6 + exp(-behind * TAU * ring * u_radius / 9.0) * step(behind, 0.5) * 0.55) * u_rings * lesser;
+    }
+  }
+
+  // Fine hairline rings between the main ones, faint, as the scales of an instrument: they give it depth and
+  // precision, and fade on a small instrument, where they would only blur.
+  float hairlines = 0.0;
+  for (int index = 0; index < 5; index++) {
+    hairlines += stroke((rr - HAIRLINES[index]) * u_radius, 1.0);
+  }
+  lines += hairlines * 0.09 * u_rings * fine;
+
   // The scan lights the instrument faintly behind its head, as a sweep would.
   if (u_scan > 0.001 && rr > ${glsl(R.meter + 0.1)} && rr < ${glsl(R.arcs)}) {
     lines += exp(-fract(around - u_scanAt) * 12.0) * 0.07 * u_scan;
   }
 
-  vec3 light = burn(core, u_accent + 0.08) + u_accent * lines + mix(u_accent, vec3(1.0), 0.3) * bright;
+  // The colour deepens with the distance from the heart: near it the accent is lifted towards white, far out it
+  // sinks to a deeper, bluer shade of itself, so the rings read as layers of light at different depths.
+  float farOut = smoothstep(0.18, 0.9, r);
+  vec3 near = mix(u_accent, vec3(1.0), 0.22);
+  vec3 deep = u_accent * vec3(0.7, 0.86, 1.0);
+  vec3 hue = mix(near, deep, farOut);
+  // A hologram's shimmer: its light rises and falls a little across it, slowly.
+  float shimmer = 0.92 + 0.16 * noise(vec2(p.x * 2.2 + u_turns[6] * 3.0, p.y * 2.2 - u_turns[3] * 5.0), 64.0);
+  vec3 light = burn(core, u_accent + 0.08) + hue * lines * shimmer + mix(hue, vec3(1.0), mix(0.45, 0.2, farOut)) * bright * shimmer;
   // A faint dark field behind the rings calms the ground's dots under them, so the finest lines read.
   finish(light, 0.55 * (1.0 - smoothstep(0.3, 0.98, r)) * max(u_rings, 0.3));
 }`
 
-const UNIFORMS = ['core', 'size', 'rings', 'reach', 'scan', 'scanAt', 'gauge', 'wave', 'dormant', 'turns', 'parallax'] as const
+const UNIFORMS = [
+  'core',
+  'size',
+  'rings',
+  'reach',
+  'scan',
+  'scanAt',
+  'chase',
+  'chaseAt',
+  'gauge',
+  'wave',
+  'dormant',
+  'turns',
+  'parallax',
+  'motes',
+  'glintAt'
+] as const
 
 const turns = new Float32Array(HUD_RINGS.length)
 
@@ -221,6 +292,8 @@ export const HUD: Drawing<(typeof UNIFORMS)[number]> = {
   fragment: FRAGMENT,
   size: HUD_SIZE,
   reach: 0.96,
+  // A hologram: every line glows, the bright ones most.
+  bloom: 0.95,
   uniforms: UNIFORMS,
   set(gl, at, { hud }) {
     gl.uniform1f(at.core, hud.core)
@@ -229,11 +302,15 @@ export const HUD: Drawing<(typeof UNIFORMS)[number]> = {
     gl.uniform1f(at.reach, hud.reach)
     gl.uniform1f(at.scan, hud.scan)
     gl.uniform1f(at.scanAt, hud.scanAngle / (Math.PI * 2))
+    gl.uniform1f(at.chase, hud.chase)
+    gl.uniform1f(at.chaseAt, hud.chaseAt)
     gl.uniform1f(at.gauge, hud.gauge)
     gl.uniform1f(at.wave, hud.wave)
     gl.uniform1f(at.dormant, hud.dormant)
     for (let index = 0; index < turns.length; index++) turns[index] = (hud.turns[index] ?? 0) / (Math.PI * 2)
     gl.uniform1fv(at.turns, turns)
     gl.uniform2f(at.parallax, hud.parallax[0], hud.parallax[1])
+    gl.uniform1fv(at.motes, hud.motes)
+    gl.uniform1f(at.glintAt, hud.glintAt)
   }
 }
