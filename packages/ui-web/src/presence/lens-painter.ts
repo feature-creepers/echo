@@ -4,7 +4,7 @@ import type { LensPose } from './life.ts'
 
 /**
  * The lens drawn the simpler way, on a 2D canvas, as the shader draws it (`lens-shader.ts`) with less: what does
- * not move (the shadow, the dark dome, the room's panels of light along its top and the line of its rim) is drawn
+ * not move (the shadow, the seat, the smoky dome, the room's panels of light along its top and the line of its rim) is drawn
  * once for a size and kept; each frame adds the lamp's red and its disc of amber, the catchlights over it, and the
  * light the elements catch.
  *
@@ -26,6 +26,21 @@ function redAt(distance: number, lens: LensPose) {
   return lens.lamp * (1.75 * near + 0.95 * haze) * (1 - 0.9 * edge * edge * (3 - 2 * edge))
 }
 
+/** The seat's polish round it, from the way the room's light comes: a wedge along it, and a fainter one opposite. */
+const POLISH = [
+  [0, 0.16],
+  [0.06, 0.07],
+  [0.13, 0],
+  [0.37, 0],
+  [0.44, 0.035],
+  [0.5, 0.08],
+  [0.56, 0.035],
+  [0.63, 0],
+  [0.87, 0],
+  [0.94, 0.07],
+  [1, 0.16]
+] as const
+
 /** Where the lamp's gradient changes, in glass radii: close together where it changes fast. */
 const LAMP_STOPS = [0, 0.06, 0.09, 0.11, 0.14, 0.18, 0.23, 0.3, 0.38, 0.48, 0.6, 0.74, 0.88, 1]
 
@@ -38,20 +53,38 @@ function drawBase(side: number) {
   context.scale(1, -1)
 
   // The shadow on the ground, a little below.
-  const shadow = context.createRadialGradient(0, -glass * 0.03, glass * 0.96, 0, -glass * 0.03, glass * 1.1)
-  shadow.addColorStop(0, 'rgb(0 0 0 / 0.5)')
+  const outer = (side / 2) * LENS_SIZE
+  const shadow = context.createRadialGradient(0, -outer * 0.03, outer * 0.97, 0, -outer * 0.03, outer * 1.12)
+  shadow.addColorStop(0, 'rgb(0 0 0 / 0.42)')
   shadow.addColorStop(1, 'rgb(0 0 0 / 0)')
   context.fillStyle = shadow
   context.beginPath()
-  context.arc(0, -glass * 0.03, glass * 1.1, 0, Math.PI * 2)
+  context.arc(0, -outer * 0.03, outer * 1.12, 0, Math.PI * 2)
   context.fill()
 
-  // The dark dome, a little lighter towards its top, where it reflects the room.
+  // The seat: a flat ring of dark anodised metal round the glass; its polish is drawn each frame, as it turns with
+  // the room's light.
+  const seat = new Path2D()
+  seat.arc(0, 0, outer, 0, Math.PI * 2)
+  seat.arc(0, 0, glass, 0, Math.PI * 2, true)
+  context.fillStyle = '#0a0d12'
+  context.fill(seat)
+  context.strokeStyle = 'rgb(0 0 0 / 0.5)'
+  context.lineWidth = 1
+  context.beginPath()
+  context.arc(0, 0, glass + 0.5, 0, Math.PI * 2)
+  context.stroke()
+
+  // The smoky dome, a little lighter towards its edge and its top, where it reflects the room.
   context.save()
   context.beginPath()
   context.arc(0, 0, glass, 0, Math.PI * 2)
   context.clip()
-  context.fillStyle = '#030406'
+  const smoke = context.createRadialGradient(0, 0, 0, 0, 0, glass)
+  smoke.addColorStop(0, '#040608')
+  smoke.addColorStop(0.7, '#06080c')
+  smoke.addColorStop(1, '#0c1118')
+  context.fillStyle = smoke
   context.fillRect(-glass, -glass, glass * 2, glass * 2)
   const room = context.createLinearGradient(0, glass, 0, -glass * 0.2)
   room.addColorStop(0, 'rgb(128 184 250 / 0.035)')
@@ -110,6 +143,16 @@ export function createLensPainting(): LensPainting {
       context.drawImage(base, -side / 2, -side / 2)
       context.scale(1, -1)
       context.globalCompositeOperation = 'lighter'
+
+      // The seat's polish: two soft wedges of the room's light along the way it comes, the far one fainter.
+      const outer = (side / 2) * LENS_SIZE
+      const seat = new Path2D()
+      seat.arc(0, 0, outer, 0, Math.PI * 2)
+      seat.arc(0, 0, glass, 0, Math.PI * 2, true)
+      const polish = context.createConicGradient(lens.sheen, 0, 0)
+      for (const [stop, strength] of POLISH) polish.addColorStop(stop, `rgb(150 178 214 / ${(strength * lens.room).toFixed(3)})`)
+      context.fillStyle = polish
+      context.fill(seat)
 
       // The lamp, deep in the glass: the same red as the shader's, from the disc to the edge of the glass.
       const [x, y] = [lens.depth[0] * glass, lens.depth[1] * glass]

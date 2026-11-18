@@ -1,9 +1,9 @@
 import { type Drawing, PRELUDE } from './glsl.ts'
 
 /**
- * The lens look: the eye of 2001: A Space Odyssey as the film shows it close, a deep lens of black glass set flush in
- * the dark. It has no ring of metal round it, which would read as a lamp in its fitting or as a camera's aperture: its
- * edge is drawn only by the light it catches.
+ * The lens look: the eye of 2001: A Space Odyssey as the film shows it close, a deep lens of smoky black glass in a
+ * thin rounded seat of dark blue-grey metal. The seat is soft and dark, shaded by the room's light: a hard or light
+ * grey ring would read as a lamp in its fitting, and steps or grooves as a camera's aperture.
  *
  * From the front to the back: the dome reflects a dim room, a few soft panels of cool light along its upper rim and a
  * fresnel line on its edge. Behind it, the optical stack: six lens elements at different depths, each a fine edge of
@@ -18,8 +18,14 @@ import { type Drawing, PRELUDE } from './glsl.ts'
 /** The lens's radius, as a share of half the canvas: the rest is room for its shadow. */
 export const LENS_SIZE = 0.74
 
-/** How far the glass reaches, as a share of the lens's radius: all the way, with no housing round it. */
-export const GLASS = 1
+/**
+ * How far the glass reaches, as a share of the lens's radius. Round it sits the seat, a thin rounded lip of dark
+ * blue-grey metal, as round the film's eye: soft, never a hard or light grey ring.
+ */
+export const SEAT = 0.92
+
+/** The glass's radius, as the painter draws it, as a share of the lens's radius. */
+export const GLASS = SEAT
 
 /**
  * The optical stack, from the front element to the back: each edge's radius as a share of the glass, how deep it
@@ -92,6 +98,7 @@ uniform vec2 u_depth;
 // How much of the voice the elements catch, from the outer ones to the inner.
 uniform vec4 u_voice;
 
+const float SEAT = ${glsl(SEAT)};
 const vec4 PANELS[4] = vec4[4](${PANELS.map(([at, out, wide, bright]) => `vec4(${glsl(at)}, ${glsl(out)}, ${glsl(wide)}, ${glsl(bright)})`).join(', ')});
 const vec4 CATCHES[7] = vec4[7](${CATCHES.map(([at, out, wide, bright]) => `vec4(${glsl(at)}, ${glsl(out)}, ${glsl(wide)}, ${glsl(bright)})`).join(', ')});
 // Each element: its radius, its depth, its coat, and how much light it catches.
@@ -100,18 +107,60 @@ const vec4 ELEMENTS[6] = vec4[6](${ELEMENTS.map((element) => `vec4(${glsl(elemen
 const vec3 COATS[4] = vec3[4](${COATS.map(([red, green, blue]) => `vec3(${glsl(red)}, ${glsl(green)}, ${glsl(blue)})`).join(', ')});
 
 void main() {
-  vec2 g = face((gl_FragCoord.xy - u_center) / u_radius);
-  float gr = length(g);
-  float pixel = 1.0 / u_radius;
+  vec2 p = face((gl_FragCoord.xy - u_center) / u_radius);
+  float r = length(p);
+  vec2 toward = p / max(r, 1e-4);
+  float px = 1.0 / u_radius;
   // The lamp's red: the accent, deepened until only its own colour is left.
   vec3 hue = pow(u_accent, vec3(3.2));
   hue /= max(hue.r, max(hue.g, hue.b));
-  float cover = clamp((1.0 - gr) * u_radius + 0.5, 0.0, 1.0);
-  // Beyond the glass, only a soft shadow on the ground, falling a little below it.
-  float shadow = 0.5 * (1.0 - smoothstep(0.96, 1.1, length(g + vec2(0.0, 0.03))));
-  vec3 glass = vec3(0.0016, 0.002, 0.0028);
+  // Every edge of the lens is a pixel and a half soft: crisp, never hard.
+  float cover = clamp((1.0 - r) / (px * 1.6) + 0.5, 0.0, 1.0);
+  // Beyond the lens, only a soft shadow on the ground, falling a little below it.
+  float shadow = 0.42 * (1.0 - smoothstep(0.97, 1.12, length(p + vec2(0.0, 0.03))));
+  vec3 light = vec3(0.0);
+  float facing = dot(toward, u_sheen);
 
-  if (cover > 0.0) {
+  // The seat: a flat ring of dark anodised metal that holds the glass, as round the film's eye, with a narrow chamfer
+  // at each edge. Its finish is polished and finely brushed round the ring, so the room's light catches it as two soft
+  // wedges along the way the light comes, over a very fine grain; each chamfer catches a thin line of light, the
+  // outer one on the lit side, the inner one on the far side. It stays dark, and has no step and no groove: a light
+  // grey ring round a glow would make the eye a lamp in its fitting, and steps a camera's aperture.
+  float seated = smoothstep(SEAT - px * 1.5, SEAT + px * 1.5, r);
+  float lip = cover * seated;
+  if (lip > 0.0) {
+    float across = clamp((r - SEAT) / (1.0 - SEAT), 0.0, 1.0);
+    float width = (1.0 - SEAT) * u_radius;
+    // Flat, but for the chamfers: one pixel and a half each at least, a sixth of the ring on a large lens.
+    float bevel = max(1.5 / max(width, 1.0), 0.16);
+    float inner = 1.0 - smoothstep(0.0, bevel, across);
+    float outer = smoothstep(1.0 - bevel, 1.0, across);
+    float plain = 1.0 - max(inner, outer);
+    // The brushing: long streaks round the ring, fine across it, as a turned and polished face; on a small lens
+    // they fade to their average.
+    float around = atan(p.y, p.x) / TAU + 0.5;
+    float grain = mix(0.5, noise(vec2(around * 36.0, r * u_radius * 1.3), 36.0), smoothstep(5.0, 14.0, width));
+    // The wedges of polish, along the light and, fainter, opposite it, and a fainter pair across.
+    float side = dot(toward, vec2(-u_sheen.y, u_sheen.x));
+    float wedges = pow(abs(facing), 7.0) * (facing > 0.0 ? 1.0 : 0.5) + pow(abs(side), 18.0) * 0.18;
+    float shade = 0.026 * (0.7 + 0.3 * smoothstep(-0.8, 0.8, facing)) + wedges * 0.19 * (0.7 + 0.6 * grain);
+    shade *= plain * (0.94 + 0.12 * grain) + (1.0 - plain) * 0.6;
+    // The chamfers' lines of light.
+    shade += outer * pow(max(facing, 0.0), 2.0) * 0.2 + inner * pow(max(-facing, 0.0), 2.0) * 0.1;
+    vec3 metal = mix(vec3(0.33, 0.42, 0.55), vec3(0.66, 0.77, 0.9), clamp(wedges, 0.0, 1.0)) * shade * u_room;
+    // The lamp's red reaches its inner chamfer from inside the glass, faintly.
+    metal += hue * u_lamp * inner * 0.05;
+    light += metal * lip;
+  }
+
+  float inside = cover * (1.0 - seated);
+  if (inside > 0.0) {
+    vec2 g = p / SEAT;
+    float gr = r / SEAT;
+    float pixel = px / SEAT;
+    // Smoky black glass, a little lighter towards its edge, where it turns to the room.
+    vec3 glass = vec3(0.005, 0.007, 0.01) + vec3(0.016, 0.022, 0.032) * gr * gr * gr;
+
     // The front of the dome. It reflects more as it turns away towards its edge: a dim room, a little brighter
     // above, and high in it a few soft panels of cool light, which its curve draws out along its upper rim. As the
     // lens turns to look, the room slides the other way across it.
@@ -140,18 +189,24 @@ void main() {
     // Its light leaves faint ghost rings on the inner surfaces, which its own voice and the working beat run through.
     vec2 lampAt = g - u_depth;
     float d = length(lampAt);
+    // Seen off its axis, the lamp dims a little, as a deep light does through glass.
+    float onAxis = 1.0 - 0.15 * min(1.0, length(u_gaze));
     float voiced = echo(d * 0.8).x * (1.0 - smoothstep(0.1, 0.8, d));
     float beat = u_beat * exp(-pow((d - u_heart - u_beatAt * 0.55) / 0.045, 2.0)) * (1.0 - smoothstep(0.3, 1.1, u_beatAt));
     float near = exp(-pow(max(d - u_heart, 0.0) / (0.14 * u_iris), 1.15));
-    float haze = exp(-d / (0.5 * u_iris));
-    float ghosts = exp(-pow((d - 0.34 * u_iris) / 0.035, 2.0)) * 0.22 + exp(-pow((d - 0.57 * u_iris) / 0.045, 2.0)) * 0.14;
+    // The haze is the glass itself lit, so it shifts far less than the lamp as the lens looks about; the ghosts sit
+    // between them.
+    float hazed = length(g - u_depth * 0.4);
+    float haze = exp(-hazed / (0.5 * u_iris));
+    float ghosted = length(g - u_depth * 0.7);
+    float ghosts = exp(-pow((ghosted - 0.34 * u_iris) / 0.035, 2.0)) * 0.22 + exp(-pow((ghosted - 0.57 * u_iris) / 0.045, 2.0)) * 0.14;
     ghosts *= 1.0 + echo(d * 1.1).x * 1.2 + beat * 2.0;
-    float glow = u_lamp * (1.55 * near + 0.85 * haze + 0.5 * beat + ghosts) * (1.0 + voiced * 0.35);
+    float glow = u_lamp * onAxis * (1.55 * near + 0.85 * haze + 0.5 * beat + ghosts) * (1.0 + voiced * 0.35);
     glow *= 1.0 - 0.9 * smoothstep(0.55, 0.98, gr);
     vec3 red = burn(glow, hue + vec3(0.0, 0.02, 0.012));
-    // The disc: amber at its edge, yellow at its middle, its edge as crisp as a pixel allows, with a faint highlight a
+    // The disc: amber at its edge, yellow at its middle, its edge a pixel and a half soft, with a faint highlight a
     // little above the middle, as the film's has.
-    float disc = clamp((u_heart - d) / pixel + 0.5, 0.0, 1.0);
+    float disc = clamp((u_heart - d) / (pixel * 1.6) + 0.5, 0.0, 1.0);
     float middle = exp(-d * d / (u_heart * u_heart * 0.35));
     vec3 amber = burn(u_lamp * (2.6 + 2.4 * middle) * (1.0 + voiced * 0.25), hue + vec3(0.0, 0.3, 0.03));
     vec2 shine = (lampAt - vec2(-0.15, 0.2) * u_heart) / u_heart;
@@ -207,12 +262,15 @@ void main() {
       float apart = length(from);
       float stroked = max(0.011, pixel * 1.2);
       float middle = 1.0 - 0.3 * pow(min(off / spot.z, 1.0), 2.0);
-      catches += spot.w * middle * (clamp((stroked - apart) / pixel + 0.5, 0.0, 1.0) + 0.12 * exp(-apart * apart / (stroked * stroked * 9.0)));
+      catches += spot.w * middle * (clamp((stroked - apart) / (pixel * 1.6) + 0.5, 0.0, 1.0) + 0.2 * exp(-apart * apart / (stroked * stroked * 9.0)));
     }
     glass += vec3(0.66, 0.86, 1.0) * catches * u_room * min(u_catch, 1.6) * 0.95;
+    // Where the glass meets the seat, a soft dark seam.
+    glass *= 1.0 - 0.5 * exp(-pow((1.0 - gr) / (pixel * 2.5), 2.0));
+    light += glass * inside;
   }
 
-  finish(glass * cover, max(cover, shadow));
+  finish(light, max(cover, shadow));
 }`
 
 const UNIFORMS = ['lamp', 'heart', 'iris', 'catch', 'room', 'shimmer', 'shimmerAt', 'focus', 'beat', 'beatAt', 'sheen', 'slivers', 'depth', 'voice'] as const
@@ -224,7 +282,7 @@ export const LENS: Drawing<(typeof UNIFORMS)[number]> = {
   size: LENS_SIZE,
   reach: 1.12,
   // A lens: its light halates a little in the glass, as on film.
-  bloom: 0.2,
+  bloom: 0.26,
   uniforms: UNIFORMS,
   set(gl, at, { lens }) {
     gl.uniform1f(at.lamp, lens.lamp)

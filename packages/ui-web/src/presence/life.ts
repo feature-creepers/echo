@@ -466,7 +466,7 @@ export function createLife(initial: Mood = 'idle', look: Look = 'hud'): Life {
       }) as [number, number, number, number]
 
       const drifting = lensOf('wander') * 0.022
-      const looking = 0.13 * (1 - sleeping)
+      const looking = 0.11 * (1 - sleeping)
       const working = weights.working
       return {
         weights,
