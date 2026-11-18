@@ -133,10 +133,11 @@ export function browserTools(options: BrowserToolsOptions): Tool[] {
     const verdict = decidePageAct(request, settings.read().access.approvals)
     // Kept in the activity too, as a line the person reads: what was done, on which site.
     const line = `${detail}${base.site ? ` on ${base.site}` : ''}`
-    const thread = showing().thread
+    const { thread, turn } = showing()
     const use = (decision: 'ran' | 'approved' | 'refused', reason: AccessUseReason, refusal?: string) =>
       uses?.record({
         ...(thread === undefined ? {} : { thread }),
+        ...(turn === undefined ? {} : { turn }),
         tool,
         action: 'run',
         command: line,

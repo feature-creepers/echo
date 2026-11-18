@@ -9,7 +9,7 @@ import { manualTimers } from '../replay/manual-timers.ts'
 import { ACCESS_SET, createUserSettings } from '../settings/settings.ts'
 import { createScreen } from '../views/screen.ts'
 import { createAccess } from './access.ts'
-import { ACCESS_USE, KEPT_MS } from './activity.ts'
+import { ACCESS_OUTCOME, ACCESS_USE, KEPT_MS } from './activity.ts'
 
 const WORKSPACE = '/data/workspace'
 
@@ -72,13 +72,12 @@ function versions(): Blobs & { held: Map<string, Uint8Array> } {
   }
 }
 
-function setup({ withComputer = true, records = memoryRecords(), now = () => new Date('2026-11-18T10:00:00Z') } = {}) {
+function setup({ withComputer = true, records = memoryRecords(), now = () => new Date('2026-11-18T10:00:00Z'), kept = versions(), core = 'id' } = {}) {
   let ids = 0
   const screen = createScreen({ records, newId: () => `v${++ids}` })
   const settings = createUserSettings(records, undefined, withComputer ? WORKSPACE : undefined)
   const timers = manualTimers()
   const { computer, files, trashed } = machine()
-  const kept = versions()
   const access = createAccess({
     settings,
     screen,
@@ -87,7 +86,7 @@ function setup({ withComputer = true, records = memoryRecords(), now = () => new
     records,
     versions: kept,
     now,
-    newId: () => `id${++ids}`
+    newId: () => `${core}${++ids}`
   })
   const events: Event[] = []
   access.onEvent((event) => events.push(event))
@@ -435,6 +434,128 @@ describe('the activity', () => {
     const later = setup({ records, now: () => clock })
     expect(later.access.activity(10).uses).toEqual([])
     expect(records.read([ACCESS_USE]).every((record) => record.payload === null)).toBe(true)
+  })
+})
+
+describe('the changes, reviewed as diffs', () => {
+  /** A change to a file, allowed and made: the file holds `after` once it is reported done. */
+  async function changed(context: ReturnType<typeof setup>, use: ComputerUse, after: string | Uint8Array) {
+    const verdict = await context.reach.approve(use, signal())
+    if (!verdict.allow || !verdict.use) throw new Error('The change is expected to go ahead.')
+    context.files.set(use.paths[0] ?? '', typeof after === 'string' ? text(after) : after)
+    context.reach.report?.(verdict.use, { ok: true })
+    await settle()
+    return verdict.use
+  }
+
+  it('keeps the version a change left, and the lines it added and removed', async () => {
+    const context = setup()
+    context.settings.setAccess({ approvals: 'trust' })
+    const path = `${WORKSPACE}/list.md`
+    context.files.set(path, text('a\nb\nc\n'))
+    const id = await changed(context, change, 'a\nB\nc\nd\n')
+    expect(context.kept.held.get('#a\nB\nc\nd\n')).toBeDefined()
+    expect(context.access.activity(1).uses[0]).toMatchObject({ id, turn: 'turn', changes: [{ path, status: 'changed', added: 2, removed: 1 }] })
+
+    // The diff stays what the change did, even once the file changed again.
+    context.files.set(path, text('something else entirely\n'))
+    const files = await context.access.diff({ use: id })
+    expect(files).toEqual([
+      {
+        path,
+        status: 'changed',
+        added: 2,
+        removed: 1,
+        hunks: [{ before: { start: 1, count: 3 }, after: { start: 1, count: 4 }, lines: [' a', '-b', '+B', ' c', '+d'] }],
+        lines: { before: 3, after: 4 }
+      }
+    ])
+  })
+
+  it('shows a file created whole, every line added', async () => {
+    const context = setup()
+    context.settings.setAccess({ approvals: 'auto' })
+    const id = await changed(context, create, 'one\ntwo\n')
+    expect(context.access.activity(1).uses[0]?.changes).toEqual([{ path: `${WORKSPACE}/list.md`, status: 'created', added: 2, removed: 0 }])
+    expect((await context.access.diff({ use: id }))?.[0]).toMatchObject({ status: 'created', hunks: [{ lines: ['+one', '+two'] }] })
+  })
+
+  it('shows a turn as one change: each file once, from before its first change to after its last', async () => {
+    const context = setup()
+    context.settings.setAccess({ approvals: 'trust' })
+    const path = `${WORKSPACE}/list.md`
+    context.files.set(path, text('a\n'))
+    await changed(context, change, 'a\nb\n')
+    await changed(context, change, 'a\nb\nc\n')
+    const [turn] = await context.access.changes(['turn', 'another'])
+    expect(turn?.uses).toHaveLength(2)
+    expect(turn?.files).toEqual([{ path, status: 'changed', added: 2, removed: 0 }])
+    expect((await context.access.diff({ turn: 'turn' }))?.map((file) => file.hunks[0]?.lines)).toEqual([[' a', '+b', '+c']])
+    // A turn that changed nothing is left out; an unknown use has no diff at all.
+    expect(await context.access.changes(['another'])).toEqual([])
+    expect(await context.access.diff({ use: 'nothing' })).toBeUndefined()
+  })
+
+  it('counts no lines of a file that is not text', async () => {
+    const context = setup()
+    context.settings.setAccess({ approvals: 'auto' })
+    const id = await changed(context, create, new Uint8Array([0x89, 0x50, 0x00, 0x01]))
+    expect(context.access.activity(1).uses[0]?.changes).toEqual([{ path: `${WORKSPACE}/list.md`, status: 'created', added: 0, removed: 0, binary: true }])
+    expect((await context.access.diff({ use: id }))?.[0]).toMatchObject({ binary: true, hunks: [] })
+  })
+
+  it('compares a change kept before versions were with the file as it is now, and says so', async () => {
+    const records = memoryRecords()
+    const path = `${WORKSPACE}/list.md`
+    // As a change was kept before: the version before it, and only a fingerprint of what it left.
+    records.append([
+      {
+        type: ACCESS_USE,
+        payload: {
+          id: 'old',
+          at: '2026-11-18T09:00:00.000Z',
+          tool: 'Edit',
+          action: 'change',
+          paths: [path],
+          decision: 'ran',
+          reason: 'level',
+          kept: [{ path, hash: '#x\n', size: 2 }]
+        }
+      },
+      { type: ACCESS_OUTCOME, payload: { use: 'old', ok: true, after: [{ path, fingerprint: '#y\n' }] } }
+    ])
+    const context = setup({ records })
+    context.kept.held.set('#x\n', text('x\n'))
+    context.files.set(path, text('x\nz\n'))
+    expect(context.access.activity(1).uses[0]?.changes).toBeUndefined()
+    expect((await context.access.diff({ use: 'old' }))?.[0]).toMatchObject({ now: true, added: 1, removed: 0, hunks: [{ lines: [' x', '+z'] }] })
+    // With nothing kept to compare, there is no diff, and it says so.
+    context.kept.held.clear()
+    expect((await context.access.diff({ use: 'old' }))?.[0]).toMatchObject({ missing: true, hunks: [] })
+  })
+
+  it('erases the versions a change left with it after 30 days, and keeps those a later change still needs', async () => {
+    let clock = new Date('2026-10-01T10:00:00Z')
+    const records = memoryRecords({ now: () => clock })
+    const kept = versions()
+    const path = `${WORKSPACE}/list.md`
+    const first = setup({ records, now: () => clock, kept })
+    first.settings.setAccess({ approvals: 'trust' })
+    first.files.set(path, text('old\n'))
+    await changed(first, change, 'shared\n')
+
+    clock = new Date(clock.getTime() + KEPT_MS - 60_000)
+    const second = setup({ records, now: () => clock, kept, core: 'second' })
+    second.files.set(path, text('shared\n'))
+    await changed(second, change, 'newer\n')
+    expect([...kept.held.keys()].sort()).toEqual(['#newer\n', '#old\n', '#shared\n'])
+
+    // Started again once the first change is older than 30 days: it goes, and the version only it kept with it.
+    clock = new Date(clock.getTime() + 120_000)
+    const again = setup({ records, now: () => clock, kept, core: 'again' })
+    expect(again.access.activity(10).uses).toHaveLength(1)
+    expect(records.read([ACCESS_OUTCOME]).filter((record) => record.payload !== null)).toHaveLength(1)
+    expect([...kept.held.keys()].sort()).toEqual(['#newer\n', '#shared\n'])
   })
 })
 

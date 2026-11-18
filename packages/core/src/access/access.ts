@@ -56,6 +56,10 @@ export interface AccessControl {
   activity(limit: number, before?: string): { uses: AccessUse[]; more: boolean }
   /** Undo a use: its files' previous versions put back, or the files it created moved to the trash. */
   undo(use: string, anyway: boolean): Promise<UndoResult>
+  /** What a use, or a whole turn, changed in each file, as diffs. Nothing when there is no such use. */
+  diff: Activity['diff']
+  /** What each turn given changed: its uses that changed files, and the files as it left them, counted. */
+  changes: Activity['changes']
   /**
    * Stop everything: every question waiting is withdrawn, the session's approvals are forgotten, and whoever
    * listens with `onStopEverything` stops too: the conversation's turns and threads, and what runs on its own.
@@ -207,15 +211,21 @@ export function createAccess({ settings, screen, computer, timers, records, vers
   /** A folder named for the person: the assistant's folder by that name, any other by its last part. */
   const folderName = (folder: string) => (computer && inside(folder, computer.workspace) ? "the assistant's folder" : parts(folder).name || folder)
 
+  /** Who made a use, as it is kept: the thread, and the turn it was answering. */
+  const madeBy = ({ thread, turn }: Showing): Pick<NewUse, 'thread' | 'turn'> => ({
+    ...(thread === undefined ? {} : { thread }),
+    ...(turn === undefined ? {} : { turn })
+  })
+
   /** Keep a use that was refused. */
   const refusal = (
     use: ComputerUse,
-    thread: string | undefined,
+    by: Pick<NewUse, 'thread' | 'turn'>,
     reading: CommandReading | undefined,
     decision: Pick<NewUse, 'decision' | 'reason' | 'detail'>
   ) =>
     activity.record({
-      ...(thread === undefined ? {} : { thread }),
+      ...by,
       tool: use.tool,
       action: use.action,
       ...(use.command === undefined ? {} : { command: use.command }),
@@ -226,11 +236,16 @@ export function createAccess({ settings, screen, computer, timers, records, vers
     })
 
   /** A use allowed: the versions of the files it changes are kept first, then it is recorded, and it may go. */
-  const allowed = async (use: ComputerUse, thread: string | undefined, reading: CommandReading | undefined, reason: NewUse['reason']): Promise<Verdict> => {
+  const allowed = async (
+    use: ComputerUse,
+    by: Pick<NewUse, 'thread' | 'turn'>,
+    reading: CommandReading | undefined,
+    reason: NewUse['reason']
+  ): Promise<Verdict> => {
     const changes = use.action === 'create' || use.action === 'change' || use.action === 'delete'
     const versions = changes ? await activity.keep(use.paths) : { kept: [], created: [] }
     const recorded = activity.record({
-      ...(thread === undefined ? {} : { thread }),
+      ...by,
       tool: use.tool,
       action: use.action,
       ...(use.command === undefined ? {} : { command: use.command }),
@@ -256,22 +271,22 @@ export function createAccess({ settings, screen, computer, timers, records, vers
       return {
         scope,
         async approve(use, signal): Promise<Verdict> {
-          const thread = showing().thread
+          const by = madeBy(showing())
           if (use.refused) {
-            refusal(use, thread, undefined, { decision: 'refused', reason: use.refused.why, detail: use.refused.reason })
+            refusal(use, by, undefined, { decision: 'refused', reason: use.refused.why, detail: use.refused.reason })
             return { allow: false, reason: use.refused.reason }
           }
           const reading = use.action === 'run' ? readCommand(use.command ?? '', use.shell ?? 'posix') : undefined
           const decision = decide(use, access().approvals, reading, allowances.covers(use, reading))
-          if (decision.run) return allowed(use, thread, reading, decision.because)
+          if (decision.run) return allowed(use, by, reading, decision.because)
 
           const answered: Answered = await approvals.ask(question(use, reading, decision.session), showing(), signal)
           const { answer } = answered
           if (answer === 'yes' || answer === 'session') {
             if (answer === 'session' && decision.session) allowances.allow(use, reading)
-            return allowed(use, thread, reading, answered.pressed ? 'pressed' : 'said')
+            return allowed(use, by, reading, answered.pressed ? 'pressed' : 'said')
           }
-          refusal(use, thread, reading, { decision: 'refused', reason: REASON_OF[answer], detail: REFUSED[answer] })
+          refusal(use, by, reading, { decision: 'refused', reason: REASON_OF[answer], detail: REFUSED[answer] })
           return { allow: false, reason: REFUSED[answer] }
         },
         report: (use, outcome) => void activity.outcome(use, outcome)
@@ -404,6 +419,10 @@ export function createAccess({ settings, screen, computer, timers, records, vers
     activity: (limit, before) => activity.read(limit, before),
 
     undo: (use, anyway) => activity.undo(use, anyway),
+
+    diff: (of) => activity.diff(of),
+
+    changes: (turns) => activity.changes(turns),
 
     stopEverything,
 

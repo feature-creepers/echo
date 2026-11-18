@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { allowanceSchema, protectedPlaceSchema } from '../access.ts'
-import { accessUseSchema, useIdSchema } from '../activity.ts'
+import { accessUseSchema, fileChangeSchema, fileDiffSchema, useIdSchema } from '../activity.ts'
+import { turnIdSchema } from '../conversation.ts'
 
 const standingOutput = z.object({ allowances: z.array(allowanceSchema), protected: z.array(protectedPlaceSchema) })
 
@@ -30,6 +31,27 @@ export const accessCommands = {
   'activity.undo': {
     input: z.object({ use: useIdSchema, anyway: z.boolean().default(false) }),
     output: z.object({ outcome: z.enum(['done', 'changed', 'gone']), use: accessUseSchema.optional() })
+  },
+
+  /**
+   * What a use changed, file by file, as diffs: the version kept before it against the version it left. With a
+   * turn instead, what every use of that turn changed, each file once, from before the first change to it to after
+   * the last. A use that changed no file has none.
+   */
+  'activity.diff': {
+    input: z.union([z.object({ use: useIdSchema }), z.object({ turn: turnIdSchema })]),
+    output: z.object({ files: z.array(fileDiffSchema) })
+  },
+
+  /**
+   * What each turn given changed on the computer: its uses that created, changed or deleted a file, and the files
+   * as the turn left them, each once, with the lines it added and removed in all.
+   */
+  'activity.changes': {
+    input: z.object({ turns: z.array(turnIdSchema).max(50) }),
+    output: z.object({
+      turns: z.array(z.object({ turn: turnIdSchema, uses: z.array(accessUseSchema), files: z.array(fileChangeSchema) }))
+    })
   },
 
   /**

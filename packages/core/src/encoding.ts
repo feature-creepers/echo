@@ -8,6 +8,8 @@ declare global {
   }
 
   class TextDecoder {
+    /** `fatal` throws on bytes that are not of the encoding, instead of putting a replacement character in. */
+    constructor(label?: string, options?: { fatal?: boolean; ignoreBOM?: boolean })
     decode(bytes: Uint8Array): string
   }
 }
