@@ -361,6 +361,8 @@ The order is held by the instructions, by a reminder at the end of each request,
 
 When a thread finishes while another is in focus, its result does not interrupt. A "ready" chip appears under the caption, in the centre column, with a soft sound. The assistant mentions it at the next pause ("Your recipe is ready, by the way"), or the user asks for it. This is a setting: mention, chip only, or speak at once.
 
+**A notification says it too**, for a person who is not looking (`device.notify`, section 12.1): when an answer finishes in the background, when a scheduled task is answered, and when an answer took more than twenty seconds, which is how "tell me when it's done" works once the person has turned to another app. Each carries the thread's title and the start of what was said, and is shown only while the app's window is hidden, minimised or not in front; pressed, it brings the window forward. Built and verified in the built app: a recipe finished while another question was answered, the window hidden, and its notification went out. The mention at the next pause and the setting are not built yet.
+
 ### 7.5 Asides
 
 An aside is a question that does not change the topic: "By the way, what time is it in Montreal?"
@@ -398,11 +400,62 @@ An aside is a question that does not change the topic: "By the way, what time is
 
 ### 7.8 Proactive turns
 
-The assistant can start a turn itself: the briefing at launch or on greeting, a reminder, a background result. Each is a thread opened by a trigger (time, app start, greeting, thread finished) rather than by an utterance. The proof of concept's briefing and daily news become two such triggers.
+The assistant can start a turn itself: the briefing at launch or on greeting, a reminder, a scheduled task, a background result. Each is started by a trigger (time, app start, greeting, thread finished) rather than by an utterance, and the line of the transcript says which (`trigger` on the exchange: `greeting`, `reminder`, `task`), so the transcript and the threads label it "Briefing", "Reminder" or "Scheduled" where they would say "You". The proof of concept's briefing and daily news become two such triggers.
+
+As built:
+
+- **The briefing** is a turn the orchestrator answers when the window opens, at most every six hours.
+- **A reminder** is a turn with nothing to work out: its sentence was written when it was set, so it is said at once through the same voice and caption as any answer, in the persona's voice, with no model asked. A card in the stream shows what it is about and when it was due.
+- **A scheduled task** is a turn whose request the orchestrator hears as if the person had just said it, told that it is scheduled and that the person may be away. It routes it like any other.
+- **They wait their turn.** What the assistant starts itself waits while the person is being answered, looking again every second, and its sentences are queued after what is being said rather than cutting it; a turn the person starts still cuts everything. A reminder said by itself does not wake an assistant asleep at its memory's work (section 10.6).
+- **A background result** is the "ready" chip and its notification (section 7.4); its mention at the next pause is not built yet.
 
 ### 7.9 Routing cost
 
 Every utterance passes through the orchestrator, so work that goes to a thread costs two model calls: the routing, then the answer. Direct answers cost one. If measurement shows the routing step is too slow for a user who stays on one task, the fallback is sticky focus: utterances go straight to the thread in focus, which hands back to the orchestrator when the subject is not its own. Version 1 keeps the simple path, and the first build step measures it.
+
+### 7.10 Reminders and scheduled tasks
+
+The person asks for something later, and it happens at its time: "remind me at 8 to feed the cat", "every weekday at 7:30, tell me the weather in Lyon", "in ten minutes, check the oven". The core keeps these jobs (`packages/core/src/schedule/`), and the desktop rings them.
+
+**Two kinds.** A reminder says a sentence the assistant wrote when it was set, short and in the language of the conversation ("It's eight: time to feed the cat."), with a title for the list and the notification ("Feed the cat"). A task carries out a request, as if the person had just asked it ("Give me the weather in Lyon.").
+
+**Timing.** Always on the person's clock, in their time zone, which is the zone of the machine the core runs on (`timeZone` in the core's options, for a hosted core later):
+
+| Kind     | Rings                                            | Given as                 |
+| -------- | ------------------------------------------------ | ------------------------ |
+| Once     | At a local date and time, or in a few minutes    | `at`, or `inMinutes`     |
+| Daily    | Every day at a time                              | `time`                   |
+| Weekdays | Monday to Friday at a time                       | `time`                   |
+| Weekly   | On the days named, at a time                     | `time`, `days`           |
+| Monthly  | On a day of the month; a shorter month, its last | `time`, `day` (1 to 31)  |
+| Hourly   | Every 1 to 12 hours, between two times of a day  | `every`, `from`, `until` |
+
+8:00 stays 8:00 when the clocks change. A time the clocks skip when they go forward rings that long after (2:30 on the night 2:00 becomes 3:00 rings at 3:30); a time shown twice when they go back rings the first time, as phones' alarms do. Each instant is worked out with the place's own `Intl`, which knows every zone's rules; the core needs no library for it. The core refuses, with a reason the model relays or corrects: a day that does not exist, a moment past, more than five years ahead, less than an hour between hourly times, more than a hundred jobs waiting.
+
+**Tools.** `schedule_create`, `schedule_list`, `schedule_update` (words, timing, pause and resume) and `schedule_cancel` (by its id, or by what it is about; when several could be meant, the model is given them to choose or ask). Both the orchestrator and every thread have them: the orchestrator sets a reminder itself, since it needs no screen and no research, and answers in one model call; a thread working on a topic can set one too ("remind me to take the risotto off in 20 minutes"). Their instructions say to set one only when asked, to confirm it in one short sentence ("Okay, 8:00 tomorrow: feed the cat."), to ask when the time could mean two things (morning or evening, which day), and that a task runs while the person may be away: its approvals wait as usual (section 12.2), and unanswered count as no.
+
+**Records.** Each version of a job is a `schedule.job` record carrying all of it; each time it rings, a `schedule.rang` record says which time it rang for; the quiet hours are `schedule.quiet-set`, and pausing everything is `schedule.held`. They are read back at start. Deleting a job erases its records (section 10.3).
+
+**Ringing.** The scheduler never trusts one long timer: a timer counts time only while the machine is awake, so it looks at the clock at least once a minute and rings what is due. Nothing rings before a client has sent its first command, so a reminder due at launch is said to a window that hears it. When the app was not running at a job's time:
+
+- a one-time reminder or task missed by less than twelve hours rings at start, worded as late, since the job carries its time and its title: "You asked me to remind you at 8:00: Feed the cat." The lead-in is written in English, French, Spanish, German, Italian, Portuguese and Dutch, and in English for other languages;
+- one missed by twelve hours or more is marked missed;
+- a recurring job does not replay the times it missed, and rings at its next one. A time missed by up to two minutes still counts as on time.
+
+**What the person gets.** A reminder: a notification at once, then, at the next pause, the sentence said and a card on top of the stream (section 7.8). A task: a turn marked as scheduled, its answer said and shown, and a notification when the window is not in front.
+
+**Quiet hours.** From 23:00 to 07:30 by default, kept by the core and changed on the Reminders page. During them a reminder only shows a silent notification and its card, and is not said; a task runs, and its answer is shown and not said; notifications are silent.
+
+**Pausing everything.** `schedule.hold` pauses every job at once and resumes them, and stays as it is after a restart. While held nothing rings; once resumed, a one-time job due less than twelve hours ago rings late and the others carry on from their next time. It is the scheduler's part of "stop everything"; the Reminders page shows it, with a button to resume.
+
+**The Reminders page.** In the settings: the jobs to come, the next first, each with its time and day, its title, its kind, how often in plain words, and what it says or does, a switch to pause it and a button to delete it; the past and missed ones folded under them; the quiet hours; and, for the desktop, the two settings that let reminders ring while the window is closed (keep running in the tray, open at login). It follows the core, so a reminder set by voice appears at once.
+
+**With the window closed.** Closing the window leaves the app in the tray by default (section 8.3), where reminders still ring. With closing set to quit, nothing rings until the app is opened again, and a missed reminder then rings late within twelve hours; opening at login keeps them ringing after the computer restarts. The page says so beside the two switches.
+
+**Verified** in the built app on Linux with the real Claude Code: "remind me in two minutes to stretch" was set by the orchestrator in one call and confirmed in one sentence; the app was restarted before it was due and it rang at its second (silently, being in the quiet hours of that clock); with the quiet hours off, a reminder was said, its card shown and its notification shown; "every weekday at 7:30, tell me the weather in Lyon" was set as a task; "remind me at 8 to feed the cat", said at 2:43 at night, was met with "morning or evening?"; "cancel the cat reminder" cancelled it; a task set a minute ahead ran as a scheduled turn and answered aloud with a view; a reminder due while the app was closed rang when it was opened again, worded as late, and the views already in the stream stayed there (a view arriving while the window first reads the screen used to replace what the read brought back). **Not verified:** notifications on Windows and macOS (this Linux machine has no notification service; the desktop's handling was checked by standing one in); a Windows toast needs the app's identity, which the installer gives its shortcut, so a copy run from the sources may show none; macOS may show none until the app is signed (section 14.7).
+
+**Not built yet:** triggers other than time (a file changed, a download finished, mail arrived), a cap on how often the assistant may interrupt, snoozing a reminder from its card or its notification, and editing a job's words or timing on the page (they are changed by asking).
 
 ## 8. Voice and audio
 
@@ -449,7 +502,9 @@ Apple's recogniser is not used: the same local engines run on every system, so t
 
 Global shortcuts, hold to talk, reading the selection and writing at the cursor exist in Speak for all three systems, and are taken from there. One limit carries over: under Wayland on Linux, an app cannot register global shortcuts or drive other windows. Speak's answer is command-line flags the user binds to desktop shortcuts, and an X11 session for control of other apps. Echo takes the first part: started with `--talk` while it runs, it comes forward and listens.
 
-The app waits in the system tray (the menu bar on macOS): closing the window leaves it there, ready for its shortcut, unless the user sets closing to quit. It can open at login, out of sight (`--hidden`), and start in the background.
+The app waits in the system tray (the menu bar on macOS): closing the window leaves it there, ready for its shortcut, unless the user sets closing to quit. It can open at login, out of sight (`--hidden`), and start in the background. Reminders ring only while the app runs, in the tray too (section 7.10).
+
+**Notifications** (`device.notify`) are the system's own, shown by the desktop's main process with Electron's `Notification` and the app's icon; pressing one shows and focuses the window. The desktop declares the `notify` capability, and the core sends each one as an event that a device without it ignores. One meant for when the person is not looking is left out while the window is in front.
 
 ### 8.4 Output
 
@@ -763,7 +818,8 @@ The harness calls tools served by the core over MCP on the loopback address with
 | `device.system`               | Machine readings, time zone, place                | The device                                   | Any session       |
 | `device.cursor`               | The selection, and writing at the cursor          | A desktop                                    | Threads           |
 | `device.screen`               | See and operate other apps (Speak's control mode) | A desktop, later                             | Threads           |
-| `device.notify`               | Notifications                                     | The device                                   | Triggers          |
+| `schedule`                    | Set, list, change and cancel reminders and tasks  | Core                                         | Any session       |
+| `device.notify`               | Notifications: reminders, answers out of sight    | The device, with the system's own            | The core          |
 
 Services such as the calendar are reached through our own tools, so they work on every harness. The proof of concept's route, the claude.ai connector, works with Claude Code only.
 
@@ -1006,6 +1062,7 @@ packages/protocol/src/
 │   ├── settings.ts         read the settings; name the personas and pick the one that answers
 │   ├── memory.ts           read what is known, correct or forget a fact, choose when it sleeps, sleep now
 │   ├── library.ts          read the library; save a view, rename, file, pin, delete, show a saved widget
+│   ├── schedule.ts         read the reminders and tasks; pause, delete; the quiet hours; pause everything
 │   ├── utterance.ts        something said or typed: text, or audio frames
 │   ├── action.ts           a semantic action from a view
 │   ├── control.ts          stop, focus
@@ -1015,6 +1072,7 @@ packages/protocol/src/
 │   ├── settings.ts         the settings changed
 │   ├── memory.ts           what is known changed; the assistant fell asleep, woke, or went further in its work
 │   ├── library.ts          the library changed
+│   ├── schedule.ts         the reminders and tasks changed; show a notification (`device.notify`)
 │   ├── turn.ts             turn started, ended, failed
 │   ├── speech.ts           say this text, play this audio, stop
 │   ├── view.ts             render, patch, clear, and the slot
@@ -1025,6 +1083,7 @@ packages/protocol/src/
 ├── settings.ts             the user's settings as a client sees them
 ├── memory.ts               facts, their kinds and sources, the sleep setting, and whether the assistant is asleep
 ├── library.ts              saved widgets and the library as a client shows it
+├── schedule.ts             reminders and tasks, their timing and its plain words, the quiet hours, a notification
 ├── device/                 the core asks a device, the device answers
 │   ├── request.ts
 │   └── files.ts  media.ts  system.ts  cursor.ts  screen.ts  notify.ts
@@ -1115,6 +1174,7 @@ packages/core/src/
 │   ├── instructions.ts     what a stance adds to a session's instructions
 │   └── objection.ts        concern, decision, recorded override
 ├── settings/               the user's settings: the defaults, then every choice recorded, in order
+├── schedule/               reminders and scheduled tasks: records, timing on the person's clock, ringing, quiet hours, their tools
 ├── triggers/               turns the assistant starts: time, launch, greeting, thread finished
 ├── files/                  each thread's files and their versions
 ├── access/                 what the assistant may reach on the computer, approval cards answered by click or voice, computer_grant
@@ -1233,6 +1293,7 @@ packages/ui-web/src/
 ├── onboarding/             first launch
 ├── settings/               the user's settings
 ├── memory/                 the Memory section: the sleep and its setting, the profile, the facts to edit or forget, the export
+├── schedule/               the Reminders section: the jobs to come and past, pause and delete, the quiet hours
 ├── personas/               the form that names the personas, their mark, and the words written for each stance
 ├── inspector/              threads, events, memory, usage
 ├── styles/                 global styles
@@ -1278,7 +1339,7 @@ apps/desktop/
 │   │   ├── windows.ts      (later: Mini and the pill)
 │   │   └── capabilities/   what this device offers the core
 │   │       ├── speech.ts   local recognisers and voices
-│   │       ├── files.ts  media.ts  system.ts  notify.ts
+│   │       ├── files.ts  media.ts  system.ts  notify.ts   (notify is notifications.ts, beside index.ts, for now)
 │   │       ├── cursor/     the selection and writing at the cursor, per system
 │   │       └── screen/     seeing and operating other apps, per system (later, from Speak)
 │   ├── preload/            the typed bridge to the renderer
@@ -1344,12 +1405,13 @@ Built, and checked against the real Claude Code on 17 November 2026:
 - **Maps.** RegionMap and PlaceMap (section 9.6), checked by the core against the shapes they name, and offered by the assistant whenever they fit. Verified with the real Claude Code: the 2022 first round by department, with every figure matching the official results; the five largest cities of Japan; three landmarks of Paris on a street map.
 - **Access to the computer.** Its own folder by default, folders and files granted in settings or by voice, the whole computer with a warning, and approvals by card or by voice (section 12.2). Verified with the real Claude Code: a folder given by voice, its files read and summed up in the same turn; a file created in the assistant's folder after "Create it" was pressed; a read outside the scope refused by the adapter with its reason; a change in a read-only folder not made; a command asked even when changes were trusted, and run after a spoken yes.
 - **Files, web and briefing.** Documents written as versioned files, previewed with a download button; web search and page reading through the harness's own tools; a greeting and briefing when the app opens.
+- **Reminders and scheduled tasks.** Set by voice, once or recurring, on the person's clock; said, shown as a card and notified at their time, after a restart too; tasks run as scheduled turns; quiet hours; a Reminders page (section 7.10). Notifications for answers finished out of sight (section 7.4).
 - **Settings.** In two groups that say where each is kept. This computer: opening at login, starting in the background, the tray, the data folder; the voice models, each personality's voice, speaking aloud or not, the pace and the speakers; the microphone with a live level, how a pause ends listening, the sounds; the three shortcuts, recorded by pressing them, each cleared with a cross. The assistant (kept by the core): personalities, the model each AI program answers with and the one preferred, picked from pop-up buttons whose lists say what each model is good for, memory and when it sleeps. Then updates and about. What the assistant may reach and what it thinks with are also changed from the menus of the row under the composer; verified in the built app with the real Claude Code: a model picked there answered the next question (a Sonnet session opened for the topic), and with a stand-in for Codex on the path, Codex picked there answered the next question.
 - **Packaging and updates.** Windows, macOS and Linux packages, made in CI on each system and downloadable from the run's page; a Windows package can also be made on Linux. A tag publishes them, with update manifests, as a draft GitHub release, which installed copies update from once published (checked with a local feed and a packaged Linux build, not yet with a real release).
 
 Three checks guard the rules of this section: the compiler presets (code that must run anywhere cannot name a Node or DOM API, and a package's internal files cannot be imported from outside), the table in `biome.jsonc` (a forbidden import fails), and pnpm (a package cannot import what its `package.json` does not declare).
 
-Not built yet: vector search and thread summaries (section 10), approvals for sending, paying and deleting for good (section 12.2), proactive turns other than the briefing (section 7.8), live data feeds for figures (section 9.4), asides leaving by themselves (section 7.5), the phone app and the paid service. Nothing is signed yet.
+Not built yet: vector search and thread summaries (section 10), approvals for sending, paying and deleting for good (section 12.2), triggers other than time and launch (section 7.10), live data feeds for figures (section 9.4), asides leaving by themselves (section 7.5), the phone app and the paid service. Nothing is signed yet.
 
 ## 15. Decisions
 
