@@ -16,7 +16,7 @@ import {
 import { z } from 'zod'
 import { attachmentsFor, type Handed, handedAny, NOTHING_HANDED, noteForOrchestrator, noteForThread } from '../attachments/framing.ts'
 import type { EngineRoom } from '../engines/engines.ts'
-import type { Harness, Reach, Scope, Session, SessionEvent } from '../ports/harness.ts'
+import type { Harness, HarnessComputer, Reach, Scope, Session, SessionEvent } from '../ports/harness.ts'
 import type { Log } from '../ports/log.ts'
 import type { Records } from '../ports/records.ts'
 import type { ToolResult } from '../ports/tools.ts'
@@ -102,7 +102,7 @@ export interface Abilities {
    * open (the person chose another approval level), the session is told the new one with its next message instead
    * of being opened again, so work under way keeps its context.
    */
-  told?(): string | undefined
+  told?(tools?: HarnessComputer): string | undefined
   /**
    * Have a folder for a project's thread to work in, asking the person on screen, where `showing` says, when it is
    * not theirs to change yet. Gives back the folder as the system names it, or why not.
@@ -579,7 +579,7 @@ export function createChannel(options: ChannelOptions): Channel {
     end(runtime.live)
     runtime.live = undefined
     const kind = thread?.kind ?? 'topic'
-    const told = abilities?.told?.()
+    const told = abilities?.told?.(await engine.computer?.())
     // A project's thread is given what the project tells those who work in it, and what it did there so far.
     const project = folder ? { folder, guide: await abilities?.guide?.(folder), worked: abilities?.worked?.(runtime.thread, folder) } : undefined
     const showing = (): Showing => ({
@@ -713,7 +713,7 @@ export function createChannel(options: ChannelOptions): Channel {
       return void next(runtime)
     }
     // A session kept open is told what changed of what it may do on the computer, rather than opened again.
-    const told = abilities?.told?.()
+    const told = abilities?.told?.(await engine.computer?.())
     const changed =
       runtime.live === live && live !== undefined && live.told !== told
         ? `(What you may do on the computer changed since your instructions were written. It now stands as follows, in place of what they said:)\n${told ?? 'You have no access to the computer.'}\n\n`

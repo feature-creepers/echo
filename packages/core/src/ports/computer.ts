@@ -16,11 +16,6 @@ export interface Computer {
   /** Places never reached on this computer, whatever is granted (docs/SPEC.md, section 12.2). */
   protected: readonly ProtectedPath[]
   /**
-   * Whether the system holds a command to what was granted as well, whatever paths a program works out once it runs:
-   * a sandbox in which it may change only the places that may be changed, and never read a place never reached.
-   */
-  confines?: boolean | undefined
-  /**
    * A file's content: to keep its version before it is changed, or a project's instructions. Nothing when there is
    * no file there; `too-large` beyond `limit` bytes.
    */

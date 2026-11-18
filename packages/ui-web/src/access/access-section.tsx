@@ -100,7 +100,9 @@ export function AccessSection({ client, settings, productName }: { client: Clien
     const known = new Set(access.places.map((place) => place.path))
     setPlaces([...access.places, ...picked.filter((path) => !known.has(path)).map((path) => ({ path, kind, write: false }))])
   }
-  const codex = engines?.active === 'codex'
+  // The program the assistant runs on, when its sandbox cannot keep its reading to the places granted on this computer.
+  const running = engines?.harnesses.find((harness) => harness.id === engines.active)
+  const unheld = running?.files?.needs === 'computer' ? running : undefined
 
   return (
     <div className="grid gap-10">
@@ -327,10 +329,10 @@ export function AccessSection({ client, settings, productName }: { client: Clien
         )}
       </SettingGroup>
 
-      {(problem || codex) && (
+      {(problem || unheld) && (
         <p role={problem ? 'alert' : undefined} className={cn('text-xs leading-relaxed', problem ? 'text-danger' : 'text-text-soft')}>
           {problem ??
-            'Codex cannot keep its reading to chosen folders: with Codex, files are within reach only when it may read the whole computer. Its changes stay within the folders you allow.'}
+            `${unheld?.name} cannot keep its reading to chosen folders on this computer: with it, files are within reach only when it may read the whole computer. Its changes stay within the folders you allow.`}
         </p>
       )}
     </div>

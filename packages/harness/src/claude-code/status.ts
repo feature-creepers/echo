@@ -33,7 +33,14 @@ export async function status(cli: Cli): Promise<HarnessStatus> {
     const options = { env: launch.env, timeoutMs: STATUS_TIMEOUT_MS }
     const version = readVersion((await run(launch.command, ['--version'], options)).stdout)
     const account = readAccount((await run(launch.command, ['auth', 'status', '--json'], options)).stdout)
-    if (!account) return { installed: true, signedIn: false, ...(version ? { version } : {}), problem: 'Claude Code did not say whether it is signed in.' }
+    if (!account)
+      return {
+        installed: true,
+        signedIn: false,
+        ...(version ? { version } : {}),
+        problem: 'Claude Code did not say whether it is signed in.',
+        unanswered: true
+      }
     return {
       installed: true,
       ...account,
@@ -44,7 +51,8 @@ export async function status(cli: Cli): Promise<HarnessStatus> {
     return {
       installed: true,
       signedIn: false,
-      problem: `Claude Code could not be asked for its status: ${error instanceof Error ? error.message : String(error)}`
+      problem: `Claude Code could not be asked for its status: ${error instanceof Error ? error.message : String(error)}`,
+      unanswered: true
     }
   }
 }

@@ -3,14 +3,15 @@ import { mkdir } from 'node:fs/promises'
 import type { Attachment, ComputerUse, Log, Role, Session, SessionRequest } from '@repo/core'
 import { absolute } from '../computer/paths.ts'
 import { checkUse } from '../computer/scope.ts'
-import { type Cli, NotInstalled } from '../process/cli.ts'
+import { system } from '../computer/system/index.ts'
+import { type Cli, type Launch, NotInstalled } from '../process/cli.ts'
 import { createSessionEvents } from '../process/events.ts'
 import { asArray, asObject, asString, type JsonObject } from '../process/json.ts'
 import { readJsonLines, writeJsonLine } from '../process/json-lines.ts'
 import { KEPT_OUTPUT, lastLines, saysSignedOut } from '../process/output.ts'
 import { platform } from '../process/platform/index.ts'
 import { start } from '../process/run.ts'
-import { appServerArguments, shellAllowed, TOOL_SERVER, threadSettings, userToolServers } from './isolation.ts'
+import { appServerArguments, type Holding, heldAsAsked, shellAllowed, TOOL_SERVER, threadSettings, userToolServers, workingFolder } from './isolation.ts'
 import { codexHome, codexModels } from './models.ts'
 import { SIGNED_OUT } from './status.ts'
 
@@ -21,7 +22,13 @@ export interface SessionContext {
   /** The models the user chose, by role. */
   models: Partial<Record<Role, string>>
   log: Log
+  /** How this computer's sandbox holds commands, found once for the adapter. */
+  holding(launch: Launch): Promise<Holding>
 }
+
+/** Why a session that would have run unconfined was not started, in words for the person. */
+export const NOT_HELD =
+  "Codex would not hold its commands to what you granted: a sandbox_mode in your own Codex settings puts it on its older sandbox. Remove it from Codex's config.toml, or use Claude Code."
 
 /** How long Codex has to stop by itself once its input is closed, before it is stopped. */
 const CLOSE_GRACE_MS = 1500
@@ -81,7 +88,10 @@ export function openSession(request: SessionRequest, context: SessionContext): S
   /** Uses of the computer allowed, by the item that makes them: how each went is told to the core once it completes. */
   const allowedUses = new Map<string, string>()
   const scope = request.computer?.scope()
-  const shell = shellAllowed(scope)
+  /** Whether the session has the command line: known once the sandbox of this computer is. */
+  let shell = false
+  /** The folder its commands run in, and that the files it changes are named from. */
+  let base = context.folder
 
   let lastCall = 0
   const calls = new Map<number, { resolve(result: unknown): void; reject(error: Error): void }>()
@@ -99,8 +109,19 @@ export function openSession(request: SessionRequest, context: SessionContext): S
     try {
       const launch = await context.cli.launch()
       const home = codexHome(launch.env)
-      const [models, userServers] = await Promise.all([codexModels(home, context.models), userToolServers(home), mkdir(context.folder, { recursive: true })])
+      const [models, userServers, holding] = await Promise.all([
+        codexModels(home, context.models),
+        userToolServers(home),
+        scope ? context.holding(launch) : ('writes' as const),
+        mkdir(context.folder, { recursive: true })
+      ])
       if (closed) return
+      shell = shellAllowed(scope, holding)
+      const profiled = shell && holding === 'granted'
+      if (shell && scope) base = workingFolder(scope, { folder: context.folder, project: request.folder, profiled })
+      // What a command reads to run the person's programs and writes on its own, and the adapter's folder it never reaches.
+      const where = { home: platform.home(launch.env), env: launch.env }
+      const confinement = { never: [context.folder], caches: system.caches(where), programs: system.programs(where) }
       const running = start(launch.command, appServerArguments(userServers, shell), { cwd: context.folder, env: launch.env })
       child = running
       running.stderr?.setEncoding('utf8').on('data', (chunk: string) => {
@@ -122,11 +143,17 @@ export function openSession(request: SessionRequest, context: SessionContext): S
           effort: request.effort,
           instructions: request.instructions,
           tools: request.tools,
-          scope: shell ? scope : undefined
+          scope: shell ? scope : undefined,
+          holding: !shell ? undefined : profiled ? { kind: 'granted', confinement } : { kind: 'writes' }
         })
       )
       thread = asString(asObject(asObject(opened)?.thread)?.id) ?? ''
       if (thread === '') throw new Error('it did not open a conversation.')
+      // A conversation asked to hold its commands that reports no sandbox would run them unconfined: it is not used.
+      if (profiled && scope && !heldAsAsked(asObject(opened)?.sandbox, scope)) {
+        log.error(`Codex opened a conversation without the sandbox asked for: ${JSON.stringify(asObject(opened)?.sandbox ?? null)}`)
+        return fail(NOT_HELD)
+      }
     } catch (error) {
       fail(error instanceof NotInstalled ? error.message : problem('Codex could not start the session', error instanceof Error ? error.message : String(error)))
     }
@@ -248,7 +275,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
    * core decides for itself when the call arrives, and any other server's are declined.
    */
   function answer(method: string, params: JsonObject): Reply | Promise<Reply> {
-    const folder = asString(params.cwd) ?? (shell && scope?.home ? scope.home : context.folder)
+    const folder = asString(params.cwd) ?? base
     switch (method) {
       case 'item/commandExecution/requestApproval':
         return decide({ action: 'run', tool: 'shell', paths: [folder], command: commandLine(params.command) }, asString(params.itemId)).then((yes) => ({
@@ -305,7 +332,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
 
   /** The folder a change names its files from. */
   function filesBase(): string {
-    return shell && scope?.home ? scope.home : context.folder
+    return base
   }
 
   function withdraw(): void {

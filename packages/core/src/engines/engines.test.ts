@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
+import type { HarnessStatus } from '../ports/harness.ts'
+import { manualTimers } from '../replay/manual-timers.ts'
 import { scriptedHarness } from '../replay/scripted-harness.ts'
-import { createEngineRoom } from './engines.ts'
+import { createEngineRoom, FRESH_MS, RETRIES_MS } from './engines.ts'
+
+/** Let the looks a timer started run to their end. */
+const settled = async () => {
+  for (let turn = 0; turn < 10; turn++) await Promise.resolve()
+}
 
 describe('the engine room', () => {
   it('runs on the first harness that is installed and signed in', async () => {
@@ -64,6 +71,118 @@ describe('the engine room', () => {
         model: 'quick'
       }
     ])
+  })
+
+  it('never looks at one harness twice at once: a look asked for while one is under way waits for it', async () => {
+    const harness = scriptedHarness()
+    let answer: (status: HarnessStatus) => void = () => undefined
+    const status = vi.spyOn(harness, 'status').mockImplementation(() => new Promise((resolve) => (answer = resolve)))
+    const room = createEngineRoom([harness])
+
+    const starting = room.active()
+    const refreshing = room.read(true)
+    for (let turn = 0; turn < 5; turn++) await Promise.resolve()
+    answer({ installed: true, signedIn: true })
+
+    expect((await refreshing).active).toBe('scripted')
+    expect((await starting)?.id).toBe('scripted')
+    expect(status).toHaveBeenCalledOnce()
+  })
+
+  it('looks again at a harness that gave no answer before running on another, and keeps it when it answers', async () => {
+    const preferred = scriptedHarness({ id: 'preferred' })
+    const other = scriptedHarness({ id: 'other' })
+    vi.spyOn(preferred, 'status')
+      .mockResolvedValueOnce({ installed: true, signedIn: false, problem: 'It did not finish within 15 seconds.', unanswered: true })
+      .mockResolvedValue({ installed: true, signedIn: true })
+    const room = createEngineRoom([preferred, other], { preferred: () => 'preferred', model: () => undefined, effort: () => undefined })
+
+    expect((await room.active())?.id).toBe('preferred')
+    expect((await room.read()).active).toBe('preferred')
+  })
+
+  it('runs on another at once when the one it would rather run on answered that it cannot be used', async () => {
+    const signedOut = scriptedHarness({ id: 'signed-out', status: { installed: true, signedIn: false, problem: 'Not signed in.' } })
+    const status = vi.spyOn(signedOut, 'status')
+    const ready = scriptedHarness({ id: 'ready' })
+    const room = createEngineRoom([signedOut, ready])
+
+    expect((await room.active())?.id).toBe('ready')
+    expect((await room.active())?.id).toBe('ready')
+    expect(status).toHaveBeenCalledOnce()
+  })
+
+  it('looks again at one it would rather run on once its look is old: the person may have signed in since', async () => {
+    let time = 0
+    const first = scriptedHarness({ id: 'first', status: { installed: true, signedIn: false, problem: 'Not signed in.' } })
+    const second = scriptedHarness({ id: 'second' })
+    const room = createEngineRoom([first, second], undefined, { now: () => time })
+
+    expect((await room.active())?.id).toBe('second')
+    first.stand({ installed: true, signedIn: true })
+    time += FRESH_MS - 1
+    expect((await room.active())?.id).toBe('second')
+    time += 2
+    expect((await room.active())?.id).toBe('first')
+  })
+
+  it('asks a harness that gave no answer again on its own, a while later, and tells its listeners when it comes back', async () => {
+    const timers = manualTimers()
+    const slow = scriptedHarness({ id: 'slow' })
+    const status = vi
+      .spyOn(slow, 'status')
+      .mockResolvedValue({ installed: true, signedIn: false, problem: 'It did not finish within 15 seconds.', unanswered: true })
+    const room = createEngineRoom([slow], undefined, { timers })
+    const heard = vi.fn()
+    room.onChange(heard)
+
+    expect((await room.read()).active).toBeUndefined()
+    expect(timers.next()).toBe(RETRIES_MS[0])
+    timers.advance(RETRIES_MS[0])
+    await settled()
+    expect(status).toHaveBeenCalledTimes(2)
+
+    status.mockResolvedValue({ installed: true, signedIn: true })
+    timers.advance(RETRIES_MS[1])
+    await settled()
+    expect(heard).toHaveBeenLastCalledWith(expect.objectContaining({ active: 'slow' }))
+    // Once it answered, it is left alone.
+    expect(timers.next()).toBeUndefined()
+  })
+
+  it('gives up asking on its own after the last wait, and stops when closed', async () => {
+    const timers = manualTimers()
+    const slow = scriptedHarness({ id: 'slow' })
+    const status = vi.spyOn(slow, 'status').mockRejectedValue(new Error('It could not start.'))
+    const room = createEngineRoom([slow], undefined, { timers })
+
+    await room.read()
+    for (const wait of RETRIES_MS) {
+      timers.advance(wait)
+      await settled()
+    }
+    expect(status).toHaveBeenCalledTimes(RETRIES_MS.length + 1)
+    expect(timers.next()).toBeUndefined()
+
+    const other = createEngineRoom([slow], undefined, { timers })
+    await other.read()
+    expect(timers.next()).toBe(RETRIES_MS[0])
+    other.close()
+    expect(timers.next()).toBeUndefined()
+  })
+
+  it('shows how each harness reaches files on this computer, found beside its status', async () => {
+    const held = scriptedHarness({ id: 'held' })
+    const unheld = {
+      ...scriptedHarness({ id: 'unheld' }),
+      computer: async () => ({ tools: 'shell', use: 'Use the shell.', write: 'apply_patch', confines: false, needs: 'computer' as const })
+    }
+    const room = createEngineRoom([held, unheld])
+
+    const { harnesses } = await room.read()
+    expect(harnesses[0]).not.toHaveProperty('files')
+    expect(harnesses[1]?.files).toEqual({ confines: false, needs: 'computer' })
+    expect(await (await room.active())?.computer?.()).toBeUndefined()
   })
 
   it('opens the sign-in of the harness named, and rejects for one it does not have', async () => {

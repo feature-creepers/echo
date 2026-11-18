@@ -24,6 +24,19 @@ const value = (name: string) => (args.includes(name) ? args[args.indexOf(name) +
 const print = (message: Message) => process.stdout.write(`${JSON.stringify(message)}\n`)
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
+/** The sandbox a conversation reports, as the real one does: the one named, or a profile's. Told, it reports none. */
+const reported = (params: Message) => {
+  if (process.env.FAKE_CODEX_UNCONFINED === '1') return { type: 'dangerFullAccess' }
+  switch (params.sandbox) {
+    case 'read-only':
+      return { type: 'readOnly', networkAccess: false }
+    case 'danger-full-access':
+      return { type: 'dangerFullAccess' }
+    default:
+      return { type: 'workspaceWrite', writableRoots: [], networkAccess: false, excludeTmpdirEnvVar: false, excludeSlashTmp: true }
+  }
+}
+
 if (args.includes('--version')) {
   process.stdout.write('codex-cli 9.9.9\n')
 } else if (args[0] === 'login') {
@@ -31,6 +44,12 @@ if (args.includes('--version')) {
   // The real CLI says it on standard error.
   process.stderr.write(signedIn ? 'Logged in using ChatGPT\n' : 'Not logged in\n')
   process.exitCode = signedIn ? 0 : 1
+} else if (args.includes('sandbox') && args.includes('--')) {
+  // The check of the sandbox on Windows: it holds reading unless told otherwise.
+  if (process.env.FAKE_CODEX_SANDBOX === 'writes') {
+    process.stderr.write('windows sandbox failed: Restricted read-only access requires the elevated Windows sandbox backend\n')
+    process.exitCode = 1
+  } else process.stdout.write('ECHO_SANDBOX_HELD\n')
 } else if (args[0] === 'exec') {
   exec()
 } else if (args[0] === 'app-server') {
@@ -220,7 +239,7 @@ function appServer(): void {
           if (String(params.developerInstructions).includes('refuse the thread'))
             return print({ id, error: { code: -32000, message: 'Not logged in. Run codex login.' } })
           thread = params
-          return print({ id, result: { thread: { id: 'thread-1' } } })
+          return print({ id, result: { thread: { id: 'thread-1' }, sandbox: reported(params) } })
         case 'turn/start': {
           const turnId = `turn-${++turns}`
           running = { id: turnId }

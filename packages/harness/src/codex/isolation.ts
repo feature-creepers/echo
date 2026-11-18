@@ -1,14 +1,16 @@
 import { readFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { Scope, ToolServer } from '@repo/core'
-import { SANDBOX_SETTINGS } from './sandbox/index.ts'
+import type { HarnessComputer, Scope, ToolServer } from '@repo/core'
+import { PROFILE, sandbox } from './sandbox/index.ts'
 
 /**
  * What makes Codex an engine and nothing more (docs/SPEC.md, section 6.2).
  *
  * Codex has a switch for each thing it adds by itself: features are turned off by name, the user's tool
- * servers one by one, the instruction files of the working folder by giving them no room. Its sandbox is
- * read-only, and every request to run a command or change a file is declined by the session.
+ * servers one by one, the instruction files of the working folder by giving them no room. A session without
+ * access to the computer has no command line and a read-only sandbox; one with access has the command line, its
+ * commands held by the system to what was granted, and each command or change it asks about is put to the core.
  */
 
 /** The name the core's tool server has for Codex. */
@@ -40,12 +42,77 @@ const SETTINGS_OFF = [
 const SHELL_OFF = 'features.shell_tool=false'
 
 /**
- * Whether a session may have Codex's command line, which is how Codex reads and changes files. Its sandbox
- * confines writing to the folders given, but not reading: with the command line, a session can read anything
- * the user can. So it gets one only when the person let the assistant read the whole computer.
+ * How this computer's sandbox holds a session's commands: to the places granted, reading included (a permission
+ * profile, which Seatbelt, bubblewrap and Windows' process isolation enforce), or only to the folders it may change
+ * (Codex's older sandbox, where Windows has no process isolation).
  */
-export function shellAllowed(scope: Scope | undefined): boolean {
-  return scope !== undefined && scope.computer !== 'off'
+export type Holding = 'granted' | 'writes'
+
+/**
+ * Whether a session may have Codex's command line, which is how Codex reads and changes files. Where the sandbox
+ * holds reading, whenever anything is granted. Where it holds only writing, a session with the command line could
+ * read anything the person can, so it gets one only when they let the assistant read the whole computer.
+ */
+export function shellAllowed(scope: Scope | undefined, holding: Holding): boolean {
+  if (scope === undefined) return false
+  if (scope.computer !== 'off') return true
+  return holding === 'granted' && scope.places.length > 0
+}
+
+/** How Codex's sessions work with files, as their instructions name it, for how its sandbox holds them here. */
+export function codexComputer(holding: Holding): HarnessComputer {
+  return {
+    tools: 'shell and apply_patch',
+    use: 'Look and run commands with your shell, and change files with apply_patch; a command that only reads runs at once, so prefer one when looking is all you need.',
+    write: 'apply_patch',
+    confines: holding === 'granted',
+    needs: holding === 'granted' ? 'grant' : 'computer'
+  }
+}
+
+/** What a profile holds commands to besides the scope: places of the person's programs, and of the adapter. */
+export interface Confinement {
+  /** Places never reached besides the scope's: the adapter's own folder. */
+  never: readonly string[]
+  /** Folders programs write to on their own while a command runs: package caches, the temporary folder. */
+  caches: readonly string[]
+  /** What a command reads to run the person's programs: their search path's folders, their git settings. */
+  programs: readonly string[]
+}
+
+/**
+ * The permission profile a session's commands run under, from the scope. A command may read what the system's own
+ * programs need, the person's programs and the places granted (the whole computer, when it may be read), change the
+ * places that may be changed with the caches and the temporary folder, and never reach a place never reached; a
+ * more precise entry wins over a broader one, and a refusal over anything else for the same place. Commands reach
+ * the network: each is put to the core first, which holds it to the network policy as it does Claude Code's.
+ */
+export function permissionProfile(scope: Scope, confinement: Confinement): Record<string, unknown> {
+  const filesystem: Record<string, 'read' | 'write' | 'deny'> = { ':minimal': 'read', ':tmpdir': 'write' }
+  if (scope.computer !== 'off') filesystem[':root'] = scope.computer
+  for (const program of confinement.programs) filesystem[program] = 'read'
+  for (const cache of confinement.caches) filesystem[cache] = 'write'
+  // Inside a place never reached, the folders that are reached all the same: the assistant's own, inside the app's data.
+  if (scope.computer !== 'off') for (const place of scope.protected ?? []) for (const reopened of place.except ?? []) filesystem[reopened] = scope.computer
+  for (const place of scope.places) filesystem[place.path] = place.write || scope.computer === 'write' ? 'write' : 'read'
+  for (const place of scope.protected ?? []) if (place.path !== undefined) filesystem[place.path] = 'deny'
+  for (const never of confinement.never) filesystem[never] = 'deny'
+  return {
+    ...sandbox.confined,
+    default_permissions: PROFILE,
+    permissions: { [PROFILE]: { filesystem, network: { enabled: true } } }
+  }
+}
+
+/**
+ * Whether the conversation Codex opened holds its commands as asked, from the sandbox it reports. Settings of the
+ * person's own can put Codex back on its older sandbox, which ignores a profile; a session that asked for one and
+ * reports no sandbox at all, without the whole computer to change, is not held, and must not run.
+ */
+export function heldAsAsked(reported: unknown, scope: Scope): boolean {
+  const kind = typeof reported === 'object' && reported !== null ? (reported as { type?: unknown }).type : undefined
+  if (kind === 'readOnly' || kind === 'workspaceWrite') return true
+  return kind === 'dangerFullAccess' && scope.computer === 'write'
 }
 
 /**
@@ -71,8 +138,18 @@ export function appServerArguments(userServers: string[], shell = false): string
     ...FEATURES_OFF.flatMap((feature) => ['--disable', feature]),
     ...settings(userServers.map((name) => `mcp_servers.${/^[A-Za-z0-9_-]+$/.test(name) ? name : JSON.stringify(name)}.enabled=false`)),
     ...settings(shell ? SETTINGS_OFF : [SHELL_OFF, ...SETTINGS_OFF]),
-    ...SANDBOX_SETTINGS
+    ...sandbox.server
   ]
+}
+
+/**
+ * The folder a session with the command line works in: its project's, the assistant's own, or the first folder
+ * granted. Without any, the temporary folder, which a profile lets commands use: never the adapter's own folder,
+ * which holds nothing of the person's and which a profile refuses.
+ */
+export function workingFolder(scope: Scope, options: { folder: string; project?: string | undefined; profiled: boolean }): string {
+  const granted = scope.places.find((place) => place.kind === 'folder')?.path
+  return options.project ?? scope.home ?? granted ?? (options.profiled ? tmpdir() : options.folder)
 }
 
 /** How a conversation is opened on that server. */
@@ -85,14 +162,20 @@ export function threadSettings(options: {
   effort?: string | undefined
   instructions: string
   tools?: ToolServer | undefined
+  /** What the session may reach, when it has the command line. Left out, it has none. */
   scope?: Scope | undefined
+  /** How its commands are held, when it has the command line: to a profile of the scope, or by the older sandbox. */
+  holding?: { kind: 'granted'; confinement: Confinement } | { kind: 'writes' } | undefined
 }): Record<string, unknown> {
-  const { scope } = options
-  const shell = shellAllowed(scope)
-  // Writing is confined to the folders granted to change, unless the whole computer was given to change.
+  const { scope, holding } = options
+  const shell = scope !== undefined && holding !== undefined
+  // With a profile, the sandbox is the profile's: naming one as well would put Codex back on its older sandbox.
+  const profile = shell && holding.kind === 'granted' ? permissionProfile(scope, holding.confinement) : undefined
+  // The older sandbox confines writing to the folders granted to change, unless the whole computer was given to change.
   const writable = (scope?.places ?? []).filter((place) => place.write && place.kind === 'folder').map((place) => place.path)
-  const sandbox = !shell ? 'read-only' : scope?.computer === 'write' ? 'danger-full-access' : 'workspace-write'
+  const sandbox = !shell ? 'read-only' : profile ? undefined : scope.computer === 'write' ? 'danger-full-access' : 'workspace-write'
   const config = {
+    ...profile,
     ...(options.tools
       ? {
           mcp_servers: {
@@ -105,11 +188,11 @@ export function threadSettings(options: {
     ...(options.effort === undefined ? {} : { model_reasoning_effort: options.effort })
   }
   return {
-    cwd: shell ? (options.project ?? scope?.home ?? options.folder) : options.folder,
+    cwd: shell ? workingFolder(scope, { folder: options.folder, project: options.project, profiled: profile !== undefined }) : options.folder,
     model: options.model,
     // Ask before anything that is not plainly harmless. Each question is checked against what the person granted.
     approvalPolicy: 'untrusted',
-    sandbox,
+    ...(sandbox === undefined ? {} : { sandbox }),
     // The conversation is ours to keep. Codex writes none of it to disk.
     ephemeral: true,
     developerInstructions: options.instructions,

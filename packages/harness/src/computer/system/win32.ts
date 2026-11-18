@@ -1,4 +1,5 @@
 import { win32 as path } from 'node:path'
+import { gitSettings, programFolders } from './everywhere.ts'
 import type { ComputerSystem, Where } from './system.ts'
 
 /** Windows' own folders under the profile, from its variables, or where they are by default. */
@@ -34,5 +35,33 @@ export const win32: ComputerSystem = {
   caseless: true,
   // Claude Code has no sandbox on Windows itself, only inside WSL2.
   confines: false,
-  caches: () => []
+  // Where package managers keep what they download, for a command confined by another program's sandbox (Codex's).
+  caches(where) {
+    const { home, env } = where
+    const { local } = folders(where)
+    return [
+      path.join(local, 'npm-cache'),
+      path.join(local, 'pnpm'),
+      path.join(local, 'pnpm-cache'),
+      path.join(local, 'pnpm-state'),
+      path.join(local, 'Yarn'),
+      path.join(local, 'pip'),
+      path.join(local, 'uv'),
+      path.join(local, 'node-gyp'),
+      path.join(home, '.cache'),
+      path.join(home, '.bun'),
+      path.join(home, '.cargo', 'registry'),
+      path.join(home, '.cargo', 'git'),
+      path.join(home, 'go', 'pkg'),
+      path.join(home, '.nuget', 'packages'),
+      path.join(home, '.gradle', 'caches'),
+      path.join(home, '.m2', 'repository'),
+      env.TEMP ?? path.join(local, 'Temp')
+    ]
+  },
+  programs(where) {
+    // Windows names the search path `Path`, and a copy of the environment may keep either spelling.
+    const searchPath = where.env.Path ?? where.env.PATH ?? where.env.path
+    return [...programFolders(searchPath, where, ';', path.isAbsolute), ...gitSettings({ ...where, env: {} }, path.join)]
+  }
 }

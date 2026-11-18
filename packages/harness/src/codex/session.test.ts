@@ -237,7 +237,10 @@ describe('a Codex session', () => {
 
   it('fails when Codex is not installed', async () => {
     const nowhere: Cli = { launch: () => Promise.reject(new NotInstalled(NOT_INSTALLED)), find: () => Promise.resolve(undefined) }
-    const session = openSession({ role: 'thread', instructions: '' }, { cli: nowhere, folder: folder(), models: {}, log: recordingLog() })
+    const session = openSession(
+      { role: 'thread', instructions: '' },
+      { cli: nowhere, folder: folder(), models: {}, log: recordingLog(), holding: async () => 'writes' }
+    )
     open.push(session)
     const followed = follow(session)
     session.send('hello')

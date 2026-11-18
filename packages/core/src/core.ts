@@ -109,11 +109,16 @@ export function createCore(options: CoreOptions): Core {
   const now = options.now ?? (() => new Date())
   const zone = options.timeZone ?? (() => Intl.DateTimeFormat().resolvedOptions().timeZone)
   const settings = createUserSettings(options.records, undefined, options.computer?.workspace)
-  const engines = createEngineRoom(options.harnesses, {
-    preferred: () => settings.read().engines.preferred,
-    model: (harness) => settings.read().engines.models[harness],
-    effort: (harness) => settings.read().engines.efforts[harness]
-  })
+  const engines = createEngineRoom(
+    options.harnesses,
+    {
+      preferred: () => settings.read().engines.preferred,
+      model: (harness) => settings.read().engines.models[harness],
+      effort: (harness) => settings.read().engines.efforts[harness]
+    },
+    // A harness that gave no answer is asked again on its own, and the clients see it come back.
+    { now: () => now().getTime(), ...(options.timers ? { timers: options.timers } : {}) }
+  )
   const tools = createTools(options.newId)
   let toolServer: string | undefined
   const screen = createScreen({ records: options.records, newId: options.newId, timers: options.timers, now })
@@ -333,7 +338,7 @@ export function createCore(options: CoreOptions): Core {
           .join('\n\n') || undefined,
       // The person's files and commands, within what they granted (docs/SPEC.md, section 12.2). What a thread may do is
       // told to it apart, so a session kept open hears when it changes.
-      told: () => access.standing(),
+      told: (tools) => access.standing(tools),
       reach: (showing) => access.reach(showing),
       // Projects (docs/SPEC.md, section 7.11): a thread works in a folder the person lets it change, follows the
       // project's own instructions, and is reminded of what it did there when a new session carries on.
@@ -601,6 +606,7 @@ export function createCore(options: CoreOptions): Core {
       schedule.close()
       channel.close()
       memory.close()
+      engines.close()
       void browser.close()
       void desktop.close()
     }

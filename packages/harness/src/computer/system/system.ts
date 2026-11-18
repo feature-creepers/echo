@@ -24,4 +24,10 @@ export interface ComputerSystem {
    * temporary folder. A confined command may change them, or `npm install` and a build would fail outside the scope.
    */
   caches(where: Where): string[]
+  /**
+   * What a command reads to run the person's own programs, besides the system's: the folders of their search path
+   * (`pnpm`, `cargo`, `python` installed for them alone) and their git settings, without which git will not start. A
+   * confined command that may read only the places granted may read these too.
+   */
+  programs(where: Where): string[]
 }

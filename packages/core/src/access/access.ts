@@ -3,7 +3,7 @@ import { z } from 'zod'
 import type { Blobs } from '../ports/blobs.ts'
 import type { Timers } from '../ports/clock.ts'
 import type { Computer } from '../ports/computer.ts'
-import type { ComputerUse, Reach, Scope, Verdict } from '../ports/harness.ts'
+import type { ComputerUse, HarnessComputer, Reach, Scope, Verdict } from '../ports/harness.ts'
 import type { Records } from '../ports/records.ts'
 import { fromFolder } from '../projects/folders.ts'
 import type { SettingsChange, UserSettings } from '../settings/settings.ts'
@@ -38,8 +38,11 @@ export interface AccessControl {
    * folder to work in.
    */
   grant(asked: { path: string; write: boolean; purpose?: 'grant' | 'work' }, showing: Showing): Promise<Granted>
-  /** What a thread is told about its access, as it stands now. */
-  standing(): string | undefined
+  /**
+   * What a thread is told about its access, as it stands now, for the program it runs on: the names of its tools,
+   * whether the system holds its commands, and what it needs to reach files (`DIRECT_TOOLS` when left out).
+   */
+  standing(tools?: HarnessComputer): string | undefined
   /** The folders the person lets the assistant change, besides its own: where it may work on a project. */
   projects(): string[]
   /**
@@ -217,6 +220,18 @@ function workedLine(use: AccessUse, path: (path: string) => string): string {
 }
 
 /** Keeps nothing: for a core with no records, which has no computer either. */
+/**
+ * How a program works with files when it does not say: with tools of its own for reading and writing files, and a
+ * command line, reaching what was granted, its commands not held by the system.
+ */
+export const DIRECT_TOOLS: HarnessComputer = {
+  tools: 'Read, Glob, Grep, Write, Edit and Bash',
+  use: 'Look with Read, Glob and Grep, change with Write and Edit, and use Bash for what these cannot do; a command that only reads runs at once, so prefer one when looking is all you need.',
+  write: 'Write',
+  confines: false,
+  needs: 'grant'
+}
+
 const NO_RECORDS: Records = { append: () => [], read: () => [] }
 const NO_VERSIONS: Blobs = { put: () => '', get: () => undefined }
 
@@ -483,7 +498,7 @@ export function createAccess({ settings, screen, computer, timers, records, vers
 
     grant,
 
-    standing() {
+    standing(tools = DIRECT_TOOLS) {
       if (!computer) return undefined
       const {
         places,
@@ -502,6 +517,17 @@ export function createAccess({ settings, screen, computer, timers, records, vers
       if (!workspace && places.length === 0 && reach === 'off') {
         return "The computer\n\nYou have no access to the person's files. If they want you to work with some, they can grant a folder in Settings, Access, or tell you which one: then call computer_grant."
       }
+      // A program that reaches files only through a command line it cannot keep from reading elsewhere is given none
+      // until the whole computer may be read: what was granted is named, so the session can say what is missing.
+      if (tools.needs === 'computer' && reach === 'off') {
+        const granted = [...(workspace ? [computer.workspace] : []), ...places.map((place) => place.path)].join(', ')
+        return [
+          'The computer',
+          '',
+          `The person granted you places on their computer (${granted}), but the AI program you run on reaches files only through a command line that cannot be kept from reading the rest of this computer, so you have no tool for files or commands here.`,
+          'If they want you to work with their files, tell them in a sentence: they can let you read the whole computer in Settings, Access, or run you on another AI program in Settings, Models. Never say you are read-only for another reason.'
+        ].join('\n')
+      }
       const lines = [
         ...(workspace ? [`- Your own folder, ${computer.workspace}: read and write. A file you put on the computer goes there unless they say where.`] : []),
         ...places.map((place) => `- ${place.path} (${place.kind}): ${place.write ? 'read and write' : 'read only'}.`),
@@ -516,7 +542,7 @@ export function createAccess({ settings, screen, computer, timers, records, vers
       return [
         'The computer',
         '',
-        "You can work with the person's files and run commands with your Read, Glob, Grep, Write, Edit and Bash tools, within what they granted:",
+        `You can work with the person's files and run commands with your ${tools.tools} tools, within what they granted:`,
         ...lines,
         'Some places are never reached, whatever they granted: keys and credentials (such as ~/.ssh, ~/.aws, ~/.git-credentials), browser profiles, password stores, and the app’s own data. Do not try them.',
         '',
@@ -531,16 +557,16 @@ export function createAccess({ settings, screen, computer, timers, records, vers
         ...networkLines({ askNetwork, askLocalNetwork, askSending, allowedHosts, refusedHosts }),
         `- When a card asks them, your call returns once they answered${approvalWait === null ? '' : `, or after ${approvalWait} minutes without an answer, which counts as a no`}. They can allow it once, or for the session: the same program and subcommand (git commit, npm run, python), or any change in the same folder, then runs at once until the app quits.`,
         '- Every use is checked first against what they granted. A command is checked by the paths it names, with ~, variables and .. read: one that names a place outside, or a place never reached, is refused before anyone is asked. This reads what the command names, not what a program works out once it runs, so never use a command to reach around it: name the places you work on.',
-        ...(computer?.confines
+        ...(tools.confines
           ? [
-              '- The system also holds each command to what they granted: it can change only the places you may change, and package caches and the temporary folder, and never read a place never reached. A command that fails for it ("Operation not permitted", "Read-only file system") was held there, and is never run outside: say what it needed, and that they can grant it in Settings, Access.'
+              '- The system also holds each command to what they granted: it can change only the places you may change, and package caches and the temporary folder, and never read a place never reached. A command that fails for it ("Operation not permitted", "Read-only file system", "Access is denied") was held there, and is never run outside: say what it needed, and that they can grant it in Settings, Access.'
             ]
           : []),
         '- A use that is refused comes back with the reason: tell them in a sentence, and that they can grant more in Settings, Access.',
         '',
         'The web tools are for looking things up and reading pages. Commands may use the network when the task needs it: downloading what the person asked for, calling an API, installing a package, reaching a device on their network. Such a command is decided like any other command that changes something.',
-        'Look with Read, Glob and Grep, change with Write and Edit, and use Bash for what these cannot do; a command that only reads runs at once, so prefer one when looking is all you need.',
-        'file_write keeps a document with the conversation, to show and download. When the person wants a file on their computer, in your folder or one of theirs, write it there with Write.',
+        tools.use,
+        `file_write keeps a document with the conversation, to show and download. When the person wants a file on their computer, in your folder or one of theirs, write it there with ${tools.write}.`,
         'The person sees every use in Settings, Activity, and can put back a file you changed or move one you created to the trash. A command cannot be undone.',
         'When they give you a folder or a file by voice, call computer_grant with its path; they confirm on screen.'
       ].join('\n')

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { SANDBOX_SETTINGS as sandboxOnUnix } from '../sandbox/unix.ts'
-import { SANDBOX_SETTINGS as sandboxOnWin32 } from '../sandbox/win32.ts'
+import { unix as sandboxOnUnix } from '../sandbox/unix.ts'
+import { win32 as sandboxOnWin32 } from '../sandbox/win32.ts'
 import { installLocations as darwin } from './darwin.ts'
 import { installLocations as linux } from './linux.ts'
 import { installLocations as win32 } from './win32.ts'
@@ -27,7 +27,12 @@ describe('where Codex is usually installed', () => {
 
 describe('the sandbox Codex runs in', () => {
   it('needs a setting on Windows only', () => {
-    expect(sandboxOnUnix).toEqual([])
-    expect(sandboxOnWin32).toEqual(['-c', 'windows.sandbox="unelevated"'])
+    expect(sandboxOnUnix.server).toEqual([])
+    expect(sandboxOnWin32.server).toEqual(['-c', 'windows.sandbox="unelevated"'])
+  })
+
+  it('holds a profile in Windows’ process isolation, and in the system’s own sandbox elsewhere', () => {
+    expect(sandboxOnWin32.confined).toEqual({ windows: { sandbox: 'mxc' } })
+    expect(sandboxOnUnix.confined).toEqual({})
   })
 })

@@ -42,7 +42,8 @@ describe('Claude Code', () => {
     it('says when the CLI cannot be run', async () => {
       const broken = createClaudeCode({ folder: folder(), log: recordingLog(), command: ['/nowhere/claude'], env: process.env })
       const found = await broken.status()
-      expect(found).toMatchObject({ installed: true, signedIn: false })
+      // Not an answer: it is asked again, rather than taken as not installed.
+      expect(found).toMatchObject({ installed: true, signedIn: false, unanswered: true })
       expect(found.problem).toMatch(/^Claude Code could not be asked for its status: /)
     })
 

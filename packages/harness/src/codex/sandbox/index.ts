@@ -1,5 +1,8 @@
-import { SANDBOX_SETTINGS as unix } from './unix.ts'
-import { SANDBOX_SETTINGS as win32 } from './win32.ts'
+import type { CodexSandbox } from './system.ts'
+import { unix } from './unix.ts'
+import { win32 } from './win32.ts'
 
-/** The settings Codex's sandbox needs on this system, as command-line arguments. */
-export const SANDBOX_SETTINGS: string[] = process.platform === 'win32' ? win32 : unix
+export { type CodexSandbox, PROFILE } from './system.ts'
+
+/** How Codex's sandbox holds commands on this system. */
+export const sandbox: CodexSandbox = process.platform === 'win32' ? win32 : unix

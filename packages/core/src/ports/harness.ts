@@ -27,6 +27,11 @@ export interface HarnessStatus {
   account?: string
   /** Why it cannot be used, in words for the user. Left out when it can. */
   problem?: string
+  /**
+   * Its program gave no answer: it did not finish in time, could not start, or said something that could not be
+   * read. Unlike "not installed" or "not signed in", a moment later it may well be ready, so it is asked again.
+   */
+  unanswered?: boolean
 }
 
 /** The core's tool server, as a session reaches it: MCP over HTTP on the loopback address. */
@@ -231,6 +236,29 @@ export interface HarnessCapabilities {
   images: boolean
 }
 
+/**
+ * How a harness's sessions work with the person's files and commands on this computer: what its instructions call
+ * its tools, whether the system holds its commands to what was granted, and what it needs to reach files at all.
+ */
+export interface HarnessComputer {
+  /** Its tools for files and commands, as the session is told them: "Read, Glob, Grep, Write, Edit and Bash". */
+  tools: string
+  /** How to use them, in a sentence or two the session is told. */
+  use: string
+  /** The tool that puts a file on the computer, as the session knows it: "Write". */
+  write: string
+  /**
+   * The system holds each command to what was granted, whatever paths a program works out once it runs: it may
+   * change only the places that may be changed, and never read a place never reached.
+   */
+  confines: boolean
+  /**
+   * What it needs to reach files: anything granted, or the whole computer to read, when it reaches files only
+   * through a command line it cannot keep from reading elsewhere.
+   */
+  needs: 'grant' | 'computer'
+}
+
 export interface Harness {
   /** Identifies the harness in settings and records: 'claude-code', 'codex'. */
   id: string
@@ -238,6 +266,11 @@ export interface Harness {
   name: string
   /** Left out, it can do nothing beyond text. */
   capabilities?: HarnessCapabilities
+  /**
+   * How its sessions work with files and commands on this computer, found once (it may run its program to find out).
+   * Left out, as Claude Code does without confinement: `Read`, `Write`, `Bash` and the like, reaching what is granted.
+   */
+  computer?(): Promise<HarnessComputer>
   status(): Promise<HarnessStatus>
   /** Open the vendor's own sign-in, in a terminal. The core never sees the credentials. */
   signIn(): Promise<void>

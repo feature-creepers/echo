@@ -105,7 +105,12 @@ export const harnessStateSchema = z.object({
    * The level of reasoning the answers use now, among those of `model`: the user's choice, else the model's
    * default when the harness says. Left out, the program decides.
    */
-  effort: z.string().optional()
+  effort: z.string().optional(),
+  /**
+   * How it works with the person's files on this computer: whether the system holds its commands to what was
+   * granted, and whether it reaches files with anything granted or only with the whole computer to read.
+   */
+  files: z.object({ confines: z.boolean(), needs: z.enum(['grant', 'computer']) }).optional()
 })
 export type HarnessState = z.infer<typeof harnessStateSchema>
 

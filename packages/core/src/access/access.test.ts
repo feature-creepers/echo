@@ -8,7 +8,7 @@ import { memoryRecords } from '../records/memory.ts'
 import { manualTimers } from '../replay/manual-timers.ts'
 import { ACCESS_SET, createUserSettings } from '../settings/settings.ts'
 import { createScreen } from '../views/screen.ts'
-import { createAccess } from './access.ts'
+import { createAccess, DIRECT_TOOLS } from './access.ts'
 import { ACCESS_OUTCOME, ACCESS_USE, KEPT_MS } from './activity.ts'
 
 const WORKSPACE = '/data/workspace'
@@ -72,14 +72,7 @@ function versions(): Blobs & { held: Map<string, Uint8Array> } {
   }
 }
 
-function setup({
-  withComputer = true,
-  records = memoryRecords(),
-  now = () => new Date('2026-11-18T10:00:00Z'),
-  kept = versions(),
-  core = 'id',
-  confines = false
-} = {}) {
+function setup({ withComputer = true, records = memoryRecords(), now = () => new Date('2026-11-18T10:00:00Z'), kept = versions(), core = 'id' } = {}) {
   let ids = 0
   const screen = createScreen({ records, newId: () => `v${++ids}` })
   const settings = createUserSettings(records, undefined, withComputer ? WORKSPACE : undefined)
@@ -88,7 +81,7 @@ function setup({
   const access = createAccess({
     settings,
     screen,
-    computer: withComputer ? { ...computer, confines } : undefined,
+    computer: withComputer ? computer : undefined,
     timers,
     records,
     versions: kept,
@@ -793,8 +786,38 @@ describe('what a thread is told', () => {
   it.each([
     { confines: true, told: true },
     { confines: false, told: false }
-  ])('says the system holds commands too only where it does ($confines)', ({ confines, told }) => {
-    const { access } = setup({ confines })
-    expect(access.standing()?.includes('The system also holds each command to what they granted')).toBe(told)
+  ])('says the system holds commands too only where the program it runs on is held ($confines)', ({ confines, told }) => {
+    const { access } = setup()
+    expect(access.standing({ ...DIRECT_TOOLS, confines })?.includes('The system also holds each command to what they granted')).toBe(told)
+  })
+
+  it('names the tools of the program it runs on, and how to use them', () => {
+    const { access } = setup()
+    const standing = access.standing({
+      tools: 'shell and apply_patch',
+      use: 'Run commands with your shell.',
+      write: 'apply_patch',
+      confines: true,
+      needs: 'grant'
+    })
+    expect(standing).toContain('run commands with your shell and apply_patch tools, within what they granted:')
+    expect(standing).toContain('Run commands with your shell.')
+    expect(standing).toContain('write it there with apply_patch.')
+    expect(standing).not.toContain('Glob')
+  })
+
+  it('tells a program that needs the whole computer to reach files that it has none, and what the person can do', () => {
+    const { access, settings } = setup()
+    settings.setAccess({ places: [{ path: '/home/ada/Projects', kind: 'folder', write: true }] })
+    const needing = { ...DIRECT_TOOLS, needs: 'computer' as const }
+    const standing = access.standing(needing)
+
+    expect(standing).toContain(`(${WORKSPACE}, /home/ada/Projects)`)
+    expect(standing).toContain('you have no tool for files or commands here')
+    expect(standing).toContain('let you read the whole computer in Settings, Access')
+    expect(standing).not.toContain('within what they granted:')
+
+    settings.setAccess({ computer: 'read' })
+    expect(access.standing(needing)).toContain('within what they granted:')
   })
 })

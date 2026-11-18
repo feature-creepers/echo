@@ -37,6 +37,11 @@ export async function status(cli: Cli): Promise<HarnessStatus> {
       ...(account.signedIn ? {} : { problem: 'Codex is not signed in.' })
     }
   } catch (error) {
-    return { installed: true, signedIn: false, problem: `Codex could not be asked for its status: ${error instanceof Error ? error.message : String(error)}` }
+    return {
+      installed: true,
+      signedIn: false,
+      problem: `Codex could not be asked for its status: ${error instanceof Error ? error.message : String(error)}`,
+      unanswered: true
+    }
   }
 }

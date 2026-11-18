@@ -1,4 +1,5 @@
 import { posix as path } from 'node:path'
+import { gitSettings, programFolders } from './everywhere.ts'
 import type { ComputerSystem } from './system.ts'
 
 export const linux: ComputerSystem = {
@@ -33,5 +34,8 @@ export const linux: ComputerSystem = {
       path.join(home, '.m2', 'repository'),
       env.TMPDIR ?? '/tmp'
     ]
+  },
+  programs(where) {
+    return [...programFolders(where.env.PATH, where, ':', path.isAbsolute), ...gitSettings(where, path.join)]
   }
 }
