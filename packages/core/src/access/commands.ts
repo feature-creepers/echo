@@ -151,6 +151,8 @@ function looksLikePath(path: string, shell: Shell, windowsProgram: boolean): boo
   // Switches: `/s`, `/f`, `//c`, and for Windows' own programs any `/word`.
   if (/^\/[A-Za-z?]{1,2}$/.test(path) || /^\/\/[A-Za-z?]/.test(path)) return false
   if ((shell === 'cmd' || windowsProgram) && /^\/[A-Za-z][\w:-]*$/.test(path)) return false
+  // Escapes such as `\r\n`, `\t` or `\x1b`, given to `tr`, `printf` or `sed`: characters, not a folder of the drive.
+  if (shell === 'posix' && /^(\\([abefnrtv0\\]|x[0-9A-Fa-f]{1,2}|[0-7]{1,3}))+$/.test(path)) return false
   if (/^(\/|\\|~|\$\{|[A-Za-z]:|\.\.?([\\/]|$))/.test(path)) return true
   return !/\s/.test(path) && /[\\/]/.test(path)
 }

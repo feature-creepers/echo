@@ -352,7 +352,11 @@ describe('readCommand: paths it names', () => {
     ['scp a.txt me@host:/tmp/', []],
     ['git commit -m "fix /etc handling"', []],
     ['echo $(cat ~/.ssh/id_rsa)', ['~/.ssh/id_rsa']],
-    ['cat <<EOF > ~/x.txt\nhello\nEOF', ['~/x.txt']]
+    ['cat <<EOF > ~/x.txt\nhello\nEOF', ['~/x.txt']],
+    ["tr '\\r\\n' '  ' < a.txt", ['a.txt']],
+    ["tr -d '\\r' < a.txt", ['a.txt']],
+    ["printf '%s\\t%s\\x1b\\0' a b", []],
+    ["cat '\\temp'", ['\\temp']]
   ])('`%s` names %j', (line, expected) => {
     expect(paths(line)).toEqual(expected)
   })
