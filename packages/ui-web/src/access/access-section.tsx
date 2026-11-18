@@ -10,7 +10,8 @@ import { IconButton } from '../primitives/icon-button.tsx'
 import { CloseGlyph } from '../primitives/icons.tsx'
 import { Switch } from '../primitives/switch.tsx'
 import { SettingGroup, SettingRow } from '../settings/rows.tsx'
-import { lastPart } from './words.ts'
+import { useStandingRules } from './use-standing-rules.ts'
+import { LEVELS, lastPart } from './words.ts'
 
 /** A path shown in full when it fits, and by its end when it does not: the end says which folder it is. */
 function PathText({ path, className }: { path: string; className?: string }) {
@@ -31,10 +32,31 @@ const FolderMark = ({ kind }: { kind: Place['kind'] }) => (
   </svg>
 )
 
+/** A command, as a prompt and a line. */
+const CommandMark = () => (
+  <svg
+    width="16"
+    height="16"
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.3"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
+    <path d="m4.5 6.5 2 1.5-2 1.5M8 10h3.5" />
+  </svg>
+)
+
+/** How many places never reached are listed before "Show all". */
+const PROTECTED_SHOWN = 6
+
 /**
  * What the assistant may reach on this computer (docs/SPEC.md, section 12.2): its own folder, the folders and
- * files the user picks, or everything, and whether it asks before each change. The core keeps these and
- * enforces them on every use, whatever the model asks.
+ * files the user picks, or everything; what it asks first; what was allowed for this session; and the places it
+ * never reaches. The core keeps these and enforces them on every use, whatever the model asks.
  */
 export function AccessSection({ client, settings, productName }: { client: Client; settings: Settings; productName: string }) {
   const { access } = settings
@@ -42,6 +64,20 @@ export function AccessSection({ client, settings, productName }: { client: Clien
   const engines = useFollowed(client.engines)
   const [problem, setProblem] = useState<string>()
   const [busy, setBusy] = useState(false)
+  const [stopping, setStopping] = useState(false)
+  const [showAll, setShowAll] = useState(false)
+  const rules = useStandingRules(client)
+
+  const stopEverything = async () => {
+    setStopping(true)
+    try {
+      await client.session.run('everything.stop', {})
+    } catch {
+      setProblem('It could not be stopped. Quit the app to stop it for sure.')
+    } finally {
+      setStopping(false)
+    }
+  }
 
   const change = async (asked: CommandInput<'access.set'>) => {
     setProblem(undefined)
@@ -160,24 +196,85 @@ export function AccessSection({ client, settings, productName }: { client: Clien
 
       <SettingGroup title="Before acting">
         <SettingRow
-          title="Changes and commands"
+          title="What it asks you first"
           detail={
-            access.approvals === 'ask'
-              ? 'A card asks you before each change to a file and each command. Answer with a click, or say yes or no.'
-              : `Changes within what you gave are made without asking. Commands are still asked, as they can reach anything${access.computer === 'write' ? ', except now: it has the whole computer' : ''}.`
+            <span className="grid gap-1">
+              <span className={cn(access.approvals === 'auto' && 'text-warn')}>{LEVELS[access.approvals].detail}</span>
+              <span>
+                Whatever you choose, a command that deletes, formats, shuts down or changes permissions is asked every time. Answer with a click, or say “yes”,
+                “yes, for the session” or “no”.
+              </span>
+            </span>
           }
           stacked
         >
           <Choice
-            label="Changes and commands"
+            label="What it asks you first"
             value={access.approvals}
-            options={[
-              { value: 'ask', label: 'Ask me first' },
-              { value: 'trust', label: 'Allow within what I gave' }
-            ]}
+            options={(['ask', 'trust', 'auto'] as const).map((value) => ({ value, label: LEVELS[value].label }))}
             onChange={(value) => void change({ approvals: value })}
           />
         </SettingRow>
+        <SettingRow
+          title="Stop everything"
+          detail={`Interrupts everything ${productName} is doing, withdraws its questions and forgets what you allowed for this session. Also in the tray's menu, or say “stop everything”.`}
+        >
+          <Button size="sm" disabled={stopping} onClick={() => void stopEverything()}>
+            {stopping ? 'Stopping…' : 'Stop everything'}
+          </Button>
+        </SettingRow>
+      </SettingGroup>
+
+      <SettingGroup title="Allowed for this session" note="Until you quit, or change these settings">
+        {rules.allowances.length === 0 ? (
+          <SettingRow
+            title="Nothing yet"
+            detail="When a card asks, “Allow for this session” lets the same command, or any change in the same folder, go ahead without asking again."
+          />
+        ) : (
+          rules.allowances.map((allowance) => (
+            <div key={allowance.id} className="flex items-center gap-4 px-4 py-3">
+              <span className="shrink-0 text-text-faint">{allowance.kind === 'command' ? <CommandMark /> : <FolderMark kind="folder" />}</span>
+              <div className="grid min-w-0 flex-1 gap-0.5">
+                {allowance.kind === 'command' ? (
+                  <span className="truncate font-mono text-[0.8125rem]">{allowance.subject}</span>
+                ) : (
+                  <span className="truncate text-[0.8125rem]">Changes in {lastPart(allowance.subject)}</span>
+                )}
+                <span className="text-text-faint text-xs">
+                  {allowance.kind === 'command' ? 'Any use of this command, its paths still checked' : <PathText path={allowance.subject} />}
+                </span>
+              </div>
+              <Button kind="quiet" size="sm" onClick={() => void rules.forget(allowance.id).catch(() => setProblem('It could not be forgotten.'))}>
+                Forget
+              </Button>
+            </div>
+          ))
+        )}
+      </SettingGroup>
+
+      <SettingGroup title="Never reached" note="Refused to every tool and command, whatever you give">
+        {rules.loading ? (
+          <SettingRow title="Reading the list…" />
+        ) : rules.protected.length === 0 ? (
+          <SettingRow title="Nothing on this computer" detail={`${productName} runs where it reaches no file.`} />
+        ) : (
+          <>
+            {(showAll ? rules.protected : rules.protected.slice(0, PROTECTED_SHOWN)).map((place) => (
+              <div key={`${place.label}:${place.path}`} className="grid grid-cols-[minmax(0,12rem)_minmax(0,1fr)] items-baseline gap-4 px-4 py-2.5">
+                <span className="truncate text-[0.8125rem]">{place.label}</span>
+                <PathText path={place.path} className="text-text-faint" />
+              </div>
+            ))}
+            {rules.protected.length > PROTECTED_SHOWN && (
+              <div className="bg-raised/30 px-4 py-2">
+                <Button kind="quiet" size="sm" onClick={() => setShowAll(!showAll)}>
+                  {showAll ? 'Show fewer' : `Show all ${rules.protected.length}`}
+                </Button>
+              </div>
+            )}
+          </>
+        )}
       </SettingGroup>
 
       {(problem || codex) && (
