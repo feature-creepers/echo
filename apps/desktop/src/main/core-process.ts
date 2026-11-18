@@ -27,6 +27,11 @@ export interface CoreProcess extends SessionLink {
   /** Resolves when the link is settled: connected or failed. */
   settled(): Promise<CoreLink>
   /**
+   * Be told every message from the core, beside the session the window holds: how the app hears what is meant for
+   * this device itself, such as a notification. Returns a function that stops the telling.
+   */
+  observe(listener: (message: unknown) => void): () => void
+  /**
    * Ask the core to stop and wait until it has, so it can remove what it created on disk.
    * The app must wait for this before it quits: a core still running when the app exits is cut off mid-cleanup.
    */
@@ -45,6 +50,7 @@ export function startCore(options: CoreProcessOptions): CoreProcess {
   let link: CoreLink = { state: 'starting' }
   let listener: ((link: CoreLink) => void) | undefined
   let messageListener: ((message: unknown) => void) | undefined
+  const observers = new Set<(message: unknown) => void>()
   let connection: Connection | undefined
   let stopped = false
   let exited = false
@@ -100,7 +106,10 @@ export function startCore(options: CoreProcessOptions): CoreProcess {
     try {
       connection = await connect(await openLocal(endpoint), { client: options.client, capabilities: options.capabilities, credential: token })
       connection.onClose(() => fail('the link to the core closed.'))
-      connection.onMessage((message) => messageListener?.(message))
+      connection.onMessage((message) => {
+        messageListener?.(message)
+        for (const observer of observers) observer(message)
+      })
       set({ state: 'connected', core: connection.core })
     } catch (error) {
       if (error instanceof ConnectionRefused && error.reason === 'protocol') {
@@ -117,6 +126,10 @@ export function startCore(options: CoreProcessOptions): CoreProcess {
       listener = next
     },
     settled: () => settled,
+    observe(observer) {
+      observers.add(observer)
+      return () => void observers.delete(observer)
+    },
     // What follows the handshake is not read here: a session, in the window or in the self-check, does that.
     send: (message) => {
       if (link.state === 'connected') connection?.send(message)

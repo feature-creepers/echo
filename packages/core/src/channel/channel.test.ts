@@ -29,6 +29,7 @@ function setup({ harness = scriptedHarness(), records = memoryRecords(), server 
   const log = { error: vi.fn<(message: string) => void>() }
   const tools = createTools(newId)
   const screen = createScreen({ records, newId })
+  const notices: { title: string; body: string }[] = []
   const channel = createChannel({
     // The user's choice of program and model, read from the settings as the core does.
     engines: createEngineRoom([harness], { preferred: () => settings.read().engines.preferred, model: (id) => settings.read().engines.models[id] }),
@@ -50,7 +51,8 @@ function setup({ harness = scriptedHarness(), records = memoryRecords(), server 
       ],
       instructions: 'THE SCREEN',
       ...more
-    }
+    },
+    notify: (notice) => notices.push(notice)
   })
   const events: Event[] = []
   channel.onEvent((event) => events.push(event))
@@ -59,7 +61,7 @@ function setup({ harness = scriptedHarness(), records = memoryRecords(), server 
   const ended = () => events.flatMap((event): Exchange[] => (event.name === 'turn.ended' ? [event.exchange] : []))
   /** Call a tool the way the session holding `index`'s token would. */
   const call = (index: number, name: string, input: unknown) => tools.host.call(harness.sessions[index]?.request.tools?.token ?? '', name, input)
-  return { channel, harness, settings, records, screen, log, events, spoken, ended, call }
+  return { channel, harness, settings, records, screen, log, events, spoken, ended, call, notices }
 }
 
 /** Lets what the channel started without waiting for it come to its end. */
@@ -425,6 +427,72 @@ describe('threads', () => {
     expect(spoken()).toHaveLength(3)
     expect(screen.current()?.title).toBe('Risotto')
     expect(channel.threads().threads.find((candidate) => candidate.id === thread?.id)?.state).toBe('parked')
+  })
+
+  it('tells in a notification that an answer finished in the background', async () => {
+    const { channel, harness, call, notices } = setup()
+    channel.say('Find me a recipe')
+    await settled()
+    await call(0, 'thread_open', { title: 'Recipe' })
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+    channel.say('Hello there')
+    await settled()
+    harness.sessions[0]?.reply('Hello!')
+    harness.sessions[1]?.reply('A risotto would do.')
+
+    expect(notices).toEqual([{ title: 'Recipe', body: 'A risotto would do.' }])
+  })
+})
+
+describe('turns the assistant starts itself', () => {
+  const card = { title: 'Reminder', spec: { root: 'text', elements: { text: { type: 'Text', props: { text: 'Feed the cat' }, children: [] } } } }
+
+  it('says a reminder with no model, as a turn of its own, with its card in the stream', () => {
+    const { channel, harness, events, screen, records } = setup()
+    const turn = channel.remind({ sentence: "It's eight. Time to feed the cat.", language: 'en', card: card as never, silent: false })
+
+    expect(harness.sessions).toHaveLength(0)
+    expect(events.map((event) => event.name)).toEqual(['turn.started', 'speech.say', 'speech.say', 'view.shown', 'turn.ended'])
+    expect(events.find((event) => event.name === 'speech.say')).toMatchObject({ turn, text: "It's eight.", language: 'en' })
+    expect(events.at(-1)).toMatchObject({ exchange: { turn, trigger: 'reminder', said: '', replied: "It's eight. Time to feed the cat.", outcome: 'done' } })
+    expect(screen.stream()[0]).toMatchObject({ title: 'Reminder', turn })
+    expect(records.read([EXCHANGE]).at(-1)?.payload).toMatchObject({ trigger: 'reminder' })
+  })
+
+  it('shows a silent reminder and keeps it, and says nothing', () => {
+    const { channel, spoken, ended } = setup()
+    channel.remind({ sentence: 'Time to feed the cat.', language: 'en', card: card as never, silent: true })
+    expect(spoken()).toEqual([])
+    expect(ended()[0]?.replied).toBe('Time to feed the cat.')
+  })
+
+  it('carries out a scheduled task as if the person had asked it, and tells its answer in a notification', async () => {
+    const { channel, harness, spoken, ended, notices } = setup()
+    const turn = channel.task({ title: 'Weather in Lyon', request: 'Give me the weather in Lyon.', language: 'en', silent: false })
+    expect(channel.busy()).toBe(true)
+    await settled()
+
+    const sent = harness.sessions[0]?.sent[0] ?? ''
+    expect(sent).toContain('A task the person scheduled is due now ("Weather in Lyon")')
+    expect(sent).toContain('unanswered, it counts as no')
+    expect(sent).toContain('The request: Give me the weather in Lyon.')
+    harness.sessions[0]?.reply('Sunny and mild in Lyon.')
+
+    expect(spoken()).toEqual(['Sunny and mild in Lyon.'])
+    expect(ended()[0]).toMatchObject({ turn, trigger: 'task', said: 'Give me the weather in Lyon.', outcome: 'done' })
+    expect(notices).toEqual([{ title: 'Weather in Lyon', body: 'Sunny and mild in Lyon.' }])
+    expect(channel.busy()).toBe(false)
+  })
+
+  it("keeps a silent task's answer to the screen and the notification", async () => {
+    const { channel, harness, spoken, ended, notices } = setup()
+    channel.task({ title: 'Weather in Lyon', request: 'Give me the weather in Lyon.', language: 'en', silent: true })
+    await settled()
+    harness.sessions[0]?.reply('Sunny and mild in Lyon.')
+    expect(spoken()).toEqual([])
+    expect(ended()[0]?.replied).toBe('Sunny and mild in Lyon.')
+    expect(notices).toHaveLength(1)
   })
 })
 

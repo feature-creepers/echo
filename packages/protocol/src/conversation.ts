@@ -38,8 +38,11 @@ export const exchangeSchema = z.object({
   thread: z.string().min(1).max(64).optional(),
   /** What the user said. Empty when the assistant started the turn itself: see `trigger`. */
   said: z.string(),
-  /** Why the assistant started this turn itself, when it did: the greeting and briefing when the app opens. */
-  trigger: z.enum(['greeting']).optional(),
+  /**
+   * Why the assistant started this turn itself, when it did: the greeting and briefing when the app opens, a
+   * reminder ringing, or a task the person scheduled, whose request is then in `said`.
+   */
+  trigger: z.enum(['greeting', 'reminder', 'task']).optional(),
   /** What the assistant said aloud, so far: short, as a friend says it. */
   replied: z.string(),
   /**

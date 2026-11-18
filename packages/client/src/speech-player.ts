@@ -46,7 +46,8 @@ export interface SpeechPlayer extends Followed<Speaking> {
 
 /**
  * Says the sentences of the conversation one at a time, in the order announced, through the device's voice.
- * A turn that is stopped is cut at once, and so is everything said when the user starts a new turn.
+ * A turn that is stopped is cut at once, and so is everything said when the user starts a new turn. A turn the
+ * assistant started itself, such as a reminder, is said after what is being said.
  */
 export function playSpeech(channel: ChannelState, initial: DeviceVoice, now: () => number = Date.now): SpeechPlayer {
   const state = cell<Speaking>({ sentence: undefined, since: undefined, seconds: undefined, waiting: 0, paused: false })
@@ -107,9 +108,13 @@ export function playSpeech(channel: ChannelState, initial: DeviceVoice, now: () 
     publish()
   }
 
+  /** Whether the assistant started a turn itself: a reminder, a scheduled task, the briefing. */
+  const startedByItself = (turn: TurnId) => channel.current().exchanges.find((line) => line.turn === turn)?.trigger !== undefined
+
   const stopSentences = channel.onSentence((sentence) => {
-    // A new turn's first sentence replaces whatever an earlier turn was still saying.
-    if (playing && playing.sentence.turn !== sentence.turn) drop((kept) => kept.turn === sentence.turn)
+    // A new turn's first sentence replaces whatever an earlier turn was still saying, when the person started it. What
+    // the assistant starts itself waits its turn: a reminder never cuts an answer short.
+    if (playing && playing.sentence.turn !== sentence.turn && !startedByItself(sentence.turn)) drop((kept) => kept.turn === sentence.turn)
     queue.push(sentence)
     if (playing) voice.prepare?.(sentence)
     next()

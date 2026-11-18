@@ -1,10 +1,12 @@
-import { DEFAULT_ACCESS, DEFAULT_LANGUAGES, type LibraryView, type MemoryView, type Settings } from '@repo/protocol'
+import { DEFAULT_ACCESS, DEFAULT_LANGUAGES, type LibraryView, type MemoryView, type ScheduleView, type Settings } from '@repo/protocol'
 import { describe, expect, it, vi } from 'vitest'
 import { createExecutor, type Handlers } from './execute.ts'
 
 const memory: MemoryView = { revision: 0, groups: [], sleep: { when: 'quiet', quietMinutes: 10, time: '03:00' } }
 
 const library: LibraryView = { revision: 0, widgets: [] }
+
+const schedule: ScheduleView = { revision: 0, jobs: [], quiet: { on: true, from: '23:00', until: '07:30' }, held: false, timeZone: 'Europe/Paris' }
 
 const settings: Settings = {
   revision: 0,
@@ -49,6 +51,11 @@ function setup(overrides: Partial<Handlers> = {}) {
     'library.arrange': () => ({ ok: true, output: { library } }),
     'library.delete': () => ({ ok: true, output: { library } }),
     'library.show': () => ({ ok: true, output: {} }),
+    'schedule.read': () => ({ ok: true, output: { schedule } }),
+    'schedule.pause': () => ({ ok: true, output: { schedule } }),
+    'schedule.delete': () => ({ ok: true, output: { schedule } }),
+    'schedule.quiet.set': () => ({ ok: true, output: { schedule } }),
+    'schedule.hold': () => ({ ok: true, output: { schedule } }),
     ...overrides
   }
   return { execute: createExecutor(handlers, log), log }

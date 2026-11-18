@@ -293,7 +293,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
         >
           <SpokenLine text={speaking.sentence.text} since={speaking.since} seconds={speaking.seconds} paused={speaking.paused} />
         </motion.p>
-      ) : (running || voicing) && last?.trigger === 'greeting' ? null : (running || voicing) && last ? (
+      ) : (running || voicing) && (last?.trigger === 'greeting' || last?.trigger === 'reminder') ? null : (running || voicing) && last ? (
         <motion.p
           key={`said:${last.turn}`}
           initial={{ opacity: 0 }}
@@ -301,7 +301,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
           exit={{ opacity: 0, transition: { duration: 0.12 } }}
           className={cn('text-balance text-text-faint', streaming ? 'line-clamp-2 text-[0.9375rem] leading-relaxed' : 'text-lg leading-snug')}
         >
-          “{last.said}”
+          {last.trigger === 'task' && <span className="text-label">Scheduled · </span>}“{last.said}”
         </motion.p>
       ) : failed || problem ? (
         <motion.div key="problem" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="grid justify-items-center gap-3">

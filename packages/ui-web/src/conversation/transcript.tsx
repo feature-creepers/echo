@@ -2,6 +2,7 @@ import type { Exchange, Persona, TurnId } from '@repo/protocol'
 import { useLayoutEffect, useRef } from 'react'
 import { ArrowGlyph } from '../primitives/icons.tsx'
 import { accentStyle } from '../styles/accent.ts'
+import { whoAsked } from './who-asked.ts'
 
 export interface TranscriptProps {
   exchanges: readonly Exchange[]
@@ -36,7 +37,7 @@ export function Transcript({ exchanges, personas, onOpenAnswer }: TranscriptProp
               <li key={exchange.turn} className="grid grid-cols-1 gap-2" style={accentStyle(persona?.accent)}>
                 <div className="grid grid-cols-1 gap-1">
                   <span className="flex items-baseline gap-2 text-label text-text-faint">
-                    {exchange.trigger === 'greeting' ? 'Briefing' : 'You'} <time dateTime={exchange.at}>{clock.format(new Date(exchange.at))}</time>
+                    {whoAsked(exchange)} <time dateTime={exchange.at}>{clock.format(new Date(exchange.at))}</time>
                   </span>
                   {exchange.said && <p className="text-sm text-text-soft leading-relaxed [overflow-wrap:anywhere]">{exchange.said}</p>}
                 </div>

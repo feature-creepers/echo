@@ -67,6 +67,18 @@ describe('followView', () => {
     expect(state.current().stage?.id).toBe('new')
   })
 
+  it('keeps the stream read when a view arrives while the read is on its way, with the new view on top', async () => {
+    const core = fakeSession()
+    const state = followView(core.session)
+    // A reminder rings as the app opens: its card arrives before the screen the core had is read back.
+    core.emit({ type: 'event', name: 'view.shown', view: view('reminder') })
+    core.answer(view('b'), [view('b'), view('a')])
+    await settled()
+    expect(state.current().stream.map((shown) => shown.id)).toEqual(['reminder', 'b', 'a'])
+    expect(state.current().stage?.id).toBe('reminder')
+    expect(state.current().arrived).toEqual(['reminder'])
+  })
+
   it('keeps aside cards in the margin, apart from the stage', () => {
     const core = fakeSession()
     const state = followView(core.session)

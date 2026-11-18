@@ -39,6 +39,7 @@ export {
   type Result,
   resultSchema
 } from './envelope.ts'
+export { deviceNotifySchema } from './events/schedule.ts'
 export { MEDIA_ACTIONS } from './events/views.ts'
 export { type Event, type EventName, type EventOf, eventSchema } from './events.ts'
 export {
@@ -126,6 +127,38 @@ export {
   spokenPersonaName,
   stanceSchema
 } from './personas.ts'
+export {
+  clockTimeSchema,
+  JOB_KINDS,
+  JOB_REQUEST_MAX_LENGTH,
+  JOB_SENTENCE_MAX_LENGTH,
+  JOB_STATES,
+  JOB_TITLE_MAX_LENGTH,
+  type Job,
+  type JobKind,
+  type JobState,
+  jobIdSchema,
+  jobKindSchema,
+  jobSchema,
+  jobStateSchema,
+  listed,
+  localDateTimeSchema,
+  MAX_EVERY_HOURS,
+  MIN_EVERY_HOURS,
+  type Notification,
+  notificationSchema,
+  ordinal,
+  type QuietHours,
+  quietHoursSchema,
+  recurrenceWords,
+  type ScheduleView,
+  scheduleViewSchema,
+  type Timing,
+  timingSchema,
+  WEEKDAYS,
+  type Weekday,
+  weekdaySchema
+} from './schedule.ts'
 export { type Settings, settingsSchema } from './settings.ts'
 export { THREAD_KINDS, THREAD_STATES, type Thread, type Threads, threadIdSchema, threadSchema, threadsSchema } from './threads.ts'
 export { isCompatible, PROTOCOL_VERSION } from './version.ts'

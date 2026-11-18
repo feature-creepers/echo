@@ -10,6 +10,7 @@ import { MemorySection } from '../memory/memory-section.tsx'
 import { PersonasForm } from '../personas/personas-form.tsx'
 import { ScreenHeader } from '../primitives/screen-header.tsx'
 import { Sidebar, SidebarGroup, SidebarItem } from '../primitives/sidebar.tsx'
+import { RemindersSection } from '../schedule/reminders-section.tsx'
 import { AboutSection } from '../settings/about-section.tsx'
 import { GeneralSection } from '../settings/general-section.tsx'
 import { MicrophoneSection } from '../settings/microphone-section.tsx'
@@ -60,6 +61,12 @@ const PAGES = {
     lead: (name) =>
       `${name} keeps every word of your conversations, and while it sleeps it works out what is worth remembering about you. Here is what it knows, where it learned it, and when it sleeps.`,
     render: (hub) => <MemorySection memory={hub.memory} productName={hub.productName} />
+  },
+  reminders: {
+    title: 'Reminders',
+    lead: (name) =>
+      `What you asked ${name} to do later: reminders it says at their time, and tasks it carries out as if you had just asked, once or again and again.`,
+    render: (hub) => <RemindersSection client={hub.client} productName={hub.productName} />
   },
   general: {
     title: 'General',
@@ -128,7 +135,7 @@ export const HUB_PAGES = Object.keys(PAGES) as HubPage[]
  * to the next (docs/SPEC.md, section 5.2).
  */
 const GROUPS: { title: string; pages: HubPage[] }[] = [
-  { title: 'Library', pages: ['widgets', 'memory'] },
+  { title: 'Library', pages: ['widgets', 'memory', 'reminders'] },
   { title: 'This computer', pages: ['general', 'voice', 'microphone', 'shortcuts'] },
   { title: 'Your assistant', pages: ['personalities', 'models', 'access'] }
 ]

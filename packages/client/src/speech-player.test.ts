@@ -1,3 +1,4 @@
+import type { Exchange } from '@repo/protocol'
 import { describe, expect, it } from 'vitest'
 import { type DeviceVoice, playSpeech } from './speech-player.ts'
 import type { ChannelState, Sentence } from './state/channel.ts'
@@ -6,7 +7,9 @@ import type { ChannelState, Sentence } from './state/channel.ts'
 function fakeChannel() {
   const sentences = new Set<(sentence: Sentence) => void>()
   const stops = new Set<(turn: string) => void>()
+  const exchanges: Exchange[] = []
   const channel = {
+    current: () => ({ exchanges, running: undefined }),
     onSentence: (listener: (sentence: Sentence) => void) => {
       sentences.add(listener)
       return () => void sentences.delete(listener)
@@ -15,14 +18,17 @@ function fakeChannel() {
       stops.add(listener)
       return () => void stops.delete(listener)
     }
-  } as ChannelState
+  } as Pick<ChannelState, 'current' | 'onSentence' | 'onStopped'> as ChannelState
   const announce = (turn: string, text: string) => {
     for (const listener of sentences) listener({ turn, text, language: undefined })
   }
   const stop = (turn: string) => {
     for (const listener of stops) listener(turn)
   }
-  return { channel, announce, stop, listening: () => sentences.size + stops.size }
+  /** A turn the assistant started itself, as the core announces it before its sentences. */
+  const startedByItself = (turn: string, trigger: Exchange['trigger']) =>
+    exchanges.push({ turn, at: '', persona: 'first', said: '', replied: '', outcome: 'running', ...(trigger ? { trigger } : {}) })
+  return { channel, announce, stop, startedByItself, listening: () => sentences.size + stops.size }
 }
 
 /** A voice the test finishes by hand. */
@@ -71,6 +77,24 @@ describe('the speech player', () => {
     said[1]?.finish()
     await settled()
     expect(player.current()).toEqual({ sentence: undefined, waiting: 0, paused: false })
+  })
+
+  it('says a reminder after the answer being said, rather than cut it, and lets the person cut it', async () => {
+    const core = fakeChannel()
+    const { voice, said } = fakeVoice()
+    playSpeech(core.channel, voice)
+    core.announce('t1', 'The answer.')
+    core.startedByItself('r1', 'reminder')
+    core.announce('r1', 'Time to stretch.')
+    expect(said.map((entry) => [entry.text, entry.cancelled])).toEqual([['The answer.', false]])
+
+    said[0]?.finish()
+    await settled()
+    expect(said.map((entry) => entry.text)).toEqual(['The answer.', 'Time to stretch.'])
+    // The person speaks: their turn takes the floor.
+    core.announce('t2', 'Yes?')
+    expect(said[1]?.cancelled).toBe(true)
+    expect(said.at(-1)?.text).toBe('Yes?')
   })
 
   it('cuts what it is saying and forgets the rest when told to stop', async () => {
