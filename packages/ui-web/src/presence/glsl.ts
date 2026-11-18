@@ -31,8 +31,8 @@ void main() {
  * other: what the shaders' `turned` gives. A point of the thing, times it, is where the point is once turned.
  */
 export function turned(right: number, up: number, into: Float32Array = new Float32Array(9), at = 0): Float32Array {
-  const [ca, sa, cb, sb] = [Math.cos(right), Math.sin(right), Math.cos(up), Math.sin(up)]
-  into.set([ca, -sb * sa, -cb * sa, 0, cb, -sb, sa, sb * ca, cb * ca], at)
+  const [cosRight, sinRight, cosUp, sinUp] = [Math.cos(right), Math.sin(right), Math.cos(up), Math.sin(up)]
+  into.set([cosRight, -sinUp * sinRight, -cosUp * sinRight, 0, cosUp, -sinUp, sinRight, sinUp * cosRight, cosUp * cosRight], at)
   return into
 }
 
@@ -89,8 +89,8 @@ float noise(vec2 p, float period) {
 // A turn in space, by the angles a thing faces right and up. A point of the thing, times it, is where the point is
 // once turned; a point of the room, before it (\`point * turn\`), is where the point is from the thing.
 mat3 turned(vec2 by) {
-  float ca = cos(by.x), sa = sin(by.x), cb = cos(by.y), sb = sin(by.y);
-  return mat3(vec3(ca, -sb * sa, -cb * sa), vec3(0.0, cb, -sb), vec3(sa, sb * ca, cb * ca));
+  float cosRight = cos(by.x), sinRight = sin(by.x), cosUp = cos(by.y), sinUp = sin(by.y);
+  return mat3(vec3(cosRight, -sinUp * sinRight, -cosUp * sinRight), vec3(0.0, cosUp, -sinUp), vec3(sinRight, sinUp * cosRight, cosUp * cosRight));
 }
 
 // How much of a pixel a line covers, from its distance to the line's middle and its width, both in device

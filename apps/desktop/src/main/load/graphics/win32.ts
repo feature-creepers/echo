@@ -13,19 +13,28 @@ const EVERY_SECONDS = 5
 const RENEW_MS = 120_000
 
 /**
+ * How many readings a reader is asked for: those of one life and one more, so a reader the app could not stop,
+ * because the app itself was ended, stops by itself a little later.
+ */
+const READINGS = RENEW_MS / 1000 / EVERY_SECONDS + 1
+
+/**
  * The graphics card's use from one line of typeperf's output, from 0 to 1: the sum of the 3D engines' percentages,
  * which can pass a hundred on a machine with more than one card, so it is capped. The header, blank lines and
- * messages give nothing.
+ * messages give nothing. Each value is in quotes, and is read whole, with a point or a comma before its decimals:
+ * typeperf writes a point whatever the system's format, as seen on a French Windows 11, and a comma is taken too in
+ * case another version follows the format.
  */
 export function parseTypeperf(line: string): number | undefined {
-  const fields = line
-    .trim()
-    .split(',')
-    .map((field) => field.replace(/^"|"$/g, ''))
+  const fields =
+    line
+      .trim()
+      .match(/"[^"]*"/g)
+      ?.map((field) => field.slice(1, -1)) ?? []
   if (fields.length < 2 || !/^\d{1,2}\/\d{1,2}\/\d{4}/.test(fields[0] ?? '')) return undefined
   let sum = 0
   for (const field of fields.slice(1)) {
-    const value = Number(field)
+    const value = field.trim() === '' ? Number.NaN : Number(field.replace(',', '.'))
     if (Number.isFinite(value) && value > 0) sum += value
   }
   return Math.min(1, sum / 100)
@@ -39,7 +48,10 @@ export function startGraphics(): Graphics {
 
   const open = () => {
     if (stopped) return
-    const opened = spawn('typeperf', [COUNTER, '-si', String(EVERY_SECONDS)], { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] })
+    const opened = spawn('typeperf', [COUNTER, '-si', String(EVERY_SECONDS), '-sc', String(READINGS)], {
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'ignore']
+    })
     reader = opened
     let pending = ''
     opened.stdout?.setEncoding('utf8')
@@ -57,11 +69,14 @@ export function startGraphics(): Graphics {
       latest = undefined
     })
     opened.on('exit', () => {
-      if (reader === opened) reader = undefined
+      // One that was replaced by the next leaves the next one's readings alone.
+      if (reader !== opened) return
+      reader = undefined
+      latest = undefined
     })
     renew = setTimeout(() => {
-      opened.kill()
       open()
+      opened.kill()
     }, RENEW_MS)
   }
   open()

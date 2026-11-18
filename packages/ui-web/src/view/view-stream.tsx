@@ -5,6 +5,7 @@ import { cn } from '../primitives/cn.ts'
 import { DURATION, EASE } from '../styles/motion.ts'
 import type { ViewActions } from './context.ts'
 import { type Band, dialOf, roomOf } from './dial.ts'
+import { createPush, scrollsUnder, wheelTravel } from './push.ts'
 import { ViewCard } from './view-card.tsx'
 
 export interface ViewStreamProps {
@@ -135,7 +136,7 @@ const StreamCard = memo(function StreamCard({ view, dial, appear, lit, actions, 
         aria-hidden="true"
         style={CORE_LIGHT}
         className={cn(
-          'pointer-events-none absolute -inset-px rounded-[7px] transition-opacity duration-(--duration-slow) ease-soft',
+          'pointer-events-none absolute inset-0 rounded-lg transition-opacity duration-(--duration-slow) ease-soft',
           lit ? 'opacity-100' : 'opacity-0 group-hover/card:opacity-40'
         )}
       />
@@ -150,7 +151,7 @@ const StreamCard = memo(function StreamCard({ view, dial, appear, lit, actions, 
  */
 const CORE_LIGHT: CSSProperties = {
   boxShadow:
-    'inset 0 0 0 1px color-mix(in oklab, var(--accent) 46%, transparent), inset 0 1px 0 color-mix(in oklab, var(--accent) 72%, transparent), 0 0 0 1px color-mix(in oklab, var(--accent) 12%, transparent)',
+    '0 0 0 1px color-mix(in oklab, var(--accent) 46%, transparent), 0 -1px 0 0 color-mix(in oklab, var(--accent) 72%, transparent), 0 0 0 2px color-mix(in oklab, var(--accent) 12%, transparent)',
   background: 'radial-gradient(90% 55% at 50% 0%, color-mix(in oklab, var(--accent) 8%, transparent), transparent 75%)'
 }
 
@@ -197,11 +198,10 @@ function createDial() {
   let band: Band = { top: INSET, bottom: INSET + 1 }
   let settling: { stop(): void } | undefined
   let pending: ReturnType<typeof setTimeout> | undefined
-  // Past the top: how far the person has scrolled on up from the newest view, and when, so a firm push goes home
-  // and a wheel that only overshot does not.
+  // Past the top: a firm push of the wheel on up from the newest view goes home, and a wheel that only overshot
+  // does not.
   let pastTop: () => void = () => undefined
-  let pushed = 0
-  let pushedAt = 0
+  const push = createPush(PUSH.far, PUSH.within)
   const still = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
   const paint = (slot: Slot) => {
@@ -352,21 +352,13 @@ function createDial() {
    * A wheel going on up at the top, a firm push of it, anywhere on the stage, or a key that would go further up, goes
    * home. The stage listens, as the wheel may be over the core or the header rather than over the stream.
    */
-  const onStageWheel = (event: WheelEvent) => {
-    if (!scroller || scroller.scrollTop > 0 || event.deltaY >= 0) {
-      pushed = 0
-      return
-    }
-    const now = performance.now()
-    if (now - pushedAt > PUSH.within) pushed = 0
-    pushedAt = now
-    pushed += -event.deltaY * (event.deltaMode === 1 ? 16 : 1)
-    if (pushed >= PUSH.far) {
-      pushed = 0
-      pastTop()
-    }
-  }
   let stage: HTMLElement | null = null
+  const onStageWheel = (event: WheelEvent) => {
+    if (!scroller || !stage) return
+    // The wheel is free once the stream is at its top and nothing under the pointer would scroll up with it.
+    const free = scroller.scrollTop <= 0 && !scrollsUnder(event.target, stage, 'up', scroller)
+    if (push.wheel(-wheelTravel(event), performance.now(), free)) pastTop()
+  }
   const onKey = (event: KeyboardEvent) => {
     if (!scroller || scroller.scrollTop > 0 || event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return
     if (event.key === 'Home' || event.key === 'PageUp' || event.key === 'ArrowUp') pastTop()

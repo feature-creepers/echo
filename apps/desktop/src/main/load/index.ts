@@ -1,6 +1,7 @@
-import { cpus, freemem, totalmem } from 'node:os'
+import { cpus, totalmem } from 'node:os'
 import { type Graphics, startGraphics } from './graphics/index.ts'
 import { loadOf, memoryPressure, type ProcessorTimes, processorBusy } from './measure.ts'
+import { freeMemory } from './memory/index.ts'
 
 /** How often the load is told, in milliseconds: about as often as it can change in a way that shows. */
 const EVERY_MS = 1000
@@ -15,8 +16,8 @@ export interface LoadFollower {
 const timesNow = (): ProcessorTimes[] => cpus().map((cpu) => cpu.times)
 
 /**
- * How hard this computer works, for the window's core to follow: the processor and memory as Node reports them,
- * and the graphics card the way each system does. Nothing is read while the window is not seen, and nothing at all
+ * How hard this computer works, for the window's core to follow: the processor as Node reports it, and memory and
+ * the graphics card the way each system does. Nothing is read while the window is not seen, and nothing at all
  * once no one follows it.
  */
 export function followLoad(active: () => boolean): LoadFollower {
@@ -47,7 +48,8 @@ export function followLoad(active: () => boolean): LoadFollower {
         const after = timesNow()
         const processor = processorBusy(before, after)
         before = after
-        listener(loadOf({ processor, memory: memoryPressure(freemem(), totalmem()), graphics: graphics.latest() }))
+        const free = freeMemory()
+        listener(loadOf({ processor, memory: free === undefined ? 0 : memoryPressure(free, totalmem()), graphics: graphics.latest() }))
       }, EVERY_MS)
     },
     stop

@@ -12,6 +12,8 @@ describe("Windows' graphics counters", () => {
     { case: 'engines that did nothing', line: '"11/18/2026 19:10:16.325","0.000000","0.000000"', use: 0 },
     { case: 'more than one card, capped', line: '"1/2/2026 09:00:00.000","80","70"', use: 1 },
     { case: 'an engine that gave no number', line: '"11/18/2026 19:10:15.296","-1","","25"', use: 0.25 },
+    { case: 'a comma before the decimals', line: '"11/18/2026 19:10:15.296","0,000000","12,500000","30,000000"', use: 0.425 },
+    { case: 'a line without quotes', line: '11/18/2026 19:10:15.296,12.5', use: undefined },
     { case: 'the header', line: '"(PDH-CSV 4.0)","\\\\HOST\\GPU Engine(pid_1_engtype_3D)\\Utilization Percentage"', use: undefined },
     { case: 'a blank line', line: '', use: undefined },
     { case: 'a message', line: 'Exiting, please wait...', use: undefined }

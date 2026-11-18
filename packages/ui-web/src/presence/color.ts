@@ -2,6 +2,19 @@
 export type Rgb = readonly [number, number, number]
 
 /**
+ * Reads a CSS colour, whatever way it is written, as red, green and blue from 0 to 255: the browser paints it on a
+ * canvas of one pixel, and the pixel is read back.
+ */
+export function readColor(probe: CanvasRenderingContext2D, value: string): [number, number, number] {
+  probe.fillStyle = '#000'
+  probe.fillStyle = value
+  probe.clearRect(0, 0, 1, 1)
+  probe.fillRect(0, 0, 1, 1)
+  const [red = 0, green = 0, blue = 0] = probe.getImageData(0, 0, 1, 1).data
+  return [red, green, blue]
+}
+
+/**
  * Light as warm as it is strong: its colour where faint, through the colours its filter leaks, to white where it
  * burns, each channel from 0 to 1. The response says how fast each channel fills; the strongest fills at the given
  * pace. The shaders work it out the same way (`burn` in `glsl.ts`), so both drawings of a look share their light.

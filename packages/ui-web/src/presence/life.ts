@@ -66,12 +66,6 @@ export const RESTING_LOAD = 0.3
  */
 const GAZE_SPRING = { stiffness: 150, damping: 21 } as const
 
-/**
- * How far the core's face turns towards what it looks at, in radians, at the edge of its gaze, as the 2D canvas draws
- * it: subtle, as a glance. On the graphics card each look says how far it turns itself (`Drawing.turn`).
- */
-export const TILT = 0.17
-
 /** With nothing to look at, the core rests its gaze in a new place once in about this many seconds. */
 const WANDER_SLOT = 2.9
 

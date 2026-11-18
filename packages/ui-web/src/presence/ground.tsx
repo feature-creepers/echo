@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { cn } from '../primitives/cn.ts'
+import { readColor } from './color.ts'
 import { GROUND_FRAGMENT, GROUND_VERTEX } from './ground-shader.ts'
 import { ECHO_LENGTH } from './life.ts'
 import { useCoreLight } from './light.ts'
@@ -11,16 +12,6 @@ import { useCoreLight } from './light.ts'
 const FRAMES_A_SECOND = 30
 
 const UNIFORMS = ['size', 'ratio', 'time', 'live', 'accent', 'core', 'glow', 'spot', 'voice', 'voiceShift', 'fine', 'phase', 'phaseAt'] as const
-
-/** Reads a CSS colour as red, green and blue from 0 to 1. */
-function readColor(probe: CanvasRenderingContext2D, value: string): [number, number, number] {
-  probe.fillStyle = '#000'
-  probe.fillStyle = value
-  probe.clearRect(0, 0, 1, 1)
-  probe.fillRect(0, 0, 1, 1)
-  const [r = 0, g = 0, b = 0] = probe.getImageData(0, 0, 1, 1).data
-  return [r / 255, g / 255, b / 255]
-}
 
 function setUp(canvas: HTMLCanvasElement) {
   const gl = canvas.getContext('webgl2', {
@@ -141,7 +132,8 @@ export function LivingGround({ className }: { className?: string }) {
       previous = now
       const moving = !still.matches
       if (now - readAt > 250) {
-        target = readColor(probe, getComputedStyle(element).getPropertyValue('--accent').trim() || '#a4adbb')
+        const [red, green, blue] = readColor(probe, getComputedStyle(element).getPropertyValue('--accent').trim() || '#a4adbb')
+        target = [red / 255, green / 255, blue / 255]
         readAt = now
       }
       const ease = 1 - Math.exp(-delta * 8)

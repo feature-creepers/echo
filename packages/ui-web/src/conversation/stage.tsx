@@ -27,6 +27,7 @@ import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { ArrowGlyph } from '../primitives/icons.tsx'
 import { DURATION, EASE, settle } from '../styles/motion.ts'
 import type { ViewActions } from '../view/context.ts'
+import { createPush, scrollsUnder, wheelTravel } from '../view/push.ts'
 import { ViewStream } from '../view/view-stream.tsx'
 import { doing } from './activity.ts'
 import { EngineIndicator } from './engine-indicator.tsx'
@@ -107,6 +108,12 @@ const LARGEST = 280
  * with the eye, damped so it settles without bouncing, in about half a second.
  */
 const TRAVEL = { stiffness: 210, damping: 30 } as const
+
+/**
+ * How firmly the person must scroll on down at home to go on to the stream: this many pixels of wheel within this
+ * many milliseconds.
+ */
+const LEAVE = { far: 40, within: 450 } as const
 const travel = { type: 'spring', stiffness: TRAVEL.stiffness, damping: TRAVEL.damping, mass: 1 } as const
 
 interface CoreProps {
@@ -136,14 +143,94 @@ function Core({ mood, level, bands, load, sight, place, onArrive }: CoreProps) {
   const halo = useRef<HTMLSpanElement>(null)
   const light = useCoreLight()
   const seen = useRef<Sight | undefined>(undefined)
-  // Where the core is, from the top left of the stage, and how large, with how fast each is changing.
-  const at = useRef({ x: 0, y: 0, size: LARGEST, vx: 0, vy: 0, vs: 0, time: 0, placed: false, arrived: true })
+  // Where the core is, from the top left of the stage, and how large, with how fast each is changing; the place it
+  // rests on, once it has arrived there; and where the stage itself is on the screen, as last read.
+  const at = useRef({
+    x: 0,
+    y: 0,
+    size: LARGEST,
+    speedX: 0,
+    speedY: 0,
+    growth: 0,
+    time: 0,
+    placed: false,
+    arrived: true,
+    rested: null as HTMLElement | null,
+    left: 0,
+    top: 0
+  })
   const arrive = useRef(onArrive)
   arrive.current = onArrive
+  const still = useMemo(() => window.matchMedia('(prefers-reduced-motion: reduce)'), [])
+  // From what the last frame read, so that looking costs no reading of the layout.
   const middle = useCallback((): Point | undefined => {
-    const stage = box.current?.offsetParent?.getBoundingClientRect()
-    return stage ? { x: stage.left + at.current.x, y: stage.top + at.current.y } : undefined
+    const here = at.current
+    return here.placed ? { x: here.left + here.x, y: here.top + here.y } : undefined
   }, [])
+  /**
+   * Puts the core where it belongs now. On the place it rests on, it is simply there: when that place scrolls,
+   * resizes or is pushed by what is laid out round it, the core moves with it and has nothing to chase. On its way
+   * to another place, it goes one step further on its spring, when a frame is being drawn.
+   */
+  const settleCore = useCallback(
+    (drawing: boolean) => {
+      const element = box.current
+      const slot = place()
+      const stage = element?.offsetParent?.getBoundingClientRect()
+      const here = at.current
+      if (!element || !slot || !stage) return
+      const kept = slot.getBoundingClientRect()
+      const target = { x: kept.left - stage.left + kept.width / 2, y: kept.top - stage.top + kept.height / 2, size: kept.width }
+      const now = performance.now()
+      if (!here.placed || here.rested === slot || still.matches) {
+        Object.assign(here, target, { speedX: 0, speedY: 0, growth: 0, placed: true, rested: slot })
+      } else if (drawing) {
+        // Small steps, so a long frame never throws it.
+        for (let left = Math.min(0.05, (now - here.time) / 1000); left > 1e-6; left -= 1 / 240) {
+          const step = Math.min(left, 1 / 240)
+          here.speedX += (TRAVEL.stiffness * (target.x - here.x) - TRAVEL.damping * here.speedX) * step
+          here.speedY += (TRAVEL.stiffness * (target.y - here.y) - TRAVEL.damping * here.speedY) * step
+          here.growth += (TRAVEL.stiffness * (target.size - here.size) - TRAVEL.damping * here.growth) * step
+          here.x += here.speedX * step
+          here.y += here.speedY * step
+          here.size += here.growth * step
+        }
+        // It rests on its new place once it is within half a pixel of it and all but still.
+        const away = Math.hypot(target.x - here.x, target.y - here.y) + Math.abs(target.size - here.size)
+        if (away < 0.5 && Math.hypot(here.speedX, here.speedY) < 4) here.rested = slot
+      } else {
+        return
+      }
+      here.time = now
+      here.left = stage.left
+      here.top = stage.top
+      // Arrived once it is within a few pixels of its place and nearly still.
+      const arrived =
+        here.rested === slot ||
+        (Math.hypot(target.x - here.x, target.y - here.y) + Math.abs(target.size - here.size) < 6 && Math.hypot(here.speedX, here.speedY) < 60)
+      if (arrived !== here.arrived) {
+        here.arrived = arrived
+        arrive.current(arrived)
+      }
+      // On whole device pixels, so its finest lines stay one pixel sharp.
+      const ratio = window.devicePixelRatio || 1
+      const left = Math.round((here.x - LARGEST / 2) * ratio) / ratio
+      const top = Math.round((here.y - LARGEST / 2) * ratio) / ratio
+      element.style.transform = `translate3d(${left}px,${top}px,0)`
+    },
+    [place, still]
+  )
+  // No frame is drawn while the core is out of sight. What scrolls or resizes still moves its place then, so the
+  // core is kept on it there too, and is drawn again as soon as its place is back in sight.
+  useEffect(() => {
+    const keep = () => settleCore(false)
+    window.addEventListener('scroll', keep, { capture: true, passive: true })
+    window.addEventListener('resize', keep)
+    return () => {
+      window.removeEventListener('scroll', keep, { capture: true })
+      window.removeEventListener('resize', keep)
+    }
+  }, [settleCore])
   const gaze = useCallback((): readonly [number, number] | undefined => {
     const now = sight()
     seen.current = now
@@ -165,42 +252,8 @@ function Core({ mood, level, bands, load, sight, place, onArrive }: CoreProps) {
   }, [middle])
   const onFrame = useCallback(
     (pose: Pose) => {
-      const element = box.current
-      const slot = place()
-      const stage = element?.offsetParent?.getBoundingClientRect()
+      settleCore(true)
       const here = at.current
-      if (element && slot && stage) {
-        const kept = slot.getBoundingClientRect()
-        const target = { x: kept.left - stage.left + kept.width / 2, y: kept.top - stage.top + kept.height / 2, size: kept.width }
-        const now = performance.now()
-        const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-        if (!here.placed || still) {
-          Object.assign(here, { ...target, vx: 0, vy: 0, vs: 0, placed: true })
-        } else {
-          // Small steps, so a long frame never throws it.
-          for (let left = Math.min(0.05, (now - here.time) / 1000); left > 1e-6; left -= 1 / 240) {
-            const step = Math.min(left, 1 / 240)
-            here.vx += (TRAVEL.stiffness * (target.x - here.x) - TRAVEL.damping * here.vx) * step
-            here.vy += (TRAVEL.stiffness * (target.y - here.y) - TRAVEL.damping * here.vy) * step
-            here.vs += (TRAVEL.stiffness * (target.size - here.size) - TRAVEL.damping * here.vs) * step
-            here.x += here.vx * step
-            here.y += here.vy * step
-            here.size += here.vs * step
-          }
-        }
-        here.time = now
-        // Arrived once it is within a few pixels of its place and nearly still.
-        const arrived = Math.hypot(target.x - here.x, target.y - here.y) + Math.abs(target.size - here.size) < 6 && Math.hypot(here.vx, here.vy) < 60
-        if (arrived !== here.arrived) {
-          here.arrived = arrived
-          arrive.current(arrived)
-        }
-        // On whole device pixels, so its finest lines stay one pixel sharp.
-        const ratio = window.devicePixelRatio || 1
-        const left = Math.round((here.x - LARGEST / 2) * ratio) / ratio
-        const top = Math.round((here.y - LARGEST / 2) * ratio) / ratio
-        element.style.transform = `translate3d(${left}px,${top}px,0)`
-      }
       const cast = (Object.keys(CASTS) as Look[]).reduce((sum, look) => sum + CASTS[look] * pose.looks[look], 0)
       const glow = ALL_MOODS.reduce((sum, each) => sum + HALO[each] * pose.weights[each], 0) * (0.75 + 0.6 * pose.power)
       const shown = here.size / LARGEST
@@ -228,7 +281,7 @@ function Core({ mood, level, bands, load, sight, place, onArrive }: CoreProps) {
             }
           : undefined
     },
-    [light, place, middle]
+    [light, settleCore, middle]
   )
   // When the core leaves the screen, it lights nothing round it any more.
   useEffect(
@@ -471,21 +524,29 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
   const placeOf = useCallback(() => places.current[placeIn.current], [])
   // What is written under the core waits for it to arrive, so it never crosses the core on its way.
   const [arrived, setArrived] = useState(true)
+  // Whether the press under way is the one that went on from home to the stream.
+  const wentOn = useRef(false)
+  // At home, a push of the wheel on down, or a key that would go down, goes on to the stream. The window listens, as
+  // nothing on the stage holds the keyboard; but only what happens on the stage counts, and only what nothing there
+  // takes for itself: a wheel over the side sheet scrolls the sheet, and an arrow in a menu moves through the menu.
   useEffect(() => {
     if (!atHome) return
-    let pushed = 0
-    let pushedAt = 0
+    const push = createPush(LEAVE.far, LEAVE.within)
+    const stageOf = (target: EventTarget | null) => (target instanceof Element ? target.closest('[data-stage]') : null)
     const onWheel = (event: WheelEvent) => {
-      if (event.deltaY <= 0) return
-      const now = performance.now()
-      if (now - pushedAt > 450) pushed = 0
-      pushedAt = now
-      pushed += event.deltaY * (event.deltaMode === 1 ? 16 : 1)
-      if (pushed >= 40) setHome(false)
+      const stage = stageOf(event.target)
+      // The stream itself, sunk under the core, is what the push goes on to: it does not take the wheel from it.
+      const free = stage !== null && !scrollsUnder(event.target, stage, 'down', stage.querySelector('[data-stream]'))
+      if (push.wheel(wheelTravel(event), performance.now(), free)) setHome(false)
     }
     const onKey = (event: KeyboardEvent) => {
-      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return
-      if (event.key === 'PageDown' || event.key === 'ArrowDown' || event.key === 'End') setHome(false)
+      if (event.defaultPrevented || (event.key !== 'PageDown' && event.key !== 'ArrowDown' && event.key !== 'End')) return
+      const target = event.target
+      if (target instanceof Element && target !== document.body) {
+        if (stageOf(target) === null) return
+        if (target.closest('input, textarea, select, [contenteditable], [role="menu"], [role="listbox"], [role="dialog"]')) return
+      }
+      setHome(false)
     }
     window.addEventListener('wheel', onWheel, { passive: true })
     window.addEventListener('keydown', onKey)
@@ -788,6 +849,31 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
               exit={{ opacity: 0, transition: { duration: DURATION.quick, ease: EASE } }}
               onPointerDownCapture={(event) => {
                 if (!atHome) return
+                event.preventDefault()
+                event.stopPropagation()
+                // The press that goes on to the stream is only that: the click it ends in never also presses what
+                // was under it. Once the pointer is let go, and that click has come or not, presses count again.
+                wentOn.current = true
+                const done = () => {
+                  window.removeEventListener('pointerup', done)
+                  window.removeEventListener('pointercancel', done)
+                  setTimeout(() => {
+                    wentOn.current = false
+                  }, 0)
+                }
+                window.addEventListener('pointerup', done)
+                window.addEventListener('pointercancel', done)
+                setHome(false)
+              }}
+              onClickCapture={(event) => {
+                if (!wentOn.current) return
+                wentOn.current = false
+                event.preventDefault()
+                event.stopPropagation()
+              }}
+              // From the keyboard too: at home, Enter or Space on what waits in the stream goes on to it first.
+              onKeyDownCapture={(event) => {
+                if (!atHome || (event.key !== 'Enter' && event.key !== ' ')) return
                 event.preventDefault()
                 event.stopPropagation()
                 setHome(false)

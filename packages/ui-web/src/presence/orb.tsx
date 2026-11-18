@@ -1,6 +1,7 @@
 import { LOOKS, type Look } from '@repo/protocol'
 import { useEffect, useRef } from 'react'
 import { cn } from '../primitives/cn.ts'
+import { readColor } from './color.ts'
 import { createGpuCore } from './gpu.ts'
 import { type Around, createLife, type Mood, type Pose } from './life.ts'
 import { createPainter } from './painter.ts'
@@ -47,16 +48,6 @@ const NEUTRAL_LOOK: Look = 'hud'
  * product sets it.
  */
 const forceShader = () => new URLSearchParams(window.location.search).get('core') === 'shader'
-
-/** Reads a CSS colour, whatever way it is written, as red, green and blue from 0 to 255. */
-function readColor(probe: CanvasRenderingContext2D, value: string): [number, number, number] {
-  probe.fillStyle = '#000'
-  probe.fillStyle = value
-  probe.clearRect(0, 0, 1, 1)
-  probe.fillRect(0, 0, 1, 1)
-  const [r = 0, g = 0, b = 0] = probe.getImageData(0, 0, 1, 1).data
-  return [r, g, b]
-}
 
 /** Reads the look the surrounding element asks for, as `--look`. */
 function readLook(element: Element): Look {
