@@ -25,12 +25,26 @@ export const APPROVALS = ['ask', 'trust', 'auto'] as const
 
 export const MAX_PLACES = 64
 
+/** How long a question waits for the person, in minutes, when they do not say otherwise. */
+export const DEFAULT_APPROVAL_WAIT = 10
+/** The longest wait the person may choose, in minutes: a day. */
+export const MAX_APPROVAL_WAIT = 24 * 60
+
 export const accessSchema = z.object({
   /** The assistant's own folder, for the files it makes. Read and write. */
   workspace: z.boolean().default(true),
   places: z.array(placeSchema).max(MAX_PLACES).default([]),
   computer: z.enum(COMPUTER_REACH).default('off'),
   approvals: z.enum(APPROVALS).default('ask'),
+  /**
+   * Whether what destroys (deleting, formatting, rewriting git history, changing the system) is asked at every
+   * level, and never allowed for the session. Off, it follows the level like any other change: the person's choice.
+   */
+  askDestroying: z.boolean().default(true),
+  /** Whether what publishes to others (a push, a release, a post) is asked at every level. Off, it follows the level. */
+  askPublishing: z.boolean().default(true),
+  /** How many minutes a question waits for an answer before it counts as a no. `null`: until the person answers. */
+  approvalWait: z.number().int().min(1).max(MAX_APPROVAL_WAIT).nullable().default(DEFAULT_APPROVAL_WAIT),
   /** Whether the assistant may drive a web browser on the computer, in a window the person sees (docs/SPEC.md, section 12.1). */
   browser: z.boolean().default(true),
   /** Where the assistant's own folder is. Told by the core, which knows the computer it runs on; not a choice. */
@@ -38,8 +52,20 @@ export const accessSchema = z.object({
 })
 export type Access = z.infer<typeof accessSchema>
 
-/** A fresh install: the assistant's own folder, nothing else, every change asked first, and its browser. */
-export const DEFAULT_ACCESS: Access = { workspace: true, places: [], computer: 'off', approvals: 'ask', browser: true }
+/**
+ * A fresh install: the assistant's own folder, nothing else, every change asked first, what destroys or
+ * publishes always asked, a question waiting ten minutes, and its browser.
+ */
+export const DEFAULT_ACCESS: Access = {
+  workspace: true,
+  places: [],
+  computer: 'off',
+  approvals: 'ask',
+  askDestroying: true,
+  askPublishing: true,
+  approvalWait: DEFAULT_APPROVAL_WAIT,
+  browser: true
+}
 
 /**
  * A yes that lasts until the app quits, the access changes, or the person stops everything: for a command, the

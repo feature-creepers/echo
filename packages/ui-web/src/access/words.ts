@@ -16,8 +16,22 @@ export const LEVELS: Record<Access['approvals'], { label: string; short: string;
     label: "Don't ask",
     short: "doesn't ask",
     detail:
-      'It acts without a card within what you gave, commands included. Only what deletes, and what publishes to others (a push, a release), is still asked.'
+      'It acts without a card within what you gave, commands included. What deletes, and what publishes to others, is still asked while the switches below say so.'
   }
+}
+
+/** How long a question may wait for the person, as they pick it: minutes, or until they answer (`null`). */
+export const WAITS: readonly { minutes: number | null; label: string }[] = [
+  { minutes: 10, label: '10 min' },
+  { minutes: 60, label: '1 hour' },
+  { minutes: null, label: 'Wait for me' }
+]
+
+/** A wait in minutes, said for the person: "10 minutes", "an hour", "3 hours". */
+export function waitInWords(minutes: number): string {
+  if (minutes === 60) return 'an hour'
+  if (minutes % 60 === 0) return `${minutes / 60} hours`
+  return minutes === 1 ? 'a minute' : `${minutes} minutes`
 }
 
 /**

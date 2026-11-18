@@ -167,11 +167,11 @@ const NO_RECORDS: Records = { append: () => [], read: () => [] }
 const NO_VERSIONS: Blobs = { put: () => '', get: () => undefined }
 
 export function createAccess({ settings, screen, computer, timers, records, versions, now = () => new Date(), newId }: AccessOptions): AccessControl {
-  const approvals = createApprovals({ screen, timers })
+  const access = () => settings.read().access
+  const approvals = createApprovals({ screen, timers, wait: () => access().approvalWait })
   let ids = 0
   const nextId = newId ?? (() => `use-${++ids}`)
-  const access = () => settings.read().access
-  const allowances = createAllowances({ newId: nextId, now })
+  const allowances = createAllowances({ newId: nextId, now, destroyingAsked: () => access().askDestroying })
   const activity: Activity = createActivity({ records: records ?? NO_RECORDS, versions: versions ?? NO_VERSIONS, computer, now, newId: nextId })
   const listeners = new Set<(event: Event) => void>()
   const stopping = new Set<() => void>()
@@ -217,10 +217,14 @@ export function createAccess({ settings, screen, computer, timers, records, vers
     switch (use.action) {
       case 'run': {
         const keys = reading?.keys ?? []
+        const { askDestroying, askPublishing } = access()
         const note = reading?.destructive
-          ? { text: 'It deletes or overwrites something for good, or changes the system. This is always asked.', tone: 'danger' as const }
+          ? {
+              text: `It deletes or overwrites something for good, or changes the system.${askDestroying ? ' This is always asked.' : ''}`,
+              tone: 'danger' as const
+            }
           : reading?.publishes
-            ? { text: 'It puts something before others, beyond this computer. This is always asked.', tone: 'soft' as const }
+            ? { text: `It puts something before others, beyond this computer.${askPublishing ? ' This is always asked.' : ''}`, tone: 'soft' as const }
             : reading?.network
               ? { text: 'It uses the network.', tone: 'soft' as const }
               : reading?.opaque
@@ -367,7 +371,7 @@ export function createAccess({ settings, screen, computer, timers, records, vers
             return { allow: false, reason: use.refused.reason }
           }
           const reading = use.action === 'run' ? readCommand(use.command ?? '', use.shell ?? 'posix') : undefined
-          const decision = decide(use, access().approvals, reading, allowances.covers(use, reading))
+          const decision = decide(use, access(), reading, allowances.covers(use, reading))
           if (decision.run) return allowed(use, by, reading, decision.because)
 
           const answered: Answered = await approvals.ask(question(use, reading, decision.session), showing(), signal)
@@ -417,7 +421,7 @@ export function createAccess({ settings, screen, computer, timers, records, vers
 
     standing() {
       if (!computer) return undefined
-      const { places, computer: reach, approvals: level, workspace } = access()
+      const { places, computer: reach, approvals: level, workspace, askDestroying, askPublishing, approvalWait } = access()
       if (!workspace && places.length === 0 && reach === 'off') {
         return "The computer\n\nYou have no access to the person's files. If they want you to work with some, they can grant a folder in Settings, Access, or tell you which one: then call computer_grant."
       }
@@ -441,9 +445,13 @@ export function createAccess({ settings, screen, computer, timers, records, vers
         '',
         'How each use is decided:',
         `- ${asking}`,
-        '- A command that deletes, formats, shuts the computer down, changes permissions, the registry or services, force-stops a process, or rewrites git history is always asked, whatever they chose, and is never covered for the session.',
-        '- A command that puts something before others, beyond this computer, is always asked too, whatever they chose: a git push, a package published, a release, a pull request, an issue or a comment, a deployment. They may allow it for the session.',
-        '- When a card asks them, your call returns once they answered. They can allow it once, or for the session: the same program and subcommand (git commit, npm run, python), or any change in the same folder, then runs at once until the app quits.',
+        askDestroying
+          ? '- A command that deletes, formats, shuts the computer down, changes permissions, the registry or services, force-stops a process, or rewrites git history is always asked, whatever they chose, and is never covered for the session.'
+          : '- They chose not to have what deletes or changes the system asked every time: a command that deletes, formats, shuts the computer down, changes permissions, the registry or services, force-stops a process, or rewrites git history follows the level above, like any other command. Take the same care as if they were watching.',
+        askPublishing
+          ? '- A command that puts something before others, beyond this computer, is always asked too, whatever they chose: a git push, a package published, a release, a pull request, an issue or a comment, a deployment. They may allow it for the session.'
+          : '- They chose not to have what publishes asked every time: a git push, a package published, a release, a pull request, an issue or a comment, or a deployment follows the level above, like any other command.',
+        `- When a card asks them, your call returns once they answered${approvalWait === null ? '' : `, or after ${approvalWait} minutes without an answer, which counts as a no`}. They can allow it once, or for the session: the same program and subcommand (git commit, npm run, python), or any change in the same folder, then runs at once until the app quits.`,
         '- Every use is checked first against what they granted. A command is checked by the paths it names, with ~, variables and .. read: one that names a place outside, or a place never reached, is refused before anyone is asked. This reads what the command names, not what a program works out once it runs, so never use a command to reach around it: name the places you work on.',
         '- A use that is refused comes back with the reason: tell them in a sentence, and that they can grant more in Settings, Access.',
         '',

@@ -10,7 +10,7 @@ import type { CommandReading } from './commands.ts'
  */
 export interface Allowances {
   list(): Allowance[]
-  /** Whether a use is covered. A command that destroys never is. */
+  /** Whether a use is covered. A command that destroys never is, while what destroys is always asked. */
   covers(use: ComputerUse, reading: CommandReading | undefined): boolean
   /** Allow for the session what this use is: its commands' keys, or the folders of its files. */
   allow(use: ComputerUse, reading: CommandReading | undefined): void
@@ -34,7 +34,16 @@ export function within(path: string, folder: string): boolean {
   return one === other || one.startsWith(`${other}/`) || one.startsWith(`${other}\\`) || (other === '' && one.startsWith('/'))
 }
 
-export function createAllowances({ newId, now }: { newId: () => string; now: () => Date }): Allowances {
+export function createAllowances({
+  newId,
+  now,
+  destroyingAsked = () => true
+}: {
+  newId: () => string
+  now: () => Date
+  /** Whether what destroys is asked every time, as the person set it: then no yes for the session covers it. */
+  destroyingAsked?: () => boolean
+}): Allowances {
   let allowances: Allowance[] = []
   const listeners = new Set<(allowances: Allowance[]) => void>()
   const changed = () => {
@@ -48,7 +57,7 @@ export function createAllowances({ newId, now }: { newId: () => string; now: () 
 
     covers(use, reading) {
       if (use.action === 'run') {
-        if (!reading || reading.destructive || reading.keys.length === 0) return false
+        if (!reading || (reading.destructive && destroyingAsked()) || reading.keys.length === 0) return false
         const allowed = commands()
         return reading.keys.every((key) => allowed.has(key))
       }
@@ -61,7 +70,7 @@ export function createAllowances({ newId, now }: { newId: () => string; now: () 
       const at = now().toISOString()
       const added: Allowance[] = []
       if (use.action === 'run') {
-        if (!reading || reading.destructive) return
+        if (!reading || (reading.destructive && destroyingAsked())) return
         const allowed = commands()
         for (const key of reading.keys) if (!allowed.has(key)) added.push({ id: newId(), kind: 'command', subject: key, at })
       } else if (use.action === 'create' || use.action === 'change') {

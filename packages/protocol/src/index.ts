@@ -6,6 +6,8 @@ export {
   allowanceSchema,
   COMPUTER_REACH,
   DEFAULT_ACCESS,
+  DEFAULT_APPROVAL_WAIT,
+  MAX_APPROVAL_WAIT,
   MAX_PLACES,
   type Place,
   type ProtectedPlace,

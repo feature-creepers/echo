@@ -12,7 +12,7 @@ import { Switch } from '../primitives/switch.tsx'
 import { SettingGroup, SettingRow } from '../settings/rows.tsx'
 import { BrowserGroup } from './browser-group.tsx'
 import { useStandingRules } from './use-standing-rules.ts'
-import { LEVELS, lastPart } from './words.ts'
+import { LEVELS, lastPart, WAITS, waitInWords } from './words.ts'
 
 /** A path shown in full when it fits, and by its end when it does not: the end says which folder it is. */
 function PathText({ path, className }: { path: string; className?: string }) {
@@ -203,10 +203,7 @@ export function AccessSection({ client, settings, productName }: { client: Clien
           detail={
             <span className="grid gap-1">
               <span className={cn(access.approvals === 'auto' && 'text-warn')}>{LEVELS[access.approvals].detail}</span>
-              <span>
-                Whatever you choose, a command that deletes, formats, shuts down or changes permissions is asked every time. Answer with a click, or say “yes”,
-                “yes, for the session” or “no”.
-              </span>
+              <span>Answer with a click, or say “yes”, “yes, for the session” or “no”.</span>
             </span>
           }
           stacked
@@ -216,6 +213,45 @@ export function AccessSection({ client, settings, productName }: { client: Clien
             value={access.approvals}
             options={(['ask', 'trust', 'auto'] as const).map((value) => ({ value, label: LEVELS[value].label }))}
             onChange={(value) => void change({ approvals: value })}
+          />
+        </SettingRow>
+        <SettingRow
+          title="Always ask before deleting"
+          detail={
+            access.askDestroying ? (
+              'Deleting, formatting, shutting down, changing permissions or the system, and rewriting git history are asked every time, and never allowed for the session.'
+            ) : (
+              <span className="text-warn">What deletes or changes the system follows the choice above, like any other command. Nothing undoes a command.</span>
+            )
+          }
+        >
+          <Switch label="Always ask before deleting" on={access.askDestroying} disabled={busy} onChange={(on) => void change({ askDestroying: on })} />
+        </SettingRow>
+        <SettingRow
+          title="Always ask before publishing"
+          detail={
+            access.askPublishing ? (
+              'A push, a release, a package, a pull request, a comment or a deployment is asked every time. You may allow it for the session.'
+            ) : (
+              <span className="text-warn">What puts something before others follows the choice above, like any other command.</span>
+            )
+          }
+        >
+          <Switch label="Always ask before publishing" on={access.askPublishing} disabled={busy} onChange={(on) => void change({ askPublishing: on })} />
+        </SettingRow>
+        <SettingRow
+          title="When you don't answer"
+          detail={
+            access.approvalWait === null
+              ? 'A question waits until you answer it, or until you stop the work.'
+              : `After ${waitInWords(access.approvalWait)} without an answer, a question counts as a no.`
+          }
+        >
+          <Choice
+            label="How long a question waits"
+            value={String(access.approvalWait ?? 'never')}
+            options={WAITS.map((wait) => ({ value: String(wait.minutes ?? 'never'), label: wait.label }))}
+            onChange={(value) => void change({ approvalWait: value === 'never' ? null : Number(value) })}
           />
         </SettingRow>
         <SettingRow

@@ -1,3 +1,4 @@
+import { DEFAULT_APPROVAL_WAIT } from '@repo/protocol'
 import type { Timers } from '../ports/clock.ts'
 import type { Signal } from '../ports/harness.ts'
 import type { Screen, Showing } from '../views/screen.ts'
@@ -41,8 +42,7 @@ export interface Approvals {
   withdraw(): void
 }
 
-/** How long a question waits for an answer before it is taken as a no. */
-const WAIT_MS = 10 * 60 * 1000
+const MINUTE_MS = 60_000
 
 /** What the buttons of a card say, so a press is heard as the answer it is. */
 const YES = 'Allow'
@@ -61,7 +61,16 @@ const fenced = (command: string) => {
  * give. Each is a card composed from the generic blocks of the catalogue, with a button for each answer;
  * pressing one, or saying yes, yes for the session, or no, answers it. The card goes once answered.
  */
-export function createApprovals({ screen, timers }: { screen: Screen; timers?: Timers | undefined }): Approvals {
+export function createApprovals({
+  screen,
+  timers,
+  wait = () => DEFAULT_APPROVAL_WAIT
+}: {
+  screen: Screen
+  timers?: Timers | undefined
+  /** How many minutes a question waits before it is taken as a no, as the person set it; `null` until they answer. */
+  wait?: () => number | null
+}): Approvals {
   const waiting: { view: string | undefined; settle(answer: Answer, pressed?: boolean): void }[] = []
 
   return {
@@ -117,7 +126,8 @@ export function createApprovals({ screen, timers }: { screen: Screen; timers?: T
         }
         const onAbort = () => entry.settle('stopped')
         signal?.addEventListener('abort', onAbort, { once: true })
-        const cancelTimer = timers?.after(WAIT_MS, () => entry.settle('unanswered'))
+        const minutes = wait()
+        const cancelTimer = minutes === null ? undefined : timers?.after(minutes * MINUTE_MS, () => entry.settle('unanswered'))
         waiting.push(entry)
       })
     },

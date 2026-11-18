@@ -137,7 +137,17 @@ describe('access to the computer', () => {
         { label: 'Password databases', ending: '.kdbx' }
       ]
     })
-    expect(settings.read().access).toEqual({ workspace: true, places: [], computer: 'off', approvals: 'ask', browser: true, folder: WORKSPACE })
+    expect(settings.read().access).toEqual({
+      workspace: true,
+      places: [],
+      computer: 'off',
+      approvals: 'ask',
+      askDestroying: true,
+      askPublishing: true,
+      approvalWait: 10,
+      browser: true,
+      folder: WORKSPACE
+    })
   })
 
   it('reaches nothing on a core with no computer of its own', () => {
@@ -212,6 +222,33 @@ describe('access to the computer', () => {
     await settle()
     timers.advance(10 * 60 * 1000)
     expect(await waiting).toEqual({ allow: false, reason: expect.stringContaining('No answer came') })
+  })
+
+  it('waits as long as the person chose, or until they answer', async () => {
+    const { reach, settings, timers, access } = setup()
+    settings.setAccess({ approvalWait: 60 })
+    const hour = reach.approve(create, signal())
+    await settle()
+    timers.advance(59 * 60 * 1000)
+    expect(access.hear('yes')).toBe(true)
+    expect(await hour).toMatchObject({ allow: true })
+
+    settings.setAccess({ approvalWait: null })
+    const forever = reach.approve(create, signal())
+    await settle()
+    timers.advance(24 * 60 * 60 * 1000)
+    expect(access.hear('yes')).toBe(true)
+    expect(await forever).toMatchObject({ allow: true })
+  })
+
+  it('lets a command that destroys be allowed for the session once the person stops guarding it', async () => {
+    const { reach, settings, access } = setup()
+    settings.setAccess({ approvals: 'trust', askDestroying: false })
+    const first = reach.approve(command('rm notes.md'), signal())
+    await settle()
+    expect(access.hear('yes, for the session')).toBe(true)
+    expect(await first).toMatchObject({ allow: true })
+    expect(await reach.approve(command('rm other.md'), signal())).toMatchObject({ allow: true })
   })
 })
 
