@@ -14,6 +14,7 @@ Sections 2 and 3 describe what existed before this branch. Section 14.8 says wha
 - Tommy Sendra and Rodolphe Barbanneau are credited as co-authors (decision 12).
 - Settings cover what matters, split as section 5.2 says: on this computer the microphone, speakers, voice, listening, shortcuts, start and tray; with the user the AI program preferred and the model it answers with (decision 17).
 - The app updates itself from the project's GitHub releases, which a tag publishes as a draft (section 14.7).
+- The person hands the assistant files and folders from the composer, and sees what it writes: a card for each file it writes, and a Files page for its folder (sections 9.7, 12.2 and 13.2).
 - The catalogue has a Media block, and one player serves the app (section 9.6). Saved widgets form a library the assistant brings back from (section 9.8). Everything the assistant shows stays in the centre, as one stream of views, newest first, that turns like a dial; pinned widgets sit in docks on both sides of it, and a sheet over the stage holds the advanced views (sections 9.3 and 13.2).
 
 ## 0. Summary
@@ -276,7 +277,7 @@ interface Harness {
     textStreaming: boolean // reply text arrives as it is written
     toolInputStreaming: boolean // tool input arrives as it is written
     resume: boolean // can reopen one of its own sessions
-    images: boolean
+    images: boolean // shows the model the pictures sent with a turn
     webSearch: boolean // has its own web search
     reportsCost: boolean
   }
@@ -285,7 +286,7 @@ interface Harness {
 }
 
 interface Session {
-  send(input: TurnInput): void // accepted while a turn is running
+  send(text: string, attachments?: Attachment[]): void // accepted while a turn is running; each file has a path, a media type, and whether it is a picture
   interrupt(): void
   close(): void
   on(event: 'text' | 'tool' | 'approval' | 'turnEnd' | 'usage' | 'failed', handler): void
@@ -293,6 +294,8 @@ interface Session {
 ```
 
 Speak's `Agent` and `ControlAgent` interfaces already cover most of this for Claude Code and Codex, on all three systems.
+
+Of the capabilities, only `images` is in the port so far (`packages/core/src/ports/harness.ts`), and it is optional: a harness that leaves it out is given pictures by their path, to read with its tools. A session also reports, with the end of a tool call, the files a use of the computer made or changed (`wrote`), so the core can show them (section 9.7).
 
 ### 6.2 Rules
 
@@ -545,7 +548,7 @@ The catalogue contains generic building blocks and nothing made for one subject.
 | Drawing | Drawing (vector shapes the assistant writes itself: lines, circles, paths, labels), Image (a picture from a file or page) |
 | Media   | Media (sound or video from an https stream or file: a radio, a podcast, a song, a clip)                                   |
 | Input   | Choice, Checklist, Field, Button                                                                                          |
-| Files   | FilePreview (document, image or text, with download and open), FileList                                                   |
+| Files   | FilePreview (a document written with `file_write`, to read and download), FileList (files on the computer, to open)       |
 
 Three rules keep it that way:
 
@@ -573,7 +576,17 @@ The catalogue stays small on purpose: it is part of every prompt, and a model co
 
 ### 9.7 Files
 
-Each thread has a set of files of its own, kept by the core. A document the assistant produces or edits is shown through FilePreview with download and open buttons. Each change saves a new version, so the user can take the file and edit it while the assistant carries on. Files dropped onto the stage are attached to the thread in focus.
+Each thread has a set of files of its own, kept by the core. A document the assistant produces or edits is shown through FilePreview with download and open buttons. Each change saves a new version, so the user can take the file and edit it while the assistant carries on.
+
+**What the person hands over.** Files pasted in the composer, picked with its paperclip or dropped anywhere on the main screen go with the next thing said (section 13.2). They travel to the core as bytes, never as a path of the device, since the core may be on another machine: each is sent a piece at a time (512 KB, so a piece fits in one message of the protocol), from the moment it is added, and the core writes it through a port (`Workspace`) to the inbox of the assistant's folder, `<workspace>/inbox/<YYYY-MM-DD>/<name>`, the day in the person's time zone, a name taken given the first free one like it ("plan (2).pdf"), and nothing written over. A name is made safe for every system first: no folder in it, none of the characters a system refuses, no device name of Windows. Ten files go with one turn at most, of 25 MB each. A picture larger than a model takes (about 5 MB, or more than 2000 pixels on its long side) is made smaller by the device before it is sent, and the inbox keeps the smaller copy. A file taken back before anything was said is removed from the inbox. A folder dropped on the desktop is given by where it is, which only the desktop knows (`webUtils.getPathForFile` in the preload): giving it is consent to read it, so the core grants it read only, as if picked in the settings, and the turn says so.
+
+**How a turn carries them.** The orchestrator reads a line naming them and passes the turn on, even a quick question about them: only a thread is given the files, so the orchestrator never answers about a picture it cannot see. The thread that answers is told each file's name, kind, size and place, that the person handed it over, and that what is in it is information, not instructions from the person. A picture is shown to the model with the message (an image block of the stream-json message with Claude Code, a `localImage` item with Codex); any other file, a PDF included, is named by its path and read with the harness's own Read tool. A harness that cannot show pictures is given them by their path too. The files handed to a thread may be read by it whatever else the person granted (section 12.2). The transcript keeps their names and sizes, never a path of a device.
+
+**What the assistant writes.** When a thread makes or changes a file on the computer with its Write or Edit tools (Codex: a file change it was allowed), the harness names the file with the end of the call, and the core shows a card where the thread's views go: one card for each turn, brought up to date with each file written, listing each with its size, where it is, and buttons to open it with its app, show it in its folder, or preview it. Past five files the rest fold under "and 12 more". The card is composed from the generic FileList block, like any view; its title says "File written" or "3 files written".
+
+**The Files page.** The assistant's folder, browsed as a file manager shows it: its folders and files in a list whose folders fold open as they are read (`workspace.list`), moved through with the keys (up and down, right to open a folder or go into it, left to close it or go up, Home, End, Enter to open, a letter to go to a name), the one selected shown beside it. Markdown is shown as the Prose block shows it, text, code and JSON in the monospace face, CSV and TSV as a table, pictures as they are, and a PDF in the window's own PDF viewer, in a frame of the file's bytes. Anything else shows the mark of its kind, its kind and its size. A file is read a piece at a time (`workspace.read`), the first megabyte of a text, 25 MB of a picture or a PDF. Each file can be opened with its app, shown in its folder, its path copied, or a copy saved; the whole folder opened with "Open the folder". Opening and showing go through the app that hosts the interface (the main process's `shell`), and are left out where it cannot do them; a file that would run a program when opened (an `.exe`, a script, a shortcut) is shown in its folder instead. The page is read again when it opens, when the window comes back to the front, and when the core says something in the folder changed (`workspace.changed`, sent for files handed over and for files a thread wrote inside the folder). A file listed on a card opens in a quick look over the main screen, the same preview with the same buttons, put away by Escape or a click beside it.
+
+**Not done.** Paste of files copied in a Linux file manager (it puts their addresses on the clipboard, not their content). A folder given from the paperclip's picker. Version history of the folder. Previews of Word, Excel and PowerPoint files. The page does not notice a file changed by a command until it is read again. Codex reads a file handed over only when it may read the whole computer, since it reads files through its command line (section 12.2); pictures reach it either way.
 
 ### 9.8 The library
 
@@ -750,20 +763,20 @@ Example: "Send this to my landlord now." The critical persona: "I'd hold it. The
 
 The harness calls tools served by the core over MCP on the loopback address with a token, as Speak does. The harness's own tools are off, except web search where it exists, and its tools for files and commands within what the user granted (section 12.2). A tool either runs in the core, or is forwarded to a device capability of a connected client.
 
-| Family                        | Purpose                                           | Runs                                         | Who may call it   |
-| ----------------------------- | ------------------------------------------------- | -------------------------------------------- | ----------------- |
-| `ui`                          | Render, patch and clear views                     | Core; drawn by clients                       | Any session       |
-| `memory`                      | Search, remember, forget                          | Core                                         | Any session       |
-| `thread`                      | Open, send, focus, search                         | Core                                         | Orchestrator only |
-| `files`                       | Read and write the thread's own files             | Core                                         | Threads           |
-| `web`                         | Search and fetch                                  | Core, or the harness's own                   | Threads           |
-| `calendar` and other services | Read, and write with approval                     | Core                                         | Threads           |
-| `device.files`                | The user's own files, within the granted scope    | The harness's own tools, checked by the core | Threads           |
-| `device.media`                | Music player                                      | The device                                   | Any session       |
-| `device.system`               | Machine readings, time zone, place                | The device                                   | Any session       |
-| `device.cursor`               | The selection, and writing at the cursor          | A desktop                                    | Threads           |
-| `device.screen`               | See and operate other apps (Speak's control mode) | A desktop, later                             | Threads           |
-| `device.notify`               | Notifications                                     | The device                                   | Triggers          |
+| Family                        | Purpose                                                                      | Runs                                         | Who may call it   |
+| ----------------------------- | ---------------------------------------------------------------------------- | -------------------------------------------- | ----------------- |
+| `ui`                          | Render, patch and clear views                                                | Core; drawn by clients                       | Any session       |
+| `memory`                      | Search, remember, forget                                                     | Core                                         | Any session       |
+| `thread`                      | Open, send, focus, search                                                    | Core                                         | Orchestrator only |
+| `files`                       | Read and write the thread's own files                                        | Core                                         | Threads           |
+| `web`                         | Search and fetch                                                             | Core, or the harness's own                   | Threads           |
+| `calendar` and other services | Read, and write with approval                                                | Core                                         | Threads           |
+| `device.files`                | The user's own files, within the granted scope, and the files they hand over | The harness's own tools, checked by the core | Threads           |
+| `device.media`                | Music player                                                                 | The device                                   | Any session       |
+| `device.system`               | Machine readings, time zone, place                                           | The device                                   | Any session       |
+| `device.cursor`               | The selection, and writing at the cursor                                     | A desktop                                    | Threads           |
+| `device.screen`               | See and operate other apps (Speak's control mode)                            | A desktop, later                             | Threads           |
+| `device.notify`               | Notifications                                                                | The device                                   | Triggers          |
 
 Services such as the calendar are reached through our own tools, so they work on every harness. The proof of concept's route, the claude.ai connector, works with Claude Code only.
 
@@ -781,6 +794,8 @@ The assistant reaches the user's computer the way a coding agent does: it reads,
 | Approvals              | Ask     | Ask before each change and command; or allow changes within what was granted. A command is still asked, as it can reach anything, unless the whole computer may be changed |
 
 **Given by voice.** "You can look at my Documents folder" makes the thread call `computer_grant` with the path (`~` for the home folder). The core finds it on disk and shows a card, "Give access to this folder?"; once confirmed, the place is added to the settings and usable in the same turn.
+
+**Handed over.** A file the person hands over with what they say is readable by the thread that answers, whatever the scope: the core adds it to that thread's scope as a file read only, so a person who granted nothing still gets an answer about the picture or the PDF they gave. A folder dropped on the desktop is granted read only through the settings, as a picked folder is, unless it is already within reach; changing anything there still waits for the person to allow it.
 
 **Enforcement with Claude Code.** A thread is given Claude Code's own Read, Glob and Grep when anything is granted, and Write, Edit and Bash when something may be changed; nothing else of its own. It works in the assistant's folder (or an empty one of its own), each granted folder is named with `--add-dir`, and its settings ask for every use of each tool, so the CLI's own allowances (reads in its working folders, commands it judges harmless) never apply: every use comes to the session's permission prompt (`--permission-prompt-tool stdio`). There the adapter works out what the use touches (a glob's fixed folders included), follows links to the real place, and refuses anything outside the scope, or a change in a read-only place, with a reason the model relays ("outside what the person granted… they can grant more in Settings, Access"). The adapter's own folder, which holds the session's instructions and token, is refused whatever the scope. What is within scope goes to the core, which shows the approval card when the policy asks.
 
@@ -859,11 +874,12 @@ Speak's discipline with the proof of concept's presence: digital, not retro, and
 - **How the stream moves.** Only transforms and opacity: the stream reads the layout when it changes (a card added, closed or resized, the window or the composer resized), and on every frame of a scroll or a glide it writes a transform and an opacity on each card and nothing else, from the scroll event, so a scroll needs no frame loop of its own. Its box ends behind the middle of the composer, so it never cuts a card where the card is seen. Only the card crossing the top carries a mask, in its own coordinates: a mask over the whole stream is drawn again on every frame anything in it moves, which cost a frame in twenty while scrolling with software rendering. A card is drawn again only when its own view changes, not when a sentence is spoken or the mood changes.
 - **A view** sits in a card with a thin bar on top: its title on the left, its bookmark (⌑) and close button on the right, a hairline under it, and the view below. An aside's card has the same bar, with "By the way" before its title.
 - **The composer floats.** It sits over the bottom of the screen, and the stream sinks under it; nothing is painted behind it, so the ground runs under it as everywhere else. On its left, the persona's eye: a ring with a pupil, drawn as one picture so the pupil is exactly centred, that lives as the core does: it breathes and blinks at rest, leans in while listening, carries a circling arc while thinking, beats while speaking, and asleep it closes to a slit that still breathes. Pressing it hands over to the other persona. There is no prompt chevron: the eye says who answers and what it is doing.
+- **Files go with what is said.** A picture or a file pasted (Ctrl or Cmd+V), picked with the composer's paperclip (a file input, which the desktop shows as the system's own picker), or dropped anywhere on the main screen waits as a chip in a row along the top of the composer: the picture's own look or the mark of its kind, its name, what it is and its size, a thin line in the accent along its bottom while it is on its way, and a cross that shows under the pointer. Backspace on an empty line takes the last one back. Text pasted is text, as always. A row longer than the composer scrolls sideways and fades where it is cut, so the composer only grows by one row whatever the width. While files are dragged over the window, the screen dims a little under a hairline frame, and a translucent card in the middle says what dropping does; it only fades, and nothing glows. Beyond ten files, or a file over 25 MB, a quiet line under the composer, on the left, says why it was not added, and goes after a few seconds. Sent, what was handed over is named in the transcript under what was said, or in the caption when nothing was said.
 - **Under the composer, at its right**, two quiet labels say what the assistant may reach ("Own folder · asks first") and what it thinks with ("● Claude Code · Haiku", the dot green when ready, amber when no program is). Each opens a small menu upwards, right there, to change it without leaving the conversation: the scope and whether it asks first; the AI program (one that cannot be used is shown greyed with the reason: not installed, not signed in) and its model, each with a word on what it is good for. Picking a program keeps the menu open, so its models can be picked next. A change applies from the next question. The last entry of each opens its section of the settings.
 - **The sides are the user's.** The pinned widgets sit there in two docks, left and right of the column, scrolled with the wheel and put in order, or moved from one dock to the other, by dragging (section 9.8). Each dock is 280 px wide, 12 px from the window's edge. The column is centred, so both docks need the same room and show together: in a window at least 1368 px wide (the column, 32 px of room on each side of it, and the two docks) they sit beside the column without covering it. Narrower, they are hidden; the title row's widgets button (▥) slides every pinned widget over the right of the stage in one list, the left dock's first, as a translucent panel, and the same button or Escape closes it. In a wide window the same button hides and shows the docks. Hidden, the widgets stay drawn and only fade, so showing them again costs nothing and they keep their state. Nothing is ever drawn outside the window.
 - **The side sheet is for advanced views.** One sheet slides over the stage, and over the right dock, from the right, opened from the title row's sidebar button (◫), and Ctrl+T opens it on the transcript. Its header is a title, a line of status, and a segmented control: Transcript, Threads, Inspector.
 - **The title row** is no bar: it is the top of the window, on the same ground as the rest (the dots and the accent's light run under it), with no fill, border or shadow, and the window is dragged by it. It is 38 px high, with the product's name in lowercase on the left ("echo", lowercased by its style only, after the traffic lights on macOS), and three buttons at most on the right, from the left: settings (⚙), the sidebar (◫, the side sheet, which belongs to the conversation: pressed from the settings, it goes back to the main screen and opens there, and opening the settings closes it) and, while any widget is pinned, the pinned widgets (▥); pressed from the settings, the last goes back to the main screen to show them. No widget, and nothing that plays, ever shows in it. On Windows and Linux the system's buttons are drawn over its right end on no colour of their own (the overlay's colour is fully transparent, with or without Mica), so the ground runs under them too; their symbols take the soft text colour of the row's own buttons.
-- **Screens that cover the main one** (the settings) are split views on the window's ground: a sidebar under the title row lists their sections, set apart by a hairline, and the open one fills the rest, its title at the top left and a close button level with it at the right. The saved widgets are one of the settings' sections: their search spans the column under the title, with a scope bar of shelves under it, and a widget opened covers the settings in a dialog that Escape closes first.
+- **Screens that cover the main one** (the settings) are split views on the window's ground: a sidebar under the title row lists their sections, set apart by a hairline, and the open one fills the rest, its title at the top left and a close button level with it at the right. The saved widgets are one of the settings' sections: their search spans the column under the title, with a scope bar of shelves under it, and a widget opened covers the settings in a dialog that Escape closes first. The Files page is another, in the group of what is the assistant's (in "Library and settings", its "Library" group): the assistant's folder as a list beside a preview (section 9.7).
 - **Every view has a bookmark** (⌑) beside its close button: one press saves it to the library; once saved, it opens a menu to pin it to the main screen, find it in the library, or take it out.
 
 Three sizes on a desktop: the full window, Mini (core and caption, always on top, from the proof of concept), and the pill (summoned over another app by the global shortcut, from Speak). Window frames and controls follow each system's conventions.
@@ -1006,6 +1022,7 @@ packages/protocol/src/
 │   ├── settings.ts         read the settings; name the personas and pick the one that answers
 │   ├── memory.ts           read what is known, correct or forget a fact, choose when it sleeps, sleep now
 │   ├── library.ts          read the library; save a view, rename, file, pin, delete, show a saved widget
+│   ├── files.ts            hand a file over in pieces, or take it back; list and read the assistant's folder
 │   ├── utterance.ts        something said or typed: text, or audio frames
 │   ├── action.ts           a semantic action from a view
 │   ├── control.ts          stop, focus
@@ -1015,6 +1032,7 @@ packages/protocol/src/
 │   ├── settings.ts         the settings changed
 │   ├── memory.ts           what is known changed; the assistant fell asleep, woke, or went further in its work
 │   ├── library.ts          the library changed
+│   ├── files.ts            something in the assistant's folder was made or changed
 │   ├── turn.ts             turn started, ended, failed
 │   ├── speech.ts           say this text, play this audio, stop
 │   ├── view.ts             render, patch, clear, and the slot
@@ -1069,6 +1087,7 @@ packages/core/src/
 │   ├── devices.ts          capabilities of connected devices
 │   ├── clock.ts            timers, given by the host, to do things later
 │   ├── computer.ts         the assistant's own folder, and what is at a path
+│   ├── workspace.ts        the assistant's folder as the person browses it and hands files into it
 │   ├── web.ts              public addresses the core reads itself: a map's shapes
 │   └── ids.ts  log.ts
 ├── channel/                the single conversation
@@ -1116,7 +1135,8 @@ packages/core/src/
 │   └── objection.ts        concern, decision, recorded override
 ├── settings/               the user's settings: the defaults, then every choice recorded, in order
 ├── triggers/               turns the assistant starts: time, launch, greeting, thread finished
-├── files/                  each thread's files and their versions
+├── files/                  each thread's files and their versions; the card of the files a thread writes; the folder browsed
+├── attachments/            files and folders the person hands over: the inbox, and how a turn with them reads
 ├── access/                 what the assistant may reach on the computer, approval cards answered by click or voice, computer_grant
 ├── devices/                connected devices, the active one, routing of capability requests
 ├── records/                the record types, the "what is true now" readers built on them, and records and search kept in memory
@@ -1141,7 +1161,7 @@ packages/harness/src/
 │   ├── one-shot.ts
 │   ├── isolation.ts
 │   └── models.ts
-├── computer/               paths as the system reaches them, links followed; whether a use is within the scope
+├── computer/               paths as the system reaches them, links followed; whether a use is within the scope; the assistant's folder on disk
 └── api/                    direct API adapters (later)
 ```
 
@@ -1228,6 +1248,8 @@ packages/ui-web/src/
 ├── view/                   the renderer, the card of a view, the stream of views that turns like a dial
 ├── media/                  the app's one player
 ├── library/                the widgets section of the settings, the pinned docks, the bookmark on every view
+├── files/                  the Files page, file previews, the quick look, what can be done with a file
+├── attachments/            files waiting in the composer, the drop state, pictures made to fit a model
 ├── shell/                  what fills the window: the core animation, caption, input line, disclosure levels
 ├── presence/               the core (the lens, the life that moves it, the rings that stand in without a graphics card) and the persona's eye in the composer
 ├── onboarding/             first launch
@@ -1344,6 +1366,7 @@ Built, and checked against the real Claude Code on 17 November 2026:
 - **Maps.** RegionMap and PlaceMap (section 9.6), checked by the core against the shapes they name, and offered by the assistant whenever they fit. Verified with the real Claude Code: the 2022 first round by department, with every figure matching the official results; the five largest cities of Japan; three landmarks of Paris on a street map.
 - **Access to the computer.** Its own folder by default, folders and files granted in settings or by voice, the whole computer with a warning, and approvals by card or by voice (section 12.2). Verified with the real Claude Code: a folder given by voice, its files read and summed up in the same turn; a file created in the assistant's folder after "Create it" was pressed; a read outside the scope refused by the adapter with its reason; a change in a read-only folder not made; a command asked even when changes were trusted, and run after a spoken yes.
 - **Files, web and briefing.** Documents written as versioned files, previewed with a download button; web search and page reading through the harness's own tools; a greeting and briefing when the app opens.
+- **Files between the person and the assistant.** Pictures and files pasted, picked or dropped in the composer, folders dropped on the desktop, a card for each file a thread writes, and the Files page with its previews and a quick look (section 9.7). Verified in the built app on Linux with the real Claude Code on 18 November 2026: a picture drawn for the test and pasted from the system clipboard was described correctly ("a red house with a brown roof and door, under a yellow sun in a blue sky, with the words Picnic at Noon"); a PDF dropped on the window was read and summed up with its figures right; "write a short packing list in a file called trip.md in your folder" wrote the file after the approval card, showed its card, and the Files page and the quick look showed it rendered; a folder dropped was granted read only and its files read; a 3200 by 2400 picture was sent as 2000 by 1500; eleven files and one of 27 MB dropped at once kept ten and said why. The PDF viewer in a frame of the file's bytes works in the built app. Codex was tested against its stand-in only, and opening a file with its app and showing it in its folder were not watched on a desktop: the Linux check ran without one.
 - **Settings.** In two groups that say where each is kept. This computer: opening at login, starting in the background, the tray, the data folder; the voice models, each personality's voice, speaking aloud or not, the pace and the speakers; the microphone with a live level, how a pause ends listening, the sounds; the three shortcuts, recorded by pressing them, each cleared with a cross. The assistant (kept by the core): personalities, the model each AI program answers with and the one preferred, picked from pop-up buttons whose lists say what each model is good for, memory and when it sleeps. Then updates and about. What the assistant may reach and what it thinks with are also changed from the menus of the row under the composer; verified in the built app with the real Claude Code: a model picked there answered the next question (a Sonnet session opened for the topic), and with a stand-in for Codex on the path, Codex picked there answered the next question.
 - **Packaging and updates.** Windows, macOS and Linux packages, made in CI on each system and downloadable from the run's page; a Windows package can also be made on Linux. A tag publishes them, with update manifests, as a draft GitHub release, which installed copies update from once published (checked with a local feed and a packaged Linux build, not yet with a real release).
 
