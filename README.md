@@ -30,7 +30,7 @@ pnpm install
 pnpm check                           # typecheck, lint (including the dependency rules), formatting, tests
 pnpm build
 pnpm --filter @repo/desktop dev      # run the desktop app
-pnpm --filter @repo/desktop package  # package it for this system, into apps/desktop/release
+pnpm --filter @repo/desktop package:win  # package it (or package:mac, package:linux), into apps/desktop/release
 ```
 
 Each app and package has a README of its own.
