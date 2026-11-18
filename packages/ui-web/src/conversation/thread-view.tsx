@@ -8,6 +8,7 @@ import { BackGlyph } from '../primitives/icons.tsx'
 import { accentStyle } from '../styles/accent.ts'
 import { Markdown } from '../view/blocks/markdown.tsx'
 import { StateDot } from './thread-list.tsx'
+import { whoAsked } from './who-asked.ts'
 
 const clock = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' })
 const STATE = { working: 'working', ready: 'ready', parked: 'idle' } as const
@@ -150,7 +151,7 @@ function ExchangeEntry({ exchange, steps, views, persona }: { exchange: Exchange
     <li className="grid gap-3" style={accentStyle(persona?.accent)}>
       <div className="grid gap-1">
         <span className="flex items-baseline gap-2 text-label text-text-faint">
-          {exchange.trigger === 'greeting' ? 'Briefing' : 'You'} <time dateTime={exchange.at}>{clock.format(new Date(exchange.at))}</time>
+          {whoAsked(exchange)} <time dateTime={exchange.at}>{clock.format(new Date(exchange.at))}</time>
         </span>
         {exchange.said && <p className="text-sm text-text-soft leading-relaxed">{exchange.said}</p>}
       </div>

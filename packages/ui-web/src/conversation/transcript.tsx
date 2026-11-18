@@ -2,6 +2,7 @@ import type { Exchange, Persona } from '@repo/protocol'
 import { useEffect, useRef } from 'react'
 import { accentStyle } from '../styles/accent.ts'
 import { Markdown } from '../view/blocks/markdown.tsx'
+import { whoAsked } from './who-asked.ts'
 
 export interface TranscriptProps {
   exchanges: readonly Exchange[]
@@ -32,7 +33,7 @@ export function Transcript({ exchanges, personas }: TranscriptProps) {
               <li key={exchange.turn} className="grid gap-2" style={accentStyle(persona?.accent)}>
                 <div className="grid gap-1">
                   <span className="flex items-baseline gap-2 text-label text-text-faint">
-                    {exchange.trigger === 'greeting' ? 'Briefing' : 'You'} <time dateTime={exchange.at}>{clock.format(new Date(exchange.at))}</time>
+                    {whoAsked(exchange)} <time dateTime={exchange.at}>{clock.format(new Date(exchange.at))}</time>
                   </span>
                   {exchange.said && <p className="text-sm text-text-soft leading-relaxed">{exchange.said}</p>}
                 </div>
