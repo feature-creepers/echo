@@ -205,6 +205,23 @@ describe('serveTools', () => {
       expect(calls).toEqual([])
     })
 
+    it('gives a tool’s pictures after its text, as MCP image content', async () => {
+      const { host } = hosting(() => ({ ok: true, text: 'The page is in the picture.', images: [{ data: 'AAAA', mime: 'image/jpeg' }] }))
+      const { url } = await serve(host)
+
+      expect(await (await post(url, calling('memory_search'))).json()).toEqual({
+        jsonrpc: '2.0',
+        id: 1,
+        result: {
+          content: [
+            { type: 'text', text: 'The page is in the picture.' },
+            { type: 'image', data: 'AAAA', mimeType: 'image/jpeg' }
+          ],
+          isError: false
+        }
+      })
+    })
+
     it('refuses a call that names no tool', async () => {
       const { url } = await serve(hosting().host)
 

@@ -20,6 +20,14 @@ export interface ToolResult {
   /** False when the call was refused or failed. The text then says why, so the model can correct itself. */
   ok: boolean
   text: string
+  /** Pictures the model sees after the text, such as a page as a browser shows it. */
+  images?: readonly ToolImage[] | undefined
+}
+
+/** A picture in a tool's result, encoded in base 64. */
+export interface ToolImage {
+  data: string
+  mime: 'image/jpeg' | 'image/png'
 }
 
 export interface ToolHost {
