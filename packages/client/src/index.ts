@@ -10,6 +10,7 @@ export {
   type Pause,
   pauseMs,
   readDeviceSettings,
+  SHEET_WIDTH,
   SPEEDS,
   shortcutClash
 } from './device/settings.ts'

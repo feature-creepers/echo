@@ -106,6 +106,16 @@
   initial-value: transparent;
 }
 
+/*
+ * How wide the user made the side sheet. Not inherited: it is set on the few elements that read it, the sheet and
+ * what makes room beside it, so dragging the sheet's edge restyles those alone and not the whole window.
+ */
+@property --sheet-width {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 432px;
+}
+
 @layer base {
   html,
   body {
@@ -161,6 +171,12 @@
  */
 :root[data-dragging] * {
   cursor: grabbing;
+  user-select: none;
+}
+
+/* While the side sheet's edge is dragged, the pointer is the resizing one wherever it goes, and nothing gets selected. */
+:root[data-resizing] * {
+  cursor: col-resize;
   user-select: none;
 }
 

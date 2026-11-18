@@ -36,7 +36,7 @@ export function FactRow({ fact, onEdit, onForget }: FactRowProps) {
     }
   }
 
-  // Escape leaves the edit, and goes no further: in settings it would also close the screen.
+  // Escape leaves the edit, and goes no further: in the library it would also go back to the conversation.
   const keys = (event: KeyboardEvent<HTMLElement>, save?: () => void) => {
     if (event.key === 'Escape') {
       event.stopPropagation()

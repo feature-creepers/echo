@@ -49,7 +49,8 @@ function icon({ accent, state }: TrayLook): Electron.NativeImage {
 
 /**
  * The app in the system tray (the menu bar on macOS), where it waits for its shortcut while the window is
- * closed. A click shows the window; the menu talks, opens the settings, restarts for an update, or quits.
+ * closed. A click shows the window; the menu talks, opens the settings on their general page, restarts for an
+ * update, or quits.
  */
 export function createTray(talkShortcut: string, actions: TrayActions): TrayMenu {
   let shown: TrayLook = { accent: undefined, state: 'awake' }

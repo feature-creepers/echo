@@ -1,7 +1,7 @@
 import type { Client, CoreLink } from '@repo/client'
 import { describeShortcut, matchesShortcut, pinnedOf } from '@repo/client'
 import { useFollowed } from '@repo/client/react'
-import type { Accent, CommandInput, PersonaId } from '@repo/protocol'
+import type { Accent, CommandInput, PersonaId, TurnId } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { OPEN_ACCESS_EVENT } from '../access/access-indicator.tsx'
@@ -10,6 +10,8 @@ import { useDeviceSpeech } from '../audio/use-speech.ts'
 import { Stage } from '../conversation/stage.tsx'
 import { DeviceProvider, keyPress, useDevice } from '../device/device.tsx'
 import type { DeviceHost } from '../device/host.ts'
+import { type HubPage, HubScreen } from '../hub/hub-screen.tsx'
+import { HUB_KEEPS, hubMakesRoom } from '../hub/room.ts'
 import { LibraryContext, type LibraryControls } from '../library/library-context.ts'
 import { PinnedDocksView, usePinnedDocks } from '../library/pinned-docks.tsx'
 import { PlayerProvider, usePlayer } from '../media/player-provider.tsx'
@@ -17,11 +19,11 @@ import { Onboarding } from '../onboarding/onboarding.tsx'
 import { Orb } from '../presence/orb.tsx'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { IconButton } from '../primitives/icon-button.tsx'
-import { SettingsGlyph, SheetGlyph, WidgetsGlyph } from '../primitives/icons.tsx'
-import { SettingsScreen, type SettingsSection } from '../settings/settings-screen.tsx'
+import { LibraryGlyph, SheetGlyph, WidgetsGlyph } from '../primitives/icons.tsx'
 import { accentStyle } from '../styles/accent.ts'
 import { DURATION, EASE } from '../styles/motion.ts'
 import type { ViewActions } from '../view/context.ts'
+import { previewSheetWidth } from './sheet-width.ts'
 import { type SheetTab, SideSheet } from './side-sheet.tsx'
 
 export interface ShellProps {
@@ -37,8 +39,11 @@ export interface ShellProps {
   device?: DeviceHost | undefined
 }
 
-/** The event an app dispatches on the window to show the settings: from its tray, for instance. */
+/** The event an app dispatches on the window to show the settings, on their general page: from its tray, for instance. */
 export const OPEN_SETTINGS_EVENT = 'echo:open-settings'
+
+/** What the title row's button to the hub, and the hub itself, are called where the user reads them. */
+const HUB_NAME = 'Library and settings'
 
 /**
  * The interface, whole: it decides what fills the window from where the app stands with its core and
@@ -74,41 +79,44 @@ function Screens({ productName, link, client, speech }: Omit<ShellProps, 'device
   )
 }
 
-type Screen = { is: 'main' } | { is: 'onboarding' } | { is: 'settings'; section: SettingsSection; widget?: string | undefined }
+type Screen = { is: 'main' } | { is: 'onboarding' } | { is: 'hub'; page: HubPage; widget?: string | undefined }
 
 function Connected({ productName, client, engine }: { productName: string; client: Client; engine: SpeechEngine | undefined }) {
   const snapshot = useFollowed(client.settings)
   const speaking = useFollowed(client.speech)
-  const [screen, setScreenState] = useState<Screen>()
-  /** The screen showing, for the keys, which are listened to once. */
-  const onScreen = useRef<Screen['is']>('main')
+  const [screen, setScreen] = useState<Screen>()
   /** The screen the app opened on, decided once, when the settings first arrive. */
   const entered = useRef<Screen>(undefined)
-  /** The side sheet, open on a tab, and the tab it opens on next. */
+  /** The page of the hub last shown in this run of the app, which its button opens on: the widgets at first. */
+  const lastPage = useRef<HubPage>('widgets')
+  const openHub = useCallback((page: HubPage = lastPage.current, widget?: string) => setScreen({ is: 'hub', page, widget }), [])
+
+  /**
+   * The side sheet, open on a tab, and the tab it opens on next. It opens and closes over whatever screen shows,
+   * and stays open from one screen to the next. The transcript can show one line's full answer instead of the log.
+   */
   const [sheet, setSheet] = useState<SheetTab>()
+  const [answer, setAnswer] = useState<TurnId>()
   const lastTab = useRef<SheetTab>('transcript')
   const openSheet = useCallback((tab: SheetTab | undefined) => {
     if (tab) lastTab.current = tab
+    else setAnswer(undefined)
     setSheet(tab)
-  }, [])
-  // The side sheet belongs to the conversation: the settings close it, and it opens over the main screen
-  // only, so opening it from the settings goes back to the conversation first.
-  const setScreen = useCallback((next: Screen) => {
-    if (next.is !== 'main') setSheet(undefined)
-    setScreenState(next)
   }, [])
   /** The sheet as it is now, for the keys, which are listened to once. */
   const sheetNow = useRef<SheetTab>(undefined)
   sheetNow.current = sheet
   const toggleSheet = useCallback(
     (tab?: SheetTab) => {
-      const wanted = tab ?? lastTab.current
-      if (onScreen.current !== 'main') {
-        setScreenState({ is: 'main' })
-        return openSheet(wanted)
-      }
       const open = sheetNow.current
-      openSheet(open !== undefined && (tab === undefined || open === tab) ? undefined : wanted)
+      openSheet(open !== undefined && (tab === undefined || open === tab) ? undefined : (tab ?? lastTab.current))
+    },
+    [openSheet]
+  )
+  const openAnswer = useCallback(
+    (turn: TurnId) => {
+      setAnswer(turn)
+      openSheet('transcript')
     },
     [openSheet]
   )
@@ -132,7 +140,7 @@ function Connected({ productName, client, engine }: { productName: string; clien
   const toMain = useCallback(() => {
     setPicked(undefined)
     setScreen({ is: 'main' })
-  }, [setScreen])
+  }, [])
 
   // A key of this device's settings opens and closes the transcript: Control or Command with T, unless changed.
   const device = useDevice()
@@ -157,11 +165,8 @@ function Connected({ productName, client, engine }: { productName: string; clien
   const library = useFollowed(client.library)
   const docks = usePinnedDocks(pinnedOf(library).length)
 
-  // A saved widget opens in the settings, in their widgets section.
-  const controls = useMemo<LibraryControls>(
-    () => ({ library: client.library, open: (widget) => setScreen({ is: 'settings', section: 'widgets', widget }) }),
-    [client]
-  )
+  // A saved widget opens in the library, on its widgets page.
+  const controls = useMemo<LibraryControls>(() => ({ library: client.library, open: (widget) => openHub('widgets', widget) }), [client, openHub])
   const say = useCallback(
     (text: string) => {
       client.speech.stop()
@@ -190,18 +195,27 @@ function Connected({ productName, client, engine }: { productName: string; clien
     return () => window.removeEventListener('keydown', onKey)
   }, [transcriptKey, device.mac, toggleSheet])
 
-  // The app asks for the settings: its tray's menu.
+  // The app asks for the settings: its tray's menu opens them on their general page.
   useEffect(() => {
-    const onOpen = () => setScreen({ is: 'settings', section: 'general' })
-    // The bottom bar's access indicator opens its own section.
-    const onAccess = () => setScreen({ is: 'settings', section: 'access' })
+    const onOpen = () => openHub('general')
+    // The access indicator under the composer opens its own page.
+    const onAccess = () => openHub('access')
     window.addEventListener(OPEN_SETTINGS_EVENT, onOpen)
     window.addEventListener(OPEN_ACCESS_EVENT, onAccess)
     return () => {
       window.removeEventListener(OPEN_SETTINGS_EVENT, onOpen)
       window.removeEventListener(OPEN_ACCESS_EVENT, onAccess)
     }
-  }, [])
+  }, [openHub])
+
+  // How wide the user made the side sheet, kept on this device. While its edge is dragged, the width is written
+  // straight to the page, once a frame, so nothing is drawn again; it is kept when the drag ends.
+  const sheetWidth = device.settings.sheet.width
+  const changeDevice = device.change
+  const sheetArea = useRef<HTMLDivElement>(null)
+  const previewWidth = useCallback((width: number) => previewSheetWidth(sheetArea.current, width), [])
+  const keepSheetWidth = useCallback((width: number) => changeDevice({ sheet: { width } }), [changeDevice])
+  const hubRoom = useHubRoom(sheetWidth)
 
   if (snapshot.state === 'loading') {
     return (
@@ -224,7 +238,6 @@ function Connected({ productName, client, engine }: { productName: string; clien
   // stays in it until its last step, although the personas are confirmed halfway through.
   entered.current ??= personas.confirmed ? { is: 'main' } : { is: 'onboarding' }
   const showing: Screen = screen ?? entered.current
-  onScreen.current = showing.is
 
   if (showing.is === 'onboarding') {
     return (
@@ -242,17 +255,15 @@ function Connected({ productName, client, engine }: { productName: string; clien
     )
   }
 
-  // Three buttons at most, from the left: the settings, the sidebar, and, while any is pinned, the pinned widgets.
-  // Pressed from the settings, the widgets' button goes back to the main screen to show them.
+  if (showing.is === 'hub') lastPage.current = showing.page
+
+  // Three buttons at most, from the left: the library and settings, the sidebar, and, while any is pinned, the
+  // pinned widgets. Pressed from the hub, the widgets' button goes back to the main screen to show them.
   const widgetsShown = showing.is === 'main' && docks.shown
   const titleActions = (
     <>
-      <IconButton
-        label={showing.is === 'settings' ? 'Close settings' : 'Settings'}
-        active={showing.is === 'settings'}
-        onClick={() => (showing.is === 'settings' ? toMain() : setScreen({ is: 'settings', section: 'general' }))}
-      >
-        <SettingsGlyph />
+      <IconButton label={HUB_NAME} active={showing.is === 'hub'} onClick={() => (showing.is === 'hub' ? toMain() : openHub())}>
+        <LibraryGlyph />
       </IconButton>
       <IconButton
         label={sheet ? 'Hide the sidebar' : transcriptKey ? `Show the sidebar (${describeShortcut(transcriptKey, device.mac)})` : 'Show the sidebar'}
@@ -290,7 +301,7 @@ function Connected({ productName, client, engine }: { productName: string; clien
   return (
     <LibraryContext.Provider value={controls}>
       <Frame productName={productName} accent={accent} actions={titleActions}>
-        <div className="relative h-full">
+        <div ref={sheetArea} className="relative h-full">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={showing.is}
@@ -299,14 +310,16 @@ function Connected({ productName, client, engine }: { productName: string; clien
               exit={{ opacity: 0, transition: { duration: DURATION.quick, ease: EASE } }}
               className="h-full"
             >
-              {showing.is === 'settings' ? (
-                <SettingsScreen
+              {showing.is === 'hub' ? (
+                <HubScreen
                   productName={productName}
                   client={client}
                   settings={snapshot.settings}
                   memory={client.memory}
                   speech={engine ? speech : undefined}
-                  section={showing.section}
+                  page={showing.page}
+                  onPage={(page) => openHub(page)}
+                  sheetRoom={sheet !== undefined && hubRoom}
                   widgets={{
                     controls,
                     actions,
@@ -318,7 +331,7 @@ function Connected({ productName, client, engine }: { productName: string; clien
                   }}
                   setPersonas={setPersonas}
                   onPick={setPicked}
-                  onClose={toMain}
+                  onBack={toMain}
                 />
               ) : (
                 // The conversation stays centred in the window whatever is pinned: the docks sit in the room on its sides.
@@ -328,26 +341,58 @@ function Connected({ productName, client, engine }: { productName: string; clien
                     client={client}
                     personas={personas}
                     onSwitch={(persona) => setPersonas({ names: [], active: persona })}
-                    onSetUpEngine={() => setScreen({ is: 'settings', section: 'models' })}
+                    onSetUpEngine={() => openHub('models')}
                     speech={speech.ready}
                     voiceLevel={speech.ready ? speech.level : undefined}
-                    onSetUpVoice={engine ? () => setScreen({ is: 'settings', section: 'voice' }) : undefined}
+                    onSetUpVoice={engine ? () => openHub('voice') : undefined}
+                    onOpenAnswer={openAnswer}
                   />
                   <PinnedDocksView controls={controls} actions={actions} docks={docks} />
                 </div>
               )}
             </motion.div>
           </AnimatePresence>
-          {/* The sheet slides over whatever screen is there: it never pushes the stage off centre. */}
+          {/* The sheet slides over whatever screen is there and stays from one screen to the next: it never pushes
+              the stage off centre, and the hub, when the window has room for both, ends where it starts. */}
           <AnimatePresence initial={false}>
             {sheet && (
-              <SideSheet key="sheet" client={client} personas={personas.available} tab={sheet} onTab={openSheet} onClose={() => openSheet(undefined)} />
+              <SideSheet
+                key="sheet"
+                client={client}
+                personas={personas.available}
+                tab={sheet}
+                onTab={openSheet}
+                answer={answer}
+                onAnswer={setAnswer}
+                onClose={() => openSheet(undefined)}
+                resize={{
+                  width: sheetWidth,
+                  keep: showing.is === 'hub' && hubRoom ? HUB_KEEPS : 0,
+                  onPreview: previewWidth,
+                  onCommit: keepSheetWidth
+                }}
+              />
             )}
           </AnimatePresence>
         </div>
       </Frame>
     </LibraryContext.Provider>
   )
+}
+
+/**
+ * Whether the hub makes room for the side sheet in the window as it is now, kept current as the window is resized:
+ * drawn again only when the answer changes.
+ */
+function useHubRoom(sheetWidth: number): boolean {
+  const [room, setRoom] = useState(() => hubMakesRoom(window.innerWidth, sheetWidth))
+  useEffect(() => {
+    const measure = () => setRoom(hubMakesRoom(window.innerWidth, sheetWidth))
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [sheetWidth])
+  return room
 }
 
 interface FrameProps {
@@ -369,7 +414,9 @@ interface FrameProps {
  */
 function Frame({ productName, accent, actions, children }: FrameProps) {
   return (
-    <div className="accent-shift relative flex h-screen flex-col overflow-hidden bg-(--window)" style={accentStyle(accent)}>
+    // Clipped, not hidden: what slides in or out past an edge (the side sheet, the pinned widgets) is cut there, and
+    // the window can never be scrolled sideways, not even by bringing something into view or giving it the keyboard.
+    <div className="accent-shift relative flex h-screen flex-col overflow-clip bg-(--window)" style={accentStyle(accent)}>
       <Ground />
       <header className="drag relative h-[env(titlebar-area-height,var(--frame-title-bar))] shrink-0">
         <div className="absolute top-[env(titlebar-area-y,0px)] left-[env(titlebar-area-x,0px)] flex h-[env(titlebar-area-height,var(--frame-title-bar))] w-[env(titlebar-area-width,100%)] items-center justify-between pr-2 pl-4">

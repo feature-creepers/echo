@@ -20,7 +20,7 @@ export interface WidgetDialogProps {
   actions: ViewActions
   /** Ask the assistant to change the widget, in these words. */
   onAsk(text: string): void
-  /** It was put on the stage: the settings close to show it. */
+  /** It was put on the stage: the library goes back to the conversation to show it. */
   onShown(): void
   onClose(): void
 }
@@ -39,7 +39,7 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
   const [problem, setProblem] = useState<string>()
   const ids = useId()
 
-  // Escape closes the dialog and nothing under it: heard first, and marked as handled for the settings around it.
+  // Escape closes the dialog and nothing under it: heard first, and marked as handled for the library around it.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return

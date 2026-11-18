@@ -38,7 +38,7 @@ export function Markdown({ text }: { text: string }) {
       const style = level === 1 ? 'text-lg font-medium tracking-[-0.015em]' : level === 2 ? 'text-base font-medium tracking-[-0.01em]' : 'text-sm font-medium'
       const Tag = level === 1 ? 'h3' : level === 2 ? 'h4' : 'h5'
       blocks.push(
-        <Tag key={key()} className={`${style} mt-1.5 leading-snug`}>
+        <Tag key={key()} className={`${style} mt-1.5 leading-snug [overflow-wrap:anywhere]`}>
           {inline(heading[2] ?? '')}
         </Tag>
       )
@@ -53,7 +53,7 @@ export function Markdown({ text }: { text: string }) {
       blocks.push(
         <List
           key={key()}
-          className={`grid gap-1 pl-5 ${ordered ? 'list-decimal marker:font-mono marker:text-text-faint marker:text-xs' : 'list-disc marker:text-text-faint'}`}
+          className={`grid grid-cols-1 gap-1 pl-5 [overflow-wrap:anywhere] ${ordered ? 'list-decimal marker:font-mono marker:text-text-faint marker:text-xs' : 'list-disc marker:text-text-faint'}`}
         >
           {items.map((item, at) => (
             <li key={at} className="pl-1 leading-relaxed">
@@ -102,7 +102,7 @@ export function Markdown({ text }: { text: string }) {
       const quote: string[] = []
       while (index < lines.length && (lines[index] ?? '').startsWith('>')) quote.push((lines[index++] ?? '').replace(/^>\s?/, ''))
       blocks.push(
-        <blockquote key={key()} className="border-line-strong border-l-2 pl-3.5 text-text-soft">
+        <blockquote key={key()} className="border-line-strong border-l-2 pl-3.5 text-text-soft [overflow-wrap:anywhere]">
           {inline(quote.join(' '))}
         </blockquote>
       )
@@ -118,13 +118,15 @@ export function Markdown({ text }: { text: string }) {
       paragraph.push(lines[index++] ?? '')
     // A line break inside a paragraph is kept, as in a letter's address block or a poem.
     blocks.push(
-      <p key={key()} className="text-pretty leading-relaxed">
+      <p key={key()} className="text-pretty leading-relaxed [overflow-wrap:anywhere]">
         {paragraph.flatMap((line, at) => (at === 0 ? inline(line) : [<br key={`br-${at}`} />, ...inline(line)]))}
       </p>
     )
   }
 
-  return <div className="grid max-w-[68ch] gap-3 text-sm">{blocks}</div>
+  // One column that is never wider than where it is drawn: a long word, an address or a path in the prose breaks
+  // anywhere rather than widening it, code wraps in its box, and a table wider than the column scrolls in its own.
+  return <div className="grid min-w-0 max-w-[68ch] grid-cols-1 gap-3 text-sm">{blocks}</div>
 }
 
 /** A line of a table: it starts and ends with a pipe. */

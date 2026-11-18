@@ -10,6 +10,12 @@ export const DURATION = {
   slow: motion.duration.slow / 1000
 } as const
 
+/**
+ * A pane travelling in from an edge of the window, such as the side sheet, and what moves aside with it: the
+ * app's curve over a little longer than a fade, as a pane travels further.
+ */
+export const slide = { duration: 0.34, ease: EASE } as const
+
 /** Something arriving or leaving in place: a fade and a short rise. */
 export const settle = { duration: DURATION.calm, ease: EASE } as const
 

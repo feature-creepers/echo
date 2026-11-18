@@ -50,6 +50,11 @@ export interface DeviceSettings {
     /** Download new versions in the background and install them when the app quits. */
     automatic: boolean
   }
+  /** The side sheet of advanced views. */
+  sheet: {
+    /** How wide the user made it, in pixels. A window too narrow for it shows it narrower, and this width again once it is wide enough. */
+    width: number
+  }
 }
 
 /** An audio device, by the identifier the system gives it and the name it shows. An empty identifier is the system's own choice. */
@@ -70,6 +75,12 @@ export function pauseMs(pause: Pause): number | undefined {
 /** The paces a voice can speak at, slowest first. */
 export const SPEEDS = [0.85, 1, 1.15, 1.3] as const
 
+/**
+ * The widths the side sheet may take, in pixels: never narrower than its content can be read at, never wider
+ * than a large share of a big screen, and 27rem until the user drags it.
+ */
+export const SHEET_WIDTH = { least: 320, most: 960, initial: 432 } as const
+
 /** The version of the settings this build writes. */
 const REVISION = 2
 
@@ -87,7 +98,8 @@ export const DEFAULT_DEVICE_SETTINGS: DeviceSettings = {
   voice: { aloud: true, speed: 1 },
   shortcuts: { talk: '', talkInWindow: 'CommandOrControl+Space', transcript: 'CommandOrControl+T' },
   app: { launchAtLogin: false, startHidden: false, closeToTray: true },
-  updates: { automatic: true }
+  updates: { automatic: true },
+  sheet: { width: SHEET_WIDTH.initial }
 }
 
 /** Part of the settings, to change: every field may be left out. */
@@ -120,6 +132,8 @@ export function readDeviceSettings(raw: unknown): DeviceSettings {
   const fallback = DEFAULT_DEVICE_SETTINGS
   if (!PAUSES.includes(read.listening.pause)) read.listening.pause = fallback.listening.pause
   if (!Number.isFinite(read.voice.speed) || read.voice.speed < 0.5 || read.voice.speed > 2) read.voice.speed = fallback.voice.speed
+  if (!Number.isFinite(read.sheet.width)) read.sheet.width = fallback.sheet.width
+  read.sheet.width = Math.round(Math.min(SHEET_WIDTH.most, Math.max(SHEET_WIDTH.least, read.sheet.width)))
   for (const name of Object.keys(read.shortcuts) as (keyof DeviceSettings['shortcuts'])[]) {
     const shortcut = read.shortcuts[name]
     if (shortcut !== '' && !isShortcut(shortcut)) read.shortcuts[name] = fallback.shortcuts[name]

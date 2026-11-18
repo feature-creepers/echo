@@ -1,7 +1,7 @@
 import type { Client } from '@repo/client'
 import { matchesShortcut } from '@repo/client'
 import { useFollowed } from '@repo/client/react'
-import type { PersonaId, Settings, ShownView } from '@repo/protocol'
+import type { PersonaId, Settings, ShownView, TurnId } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AccessIndicator } from '../access/access-indicator.tsx'
@@ -15,6 +15,7 @@ import { Orb } from '../presence/orb.tsx'
 import type { Mood } from '../presence/painter.ts'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
+import { ArrowGlyph } from '../primitives/icons.tsx'
 import { DURATION, EASE, glide, settle } from '../styles/motion.ts'
 import type { ViewActions } from '../view/context.ts'
 import { ViewStream } from '../view/view-stream.tsx'
@@ -39,6 +40,8 @@ export interface StageProps {
   voiceLevel?: (() => number) | undefined
   /** Open the voice settings, when the device could talk once its models are downloaded. */
   onSetUpVoice?: (() => void) | undefined
+  /** Show the full answer a line's thread wrote, whole, in the side sheet. */
+  onOpenAnswer(turn: TurnId): void
 }
 
 /** The event an app dispatches on the window to start talking, or to send what was said: its global shortcut. */
@@ -138,7 +141,7 @@ function syllables(): number {
  * The main screen: the assistant, present. The core in the middle, what it is saying under it as it says
  * it, and the line to talk to it at the bottom.
  */
-export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voiceLevel, onSetUpVoice }: StageProps) {
+export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voiceLevel, onSetUpVoice, onOpenAnswer }: StageProps) {
   const channel = useFollowed(client.channel)
   const speaking = useFollowed(client.speech)
   const activity = useFollowed(client.activity)
@@ -324,7 +327,18 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
     </AnimatePresence>
   )
 
-  const chips = ready.length > 0 ? <ReadyChips ready={ready} onFocus={(thread) => void client.threads.focus(thread).catch(() => undefined)} /> : undefined
+  // The last reply's full answer, when its thread wrote one: a quiet link under what is said opens it whole.
+  const written = last?.written !== undefined && !failed && !problem ? last.turn : undefined
+  const answerLink = (
+    <AnimatePresence initial={false}>{written !== undefined && <FullAnswerLink key={written} onOpen={() => onOpenAnswer(written)} />}</AnimatePresence>
+  )
+  const chips =
+    ready.length > 0 ? (
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <ReadyChips ready={ready} onFocus={(thread) => void client.threads.focus(thread).catch(() => undefined)} />
+        {answerLink}
+      </div>
+    ) : undefined
 
   const composer = (
     <InputLine
@@ -376,8 +390,13 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
               transition={{ duration: DURATION.calm, delay: 0.18, ease: EASE }}
               className="mt-3 grid w-full justify-items-center gap-1"
             >
-              <div className="h-[3.25rem] w-full max-w-[38rem] text-text" aria-live="polite">
-                {caption}
+              <div className="relative w-full max-w-[38rem]">
+                <div className="h-[3.25rem] text-text" aria-live="polite">
+                  {caption}
+                </div>
+                {/* Under the two lines kept for what is said, over the room above the stream, so it moves nothing. With
+                    topics ready, it sits in their row instead. */}
+                {!chips && <div className="absolute inset-x-0 top-full flex justify-center">{answerLink}</div>}
               </div>
               {chips}
             </motion.div>
@@ -413,8 +432,11 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
                   </Eyebrow>
                 </motion.span>
               </div>
-              <div className={cn('mt-7 flex min-h-24 w-full items-start justify-center text-center', COLUMN)} aria-live="polite">
-                {caption}
+              <div className={cn('mt-7 flex min-h-[6.75rem] w-full flex-col items-center gap-1.5 text-center', COLUMN)}>
+                <div className="flex w-full justify-center" aria-live="polite">
+                  {caption}
+                </div>
+                {!chips && answerLink}
               </div>
               {chips ? (
                 <div className={cn('mt-2 w-full', COLUMN)}>{chips}</div>
@@ -439,5 +461,25 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
         </div>
       </div>
     </div>
+  )
+}
+
+/** The way to the full answer of the last reply: a quiet link, there when the reply has more to it than was said. */
+function FullAnswerLink({ onOpen }: { onOpen(): void }) {
+  return (
+    <motion.button
+      type="button"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0, transition: { duration: DURATION.quick, ease: EASE } }}
+      transition={settle}
+      onClick={onOpen}
+      className="group inline-flex h-6 shrink-0 items-center gap-1 rounded-sm px-1.5 text-text-faint text-xs transition-colors duration-(--duration-quick) hover:text-text-soft"
+    >
+      Full answer
+      <span className="transition-transform duration-(--duration-quick) ease-soft group-hover:translate-x-0.5 [&_svg]:size-3">
+        <ArrowGlyph />
+      </span>
+    </motion.button>
   )
 }
