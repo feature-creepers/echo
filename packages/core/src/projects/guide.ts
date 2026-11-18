@@ -1,5 +1,6 @@
 import '../encoding.ts'
 import type { Computer } from '../ports/computer.ts'
+import { inFolder } from './folders.ts'
 
 /**
  * What a project tells those who work in it (docs/SPEC.md, section 7.11): the instruction files its developers keep
@@ -25,17 +26,6 @@ export interface ProjectGuide {
   files: { name: string; text: string }[]
   /** Some of it was left out, for length. */
   cut: boolean
-}
-
-/** A file in a folder, written with the folder's own separator. */
-export function inFolder(folder: string, name: string): string {
-  const separator = folder.includes('\\') && !folder.includes('/') ? '\\' : '/'
-  return `${folder.replace(/[\\/]+$/, '')}${separator}${name}`
-}
-
-/** A folder's own name: the last part of its path. */
-export function folderName(folder: string): string {
-  return folder.split(/[\\/]/).filter(Boolean).at(-1) ?? folder
 }
 
 /**

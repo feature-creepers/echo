@@ -1,6 +1,7 @@
 import type { ViewSpec } from '@repo/catalog'
 import type { TurnId } from '@repo/protocol'
 import type { Workspace, WorkspaceItem } from '../ports/workspace.ts'
+import { folderName, partsFrom } from '../projects/folders.ts'
 import type { Screen, Showing } from '../views/screen.ts'
 
 /**
@@ -19,8 +20,13 @@ const SHOWN = 5
 /** How many turns' cards are kept current: an older turn's card is left as it was. */
 const TURNS_KEPT = 20
 
-/** What the card says of where a file is, when it is in the assistant's folder: the folder, then those inside it. */
-export function detailOf(item: WorkspaceItem, workspace: Workspace): string | undefined {
+/**
+ * What the card says of where a file is: in the project the thread works on, or in the assistant's folder, then the
+ * folders inside it. Nothing for a file elsewhere: its place on the computer is shown as it is.
+ */
+export function detailOf(item: WorkspaceItem, workspace: Workspace, project?: string): string | undefined {
+  const inProject = project === undefined ? undefined : partsFrom(project, item.location)
+  if (inProject !== undefined && project !== undefined) return ['In', [folderName(project), ...inProject.slice(0, -1)].join(' › ')].join(' ')
   const path = workspace.pathOf(item.location)
   if (path === undefined) return undefined
   const folders = path.split('/').slice(0, -1)
@@ -28,9 +34,9 @@ export function detailOf(item: WorkspaceItem, workspace: Workspace): string | un
 }
 
 /** The card: the files written, newest last, with what the person can do with each. */
-export function writtenCard(items: readonly WorkspaceItem[], workspace: Workspace): { title: string; spec: ViewSpec } {
+export function writtenCard(items: readonly WorkspaceItem[], workspace: Workspace, project?: string): { title: string; spec: ViewSpec } {
   const files = items.map((item) => {
-    const detail = detailOf(item, workspace)
+    const detail = detailOf(item, workspace, project)
     return { path: item.location, name: item.name, size: item.size, ...(detail === undefined ? {} : { detail }) }
   })
   return {
@@ -39,7 +45,15 @@ export function writtenCard(items: readonly WorkspaceItem[], workspace: Workspac
   }
 }
 
-export function createWrittenFiles({ screen, workspace, newId }: { screen: Screen; workspace: Workspace; newId: () => string }): WrittenFiles {
+export interface WrittenFilesOptions {
+  screen: Screen
+  workspace: Workspace
+  newId: () => string
+  /** The folder a thread works in, when it works on a project: its files are named from there. */
+  projectOf?: (thread: string | undefined) => string | undefined
+}
+
+export function createWrittenFiles({ screen, workspace, newId, projectOf }: WrittenFilesOptions): WrittenFiles {
   /** Each turn's card, and the files on it in the order they were first written. */
   const cards = new Map<TurnId | string, { view: string; items: WorkspaceItem[] }>()
   /** Cards are brought up to date one write at a time, in the order the writes ended. */
@@ -58,7 +72,7 @@ export function createWrittenFiles({ screen, workspace, newId }: { screen: Scree
     cards.delete(key)
     cards.set(key, card)
     for (const old of [...cards.keys()].slice(0, Math.max(0, cards.size - TURNS_KEPT))) cards.delete(old)
-    screen.present({ id: card.view, ...writtenCard(card.items, workspace) }, showing)
+    screen.present({ id: card.view, ...writtenCard(card.items, workspace, projectOf?.(showing.thread)) }, showing)
   }
 
   return {

@@ -39,6 +39,19 @@ describe('the card of the files a thread writes', () => {
     })
   })
 
+  it('names a project’s files from its folder', () => {
+    const workspace = memoryWorkspace()
+    const at = (location: string) => ({ path: location, name: location.split(/[\\/]/).at(-1) ?? '', kind: 'file' as const, size: 1, modified: '', location })
+    const card = writtenCard(
+      [at('/home/ada/code/echo/src/ui/a.ts'), at('/home/ada/code/echo/README.md'), at('/elsewhere/b.ts')],
+      workspace,
+      '/home/ada/code/echo'
+    )
+    const { files } = (card.spec.elements.files?.props ?? { files: [] }) as { files: { detail?: string }[] }
+    const details = files.map((file) => file.detail)
+    expect(details).toEqual(['In echo › src › ui', 'In echo', undefined])
+  })
+
   it('is one card a turn, brought up to date as files are written, each file once', async () => {
     const { workspace, written, events, showing } = setup()
     workspace.files.set('a.md', bytes('a'))

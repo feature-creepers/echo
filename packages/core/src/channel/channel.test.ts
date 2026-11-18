@@ -952,6 +952,22 @@ describe('a project', () => {
     expect(spoken()).toEqual(['Done: the checks pass.'])
   })
 
+  it('is asked once to say how the work went when it goes straight from its work to its report', async () => {
+    const { thread, spoken, call } = await openProject(projectAbilities())
+    thread?.emit({ type: 'text', text: 'I will run the checks. ' })
+    thread?.emit({ type: 'tool', name: 'computer_run', phase: 'started', call: 'b1' })
+    thread?.emit({ type: 'tool', name: 'computer_run', phase: 'ended', call: 'b1', output: 'ok' })
+    thread?.emit({ type: 'tool', name: 'answer_write', phase: 'started', call: 'a1' })
+    expect(await call(1, 'answer_write', { text: 'Report.' })).toEqual({ ok: false, text: expect.stringContaining('You have not said how the work went') })
+    thread?.emit({ type: 'tool', name: 'answer_write', phase: 'ended', call: 'a1', failed: true })
+    thread?.emit({ type: 'text', text: 'The checks pass. ' })
+    thread?.emit({ type: 'tool', name: 'answer_write', phase: 'started', call: 'a2' })
+    expect((await call(1, 'answer_write', { text: 'Report.' })).ok).toBe(true)
+    thread?.emit({ type: 'turn-end' })
+    await settled()
+    expect(spoken()).toEqual(['I will run the checks.', 'The checks pass.'])
+  })
+
   it('tells a session kept open that its approval level changed, instead of opening it again', async () => {
     const told = { text: 'Every change waits for approval.' }
     const { channel, harness, thread, call } = await openProject(projectAbilities([], told))

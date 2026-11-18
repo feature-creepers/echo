@@ -15,7 +15,8 @@ export const LEVELS: Record<Access['approvals'], { label: string; short: string;
   auto: {
     label: "Don't ask",
     short: "doesn't ask",
-    detail: 'It acts without a card within what you gave, commands included. Only what deletes is still asked.'
+    detail:
+      'It acts without a card within what you gave, commands included. Only what deletes, and what publishes to others (a push, a release), is still asked.'
   }
 }
 

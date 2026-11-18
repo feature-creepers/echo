@@ -237,6 +237,8 @@ interface Turn {
   working: boolean
   /** What it wrote since its last call, held. */
   narration: string[]
+  /** How many sentences it had said when its work began: more must follow, saying how the work went. */
+  saidBeforeWork: number
 }
 
 /** A live session, and what it was opened for. When any of that changes, the session is replaced. */
@@ -292,7 +294,8 @@ const newTurn = (exchange: Exchange, language: string | undefined, handed: Hande
   title,
   noticed: false,
   working: false,
-  narration: []
+  narration: [],
+  saidBeforeWork: 0
 })
 
 /**
@@ -556,7 +559,10 @@ export function createChannel(options: ChannelOptions): Channel {
             const held = turn.narration.splice(0)
             if (SPOKEN_FIRST.has(event.name)) for (const sentence of held) say(turn, sentence)
           }
-          if (project) turn.working = true
+          if (project && !turn.working) {
+            turn.working = true
+            turn.saidBeforeWork = turn.sentences.size
+          }
         }
         step(turn, runtime.thread, event)
         // At work on a project, a view shown on the way does not end what is said.
@@ -706,7 +712,8 @@ export function createChannel(options: ChannelOptions): Channel {
   /**
    * The voice comes first: a call to show or to write the full answer before anything was said is sent back once,
    * asking for the short answer first. The model then speaks at once, and keeps that order for the rest of its
-   * thread. A second call is always taken, so nothing is ever lost.
+   * thread. A project's thread that worked and goes straight to its report has not said how the work went: that
+   * is asked for once too. A second call is always taken, so nothing is ever lost.
    */
   const speakFirst = (runtime: Runtime, tool: Tool): Tool => ({
     definition: tool.definition,
@@ -717,6 +724,13 @@ export function createChannel(options: ChannelOptions): Channel {
         return {
           ok: false,
           text: `Nothing has been said yet. Write the short spoken answer first, as text, then call ${tool.definition.name} again with the same input.`
+        }
+      }
+      if (turn && !turn.urged && tool.definition.name === ANSWER_TOOL && turn.working && turn.sentences.size === turn.saidBeforeWork) {
+        turn.urged = true
+        return {
+          ok: false,
+          text: `You have not said how the work went. Say it in a sentence or two, as plain text, then call ${ANSWER_TOOL} again with the same input.`
         }
       }
       return tool.run(input)

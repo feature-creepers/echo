@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { folderName, GUIDE_LIMIT, guideText, inFolder, readGuide } from './guide.ts'
+import { GUIDE_LIMIT, guideText, readGuide } from './guide.ts'
 
 const encoder = new TextEncoder()
 
@@ -12,25 +12,6 @@ function holding(files: Record<string, string | 'too-large'>) {
     }
   }
 }
-
-describe('inFolder and folderName', () => {
-  it.each([
-    ['/home/ada/echo', 'AGENTS.md', '/home/ada/echo/AGENTS.md'],
-    ['/home/ada/echo/', 'AGENTS.md', '/home/ada/echo/AGENTS.md'],
-    ['C:\\dev\\echo', 'AGENTS.md', 'C:\\dev\\echo\\AGENTS.md'],
-    ['C:\\dev\\echo\\', 'CLAUDE.md', 'C:\\dev\\echo\\CLAUDE.md']
-  ])('puts %s and %s together as %s', (folder, name, path) => {
-    expect(inFolder(folder, name)).toBe(path)
-  })
-
-  it.each([
-    ['/home/ada/echo', 'echo'],
-    ['/home/ada/echo/', 'echo'],
-    ['C:\\dev\\my project', 'my project']
-  ])('names %s %s', (folder, name) => {
-    expect(folderName(folder)).toBe(name)
-  })
-})
 
 describe('readGuide', () => {
   it('reads AGENTS.md, then CLAUDE.md, in that order', async () => {

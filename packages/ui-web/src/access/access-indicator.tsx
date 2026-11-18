@@ -97,7 +97,7 @@ export function AccessIndicator({ client }: { client: Client }) {
         },
         {
           label: LEVELS.auto.label,
-          detail: 'Only what deletes is still asked',
+          detail: 'Only deleting and publishing are still asked',
           checked: access.approvals === 'auto',
           warn: access.approvals === 'auto',
           onSelect: () => change({ approvals: 'auto' })

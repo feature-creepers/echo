@@ -192,7 +192,14 @@ export function createCore(options: CoreOptions): Core {
   }
   const attachments = createAttachments({ workspace, now, newId: options.newId, onChange: (path) => workspaceChanged([path]) })
   const browsing = createBrowsing({ workspace, settings })
-  const written = workspace ? createWrittenFiles({ screen, workspace, newId: options.newId }) : undefined
+  const written = workspace
+    ? createWrittenFiles({
+        screen,
+        workspace,
+        newId: options.newId,
+        projectOf: (thread) => (thread === undefined ? undefined : channel.threads().threads.find((one) => one.id === thread)?.folder)
+      })
+    : undefined
 
   // Memory (docs/SPEC.md, section 10): recalled into each turn, written while the assistant sleeps, and its tools.
   let currentTurn: () => string | undefined = () => undefined

@@ -5,6 +5,7 @@ import type { Timers } from '../ports/clock.ts'
 import type { Computer } from '../ports/computer.ts'
 import type { ComputerUse, Reach, Scope, Verdict } from '../ports/harness.ts'
 import type { Records } from '../ports/records.ts'
+import { fromFolder } from '../projects/folders.ts'
 import type { SettingsChange, UserSettings } from '../settings/settings.ts'
 import type { Tool } from '../tools/tools.ts'
 import type { Screen, Showing } from '../views/screen.ts'
@@ -133,11 +134,7 @@ const REASON_OF: Record<Exclude<Answer, 'yes' | 'session'>, NewUse['reason']> = 
 }
 
 /** A path as a thread working in `folder` writes it: from that folder when it is inside it. */
-const relative = (path: string, folder: string | undefined) => {
-  if (folder === undefined || !inside(path, folder)) return path
-  const rest = path.slice(folder.replace(/[\\/]+$/, '').length + 1)
-  return rest === '' ? '.' : rest
-}
+const relative = (path: string, folder: string | undefined) => (folder === undefined ? path : (fromFolder(folder, path) ?? path))
 
 const DONE: Record<AccessUse['action'], string> = { read: 'read', create: 'created', change: 'changed', delete: 'deleted', run: 'ran' }
 const DOING: Record<AccessUse['action'], string> = { read: 'reading', create: 'creating', change: 'changing', delete: 'deleting', run: 'running' }
