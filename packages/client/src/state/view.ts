@@ -1,4 +1,4 @@
-import { onTop, type ShownView } from '@repo/protocol'
+import { type Event, onTop, type ShownView } from '@repo/protocol'
 import type { Session } from '../session.ts'
 import { cell, type Followed } from './followed.ts'
 
@@ -28,11 +28,13 @@ const ARRIVED = 12
 
 export function followView(session: Session): ViewState {
   const state = cell<Shown>({ stage: undefined, margin: [], stream: [], arrived: [] })
-  let heard = false
-  const stopEvents = session.onEvent((event) => {
+  type ViewEvent = Extract<Event, { name: 'view.shown' | 'view.cleared' }>
+  /** What arrived while the first read was on its way, in order: applied again on top of what the read returns. */
+  let early: ViewEvent[] | undefined = []
+
+  const apply = (event: ViewEvent) => {
     const { stage, margin, stream, arrived } = state.current()
     if (event.name === 'view.shown') {
-      heard = true
       const now = [...arrived.filter((id) => id !== event.view.id), event.view.id].slice(-ARRIVED)
       const next = onTop(stream, event.view)
       if (event.view.slot === 'margin')
@@ -47,8 +49,7 @@ export function followView(session: Session): ViewState {
           arrived: now
         })
       else state.set({ stage: event.view, margin, stream: next, arrived: now })
-    } else if (event.name === 'view.cleared') {
-      heard = true
+    } else {
       const id = event.view
       // Without a view named, the topic in focus has nothing to show: the stage empties, the stream stays as it is.
       state.set({
@@ -58,13 +59,26 @@ export function followView(session: Session): ViewState {
         arrived
       })
     }
+  }
+
+  const stopEvents = session.onEvent((event) => {
+    if (event.name !== 'view.shown' && event.name !== 'view.cleared') return
+    early?.push(event)
+    apply(event)
   })
   session.run('view.read', {}).then(
     ({ view, margin, stream }) => {
-      // An event that arrived while the read was on its way is newer than what the read returns.
-      if (!heard) state.set({ stage: view, margin, stream, arrived: [] })
+      // The read is the screen as the core had it when it read it, which may be before or after an event that arrived
+      // meanwhile, such as a reminder ringing as the app opens. Those events are applied again on top of it: showing or
+      // clearing a view twice changes nothing, so the stream read is kept whole and nothing newer is lost.
+      const heard = early ?? []
+      early = undefined
+      state.set({ stage: view, margin, stream, arrived: [] })
+      for (const event of heard) apply(event)
     },
-    () => undefined
+    () => {
+      early = undefined
+    }
   )
   return {
     current: state.current,
