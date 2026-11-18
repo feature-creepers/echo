@@ -1,0 +1,48 @@
+{
+  "name": "@repo/desktop",
+  "productName": "Echo",
+  "version": "0.1.0",
+  "description": "A personal assistant you talk to.",
+  "private": true,
+  "license": "MIT",
+  "author": "Rodolphe Barbanneau and Tommy Sendra",
+  "type": "module",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "self-check": "electron . --self-check",
+    "stage": "node build/stage.ts",
+    "package:win": "node build/stage.ts --os win32 --arch x64 && electron-builder --projectDir stage --config ../build/electron-builder.yml --win zip --x64 --publish never",
+    "package:mac": "node build/stage.ts --os darwin --arch arm64 && electron-builder --projectDir stage --config ../build/electron-builder.yml --mac --arm64 --publish never",
+    "package:linux": "node build/stage.ts --os linux --arch x64 && electron-builder --projectDir stage --config ../build/electron-builder.yml --linux --x64 --publish never"
+  },
+  "dependencies": {
+    "playwright-core": "catalog:",
+    "sherpa-onnx-node": "catalog:"
+  },
+  "devDependencies": {
+    "@repo/client": "workspace:*",
+    "@repo/models": "workspace:*",
+    "@repo/protocol": "workspace:*",
+    "@repo/server": "workspace:*",
+    "@repo/speech": "workspace:*",
+    "@repo/tokens": "workspace:*",
+    "@repo/tsconfig": "workspace:*",
+    "@repo/ui-web": "workspace:*",
+    "@tailwindcss/vite": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "electron": "catalog:",
+    "electron-builder": "catalog:",
+    "electron-updater": "catalog:",
+    "electron-vite": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "tailwindcss": "catalog:",
+    "vite": "catalog:"
+  }
+}

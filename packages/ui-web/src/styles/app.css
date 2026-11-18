@@ -1,0 +1,263 @@
+/*
+ * The one stylesheet of the interface. Everything else is utility classes on the components.
+ * Colours, typefaces and radii come from @repo/tokens, as a Tailwind theme.
+ */
+@import "tailwindcss";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+@import "@repo/tokens/theme.css";
+
+/* The components of this package are where the classes are written. */
+@source "..";
+
+/*
+ * Motion that runs by itself: the bars of a playing sound, and the eye of the composer. Every one of them
+ * moves only transform and opacity, so the compositor runs them without laying the page out again.
+ */
+@theme {
+  --animate-level: level 1.1s ease-in-out infinite;
+  /* Awake and waiting: the ring breathes and the eye blinks now and then. */
+  --animate-eye-breathe: eye-breathe 4.2s ease-in-out infinite;
+  --animate-eye-blink: eye-blink 6.5s ease-in-out infinite;
+  /* Asleep: the eye is closed, and it still breathes, slower and dimmer. */
+  --animate-eye-sleep: eye-sleep 5.2s ease-in-out infinite;
+  /* Listening: the ring leans in. */
+  --animate-eye-listen: eye-listen 1.3s ease-in-out infinite;
+  /* Thinking: an arc circles the ring. */
+  --animate-eye-spin: eye-spin 1.1s linear infinite;
+  /* Speaking: the eye beats with the syllables. */
+  --animate-eye-speak: eye-speak 0.46s ease-in-out infinite alternate;
+
+  @keyframes level {
+    0%,
+    100% {
+      transform: scaleY(0.35);
+    }
+    50% {
+      transform: scaleY(1);
+    }
+  }
+  @keyframes eye-breathe {
+    0%,
+    100% {
+      transform: scale(0.94);
+      opacity: 0.55;
+    }
+    50% {
+      transform: scale(1.04);
+      opacity: 0.85;
+    }
+  }
+  @keyframes eye-blink {
+    0%,
+    90%,
+    96%,
+    100% {
+      transform: scaleY(1);
+    }
+    93% {
+      transform: scaleY(0.12);
+    }
+  }
+  @keyframes eye-sleep {
+    0%,
+    100% {
+      transform: scale(1, 0.34);
+      opacity: 0.4;
+    }
+    50% {
+      transform: scale(1.12, 0.34);
+      opacity: 0.85;
+    }
+  }
+  @keyframes eye-listen {
+    0%,
+    100% {
+      transform: scale(1);
+      opacity: 0.9;
+    }
+    50% {
+      transform: scale(1.12);
+      opacity: 1;
+    }
+  }
+  @keyframes eye-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @keyframes eye-speak {
+    from {
+      transform: scale(0.85);
+    }
+    to {
+      transform: scale(1.3);
+    }
+  }
+}
+
+/*
+ * Declared as a colour so that a change of accent can be animated. The initial value is never seen:
+ * the theme sets the real one at the root.
+ */
+@property --accent {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
+/*
+ * How wide the user made the side sheet. Not inherited: it is set on the few elements that read it, the sheet and
+ * what makes room beside it, so dragging the sheet's edge restyles those alone and not the whole window.
+ */
+@property --sheet-width {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 432px;
+}
+
+@layer base {
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    background: var(--color-ground);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    /* Only Geist, where it stands in for the system face, has these. */
+    font-feature-settings: "ss01", "cv11";
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--accent) 35%, transparent);
+  }
+
+  /* The focus ring of macOS: a soft band of the accent hugging what has the keyboard. */
+  :focus-visible {
+    outline: 3px solid color-mix(in oklab, var(--accent) 55%, transparent);
+    outline-offset: 1px;
+  }
+
+  /*
+   * The window's own ground, under every screen and the title row alike. Where the system draws a translucent
+   * material behind the page, the page is transparent and only tints it, nearly opaque, as native apps do.
+   */
+  :root {
+    --window: var(--color-ground);
+  }
+  :root[data-material="vibrant"] {
+    --window: color-mix(in srgb, var(--color-ground) 90%, transparent);
+  }
+  :root[data-material="vibrant"] body {
+    background: transparent;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: default;
+  }
+}
+
+/*
+ * While a pinned widget is dragged, the pointer is a closed hand wherever it goes, and nothing gets selected.
+ * Outside any layer, so it wins over the cursor every control sets for itself.
+ */
+:root[data-dragging] * {
+  cursor: grabbing;
+  user-select: none;
+}
+
+/* While the side sheet's edge is dragged, the pointer is the resizing one wherever it goes, and nothing gets selected. */
+:root[data-resizing] * {
+  cursor: col-resize;
+  user-select: none;
+}
+
+/* What the window is dragged by, and what can be pressed inside it. */
+@utility drag {
+  -webkit-app-region: drag;
+}
+
+@utility no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Everything inside follows a change of accent smoothly. */
+@utility accent-shift {
+  transition: --accent var(--duration-calm) var(--ease-soft);
+}
+
+/*
+ * The window's ground: fine dots on a regular pitch, very faint, fading out towards the edges of the window. It is
+ * texture, not content: it stays under everything and never competes with what is on it.
+ * Each dot is one pixel, centred on the middle of a pixel of a tile that starts on a whole pixel, so it lands on
+ * whole device pixels: one at a density of 1, a square of four at 2. Its edge is soft over a fraction of a pixel,
+ * which keeps it even at the densities between, such as 1.25 and 1.5.
+ */
+@utility dot-ground {
+  background-image: radial-gradient(circle at 9.5px 9.5px, var(--color-dot) 0.5px, transparent 0.8px);
+  background-size: 18px 18px;
+  background-position: 0 0;
+  mask-image: radial-gradient(ellipse 72% 70% at 50% 42%, black 35%, transparent 100%);
+}
+
+/*
+ * What floats over other things, as on macOS: a translucent layer that blurs and slightly saturates what is
+ * behind it, a hairline that catches the light on its top edge, and a soft shadow instead of a hard border.
+ */
+@utility material {
+  background: color-mix(in srgb, var(--color-overlay) 82%, transparent);
+  backdrop-filter: blur(20px) saturate(1.5);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.07),
+    inset 0 1px 0 rgb(255 255 255 / 0.05);
+}
+
+/* The shadow of what floats: wide and soft, never coloured. */
+@utility shadow-float {
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 0.35),
+    0 10px 30px -8px rgb(0 0 0 / 0.55),
+    0 2px 6px -2px rgb(0 0 0 / 0.4);
+}
+
+/* A scroll area that shows no bar at all, for a screen whose edges already fade to say there is more. */
+@utility scroll-none {
+  scrollbar-width: none;
+}
+
+/*
+ * A scroll area whose bar stays out of the way: a slim thumb with no track and no arrows, brighter under the
+ * pointer. Drawn with Chromium's own pseudo-elements, which it ignores once scrollbar-width is set.
+ */
+@utility scroll-quiet {
+  &::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  &::-webkit-scrollbar-track,
+  &::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-button {
+    display: none;
+  }
+  &::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 5px;
+    background: rgb(255 255 255 / 0.07) padding-box;
+  }
+  &:hover::-webkit-scrollbar-thumb {
+    background-color: rgb(255 255 255 / 0.12);
+  }
+  &::-webkit-scrollbar-thumb:active {
+    background-color: rgb(255 255 255 / 0.2);
+  }
+}

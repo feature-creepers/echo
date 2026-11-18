@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Sign in · Test shop</title>
+  </head>
+  <body>
+    <header>
+      <nav><a href="/">Home</a> <a href="/cart">Cart</a></nav>
+    </header>
+    <main>
+      <h1>Test shop</h1>
+      <nav aria-label="Article tools">Article tools</nav>
+      <div style="display: none">Afrikaans Alemannisch Aragonés</div>
+      <p>The finest widgets, 330 metres of them.</p>
+      <form action="/login" method="post">
+        <label>Email <input name="email" autocomplete="username" /></label>
+        <label>Password <input type="password" name="pw" autocomplete="current-password" /></label>
+        <button type="submit">Sign in</button>
+      </form>
+      <form action="/checkout/pay">
+        <label>Card number <input name="cardnumber" autocomplete="cc-number" /></label>
+        <button type="submit">Buy now</button>
+      </form>
+      <form action="/search">
+        <label>Search <input type="search" name="q" /></label>
+      </form>
+      <button type="button" id="add" onclick="document.querySelector('#added').hidden = false">Add to cart</button>
+      <p id="added" hidden><a href="/cart">Go to your cart</a></p>
+      <a href="/report.txt" download>Download the report</a>
+    </main>
+    <footer>The small print.</footer>
+  </body>
+</html>

@@ -1,0 +1,79 @@
+# How the desktop app is packaged for each system. It packages what build/stage.ts lays out in stage/:
+# run `pnpm --filter @repo/desktop package:win` (or :mac, :linux) after `pnpm build`.
+# The product's name and version come from ../package.json, through the staged manifest.
+appId: io.github.feature-creepers.echo
+copyright: Copyright © 2026 Rodolphe Barbanneau and Tommy Sendra
+
+directories:
+  output: ../release
+  # Where build/stage.ts draws the icons.
+  buildResources: build
+electronVersion: 45.3.2
+
+# The app is bundled by electron-vite into out/. Two things are read from node_modules at run time: the
+# speech library, whose native part must sit outside the archive to be loaded, and Playwright, which the core
+# loads from the archive to drive the browser (the browser itself is the one installed on the computer).
+files:
+  - out/**
+  - package.json
+  - node_modules/**
+  - "!**/*.map"
+asarUnpack:
+  - node_modules/sherpa-onnx-*-*/**
+npmRebuild: false
+
+# Electron's switches, set in the packaged program: it cannot be started as plain Node, takes no Node
+# options or debugger from its environment or command line, and runs only the archive it shipped with.
+# Otherwise any program on the machine could run its own code as this app, with what the user allowed it.
+# The core runs as an Electron utility process, which these do not affect.
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  onlyLoadAppFromAsar: true
+
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: zip
+      arch: [x64]
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  artifactName: ${productName}-${version}-setup.${ext}
+
+# The ZIP is what the updater reads on a Mac (latest-mac.yml names it); people download the DMG.
+mac:
+  target:
+    - target: dmg
+      arch: [arm64]
+    - target: zip
+      arch: [arm64]
+  category: public.app-category.productivity
+  icon: build/icon.icns
+  # Unsigned for now: the user opens it the first time with a right click, then Open.
+  identity: null
+  extendInfo:
+    NSMicrophoneUsageDescription: Echo listens to you when you talk to it. Your voice is turned into text on this computer.
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+linux:
+  icon: build/icons
+  target:
+    - AppImage
+  category: Utility
+  # The program's file name. Left out, it would be taken from the workspace package's name.
+  executableName: echo
+
+# The GitHub releases of the project are the update feed: the packages, and the manifests that describe them
+# (latest.yml, latest-mac.yml, latest-linux.yml), which electron-updater reads. The release workflow uploads
+# them to a draft release; publishing the draft rolls the update out to every installed copy. The feed is also
+# written into each package (app-update.yml), so the app knows where to look. The repository is the one the
+# staged manifest names: build/stage.ts takes it from the GitHub Actions run, or from this clone's origin.
+publish:
+  provider: github
+  releaseType: draft

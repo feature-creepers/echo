@@ -1,0 +1,31 @@
+{
+  "name": "echo",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "contributors": [
+    "Rodolphe Barbanneau",
+    "Tommy Sendra"
+  ],
+  "type": "module",
+  "packageManager": "pnpm@11.28.9",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "typecheck": "tsc --build",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "test": "turbo run test",
+    "check": "pnpm typecheck && pnpm lint && node scripts/check-persona-names.ts && pnpm test",
+    "theme": "node scripts/write-theme.ts"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "catalog:",
+    "@repo/tsconfig": "workspace:*",
+    "@types/node": "catalog:",
+    "turbo": "catalog:",
+    "typescript": "catalog:"
+  }
+}

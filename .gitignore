@@ -1,11 +1,25 @@
-.window-profile/
+# dependencies
+node_modules/
+
+# build output and caches
+dist/
+out/
+release/
+stage/
+coverage/
+.turbo/
+*.tsbuildinfo
+
+# native builds (Swift)
+.build/
+.swiftpm/
+
+# local environment
+.env
+.env.*
+!.env.example
+
+# logs and system files
+*.log
 .DS_Store
-app/.build/
-songs
-
-# market research, kept on this Mac only
-reports/
-research_notes/
-
-# the optional Kokoro voices, when JARVIS runs from this folder
-kokoro/
+Thumbs.db

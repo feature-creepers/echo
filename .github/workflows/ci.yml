@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main, rodolphe]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: check (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Typecheck, lint (including the dependency rules), formatting and tests. The browser's tests drive the
+      # runner's own Chrome or Edge, with no window; a Linux runner's sandbox helper is not set up (see below).
+      - run: pnpm check
+        env:
+          ASSISTANT_BROWSER_SANDBOX: ${{ runner.os == 'Linux' && 'off' || '' }}
+
+      - run: pnpm build
+
+      # Start the built desktop app, let it start the core and connect to it, and fail if it cannot.
+      - name: Desktop self-check
+        if: runner.os != 'Linux'
+        run: pnpm --filter @repo/desktop self-check
+
+      # A Linux runner has no display, and its Chromium sandbox helper is not set up.
+      - name: Desktop self-check (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a pnpm --filter @repo/desktop exec electron . --self-check --no-sandbox
+
+      # Package the app for the system of the runner, and keep the packages for download from the run's page.
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        working-directory: apps/desktop
+        run: |
+          node build/stage.ts --os win32 --arch x64
+          pnpm exec electron-builder --projectDir stage --config ../build/electron-builder.yml --win nsis zip --x64 --publish never
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        working-directory: apps/desktop
+        run: |
+          node build/stage.ts --os darwin --arch arm64
+          pnpm exec electron-builder --projectDir stage --config ../build/electron-builder.yml --mac dmg --arm64 --publish never
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        working-directory: apps/desktop
+        run: |
+          node build/stage.ts --os linux --arch x64
+          pnpm exec electron-builder --projectDir stage --config ../build/electron-builder.yml --linux AppImage --x64 --publish never
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: echo-${{ runner.os }}
+          path: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.zip
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.AppImage
+          if-no-files-found: error
+          retention-days: 14

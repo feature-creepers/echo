@@ -1,0 +1,49 @@
+/* Generated from the values in @repo/tokens by `pnpm theme`. Do not edit. */
+
+@theme {
+  --color-*: initial;
+  --color-ground: #05070a;
+  --color-surface: #0a0d12;
+  --color-raised: #10141b;
+  --color-overlay: #161b24;
+  --color-line: rgb(255 255 255 / 0.07);
+  --color-dot: rgb(255 255 255 / 0.1);
+  --color-line-strong: rgb(255 255 255 / 0.14);
+  --color-text: #edf0f5;
+  --color-text-soft: #a4adbb;
+  --color-text-faint: #7a8496;
+  --color-danger: #ff7a70;
+  --color-ok: #5fd39b;
+  --color-warn: #f0c05a;
+  --color-white: #ffffff;
+  --color-black: #000000;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", "Geist Variable", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Geist Mono Variable", Menlo, Consolas, monospace;
+
+  --radius-*: initial;
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+
+  --text-label: 0.75rem;
+  --text-label--line-height: 1rem;
+  --text-label--letter-spacing: 0;
+
+  --ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@theme inline {
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+}
+
+:root {
+  --accent: #a4adbb;
+  --accent-ink: #05070a;
+  --duration-quick: 120ms;
+  --duration-calm: 240ms;
+  --duration-slow: 420ms;
+  --frame-title-bar: 38px;
+}

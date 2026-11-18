@@ -1,0 +1,45 @@
+packages:
+  - apps/*
+  - packages/*
+  - tooling/*
+
+# Install scripts of dependencies run only when allowed here. None of these needs its script:
+# Electron downloads its program the first time it is run, esbuild works without it, and
+# electron-winstaller builds a kind of Windows installer (Squirrel) that this project does not make.
+allowBuilds:
+  electron: false
+  electron-winstaller: false
+  esbuild: false
+
+# One version of each shared dependency for the whole workspace.
+# A package asks for it with "catalog:" instead of a version.
+catalog:
+  "@biomejs/biome": ^2.6.8
+  "@fontsource-variable/geist": ^5.3.0
+  "@fontsource-variable/geist-mono": ^5.3.0
+  "@tailwindcss/vite": ^4.3.5
+  "@types/d3-geo": ^3.1.0
+  "@types/node": ^24.0.0
+  "@types/react": ^19.3.0
+  "@types/react-dom": ^19.3.0
+  "@vitejs/plugin-react": ^6.3.0
+  class-variance-authority: ^0.7.1
+  clsx: ^2.1.1
+  d3-geo: ^3.1.1
+  electron: ^45.3.0
+  electron-builder: ^26.18.0
+  electron-updater: ^6.8.12
+  electron-vite: ^6.0.0
+  esbuild: ^0.28.2
+  motion: ^14.14.0
+  playwright-core: ^1.65.0
+  react: ^19.3.1
+  react-dom: ^19.3.1
+  sherpa-onnx-node: ^2.0.1
+  tailwind-merge: ^3.7.0
+  tailwindcss: ^4.3.5
+  turbo: ^2.11.11
+  typescript: ^7.0.2
+  vite: ^8.3.8
+  vitest: ^5.1.0
+  zod: ^4.6.7

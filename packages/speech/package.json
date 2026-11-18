@@ -1,0 +1,26 @@
+{
+  "name": "@repo/speech",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": [
+    "./src/service/process.ts"
+  ],
+  "exports": {
+    ".": "./src/index.ts",
+    "./process": "./src/service/process.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@repo/models": "workspace:*",
+    "sherpa-onnx-node": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@repo/tsconfig": "workspace:*",
+    "@types/node": "catalog:",
+    "vitest": "catalog:"
+  }
+}

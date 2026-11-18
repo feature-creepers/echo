@@ -1,0 +1,16 @@
+{
+  "extends": "@repo/tsconfig/node.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist"
+  },
+  "include": ["src", "test"],
+  "references": [
+    {
+      "path": "../core"
+    },
+    {
+      "path": "../catalog"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  // The one entry point of this package that needs Node: the transport to a core on the same machine.
+  "extends": "@repo/tsconfig/node.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist/node"
+  },
+  "include": ["src/transports/local.ts", "src/transports/local.test.ts"],
+  "references": [{ "path": "./tsconfig.json" }, { "path": "../protocol" }]
+}

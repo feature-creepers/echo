@@ -1,0 +1,76 @@
+import type { CoreLink } from '@repo/client'
+import { contextBridge, type IpcRendererEvent, ipcRenderer, webUtils } from 'electron'
+import { APP_CHANNELS, CORE_LINK_CHANNEL, CORE_MESSAGE_CHANNEL, type DesktopBridge, SPEECH_CHANNELS, TALK_CHANNEL } from './bridge.ts'
+
+/** Be told of what comes on a channel. Returns a function that stops the telling. */
+function listen<Payload>(channel: string, listener: (payload: Payload) => void): () => void {
+  const handler = (_event: IpcRendererEvent, payload: Payload) => listener(payload)
+  ipcRenderer.on(channel, handler)
+  return () => ipcRenderer.removeListener(channel, handler)
+}
+
+/** The one listener for messages from the core, replaced each time the window opens a session. */
+let onCoreMessage: (message: unknown) => void = () => undefined
+ipcRenderer.on(CORE_MESSAGE_CHANNEL, (_event, message: unknown) => onCoreMessage(message))
+
+const bridge: DesktopBridge = {
+  coreLink: () => ipcRenderer.invoke(CORE_LINK_CHANNEL),
+  onCoreLink: (listener) => {
+    const handler = (_event: IpcRendererEvent, link: CoreLink) => listener(link)
+    ipcRenderer.on(CORE_LINK_CHANNEL, handler)
+    return () => ipcRenderer.removeListener(CORE_LINK_CHANNEL, handler)
+  },
+  core: {
+    send: (message) => ipcRenderer.send(CORE_MESSAGE_CHANNEL, message),
+    onMessage: (listener) => {
+      onCoreMessage = listener
+    }
+  },
+  onTalk: (listener) => listen(TALK_CHANNEL, () => listener()),
+  onOpenSettings: (listener) => listen(APP_CHANNELS.openSettings, () => listener()),
+  device: {
+    read: () => ipcRenderer.invoke(APP_CHANNELS.deviceRead),
+    change: (change) => ipcRenderer.invoke(APP_CHANNELS.deviceChange, change),
+    onChange: (listener) => listen(APP_CHANNELS.deviceChanged, listener),
+    setShortcut: (name, accelerator) => ipcRenderer.invoke(APP_CHANNELS.shortcutSet, name, accelerator),
+    suspendShortcuts: (suspended) => ipcRenderer.send(APP_CHANNELS.shortcutsSuspend, suspended),
+    shortcutProblem: () => ipcRenderer.invoke(APP_CHANNELS.shortcutProblem)
+  },
+  app: {
+    about: () => ipcRenderer.invoke(APP_CHANNELS.about),
+    openDataFolder: () => ipcRenderer.invoke(APP_CHANNELS.openDataFolder),
+    openReleases: () => ipcRenderer.invoke(APP_CHANNELS.openReleases),
+    showPresence: (presence) => ipcRenderer.send(APP_CHANNELS.presence, presence)
+  },
+  updates: {
+    state: () => ipcRenderer.invoke(APP_CHANNELS.updateState),
+    onState: (listener) => listen(APP_CHANNELS.updateChanged, listener),
+    check: () => ipcRenderer.invoke(APP_CHANNELS.updateCheck),
+    download: () => ipcRenderer.invoke(APP_CHANNELS.updateDownload),
+    install: () => ipcRenderer.invoke(APP_CHANNELS.updateInstall)
+  },
+  files: {
+    pick: (kind) => ipcRenderer.invoke(APP_CHANNELS.filesPick, kind),
+    reveal: (path) => ipcRenderer.invoke(APP_CHANNELS.filesReveal, path),
+    open: (path) => ipcRenderer.invoke(APP_CHANNELS.filesOpen, path),
+    // Only the preload can ask where a dropped file is: the window itself is never told a path it was not given.
+    pathOf: (file) => webUtils.getPathForFile(file) || undefined
+  },
+  speech: {
+    status: () => ipcRenderer.invoke(SPEECH_CHANNELS.status),
+    async install(onProgress) {
+      const handler = (_event: IpcRendererEvent, progress: Parameters<typeof onProgress>[0]) => onProgress(progress)
+      ipcRenderer.on(SPEECH_CHANNELS.progress, handler)
+      try {
+        await ipcRenderer.invoke(SPEECH_CHANNELS.install)
+      } finally {
+        ipcRenderer.removeListener(SPEECH_CHANNELS.progress, handler)
+      }
+    },
+    transcribe: (sound) => ipcRenderer.invoke(SPEECH_CHANNELS.transcribe, sound),
+    speak: (text, how) => ipcRenderer.invoke(SPEECH_CHANNELS.speak, text, how),
+    styles: () => ipcRenderer.invoke(SPEECH_CHANNELS.styles)
+  }
+}
+
+contextBridge.exposeInMainWorld('desktop', bridge)

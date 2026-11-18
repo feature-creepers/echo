@@ -1,0 +1,29 @@
+{
+  "extends": "@repo/tsconfig/node.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist/types",
+    "resolveJsonModule": true
+  },
+  "include": ["src", "test", "package.json", "vitest.config.ts"],
+  "references": [
+    {
+      "path": "../../packages/core"
+    },
+    {
+      "path": "../../packages/protocol"
+    },
+    {
+      "path": "../../packages/store"
+    },
+    {
+      "path": "../../packages/harness"
+    },
+    {
+      "path": "../../packages/tools"
+    },
+    {
+      "path": "../../packages/browser"
+    }
+  ]
+}

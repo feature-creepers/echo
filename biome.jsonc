@@ -1,0 +1,403 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.6.8/schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": { "includes": ["**", "!**/pnpm-lock.yaml", "!**/*.generated.*"] },
+
+  // One style for the whole repository. Biome formats and lints; there is no other formatter or linter.
+  "formatter": { "indentStyle": "space", "indentWidth": 2, "lineEnding": "lf", "lineWidth": 160 },
+  "javascript": { "formatter": { "quoteStyle": "single", "jsxQuoteStyle": "double", "semicolons": "asNeeded", "trailingCommas": "none" } },
+  "css": { "parser": { "tailwindDirectives": true } },
+  "assist": { "actions": { "source": { "organizeImports": "on" } } },
+
+  "linter": {
+    "rules": {
+      "preset": "recommended",
+      "style": {
+        // One way to export: named. A default export can be renamed by every importer.
+        "noDefaultExport": "error",
+        // Types are imported as types, so a type-only import never loads a module at run time.
+        "useImportType": "error",
+        // File names are kebab-case, one concept per file.
+        "useFilenamingConvention": { "level": "error", "options": { "filenameCases": ["kebab-case"] } }
+      },
+      "correctness": {
+        // A package imports only what its package.json declares.
+        "noUndeclaredDependencies": "error",
+        "noUnusedImports": "error",
+        "noUnusedVariables": "error"
+      },
+      "suspicious": { "noImportCycles": "error" }
+    }
+  },
+
+  "overrides": [
+    // Compiler configuration files explain themselves with comments.
+    { "includes": ["**/tsconfig*.json", "tooling/tsconfig/*.json"], "json": { "parser": { "allowComments": true } } },
+    // Build tools read their configuration from a default export, and a bundler gives a stylesheet's classes as one.
+    { "includes": ["**/*.config.ts", "**/*.d.ts"], "linter": { "rules": { "style": { "noDefaultExport": "off" } } } },
+
+    /*
+     * Which workspace package may import which. This table enforces section 14.3 of docs/SPEC.md: change both together.
+     * Each entry lists the packages a folder may import; every other @repo package is refused.
+     * Packages that run anywhere (Node, a browser, a phone) may not use a Node module either.
+     * A package's internal files cannot be imported from outside at all: its "exports" map lists its entry points.
+     */
+    // Contracts: shared by both sides, import nothing.
+    {
+      "includes": ["packages/protocol/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@repo/*", "!@repo/protocol"],
+                    "message": "@repo/protocol may only import: nothing from this repository. See docs/SPEC.md, section 14.3."
+                  }
+                ]
+              }
+            }
+          },
+          "correctness": { "noNodejsModules": "error" }
+        }
+      }
+    },
+    {
+      "includes": ["packages/catalog/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@repo/*", "!@repo/catalog"],
+                    "message": "@repo/catalog may only import: nothing from this repository. See docs/SPEC.md, section 14.3."
+                  }
+                ]
+              }
+            }
+          },
+          "correctness": { "noNodejsModules": "error" }
+        }
+      }
+    },
+    {
+      "includes": ["packages/tokens/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@repo/*", "!@repo/tokens"],
+                    "message": "@repo/tokens may only import: nothing from this repository. See docs/SPEC.md, section 14.3."
+                  }
+                ]
+              }
+            }
+          },
+          "correctness": { "noNodejsModules": "error" }
+        }
+      }
+    },
+    // The assistant: pure logic over the contracts.
+    {
+      "includes": ["packages/core/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@repo/*", "!@repo/core", "!@repo/protocol", "!@repo/catalog"],
+                    "message": "@repo/core may only import: @repo/protocol, @repo/catalog. See docs/SPEC.md, section 14.3."
+                  }
+                ]
+              }
+            }
+          },
+          "correctness": { "noNodejsModules": "error" }
+        }
+      }
+    },
+    // Adapters: implement the ports the core defines.
+    {
+      "includes": ["packages/harness/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@repo/*", "!@repo/harness", "!@repo/core"],
+                    "message": "@repo/harness may only import: @repo/core. See docs/SPEC.md, section 14.3."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/store/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  { "group": ["@repo/*", "!@repo/store", "!@repo/core"], "message": "@repo/store may only import: @repo/core. See docs/SPEC.md, section 14.3." }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/browser/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@repo/*", "!@repo/browser", "!@repo/core"],
+                    "message": "@repo/browser may only import: @repo/core. See docs/SPEC.md, section 14.3."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/embedder/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@repo/*", "!@repo/embedder", "!@repo/core", "!@repo/models"],
+                    "message": "@repo/embedder may only import: @repo/core, @repo/models. See docs/SPEC.md, section 14.3."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/tools/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@repo/*", "!@repo/tools", "!@repo/core", "!@repo/catalog"],
+                    "message": "@repo/tools may only import: @repo/core, @repo/catalog. See docs/SPEC.md, section 14.3."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    // Used on a device or on a server: import neither side.
+    {
+      "includes": ["packages/speech/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@repo/*", "!@repo/speech", "!@repo/models"],
+                    "message": "@repo/speech may only import: @repo/models. See docs/SPEC.md, section 14.3."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/models/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@repo/*", "!@repo/models"],
+                    "message": "@repo/models may only import: nothing from this repository. See docs/SPEC.md, section 14.3."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    // Client side: never imports the core or an adapter.
+    {
+      "includes": ["packages/client/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@repo/*", "!@repo/client", "!@repo/protocol", "!@repo/catalog"],
+                    "message": "@repo/client may only import: @repo/protocol, @repo/catalog. See docs/SPEC.md, section 14.3."
+                  }
+                ]
+              }
+            }
+          },
+          "correctness": { "noNodejsModules": "error" }
+        }
+      }
+    },
+    {
+      "includes": ["packages/ui-web/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@repo/*", "!@repo/ui-web", "!@repo/client", "!@repo/protocol", "!@repo/catalog", "!@repo/tokens"],
+                    "message": "@repo/ui-web may only import: @repo/client, @repo/protocol, @repo/catalog, @repo/tokens. See docs/SPEC.md, section 14.3."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    // Test doubles for the ports of the core.
+    {
+      "includes": ["packages/testing/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@repo/*", "!@repo/testing", "!@repo/core", "!@repo/protocol", "!@repo/catalog"],
+                    "message": "@repo/testing may only import: @repo/core, @repo/protocol, @repo/catalog. See docs/SPEC.md, section 14.3."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    // Applications.
+    {
+      "includes": ["apps/server/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "@repo/*",
+                      "!@repo/server",
+                      "!@repo/core",
+                      "!@repo/protocol",
+                      "!@repo/catalog",
+                      "!@repo/harness",
+                      "!@repo/store",
+                      "!@repo/browser",
+                      "!@repo/embedder",
+                      "!@repo/tools",
+                      "!@repo/speech",
+                      "!@repo/models"
+                    ],
+                    "message": "@repo/server may only import: @repo/core, @repo/protocol, @repo/catalog, @repo/harness, @repo/store, @repo/browser, @repo/embedder, @repo/tools, @repo/speech, @repo/models. See docs/SPEC.md, section 14.3."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["apps/desktop/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "@repo/*",
+                      "!@repo/desktop",
+                      "!@repo/client",
+                      "!@repo/protocol",
+                      "!@repo/catalog",
+                      "!@repo/tokens",
+                      "!@repo/ui-web",
+                      "!@repo/speech",
+                      "!@repo/models"
+                    ],
+                    "message": "@repo/desktop may only import: @repo/client, @repo/protocol, @repo/catalog, @repo/tokens, @repo/ui-web, @repo/speech, @repo/models. See docs/SPEC.md, section 14.3."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    // The one entry point of the client that needs Node: the transport to a core on the same machine.
+    {
+      "includes": ["packages/client/src/transports/local.ts", "packages/client/src/transports/local.test.ts"],
+      "linter": { "rules": { "correctness": { "noNodejsModules": "off" } } }
+    }
+  ]
+}

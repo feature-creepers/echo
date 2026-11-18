@@ -1,0 +1,10 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    // The tests against a real browser are told which one to drive, and whether it may sandbox itself here.
+    "test": {
+      "passThroughEnv": ["ASSISTANT_BROWSER", "ASSISTANT_BROWSER_SANDBOX"]
+    }
+  }
+}
