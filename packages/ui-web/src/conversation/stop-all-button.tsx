@@ -47,34 +47,45 @@ export function StopAllButton({ working, onStop }: { working: number; onStop(): 
   }
 
   const what = working > 1 ? `all ${working} pieces of work` : 'everything under way'
+  // The button is the glyph alone, square like the composer's others. A tap's hint floats above it, so the button
+  // never changes width; while held, the fill says what is happening.
   return (
-    <button
-      type="button"
-      onPointerDown={onPointerDown}
-      onPointerUp={release}
-      onPointerCancel={release}
-      onKeyDown={onKeyDown}
-      onKeyUp={onKeyUp}
-      onBlur={() => void hold.release()}
-      onClick={(event) => event.preventDefault()}
-      aria-label={`Stop ${what}: hold for ${HOLD_MS / 1000} seconds`}
-      title={`Hold to stop ${what}`}
-      className="relative mb-0.5 ml-0.5 flex h-8 touch-none select-none items-center gap-2 overflow-hidden rounded-md bg-white/[0.08] pr-2.5 pl-2.5 text-text-soft text-xs shadow-[inset_0_0_0_0.5px_rgb(255_255_255/0.1)] transition-colors duration-(--duration-quick) ease-soft hover:bg-white/[0.12] hover:text-text [&_svg]:size-3.5"
-    >
-      {/* The time held, filling the button from the left. A timer shows time, so it fills evenly; letting go empties
-          it with the app's curve. */}
-      <span
-        aria-hidden="true"
-        className="absolute inset-0 origin-left bg-danger/35"
-        style={{
-          transform: `scaleX(${holding ? 1 : 0})`,
-          transition: holding ? `transform ${HOLD_MS}ms linear` : 'transform var(--duration-calm) var(--ease-soft)'
-        }}
-      />
-      <span className="relative flex items-center gap-2">
-        <StopGlyph />
-        <span aria-live="polite">{holding ? 'Keep holding' : hint ? 'Hold to stop' : working > 1 ? `Stop all ${working}` : 'Stop'}</span>
-      </span>
-    </button>
+    <span className="relative mb-0.5 ml-0.5 flex">
+      {hint && (
+        <span
+          role="status"
+          className="material pointer-events-none absolute right-0 bottom-full mb-1.5 whitespace-nowrap rounded-sm px-2 py-1 text-label text-text-soft"
+        >
+          Hold to stop
+        </span>
+      )}
+      <button
+        type="button"
+        onPointerDown={onPointerDown}
+        onPointerUp={release}
+        onPointerCancel={release}
+        onKeyDown={onKeyDown}
+        onKeyUp={onKeyUp}
+        onBlur={() => void hold.release()}
+        onClick={(event) => event.preventDefault()}
+        aria-label={`Stop ${what}: hold for ${HOLD_MS / 1000} seconds`}
+        title={`Hold to stop ${what}`}
+        className="relative flex size-8 touch-none select-none items-center justify-center overflow-hidden rounded-md bg-white/[0.08] text-text-soft shadow-[inset_0_0_0_0.5px_rgb(255_255_255/0.1)] transition-colors duration-(--duration-quick) ease-soft hover:bg-white/[0.12] hover:text-text [&_svg]:size-3.5"
+      >
+        {/* The time held, filling the button from the left. A timer shows time, so it fills evenly; letting go empties
+            it with the app's curve. */}
+        <span
+          aria-hidden="true"
+          className="absolute inset-0 origin-left bg-danger/35"
+          style={{
+            transform: `scaleX(${holding ? 1 : 0})`,
+            transition: holding ? `transform ${HOLD_MS}ms linear` : 'transform var(--duration-calm) var(--ease-soft)'
+          }}
+        />
+        <span className="relative flex">
+          <StopGlyph />
+        </span>
+      </button>
+    </span>
   )
 }
