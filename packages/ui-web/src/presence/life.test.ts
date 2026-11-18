@@ -82,7 +82,7 @@ describe('the lens', () => {
     const samples = Array.from({ length: 120_000 }, (_, index) => flicker(index / 1000))
     const dipping = samples.map((value) => value > 0.01)
     expect(dipping.filter(Boolean).length / samples.length).toBeLessThan(0.02)
-    expect(Math.max(...samples)).toBeLessThan(0.4)
+    expect(samples.reduce((highest, value) => Math.max(highest, value), 0)).toBeLessThan(0.4)
     // Each dip starts and ends within a third of a second, and there are a good few of them in two minutes.
     const starts = dipping.flatMap((on, index) => (on && !dipping[index - 1] ? [index] : []))
     expect(starts.length).toBeGreaterThan(8)

@@ -115,7 +115,8 @@ describe('Codex asking to act', () => {
       folder: join(root, 'codex'),
       log: recordingLog(),
       command: fake('fake-codex.ts'),
-      env: { ...process.env, CODEX_HOME: folder() }
+      // What it asks to remove holds the adapter's own folder, on every system: `/` is not the drive's root in Git Bash.
+      env: { ...process.env, CODEX_HOME: folder(), FAKE_CODEX_REMOVE: root }
     })
     const session = codex.open({ role: 'thread', instructions: 'You are Ada.', computer: reach })
     open.push(session)
@@ -130,7 +131,7 @@ describe('Codex asking to act', () => {
         action: 'run',
         tool: 'shell',
         paths: [workspace],
-        command: 'rm -rf /',
+        command: `rm -rf '${root}'`,
         refused: { why: 'protected', reason: expect.stringContaining('would go through') }
       },
       { action: 'run', tool: 'shell', paths: [workspace], command: 'ls', reach: 'write' }

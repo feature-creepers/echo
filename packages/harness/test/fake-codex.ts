@@ -174,7 +174,11 @@ function appServer(): void {
       return complete(id)
     }
     if (text.includes('command')) {
-      const command = await ask('item/commandExecution/requestApproval', { threadId: 'thread-1', itemId: 'item-c', command: 'rm -rf /' })
+      const command = await ask('item/commandExecution/requestApproval', {
+        threadId: 'thread-1',
+        itemId: 'item-c',
+        command: `rm -rf '${process.env.FAKE_CODEX_REMOVE ?? '/'}'`
+      })
       const change = await ask('item/fileChange/requestApproval', { threadId: 'thread-1', itemId: 'item-f' })
       const older = await ask('execCommandApproval', { command: ['ls'] })
       const unknown = await ask('something/new', {})

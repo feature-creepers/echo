@@ -37,8 +37,9 @@ async function exchange(session: ReturnType<typeof openSession>): Promise<string
       if (event.name === 'settings.changed') resolve(event.settings)
     })
   })
-  const name = 'Self Check'
-  const { settings: kept } = await session.run('personas.set', { names: [{ persona: last.id, name }], active: last.id })
+  // Typed as a person might; kept as a call sign, in capitals with a hyphen.
+  const name = 'SELF-CHECK'
+  const { settings: kept } = await session.run('personas.set', { names: [{ persona: last.id, name: 'Self Check' }], active: last.id })
   const heard = await announced
   const { settings: read } = await session.run('settings.read', {})
 

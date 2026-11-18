@@ -1,6 +1,6 @@
 import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import type { ComputerUse, Scope } from '@repo/core'
 import { afterEach, describe, expect, it } from 'vitest'
 import { folder, removeFolders } from '../../test/sessions.ts'
@@ -99,7 +99,7 @@ describe('the scope', () => {
     const scope: Scope = { places: [{ path: granted, kind: 'folder', write: true }], computer: 'off' }
     const run = (command: string, folder = granted): ComputerUse => ({ action: 'run', tool: 'Bash', paths: [folder], command })
     expect(await checkUse(run('ls -la && cat a.txt'), scope, [])).toEqual({ ...run('ls -la && cat a.txt'), reach: 'write' })
-    expect(await outsideScope(run(`ls ${secret}`), scope, [])).toContain('outside what the person granted')
+    expect(await outsideScope(run(`ls '${secret}'`), scope, [])).toContain('outside what the person granted')
     expect(await outsideScope(run('cat ../private/b.txt'), scope, [])).toContain('outside')
     expect(await outsideScope(run('cd .. && ls'), scope, [])).toContain('outside')
     expect(await outsideScope(run('ls ~'), scope, [])).toContain('outside')
@@ -120,7 +120,7 @@ describe('the scope', () => {
     }
     const run = (command: string): ComputerUse => ({ action: 'run', tool: 'Bash', paths: [granted], command })
     expect((await checkUse(run('touch new.txt'), scope, [])).reach).toBe('write')
-    expect((await checkUse(run(`cp a.txt ${secret}/`), scope, [])).reach).toBe('read')
+    expect((await checkUse(run(`cp a.txt '${secret}'/`), scope, [])).reach).toBe('read')
   })
 
   it('never reaches a protected place, whatever was granted, by a tool or by a command', async () => {
@@ -139,12 +139,12 @@ describe('the scope', () => {
     const run = (command: string): ComputerUse => ({ action: 'run', tool: 'Bash', paths: [granted], command })
     expect(await checkUse(read(join(keys, 'id')), scope, [])).toMatchObject({ refused: { why: 'protected', reason: expect.stringContaining('ssh keys') } })
     expect(await outsideScope(write(join(granted, 'vault.KDBX')), scope, [])).toContain('never reached')
-    expect(await outsideScope(run(`cat ${keys}/id`), scope, [])).toContain('never reached')
-    expect(await outsideScope(run(`cat ${keys}/*`), scope, [])).toContain('never reached')
+    expect(await outsideScope(run(`cat '${keys}'/id`), scope, [])).toContain('never reached')
+    expect(await outsideScope(run(`cat '${keys}'/*`), scope, [])).toContain('never reached')
     // Going through a folder that holds one reaches it too; naming the folder alone does not.
-    expect(await outsideScope(run(`grep -r password ${root}`), scope, [])).toContain('would go through')
+    expect(await outsideScope(run(`grep -r password '${root}'`), scope, [])).toContain('would go through')
     expect(await outsideScope({ action: 'read', tool: 'Grep', paths: [root] }, scope, [])).toContain('would go through')
-    expect(await outsideScope(run(`ls ${root}`), scope, [])).toBeUndefined()
+    expect(await outsideScope(run(`ls '${root}'`), scope, [])).toBeUndefined()
     expect(await outsideScope({ action: 'read', tool: 'Glob', paths: [root] }, scope, [])).toBeUndefined()
   })
 
@@ -171,12 +171,12 @@ describe('the scope', () => {
 describe('paths a command names', () => {
   it('gives variables their values here, and reads a relative path from the folder the command runs in', () => {
     const env = { HOME: '/home/ada', APPDATA: '/home/ada/.data' }
-    expect(namedPath(`\${HOME}/x`, '/work', env, '/home/ada')).toBe('/home/ada/x')
-    expect(namedPath(`\${APPDATA}/a.json`, '/work', env, '/home/ada')).toBe('/home/ada/.data/a.json')
-    expect(namedPath(`\${PWD}/a`, '/work', env, '/home/ada')).toBe('/work/a')
-    expect(namedPath(`\${UNSET}/a`, '/work', env, '/home/ada')).toBe('/a')
+    expect(namedPath(`\${HOME}/x`, '/work', env, '/home/ada')).toBe(resolve('/home/ada/x'))
+    expect(namedPath(`\${APPDATA}/a.json`, '/work', env, '/home/ada')).toBe(resolve('/home/ada/.data/a.json'))
+    expect(namedPath(`\${PWD}/a`, '/work', env, '/home/ada')).toBe(resolve('/work/a'))
+    expect(namedPath(`\${UNSET}/a`, '/work', env, '/home/ada')).toBe(resolve('/a'))
     expect(namedPath('~/Documents', '/work', env, homedir())).toBe(join(homedir(), 'Documents'))
-    expect(namedPath('../b', '/work/sub', env, '/home/ada')).toBe('/work/b')
+    expect(namedPath('../b', '/work/sub', env, '/home/ada')).toBe(resolve('/work/b'))
   })
 
   it('reads Git Bash’s way of writing a drive on Windows, and nowhere else', () => {
@@ -208,7 +208,8 @@ describe('places never reached', () => {
 
   it('adds those of every system and the app’s data, but for the assistant’s folder', () => {
     const all = protectedPaths({ where, data: '/data', workspace: '/data/workspace' })
-    expect(all.map((place) => place.path)).toEqual(expect.arrayContaining(['/home/ada/.ssh', '/home/ada/.aws', '/home/ada/.git-credentials', '/data']))
+    const home = (name: string) => join('/home/ada', name)
+    expect(all.map((place) => place.path)).toEqual(expect.arrayContaining([home('.ssh'), home('.aws'), home('.git-credentials'), '/data']))
     expect(all.find((place) => place.path === '/data')?.except).toEqual(['/data/workspace'])
     expect(all.some((place) => place.ending === '.kdbx')).toBe(true)
   })
