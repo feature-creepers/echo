@@ -170,6 +170,8 @@ export function orchestratorInstructions({ persona, earlier, abilities, profile 
 export interface ThreadContext extends InstructionsContext {
   title: string
   kind: 'topic' | 'aside'
+  /** What the thread is about and where it stood, from the summary sleep wrote. */
+  summary?: string | undefined
   /** For a project's thread: the folder it works in, the project's own instructions, and what it did there so far. */
   project?: { folder: string; guide?: string | undefined; worked?: string | undefined } | undefined
 }
@@ -219,8 +221,15 @@ const working = (title: string, folder: string) =>
 export const WORK_FIRST =
   '(If this takes work, say in one short sentence what you will do, then work without a word between your tool calls. When it is done, say how it went in a sentence or two, write the report with answer_write, and stop.)'
 
+/** What a thread was about before the lines a new session is told again, from its summary. */
+const summarised = (summary: string | undefined) =>
+  summary
+    ? `What this thread is about and where it stood, from its summary (the latest lines follow it):
+${summary}`
+    : undefined
+
 /** A thread works on one topic, speaks its answers directly, and shows what is detailed on the screen. */
-export function threadInstructions({ persona, earlier, abilities, profile, title, kind, project }: ThreadContext): string {
+export function threadInstructions({ persona, earlier, abilities, profile, summary, title, kind, project }: ThreadContext): string {
   if (project) {
     const parts = [who(persona), STANCES[persona.stance], speechContract(true)]
     if (abilities) parts.push(abilities)
@@ -232,6 +241,8 @@ export function threadInstructions({ persona, earlier, abilities, profile, title
       )
     const memory = known(profile)
     if (memory) parts.push(memory)
+    const story = summarised(summary)
+    if (story) parts.push(story)
     const before = recap(earlier, true)
     if (before) parts.push(before)
     return parts.join('\n\n')
@@ -247,6 +258,8 @@ export function threadInstructions({ persona, earlier, abilities, profile, title
   )
   const memory = known(profile)
   if (memory) parts.push(memory)
+  const story = summarised(summary)
+  if (story) parts.push(story)
   const before = recap(earlier)
   if (before) parts.push(before)
   return parts.join('\n\n')

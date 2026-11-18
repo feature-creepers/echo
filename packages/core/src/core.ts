@@ -250,6 +250,8 @@ export function createCore(options: CoreOptions): Core {
     newId: options.newId,
     turn: () => currentTurn(),
     busy: () => currentTurn() !== undefined,
+    // The channel is made below; sleep, which asks for a title, never runs before it is.
+    titleOf: (thread) => channel.threads().threads.find((one) => one.id === thread)?.title,
     ...(options.timers ? { timers: options.timers } : {})
   })
   memory.onEvent(emit)

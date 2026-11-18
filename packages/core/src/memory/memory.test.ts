@@ -12,15 +12,17 @@ import { FACT } from './facts.ts'
 import { createMemory } from './memory.ts'
 import { PROFILE, PROFILE_INSTRUCTIONS } from './profile.ts'
 import { RECONCILE_INSTRUCTIONS } from './reconcile.ts'
+import { SUMMARY_INSTRUCTIONS, THREAD_SUMMARY } from './summary.ts'
 
 const NOW = new Date('2026-11-17T10:00:00Z')
 
 /** A model that answers each kind of question the memory asks with what the test says. */
-function model(answers: { extract?: (input: string) => object; reconcile?: (input: string) => object; profile?: string }) {
+function model(answers: { extract?: (input: string) => object; reconcile?: (input: string) => object; profile?: string; summary?: (input: string) => string }) {
   return (request: OneShot) => {
     if (request.instructions === EXTRACT_INSTRUCTIONS) return JSON.stringify(answers.extract?.(request.input) ?? { facts: [] })
     if (request.instructions === RECONCILE_INSTRUCTIONS) return JSON.stringify(answers.reconcile?.(request.input) ?? { decisions: [] })
     if (request.instructions === PROFILE_INSTRUCTIONS) return answers.profile ?? 'A profile.'
+    if (request.instructions === SUMMARY_INSTRUCTIONS) return answers.summary?.(request.input) ?? 'A summary.'
     throw new Error('An unexpected question.')
   }
 }
@@ -46,11 +48,29 @@ function setup({ records = memoryRecords({ now: () => NOW }), harness = scripted
 }
 
 let turns = 0
-function say(records: Records, said: string, replied = 'Noted.'): Exchange {
-  const exchange: Exchange = { turn: `turn-${++turns}`, at: NOW.toISOString(), persona: 'first', said, replied, outcome: 'done' }
+function say(records: Records, said: string, replied = 'Noted.', thread?: string): Exchange {
+  const exchange: Exchange = {
+    turn: `turn-${++turns}`,
+    at: NOW.toISOString(),
+    persona: 'first',
+    said,
+    replied,
+    outcome: 'done',
+    ...(thread === undefined ? {} : { thread })
+  }
   records.append([{ type: EXCHANGE, payload: exchange }])
   return exchange
 }
+
+/** What a memory made again from the same records is given: to read what a restart would. */
+const setupOptions = (records: Records, harness: Harness) => ({
+  records,
+  search: memorySearch(records),
+  engines: { active: async () => harness },
+  log: { error: () => undefined },
+  now: () => NOW,
+  newId: () => 'unused'
+})
 
 async function sleep(memory: ReturnType<typeof setup>['memory']) {
   const asked = memory.sleepNow()
@@ -182,6 +202,38 @@ describe('sleep', () => {
     expect(harness.completions[0]?.input).toContain('Something.')
   })
 
+  it('writes the summary of each thread used since, from its last summary and what was said after it', async () => {
+    const records = memoryRecords({ now: () => NOW })
+    say(records, 'Plan the trip to Lisbon.', 'Three days, flights booked.', 'trip')
+    say(records, 'What is the weather?', 'Sunny.')
+    const inputs: string[] = []
+    const harness = scriptedHarness({
+      complete: model({
+        summary: (input) => {
+          inputs.push(input)
+          return inputs.length === 1 ? 'Planning a three-day trip to Lisbon; flights are booked.' : 'Lisbon trip planned; the hotel is now booked too.'
+        }
+      })
+    })
+    const { memory } = setup({ records, harness })
+
+    await sleep(memory)
+    expect(memory.summary('trip')).toBe('Planning a three-day trip to Lisbon; flights are booked.')
+    expect(inputs[0]).toContain('The summary so far: (none yet)')
+    expect(inputs[0]).toContain('The person: Plan the trip to Lisbon.')
+
+    // Nothing new in the thread: no call. Something new: the summary so far and the new lines only.
+    memory.wake()
+    await sleep(memory)
+    expect(inputs).toHaveLength(1)
+    say(records, 'Book the hotel.', 'Booked.', 'trip')
+    memory.wake()
+    await sleep(memory)
+    expect(inputs[1]).toContain('The summary so far: Planning a three-day trip to Lisbon')
+    expect(inputs[1]).not.toContain('Plan the trip to Lisbon.')
+    expect(createMemory({ ...setupOptions(records, harness) }).summary('trip')).toBe('Lisbon trip planned; the hotel is now booked too.')
+  })
+
   it('falls asleep after the quiet period, and is woken by what is said', async () => {
     const { memory, timers, states } = setup()
     timers.advance(10 * 60_000)
@@ -237,6 +289,25 @@ describe('remembering, correcting and forgetting', () => {
     expect(memory.profile()).toBeUndefined()
     expect(memory.recall('where do I park')).toBeUndefined()
     expect(setup({ records }).memory.facts()).toEqual([])
+  })
+})
+
+describe('forgetting and summaries', () => {
+  it('erases the summaries too, which may say what is forgotten, and writes them again at the next sleep', async () => {
+    const records = memoryRecords({ now: () => NOW })
+    say(records, 'My sister Ana lives in Porto.', 'Noted.', 'family')
+    const harness = scriptedHarness({ complete: model({ summary: () => 'About Ana, the sister, in Porto.' }) })
+    const { memory } = setup({ records, harness })
+    const fact = memory.remember('The user has a sister, Ana.')
+    await sleep(memory)
+    expect(memory.summary('family')).toBe('About Ana, the sister, in Porto.')
+
+    memory.forget(fact.fact)
+    expect(memory.summary('family')).toBeUndefined()
+    expect(records.read([THREAD_SUMMARY]).map((record) => record.payload)).toEqual([null])
+    memory.wake()
+    await sleep(memory)
+    expect(memory.summary('family')).toBe('About Ana, the sister, in Porto.')
   })
 })
 

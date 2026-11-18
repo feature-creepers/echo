@@ -28,6 +28,7 @@ import { recallBlock, recallFor } from './recall.ts'
 import { type Decision, reconcile } from './reconcile.ts'
 import { foldWord } from './searchable.ts'
 import { createSleepSchedule, DEFAULT_SLEEP, readSleepSettings, SLEEP_SET } from './sleep.ts'
+import { readSummaryRecord, type SummaryRecord, summariesDue, THREAD_SUMMARY, writeSummary } from './summary.ts'
 import { MEMORY_INSTRUCTIONS, memoryTools } from './tools.ts'
 
 /**
@@ -69,6 +70,8 @@ export interface MemoryOptions {
   turn?: () => string | undefined
   /** Whether the assistant is answering: it does not fall asleep in the middle of an answer. */
   busy?: () => boolean
+  /** A thread's title, for its summary. */
+  titleOf?: (thread: string) => string | undefined
 }
 
 export type MemoryChange = { ok: true; memory: MemoryView } | { ok: false; error: CommandError }
@@ -79,6 +82,8 @@ export interface Memory {
   recall(said: string, knownSince?: string): string | undefined
   /** The profile every session is given, and the version of the last one sleep wrote. Nothing while nothing is known. */
   profile(): { text: string; version?: string } | undefined
+  /** What a thread is about and where it stands, as sleep last wrote it. Nothing before its first summary. */
+  summary(thread: string): string | undefined
   /** The tools sessions use to search, remember and forget. */
   tools: readonly Tool[]
   /** What sessions are told about those tools. */
@@ -122,9 +127,11 @@ export function createMemory(options: MemoryOptions): Memory {
   }
 
   // What the records say, read once. From here on, each record written is taken in as it is written.
-  const stored = records.read([FACT, PROFILE, SLEEP_SET, SLEPT])
+  const stored = records.read([FACT, PROFILE, SLEEP_SET, SLEPT, THREAD_SUMMARY])
   const book = createFactBook(stored)
   let profiles: Profile[] = []
+  /** Each thread's latest summary, with the record that keeps it. */
+  const summaries = new Map<string, SummaryRecord & { record: string }>()
   let settings: SleepSettings = DEFAULT_SLEEP
   let cursor: { through: string; at: string } | undefined
   let lastSlept: string | undefined
@@ -132,6 +139,9 @@ export function createMemory(options: MemoryOptions): Memory {
     if (record.type === PROFILE) {
       const profile = readProfileRecord(record.payload)
       if (profile) profiles.push({ record: record.id, at: record.at, ...profile })
+    } else if (record.type === THREAD_SUMMARY) {
+      const summary = readSummaryRecord(record.payload)
+      if (summary) summaries.set(summary.thread, { ...summary, record: record.id })
     } else if (record.type === SLEEP_SET) {
       settings = readSleepSettings(record.payload) ?? settings
     } else if (record.type === SLEPT) {
@@ -249,11 +259,12 @@ export function createMemory(options: MemoryOptions): Memory {
 
   const forget = (id: string): boolean => {
     if (!book.get(id)) return false
-    // The profile may say what is forgotten: it goes too, and is written again at the next sleep.
-    const erased = [...book.recordsToForget(id), ...profiles.map((profile) => profile.record)]
+    // The profile and the summaries may say what is forgotten: they go too, and are written again at the next sleep.
+    const erased = [...book.recordsToForget(id), ...profiles.map((profile) => profile.record), ...[...summaries.values()].map((summary) => summary.record)]
     records.append([{ type: ERASURE, payload: { records: erased } }])
     book.drop(id)
     profiles = []
+    summaries.clear()
     changed()
     return true
   }
@@ -377,9 +388,37 @@ export function createMemory(options: MemoryOptions): Memory {
         log.error(`The profile could not be written: ${error instanceof Error ? error.message : String(error)}`)
       }
     }
+    if (await summarise(harness, woken)) return
     work = undefined
     lastSlept = now().toISOString()
     announce()
+  }
+
+  /**
+   * Bring the summaries of the threads used since the last sleep up to date, the most recent first. True when
+   * woken meanwhile: what is left waits for the next sleep.
+   */
+  const summarise = async (harness: Harness, woken: () => boolean): Promise<boolean> => {
+    const due = summariesDue(
+      exchanges().map(({ exchange }) => exchange),
+      summaries
+    )
+    for (const { thread, exchanges: fresh } of due) {
+      try {
+        const text = await writeSummary(harness, { title: options.titleOf?.(thread), summary: summaries.get(thread)?.text }, fresh, now())
+        if (woken()) return true
+        if (text === '') continue
+        const payload: SummaryRecord = { thread, text, through: (fresh.at(-1) as Exchange).turn }
+        const [record] = records.append([{ type: THREAD_SUMMARY, payload }])
+        if (record) summaries.set(thread, { ...payload, record: record.id })
+      } catch (error) {
+        if (woken()) return true
+        // The harness failed: the other summaries wait for the next sleep.
+        log.error(`A thread's summary could not be written: ${error instanceof Error ? error.message : String(error)}`)
+        return false
+      }
+    }
+    return false
   }
 
   const fallAsleep = (): Promise<void> => {
@@ -432,6 +471,7 @@ export function createMemory(options: MemoryOptions): Memory {
       if (text === undefined) return undefined
       return profile ? { text, version: profile.record } : { text }
     },
+    summary: (thread) => summaries.get(thread)?.text,
     tools,
     instructions: MEMORY_INSTRUCTIONS,
     wake() {

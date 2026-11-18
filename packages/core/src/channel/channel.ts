@@ -155,6 +155,8 @@ export interface Remembering {
    * are then opened again with it. Facts learned in between reach the next session opened for another reason.
    */
   profile(): { text: string; version?: string | undefined } | undefined
+  /** What a thread is about and where it stands, as sleep last wrote it. */
+  summary?(thread: string): string | undefined
 }
 
 /** A moment as a person says it, with its time zone: "Tuesday, 17 November 2026, 14:13 (Europe/Paris)". */
@@ -595,6 +597,7 @@ export function createChannel(options: ChannelOptions): Channel {
       persona,
       earlier,
       profile: profile?.text,
+      summary: memory?.summary?.(runtime.thread),
       title: thread?.title ?? 'A topic',
       kind,
       project,
@@ -729,6 +732,9 @@ export function createChannel(options: ChannelOptions): Channel {
       attachmentsFor(handed, images)
     )
   }
+
+  /** What a thread is about, from the summary sleep wrote, for the index the orchestrator reads. */
+  const summaryOf = (thread: string) => memory?.summary?.(thread)
 
   /** What a thread is answering now, in the words it was given, for the index the orchestrator reads. */
   const doing = (thread: string): string | undefined => {
@@ -959,7 +965,7 @@ export function createChannel(options: ChannelOptions): Channel {
         const asked = sendInput.safeParse(input)
         if (!turn) return { ok: false, text: 'There is nothing to pass on.' }
         const thread = asked.success ? registry.get(asked.data.thread) : undefined
-        if (!asked.success || !thread) return { ok: false, text: `There is no such thread. The threads are:\n${registry.index(doing)}` }
+        if (!asked.success || !thread) return { ok: false, text: `There is no such thread. The threads are:\n${registry.index(doing, summaryOf)}` }
         // A thread at work answers one thing at a time: what is sent to it waits until it is done. Unless the request
         // follows from that work, it is better run beside it, in a thread of its own.
         const busyWith = runtimes.get(thread.id)?.answering
@@ -1085,7 +1091,7 @@ export function createChannel(options: ChannelOptions): Channel {
    * it is the one session that answers, and is given the files itself.
    */
   const message = (turn: Turn, images: boolean) => {
-    if (abilities?.server() !== undefined) return `${context()}\nThreads:\n${registry.index(doing)}\n\n${what(turn)}`
+    if (abilities?.server() !== undefined) return `${context()}\nThreads:\n${registry.index(doing, summaryOf)}\n\n${what(turn)}`
     if (turn.exchange.trigger !== undefined) return `${context()}\n${what(turn)}`
     const note = noteForThread(turn.handed, turn.exchange.said, images)
     return `${context()}\n${[turn.exchange.said, note].filter(Boolean).join('\n\n')}`
