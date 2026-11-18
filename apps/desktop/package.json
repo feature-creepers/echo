@@ -5,7 +5,7 @@
   "description": "A personal assistant you talk to.",
   "private": true,
   "license": "MIT",
-  "author": "Tommy Sendra and Rodolphe Barbanneau",
+  "author": "Rodolphe Barbanneau and Tommy Sendra",
   "type": "module",
   "main": "./out/main/index.js",
   "scripts": {

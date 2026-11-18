@@ -82,7 +82,8 @@ export function AboutSection({ productName }: { productName: string }) {
       <SettingGroup title="Made by">
         <div className="grid gap-4 px-5 py-5">
           <p className="text-sm leading-relaxed">
-            Tommy Sendra and Rodolphe Barbanneau.
+            <Author name="Rodolphe Barbanneau" page="https://github.com/rodolphebarbanneau" /> and{' '}
+            <Author name="Tommy Sendra" page="https://github.com/doudandyx" />.
             <span className="text-text-soft"> Free and open source, under the MIT licence.</span>
           </p>
           <dl className="grid grid-cols-[auto_1fr] gap-x-8 gap-y-2 font-mono text-xs">
@@ -112,6 +113,21 @@ export function AboutSection({ productName }: { productName: string }) {
         ))}
       </SettingGroup>
     </div>
+  )
+}
+
+/** An author's name, which opens their page in the user's browser. */
+function Author({ name, page }: { name: string; page: string }) {
+  return (
+    <a
+      href={page}
+      target="_blank"
+      rel="noreferrer"
+      title={page.replace(/^https:\/\//, '')}
+      className="rounded-xs underline decoration-white/25 underline-offset-4 transition-colors duration-(--duration-quick) ease-soft hover:decoration-white/70 focus-visible:outline-1 focus-visible:outline-accent focus-visible:outline-offset-2"
+    >
+      {name}
+    </a>
   )
 }
 

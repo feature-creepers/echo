@@ -86,9 +86,13 @@ function openWindow(core: CoreProcess, visible: boolean): BrowserWindow {
   // The title is the app's name, whatever the page says.
   window.on('page-title-updated', (event) => event.preventDefault())
 
-  // The window shows the app's own page and nothing else: it never navigates away and never opens another.
+  // The window shows the app's own page and nothing else: it never navigates away and never opens another. A link
+  // to a web page opens in the user's own browser instead; anything else a link names, a file or a program, is refused.
   window.webContents.on('will-navigate', (event) => event.preventDefault())
-  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    if (isWebPage(url)) void shell.openExternal(url)
+    return { action: 'deny' }
+  })
 
   const toWindow = (channel: string, payload: unknown) => {
     if (!window.isDestroyed()) window.webContents.send(channel, payload)
@@ -334,4 +338,13 @@ if (!selfChecking && !app.requestSingleInstanceLock()) {
   // Not awaited at the top level: Electron holds back its ready event until this module has finished
   // loading, so waiting for that event here would wait forever.
   void app.whenReady().then(start)
+}
+
+/** A secure web page's address, which the user's browser may open: never a file, a program or another scheme. */
+function isWebPage(url: string): boolean {
+  try {
+    return new URL(url).protocol === 'https:'
+  } catch {
+    return false
+  }
 }

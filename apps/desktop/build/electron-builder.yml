@@ -2,7 +2,7 @@
 # run `pnpm --filter @repo/desktop package:win` (or :mac, :linux) after `pnpm build`.
 # The product's name and version come from ../package.json, through the staged manifest.
 appId: io.github.feature-creepers.echo
-copyright: Copyright © 2026 Tommy Sendra and Rodolphe Barbanneau
+copyright: Copyright © 2026 Rodolphe Barbanneau and Tommy Sendra
 
 directories:
   output: ../release

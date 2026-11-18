@@ -11,7 +11,7 @@ Sections 2 and 3 describe what existed before this branch. Section 14.8 says wha
 - Memory is processed while the assistant sleeps, when the user sets it to (section 10.6, decision 16).
 - The first messages after the handshake exist: commands, results and events, carrying the user's settings (section 14.4).
 - The store exists: SQLite through Node's built-in module, holding immutable records (sections 10.3 and 14.7).
-- Tommy Sendra and Rodolphe Barbanneau are credited as co-authors (decision 12).
+- Rodolphe Barbanneau and Tommy Sendra are credited as co-authors (decision 12).
 - Settings cover what matters, split as section 5.2 says: on this computer the microphone, speakers, voice, listening, shortcuts, start and tray; with the user the AI program preferred and the model it answers with (decision 17).
 - The app updates itself from the project's GitHub releases, which a tag publishes as a draft (section 14.7).
 - Each persona has a look, set by the product as its accent is: the core is drawn as a lens or as a holographic instrument, both alive in every mood (sections 11 and 13.1).
@@ -1574,7 +1574,7 @@ Not built yet: vector search and thread summaries (section 10), approvals for se
 | 9   | Import of the proof of concept's memory | Yes, as a one-off import, low priority                                                                                                              |
 | 10  | Repository structure                    | Section 14, as written                                                                                                                              |
 | 11  | Licence                                 | MIT                                                                                                                                                 |
-| 12  | Credits                                 | Tommy Sendra and Rodolphe Barbanneau are co-authors and joint copyright holders, named in that order                                                |
+| 12  | Credits                                 | Rodolphe Barbanneau and Tommy Sendra are co-authors and joint copyright holders, named in that order                                                |
 | 13  | The product's name                      | Echo, chosen on 17 November knowing two things: Amazon sells voice devices under the name Echo, and no short domain is free (section 16)            |
 | 14  | Persona names                           | Chosen by the user. JARVIS and HAL are defaults, offered at first launch and changeable in settings. No code names a persona (section 11)           |
 | 15  | What the catalogue contains             | Generic building blocks only. No component made for one subject and no prepared artwork: the assistant composes and draws (section 9.6)             |

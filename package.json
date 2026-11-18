@@ -4,8 +4,8 @@
   "private": true,
   "license": "MIT",
   "contributors": [
-    "Tommy Sendra",
-    "Rodolphe Barbanneau"
+    "Rodolphe Barbanneau",
+    "Tommy Sendra"
   ],
   "type": "module",
   "packageManager": "pnpm@11.28.9",
