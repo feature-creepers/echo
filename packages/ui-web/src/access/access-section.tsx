@@ -10,6 +10,7 @@ import { IconButton } from '../primitives/icon-button.tsx'
 import { CloseGlyph } from '../primitives/icons.tsx'
 import { Switch } from '../primitives/switch.tsx'
 import { SettingGroup, SettingRow } from '../settings/rows.tsx'
+import { AppsGroup } from './apps-group.tsx'
 import { BrowserGroup } from './browser-group.tsx'
 import { useStandingRules } from './use-standing-rules.ts'
 import { LEVELS, lastPart, WAITS, waitInWords } from './words.ts'
@@ -196,6 +197,8 @@ export function AccessSection({ client, settings, productName }: { client: Clien
       </SettingGroup>
 
       <BrowserGroup client={client} access={access} productName={productName} />
+
+      <AppsGroup client={client} access={access} productName={productName} />
 
       <SettingGroup title="Before acting">
         <SettingRow

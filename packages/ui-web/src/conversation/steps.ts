@@ -38,7 +38,15 @@ const TOOL_TITLES: Record<string, string> = {
   browser_type: 'Typed',
   browser_select: 'Chose',
   browser_press: 'Pressed a key',
-  browser_upload: 'Gave the page a file'
+  browser_upload: 'Gave the page a file',
+  desktop_windows: 'Looked at the windows',
+  desktop_look: 'Read a window',
+  desktop_screenshot: 'Took a picture of a window',
+  desktop_focus: 'Brought a window forward',
+  desktop_scroll: 'Scrolled a window',
+  desktop_click: 'Clicked',
+  desktop_type: 'Typed',
+  desktop_press: 'Pressed a key'
 }
 
 /** A path as the person reads it, relative to the folder the work is in. Whole when nothing says otherwise. */
@@ -104,18 +112,25 @@ export function stepSummary(step: Step, relative: Relative = whole): string | un
     case 'thread_focus':
       // A thread is named by its identifier, which says nothing to the person: what was passed on, when written, does.
       return text(fields?.request)
+    case 'desktop_click': {
+      const quoted = quotedIn(step.output)
+      return quoted ? `“${quoted}”` : undefined
+    }
     case 'browser_click':
     case 'browser_select': {
       const quoted = quotedIn(step.output)
       if (quoted) return `“${quoted}”`
       return Array.isArray(fields?.values) ? fields.values.filter((value) => typeof value === 'string').join(', ') : undefined
     }
+    case 'desktop_type':
     case 'browser_type': {
       const typed = text(fields?.text)
       return typed && `“${typed}”${fields?.submit === true ? ', then Enter' : ''}`
     }
     case 'browser_press':
+    case 'desktop_press':
       return text(fields?.key)
+    case 'desktop_scroll':
     case 'browser_scroll':
       return text(fields?.direction)
     case 'browser_wait':
@@ -127,6 +142,10 @@ export function stepSummary(step: Step, relative: Relative = whole): string | un
             .map(relative)
             .join(', ')
         : undefined
+    case 'desktop_windows':
+    case 'desktop_look':
+    case 'desktop_screenshot':
+    case 'desktop_focus':
     case 'browser_read':
     case 'browser_snapshot':
     case 'browser_screenshot':

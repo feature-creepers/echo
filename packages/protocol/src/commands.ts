@@ -2,6 +2,7 @@ import type { z } from 'zod'
 import { accessCommands } from './commands/access.ts'
 import { browserCommands } from './commands/browser.ts'
 import { conversationCommands } from './commands/conversation.ts'
+import { desktopCommands } from './commands/desktop.ts'
 import { fileCommands } from './commands/files.ts'
 import { libraryCommands } from './commands/library.ts'
 import { memoryCommands } from './commands/memory.ts'
@@ -25,6 +26,7 @@ export const COMMANDS = {
   ...memoryCommands,
   ...libraryCommands,
   ...browserCommands,
+  ...desktopCommands,
   ...scheduleCommands,
   ...fileCommands,
   ...accessCommands

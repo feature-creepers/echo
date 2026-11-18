@@ -187,6 +187,26 @@
       }
     },
     {
+      "includes": ["packages/screen/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@repo/*", "!@repo/screen", "!@repo/core"],
+                    "message": "@repo/screen may only import: @repo/core. See docs/SPEC.md, section 14.3."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
       "includes": ["packages/embedder/**"],
       "linter": {
         "rules": {
@@ -350,12 +370,13 @@
                       "!@repo/harness",
                       "!@repo/store",
                       "!@repo/browser",
+                      "!@repo/screen",
                       "!@repo/embedder",
                       "!@repo/tools",
                       "!@repo/speech",
                       "!@repo/models"
                     ],
-                    "message": "@repo/server may only import: @repo/core, @repo/protocol, @repo/catalog, @repo/harness, @repo/store, @repo/browser, @repo/embedder, @repo/tools, @repo/speech, @repo/models. See docs/SPEC.md, section 14.3."
+                    "message": "@repo/server may only import: @repo/core, @repo/protocol, @repo/catalog, @repo/harness, @repo/store, @repo/browser, @repo/screen, @repo/embedder, @repo/tools, @repo/speech, @repo/models. See docs/SPEC.md, section 14.3."
                   }
                 ]
               }

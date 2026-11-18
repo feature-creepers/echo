@@ -6,6 +6,7 @@ import { giveFolders } from './attachments/folders.ts'
 import { createBrowserControl } from './browser/browser.ts'
 import { createChannel } from './channel/channel.ts'
 import { createExecutor } from './commands/execute.ts'
+import { createDesktopControl } from './desktop/desktop.ts'
 import { type Admission, admit } from './devices/admission.ts'
 import { createEngineRoom } from './engines/engines.ts'
 import { createBrowsing } from './files/browse.ts'
@@ -18,6 +19,7 @@ import type { Blobs } from './ports/blobs.ts'
 import type { Browser } from './ports/browser.ts'
 import type { Timers } from './ports/clock.ts'
 import type { Computer } from './ports/computer.ts'
+import type { Desktop } from './ports/desktop.ts'
 import type { Harness } from './ports/harness.ts'
 import type { Log } from './ports/log.ts'
 import type { Records } from './ports/records.ts'
@@ -62,6 +64,8 @@ export interface CoreOptions {
   computer?: Computer
   /** The web browser of the computer the core runs on, which the assistant drives as the user allows. Left out, it has none. */
   browser?: Browser
+  /** The other apps of the computer the core runs on, which the assistant sees and operates as the user allows. Left out, none. */
+  desktop?: Desktop
   /**
    * The assistant's own folder, as the person browses it and hands files into it. Left out, nothing can be handed
    * over and there is nothing to browse.
@@ -181,6 +185,14 @@ export function createCore(options: CoreOptions): Core {
     uses: access,
     computer: options.computer
   })
+  const desktop = createDesktopControl({
+    desktop: options.desktop,
+    settings,
+    ask: access.ask,
+    uses: access,
+    timers: options.timers,
+    mark: (control) => emit({ type: 'event', name: 'device.desktop', control })
+  })
   const objections = createObjections({ records: options.records, screen, now })
   const files = createFiles({ records: options.records, blobs: options.blobs, now, newId: options.newId })
 
@@ -252,6 +264,7 @@ export function createCore(options: CoreOptions): Core {
         ...library.tools(showing),
         ...access.tools(showing),
         ...browser.tools(showing),
+        ...desktop.tools(showing),
         ...timeTools,
         ...(stance === 'critical' ? objections.tools(showing) : [])
       ],
@@ -262,7 +275,7 @@ export function createCore(options: CoreOptions): Core {
         [
           objections.standing(),
           library.standing(role),
-          ...(role === 'thread' ? [browser.standing()] : [`${SCHEDULE_INSTRUCTIONS}\n${SCHEDULE_ROUTING}`, projectsStanding()])
+          ...(role === 'thread' ? [browser.standing(), desktop.standing()] : [`${SCHEDULE_INSTRUCTIONS}\n${SCHEDULE_ROUTING}`, projectsStanding()])
         ]
           .filter(Boolean)
           .join('\n\n') || undefined,
@@ -283,7 +296,7 @@ export function createCore(options: CoreOptions): Core {
         return guide && guideText(guide)
       },
       worked: (thread, folder) => access.worked(thread, folder),
-      version: () => `${access.version()} ${browser.version()}`,
+      version: () => `${access.version()} ${browser.version()} ${desktop.version()}`,
       hear: (said) => access.hear(said),
       wrote: (showing, paths) => {
         written?.add(showing, paths).catch((error: unknown) => options.log.error(`The card of written files could not be shown: ${String(error)}`))
@@ -302,6 +315,7 @@ export function createCore(options: CoreOptions): Core {
   access.onStopEverything(() => {
     channel.stopAll()
     schedule.hold(true)
+    desktop.letGo()
   })
 
   settings.onChange((changed) => {
@@ -457,6 +471,7 @@ export function createCore(options: CoreOptions): Core {
       },
       'languages.set': (input) => ({ ok: true, output: { settings: settings.setLanguages(input) } }),
       'browser.read': async () => ({ ok: true, output: { browser: await browser.state() } }),
+      'desktop.read': async () => ({ ok: true, output: { desktop: await desktop.state() } }),
       'browser.show': async () => {
         const shown = await browser.show()
         return shown.ok ? { ok: true, output: { browser: shown.browser } } : shown
@@ -501,6 +516,7 @@ export function createCore(options: CoreOptions): Core {
       channel.close()
       memory.close()
       void browser.close()
+      void desktop.close()
     }
   }
 }

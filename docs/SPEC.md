@@ -846,22 +846,22 @@ Example: "Send this to my landlord now." The critical persona: "I'd hold it. The
 
 The harness calls tools served by the core over MCP on the loopback address with a token, as Speak does. The harness's own tools are off, except web search where it exists, and its tools for files and commands within what the user granted (section 12.2). A tool either runs in the core, or is forwarded to a device capability of a connected client.
 
-| Family                        | Purpose                                           | Runs                                         | Who may call it   |
-| ----------------------------- | ------------------------------------------------- | -------------------------------------------- | ----------------- |
-| `ui`                          | Render, patch and clear views                     | Core; drawn by clients                       | Any session       |
-| `memory`                      | Search, remember, forget                          | Core                                         | Any session       |
-| `thread`                      | Open, send, focus, search                         | Core                                         | Orchestrator only |
-| `files`                       | Read and write the thread's own files             | Core                                         | Threads           |
-| `web`                         | Search and fetch                                  | Core, or the harness's own                   | Threads           |
-| `browser`                     | Open, read, see and act on pages in a browser     | Core, driving the browser of its computer    | Threads           |
-| `calendar` and other services | Read, and write with approval                     | Core                                         | Threads           |
-| `device.files`                | The user's own files, within the granted scope    | The harness's own tools, checked by the core | Threads           |
-| `device.media`                | Music player                                      | The device                                   | Any session       |
-| `device.system`               | Machine readings, time zone, place                | The device                                   | Any session       |
-| `device.cursor`               | The selection, and writing at the cursor          | A desktop                                    | Threads           |
-| `device.screen`               | See and operate other apps (Speak's control mode) | A desktop, later                             | Threads           |
-| `schedule`                    | Set, list, change and cancel reminders and tasks  | Core                                         | Any session       |
-| `device.notify`               | Notifications: reminders, answers out of sight    | The device, with the system's own            | The core          |
+| Family                        | Purpose                                          | Runs                                         | Who may call it   |
+| ----------------------------- | ------------------------------------------------ | -------------------------------------------- | ----------------- |
+| `ui`                          | Render, patch and clear views                    | Core; drawn by clients                       | Any session       |
+| `memory`                      | Search, remember, forget                         | Core                                         | Any session       |
+| `thread`                      | Open, send, focus, search                        | Core                                         | Orchestrator only |
+| `files`                       | Read and write the thread's own files            | Core                                         | Threads           |
+| `web`                         | Search and fetch                                 | Core, or the harness's own                   | Threads           |
+| `browser`                     | Open, read, see and act on pages in a browser    | Core, driving the browser of its computer    | Threads           |
+| `calendar` and other services | Read, and write with approval                    | Core                                         | Threads           |
+| `device.files`                | The user's own files, within the granted scope   | The harness's own tools, checked by the core | Threads           |
+| `device.media`                | Music player                                     | The device                                   | Any session       |
+| `device.system`               | Machine readings, time zone, place               | The device                                   | Any session       |
+| `device.cursor`               | The selection, and writing at the cursor         | A desktop                                    | Threads           |
+| `device.screen`               | See and operate other apps                       | Core, driving the apps of its computer       | Threads           |
+| `schedule`                    | Set, list, change and cancel reminders and tasks | Core                                         | Any session       |
+| `device.notify`               | Notifications: reminders, answers out of sight   | The device, with the system's own            | The core          |
 
 Files the person hands over with what they say are read with the harness's own tools too, by the thread they go to, and pictures among them are shown to the model with the message (sections 9.7 and 12.2); the files a thread writes there are shown on a card of its turn. The assistant's folder is listed and read for the person by the core itself (`workspace.list`, `workspace.read`), never by a session.
 
@@ -875,6 +875,16 @@ Services such as the calendar are reached through our own tools, so they work on
 - **Instructions.** A thread hears of the browser only while it is on and one was found: the web tools for looking things up, the browser for a site that needs it and for acting; a site used as the person would, through its own search box and links; a snapshot before acting; one short sentence to keep the person informed; and never signing in or paying for them.
 - **Settings, Access** turns the browser on or off (on by default; off closes it), says which one was found and where, and opens its window for the person to sign in to their sites.
 - **Protected video.** Netflix and the like need the Widevine module, which the browser fetches as a component on a profile's first use. Of the switches Playwright adds, those that would stop that are left out (`--disable-component-update`, `--disable-background-networking`), as are `--enable-automation`, `--disable-extensions` (so the person can add a password manager) and those that keep sign-ins under a key any program knows (`--password-store=basic`, `--use-mock-keychain`); the sandbox stays on. Whether a protected video then plays was not checked: this was built on Linux with Chrome for Testing, which has no Widevine.
+
+**Other apps** (`device.screen`). Where the browser stops, the person's other apps go on: a mail client, a spreadsheet, the system's settings, anything with a window. The core reads and operates them through its `Desktop` port, which `@repo/screen` implements on each system with its accessibility tree, the one assistive technology reads: what the model acts on is that tree, by element, not pixels.
+
+- **On each system** (`screen/src/system/`). Windows: UI Automation, from a helper in C# hosted by Windows PowerShell, which every Windows has; compiled once into `<data>/core/screen` and loaded from there after, it stays running and answers JSON lines. Keys and text go through `SendInput`, text as Unicode, so any character is typed whatever the keyboard's layout; a key or a click is sent only once the window is in front, and refused when the system will not bring it there, so nothing lands in another app. macOS: System Events from JavaScript for Automation (`osascript`), once the person gives the app the Accessibility permission; a picture of a window needs the Screen Recording permission. Linux: AT-SPI from Python's GObject bindings, with `xdotool` for keys and the pointer; under Wayland, reading works and keys need an X11 session. Each helper answers the same questions (`windows`, `tree`, `inspect`, `focus`, `click`, `type`, `press`, `scroll`, `screenshot`, `idle`), so the adapter above them is one. Where a system lacks what it needs, Settings, Access says what to give or install.
+- **Looking.** `desktop_windows` lists the windows open, in front first, with an identifier each (the app's own windows left out). `desktop_look` reads a window as an outline, one element per line, indented as they nest, with a reference such as `e12`; an element with neither a name nor a role a person uses gives way to its children, and a password box never shows what it holds. `desktop_screenshot` gives the window's picture when the outline is not enough.
+- **Acting**, by reference: `desktop_click` (a button's own action first, a click at its point only when it has none), `desktop_type` (replacing what a field holds, then Enter when asked), `desktop_press` (a key or a combination, named the same on every system: "Control+S"), `desktop_scroll` and `desktop_focus`. An act answers with the lines of the window's new outline that the one before did not have.
+- **Rules** (`core/src/desktop/policy.ts`, and section 12.2). An app is used only once the person allows it: the apps listed in Settings, Access go ahead, any other is put to them on a card ("Use Notepad?") whose answers are for now, until the app quits, or always, which lists it. Each act then follows the approval level, as the browser's do; what reads as paying, sending or deleting (a button so named, Enter in a box for messages, Delete, Control+Enter) is asked at every level; a password or a card's details are never typed; keys that only move go ahead. While the person uses the mouse or the keyboard (input in the last 1.5 seconds that was not the assistant's own), nothing is done, and the model is told to stop and say so. Every act is kept in the activity, whatever was decided.
+- **The marker.** While the assistant holds a window, and for eight seconds after its last act, the desktop draws a frame around it in the persona's accent, with "Assistant using Notepad" on a tab: above every window, letting every click through, never taking the focus. The core tells the devices which window is held (`device.desktop`); a device that declared `screen` draws it.
+- **Instructions.** A thread hears of other apps only while they are on and the system allows them: its own tools first when they do the job, a look before acting, the frame, stopping when the person takes the mouse, and never typing a password.
+- **Settings, Access** turns other apps on or off (off by default: a desktop reaches far more than a web page), says what the system still needs, and lists the apps allowed, each removable, with "Add an app…" offering those open now.
 
 ### 12.2 Permissions
 
@@ -966,6 +976,7 @@ On 18 November 2026 the assistant, running in the app on the owner's Windows com
 - Attachments, the assistant's files on view, and a card for each file it writes (section 9.7).
 - Reminders and scheduled tasks (section 7.8).
 - A browser of its own (section 12.1).
+- Other apps, seen and operated through the accessibility tree, with their guardrails (section 12.1).
 - Guardrails as settings: deleting and publishing always asked unless the owner turns it off, and how long a question waits (section 12.2).
 
 Two of the report's findings were mistaken. A question can already be answered aloud ("yes, go ahead"). Its web search returning American results comes from the harness's own tool, not from this product.
@@ -973,7 +984,7 @@ Two of the report's findings were mistaken. A question can already be answered a
 The rest is designed here and built in this order, each behind the same gate as everything else: the core classifies the use, the owner's policy decides, the activity log records it.
 
 1. **Confinement by the system.** A command is checked against what it names, and the system holds it to the scope as well. Built on macOS and Linux: Claude Code's own sandbox (Seatbelt, bubblewrap), given the granted places as its rules (section 12.2). Still to build on Windows: a restricted token or an AppContainer for the shell the harness starts. Until then, the session is told there that the check reads what a command names.
-2. **Desktop control.** Seeing and operating other apps (`device.screen`, section 12.1).
+2. **Desktop control**, built (section 12.1, other apps). Seeing and operating other apps (`device.screen`).
    - **Reading:** a screenshot of a window, the list of windows, and the accessibility tree: UI Automation on Windows, the accessibility API on macOS, AT-SPI on Linux. The tree, not pixels, is what the model acts on, by element.
    - **Acting:** focus, click, type, scroll and keys, each an act that the policy decides.
    - **Guardrails:**
@@ -981,7 +992,7 @@ The rest is designed here and built in this order, each behind the same gate as 
      - a visible marker while the assistant has control;
      - the owner's own mouse or keyboard pausing it at once;
      - password fields never typed into.
-   - It waits for confinement and for the browser's lessons, since a desktop gives far more reach than a web page.
+   - Built on 18 November 2026 with all four guardrails, off by default; checked against the real desktop on Windows only.
 3. **Accounts.** Mail, calendar and contacts through each provider's own sign-in (OAuth), with fixed verbs and their decisions: reading and drafting are observations or reversible, while sending and deleting always ask, whatever the level. Until then, the browser reaches the sites the owner signs in to there.
 4. **A vault for secrets.** Kept by the system: Credential Manager and DPAPI on Windows, the Keychain on macOS, the Secret Service on Linux. The assistant refers to a secret by name and never sees its value: the executor puts it in place, and it is masked in the activity log and in every transcript. It comes with accounts, since the browser keeps its own sign-ins.
 5. **Elevation.** A signed helper that accepts only typed operations: install a package with the system's installer, set a firewall rule, start or stop a service, write a registry value under the machine's key. Each always asks, and no free administrator shell exists outside an explicit expert mode.
@@ -1182,6 +1193,7 @@ either side  speech          recognisers and voices. Node. Imports models only.
 | `harness`  | Node     | `core` ports               | A harness can be added or removed without touching the core                  |
 | `store`    | Node     | `core` ports               | The database can change without touching the core                            |
 | `browser`  | Node     | `core` ports               | The browser and its driver can change without touching the core              |
+| `screen`   | Node     | `core` ports               | Each system's accessibility bridge can change without touching the core      |
 | `embedder` | Node     | `core` ports, `models`     | The embedding model can change, or move to an API, without touching the core |
 | `speech`   | Node     | `models`                   | Engines run on a device or on a server, unchanged                            |
 | `models`   | Node     | Nothing                    | One place downloads and verifies large files and detects the hardware tier   |
@@ -1392,6 +1404,15 @@ packages/browser/src/
 ```
 
 ```
+packages/screen/src/
+├── index.ts
+├── desktop.ts              the adapter: references given here, the helper's keys behind them, its own input told apart
+├── outline.ts              a window's tree as an outline, the same on every system
+├── keys.ts                 a key or a combination as the assistant names it
+└── system/                 each system's helper: system.ts · helpers.ts · win32.ts · darwin.ts · linux.ts · index.ts
+```
+
+```
 packages/models/src/
 ├── index.ts
 ├── catalogue.ts            every downloadable model and engine: source, size, checksum, system
@@ -1582,6 +1603,7 @@ Built, and checked against the real Claude Code on 17 November 2026:
 - **Access to the computer.** Its own folder by default, folders and files granted in settings or by voice, the whole computer with a warning, three approval levels, approvals for the session, places never reached, commands held to the same boundary by the paths they name, the activity with undo, and stop everything (section 12.2). Verified with the real Claude Code: a folder given by voice, its files read and summed up in the same turn; a read outside the scope refused by the adapter with its reason; a change in a read-only folder not made. And, at level `ask` with only the assistant's folder: listing its folder ran with no card; `ls -la ~` was refused with its reason and no card; creating a file showed the card with three answers, and allowed for the session, the next change in that folder ran with no card; deleting the file with `rm` was still asked, with its warning and no answer for the session; Activity showed each use, put back the previous version of the edited file, said the file had changed since when it had and put it back when asked again, and moved a created file to the trash; a running command was ended by "stop everything" typed into the composer, by the Access section's button, and by the message the tray's entry sends, which also ended a command Claude Code had left in the background. The tray's entry itself was not clicked: the machine it was checked on has no tray.
 - **Files, web and briefing.** Documents written as versioned files, previewed with a download button; web search and page reading through the harness's own tools; a greeting and briefing when the app opens.
 - **Browser.** The installed Edge, Chrome or Chromium driven by the core, with its window, its own profile and its rules (sections 12.1 and 12.2). Verified on Linux with the real Claude Code, Chrome for Testing as the browser and its sandbox off (this Linux refuses a downloaded browser its sandbox): "Open the Wikipedia page of the Eiffel Tower and tell me its height" opened the page in the browser window, read it and answered 330 metres; "Search for 'lyon weather' on duckduckgo" opened DuckDuckGo, asked on a card before typing the search and pressing Enter, then read the results; on a local page, "Buy now" was asked with its reason while changes were trusted, and "Add to cart" was not; asked to sign in, the assistant opened the page and left the password to the person, and a password field labelled "Door code" was refused by the core. The packaged Linux app drove the browser too. Not checked: Edge on Windows and Chrome on macOS, Widevine, and a system Chrome on Linux with its sandbox.
+- **Other apps.** Their windows read through the accessibility tree and operated by element, with the app allowlist, the frame, the pause when the person takes the mouse or the keyboard, and passwords never typed (sections 12.1 and 12.2). Verified on Windows 11 against the real desktop on 18 November 2026 (`screen/test/real.test.ts`, run with `ASSISTANT_DESKTOP=1`): a window of its own with a field, a password box and a button was listed, read as an outline, its password box known for one; "Ada" typed in the field and the button pressed changed the label to "Hello, Ada"; End then "é" pressed in the field gave "Adaé"; its picture was a PNG; the helper's own keys were not taken for the person's. Notepad's window, with nine tabs, read as an outline of 40 lines in 0.7 seconds. Not checked: macOS and Linux (their helpers are tested by tables of keys only), the frame on screen, and a session of the real Claude Code using these tools.
 - **Projects.** A thread bound to a folder, working in it as a senior developer would (section 7.11). Verified in the built app on Linux with the real Claude Code on 18 November 2026, on a small git repository whose `AGENTS.md` asked for its test to be run after each change: "Let's work on my demo project, in the folder …: fix the failing test" opened a project's thread after the "Work in this folder?" card; it said what it would do in a sentence, ran in the folder, found and fixed the bug, ran the test (a command asked at "Ask before commands", allowed for the session), said how it went in two sentences, and wrote a report with the cause, the change, the checks and what was not done. Switched to "Don't ask" while its session was open, the session was kept (the same Claude Code process went on) and told the new level: the commit ran with no card, and the push was asked, saying it puts something before others; declined, the thread said so and did not try again. After a restart, "what have you done there so far?" was answered from the new session's reminders: the fix, the commit and the declined push. Not checked: Windows paths and Git Bash in a real project, and Codex.
 - **Reminders and scheduled tasks.** Set by voice, once or recurring, on the person's clock; said, shown as a card and notified at their time, after a restart too; tasks run as scheduled turns; quiet hours; a Reminders page (section 7.10). Notifications for answers finished out of sight (section 7.4).
 - **Files between the person and the assistant.** Pictures and files pasted, picked or dropped in the composer, folders dropped on the desktop, a card for each file a thread writes, and the Files page with its previews and a quick look (section 9.7). Verified in the built app on Linux with the real Claude Code on 18 November 2026: a picture drawn for the test and pasted from the system clipboard was described correctly ("a red house with a brown roof and door, under a yellow sun in a blue sky, with the words Picnic at Noon"); a PDF dropped on the window was read and summed up with its figures right; "write a short packing list in a file called trip.md in your folder" wrote the file after the approval card, showed its card, and the Files page and the quick look showed it rendered; a folder dropped was granted read only and its files read; a 3200 by 2400 picture was sent as 2000 by 1500; eleven files and one of 27 MB dropped at once kept ten and said why. The PDF viewer in a frame of the file's bytes works in the built app. Codex was tested against its stand-in only, and opening a file with its app and showing it in its folder were not watched on a desktop: the Linux check ran without one.

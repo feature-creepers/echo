@@ -4,7 +4,7 @@ import { activitySchema, answerWrittenSchema, enginesChangedSchema, speechSaySch
 import { workspaceChangedSchema } from './events/files.ts'
 import { libraryChangedSchema } from './events/library.ts'
 import { assistantStateChangedSchema, memoryChangedSchema } from './events/memory.ts'
-import { deviceNotifySchema, scheduleChangedSchema } from './events/schedule.ts'
+import { deviceDesktopSchema, deviceNotifySchema, scheduleChangedSchema } from './events/schedule.ts'
 import { settingsChangedSchema } from './events/settings.ts'
 import { threadsChangedSchema } from './events/threads.ts'
 import { mediaControlSchema, viewClearedSchema, viewShownSchema } from './events/views.ts'
@@ -27,6 +27,7 @@ export const eventSchema = z.discriminatedUnion('name', [
   libraryChangedSchema,
   scheduleChangedSchema,
   deviceNotifySchema,
+  deviceDesktopSchema,
   workspaceChangedSchema,
   allowancesChangedSchema,
   activityUsedSchema

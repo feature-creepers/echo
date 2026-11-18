@@ -21,6 +21,7 @@ export type {
 } from './ports/browser.ts'
 export type { Timers } from './ports/clock.ts'
 export type { Computer } from './ports/computer.ts'
+export type { Desktop, DesktopElement, DesktopFound, WindowFacts, WindowImage, WindowOutline } from './ports/desktop.ts'
 export type {
   Attachment,
   ComputerUse,

@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto'
-import { join } from 'node:path'
+import { basename, extname, join } from 'node:path'
 import { createBrowser } from '@repo/browser'
 import { type Core, createCore } from '@repo/core'
 import { createComputer, createHarnesses, createWorkspace } from '@repo/harness'
+import { createDesktop } from '@repo/screen'
 import { openStore } from '@repo/store'
 import { serveTools } from '@repo/tools'
 import manifest from '../package.json' with { type: 'json' }
@@ -29,6 +30,10 @@ export async function compose(config: Config): Promise<Composition> {
   const computer = await createComputer({ workspace: join(config.data, 'workspace'), data: config.data })
   // The browser the assistant drives, with a profile of its own beside the user's data; what it downloads goes to the assistant's folder.
   const browser = createBrowser({ profile: join(config.data, 'browser'), downloads: join(computer.workspace, 'downloads'), log })
+  // The other apps of this computer, read through its accessibility tree. The app's own windows are never among them:
+  // the core runs in the app's program, so its name is the one left out, with the product's.
+  const own = [basename(process.execPath, extname(process.execPath)).toLowerCase(), 'echo']
+  const desktop = createDesktop({ folder: join(config.data, 'screen'), own })
   // The same folder, as the person browses it and hands files into it.
   const workspace = await createWorkspace(computer.workspace)
   const core = createCore({
@@ -44,6 +49,7 @@ export async function compose(config: Config): Promise<Composition> {
     web: publicWeb,
     computer,
     browser,
+    desktop,
     workspace,
     timers: {
       after(ms, work) {
@@ -62,6 +68,7 @@ export async function compose(config: Config): Promise<Composition> {
     async close() {
       core.close()
       await browser.close()
+      await desktop.close()
       await tools.close()
       store.close()
     }

@@ -20,6 +20,10 @@ export interface Question {
   allow?: string
   /** What a yes for the session would cover, in a few words. Left out, the card offers yes and no only. */
   session?: string
+  /** The label of the button that says yes for the session, when it lasts longer than one: "Always allow Notepad". */
+  sessionLabel?: string
+  /** What the first yes covers, under its label, when the card offers a yes for the session. Left out: "Only this time". */
+  once?: string
 }
 
 export type Answer = 'yes' | 'session' | 'no' | 'moved-on' | 'stopped' | 'unanswered'
@@ -77,8 +81,8 @@ export function createApprovals({
     ask(question, showing, signal) {
       if (signal?.aborted) return Promise.resolve({ answer: 'stopped', pressed: false })
       const options = [
-        { label: question.allow ?? YES, ...(question.session ? { detail: 'Only this time' } : {}), say: YES },
-        ...(question.session ? [{ label: 'Allow for this session', detail: question.session, say: SESSION }] : []),
+        { label: question.allow ?? YES, ...(question.session ? { detail: question.once ?? 'Only this time' } : {}), say: YES },
+        ...(question.session ? [{ label: question.sessionLabel ?? 'Allow for this session', detail: question.session, say: SESSION }] : []),
         { label: NO, say: NO }
       ]
       const view = {

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { desktopControlSchema } from '../desktop.ts'
 import { eventPrefixSchema } from '../envelope.ts'
 import { notificationSchema, scheduleViewSchema } from '../schedule.ts'
 
@@ -15,4 +16,13 @@ export const scheduleChangedSchema = eventPrefixSchema.extend({
 export const deviceNotifySchema = eventPrefixSchema.extend({
   name: z.literal('device.notify'),
   notification: notificationSchema
+})
+
+/**
+ * The assistant took hold of a window of another app, moved on to another, or let go (`control: null`). A device that
+ * declared `screen` marks the window while it is held, so the person always sees what the assistant operates.
+ */
+export const deviceDesktopSchema = eventPrefixSchema.extend({
+  name: z.literal('device.desktop'),
+  control: desktopControlSchema
 })

@@ -2,12 +2,15 @@ export {
   type Access,
   type Allowance,
   APPROVALS,
+  type App,
   accessSchema,
   allowanceSchema,
+  appSchema,
   COMPUTER_REACH,
   DEFAULT_ACCESS,
   DEFAULT_APPROVAL_WAIT,
   MAX_APPROVAL_WAIT,
+  MAX_APPS,
   MAX_PLACES,
   type Place,
   type ProtectedPlace,
@@ -57,6 +60,7 @@ export {
   turnIdSchema,
   UTTERANCE_MAX_LENGTH
 } from './conversation.ts'
+export { type Bounds, boundsSchema, type DesktopControl, type DesktopState, desktopControlSchema, desktopStateSchema } from './desktop.ts'
 export {
   COMMAND_ERRORS,
   type Command,
@@ -68,7 +72,7 @@ export {
   type Result,
   resultSchema
 } from './envelope.ts'
-export { deviceNotifySchema } from './events/schedule.ts'
+export { deviceDesktopSchema, deviceNotifySchema } from './events/schedule.ts'
 export { MEDIA_ACTIONS } from './events/views.ts'
 export { type Event, type EventName, type EventOf, eventSchema } from './events.ts'
 export {

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { APPROVALS, COMPUTER_REACH, MAX_APPROVAL_WAIT, MAX_PLACES, placeSchema } from '../access.ts'
+import { APPROVALS, appSchema, COMPUTER_REACH, MAX_APPROVAL_WAIT, MAX_APPS, MAX_PLACES, placeSchema } from '../access.ts'
 import { answerLanguageSchema, spokenLanguageSchema } from '../languages.ts'
 import { personaIdSchema } from '../personas.ts'
 import { settingsSchema } from '../settings.ts'
@@ -38,7 +38,7 @@ export const settingsCommands = {
   /**
    * What the assistant may reach on the computer: its own folder, the folders and files granted, the whole
    * computer, whether changes are asked first, whether what destroys or publishes is always asked, how long a
-   * question waits, and whether it may drive a browser. What is left out keeps its value. A place is checked by the
+   * question waits, whether it may drive a browser, and whether it may use other apps, and which. What is left out keeps its value. A place is checked by the
    * core, which refuses one that does not exist. Takes effect at once, for the session under way too.
    */
   'access.set': {
@@ -50,7 +50,9 @@ export const settingsCommands = {
       askDestroying: z.boolean().optional(),
       askPublishing: z.boolean().optional(),
       approvalWait: z.number().int().min(1).max(MAX_APPROVAL_WAIT).nullable().optional(),
-      browser: z.boolean().optional()
+      browser: z.boolean().optional(),
+      desktop: z.boolean().optional(),
+      apps: z.array(appSchema).max(MAX_APPS).optional()
     }),
     output: settingsOutput
   },

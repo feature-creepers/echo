@@ -43,6 +43,7 @@ function setup(overrides: Partial<Handlers> = {}) {
     'languages.set': () => ({ ok: true, output: { settings } }),
     'browser.read': () => ({ ok: true, output: { browser: { found: false, problem: 'none', running: false } } }),
     'browser.show': () => ({ ok: false, error: { code: 'invalid-input', message: 'none' } }),
+    'desktop.read': () => ({ ok: true, output: { desktop: { available: false, problem: 'none', open: [] } } }),
     'threads.read': () => ({ ok: true, output: { threads: [] } }),
     'thread.focus': () => ({ ok: true, output: {} }),
     'thread.read': () => ({ ok: false, error: { code: 'invalid-input', message: 'There is no such thread.' } }),

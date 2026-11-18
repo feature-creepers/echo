@@ -153,6 +153,8 @@ describe('access to the computer', () => {
       askPublishing: true,
       approvalWait: 10,
       browser: true,
+      desktop: false,
+      apps: [],
       folder: WORKSPACE
     })
   })

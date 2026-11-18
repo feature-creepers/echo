@@ -1,0 +1,10 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    // The test against the real desktop runs only when asked: it opens an app and acts in it.
+    "test": {
+      "passThroughEnv": ["ASSISTANT_DESKTOP"]
+    }
+  }
+}

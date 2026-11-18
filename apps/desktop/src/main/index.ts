@@ -18,6 +18,7 @@ import {
 import { setLaunchAtLogin, startedAtLogin } from './autostart/index.ts'
 import { chrome } from './chrome/index.ts'
 import { type CoreProcess, startCore } from './core-process.ts'
+import { serveDesktopMarker } from './desktop-marker.ts'
 import { deviceId } from './device.ts'
 import { openDeviceSettings } from './device-settings.ts'
 import { createGlobalShortcut } from './global-shortcut.ts'
@@ -168,7 +169,7 @@ function start(): void {
     script: built('core.js'),
     data: join(data, 'core'),
     client: { kind: 'desktop', version: app.getVersion(), device: deviceId(data) },
-    capabilities: ['display', 'notify']
+    capabilities: ['display', 'notify', 'screen']
   })
   ipcMain.handle(CORE_LINK_CHANNEL, () => core.link())
 
@@ -212,6 +213,8 @@ function start(): void {
   }
   // Reminders, scheduled answers and answers finished out of sight, as the system's notifications.
   serveNotifications(core, window, bringForward)
+  // A frame around the window of another app the assistant operates, while it does.
+  const marker = serveDesktopMarker(core)
 
   // Talk from anywhere: the shortcut brings the window forward and starts listening, and pressed again, sends.
   // Some Linux desktops (Wayland) do not let an app take a global shortcut: the one inside the window remains.
@@ -270,7 +273,11 @@ function start(): void {
   })
   // The tray's mark shows the persona's accent, and whether the assistant listens or sleeps. Whatever else the
   // window says is ignored: the mark changes only between the looks it has.
-  ipcMain.on(APP_CHANNELS.presence, (_event, presence: unknown) => tray.look(trayLook(presence)))
+  ipcMain.on(APP_CHANNELS.presence, (_event, presence: unknown) => {
+    const look = trayLook(presence)
+    tray.look(look)
+    marker.accent(look.accent)
+  })
   ipcMain.on(APP_CHANNELS.shortcutsSuspend, (_event, suspended: boolean) => shortcut.suspend(suspended === true))
   ipcMain.handle(APP_CHANNELS.shortcutProblem, () => shortcutProblem)
   ipcMain.handle(
