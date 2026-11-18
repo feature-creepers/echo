@@ -5,8 +5,9 @@ import { type Drawing, PRELUDE } from './glsl.ts'
  * thin rounded seat of dark blue-grey metal. The seat is soft and dark, shaded by the room's light: a hard or light
  * grey ring would read as a lamp in its fitting, and steps or grooves as a camera's aperture.
  *
- * From the front to the back: the dome reflects a dim room, a few soft panels of cool light along its upper rim and a
- * fresnel line on its edge. Behind it, the optical stack: six lens elements at different depths, each a fine edge of
+ * From the front to the back: the polished dome reflects a dim room, the broad softbox of a studio's light along its
+ * upper left and a smaller one on its right, crisp where the glass turns away, one small glint, the dark seat just
+ * inside its rim, and a fresnel line on its edge. Behind it, the optical stack: six lens elements at different depths, each a fine edge of
  * light catching the room's light as a thin crescent of its coating's colour, green, magenta, amber or blue, as the
  * elements of a real lens do; the deeper an element, the further it shifts as the lens looks about, so the stack reads
  * as depth. Deepest of all, the lamp as the film shows it: a disc of amber yellow in a saturated red that deepens to
@@ -44,16 +45,19 @@ export const ELEMENTS = [
 ] as const
 
 /**
- * The panels of cool light high in the room that the dome reflects along its upper rim: where round the glass they
- * sit, in radians counter-clockwise from the right, how far out, as a share of the glass, their half-width round it,
- * in radians, and how bright. The largest is on the upper left, where the room's light comes from.
+ * The softboxes the dome reflects, as polished glass shows a studio's lights: broad bands of cool light that follow
+ * its curve, crisp at their outer edge, where the glass turns away, and fading inwards. Each is where round the glass
+ * it sits, in radians counter-clockwise from the right, its half-width round it, how far in it fades from and how far
+ * out its edge is, as shares of the glass, and how bright it is. The broad one is on the upper left, where the room's
+ * light comes from.
  */
-export const PANELS = [
-  [2.3, 0.82, 0.3, 0.34],
-  [1.66, 0.88, 0.2, 0.26],
-  [1.08, 0.86, 0.18, 0.22],
-  [0.52, 0.81, 0.13, 0.12]
+export const SOFTBOXES = [
+  [2.28, 0.62, 0.56, 0.915, 0.26],
+  [0.72, 0.32, 0.7, 0.895, 0.11]
 ] as const
+
+/** The one small, crisp glint of the room's light on the dome, as a point on it, and how bright it is. */
+export const GLINT = [-0.46, 0.5, 0.55] as const
 
 /**
  * The catchlights over the lamp, the film's signature: where round the lamp, in radians, how far out, as a share of
@@ -99,7 +103,9 @@ uniform vec2 u_depth;
 uniform vec4 u_voice;
 
 const float SEAT = ${glsl(SEAT)};
-const vec4 PANELS[4] = vec4[4](${PANELS.map(([at, out, wide, bright]) => `vec4(${glsl(at)}, ${glsl(out)}, ${glsl(wide)}, ${glsl(bright)})`).join(', ')});
+// The softboxes: where round the glass, how wide, where they fade in from and where their edge is, and how bright.
+const float SOFTBOXES[10] = float[10](${SOFTBOXES.flat().map(glsl).join(', ')});
+const vec3 GLINT = vec3(${GLINT.map(glsl).join(', ')});
 const vec4 CATCHES[7] = vec4[7](${CATCHES.map(([at, out, wide, bright]) => `vec4(${glsl(at)}, ${glsl(out)}, ${glsl(wide)}, ${glsl(bright)})`).join(', ')});
 // Each element: its radius, its depth, its coat, and how much light it catches.
 const vec4 ELEMENTS[6] = vec4[6](${ELEMENTS.map((element) => `vec4(${glsl(element.radius)}, ${glsl(element.depth)}, ${glsl(element.coat)}, ${glsl(element.strength)})`).join(', ')});
@@ -143,10 +149,10 @@ void main() {
     // The wedges of polish, along the light and, fainter, opposite it, and a fainter pair across.
     float side = dot(toward, vec2(-u_sheen.y, u_sheen.x));
     float wedges = pow(abs(facing), 7.0) * (facing > 0.0 ? 1.0 : 0.5) + pow(abs(side), 18.0) * 0.18;
-    float shade = 0.026 * (0.7 + 0.3 * smoothstep(-0.8, 0.8, facing)) + wedges * 0.19 * (0.7 + 0.6 * grain);
+    float shade = 0.036 * (0.7 + 0.3 * smoothstep(-0.8, 0.8, facing)) + wedges * 0.24 * (0.7 + 0.6 * grain);
     shade *= plain * (0.94 + 0.12 * grain) + (1.0 - plain) * 0.6;
     // The chamfers' lines of light.
-    shade += outer * pow(max(facing, 0.0), 2.0) * 0.2 + inner * pow(max(-facing, 0.0), 2.0) * 0.1;
+    shade += outer * pow(max(facing, 0.0), 2.0) * 0.26 + inner * pow(max(-facing, 0.0), 2.0) * 0.13;
     vec3 metal = mix(vec3(0.33, 0.42, 0.55), vec3(0.66, 0.77, 0.9), clamp(wedges, 0.0, 1.0)) * shade * u_room;
     // The lamp's red reaches its inner chamfer from inside the glass, faintly.
     metal += hue * u_lamp * inner * 0.05;
@@ -161,24 +167,37 @@ void main() {
     // Smoky black glass, a little lighter towards its edge, where it turns to the room.
     vec3 glass = vec3(0.005, 0.007, 0.01) + vec3(0.016, 0.022, 0.032) * gr * gr * gr;
 
-    // The front of the dome. It reflects more as it turns away towards its edge: a dim room, a little brighter
-    // above, and high in it a few soft panels of cool light, which its curve draws out along its upper rim. As the
-    // lens turns to look, the room slides the other way across it.
+    // The front of the dome, polished. It reflects more as it turns away towards its edge: a dim room, a little
+    // brighter above; the softboxes of a studio's light, following its curve, crisp at their outer edge where the
+    // glass turns away and fading smoothly inwards; one small glint; and just inside its rim the dark seat, so the
+    // glass reads as thick. As the lens turns to look, the room slides the other way across it.
     float dome = sqrt(max(1.0 - gr * gr * 0.64, 0.0));
     float reflects = 0.22 + 3.0 * (1.0 - dome) * (1.0 - dome);
     vec2 seen = g - u_gaze * 0.05 + u_depth * 0.15;
     float seenAt = length(seen);
     float seenAround = atan(seen.y, seen.x);
-    vec3 panels = vec3(0.0);
-    for (int index = 0; index < 4; index++) {
-      vec4 panel = PANELS[index];
-      float across = abs(mod(seenAround - panel.x + TAU * 0.5, TAU) - TAU * 0.5) / panel.z;
-      float outward = (seenAt - panel.y) / 0.045;
-      float shape = exp(-pow(across, 6.0) - pow(abs(outward), 4.0));
-      panels += mix(vec3(0.36, 0.62, 1.0), vec3(0.84, 0.93, 1.0), shape * shape) * shape * clamp(0.8 + 0.2 * outward, 0.55, 1.0) * panel.w;
+    vec3 boxes = vec3(0.0);
+    for (int index = 0; index < 2; index++) {
+      float at = SOFTBOXES[index * 5];
+      float wide = SOFTBOXES[index * 5 + 1];
+      float from = SOFTBOXES[index * 5 + 2];
+      float edge = SOFTBOXES[index * 5 + 3];
+      float across = abs(mod(seenAround - at + TAU * 0.5, TAU) - TAU * 0.5) / wide;
+      float ends = 1.0 - smoothstep(0.55, 1.0, across);
+      float crisp = clamp((edge - seenAt) / (pixel * 1.6) + 0.5, 0.0, 1.0);
+      float rising = pow(smoothstep(from, edge, seenAt), 1.6);
+      float shape = ends * ends * crisp * rising;
+      boxes += mix(vec3(0.42, 0.66, 1.0), vec3(0.88, 0.95, 1.0), rising) * shape * SOFTBOXES[index * 5 + 4];
     }
+    // The glint is drawn out along the curve of the glass, as a small light reflected in a dome is.
+    vec2 outward = normalize(GLINT.xy);
+    vec2 off = seen - GLINT.xy;
+    vec2 glinted = vec2(dot(off, vec2(-outward.y, outward.x)) / 0.042, dot(off, outward) / 0.013);
+    float glint = exp(-dot(glinted, glinted)) * GLINT.z + exp(-dot(glinted, glinted) / 9.0) * GLINT.z * 0.1;
     float room = 0.004 + 0.02 * smoothstep(-0.3, 0.95, seen.y);
-    glass += (vec3(0.5, 0.72, 0.98) * room * reflects + panels * (0.55 + 0.45 * reflects)) * u_room;
+    glass += (vec3(0.5, 0.72, 0.98) * room * reflects + boxes * (0.6 + 0.4 * reflects) + vec3(0.9, 0.96, 1.0) * glint) * u_room;
+    // The dark seat seen in the glass, a narrow shadow just inside its rim.
+    glass *= 1.0 - 0.45 * smoothstep(0.86, 0.97, gr) * (1.0 - smoothstep(0.97, 1.0, gr));
     // The rim: a fresnel line of cool light along the top of the dome, fading down its sides. It is the only edge
     // the eye has, and it is never a ring.
     float top = smoothstep(-0.15, 0.85, g.y / max(gr, 1e-3));

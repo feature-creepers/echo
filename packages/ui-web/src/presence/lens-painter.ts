@@ -1,10 +1,10 @@
 import { burn, css, light, type Rgb } from './color.ts'
-import { CATCHES, COATS, ELEMENTS, GLASS, LENS_SIZE, PANELS } from './lens-shader.ts'
+import { CATCHES, COATS, ELEMENTS, GLASS, GLINT, LENS_SIZE, SOFTBOXES } from './lens-shader.ts'
 import type { LensPose } from './life.ts'
 
 /**
  * The lens drawn the simpler way, on a 2D canvas, as the shader draws it (`lens-shader.ts`) with less: what does
- * not move (the shadow, the seat, the smoky dome, the room's panels of light along its top and the line of its rim) is drawn
+ * not move (the shadow, the seat, the smoky dome, its softboxes and glint and the line of its rim) is drawn
  * once for a size and kept; each frame adds the lamp's red and its disc of amber, the catchlights over it, and the
  * light the elements catch.
  *
@@ -67,7 +67,7 @@ function drawBase(side: number) {
   const seat = new Path2D()
   seat.arc(0, 0, outer, 0, Math.PI * 2)
   seat.arc(0, 0, glass, 0, Math.PI * 2, true)
-  context.fillStyle = '#0a0d12'
+  context.fillStyle = '#0d1118'
   context.fill(seat)
   context.strokeStyle = 'rgb(0 0 0 / 0.5)'
   context.lineWidth = 1
@@ -92,22 +92,25 @@ function drawBase(side: number) {
   context.fillStyle = room
   context.fillRect(-glass, -glass, glass * 2, glass * 2)
 
-  // The room's panels of cool light along the top of the dome, each a soft arc, whiter at its heart.
-  context.filter = `blur(${Math.max(1, glass * 0.025).toFixed(1)}px)`
-  context.lineCap = 'round'
-  for (const [at, out, wide, bright] of PANELS) {
-    context.lineWidth = glass * 0.1
-    context.strokeStyle = `rgb(150 200 255 / ${(bright * 0.34).toFixed(3)})`
+  // The softboxes along the dome's curve, crisp at their outer edge and fading inwards, and the one small glint.
+  for (const [at, wide, from, edge, bright] of SOFTBOXES) {
+    const band = context.createRadialGradient(0, 0, from * glass, 0, 0, edge * glass)
+    band.addColorStop(0, 'rgb(110 170 255 / 0)')
+    band.addColorStop(0.7, `rgb(150 196 255 / ${(bright * 0.45).toFixed(3)})`)
+    band.addColorStop(1, `rgb(225 240 255 / ${bright.toFixed(3)})`)
+    context.fillStyle = band
     context.beginPath()
-    context.arc(0, 0, out * glass, at - wide * 0.8, at + wide * 0.8)
-    context.stroke()
-    context.lineWidth = glass * 0.045
-    context.strokeStyle = `rgb(220 238 255 / ${(bright * 0.4).toFixed(3)})`
-    context.beginPath()
-    context.arc(0, 0, out * glass, at - wide * 0.55, at + wide * 0.55)
-    context.stroke()
+    context.arc(0, 0, edge * glass, at - wide * 0.8, at + wide * 0.8)
+    context.arc(0, 0, from * glass, at + wide * 0.8, at - wide * 0.8, true)
+    context.closePath()
+    context.fill()
   }
-  context.filter = 'none'
+  const [glintX, glintY, glintBright] = GLINT
+  const glint = context.createRadialGradient(glintX * glass, glintY * glass, 0, glintX * glass, glintY * glass, glass * 0.05)
+  glint.addColorStop(0, `rgb(235 245 255 / ${glintBright.toFixed(3)})`)
+  glint.addColorStop(1, 'rgb(235 245 255 / 0)')
+  context.fillStyle = glint
+  context.fillRect(-glass, -glass, glass * 2, glass * 2)
   context.restore()
 
   // The rim: a fine line of cool light along the top of the dome, fading down its sides.
