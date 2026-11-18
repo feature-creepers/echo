@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { changeDeviceSettings, DEFAULT_DEVICE_SETTINGS, pauseMs, readDeviceSettings, shortcutClash } from './settings.ts'
+import { changeDeviceSettings, DEFAULT_DEVICE_SETTINGS, pauseMs, readDeviceSettings, SHEET_WIDTH, shortcutClash } from './settings.ts'
 
 describe('device settings read back', () => {
   it('are the defaults when there is nothing, or nothing usable', () => {
@@ -28,6 +28,15 @@ describe('device settings read back', () => {
     expect(readDeviceSettings({ shortcuts: { talk: 'Alt+Space' } }).shortcuts.talk).toBe('Alt+Space')
     expect(readDeviceSettings({ revision: 2, shortcuts: { talk: 'CommandOrControl+Shift+Space' } }).shortcuts.talk).toBe('CommandOrControl+Shift+Space')
     expect(DEFAULT_DEVICE_SETTINGS.shortcuts.talk).toBe('')
+  })
+
+  it('keep the side sheet between its narrowest and widest, as a whole number of pixels', () => {
+    expect(readDeviceSettings({ sheet: { width: 500.4 } }).sheet.width).toBe(500)
+    expect(readDeviceSettings({ sheet: { width: 12 } }).sheet.width).toBe(SHEET_WIDTH.least)
+    expect(readDeviceSettings({ sheet: { width: 4000 } }).sheet.width).toBe(SHEET_WIDTH.most)
+    expect(readDeviceSettings({ sheet: { width: Number.NaN } }).sheet.width).toBe(SHEET_WIDTH.initial)
+    expect(readDeviceSettings({ sheet: { width: '600' } }).sheet.width).toBe(SHEET_WIDTH.initial)
+    expect(readDeviceSettings({}).sheet.width).toBe(SHEET_WIDTH.initial)
   })
 
   it('never share their objects with the defaults', () => {
