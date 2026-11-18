@@ -6,8 +6,13 @@
  * millisecond for a core of 320 pixels at density 2.
  */
 
-/** How many times the drawing is halved: the smallest half is a thirty-second of it, for the widest halo. */
+/**
+ * How many times the drawing is halved, at most: the smallest half is a thirty-second of it, for the widest halo.
+ * A small drawing is halved fewer times, so its smallest half is never under this many pixels: smaller, its glow
+ * would spread over the whole canvas and be cut at its edges, a square round the core.
+ */
 const LEVELS = 5
+const SMALLEST = 20
 
 const FULL = `#version 300 es
 out vec2 v_at;
@@ -72,7 +77,9 @@ in vec2 v_at;
 out vec4 color;
 void main() {
   vec4 scene = texture(u_scene, v_at);
-  vec3 glow = texture(u_glow, v_at).rgb * u_strength;
+  // The halo fades out in a circle well inside the canvas, so it never shows the canvas's square edge.
+  float inside = 1.0 - smoothstep(0.34, 0.49, length(v_at - 0.5));
+  vec3 glow = texture(u_glow, v_at).rgb * u_strength * inside;
   float noise = fract(52.9829189 * fract(dot(gl_FragCoord.xy + u_grain, vec2(0.06711056, 0.00583715)))) - 0.5;
   vec3 light = max(scene.rgb + glow + noise / 255.0, 0.0);
   color = vec4(light, max(scene.a, min(1.0, max(light.r, max(light.g, light.b)))));
@@ -152,7 +159,7 @@ export function createBloom(gl: WebGL2RenderingContext): Bloom | undefined {
   const sized = (side: number) => {
     if (targets[0]?.side === side) return true
     release()
-    for (let level = 0, each = side; level <= LEVELS; level++, each = Math.max(1, Math.floor(each / 2))) {
+    for (let level = 0, each = side; level <= LEVELS && (level < 2 || each >= SMALLEST); level++, each = Math.floor(each / 2)) {
       const target = make(each)
       if (!target) return false
       targets.push(target)
@@ -181,8 +188,9 @@ export function createBloom(gl: WebGL2RenderingContext): Bloom | undefined {
       const scene = targets[0]
       if (!scene) return
       gl.disable(gl.BLEND)
+      const levels = targets.length - 1
       // Down, each half blurred from the one before.
-      for (let level = 1; level <= LEVELS; level++) {
+      for (let level = 1; level <= levels; level++) {
         const from = targets[level - 1]
         const into = targets[level]
         if (!from || !into) break
@@ -195,7 +203,7 @@ export function createBloom(gl: WebGL2RenderingContext): Bloom | undefined {
       // Up, each added onto the larger half, so the halo is the sum of every width.
       gl.enable(gl.BLEND)
       gl.blendFunc(gl.ONE, gl.ONE)
-      for (let level = LEVELS; level >= 2; level--) {
+      for (let level = levels; level >= 2; level--) {
         const from = targets[level]
         const into = targets[level - 1]
         if (!from || !into) continue

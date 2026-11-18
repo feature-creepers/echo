@@ -17,6 +17,7 @@ import {
   RESTING_LOAD,
   SWELL_PERIOD,
   spectrumOf,
+  WAKE,
   WORK_PERIOD,
   wander
 } from './life.ts'
@@ -28,6 +29,7 @@ const keep = (pose: Pose): Pose => ({
   ...pose,
   weights: { ...pose.weights },
   looks: { ...pose.looks },
+  wake: { ...pose.wake },
   gaze: [pose.gaze[0], pose.gaze[1]],
   lens: { ...pose.lens, depth: [pose.lens.depth[0], pose.lens.depth[1]], voice: [...pose.lens.voice] },
   hud: { ...pose.hud, turns: pose.hud.turns.slice(), motes: pose.hud.motes.slice() },
@@ -77,6 +79,18 @@ describe('the life behind the core', () => {
     const back = live(LOOK_FADE, { mood: 'idle', look: 'lens' }, createLife('idle', 'lens'))
     expect(last(halfway).looks.hud).toBeCloseTo(0.5, 1)
     expect(last(back.poses).looks.lens).toBe(1)
+  })
+
+  it('wakes each look when it first appears and each time it is handed over to, and at once with less motion asked for', () => {
+    const { life, poses } = live(WAKE.hud + 0.1, { mood: 'idle', look: 'hud' })
+    expect(poses[0]?.wake.hud).toBeLessThan(0.05)
+    expect(poses[Math.round(WAKE.hud * 30)]?.wake.hud).toBeCloseTo(0.5, 1)
+    expect(last(poses).wake.hud).toBe(1)
+    const handed = live(WAKE.lens / 2, { mood: 'idle', look: 'lens' }, life).poses
+    expect(handed[0]?.wake.lens).toBeLessThan(0.05)
+    expect(last(handed).wake.lens).toBeCloseTo(0.5, 1)
+    expect(last(handed).wake.hud).toBe(1)
+    expect(last(live(0.1, { mood: 'idle', look: 'lens', still: true }).poses).wake.lens).toBe(1)
   })
 
   it('knows each look from the start, without fading it in', () => {

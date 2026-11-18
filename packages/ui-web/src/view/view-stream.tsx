@@ -69,6 +69,7 @@ export function ViewStream({ views, arrived, attended, actions, onClose, under, 
     <div
       ref={dial.attachScroller}
       // Each card fades by itself, and the box ends behind the composer, so nothing is cut where it is seen.
+      data-stream=""
       className={cn('scroll-none overflow-y-auto overscroll-contain px-8 [overflow-anchor:none]', className)}
     >
       <div ref={dial.attachColumn} className="relative mx-auto flex w-full max-w-[45rem] flex-col gap-6">
@@ -347,8 +348,11 @@ function createDial() {
   }
   const resized = new ResizeObserver(() => measure())
 
-  /** A wheel going on up at the top, a firm push of it, or a key that would go further up, goes home. */
-  const onWheel = (event: WheelEvent) => {
+  /**
+   * A wheel going on up at the top, a firm push of it, anywhere on the stage, or a key that would go further up, goes
+   * home. The stage listens, as the wheel may be over the core or the header rather than over the stream.
+   */
+  const onStageWheel = (event: WheelEvent) => {
     if (!scroller || scroller.scrollTop > 0 || event.deltaY >= 0) {
       pushed = 0
       return
@@ -362,6 +366,7 @@ function createDial() {
       pastTop()
     }
   }
+  let stage: HTMLElement | null = null
   const onKey = (event: KeyboardEvent) => {
     if (!scroller || scroller.scrollTop > 0 || event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return
     if (event.key === 'Home' || event.key === 'PageUp' || event.key === 'ArrowUp') pastTop()
@@ -372,7 +377,7 @@ function createDial() {
       if (scroller) {
         scroller.removeEventListener('scroll', onScroll)
         scroller.removeEventListener('scrollend', ended)
-        scroller.removeEventListener('wheel', onWheel)
+        stage?.removeEventListener('wheel', onStageWheel)
         scroller.removeEventListener('keydown', onKey)
         for (const input of INPUTS) scroller.removeEventListener(input, release)
         resized.unobserve(scroller)
@@ -381,7 +386,8 @@ function createDial() {
       if (!element) return
       element.addEventListener('scroll', onScroll, { passive: true })
       element.addEventListener('scrollend', ended)
-      element.addEventListener('wheel', onWheel, { passive: true })
+      stage = element.closest('[data-stage]') ?? element
+      stage.addEventListener('wheel', onStageWheel, { passive: true })
       element.addEventListener('keydown', onKey)
       for (const input of INPUTS) element.addEventListener(input, release, { passive: true })
       resized.observe(element)

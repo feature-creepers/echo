@@ -36,12 +36,12 @@ export const GLASS = SEAT
  * convex surface shows the room's light on the side it comes from, a concave one on the other: the stack alternates.
  */
 export const ELEMENTS = [
-  { radius: 0.9, depth: 0.08, coat: 1, catches: 2.3, turn: 0.6, strength: 0.8 },
-  { radius: 0.76, depth: 0.22, coat: 0, catches: 5.45, turn: -0.9, strength: 1 },
-  { radius: 0.63, depth: 0.38, coat: 2, catches: 2.0, turn: 1.1, strength: 0.85 },
-  { radius: 0.5, depth: 0.55, coat: 3, catches: 5.75, turn: -1.3, strength: 0.9 },
-  { radius: 0.38, depth: 0.72, coat: 0, catches: 2.65, turn: 0.8, strength: 0.75 },
-  { radius: 0.27, depth: 0.88, coat: 1, catches: 5.1, turn: -1.1, strength: 0.65 }
+  { radius: 0.9, depth: 0.08, coat: 0, catches: 2.3, turn: 0.6, strength: 0.55 },
+  { radius: 0.76, depth: 0.22, coat: 1, catches: 5.45, turn: -0.9, strength: 0.7 },
+  { radius: 0.63, depth: 0.38, coat: 2, catches: 2.0, turn: 1.1, strength: 0.6 },
+  { radius: 0.5, depth: 0.55, coat: 1, catches: 5.75, turn: -1.3, strength: 0.55 },
+  { radius: 0.38, depth: 0.72, coat: 3, catches: 2.65, turn: 0.8, strength: 0.5 },
+  { radius: 0.27, depth: 0.88, coat: 3, catches: 5.1, turn: -1.1, strength: 0.45 }
 ] as const
 
 /**
@@ -74,12 +74,16 @@ export const CATCHES = [
   [2.42, 0.262, 0.16, 0.42]
 ] as const
 
-/** The coatings' colours, as the room's light comes back off them, from 0 to 1: green, magenta, amber and blue. */
+/**
+ * The light each element's edge catches from the room, from 0 to 1: a cool white, as the film's reflections are, on
+ * the front elements, and on the deep ones, nearest the lamp, the lamp's own warmth. No coloured coatings: they made
+ * the eye a string of lights.
+ */
 export const COATS = [
-  [0.34, 0.95, 0.66],
-  [0.88, 0.4, 1],
-  [1, 0.72, 0.36],
-  [0.44, 0.68, 1]
+  [0.74, 0.86, 1],
+  [0.74, 0.86, 1],
+  [0.86, 0.9, 1],
+  [1, 0.66, 0.56]
 ] as const
 
 const glsl = (value: number) => value.toFixed(4)
@@ -101,6 +105,8 @@ uniform vec2 u_slivers[6];
 uniform vec2 u_depth;
 // How much of the voice the elements catch, from the outer ones to the inner.
 uniform vec4 u_voice;
+// How far it has woken, from 0 to 1.
+uniform float u_wake;
 
 const float SEAT = ${glsl(SEAT)};
 // The softboxes: where round the glass, how wide, where they fade in from and where their edge is, and how bright.
@@ -208,24 +214,28 @@ void main() {
     // Its light leaves faint ghost rings on the inner surfaces, which its own voice and the working beat run through.
     vec2 lampAt = g - u_depth;
     float d = length(lampAt);
+    // Waking, the light rises out of the dark: the disc ignites first, then the red spreads out through the glass.
+    float ignite = smoothstep(0.0, 0.16, u_wake);
+    float rise = smoothstep(0.06, 0.92, u_wake);
+    float iris = u_iris * mix(0.3, 1.0, smoothstep(0.1, 0.95, u_wake));
     // Seen off its axis, the lamp dims a little, as a deep light does through glass.
     float onAxis = 1.0 - 0.15 * min(1.0, length(u_gaze));
     float voiced = echo(d * 0.8).x * (1.0 - smoothstep(0.1, 0.8, d));
     float beat = u_beat * exp(-pow((d - u_heart - u_beatAt * 0.55) / 0.045, 2.0)) * (1.0 - smoothstep(0.3, 1.1, u_beatAt));
-    float near = exp(-pow(max(d - u_heart, 0.0) / (0.14 * u_iris), 1.15));
+    float near = exp(-pow(max(d - u_heart, 0.0) / (0.14 * iris), 1.15));
     // The haze is the glass itself lit, so it shifts far less than the lamp as the lens looks about; the ghosts sit
     // between them.
     float hazed = length(g - u_depth * 0.4);
-    float haze = exp(-hazed / (0.5 * u_iris));
+    float haze = exp(-hazed / (0.5 * iris)) * rise;
     float ghosted = length(g - u_depth * 0.7);
-    float ghosts = exp(-pow((ghosted - 0.34 * u_iris) / 0.035, 2.0)) * 0.22 + exp(-pow((ghosted - 0.57 * u_iris) / 0.045, 2.0)) * 0.14;
+    float ghosts = (exp(-pow((ghosted - 0.34 * iris) / 0.035, 2.0)) * 0.22 + exp(-pow((ghosted - 0.57 * iris) / 0.045, 2.0)) * 0.14) * rise;
     ghosts *= 1.0 + echo(d * 1.1).x * 1.2 + beat * 2.0;
-    float glow = u_lamp * onAxis * (1.55 * near + 0.85 * haze + 0.5 * beat + ghosts) * (1.0 + voiced * 0.35);
+    float glow = u_lamp * onAxis * (1.55 * near * mix(ignite, 1.0, rise) + 0.85 * haze + 0.5 * beat + ghosts) * (1.0 + voiced * 0.35) * mix(0.35, 1.0, rise);
     glow *= 1.0 - 0.9 * smoothstep(0.55, 0.98, gr);
     vec3 red = burn(glow, hue + vec3(0.0, 0.02, 0.012));
     // The disc: amber at its edge, yellow at its middle, its edge a pixel and a half soft, with a faint highlight a
     // little above the middle, as the film's has.
-    float disc = clamp((u_heart - d) / (pixel * 1.6) + 0.5, 0.0, 1.0);
+    float disc = clamp((u_heart - d) / (pixel * 1.6) + 0.5, 0.0, 1.0) * ignite;
     float middle = exp(-d * d / (u_heart * u_heart * 0.35));
     vec3 amber = burn(u_lamp * (2.6 + 2.4 * middle) * (1.0 + voiced * 0.25), hue + vec3(0.0, 0.3, 0.03));
     vec2 shine = (lampAt - vec2(-0.15, 0.2) * u_heart) / u_heart;
@@ -260,7 +270,7 @@ void main() {
         glass += vec3(0.6, 0.72, 0.9) * stroke(off, 1.0) * 0.022 * catches;
         glass += burn(u_lamp * 0.9, hue) * stroke(off, 1.0) * (0.03 + pow(max(-facing, 0.0), 2.0) * 0.16 + voice * 0.5) * u_catch * element.w;
         // The coating's crescent, a hair inside the edge and a little wider than it.
-        glass += coat * exp(-pow((off + 1.8) / (2.1 + shimmer * 1.5), 2.0)) * crescent * crescent * (0.3 + 0.3 * shimmer) * catches;
+        glass += coat * exp(-pow((off + 1.8) / (2.1 + shimmer * 1.5), 2.0)) * crescent * crescent * (0.16 + 0.3 * shimmer) * catches;
         // And at its middle, a sliver of the room's own light.
         glass += vec3(0.85, 0.93, 1.0) * stroke(off, 1.2) * pow(max(facing, 0.0), 28.0) * (0.35 + 0.5 * shimmer) * catches;
       }
@@ -283,7 +293,7 @@ void main() {
       float middle = 1.0 - 0.3 * pow(min(off / spot.z, 1.0), 2.0);
       catches += spot.w * middle * (clamp((stroked - apart) / (pixel * 1.6) + 0.5, 0.0, 1.0) + 0.2 * exp(-apart * apart / (stroked * stroked * 9.0)));
     }
-    glass += vec3(0.66, 0.86, 1.0) * catches * u_room * min(u_catch, 1.6) * 0.95;
+    glass += vec3(0.66, 0.86, 1.0) * catches * u_room * min(u_catch, 1.6) * 0.95 * smoothstep(0.55, 1.0, u_wake);
     // Where the glass meets the seat, a soft dark seam.
     glass *= 1.0 - 0.5 * exp(-pow((1.0 - gr) / (pixel * 2.5), 2.0));
     light += glass * inside;
@@ -292,7 +302,23 @@ void main() {
   finish(light, max(cover, shadow));
 }`
 
-const UNIFORMS = ['lamp', 'heart', 'iris', 'catch', 'room', 'shimmer', 'shimmerAt', 'focus', 'beat', 'beatAt', 'sheen', 'slivers', 'depth', 'voice'] as const
+const UNIFORMS = [
+  'lamp',
+  'heart',
+  'iris',
+  'catch',
+  'room',
+  'shimmer',
+  'shimmerAt',
+  'focus',
+  'beat',
+  'beatAt',
+  'sheen',
+  'slivers',
+  'depth',
+  'voice',
+  'wake'
+] as const
 
 const slivers = new Float32Array(ELEMENTS.length * 2)
 
@@ -303,7 +329,7 @@ export const LENS: Drawing<(typeof UNIFORMS)[number]> = {
   // A lens: its light halates a little in the glass, as on film.
   bloom: 0.26,
   uniforms: UNIFORMS,
-  set(gl, at, { lens }) {
+  set(gl, at, { lens, wake }) {
     gl.uniform1f(at.lamp, lens.lamp)
     gl.uniform1f(at.heart, lens.heart)
     gl.uniform1f(at.iris, lens.iris)
@@ -322,5 +348,6 @@ export const LENS: Drawing<(typeof UNIFORMS)[number]> = {
     gl.uniform2fv(at.slivers, slivers)
     gl.uniform2f(at.depth, lens.depth[0], lens.depth[1])
     gl.uniform4f(at.voice, lens.voice[0], lens.voice[1], lens.voice[2], lens.voice[3])
+    gl.uniform1f(at.wake, wake.lens)
   }
 }

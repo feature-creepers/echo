@@ -13,7 +13,7 @@ export type { Mood } from './life.ts'
  */
 export interface Painter {
   /** Draws one frame, as `GpuCore.paint` does. */
-  paint(context: CanvasRenderingContext2D, pose: Pose, accents: Record<Look, Rgb>, side: number): void
+  paint(context: CanvasRenderingContext2D, pose: Pose, accents: Record<Look, Rgb>, side: number, scale?: number): void
 }
 
 export function createPainter(): Painter {
@@ -21,7 +21,7 @@ export function createPainter(): Painter {
   const hud = createHudPainting()
 
   return {
-    paint(context, pose, accents, side) {
+    paint(context, pose, accents, side, zoom = 1) {
       context.setTransform(1, 0, 0, 1, 0, 0)
       context.globalCompositeOperation = 'source-over'
       context.globalAlpha = 1
@@ -32,10 +32,18 @@ export function createPainter(): Painter {
       for (const look of order) {
         const weight = pose.looks[look]
         if (weight < 0.002) continue
-        context.globalAlpha = weight
-        const scale = 1 - LOOK_SHRINK * (1 - weight)
-        if (look === 'lens') lens.paint(context, pose.lens, accents.lens, side, scale)
-        else hud.paint(context, pose, accents.hud, side, scale)
+        const scale = (1 - LOOK_SHRINK * (1 - weight)) * zoom
+        // Waking, drawn more simply than the shaders do it: the instrument fades in as it grows to its size, and the
+        // lens's light rises out of its dark glass.
+        const woken = pose.wake[look]
+        const rising = woken * woken * (3 - 2 * woken)
+        if (look === 'lens') {
+          context.globalAlpha = weight
+          lens.paint(context, { ...pose.lens, lamp: pose.lens.lamp * (0.15 + 0.85 * rising) }, accents.lens, side, scale)
+        } else {
+          context.globalAlpha = weight * rising
+          hud.paint(context, pose, accents.hud, side, scale * (0.9 + 0.1 * rising))
+        }
       }
       context.globalAlpha = 1
     }

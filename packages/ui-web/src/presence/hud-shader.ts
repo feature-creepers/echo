@@ -62,6 +62,8 @@ uniform float u_chaseAt;
 // Where each mote is round its ring, in turns, and where the glint is along the outer arcs.
 uniform float u_motes[${HUD_MOTES.length}];
 uniform float u_glintAt;
+// How far it has woken, from 0 to 1.
+uniform float u_wake;
 // How far each ring has turned, in turns.
 uniform float u_turns[${HUD_RINGS.length}];
 uniform vec2 u_parallax;
@@ -263,9 +265,22 @@ void main() {
   vec3 hue = mix(near, deep, farOut);
   // A hologram's shimmer: its light rises and falls a little across it, slowly.
   float shimmer = 0.92 + 0.16 * noise(vec2(p.x * 2.2 + u_turns[6] * 3.0, p.y * 2.2 - u_turns[3] * 5.0), 64.0);
+  // Waking, it powers up: the heart ignites with a flash, then the rings draw themselves on from the inside out,
+  // each from the top round to the right, a bright head where it is being drawn.
+  float body = 0.55 * (1.0 - smoothstep(0.3, 0.98, r)) * max(u_rings, 0.3);
+  if (u_wake < 1.0) {
+    float drawn = clamp((u_wake - 0.14 - clamp(rr, 0.0, 1.0) * 0.5) / 0.32, 0.0, 1.0);
+    float along = fract(0.25 - around);
+    float shown = clamp((drawn - along) * 60.0 + 0.5, 0.0, 1.0);
+    float head = exp(-pow((along - drawn) / 0.015, 2.0)) * step(0.002, drawn) * (1.0 - drawn * drawn);
+    bright = bright * shown + (lines + bright) * head * 2.5;
+    lines *= shown;
+    core *= smoothstep(0.0, 0.14, u_wake) * (1.0 + 0.9 * exp(-pow((u_wake - 0.13) / 0.05, 2.0)));
+    body *= smoothstep(0.0, 0.3, u_wake);
+  }
   vec3 light = burn(core, u_accent + 0.08) + hue * lines * shimmer + mix(hue, vec3(1.0), mix(0.45, 0.2, farOut)) * bright * shimmer;
   // A faint dark field behind the rings calms the ground's dots under them, so the finest lines read.
-  finish(light, 0.55 * (1.0 - smoothstep(0.3, 0.98, r)) * max(u_rings, 0.3));
+  finish(light, body);
 }`
 
 const UNIFORMS = [
@@ -283,7 +298,8 @@ const UNIFORMS = [
   'turns',
   'parallax',
   'motes',
-  'glintAt'
+  'glintAt',
+  'wake'
 ] as const
 
 const turns = new Float32Array(HUD_RINGS.length)
@@ -295,7 +311,7 @@ export const HUD: Drawing<(typeof UNIFORMS)[number]> = {
   // A hologram: every line glows, the bright ones most.
   bloom: 0.95,
   uniforms: UNIFORMS,
-  set(gl, at, { hud }) {
+  set(gl, at, { hud, wake }) {
     gl.uniform1f(at.core, hud.core)
     gl.uniform1f(at.size, hud.size)
     gl.uniform1f(at.rings, hud.rings)
@@ -312,5 +328,6 @@ export const HUD: Drawing<(typeof UNIFORMS)[number]> = {
     gl.uniform2f(at.parallax, hud.parallax[0], hud.parallax[1])
     gl.uniform1fv(at.motes, hud.motes)
     gl.uniform1f(at.glintAt, hud.glintAt)
+    gl.uniform1f(at.wake, wake.hud)
   }
 }

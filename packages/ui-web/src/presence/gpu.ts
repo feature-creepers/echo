@@ -21,7 +21,7 @@ export interface GpuCore {
    * Draws one frame: the pose from the life behind it, each look's accent as red, green and blue from 0 to 255 (a
    * look giving way keeps the accent it had), and the canvas's side in device pixels.
    */
-  paint(pose: Pose, accents: Record<Look, Rgb>, side: number): void
+  paint(pose: Pose, accents: Record<Look, Rgb>, side: number, scale?: number): void
   /** Lets the graphics card go at once, rather than when the page is collected. */
   dispose(): void
 }
@@ -119,7 +119,7 @@ export function createGpuCore(canvas: HTMLCanvasElement, force = false): GpuCore
   canvas.addEventListener('webglcontextrestored', onRestored)
 
   return {
-    paint(pose, accents, side) {
+    paint(pose, accents, side, scale = 1) {
       if (!ready || gl.isContextLost()) return
       gl.viewport(0, 0, side, side)
       gl.clearColor(0, 0, 0, 0)
@@ -147,7 +147,7 @@ export function createGpuCore(canvas: HTMLCanvasElement, force = false): GpuCore
         if (weight < 0.002) continue
         const drawing = DRAWINGS[look]
         const { program, shared, own } = ready.programs[look]
-        const size = drawing.size * (1 - LOOK_SHRINK * (1 - weight))
+        const size = drawing.size * (1 - LOOK_SHRINK * (1 - weight)) * scale
         const [red, green, blue] = accents[look]
         gl.useProgram(program)
         // The polygon's sides must clear what is drawn, not only its corners.

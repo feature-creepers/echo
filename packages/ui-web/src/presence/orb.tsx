@@ -25,6 +25,11 @@ export interface OrbProps {
   load?: () => number | undefined
   /** Told every pose drawn, so what moves with the core (the light it casts) can follow it in the same frame. */
   onFrame?: (pose: Pose) => void
+  /**
+   * How large the core is drawn inside its canvas, from 0 to 1 of `size`, read every frame after `onFrame`: a core
+   * that changes size is drawn again at each size, sharp, rather than stretched.
+   */
+  scale?: () => number
   className?: string
 }
 
@@ -72,10 +77,10 @@ function addCanvas(box: HTMLElement) {
  * the window is hidden or the core is out of view, and with less motion asked for, the core holds still and is
  * only drawn again while a mood, a look or an accent changes.
  */
-export function Orb({ mood, size, level, bands, gaze, load, onFrame, className }: OrbProps) {
+export function Orb({ mood, size, level, bands, gaze, load, onFrame, scale, className }: OrbProps) {
   const box = useRef<HTMLSpanElement>(null)
-  const live = useRef({ mood, level, size, bands, gaze, load, onFrame })
-  live.current = { mood, level, size, bands, gaze, load, onFrame }
+  const live = useRef({ mood, level, size, bands, gaze, load, onFrame, scale })
+  live.current = { mood, level, size, bands, gaze, load, onFrame, scale }
 
   useEffect(() => {
     const element = box.current
@@ -147,13 +152,14 @@ export function Orb({ mood, size, level, bands, gaze, load, onFrame, className }
         still: still.matches
       })
       live.current.onFrame?.(pose)
+      const drawnAt = Math.min(1, Math.max(0.05, live.current.scale?.() ?? 1))
       fading = pose.looks[look] < 1
       // Holding still, a frame is only drawn while something changes: the size, the accent, a mood or a look fading.
       const settled = Math.abs(pose.weights[live.current.mood] - 1) < 0.002 && Math.abs(pose.looks[look] - 1) < 0.002
-      const state = `${pixels} ${shown[look].join()} ${live.current.mood} ${look}`
+      const state = `${pixels} ${drawnAt.toFixed(3)} ${shown[look].join()} ${live.current.mood} ${look}`
       if (!(still.matches && settled && drawn === state)) {
-        if (gpu) gpu.paint(pose, shown, pixels)
-        else if (flat) painter.paint(flat, pose, shown, pixels)
+        if (gpu) gpu.paint(pose, shown, pixels, drawnAt)
+        else if (flat) painter.paint(flat, pose, shown, pixels, drawnAt)
         drawn = settled ? state : ''
       }
       run()

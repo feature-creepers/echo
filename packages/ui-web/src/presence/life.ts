@@ -32,6 +32,13 @@ export const LOOK_FADE = 0.4
 /** How much smaller a look is drawn as it gives way, or before it has settled in: a morph rather than a dissolve. */
 export const LOOK_SHRINK = 0.05
 
+/**
+ * How long each look takes to wake, in seconds: when it first appears, and each time a persona hands over to it. The
+ * instrument powers up, its heart igniting and its rings drawing themselves on; the lens's light rises out of the
+ * dark, its disc first, then the red spreading through the glass.
+ */
+export const WAKE: Record<Look, number> = { hud: 2.4, lens: 3 }
+
 /** Asleep, the core breathes once in this many seconds. */
 export const BREATH_PERIOD = 7.5
 
@@ -313,6 +320,8 @@ export interface Pose {
   weights: Record<Mood, number>
   /** How far each look is in effect, from 0 to 1, while one gives way to the other; they add up to 1. */
   looks: Record<Look, number>
+  /** How far each look has woken, from 0 to 1: it wakes when it first appears, and each time it is handed over to. */
+  wake: Record<Look, number>
   /** The voice, followed quickly as it rises and more slowly as it falls. */
   level: number
   /** Where the core looks, as `Input.gaze`, followed by its spring. */
@@ -343,6 +352,8 @@ export function createLife(initial: Mood = 'idle', look: Look = 'hud'): Life {
   // How far each look has come, from 0 to 1 at a steady pace; the weights drawn are this, eased.
   const shown = Object.fromEntries(LOOKS.map((each) => [each, each === look ? 1 : 0])) as Record<Look, number>
   const looks = { ...shown }
+  const wake = Object.fromEntries(LOOKS.map((each) => [each, 0])) as Record<Look, number>
+  let woken = look
   const echo = new Float32Array(ECHO_LENGTH * 2)
   const spectrum = new Float32Array(BANDS * 2)
   const heardBands = new Float32Array(BANDS)
@@ -373,6 +384,12 @@ export function createLife(initial: Mood = 'idle', look: Look = 'hud'): Life {
       }
       const eased = LOOKS.reduce((sum, each) => sum + smooth(shown[each]), 0) || 1
       for (const each of LOOKS) looks[each] = smooth(shown[each]) / eased
+      // The look handed over to wakes again; held still, every look is awake at once.
+      if (current !== woken) {
+        wake[current] = 0
+        woken = current
+      }
+      for (const each of LOOKS) wake[each] = still ? 1 : Math.min(1, wake[each] + delta / WAKE[each])
 
       // The voice rises fast and falls slower, as an ear follows it, so syllables read as one phrase.
       const voiced = still ? 0 : heard
@@ -471,6 +488,7 @@ export function createLife(initial: Mood = 'idle', look: Look = 'hud'): Life {
       return {
         weights,
         looks,
+        wake,
         level,
         gaze: [gaze[0] ?? 0, gaze[1] ?? 0],
         attention,

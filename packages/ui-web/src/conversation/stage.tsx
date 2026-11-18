@@ -24,7 +24,7 @@ import type { Mood } from '../presence/painter.ts'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { ArrowGlyph } from '../primitives/icons.tsx'
-import { DURATION, EASE, glide, settle } from '../styles/motion.ts'
+import { DURATION, EASE, settle } from '../styles/motion.ts'
 import type { ViewActions } from '../view/context.ts'
 import { ViewStream } from '../view/view-stream.tsx'
 import { doing } from './activity.ts'
@@ -95,47 +95,110 @@ export interface Sight {
   box?: DOMRect | undefined
 }
 
+/**
+ * The largest the core is drawn, in CSS pixels. Its canvas is always this size, and draws the core at the size it is
+ * at, so it stays sharp at every size on its way from one place to another.
+ */
+const LARGEST = 280
+
+/**
+ * How the core travels between its places, and how its name and state go with it: a spring soft enough to follow
+ * with the eye, damped so it settles without bouncing, in about half a second.
+ */
+const TRAVEL = { stiffness: 210, damping: 30 } as const
+const travel = { type: 'spring', stiffness: TRAVEL.stiffness, damping: TRAVEL.damping, mass: 1 } as const
+
 interface CoreProps {
-  size: number
   mood: Mood
   level: () => number
   bands: () => ArrayLike<number> | undefined
   load: () => number | undefined
   /** Where the core looks now, read on every frame; nothing when it has nothing to look at. */
   sight: () => Sight | undefined
+  /** The place kept for the core on the screen now, read on every frame: it travels there, and rests there. */
+  place: () => HTMLElement | null
+  /** Told when the core arrives at its place, and when it leaves it: what is written under it waits for it. */
+  onArrive(arrived: boolean): void
 }
 
 /**
- * The core with the soft light it casts on the ground around it: the accent, faint, fading to nothing well
- * before any edge, leaning a little towards where the core looks, brighter as the computer works harder. It
- * follows the core wherever it goes and is written on every frame the core draws, as an opacity and a transform
- * only, so it costs no layout and React draws nothing for it. The same frame tells the ground where the core is,
- * how much light it casts and where it looks, so the dots round it and round what it looks at light up with it.
+ * The core, one for the whole stage, never drawn twice: it travels between the places the stage keeps for it (the
+ * middle of an empty stage, home, the top of the column) on a spring, and is drawn again at each size on its way, so
+ * nothing is stretched or swapped. With it goes the soft light it casts on the ground: the accent, faint, fading to
+ * nothing well before any edge, leaning a little towards where the core looks, brighter as the computer works
+ * harder. All of it is written on every frame the core draws, as a transform and an opacity only, so it costs no
+ * layout and React draws nothing for it. The same frame tells the ground where the core is, how much light it casts
+ * and where it looks, so the dots round it and round what it looks at light up with it.
  */
-function Core({ size, mood, level, bands, load, sight }: CoreProps) {
+function Core({ mood, level, bands, load, sight, place, onArrive }: CoreProps) {
   const box = useRef<HTMLDivElement>(null)
   const halo = useRef<HTMLSpanElement>(null)
   const light = useCoreLight()
   const seen = useRef<Sight | undefined>(undefined)
+  // Where the core is, from the top left of the stage, and how large, with how fast each is changing.
+  const at = useRef({ x: 0, y: 0, size: LARGEST, vx: 0, vy: 0, vs: 0, time: 0, placed: false, arrived: true })
+  const arrive = useRef(onArrive)
+  arrive.current = onArrive
+  const middle = useCallback((): Point | undefined => {
+    const stage = box.current?.offsetParent?.getBoundingClientRect()
+    return stage ? { x: stage.left + at.current.x, y: stage.top + at.current.y } : undefined
+  }, [])
   const gaze = useCallback((): readonly [number, number] | undefined => {
     const now = sight()
     seen.current = now
-    const at = box.current?.getBoundingClientRect()
-    if (!now || !at) return undefined
-    return gazeAt(middleOf(at), now.point, GAZE_REACH)
-  }, [sight])
+    const from = middle()
+    if (!now || !from) return undefined
+    return gazeAt(from, now.point, GAZE_REACH)
+  }, [sight, middle])
+  const scale = useCallback(() => at.current.size / LARGEST, [])
   const onFrame = useCallback(
     (pose: Pose) => {
+      const element = box.current
+      const slot = place()
+      const stage = element?.offsetParent?.getBoundingClientRect()
+      const here = at.current
+      if (element && slot && stage) {
+        const kept = slot.getBoundingClientRect()
+        const target = { x: kept.left - stage.left + kept.width / 2, y: kept.top - stage.top + kept.height / 2, size: kept.width }
+        const now = performance.now()
+        const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        if (!here.placed || still) {
+          Object.assign(here, { ...target, vx: 0, vy: 0, vs: 0, placed: true })
+        } else {
+          // Small steps, so a long frame never throws it.
+          for (let left = Math.min(0.05, (now - here.time) / 1000); left > 1e-6; left -= 1 / 240) {
+            const step = Math.min(left, 1 / 240)
+            here.vx += (TRAVEL.stiffness * (target.x - here.x) - TRAVEL.damping * here.vx) * step
+            here.vy += (TRAVEL.stiffness * (target.y - here.y) - TRAVEL.damping * here.vy) * step
+            here.vs += (TRAVEL.stiffness * (target.size - here.size) - TRAVEL.damping * here.vs) * step
+            here.x += here.vx * step
+            here.y += here.vy * step
+            here.size += here.vs * step
+          }
+        }
+        here.time = now
+        // Arrived once it is within a few pixels of its place and nearly still.
+        const arrived = Math.hypot(target.x - here.x, target.y - here.y) + Math.abs(target.size - here.size) < 6 && Math.hypot(here.vx, here.vy) < 60
+        if (arrived !== here.arrived) {
+          here.arrived = arrived
+          arrive.current(arrived)
+        }
+        // On whole device pixels, so its finest lines stay one pixel sharp.
+        const ratio = window.devicePixelRatio || 1
+        const left = Math.round((here.x - LARGEST / 2) * ratio) / ratio
+        const top = Math.round((here.y - LARGEST / 2) * ratio) / ratio
+        element.style.transform = `translate3d(${left}px,${top}px,0)`
+      }
       const cast = (Object.keys(CASTS) as Look[]).reduce((sum, look) => sum + CASTS[look] * pose.looks[look], 0)
       const glow = ALL_MOODS.reduce((sum, each) => sum + HALO[each] * pose.weights[each], 0) * (0.75 + 0.6 * pose.power)
-      const element = halo.current
-      if (element) {
-        element.style.opacity = (glow * cast).toFixed(3)
-        element.style.transform = `translate3d(${(pose.gaze[0] * size * 0.12).toFixed(1)}px,${(-pose.gaze[1] * size * 0.12).toFixed(1)}px,0)`
+      const shown = here.size / LARGEST
+      if (halo.current) {
+        halo.current.style.opacity = (glow * cast).toFixed(3)
+        halo.current.style.transform = `translate3d(${(pose.gaze[0] * here.size * 0.12).toFixed(1)}px,${(-pose.gaze[1] * here.size * 0.12).toFixed(1)}px,0) scale(${shown.toFixed(4)})`
       }
-      const at = box.current?.getBoundingClientRect()
-      if (!light || !at) return
-      light.core = { x: at.left + at.width / 2, y: at.top + at.height / 2, radius: at.width / 2 }
+      const from = middle()
+      if (!light || !from) return
+      light.core = { x: from.x, y: from.y, radius: here.size / 2 }
       light.glow = glow * (0.4 + 0.6 * cast)
       light.power = pose.power
       const target = seen.current?.box
@@ -149,7 +212,7 @@ function Core({ size, mood, level, bands, load, sight }: CoreProps) {
             }
           : undefined
     },
-    [light, size]
+    [light, place, middle]
   )
   // When the core leaves the screen, it lights nothing round it any more.
   useEffect(
@@ -162,13 +225,17 @@ function Core({ size, mood, level, bands, load, sight }: CoreProps) {
     [light]
   )
   return (
-    <div ref={box} className="relative">
+    <div
+      ref={box}
+      aria-hidden="true"
+      className="pointer-events-none absolute top-0 left-0 z-[5] will-change-transform"
+      style={{ width: LARGEST, height: LARGEST }}
+    >
       <span
         ref={halo}
-        aria-hidden="true"
         className="pointer-events-none absolute -inset-[42%] bg-[radial-gradient(closest-side,color-mix(in_oklab,var(--accent)_15%,transparent),color-mix(in_oklab,var(--accent)_6%,transparent)_45%,transparent)] will-change-[transform,opacity]"
       />
-      <Orb size={size} mood={mood} level={level} bands={bands} gaze={gaze} load={load} onFrame={onFrame} className="relative" />
+      <Orb size={LARGEST} scale={scale} mood={mood} level={level} bands={bands} gaze={gaze} load={load} onFrame={onFrame} className="relative" />
     </div>
   )
 }
@@ -358,6 +425,25 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
     if (newestArrived) setHome(false)
   }, [newest, newestArrived])
   const atHome = streaming && home
+  // The places kept for the core: it travels to the one in use and rests there.
+  const places = useRef<Record<'empty' | 'home' | 'top', HTMLElement | null>>({ empty: null, home: null, top: null })
+  const keepers = useRef({
+    empty: (element: HTMLElement | null) => {
+      places.current.empty = element
+    },
+    home: (element: HTMLElement | null) => {
+      places.current.home = element
+    },
+    top: (element: HTMLElement | null) => {
+      places.current.top = element
+    }
+  })
+  const keep = (where: 'empty' | 'home' | 'top') => keepers.current[where]
+  const placeIn = useRef<'empty' | 'home' | 'top'>('empty')
+  placeIn.current = !streaming ? 'empty' : atHome ? 'home' : 'top'
+  const placeOf = useCallback(() => places.current[placeIn.current], [])
+  // What is written under the core waits for it to arrive, so it never crosses the core on its way.
+  const [arrived, setArrived] = useState(true)
   useEffect(() => {
     if (!atHome) return
     let pushed = 0
@@ -587,27 +673,22 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
   // aside. With views to show, the core rises to the top of the column, its name, state and spoken line centred under
   // it, and the stream of views turns under them. The sides of the window are left to the pinned widgets' docks.
   return (
-    <div className="relative flex h-full min-w-0 flex-col">
+    <div data-stage="" className="relative flex h-full min-w-0 flex-col">
+      <Core mood={mood} level={level.current} bands={bands.current} load={load} sight={sight} place={placeOf} onArrive={setArrived} />
       {streaming && (
         <header className="relative z-10 shrink-0 px-8 pt-1">
           <div className={cn('mx-auto grid w-full justify-items-center text-center', COLUMN)}>
             {/* At home, the core, its name and its state glide to the middle of the stage, and their places here stay
                 kept, so the stream under them never moves. */}
-            {atHome ? (
-              <div aria-hidden="true" style={{ height: coreSize - 2 * Math.round(coreSize * 0.1) }} />
-            ) : (
-              <motion.div layoutId="stage-core" transition={glide} style={{ marginBlock: -Math.round(coreSize * 0.1) }}>
-                <Core size={coreSize} mood={mood} level={level.current} bands={bands.current} load={load} sight={sight} />
-              </motion.div>
-            )}
+            <div ref={keep('top')} aria-hidden="true" style={{ width: coreSize, height: coreSize, marginBlock: -Math.round(coreSize * 0.1) }} />
             <motion.span
               {...(atHome ? {} : { layoutId: 'stage-name' })}
-              transition={glide}
+              transition={travel}
               className={cn('mt-1.5 font-semibold text-[1.0625rem] leading-tight tracking-[-0.015em]', atHome && 'invisible')}
             >
               {active.name}
             </motion.span>
-            <motion.span {...(atHome ? {} : { layoutId: 'stage-mood' })} transition={glide} className={cn('mt-1', atHome && 'invisible')}>
+            <motion.span {...(atHome ? {} : { layoutId: 'stage-mood' })} transition={travel} className={cn('mt-1', atHome && 'invisible')}>
               <Eyebrow accent={mood !== 'idle'} className="transition-colors duration-(--duration-calm)">
                 {moodWord}
               </Eyebrow>
@@ -616,8 +697,8 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
                 once the core, rising from the middle of the screen, has passed where they are. */}
             <motion.div
               initial={{ opacity: 0 }}
-              animate={{ opacity: atHome ? 0 : 1 }}
-              transition={{ duration: DURATION.calm, delay: atHome ? 0 : 0.18, ease: EASE }}
+              animate={{ opacity: atHome || !arrived ? 0 : 1 }}
+              transition={{ duration: arrived ? DURATION.calm : DURATION.quick, ease: EASE }}
               className="mt-3 grid w-full justify-items-center gap-1"
             >
               <div className="relative w-full max-w-[38rem]">
@@ -641,25 +722,28 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
           style={{ bottom: composerRoom.end + homeShift * 0.32 }}
         >
           <div className="flex min-h-0 w-full flex-1 flex-col items-center justify-center">
-            <motion.div layoutId="stage-core" transition={glide} className="-my-7">
-              <Core size={280} mood={mood} level={level.current} bands={bands.current} load={load} sight={sight} />
-            </motion.div>
+            <div ref={keep('home')} aria-hidden="true" className="-my-7" style={{ width: LARGEST, height: LARGEST }} />
             <div className="grid justify-items-center gap-2">
-              <motion.h1 layoutId="stage-name" transition={glide} className="font-semibold text-[1.875rem] leading-none tracking-[-0.025em]">
+              <motion.h1 layoutId="stage-name" transition={travel} className="font-semibold text-[1.875rem] leading-none tracking-[-0.025em]">
                 {active.name}
               </motion.h1>
-              <motion.span layoutId="stage-mood" transition={glide}>
+              <motion.span layoutId="stage-mood" transition={travel}>
                 <Eyebrow accent={mood !== 'idle'} className="transition-colors duration-(--duration-calm)">
                   {moodWord}
                 </Eyebrow>
               </motion.span>
             </div>
-            <div className={cn('pointer-events-auto mt-7 flex min-h-[5.5rem] w-full flex-col items-center gap-1.5 text-center', COLUMN)}>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: arrived ? 1 : 0 }}
+              transition={{ duration: arrived ? DURATION.calm : DURATION.quick, ease: EASE }}
+              className={cn('pointer-events-auto mt-7 flex min-h-[5.5rem] w-full flex-col items-center gap-1.5 text-center', COLUMN)}
+            >
               <div className="flex w-full justify-center" aria-live="polite">
                 {caption}
               </div>
               {chips ?? answerLink}
-            </div>
+            </motion.div>
           </div>
         </div>
       )}
@@ -673,7 +757,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
               // At home, the stream sinks and dims under the core; pressing the view that waits goes on to it.
               initial={false}
               animate={{ y: atHome ? homeShift : 0, opacity: atHome ? 0.55 : 1 }}
-              transition={glide}
+              transition={travel}
               exit={{ opacity: 0, transition: { duration: DURATION.quick, ease: EASE } }}
               onPointerDownCapture={(event) => {
                 if (!atHome) return
@@ -698,14 +782,12 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
         {!streaming && (
           <div ref={stageScroll} className={cn('scroll-none h-full overflow-y-auto px-8', fade(stageEdges))}>
             <div className="flex min-h-full w-full flex-col items-center justify-center pt-6 pb-32">
-              <motion.div layoutId="stage-core" transition={glide} className="-my-7">
-                <Core size={280} mood={mood} level={level.current} bands={bands.current} load={load} sight={sight} />
-              </motion.div>
+              <div ref={keep('empty')} aria-hidden="true" className="-my-7" style={{ width: LARGEST, height: LARGEST }} />
               <div className="grid justify-items-center gap-2">
-                <motion.h1 layoutId="stage-name" transition={glide} className="font-semibold text-[1.875rem] leading-none tracking-[-0.025em]">
+                <motion.h1 layoutId="stage-name" transition={travel} className="font-semibold text-[1.875rem] leading-none tracking-[-0.025em]">
                   {active.name}
                 </motion.h1>
-                <motion.span layoutId="stage-mood" transition={glide}>
+                <motion.span layoutId="stage-mood" transition={travel}>
                   <Eyebrow accent={mood !== 'idle'} className="transition-colors duration-(--duration-calm)">
                     {moodWord}
                   </Eyebrow>
