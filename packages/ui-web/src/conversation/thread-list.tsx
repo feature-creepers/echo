@@ -1,4 +1,5 @@
 import type { Thread, Threads } from '@repo/protocol'
+import { lastPart } from '../changes/words.ts'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 
@@ -75,9 +76,10 @@ function Row({ thread, onScreen = false, onOpen }: { thread: Thread; onScreen?: 
       <StateDot state={thread.state} />
       <span className="grid min-w-0 flex-1 gap-0.5">
         <span className={cn('truncate', thread.kind === 'aside' ? 'text-[0.8125rem] text-text-soft' : 'text-sm')}>{thread.title}</span>
-        <span className="text-label text-text-faint">
+        <span className="truncate text-label text-text-faint">
           {thread.kind === 'aside' ? 'Aside' : 'Topic'} · {STATE[thread.state]}
           {onScreen ? ' · on screen' : ''}
+          {thread.folder && <span title={thread.folder}> · in {lastPart(thread.folder)}</span>}
         </span>
       </span>
       <span aria-hidden="true" className="text-text-faint opacity-0 transition-opacity group-hover:opacity-100">

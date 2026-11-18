@@ -1,6 +1,6 @@
 import type { Logged } from '@repo/client'
 import { useState } from 'react'
-import { stepSummary } from '../conversation/thread-view.tsx'
+import { stepSummary } from '../conversation/steps.ts'
 
 const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 })
 
