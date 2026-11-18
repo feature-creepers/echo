@@ -6,7 +6,7 @@ import { type LocalListener, listenLocal } from './index.ts'
 
 const settings: Settings = {
   revision: 1,
-  personas: { available: [{ id: 'first', name: 'Ada', stance: 'accommodating', accent: 'cyan' }], active: 'first', confirmed: true },
+  personas: { available: [{ id: 'first', name: 'Ada', stance: 'accommodating', accent: 'cyan', look: 'hud' }], active: 'first', confirmed: true },
   engines: { models: {} },
   access: DEFAULT_ACCESS,
   languages: DEFAULT_LANGUAGES

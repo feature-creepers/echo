@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { PERSONA_NAME_MAX_LENGTH, readPersonaName, samePersonaName } from './personas.ts'
+import { PERSONA_NAME_MAX_LENGTH, personaSchema, readPersonaName, samePersonaName } from './personas.ts'
 
 describe('readPersonaName', () => {
   it.each([
@@ -49,5 +49,23 @@ describe('samePersonaName', () => {
 
   it('tells different names apart', () => {
     expect(samePersonaName('Ada', 'Adam')).toBe(false)
+  })
+})
+
+describe('a persona as data', () => {
+  it('keeps the look it is given, whatever its accent', () => {
+    const persona = personaSchema.parse({ id: 'first', name: 'Ada', stance: 'critical', accent: 'cyan', look: 'lens' })
+    expect(persona.look).toBe('lens')
+  })
+
+  it.each([
+    ['cyan', 'hud'],
+    ['red', 'lens']
+  ] as const)('gives a persona written before looks existed the look of its accent (%s)', (accent, look) => {
+    expect(personaSchema.parse({ id: 'first', name: 'Ada', stance: 'accommodating', accent }).look).toBe(look)
+  })
+
+  it('refuses a look it does not know', () => {
+    expect(personaSchema.safeParse({ id: 'first', name: 'Ada', stance: 'accommodating', accent: 'cyan', look: 'crystal' }).success).toBe(false)
   })
 })

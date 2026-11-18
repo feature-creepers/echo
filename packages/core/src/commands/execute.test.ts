@@ -8,7 +8,7 @@ const library: LibraryView = { revision: 0, widgets: [] }
 
 const settings: Settings = {
   revision: 0,
-  personas: { available: [{ id: 'first', name: 'Ada', stance: 'accommodating', accent: 'cyan' }], active: 'first', confirmed: false },
+  personas: { available: [{ id: 'first', name: 'Ada', stance: 'accommodating', accent: 'cyan', look: 'hud' }], active: 'first', confirmed: false },
   engines: { models: {} },
   access: DEFAULT_ACCESS,
   languages: DEFAULT_LANGUAGES
