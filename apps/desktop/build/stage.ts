@@ -1,8 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, relative, sep } from 'node:path'
 import { parseArgs } from 'node:util'
 import { appIcon, appIconPixels, icns, ico } from '../src/main/mark.ts'
 
@@ -88,7 +87,8 @@ cpSync(driverFolder, join(stage, 'node_modules', 'playwright-core'), { recursive
 // The speech library, and its native part for the target system, fetched from the registry as published.
 cpSync(libraryFolder, join(stage, 'node_modules', 'sherpa-onnx-node'), { recursive: true, dereference: true })
 const native = `sherpa-onnx-${os === 'win32' ? 'win' : os}-${arch}`
-const download = mkdtempSync(join(tmpdir(), 'stage-'))
+// Downloaded beside the stage, so tar is given a short relative path within one folder tree (see below).
+const download = mkdtempSync(join(dirname(stage), '.stage-download-'))
 try {
   execFileSync('npm', ['pack', `${native}@${library.version}`, '--pack-destination', download, '--silent'], {
     stdio: 'inherit',
@@ -98,7 +98,11 @@ try {
   if (!tarball) throw new Error(`npm did not download ${native}.`)
   const target = join(stage, 'node_modules', native)
   mkdirSync(target, { recursive: true })
-  execFileSync('tar', ['-xzf', join(download, tarball), '-C', target, '--strip-components=1'], { stdio: 'inherit' })
+  // Unpacked where it goes, the archive named from there with forward slashes: GNU tar, the one Git Bash puts
+  // first on Windows, reads `C:\…` as a remote machine called C and backslashes as escapes. Every tar reads a
+  // relative path with forward slashes as it is.
+  const archive = relative(target, join(download, tarball)).split(sep).join('/')
+  execFileSync('tar', ['-xzf', archive, '--strip-components=1'], { stdio: 'inherit', cwd: target })
 } finally {
   rmSync(download, { recursive: true, force: true })
 }
