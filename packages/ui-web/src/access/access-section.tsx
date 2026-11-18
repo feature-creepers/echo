@@ -12,6 +12,7 @@ import { Switch } from '../primitives/switch.tsx'
 import { SettingGroup, SettingRow } from '../settings/rows.tsx'
 import { AppsGroup } from './apps-group.tsx'
 import { BrowserGroup } from './browser-group.tsx'
+import { ConfirmationRow } from './confirmation-row.tsx'
 import { NetworkGroup } from './network-group.tsx'
 import { useStandingRules } from './use-standing-rules.ts'
 import { LEVELS, lastPart, WAITS, waitInWords } from './words.ts'
@@ -260,6 +261,7 @@ export function AccessSection({ client, settings, productName }: { client: Clien
             onChange={(value) => void change({ approvalWait: value === 'never' ? null : Number(value) })}
           />
         </SettingRow>
+        <ConfirmationRow access={access} busy={busy} change={change} />
         <SettingRow
           title="Stop everything"
           detail={`Interrupts everything ${productName} is doing, withdraws its questions and forgets what you allowed for this session. Also in the tray's menu, or say “stop everything”.`}

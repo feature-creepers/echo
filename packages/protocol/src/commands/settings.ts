@@ -55,6 +55,11 @@ export const settingsCommands = {
       allowedHosts: z.array(hostSchema).max(MAX_HOSTS).optional(),
       refusedHosts: z.array(hostSchema).max(MAX_HOSTS).optional(),
       approvalWait: z.number().int().min(1).max(MAX_APPROVAL_WAIT).nullable().optional(),
+      /**
+       * The phrase that allows aloud what sends, pays or publishes, as the person says it: the core keeps only its
+       * fingerprint. Two words at least. `null` takes it away.
+       */
+      confirmationPhrase: z.string().trim().min(1).max(200).nullable().optional(),
       browser: z.boolean().optional(),
       desktop: z.boolean().optional(),
       apps: z.array(appSchema).max(MAX_APPS).optional()

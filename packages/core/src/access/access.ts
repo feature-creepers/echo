@@ -6,7 +6,7 @@ import type { Computer } from '../ports/computer.ts'
 import type { ComputerUse, HarnessComputer, Reach, Scope, Verdict } from '../ports/harness.ts'
 import type { Records } from '../ports/records.ts'
 import { fromFolder } from '../projects/folders.ts'
-import type { SettingsChange, UserSettings } from '../settings/settings.ts'
+import type { AccessChange, SettingsChange, UserSettings } from '../settings/settings.ts'
 import type { Tool } from '../tools/tools.ts'
 import type { Screen, Showing } from '../views/screen.ts'
 import { type Activity, createActivity, type NewUse, type UndoResult } from './activity.ts'
@@ -14,6 +14,7 @@ import { createAllowances } from './allowances.ts'
 import { type Answer, type Answered, type Approvals, createApprovals, type Question } from './approvals.ts'
 import { type CommandReading, readCommand } from './commands.ts'
 import { isLocalNetwork, isLoopback, listedHost } from './hosts.ts'
+import { MIN_PHRASE_WORDS, phraseOf } from './phrase.ts'
 import { decide, networkGuard } from './policy.ts'
 import { stopsEverything } from './words.ts'
 
@@ -61,8 +62,11 @@ export interface AccessControl {
    * its next message (`standing`), so work under way keeps its context.
    */
   version(): string
-  /** Something the person said, which may answer a question on screen, or stop everything. True when it did. */
-  hear(said: string): boolean
+  /**
+   * Something the person said, which may answer a question on screen, or stop everything. True when it did.
+   * `spoken`: heard by the device's recogniser rather than typed or pressed.
+   */
+  hear(said: string, spoken?: boolean): boolean
   /** Ask the person something else before acting, with the same cards: one queue, so a yes said aloud answers the latest. */
   ask: Approvals['ask']
   /** Change the access, checking each new place exists. */
@@ -237,7 +241,7 @@ const NO_VERSIONS: Blobs = { put: () => '', get: () => undefined }
 
 export function createAccess({ settings, screen, computer, timers, records, versions, now = () => new Date(), newId }: AccessOptions): AccessControl {
   const access = () => settings.read().access
-  const approvals = createApprovals({ screen, timers, wait: () => access().approvalWait })
+  const approvals = createApprovals({ screen, timers, wait: () => access().approvalWait, phrase: () => access().confirmation })
   let ids = 0
   const nextId = newId ?? (() => `use-${++ids}`)
   const allowances = createAllowances({ newId: nextId, now, destroyingAsked: () => access().askDestroying })
@@ -308,6 +312,8 @@ export function createAccess({ settings, screen, computer, timers, records, vers
           command: use.command ?? '',
           facts: [{ label: 'In', value: where(path) }],
           ...(note ? { note } : {}),
+          // What puts something before others, or sends a file of this computer away, reaches beyond it.
+          ...(reading?.publishes || (reading && reading.sends.length > 0) ? { outward: true } : {}),
           allow: 'Run it',
           ...session(keys.length === 1 ? `Any “${keys[0]}” until you quit` : `Any of ${keys.map((key) => `“${key}”`).join(', ')} until you quit`)
         }
@@ -605,17 +611,22 @@ export function createAccess({ settings, screen, computer, timers, records, vers
       return JSON.stringify([workspace, places, reach, computer?.workspace ?? null])
     },
 
-    hear(said) {
+    hear(said, spoken) {
       if (stopsEverything(said)) {
         stopEverything()
         return true
       }
-      return approvals.hear(said)
+      return approvals.hear(said, spoken)
     },
 
     ask: (question, showing, signal) => approvals.ask(question, showing, signal),
 
-    async set(asked) {
+    async set({ confirmationPhrase, ...given }) {
+      // The phrase is kept as a fingerprint only: it is never stored, shown, or told to a session.
+      const phrase = confirmationPhrase === undefined || confirmationPhrase === null ? null : phraseOf(confirmationPhrase)
+      if (confirmationPhrase !== undefined && confirmationPhrase !== null && !phrase)
+        return { ok: false, error: { code: 'invalid-input', message: `A confirmation phrase has ${MIN_PHRASE_WORDS} words at least.` } }
+      const asked: AccessChange = confirmationPhrase === undefined ? given : { ...given, confirmation: phrase ?? null }
       if (asked.places === undefined) return { ok: true, settings: settings.setAccess(asked) }
       if (!computer) return { ok: false, error: { code: 'invalid-input', message: 'This assistant runs where it cannot reach files.' } }
       const places: Place[] = []

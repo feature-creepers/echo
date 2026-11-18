@@ -117,7 +117,7 @@ export interface Abilities {
   /** Changes when what a thread is given changes, such as its access to the computer: its session is then opened again. */
   version?(): string
   /** Something the person said that answers a question on screen, taken before any turn. True when it did. */
-  hear?(said: string): boolean
+  hear?(said: string, spoken?: boolean): boolean
   /** A thread made or changed files on the computer, at these places, absolute: they are shown where `showing` says. */
   wrote?(showing: Showing, paths: readonly string[]): void
 }
@@ -180,7 +180,7 @@ export interface Channel {
    * The user said something, and may have handed over files and folders with it. The answer follows as events.
    * Said during an answer, it takes the answer's place.
    */
-  say(text: string, language?: string, handed?: Handed): TurnId
+  say(text: string, language?: string, handed?: Handed, spoken?: boolean): TurnId
   /** Greet the user and brief them, unless it was done a little while ago or a turn is under way. */
   greet(): TurnId | undefined
   /**
@@ -1150,10 +1150,11 @@ export function createChannel(options: ChannelOptions): Channel {
   }
 
   return {
-    say(text, language, handed = NOTHING_HANDED) {
-      // A yes or a no to a question on screen answers it: the turn that asked goes on, and no new one starts.
+    say(text, language, handed = NOTHING_HANDED, aloud = false) {
+      // A yes or a no to a question on screen answers it: the turn that asked goes on, and no new one starts. What
+      // answers a question is never kept in the log: a confirmation phrase said aloud is the person's own.
       // Files handed over are something new to look at, never an answer.
-      if (!handedAny(handed) && abilities?.hear?.(text)) return current?.exchange.turn ?? newId()
+      if (!handedAny(handed) && abilities?.hear?.(text, aloud)) return current?.exchange.turn ?? newId()
       memory?.wake()
       const persona = activePersona()
       const attached = attachedOf(handed)

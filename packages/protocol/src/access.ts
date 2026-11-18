@@ -59,6 +59,16 @@ export const DEFAULT_APPROVAL_WAIT = 10
 /** The longest wait the person may choose, in minutes: a day. */
 export const MAX_APPROVAL_WAIT = 24 * 60
 
+/** The most words a confirmation phrase has. */
+export const MAX_PHRASE_WORDS = 8
+
+/**
+ * A confirmation phrase as the core keeps it: the SHA-256 of its words as heard (small letters, no punctuation,
+ * one space between), and how many words it has, so it can be found in what is said around it.
+ */
+export const confirmationPhraseSchema = z.object({ hash: z.string().regex(/^[0-9a-f]{64}$/), words: z.number().int().min(1).max(MAX_PHRASE_WORDS) })
+export type ConfirmationPhrase = z.infer<typeof confirmationPhraseSchema>
+
 export const accessSchema = z.object({
   /** The assistant's own folder, for the files it makes. Read and write. */
   workspace: z.boolean().default(true),
@@ -90,6 +100,11 @@ export const accessSchema = z.object({
   refusedHosts: z.array(hostSchema).max(MAX_HOSTS).default([]),
   /** How many minutes a question waits for an answer before it counts as a no. `null`: until the person answers. */
   approvalWait: z.number().int().min(1).max(MAX_APPROVAL_WAIT).nullable().default(DEFAULT_APPROVAL_WAIT),
+  /**
+   * The phrase that allows aloud what sends, pays or publishes, as the core keeps it: a fingerprint, never the
+   * phrase. `null`: none, and a spoken yes allows it as it allows anything else.
+   */
+  confirmation: confirmationPhraseSchema.nullable().default(null),
   /** Whether the assistant may drive a web browser on the computer, in a window the person sees (docs/SPEC.md, section 12.1). */
   browser: z.boolean().default(true),
   /**
@@ -121,6 +136,7 @@ export const DEFAULT_ACCESS: Access = {
   allowedHosts: [],
   refusedHosts: [],
   approvalWait: DEFAULT_APPROVAL_WAIT,
+  confirmation: null,
   browser: true,
   desktop: false,
   apps: []

@@ -29,7 +29,7 @@ export interface ChannelState extends Followed<ChannelSnapshot> {
    * Say something to the assistant, with the files already handed over and the folders given, if any. Rejects with
    * `CommandFailed` when the core does not take it.
    */
-  say(text: string, language?: string, handed?: Handed): Promise<void>
+  say(text: string, language?: string, handed?: Handed, spoken?: boolean): Promise<void>
   /** The app has opened: let the assistant greet and brief the user, if it is time to. */
   greet(): Promise<void>
   /** Stop the answer under way. */
@@ -95,10 +95,11 @@ export function followChannel(session: Session): ChannelState {
   return {
     current: state.current,
     subscribe: state.subscribe,
-    async say(text, language, handed) {
+    async say(text, language, handed, spoken) {
       await session.run('utterance.send', {
         text,
         ...(language === undefined ? {} : { language }),
+        ...(spoken ? { spoken } : {}),
         ...(handed?.attachments && handed.attachments.length > 0 ? { attachments: [...handed.attachments] } : {}),
         ...(handed?.folders && handed.folders.length > 0 ? { folders: [...handed.folders] } : {})
       })

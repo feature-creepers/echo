@@ -14,6 +14,11 @@ export const conversationCommands = {
         text: z.string().trim().max(UTTERANCE_MAX_LENGTH),
         /** The language spoken, when the device's recogniser could tell. */
         language: languageSchema.optional(),
+        /**
+         * Heard by the device's recogniser, rather than typed or pressed: an answer said aloud to a question about
+         * what sends, pays or publishes needs the person's confirmation phrase, when they set one.
+         */
+        spoken: z.boolean().optional(),
         /** Files handed over with it, each sent first with `attachment.open`. */
         attachments: z.array(attachmentIdSchema).max(ATTACHMENTS_PER_TURN).optional(),
         /**

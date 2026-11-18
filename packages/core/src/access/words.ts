@@ -96,6 +96,16 @@ const normal = (text: string) =>
 
 const says = (text: string, words: readonly string[]) => words.some((word) => text.includes(` ${word} `))
 
+/** The words of something said or typed, as they are heard: small letters, no punctuation. */
+export function wordsOf(text: string): string[] {
+  return normal(text).trim().split(' ').filter(Boolean)
+}
+
+/** Whether something said asks for a yes that lasts the session, whatever else it says. */
+export function saysSession(said: string): boolean {
+  return says(normal(said), SESSION)
+}
+
 export function answerOf(said: string): 'yes' | 'session' | 'no' | undefined {
   const text = normal(said)
   if (text.trim().split(' ').length > MAX_WORDS) return undefined

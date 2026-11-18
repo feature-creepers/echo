@@ -280,7 +280,9 @@ export function desktopTools(options: DesktopToolsOptions): Tool[] {
     }
     let kept: string | undefined
     if (verdict.verdict === 'ask') {
-      const { answer, pressed } = await options.ask(questionFor(request, verdict.because), showing())
+      // Paying, and sending or publishing as the person, reach beyond this computer.
+      const outward = verdict.because === 'pays' || verdict.because === 'sends'
+      const { answer, pressed } = await options.ask({ ...questionFor(request, verdict.because), ...(outward ? { outward } : {}) }, showing())
       if (answer !== 'yes' && answer !== 'session') {
         use('refused', answer === 'no' ? 'declined' : answer === 'stopped' ? 'stopped' : 'unanswered', NOT_DONE[answer])
         return refused(NOT_DONE[answer])

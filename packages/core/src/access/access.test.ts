@@ -150,6 +150,7 @@ describe('access to the computer', () => {
       allowedHosts: [],
       refusedHosts: [],
       approvalWait: 10,
+      confirmation: null,
       browser: true,
       desktop: false,
       apps: [],
@@ -311,6 +312,46 @@ describe('the three levels', () => {
     expect(await first).toMatchObject({ allow: true })
     expect(await reach.approve(command('git push'), signal())).toMatchObject({ allow: true })
     expect(access.activity(1).uses[0]).toMatchObject({ decision: 'ran', reason: 'session' })
+  })
+
+  it('takes a spoken yes to what publishes only with the person’s confirmation phrase, and a press or typed yes as ever', async () => {
+    const { reach, access, settings, screen } = setup()
+    settings.setAccess({ approvals: 'auto' })
+    expect((await access.set({ confirmationPhrase: 'blue' })).ok).toBe(false)
+    const saved = await access.set({ confirmationPhrase: 'Blue Harbour, seven!' })
+    // Only a fingerprint is kept: the phrase is in no setting a client or a session sees.
+    expect(JSON.stringify(saved.ok && saved.settings)).not.toMatch(/harbour/i)
+
+    const pushed = reach.approve(command('git push origin main'), signal())
+    await settle()
+    expect(cardText(screen)).toContain('To allow it aloud, say your confirmation phrase.')
+    // A plain yes said aloud is heard as an answer, and the question still waits for the phrase.
+    expect(access.hear('yes', true)).toBe(true)
+    expect(screen.current()).toBeDefined()
+    expect(access.hear('okay, blue harbour seven', true)).toBe(true)
+    expect(await pushed).toMatchObject({ allow: true })
+
+    // Pressed or typed at the screen, a yes counts without it; a spoken no refuses.
+    const typed = reach.approve(command('git push'), signal())
+    await settle()
+    access.hear('Allow')
+    expect(await typed).toMatchObject({ allow: true })
+    const refused = reach.approve(command('npm publish'), signal())
+    await settle()
+    access.hear('no', true)
+    expect(await refused).toMatchObject({ allow: false })
+
+    // What stays on this computer is answered aloud as before, and without a phrase set, so is all the rest.
+    const local = reach.approve(command('rm -rf build'), signal())
+    await settle()
+    expect(cardText(screen)).not.toContain('confirmation phrase')
+    access.hear('yes', true)
+    expect(await local).toMatchObject({ allow: true })
+    await access.set({ confirmationPhrase: null })
+    const unguarded = reach.approve(command('git push'), signal())
+    await settle()
+    access.hear('yes', true)
+    expect(await unguarded).toMatchObject({ allow: true })
   })
 
   it('refuses a destination the person refused before anyone is asked, and asks before the local network, naming it', async () => {

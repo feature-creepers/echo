@@ -354,7 +354,7 @@ export function createCore(options: CoreOptions): Core {
       },
       worked: (thread, folder) => access.worked(thread, folder),
       version: () => `${access.version()} ${browser.version()} ${desktop.version()}`,
-      hear: (said) => access.hear(said),
+      hear: (said, spoken) => access.hear(said, spoken),
       wrote: (showing, paths) => {
         written?.add(showing, paths).catch((error: unknown) => options.log.error(`The card of written files could not be shown: ${String(error)}`))
         workspaceChanged(paths.flatMap((path) => workspace?.pathOf(path) ?? []))
@@ -402,7 +402,7 @@ export function createCore(options: CoreOptions): Core {
         if (gone.length > 0) return { ok: false, error: { code: 'invalid-input', message: 'A file handed over is no longer here: hand it over again.' } }
         const folders = input.folders && input.folders.length > 0 ? await giveFolders(input.folders, { settings, computer: options.computer }) : []
         const handed = { files: attachments.take(named), folders }
-        return { ok: true, output: { turn: channel.say(input.text, input.language, handed) } }
+        return { ok: true, output: { turn: channel.say(input.text, input.language, handed, input.spoken === true) } }
       },
       'attachment.open': (input) => attachments.open(input),
       'attachment.write': (input) => attachments.write(input.attachment, input.data),

@@ -240,7 +240,8 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
   } = useTalk(speech, (text, language) => {
     setProblem(undefined)
     client.speech.stop()
-    client.channel.say(text, language).catch(() => setProblem(refusalCopy('failed')))
+    // Said aloud: a yes to what sends, pays or publishes counts only with the person's confirmation phrase.
+    client.channel.say(text, language, undefined, true).catch(() => setProblem(refusalCopy('failed')))
   })
   const listening = talk.is === 'listening'
   const [stageScroll, stageEdges] = useScrollEdges()

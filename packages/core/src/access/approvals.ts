@@ -1,8 +1,9 @@
-import { DEFAULT_APPROVAL_WAIT } from '@repo/protocol'
+import { type ConfirmationPhrase, DEFAULT_APPROVAL_WAIT } from '@repo/protocol'
 import type { Timers } from '../ports/clock.ts'
 import type { Signal } from '../ports/harness.ts'
 import type { Screen, Showing } from '../views/screen.ts'
-import { answerOf } from './words.ts'
+import { saysPhrase } from './phrase.ts'
+import { answerOf, saysSession } from './words.ts'
 
 /** What the person is asked: a short question, what it is about, and what it would do. */
 export interface Question {
@@ -24,7 +25,15 @@ export interface Question {
   sessionLabel?: string
   /** What the first yes covers, under its label, when the card offers a yes for the session. Left out: "Only this time". */
   once?: string
+  /**
+   * It reaches beyond this computer: it sends, pays or publishes. Said aloud, a yes to it counts only with the
+   * person's confirmation phrase, when they set one; pressed or typed at the screen, it counts as any other.
+   */
+  outward?: boolean
 }
+
+/** What the card of an outward question says, when the person set a confirmation phrase. */
+export const SAY_THE_PHRASE = 'To allow it aloud, say your confirmation phrase.'
 
 export type Answer = 'yes' | 'session' | 'no' | 'moved-on' | 'stopped' | 'unanswered'
 
@@ -40,8 +49,10 @@ export interface Approvals {
   /**
    * The person said something. A yes or a no answers the latest question waiting, and is theirs to take;
    * anything else while a question waits means they moved on, and the question goes. True when it was an answer.
+   * `spoken`: heard by the device's recogniser rather than typed or pressed. Said aloud to an outward question while
+   * the person has a confirmation phrase, only the phrase allows it; a plain yes leaves the question waiting.
    */
-  hear(said: string): boolean
+  hear(said: string, spoken?: boolean): boolean
   /** Withdraw every question waiting: the person stopped everything. */
   withdraw(): void
 }
@@ -68,18 +79,22 @@ const fenced = (command: string) => {
 export function createApprovals({
   screen,
   timers,
-  wait = () => DEFAULT_APPROVAL_WAIT
+  wait = () => DEFAULT_APPROVAL_WAIT,
+  phrase = () => null
 }: {
   screen: Screen
   timers?: Timers | undefined
   /** How many minutes a question waits before it is taken as a no, as the person set it; `null` until they answer. */
   wait?: () => number | null
+  /** The person's confirmation phrase, as the core keeps it; `null` when they set none. */
+  phrase?: () => ConfirmationPhrase | null
 }): Approvals {
-  const waiting: { view: string | undefined; settle(answer: Answer, pressed?: boolean): void }[] = []
+  const waiting: { view: string | undefined; outward: boolean; settle(answer: Answer, pressed?: boolean): void }[] = []
 
   return {
     ask(question, showing, signal) {
       if (signal?.aborted) return Promise.resolve({ answer: 'stopped', pressed: false })
+      const guarded = question.outward === true && phrase() !== null
       const options = [
         { label: question.allow ?? YES, ...(question.session ? { detail: question.once ?? 'Only this time' } : {}), say: YES },
         ...(question.session ? [{ label: question.sessionLabel ?? 'Allow for this session', detail: question.session, say: SESSION }] : []),
@@ -97,6 +112,7 @@ export function createApprovals({
               ...(question.facts ? ['facts'] : []),
               ...(question.command ? ['command'] : []),
               ...(question.note ? ['note'] : []),
+              ...(guarded ? ['phrase'] : []),
               'choice'
             ]
           },
@@ -105,6 +121,7 @@ export function createApprovals({
           ...(question.facts ? { facts: { type: 'KeyValue', props: { items: question.facts } } } : {}),
           ...(question.command ? { command: { type: 'Prose', props: { markdown: fenced(question.command) } } } : {}),
           ...(question.note ? { note: { type: 'Text', props: { text: question.note.text, tone: question.note.tone, size: 'small' } } } : {}),
+          ...(guarded ? { phrase: { type: 'Text', props: { text: SAY_THE_PHRASE, tone: 'soft', size: 'small' } } } : {}),
           choice: { type: 'Choice', props: { options } }
         }
       }
@@ -116,6 +133,7 @@ export function createApprovals({
       return new Promise<Answered>((resolve) => {
         const entry = {
           view: id,
+          outward: question.outward === true,
           settle(answer: Answer, pressed = false) {
             const at = waiting.indexOf(entry)
             if (at < 0) return
@@ -136,9 +154,21 @@ export function createApprovals({
       })
     },
 
-    hear(said) {
+    hear(said, spoken = false) {
       const latest = waiting.at(-1)
       if (!latest) return false
+      const kept = latest.outward && spoken ? phrase() : null
+      if (kept) {
+        // Only the phrase allows it aloud, with "for the session" if they say so; a no still refuses, and a plain yes
+        // is heard as an answer that leaves the question waiting for the phrase, rather than as something new.
+        if (saysPhrase(said, kept)) {
+          latest.settle(saysSession(said) ? 'session' : 'yes')
+          return true
+        }
+        const answer = answerOf(said)
+        if (answer === 'no') latest.settle('no')
+        if (answer) return true
+      }
       const answer = answerOf(said)
       if (answer) {
         // A button sends its own words exactly; anything else was said or typed.

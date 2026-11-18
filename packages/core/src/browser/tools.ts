@@ -154,7 +154,9 @@ export function browserTools(options: BrowserToolsOptions): Tool[] {
     let decision: BrowserAction['decision'] = 'allowed'
     let kept: string | undefined
     if (verdict.verdict === 'ask') {
-      const { answer, pressed } = await options.ask(questionFor(request, verdict.because), showing())
+      // Paying, and sending or publishing as the person, reach beyond this computer.
+      const outward = verdict.because === 'pays' || verdict.because === 'sends' || verdict.because === 'upload'
+      const { answer, pressed } = await options.ask({ ...questionFor(request, verdict.because), ...(outward ? { outward } : {}) }, showing())
       // A page's card offers no yes for the session; said aloud, it is a yes for this action.
       if (answer !== 'yes' && answer !== 'session') {
         record({ ...base, decision: 'declined', answer, ...(verdict.because ? { because: verdict.because } : {}) })
