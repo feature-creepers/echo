@@ -29,6 +29,11 @@ export const threadSchema = z.object({
   state: z.enum(THREAD_STATES),
   /** For an aside: the topic on the stage when it was opened, which it sits beside. */
   parent: threadIdSchema.optional(),
+  /**
+   * For a project: the folder the thread works in, absolute, as the system names it. Its session runs there, reads
+   * the folder's own instructions for those who work in it, and works on its files as a developer would.
+   */
+  folder: z.string().min(1).max(4096).optional(),
   /** When it was last used: an ISO 8601 date in UTC. */
   at: z.string()
 })

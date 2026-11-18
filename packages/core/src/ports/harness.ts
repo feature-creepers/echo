@@ -128,7 +128,8 @@ export type SessionEvent =
    * A tool of the core, or a web tool of the harness, started or ended. `name` is the tool's name as the core
    * serves it. `call` tells the calls apart. A call can be reported started twice: as soon as the session begins
    * writing it, then again once its input is complete. Its end carries what the tool gave back, whole, and, for
-   * a use of the computer that made or changed files, where they are, absolute.
+   * a use of the computer that made or changed files, where they are, absolute, and for a use of the computer the
+   * core allowed, the identifier `Reach.approve` gave it.
    */
   | {
       type: 'tool'
@@ -139,6 +140,7 @@ export type SessionEvent =
       output?: string
       failed?: boolean
       wrote?: string[]
+      use?: string
     }
   /** The turn is over. Nothing more comes until the next `send`. */
   | { type: 'turn-end' }

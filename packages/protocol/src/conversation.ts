@@ -116,6 +116,8 @@ export const stepSchema = z.object({
   output: z.string().optional(),
   /** Whether the tool said it failed. */
   failed: z.boolean().optional(),
+  /** For a use of the computer: the activity's record of it, with what was decided and the files it changed. */
+  use: z.string().min(1).max(64).optional(),
   /** When it started and ended: ISO 8601 dates in UTC. */
   at: z.string(),
   ended: z.string().optional()

@@ -359,6 +359,7 @@ export function createChannel(options: ChannelOptions): Channel {
     if (event.phase === 'ended') {
       if (event.output !== undefined) next.output = event.output.length > OUTPUT_KEPT ? `${event.output.slice(0, OUTPUT_KEPT)}\n[…cut]` : event.output
       if (event.failed) next.failed = true
+      if (event.use !== undefined) next.use = event.use
       next.ended = at
       turn.steps.delete(call)
       records.append([{ type: STEP, payload: next }])
