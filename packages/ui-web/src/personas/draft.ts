@@ -12,6 +12,19 @@ export interface PersonaDraft {
   active?: PersonaId
 }
 
+/**
+ * A name as it is typed, put in the form names are kept in as the user types: capitals, no accents, and a
+ * hyphen for a space. Surrounding hyphens are left for the field to point out, since trimming as the user types
+ * would swallow the space between two words.
+ */
+export function asTyped(typed: string): string {
+  return typed
+    .normalize('NFKD')
+    .replace(/\p{M}+/gu, '')
+    .replace(/\s/g, '-')
+    .toUpperCase()
+}
+
 /** A draft with no edit in it. */
 export const NO_EDITS: PersonaDraft = { names: {} }
 

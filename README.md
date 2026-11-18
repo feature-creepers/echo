@@ -2,7 +2,7 @@
 
 A personal assistant you talk to. It answers with a short spoken sentence and with interface elements it composes on screen. One assistant, one conversation, on Windows, macOS and Linux.
 
-The assistant has personalities, and you call it by the name of the one in use. Two come with it, named Jarvis and HAL until you rename them: the first goes along with you, the second questions you before a risky move.
+The assistant has personalities, and you call it by the name of the one in use. Two come with it, named JARVIS and HAL until you rename them: the first goes along with you, the second questions you before a risky move.
 
 ## What it does
 

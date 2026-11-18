@@ -23,7 +23,7 @@ export const stanceCopy: Record<Stance, { label: string; summary: string }> = {
 export const nameProblemCopy: Record<NameProblem, string> = {
   empty: 'Type a name.',
   'too-long': `Keep it to ${PERSONA_NAME_MAX_LENGTH} characters.`,
-  characters: 'Use letters and digits, with spaces, hyphens or apostrophes between them.',
+  characters: 'Use letters from A to Z and digits, with a hyphen between words.',
   taken: 'Each personality needs a name of its own.'
 }
 

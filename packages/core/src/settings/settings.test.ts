@@ -4,8 +4,8 @@ import { PERSONAS_SET } from '../personas/choice.ts'
 import { memoryRecords } from '../records/memory.ts'
 import { createUserSettings, ENGINES_MODEL, ENGINES_PREFERRED } from './settings.ts'
 
-const first: Persona = { id: 'first', name: 'Ada', stance: 'accommodating', accent: 'cyan' }
-const second: Persona = { id: 'second', name: 'Grace', stance: 'critical', accent: 'red' }
+const first: Persona = { id: 'first', name: 'ADA', stance: 'accommodating', accent: 'cyan' }
+const second: Persona = { id: 'second', name: 'GRACE', stance: 'critical', accent: 'red' }
 const defaults: readonly [Persona, ...Persona[]] = [first, second]
 
 describe('the settings of a new user', () => {
@@ -50,7 +50,7 @@ describe('setPersonas', () => {
 
     const expected: Settings = {
       revision: 1,
-      personas: { available: [first, { ...second, name: 'Marvin' }], active: 'second', confirmed: true },
+      personas: { available: [first, { ...second, name: 'MARVIN' }], active: 'second', confirmed: true },
       engines: { models: {} },
       access: DEFAULT_ACCESS,
       languages: DEFAULT_LANGUAGES
@@ -76,11 +76,11 @@ describe('setPersonas', () => {
   it('writes nothing when a confirmed choice is repeated', () => {
     const records = memoryRecords()
     const settings = createUserSettings(records, defaults)
-    settings.setPersonas({ names: [{ persona: 'first', name: 'Alan' }], active: 'first' })
+    settings.setPersonas({ names: [{ persona: 'first', name: 'ALAN' }], active: 'first' })
     const heard = vi.fn()
     settings.onChange(heard)
 
-    const again = settings.setPersonas({ names: [{ persona: 'first', name: 'Alan' }], active: 'first' })
+    const again = settings.setPersonas({ names: [{ persona: 'first', name: 'ALAN' }], active: 'first' })
 
     expect(again).toMatchObject({ ok: true, settings: { revision: 1 } })
     expect(records.read([PERSONAS_SET])).toHaveLength(1)
@@ -103,30 +103,30 @@ describe('settings read back from the records', () => {
   it('are what the user left', () => {
     const records = memoryRecords()
     const before = createUserSettings(records, defaults)
-    before.setPersonas({ names: [{ persona: 'first', name: 'Alan' }], active: 'first' })
-    before.setPersonas({ names: [{ persona: 'second', name: 'Marvin' }], active: 'second' })
+    before.setPersonas({ names: [{ persona: 'first', name: 'ALAN' }], active: 'first' })
+    before.setPersonas({ names: [{ persona: 'second', name: 'MARVIN' }], active: 'second' })
 
     const after = createUserSettings(records, defaults)
 
     expect(after.read()).toEqual(before.read())
     expect(after.read()).toMatchObject({ revision: 2, personas: { active: 'second', confirmed: true } })
-    expect(after.read().personas.available.map((persona) => persona.name)).toEqual(['Alan', 'Marvin'])
+    expect(after.read().personas.available.map((persona) => persona.name)).toEqual(['ALAN', 'MARVIN'])
   })
 
   it('give a persona the user never renamed its default name, even when that default changed since', () => {
     const records = memoryRecords()
-    createUserSettings(records, defaults).setPersonas({ names: [{ persona: 'first', name: 'Alan' }], active: 'first' })
+    createUserSettings(records, defaults).setPersonas({ names: [{ persona: 'first', name: 'ALAN' }], active: 'first' })
 
     const later = createUserSettings(records, [first, { ...second, name: 'Hopper' }])
 
-    expect(later.read().personas.available.map((persona) => persona.name)).toEqual(['Alan', 'Hopper'])
+    expect(later.read().personas.available.map((persona) => persona.name)).toEqual(['ALAN', 'Hopper'])
   })
 
   it('skip a record this version cannot read', () => {
     const records = memoryRecords()
     records.append([
       { type: PERSONAS_SET, payload: { from: 'another version' } },
-      { type: PERSONAS_SET, payload: { names: [{ persona: 'gone', name: 'Alan' }], active: 'second' } }
+      { type: PERSONAS_SET, payload: { names: [{ persona: 'gone', name: 'ALAN' }], active: 'second' } }
     ])
 
     const settings = createUserSettings(records, defaults)
@@ -191,7 +191,7 @@ describe('the engines the user chose', () => {
   it('keep the personas when the engines change, and the engines when the personas do', () => {
     const settings = createUserSettings(memoryRecords(), defaults)
     settings.chooseModel('claude-code', 'opus')
-    settings.setPersonas({ names: [{ persona: 'first', name: 'Alan' }], active: 'second' })
+    settings.setPersonas({ names: [{ persona: 'first', name: 'ALAN' }], active: 'second' })
 
     expect(settings.read()).toMatchObject({ personas: { active: 'second' }, engines: { models: { 'claude-code': 'opus' } } })
   })

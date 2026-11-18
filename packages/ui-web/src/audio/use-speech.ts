@@ -1,10 +1,12 @@
 import type { Client } from '@repo/client'
+import { useFollowed } from '@repo/client/react'
 import type { Persona } from '@repo/protocol'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { silentVoice } from '../conversation/silent-voice.ts'
 import { useDevice } from '../device/device.tsx'
 import { findDevice } from './devices.ts'
 import type { InstallProgress, SpeechEngine, SpeechReadiness } from './engine.ts'
+import { namesAsWords } from './names.ts'
 import { engineVoice, type SpeakingVoice } from './voice.ts'
 
 /**
@@ -75,6 +77,11 @@ export function useDeviceSpeech(engine: SpeechEngine | undefined, client: Client
   const [styles, setStyles] = useState<{ id: string; name: string }[]>([])
   const speaking = useRef({ persona, picked })
   speaking.current = { persona, picked }
+  // Every persona's name, which the voice says as a word although it is written in capitals.
+  const snapshot = useFollowed(client.settings)
+  const names = useRef<readonly string[]>([])
+  names.current = snapshot.state === 'ready' ? snapshot.settings.personas.available.map((one) => one.name) : []
+  const spoken = useCallback((text: string) => namesAsWords(text, names.current), [])
   // How the voice speaks and where it plays are settings of this device, read for each sentence.
   const { settings } = useDevice()
   const manner = useRef({ speed: settings.voice.speed, sink: undefined as string | undefined })
@@ -134,11 +141,12 @@ export function useDeviceSpeech(engine: SpeechEngine | undefined, client: Client
       const sample = engineVoice(ready, {
         style: () => styleOf(persona, speaking.current.picked),
         speed: () => paceOf(persona, speed ?? manner.current.speed),
-        sink: () => manner.current.sink
+        sink: () => manner.current.sink,
+        spoken
       })
       sample.say({ turn: 'preview', text, language: undefined })
     },
-    [ready]
+    [ready, spoken]
   )
 
   // Answers are spoken once the voice is installed, unless the user wants them only shown.
@@ -147,7 +155,8 @@ export function useDeviceSpeech(engine: SpeechEngine | undefined, client: Client
     const made = engineVoice(ready, {
       style: () => styleOf(speaking.current.persona, speaking.current.picked),
       speed: () => paceOf(speaking.current.persona, manner.current.speed),
-      sink: () => manner.current.sink
+      sink: () => manner.current.sink,
+      spoken
     })
     voice.current = made
     client.speech.use(made)
@@ -155,7 +164,7 @@ export function useDeviceSpeech(engine: SpeechEngine | undefined, client: Client
       voice.current = undefined
       client.speech.use(silentVoice())
     }
-  }, [ready, aloud, client])
+  }, [ready, aloud, client, spoken])
 
   const startInstall = useCallback(() => {
     if (!engine) return

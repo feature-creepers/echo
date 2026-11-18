@@ -693,7 +693,7 @@ Two personas ship with the product. They are two entries in one list:
 
 | Default name | Stance        | Accent    | Answers at first launch |
 | ------------ | ------------- | --------- | ----------------------- |
-| Jarvis       | Accommodating | Cyan-blue | Yes                     |
+| JARVIS       | Accommodating | Cyan-blue | Yes                     |
 | HAL          | Critical      | Red       | No                      |
 
 **No code names a persona.** The default names are written in one file, `packages/core/src/personas/defaults.ts`, and nowhere else. Behaviour depends on the stance, the look depends on the accent, and every text the user reads is written for a stance. Neither default is treated differently from the other. Tests use made-up personas. A check built from that file (`scripts/check-persona-names.ts`, part of `pnpm check`) refuses a default name anywhere else in the code: in an identifier, a text or a file name. For the same reason this spec says "the critical persona" where it means the behaviour, and a name only where it means the default name.
@@ -701,7 +701,8 @@ Two personas ship with the product. They are two entries in one list:
 ### 11.1 Names
 
 - **The user chooses them.** At first launch the app shows the personas with their default names. The user keeps them or types their own, and picks the one that answers (section 11.5). Both can be changed later in settings.
-- **A name is something said aloud.** It is kept to letters and digits of any script, with spaces, hyphens, apostrophes and full stops between them, and to 24 characters.
+- **A name is written as a call sign.** Capitals from A to Z and digits, in words joined by single hyphens ("ADA", "UNIT-7"), up to 24 characters: it reads the same on every screen and stands out from the words around it. Typing is forgiving, and the field shows the kept form as the user types: small letters become capitals, accents are dropped and a space becomes a hyphen. A name an earlier version kept in another form (small letters, spaces, apostrophes, other scripts) is read in this form, what cannot be written becoming a hyphen; a persona left with nothing keeps its default name.
+- **A name is said as a word.** In capitals, a voice may spell a name letter by letter, so the device's voice is given each persona's name as a word ("UNIT-7" is said "Unit 7"). The user calls a persona by its name in any case.
 - **Two personas never share a name**, whatever the case. The name is how the user says which one they are talking to.
 - **Names are user settings.** The core keeps them, so they follow the user to every device (section 5.2). Only the user's choices are stored, never the defaults: a user who never renamed a persona gets its default name as each version defines it.
 
@@ -742,7 +743,7 @@ Example: "Send this to my landlord now." The critical persona: "I'd hold it. The
 
 - **Objection is not permission.** Approval before risky actions (sending, deleting, paying) is a safety gate that exists whatever the persona (section 12). An objection is a matter of judgement. They are separate mechanisms.
 - **Model refusals are outside the persona.** If the underlying model declines a request on its own policy, no persona can override it.
-- **The default names.** Jarvis and HAL are characters owned by film studios. That is harmless for a personal project and a risk for a distributed product. They are defaults in one file: changing them is a one-line change, and it does not touch a user who chose their own names.
+- **The default names.** JARVIS and HAL are characters owned by film studios. That is harmless for a personal project and a risk for a distributed product. They are defaults in one file: changing them is a one-line change, and it does not touch a user who chose their own names.
 
 ## 12. Tools, permissions and privacy
 
@@ -1370,7 +1371,7 @@ Not built yet: vector search and thread summaries (section 10), approvals for se
 | 11  | Licence                                 | MIT                                                                                                                                                 |
 | 12  | Credits                                 | Tommy Sendra and Rodolphe Barbanneau are co-authors and joint copyright holders, named in that order                                                |
 | 13  | The product's name                      | Echo, chosen on 17 November knowing two things: Amazon sells voice devices under the name Echo, and no short domain is free (section 16)            |
-| 14  | Persona names                           | Chosen by the user. Jarvis and HAL are defaults, offered at first launch and changeable in settings. No code names a persona (section 11)           |
+| 14  | Persona names                           | Chosen by the user. JARVIS and HAL are defaults, offered at first launch and changeable in settings. No code names a persona (section 11)           |
 | 15  | What the catalogue contains             | Generic building blocks only. No component made for one subject and no prepared artwork: the assistant composes and draws (section 9.6)             |
 | 16  | When memory is processed                | While the assistant sleeps: after a quiet period, at a set time, on request or never, as the user sets it (section 10.6)                            |
 | 17  | The model the assistant answers with    | The user's choice per AI program: Haiku by default with Claude Code (Sonnet, Opus), Terra with Codex. Routing stays on the fast model (section 6.2) |

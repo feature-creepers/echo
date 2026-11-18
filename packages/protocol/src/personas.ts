@@ -44,27 +44,64 @@ export type PersonaNameProblem =
   | 'empty'
   /** More than `PERSONA_NAME_MAX_LENGTH` characters. */
   | 'too-long'
-  /** Something else than letters, digits, spaces, hyphens, apostrophes and full stops, or no letter or digit at all. */
+  /** Something else than letters from A to Z, digits, and hyphens between them. */
   | 'characters'
 
 export type PersonaNameReading = { ok: true; name: string } | { ok: false; problem: PersonaNameProblem }
 
-const ALLOWED = /^[\p{L}\p{M}\p{N} .'’-]+$/u
-const SAYABLE = /[\p{L}\p{N}]/u
+/** A name as it is kept: words of capitals and digits, joined by single hyphens. */
+const KEPT = /^[A-Z0-9]+(?:-[A-Z0-9]+)*$/
+
+/**
+ * A name in the form a persona carries it, as far as typing can be turned into it: accents dropped, capitals,
+ * and a hyphen where there were spaces. What is left may still not be a name; `readPersonaName` says.
+ */
+export function personaNameForm(typed: string): string {
+  return typed
+    .normalize('NFKD')
+    .replace(/\p{M}+/gu, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .toUpperCase()
+}
 
 /**
  * Read a name as someone typed it, and say whether a persona can carry it.
  *
- * A name is something the user says aloud, so it is kept to what can be said: letters and digits of any
- * script, with spaces, hyphens, apostrophes and full stops between them. Surrounding spaces are dropped
- * and runs of spaces become one. Client and core both use this, so they never disagree.
+ * A persona's name is written as a call sign is: capitals from A to Z and digits, in words joined by hyphens
+ * ("ADA", "UNIT-7"). It reads the same on every screen and in every script the user writes in, and it is told
+ * apart from the words around it in a sentence. Typing is forgiving: small letters become capitals, accents
+ * are dropped and spaces become hyphens. Client and core both use this, so they never disagree.
  */
 export function readPersonaName(typed: string): PersonaNameReading {
-  const name = typed.normalize('NFC').trim().replace(/\s+/g, ' ')
+  const name = personaNameForm(typed)
   if (name === '') return { ok: false, problem: 'empty' }
-  if ([...name].length > PERSONA_NAME_MAX_LENGTH) return { ok: false, problem: 'too-long' }
-  if (!ALLOWED.test(name) || !SAYABLE.test(name)) return { ok: false, problem: 'characters' }
+  if (name.length > PERSONA_NAME_MAX_LENGTH) return { ok: false, problem: 'too-long' }
+  if (!KEPT.test(name)) return { ok: false, problem: 'characters' }
   return { ok: true, name }
+}
+
+/**
+ * A name kept by an earlier version, which allowed more, in the form names take now: what cannot be written
+ * becomes a hyphen. Nothing when no letter or digit is left, and the persona then keeps its default name.
+ */
+export function earlierPersonaName(kept: string): string | undefined {
+  const name = personaNameForm(kept)
+    .replace(/[^A-Z0-9]+/g, '-')
+    .slice(0, PERSONA_NAME_MAX_LENGTH)
+    .replace(/^-+|-+$/g, '')
+  return name === '' ? undefined : name
+}
+
+/**
+ * A name as it is said aloud: in capitals, a voice may spell it letter by letter, so it is given as a word
+ * ("UNIT-7" is said "Unit 7").
+ */
+export function spokenPersonaName(name: string): string {
+  return name
+    .split('-')
+    .map((word) => word.charAt(0) + word.slice(1).toLowerCase())
+    .join(' ')
 }
 
 /** Whether two names would be heard as the same: they differ at most by case. Two personas cannot share one. */

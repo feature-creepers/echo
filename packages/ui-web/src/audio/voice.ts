@@ -17,6 +17,8 @@ export interface VoiceManner {
   speed?: () => number
   /** The output device to play on. Nothing for the system's choice. */
   sink?: () => string | undefined
+  /** A sentence as it is said, when that differs from how it is written: names in capitals, for instance. */
+  spoken?: (text: string) => string
 }
 
 /**
@@ -54,7 +56,7 @@ export function engineVoice(engine: SpeechEngine, manner: VoiceManner | (() => s
     const speed = how.speed?.() ?? 1
     const style = how.style()
     const made = clauses(text).map((piece) =>
-      engine.speak(piece, { language: language ?? fallbackLanguage, style, ...(speed === 1 ? {} : { speed }) }).then(
+      engine.speak(how.spoken?.(piece) ?? piece, { language: language ?? fallbackLanguage, style, ...(speed === 1 ? {} : { speed }) }).then(
         (sound) => {
           const out = audio.createBuffer(1, sound.samples.length, sound.sampleRate)
           out.copyToChannel(new Float32Array(sound.samples), 0)

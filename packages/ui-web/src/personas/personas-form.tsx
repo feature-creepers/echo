@@ -8,7 +8,7 @@ import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { TextField } from '../primitives/text-field.tsx'
 import { accentStyle } from '../styles/accent.ts'
 import { nameProblemCopy, refusalCopy, stanceCopy } from './copy.ts'
-import { activeIn, choiceOf, NO_EDITS, nameIn, type PersonaDraft, problemsOf } from './draft.ts'
+import { activeIn, asTyped, choiceOf, NO_EDITS, nameIn, type PersonaDraft, problemsOf } from './draft.ts'
 
 export interface PersonasFormProps {
   personas: readonly Persona[]
@@ -88,6 +88,7 @@ export function PersonasForm({ personas, active, submitLabel, busyLabel, doneLab
                 value={nameIn(draft, persona)}
                 maxLength={PERSONA_NAME_MAX_LENGTH * 2}
                 first={index === 0}
+                transform={asTyped}
                 problem={problem && nameProblemCopy[problem]}
                 onChange={(name) => change({ ...draft, names: { ...draft.names, [persona.id]: name } })}
               />

@@ -1,6 +1,6 @@
 import type { Persona } from '@repo/protocol'
 import { describe, expect, it } from 'vitest'
-import { activeIn, choiceOf, NO_EDITS, nameIn, problemsOf } from './draft.ts'
+import { activeIn, asTyped, choiceOf, NO_EDITS, nameIn, problemsOf } from './draft.ts'
 
 const first: Persona = { id: 'first', name: 'Ada', stance: 'accommodating', accent: 'cyan' }
 const second: Persona = { id: 'second', name: 'Grace', stance: 'critical', accent: 'red' }
@@ -64,5 +64,17 @@ describe('problemsOf', () => {
 
   it('reports every field that is wrong', () => {
     expect(problemsOf(personas, { names: { first: '', second: '🙂' } })).toEqual({ first: 'empty', second: 'characters' })
+  })
+})
+
+describe('asTyped', () => {
+  it.each([
+    ['ada', 'ADA'],
+    ['mary jane', 'MARY-JANE'],
+    ['zoë', 'ZOE'],
+    ['unit ', 'UNIT-']
+  ])('writes %j as %j while it is typed, keeping its length', (typed, shown) => {
+    expect(asTyped(typed)).toBe(shown)
+    expect(asTyped(typed)).toHaveLength(typed.length)
   })
 })

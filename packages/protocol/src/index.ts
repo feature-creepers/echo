@@ -109,17 +109,20 @@ export {
   ACCENTS,
   type Accent,
   accentSchema,
+  earlierPersonaName,
   PERSONA_NAME_MAX_LENGTH,
   type Persona,
   type PersonaId,
   type PersonaNameProblem,
   type PersonaNameReading,
   personaIdSchema,
+  personaNameForm,
   personaSchema,
   readPersonaName,
   STANCES,
   type Stance,
   samePersonaName,
+  spokenPersonaName,
   stanceSchema
 } from './personas.ts'
 export { type Settings, settingsSchema } from './settings.ts'

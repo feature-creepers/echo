@@ -1,4 +1,13 @@
-import { type CommandError, type CommandInput, type Persona, type PersonaId, personaIdSchema, readPersonaName, samePersonaName } from '@repo/protocol'
+import {
+  type CommandError,
+  type CommandInput,
+  earlierPersonaName,
+  type Persona,
+  type PersonaId,
+  personaIdSchema,
+  readPersonaName,
+  samePersonaName
+} from '@repo/protocol'
 import { z } from 'zod'
 
 /** The type of the record written each time the user names the personas or picks the one that answers. */
@@ -18,10 +27,19 @@ export interface Cast {
   active: PersonaId
 }
 
-/** Read the payload of a record. Gives nothing for one this version cannot read, which is then skipped. */
+/**
+ * Read the payload of a record. Gives nothing for one this version cannot read, which is then skipped. A name
+ * kept by an earlier version, which allowed small letters, spaces and other scripts, is put in the form names
+ * take now; one with nothing left to write is dropped, and that persona keeps its default name.
+ */
 export function readChoice(payload: unknown): PersonaChoice | undefined {
   const choice = choiceSchema.safeParse(payload)
-  return choice.success ? choice.data : undefined
+  if (!choice.success) return undefined
+  const names = choice.data.names.flatMap(({ persona, name }) => {
+    const kept = earlierPersonaName(name)
+    return kept === undefined ? [] : [{ persona, name: kept }]
+  })
+  return { ...choice.data, names }
 }
 
 export type ChoiceCheck = { ok: true; choice: PersonaChoice } | { ok: false; error: CommandError }

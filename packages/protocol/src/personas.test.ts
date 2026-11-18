@@ -1,43 +1,75 @@
 import { describe, expect, it } from 'vitest'
-import { PERSONA_NAME_MAX_LENGTH, readPersonaName, samePersonaName } from './personas.ts'
+import { earlierPersonaName, PERSONA_NAME_MAX_LENGTH, readPersonaName, samePersonaName, spokenPersonaName } from './personas.ts'
 
 describe('readPersonaName', () => {
   it.each([
-    ['Ada', 'Ada'],
-    ['Unit 9000', 'Unit 9000'],
+    ['ADA', 'ADA'],
+    ['UNIT-9000', 'UNIT-9000'],
     ['R2-D2', 'R2-D2'],
-    ["O'Neil", "O'Neil"],
-    ['Ève', 'Ève'],
-    ['小爱', '小爱'],
-    ['Dr. Watson', 'Dr. Watson']
+    ['7', '7']
   ])('accepts %s', (typed, name) => {
     expect(readPersonaName(typed)).toEqual({ ok: true, name })
   })
 
-  it('drops surrounding spaces and joins runs of spaces', () => {
-    expect(readPersonaName('  Mary   Jane \t')).toEqual({ ok: true, name: 'Mary Jane' })
+  it.each([
+    ['ada', 'ADA'],
+    ['Unit 9000', 'UNIT-9000'],
+    ['  Mary   Jane \t', 'MARY-JANE'],
+    ['Ève', 'EVE'],
+    ['Zoë', 'ZOE']
+  ])('writes %j as a name is kept', (typed, name) => {
+    expect(readPersonaName(typed)).toEqual({ ok: true, name })
   })
 
-  it('stores composed and decomposed accents the same way', () => {
-    const decomposed = 'Ève'
-    expect(readPersonaName(decomposed)).toEqual({ ok: true, name: 'Ève' })
+  it('reads composed and decomposed accents the same way', () => {
+    expect(readPersonaName('E\u0300ve')).toEqual(readPersonaName('\u00c8ve'))
   })
 
   it.each(['', '   ', '\n'])('refuses an empty name (%j)', (typed) => {
     expect(readPersonaName(typed)).toEqual({ ok: false, problem: 'empty' })
   })
 
-  it('counts characters, not bytes, against the limit', () => {
-    expect(readPersonaName('é'.repeat(PERSONA_NAME_MAX_LENGTH)).ok).toBe(true)
-    expect(readPersonaName('é'.repeat(PERSONA_NAME_MAX_LENGTH + 1))).toEqual({ ok: false, problem: 'too-long' })
+  it('refuses a name longer than the limit', () => {
+    expect(readPersonaName('A'.repeat(PERSONA_NAME_MAX_LENGTH)).ok).toBe(true)
+    expect(readPersonaName('A'.repeat(PERSONA_NAME_MAX_LENGTH + 1))).toEqual({ ok: false, problem: 'too-long' })
   })
 
-  it.each(['<b>', 'a/b', 'name@home', '🙂', 'tab\u0000'])('refuses what cannot be said (%j)', (typed) => {
+  it.each(['<b>', 'a/b', 'name@home', '🙂', "O'Neil", 'Dr. Watson', '小爱', 'tab\u0000'])('refuses what is not capitals, digits and hyphens (%j)', (typed) => {
     expect(readPersonaName(typed)).toEqual({ ok: false, problem: 'characters' })
   })
 
-  it.each(['-', "'", '. .'])('refuses a name with no letter or digit (%j)', (typed) => {
+  it.each(['-', '-ADA', 'ADA-', 'A--B'])('refuses hyphens that join nothing (%j)', (typed) => {
     expect(readPersonaName(typed)).toEqual({ ok: false, problem: 'characters' })
+  })
+})
+
+describe('earlierPersonaName', () => {
+  it.each([
+    ['Ada', 'ADA'],
+    ["O'Neil", 'O-NEIL'],
+    ['Dr. Watson', 'DR-WATSON'],
+    ['Ève', 'EVE'],
+    ['  R2 D2 ', 'R2-D2']
+  ])('keeps %j as %j', (kept, name) => {
+    expect(earlierPersonaName(kept)).toBe(name)
+  })
+
+  it('keeps no name made only of what cannot be written', () => {
+    expect(earlierPersonaName('小爱')).toBeUndefined()
+    expect(earlierPersonaName("'. .")).toBeUndefined()
+  })
+
+  it('cuts a long name at the limit, never on a hyphen', () => {
+    const name = earlierPersonaName(`${'A'.repeat(PERSONA_NAME_MAX_LENGTH - 1)} BCD`)
+    expect(name).toBe('A'.repeat(PERSONA_NAME_MAX_LENGTH - 1))
+    expect(readPersonaName(name ?? '').ok).toBe(true)
+  })
+})
+
+describe('spokenPersonaName', () => {
+  it('says a name as a word', () => {
+    expect(spokenPersonaName('ADA')).toBe('Ada')
+    expect(spokenPersonaName('UNIT-7')).toBe('Unit 7')
   })
 })
 
@@ -48,6 +80,6 @@ describe('samePersonaName', () => {
   })
 
   it('tells different names apart', () => {
-    expect(samePersonaName('Ada', 'Adam')).toBe(false)
+    expect(samePersonaName('ADA', 'ADAM')).toBe(false)
   })
 })

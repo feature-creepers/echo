@@ -52,10 +52,10 @@ describe('a core', () => {
     const [first, second] = (await run(core, 'settings.read', {})).settings.personas.available
     if (!first || !second) throw new Error('This test needs two personas.')
 
-    const { settings } = await run(core, 'personas.set', { names: [{ persona: second.id, name: 'Marvin' }], active: second.id })
+    const { settings } = await run(core, 'personas.set', { names: [{ persona: second.id, name: 'MARVIN' }], active: second.id })
 
     expect(settings.personas).toMatchObject({ active: second.id, confirmed: true })
-    expect(settings.personas.available.map((persona) => persona.name)).toEqual([first.name, 'Marvin'])
+    expect(settings.personas.available.map((persona) => persona.name)).toEqual([first.name, 'MARVIN'])
     expect(events).toEqual([{ type: 'event', name: 'settings.changed', settings }])
   })
 
@@ -74,7 +74,7 @@ describe('a core', () => {
     const records = memoryRecords()
     const before = start(records).core
     const { settings: asked } = await run(before, 'settings.read', {})
-    const { settings: left } = await run(before, 'personas.set', { names: [{ persona: asked.personas.active, name: 'Alan' }], active: asked.personas.active })
+    const { settings: left } = await run(before, 'personas.set', { names: [{ persona: asked.personas.active, name: 'ALAN' }], active: asked.personas.active })
 
     expect((await run(start(records).core, 'settings.read', {})).settings).toEqual(left)
   })

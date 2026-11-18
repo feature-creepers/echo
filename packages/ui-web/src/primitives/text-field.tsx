@@ -11,11 +11,16 @@ export interface TextFieldProps {
   maxLength?: number
   /** Take the keyboard when the screen opens: for the first field of a screen that exists to be typed in. */
   first?: boolean
+  /**
+   * Put what is typed in the form the value takes (capitals, for instance), as it is typed. It must keep the
+   * length of what it is given, so the caret stays where the user is typing.
+   */
+  transform?: (typed: string) => string
   className?: string
 }
 
 /** One line of text with its label. A problem is announced to a screen reader as soon as it appears. */
-export function TextField({ label, value, onChange, problem, maxLength, first = false, className }: TextFieldProps) {
+export function TextField({ label, value, onChange, problem, maxLength, first = false, transform, className }: TextFieldProps) {
   const id = useId()
   const problemId = `${id}-problem`
   return (
@@ -34,7 +39,17 @@ export function TextField({ label, value, onChange, problem, maxLength, first = 
         spellCheck={false}
         aria-invalid={problem !== undefined}
         aria-describedby={problemId}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) => {
+          const field = event.target
+          const typed = transform ? transform(field.value) : field.value
+          if (typed !== field.value && typed.length === field.value.length) {
+            // Written back with the caret where it was, so the field already shows what the state will hold.
+            const [start, end] = [field.selectionStart, field.selectionEnd]
+            field.value = typed
+            field.setSelectionRange(start, end)
+          }
+          onChange(typed)
+        }}
         className="h-9 w-full rounded-md border border-line-strong bg-black/25 px-3 text-sm text-text shadow-[inset_0_1px_1px_rgb(0_0_0/0.25)] transition duration-(--duration-quick) ease-soft placeholder:text-text-faint aria-invalid:border-danger"
       />
       <p id={problemId} role="alert" className="min-h-5 text-danger text-xs">
