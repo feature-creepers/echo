@@ -980,6 +980,7 @@ On 18 November 2026 the assistant, running in the app on the owner's Windows com
 - A browser of its own (section 12.1).
 - Other apps, seen and operated through the accessibility tree, with their guardrails (section 12.1).
 - The signed log: the activity chained by hash, checked and exported (section 12.2).
+- The clipboard, read on a card and written freely (item 6 below).
 - Guardrails as settings: deleting and publishing always asked unless the owner turns it off, and how long a question waits (section 12.2).
 
 Two of the report's findings were mistaken. A question can already be answered aloud ("yes, go ahead"). Its web search returning American results comes from the harness's own tool, not from this product.
@@ -1000,7 +1001,7 @@ The rest is designed here and built in this order, each behind the same gate as 
 4. **A vault for secrets.** Kept by the system: Credential Manager and DPAPI on Windows, the Keychain on macOS, the Secret Service on Linux. The assistant refers to a secret by name and never sees its value: the executor puts it in place, and it is masked in the activity log and in every transcript. It comes with accounts, since the browser keeps its own sign-ins.
 5. **Elevation.** A signed helper that accepts only typed operations: install a package with the system's installer, set a firewall rule, start or stop a service, write a registry value under the machine's key. Each always asks, and no free administrator shell exists outside an explicit expert mode.
 6. **More of the device.**
-   - **Clipboard:** reading asks; writing is free.
+   - **Clipboard**, built: reading asks; writing is free. `clipboard_read` puts a card ("Read your clipboard?") whose yes for the session lasts until the app quits or everything stops; `clipboard_write` replaces what the clipboard held, 100,000 characters at most. Both are kept in the activity. The core reaches it through its `Clipboard` port, which `@repo/screen` implements with each system's own programs (`screen/src/clipboard/`): Windows PowerShell's `Get-Clipboard` and `Set-Clipboard`, the text crossing as Base64 of UTF-8 so every character survives the console; `pbpaste` and `pbcopy` on macOS; `wl-paste` and `wl-copy` under Wayland, `xclip` under X11, which the person installs when missing. Verified on Windows 11 against the real clipboard (accents, Chinese and an emoji written and read back, what was copied put back after); macOS and Linux by tables.
    - **Printers.**
    - **Removable drives:** asked like any change.
    - **The camera:** always asked, with a marker while in use.
@@ -1412,6 +1413,7 @@ packages/screen/src/
 ├── desktop.ts              the adapter: references given here, the helper's keys behind them, its own input told apart
 ├── outline.ts              a window's tree as an outline, the same on every system
 ├── keys.ts                 a key or a combination as the assistant names it
+├── clipboard/              the clipboard through each system's own programs: commands.ts · clipboard.ts
 └── system/                 each system's helper: system.ts · helpers.ts · win32.ts · darwin.ts · linux.ts · index.ts
 ```
 

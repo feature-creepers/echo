@@ -3,7 +3,7 @@ import { basename, extname, join } from 'node:path'
 import { createBrowser } from '@repo/browser'
 import { type Core, createCore } from '@repo/core'
 import { createComputer, createHarnesses, createWorkspace } from '@repo/harness'
-import { createDesktop } from '@repo/screen'
+import { createClipboard, createDesktop } from '@repo/screen'
 import { openStore } from '@repo/store'
 import { serveTools } from '@repo/tools'
 import manifest from '../package.json' with { type: 'json' }
@@ -50,6 +50,7 @@ export async function compose(config: Config): Promise<Composition> {
     computer,
     browser,
     desktop,
+    clipboard: createClipboard(),
     workspace,
     timers: {
       after(ms, work) {

@@ -39,6 +39,8 @@ const TOOL_TITLES: Record<string, string> = {
   browser_select: 'Chose',
   browser_press: 'Pressed a key',
   browser_upload: 'Gave the page a file',
+  clipboard_read: 'Read the clipboard',
+  clipboard_write: 'Copied to the clipboard',
   desktop_windows: 'Looked at the windows',
   desktop_look: 'Read a window',
   desktop_screenshot: 'Took a picture of a window',

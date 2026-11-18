@@ -34,6 +34,8 @@ const DOING: Record<string, string | undefined> = {
   browser_select: 'Choosing',
   browser_press: 'Pressing a key',
   browser_upload: 'Giving the page a file',
+  clipboard_read: 'Reading the clipboard',
+  clipboard_write: 'Copying to the clipboard',
   desktop_windows: 'Looking at your windows',
   desktop_look: 'Reading a window',
   desktop_screenshot: 'Looking at a window',

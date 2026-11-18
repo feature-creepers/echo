@@ -19,6 +19,7 @@ export type {
   PageText,
   TabFacts
 } from './ports/browser.ts'
+export type { Clipboard } from './ports/clipboard.ts'
 export type { Timers } from './ports/clock.ts'
 export type { Computer } from './ports/computer.ts'
 export type { Desktop, DesktopElement, DesktopFound, WindowFacts, WindowImage, WindowOutline } from './ports/desktop.ts'

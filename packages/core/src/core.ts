@@ -5,6 +5,7 @@ import { createAttachments } from './attachments/attachments.ts'
 import { giveFolders } from './attachments/folders.ts'
 import { createBrowserControl } from './browser/browser.ts'
 import { createChannel } from './channel/channel.ts'
+import { createClipboardControl } from './clipboard/tools.ts'
 import { createExecutor } from './commands/execute.ts'
 import { createDesktopControl } from './desktop/desktop.ts'
 import { type Admission, admit } from './devices/admission.ts'
@@ -17,6 +18,7 @@ import { createMemory } from './memory/memory.ts'
 import { createObjections } from './personas/objection.ts'
 import type { Blobs } from './ports/blobs.ts'
 import type { Browser } from './ports/browser.ts'
+import type { Clipboard } from './ports/clipboard.ts'
 import type { Timers } from './ports/clock.ts'
 import type { Computer } from './ports/computer.ts'
 import type { Desktop } from './ports/desktop.ts'
@@ -66,6 +68,8 @@ export interface CoreOptions {
   browser?: Browser
   /** The other apps of the computer the core runs on, which the assistant sees and operates as the user allows. Left out, none. */
   desktop?: Desktop
+  /** The clipboard of the computer the core runs on. Left out, the assistant has none. */
+  clipboard?: Clipboard
   /**
    * The assistant's own folder, as the person browses it and hands files into it. Left out, nothing can be handed
    * over and there is nothing to browse.
@@ -193,6 +197,7 @@ export function createCore(options: CoreOptions): Core {
     timers: options.timers,
     mark: (control) => emit({ type: 'event', name: 'device.desktop', control })
   })
+  const clipboard = options.clipboard ? createClipboardControl({ clipboard: options.clipboard, ask: access.ask, uses: access }) : undefined
   const objections = createObjections({ records: options.records, screen, now })
   const files = createFiles({ records: options.records, blobs: options.blobs, now, newId: options.newId })
 
@@ -265,6 +270,7 @@ export function createCore(options: CoreOptions): Core {
         ...access.tools(showing),
         ...browser.tools(showing),
         ...desktop.tools(showing),
+        ...(clipboard?.tools(showing) ?? []),
         ...timeTools,
         ...(stance === 'critical' ? objections.tools(showing) : [])
       ],
@@ -316,6 +322,7 @@ export function createCore(options: CoreOptions): Core {
     channel.stopAll()
     schedule.hold(true)
     desktop.letGo()
+    clipboard?.forget()
   })
 
   settings.onChange((changed) => {
