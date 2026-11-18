@@ -1,12 +1,18 @@
 import { BANDS, ECHO_LENGTH, ECHO_STEP, type Pose } from './life.ts'
 
 /**
- * What the two drawings of the core share on the graphics card: the polygon they are shaded in, the helpers
- * every pixel uses, and the voice's recent past.
+ * What the two drawings of the core share on the graphics card: the polygon they are shaded in, the camera they are
+ * seen through, the helpers every pixel uses, and the voice's recent past.
+ *
+ * Both drawings are things in space, seen by a small camera in front of them: each pixel is a ray from that camera,
+ * and what it shows is what the ray meets. That is what gives them depth as they turn.
  */
 
 /** How many sides the polygon drawn round the core has: enough that it hugs the circle, few enough to cost nothing. */
 export const SIDES = 32
+
+/** How far in front of a drawing the camera stands, in the drawing's radii: near enough that what comes forward grows. */
+export const CAMERA = 5
 
 /**
  * A polygon just round the drawing, as a fan from the centre, made from each vertex's number alone so no buffer is
@@ -21,8 +27,18 @@ void main() {
 }`
 
 /**
- * The uniforms and helpers both fragment shaders start with. Lengths are in the drawing's own radii, and `pixel`
- * is one device pixel in those units: that is how every edge stays one pixel soft at any size.
+ * A turn in space by the angles a thing faces right and up, as the nine numbers of a matrix, a column after the
+ * other: what the shaders' `turned` gives. A point of the thing, times it, is where the point is once turned.
+ */
+export function turned(right: number, up: number, into: Float32Array = new Float32Array(9), at = 0): Float32Array {
+  const [ca, sa, cb, sb] = [Math.cos(right), Math.sin(right), Math.cos(up), Math.sin(up)]
+  into.set([ca, -sb * sa, -cb * sa, 0, cb, -sb, sa, sb * ca, cb * ca], at)
+  return into
+}
+
+/**
+ * The uniforms and helpers both fragment shaders start with. Lengths are in the drawing's own radii, and a pixel is
+ * `1.0 / u_radius` of them: that is how every edge stays a pixel soft at any size.
  */
 export const PRELUDE = `#version 300 es
 precision highp float;
@@ -43,12 +59,16 @@ uniform float u_echoShift;
 uniform vec2 u_gaze;
 // How hard the computer works, from 0 to 1, followed over a few seconds.
 uniform float u_power;
-// How far the drawing's face is turned, in radians: x to face right, y to face up.
+// How far the drawing is turned, in radians: x to face right, y to face up.
 uniform vec2 u_tilt;
+// The life's own clock, in seconds.
+uniform float u_time;
 
 out vec4 color;
 
 const float TAU = 6.28318530718;
+// How far in front of the drawing the camera stands, in the drawing's radii.
+const float CAMERA = ${CAMERA.toFixed(1)};
 
 float hash(vec2 p) {
   vec3 q = fract(p.xyx * 0.1031);
@@ -66,17 +86,11 @@ float noise(vec2 p, float period) {
   return mix(mix(hash(vec2(x0, cell.y)), hash(vec2(x1, cell.y)), u.x), mix(hash(vec2(x0, cell.y + 1.0)), hash(vec2(x1, cell.y + 1.0)), u.x), u.y);
 }
 
-// Where a point of the screen, in the drawing's radii from its centre, falls on the drawing's face as the face
-// turns: the ray from a small camera in front of it, through the point, meets the turned face there. Unturned, a
-// point is where it was; turned, the near side grows a little and the far side shrinks, as a real face would.
-vec2 face(vec2 screen) {
-  const float CAMERA = 5.0;
-  float ca = cos(u_tilt.x), sa = sin(u_tilt.x), cb = cos(u_tilt.y), sb = sin(u_tilt.y);
-  vec3 normal = vec3(sa, sb * ca, cb * ca);
-  float t = normal.z * CAMERA / (normal.z * CAMERA - normal.x * screen.x - normal.y * screen.y);
-  vec3 at = vec3(t * screen, CAMERA - t * CAMERA);
-  float depth = sb * at.y + cb * at.z;
-  return vec2(ca * at.x - sa * depth, cb * at.y - sb * at.z);
+// A turn in space, by the angles a thing faces right and up. A point of the thing, times it, is where the point is
+// once turned; a point of the room, before it (\`point * turn\`), is where the point is from the thing.
+mat3 turned(vec2 by) {
+  float ca = cos(by.x), sa = sin(by.x), cb = cos(by.y), sb = sin(by.y);
+  return mat3(vec3(ca, -sb * sa, -cb * sa), vec3(0.0, cb, -sb), vec3(sa, sb * ca, cb * ca));
 }
 
 // How much of a pixel a line covers, from its distance to the line's middle and its width, both in device
@@ -121,6 +135,8 @@ export interface Drawing<Name extends string = string> {
   reach: number
   /** How strongly its light blooms into a halo, from 0. */
   bloom: number
+  /** How far it is turned for a pose, in radians: to face right, and to face up. */
+  turn(pose: Pose): readonly [number, number]
   /** The uniforms of its own, each written `u_` and this name in the shader. */
   uniforms: readonly Name[]
   /** Sets those uniforms for one frame, the drawing's radius given in device pixels. */

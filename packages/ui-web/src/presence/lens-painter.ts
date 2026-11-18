@@ -1,9 +1,9 @@
 import { burn, css, light, type Rgb } from './color.ts'
-import { CATCHES, COATS, ELEMENTS, GLASS, GLINT, LENS_SIZE, SOFTBOXES } from './lens-shader.ts'
+import { SEAT as GLASS, LENS_SIZE } from './lens-shader.ts'
 import type { LensPose } from './life.ts'
 
 /**
- * The lens drawn the simpler way, on a 2D canvas, as the shader draws it (`lens-shader.ts`) with less: what does
+ * The lens drawn the simpler way, on a 2D canvas, flat where the shader traces it in space (`lens-shader.ts`): what does
  * not move (the shadow, the seat, the smoky dome, its softboxes and glint and the line of its rim) is drawn
  * once for a size and kept; each frame adds the lamp's red and its disc of amber, the catchlights over it, and the
  * light the elements catch.
@@ -25,6 +25,54 @@ function redAt(distance: number, lens: LensPose) {
   const edge = Math.min(1, Math.max(0, (distance - 0.55) / 0.43))
   return lens.lamp * (1.75 * near + 0.95 * haze) * (1 - 0.9 * edge * edge * (3 - 2 * edge))
 }
+
+/**
+ * The lens elements inside the glass, as this flat drawing shows them, from the front to the back: each edge's radius
+ * as a share of the glass, how deep it sits (the deeper, the further it shifts as the lens looks about), which light
+ * its edge catches, where it catches it, in radians, how fast that turns, and how much of it.
+ */
+const ELEMENTS = [
+  { radius: 0.9, depth: 0.08, coat: 0, catches: 2.3, turn: 0.6, strength: 0.55 },
+  { radius: 0.76, depth: 0.22, coat: 1, catches: 5.45, turn: -0.9, strength: 0.7 },
+  { radius: 0.63, depth: 0.38, coat: 2, catches: 2.0, turn: 1.1, strength: 0.6 },
+  { radius: 0.5, depth: 0.55, coat: 1, catches: 5.75, turn: -1.3, strength: 0.55 },
+  { radius: 0.38, depth: 0.72, coat: 3, catches: 2.65, turn: 0.8, strength: 0.5 },
+  { radius: 0.27, depth: 0.88, coat: 3, catches: 5.1, turn: -1.1, strength: 0.45 }
+] as const
+
+/** The light an element's edge catches from the room: a cool white on the front ones, the lamp's warmth on the deep. */
+const COATS = [
+  [0.74, 0.86, 1],
+  [0.74, 0.86, 1],
+  [0.86, 0.9, 1],
+  [1, 0.66, 0.56]
+] as const
+
+/**
+ * The lights of the room's ceiling as the dome reflects them here, drawn as bands that follow its curve: where round
+ * the glass, in radians, their half-width, how far in they fade from and how far out their edge is, and how bright.
+ */
+const SOFTBOXES = [
+  [2.28, 0.62, 0.56, 0.915, 0.26],
+  [0.72, 0.32, 0.7, 0.895, 0.11]
+] as const
+
+/** One small glint of the room's light on the dome, as a point on it, and how bright it is. */
+const GLINT = [-0.46, 0.5, 0.55] as const
+
+/**
+ * The catchlights over the lamp: where round the lamp, in radians, how far out, as a share of ten of the disc's
+ * radii, their half-width round it, and how bright. Two rows, the nearer three brighter.
+ */
+const CATCHES = [
+  [1.08, 0.2, 0.2, 0.7],
+  [1.57, 0.205, 0.26, 0.85],
+  [2.06, 0.2, 0.2, 0.7],
+  [0.72, 0.262, 0.16, 0.42],
+  [1.25, 0.272, 0.2, 0.6],
+  [1.89, 0.272, 0.2, 0.6],
+  [2.42, 0.262, 0.16, 0.42]
+] as const
 
 /** The seat's polish round it, from the way the room's light comes: a wedge along it, and a fainter one opposite. */
 const POLISH = [

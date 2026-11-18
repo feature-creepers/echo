@@ -126,13 +126,32 @@ describe('the lens', () => {
     expect(flicker(37.4)).toBe(flicker(37.4))
   })
 
-  it('draws its disc and its red in to listen, brightens, and its glass catches more of the room', () => {
+  it('opens wide to listen, as a pupil does: its disc and its red grow, it brightens, and its star draws in', () => {
     const idle = last(live(2, { mood: 'idle', look: 'lens' }).poses).lens
     const listening = last(live(2, { mood: 'listening', look: 'lens', level: 0.5 }).poses).lens
-    expect(listening.heart).toBeLessThan(idle.heart * 0.95)
-    expect(listening.iris).toBeLessThan(idle.iris * 0.95)
+    expect(listening.heart).toBeGreaterThan(idle.heart * 1.2)
+    expect(listening.iris).toBeGreaterThan(idle.iris * 1.1)
     expect(listening.lamp).toBeGreaterThan(idle.lamp * 1.08)
     expect(listening.catch).toBeGreaterThan(idle.catch * 1.6)
+    expect(listening.corona).toBeLessThan(idle.corona * 0.6)
+  })
+
+  it('tightens to a point to think, and a light goes round it', () => {
+    const idle = last(live(2, { mood: 'idle', look: 'lens' }).poses).lens
+    const { poses } = live(FOCUS_PERIOD * 2 + 1, { mood: 'thinking', look: 'lens' })
+    const period = poses.slice(-Math.round(FOCUS_PERIOD * 60)).map((pose) => pose.lens)
+    expect(Math.max(...period.map((lens) => lens.heart))).toBeLessThan(idle.heart * 0.9)
+    expect(last(poses).lens.iris).toBeLessThan(idle.iris * 0.9)
+    expect(last(poses).lens.scan).toBeGreaterThan(0.99)
+    expect(range(period.map((lens) => lens.scanAngle))).toBeGreaterThan(1)
+    expect(idle.scan).toBeLessThan(0.01)
+  })
+
+  it('throws a star of light that shows awake and is gone asleep', () => {
+    const corona = (mood: Mood) => last(live(2, { mood, look: 'lens' }).poses).lens.corona
+    expect(corona('idle')).toBeGreaterThan(0.5)
+    expect(corona('speaking')).toBeGreaterThan(corona('listening'))
+    expect(corona('asleep')).toBe(0)
   })
 
   it('hunts for focus while thinking, a shimmer running through its elements from the outside in', () => {

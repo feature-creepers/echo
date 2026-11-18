@@ -16,8 +16,9 @@ import { useFileActions } from '../files/file-actions.ts'
 import { usePlayer } from '../media/player-provider.tsx'
 import { refusalCopy } from '../personas/copy.ts'
 import { attendedView, useLingering } from '../presence/attention.ts'
+import { fieldOf } from '../presence/field.ts'
 import { gazeAt, middleOf, type Point } from '../presence/gaze.ts'
-import { MOODS as ALL_MOODS, BANDS, type Pose } from '../presence/life.ts'
+import { MOODS as ALL_MOODS, type Around, BANDS, type Pose } from '../presence/life.ts'
 import { useCoreLight } from '../presence/light.ts'
 import { Orb } from '../presence/orb.tsx'
 import type { Mood } from '../presence/painter.ts'
@@ -151,6 +152,17 @@ function Core({ mood, level, bands, load, sight, place, onArrive }: CoreProps) {
     return gazeAt(from, now.point, GAZE_REACH)
   }, [sight, middle])
   const scale = useCallback(() => at.current.size / LARGEST, [])
+  // What is round it, for its glass to reflect: the pointer while it moves, and the view it looks at, each told
+  // from the core's middle in its own radii, up as up.
+  const around = useCallback((): Around | undefined => {
+    const now = seen.current
+    const from = middle()
+    if (!now || !from) return undefined
+    const radius = at.current.size / 2
+    const told = (point: Point): [number, number] => [(point.x - from.x) / radius, (from.y - point.y) / radius]
+    if (!now.box) return { pointer: told(now.point) }
+    return { view: [...told(middleOf(now.box)), now.box.width / 2 / radius, now.box.height / 2 / radius] }
+  }, [middle])
   const onFrame = useCallback(
     (pose: Pose) => {
       const element = box.current
@@ -201,6 +213,10 @@ function Core({ mood, level, bands, load, sight, place, onArrive }: CoreProps) {
       light.core = { x: from.x, y: from.y, radius: here.size / 2 }
       light.glow = glow * (0.4 + 0.6 * cast)
       light.power = pose.power
+      // What it does goes on through the ground round it: its voice, its sweep, its beat, its waking.
+      fieldOf(pose, light.field)
+      light.voice = pose.echo
+      light.voiceShift = pose.echoShift
       const target = seen.current?.box
       light.spot =
         target && pose.attention > 0.01
@@ -235,7 +251,18 @@ function Core({ mood, level, bands, load, sight, place, onArrive }: CoreProps) {
         ref={halo}
         className="pointer-events-none absolute -inset-[42%] bg-[radial-gradient(closest-side,color-mix(in_oklab,var(--accent)_15%,transparent),color-mix(in_oklab,var(--accent)_6%,transparent)_45%,transparent)] will-change-[transform,opacity]"
       />
-      <Orb size={LARGEST} scale={scale} mood={mood} level={level} bands={bands} gaze={gaze} load={load} onFrame={onFrame} className="relative" />
+      <Orb
+        size={LARGEST}
+        scale={scale}
+        mood={mood}
+        level={level}
+        bands={bands}
+        gaze={gaze}
+        load={load}
+        around={around}
+        onFrame={onFrame}
+        className="relative"
+      />
     </div>
   )
 }

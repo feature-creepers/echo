@@ -2,7 +2,7 @@ import { LOOKS, type Look } from '@repo/protocol'
 import { useEffect, useRef } from 'react'
 import { cn } from '../primitives/cn.ts'
 import { createGpuCore } from './gpu.ts'
-import { createLife, type Mood, type Pose } from './life.ts'
+import { type Around, createLife, type Mood, type Pose } from './life.ts'
 import { createPainter } from './painter.ts'
 
 export interface OrbProps {
@@ -23,6 +23,11 @@ export interface OrbProps {
   gaze?: () => readonly [number, number] | undefined
   /** How hard the computer works, from 0 to 1; nothing when it is not known. Asked for at every frame. */
   load?: () => number | undefined
+  /**
+   * What is round the core on the screen, which its glass reflects: the pointer, and the view it looks at, in the
+   * core's own radii from its middle, up as up. Asked for at every frame.
+   */
+  around?: () => Around | undefined
   /** Told every pose drawn, so what moves with the core (the light it casts) can follow it in the same frame. */
   onFrame?: (pose: Pose) => void
   /**
@@ -77,10 +82,10 @@ function addCanvas(box: HTMLElement) {
  * the window is hidden or the core is out of view, and with less motion asked for, the core holds still and is
  * only drawn again while a mood, a look or an accent changes.
  */
-export function Orb({ mood, size, level, bands, gaze, load, onFrame, scale, className }: OrbProps) {
+export function Orb({ mood, size, level, bands, gaze, load, around, onFrame, scale, className }: OrbProps) {
   const box = useRef<HTMLSpanElement>(null)
-  const live = useRef({ mood, level, size, bands, gaze, load, onFrame, scale })
-  live.current = { mood, level, size, bands, gaze, load, onFrame, scale }
+  const live = useRef({ mood, level, size, bands, gaze, load, around, onFrame, scale })
+  live.current = { mood, level, size, bands, gaze, load, around, onFrame, scale }
 
   useEffect(() => {
     const element = box.current
@@ -148,6 +153,7 @@ export function Orb({ mood, size, level, bands, gaze, load, onFrame, scale, clas
         bands: live.current.bands?.(),
         gaze: live.current.gaze?.(),
         load: live.current.load?.(),
+        around: live.current.around?.(),
         delta,
         still: still.matches
       })

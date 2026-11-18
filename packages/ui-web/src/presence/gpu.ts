@@ -4,7 +4,7 @@ import type { Rgb } from './color.ts'
 import { type Drawing, SIDES, VERTEX } from './glsl.ts'
 import { HUD } from './hud-shader.ts'
 import { LENS } from './lens-shader.ts'
-import { BANDS, ECHO_LENGTH, LOOK_SHRINK, type Pose, TILT } from './life.ts'
+import { BANDS, ECHO_LENGTH, LOOK_SHRINK, type Pose } from './life.ts'
 
 /**
  * Draws the core on the graphics card: each look is one small fragment shader over a polygon just round it.
@@ -26,7 +26,7 @@ export interface GpuCore {
   dispose(): void
 }
 
-const SHARED = ['extent', 'center', 'radius', 'accent', 'weight', 'grain', 'echoShift', 'gaze', 'power', 'tilt'] as const
+const SHARED = ['extent', 'center', 'radius', 'accent', 'weight', 'grain', 'echoShift', 'gaze', 'power', 'tilt', 'time'] as const
 
 interface Program {
   program: WebGLProgram
@@ -160,7 +160,10 @@ export function createGpuCore(canvas: HTMLCanvasElement, force = false): GpuCore
         gl.uniform1f(shared.echoShift, pose.echoShift)
         gl.uniform2f(shared.gaze, pose.gaze[0], pose.gaze[1])
         gl.uniform1f(shared.power, pose.power)
-        gl.uniform2f(shared.tilt, pose.gaze[0] * TILT, pose.gaze[1] * TILT)
+        const turn = drawing.turn(pose)
+        gl.uniform2f(shared.tilt, turn[0], turn[1])
+        // The clock comes round every few hours, so its small steps stay exact.
+        gl.uniform1f(shared.time, pose.clock % 8192)
         drawing.set(gl, own, pose, (side / 2) * size)
         gl.drawArrays(gl.TRIANGLE_FAN, 0, SIDES + 2)
         glow += drawing.bloom * weight

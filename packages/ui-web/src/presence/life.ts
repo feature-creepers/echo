@@ -66,7 +66,10 @@ export const RESTING_LOAD = 0.3
  */
 const GAZE_SPRING = { stiffness: 150, damping: 21 } as const
 
-/** How far the core's face turns towards what it looks at, in radians, at the edge of its gaze: subtle, as a glance. */
+/**
+ * How far the core's face turns towards what it looks at, in radians, at the edge of its gaze, as the 2D canvas draws
+ * it: subtle, as a glance. On the graphics card each look says how far it turns itself (`Drawing.turn`).
+ */
 export const TILT = 0.17
 
 /** With nothing to look at, the core rests its gaze in a new place once in about this many seconds. */
@@ -82,6 +85,8 @@ interface LensMood {
   iris: number
   /** How much light the lens elements inside the glass catch. */
   catch: number
+  /** How much of the star of fine needles of light the lamp throws shows, and how long they are. */
+  corona: number
   /** How much of the resting pulse and of the lamp's flicker shows. */
   pulse: number
   /** How fast the elements turn, against the resting pace. */
@@ -93,17 +98,18 @@ interface LensMood {
 }
 
 /**
- * Each mood's lens. Listening tightens the iris and lets the elements catch more light, thinking hunts for focus,
- * working steadies the light and sends a beat out through it, speaking opens the iris for the voice to swell, and
- * asleep the lamp sinks to an ember.
+ * Each mood's lens, as an eye. Listening, its pupil opens wide and its light softens, the voice it hears travelling
+ * in down the barrel; thinking, the pupil tightens to a point and hunts for focus, the corona turns fast and a light
+ * goes round the lens; working steadies the light and sends a beat out through it; speaking opens the iris and
+ * the corona flares with its voice; and asleep the lamp sinks to an ember.
  */
 const LENS: Record<Mood, LensMood> = {
-  idle: { lamp: 1, heart: 0.088, iris: 1, catch: 1, pulse: 1, turn: 1, room: 1, wander: 1 },
-  listening: { lamp: 1.1, heart: 0.08, iris: 0.88, catch: 1.8, pulse: 0.3, turn: 0.4, room: 1, wander: 0 },
-  thinking: { lamp: 0.95, heart: 0.085, iris: 0.95, catch: 1.3, pulse: 0.5, turn: 3, room: 1, wander: 0.5 },
-  working: { lamp: 1.05, heart: 0.089, iris: 1.02, catch: 1.4, pulse: 0.25, turn: 2.2, room: 1, wander: 0.3 },
-  speaking: { lamp: 1.03, heart: 0.09, iris: 1.05, catch: 1.25, pulse: 0.2, turn: 1.2, room: 1, wander: 0.4 },
-  asleep: { lamp: 0.18, heart: 0.072, iris: 0.75, catch: 0.15, pulse: 0, turn: 0.25, room: 0.62, wander: 0 }
+  idle: { lamp: 1, heart: 0.088, iris: 1, catch: 1, corona: 1, pulse: 1, turn: 1, room: 1, wander: 1 },
+  listening: { lamp: 1.06, heart: 0.112, iris: 1.14, catch: 1.5, corona: 0.45, pulse: 0.3, turn: 0.4, room: 1, wander: 0 },
+  thinking: { lamp: 0.98, heart: 0.064, iris: 0.82, catch: 1.3, corona: 1.2, pulse: 0.5, turn: 5, room: 1, wander: 0.5 },
+  working: { lamp: 1.05, heart: 0.082, iris: 0.96, catch: 1.4, corona: 1.15, pulse: 0.25, turn: 2.6, room: 1, wander: 0.3 },
+  speaking: { lamp: 1.03, heart: 0.094, iris: 1.06, catch: 1.25, corona: 1.1, pulse: 0.2, turn: 1.4, room: 1, wander: 0.4 },
+  asleep: { lamp: 0.18, heart: 0.072, iris: 0.75, catch: 0.15, corona: 0, pulse: 0, turn: 0.25, room: 0.62, wander: 0 }
 }
 
 /** What the instrument looks like in one mood, before the voice, the power and the breath are added. */
@@ -168,6 +174,28 @@ export const HUD_MOTES = [
   { pace: -0.05, thinking: 3 },
   { pace: 0.022, thinking: 4 }
 ] as const
+
+/**
+ * The instrument's decks, from the nearest to the furthest. Its rings do not lie on one plane: each deck holds some
+ * of them and floats at its own depth along the instrument's axis, as the layers of a hologram do, so they part as
+ * it turns. Each sways a little at rest, at its own slow pace; thinking, the outer three tumble, each about its own
+ * axis, as the rings of a gyroscope; working, the outer ones lean and go round, as a dish surveying.
+ */
+export const HUD_DECKS = [
+  /** The reactor: the heart, its ring and its coils. It keeps facing the front. */
+  { depth: 0.14, sway: 0.05, period: 13, phase: 0.3, tumble: [0, 0], survey: 0 },
+  /** The voice: the meter of bars. */
+  { depth: 0.07, sway: 0.07, period: 17, phase: 1.9, tumble: [0, 0], survey: 0 },
+  /** The scale: the bezel of ticks and its markers. */
+  { depth: 0, sway: 0.1, period: 11, phase: 3.4, tumble: [1.15, 0.5], survey: 0 },
+  /** The data: its ring, and the ring of bearings. */
+  { depth: -0.07, sway: 0.12, period: 19, phase: 4.6, tumble: [-0.4, 1.45], survey: 0.16 },
+  /** The frame: the long arcs, the brackets and the outer circle. */
+  { depth: -0.14, sway: 0.14, period: 23, phase: 5.9, tumble: [1.75, -0.25], survey: 0.42 }
+] as const
+
+/** Asleep, and before it has woken, the instrument's decks lie folded this far back, in radians: a thin ellipse. */
+export const HUD_FOLD = 1.22
 
 /** A glint runs along the instrument's long outer arcs once in this many seconds. */
 export const GLINT_PERIOD = 6.5
@@ -239,6 +267,17 @@ export function spectrumOf(level: number, time: number, into: Float32Array): Flo
   return into
 }
 
+/**
+ * What is round the core on the screen, in the core's own radii from its middle, up as up. The lens's glass reflects
+ * it: the pointer as a small glint, the view it looks at as a faint lit pane.
+ */
+export interface Around {
+  /** Where the pointer is; left out while it rests or is away. */
+  pointer?: readonly [number, number] | undefined
+  /** The view the core looks at: where its middle is, then half its width and half its height. */
+  view?: readonly [number, number, number, number] | undefined
+}
+
 export interface Input {
   mood: Mood
   /** The look the persona that answers has. */
@@ -254,6 +293,8 @@ export interface Input {
   gaze?: readonly [number, number] | undefined
   /** How hard the computer works, from 0 to 1. Left out, as a computer at rest does. */
   load?: number | undefined
+  /** What is round the core on the screen, which its glass reflects. Left out, nothing is. */
+  around?: Around | undefined
   /** Seconds since the previous frame. */
   delta: number
   /** Whether the user asked for less motion: everything that moves holds still, and only moods and looks fade. */
@@ -268,6 +309,11 @@ export interface LensPose {
   iris: number
   catch: number
   room: number
+  /** How much of the star of fine needles of light the lamp throws shows, and how long they are. */
+  corona: number
+  /** The light that goes round the lens while thinking: how much of it shows, and where it is, in radians counter-clockwise from the right. */
+  scan: number
+  scanAngle: number
   /** The shimmer that runs through the elements while thinking: how much shows, and where it is, from the outer element (0) to the inner (1). */
   shimmer: number
   shimmerAt: number
@@ -284,6 +330,8 @@ export interface LensPose {
   depth: readonly [number, number]
   /** How much of the voice each element catches, from the outer element, which takes the low notes, to the inner, which takes the high. */
   voice: readonly [number, number, number, number]
+  /** How far the lens's face sways as the view drifts, in radians: to face right, and to face up. */
+  sway: readonly [number, number]
 }
 
 /** What the instrument is drawn with in one frame. */
@@ -312,6 +360,8 @@ export interface HudPose {
   motes: Float32Array
   /** Where the glint is along the outer arcs, in turns round them. */
   glintAt: number
+  /** How far each deck of `HUD_DECKS` is turned from facing the front, in radians: to face right, then to face up. */
+  decks: Float32Array
 }
 
 /** What the core draws in one frame. */
@@ -330,6 +380,12 @@ export interface Pose {
   attention: number
   /** How hard the computer works, followed over a few seconds, from 0 to 1. */
   power: number
+  /** The life's own clock, in seconds: it stands still with less motion asked for. */
+  clock: number
+  /** Where the pointer is, as `Around.pointer`, then how much of it shows, from 0 to 1. */
+  pointer: Float32Array
+  /** The view it looks at, as `Around.view`, then how much of it shows, from 0 to 1. */
+  view: Float32Array
   lens: LensPose
   hud: HudPose
   /**
@@ -360,6 +416,11 @@ export function createLife(initial: Mood = 'idle', look: Look = 'hud'): Life {
   const made = new Float32Array(BANDS)
   const turns = new Float32Array(HUD_RINGS.length)
   const motes = new Float32Array(HUD_MOTES.length)
+  const decks = new Float32Array(HUD_DECKS.length * 2)
+  // How far each deck has tumbled, about each of its two axes.
+  const tumbled = new Float32Array(HUD_DECKS.length * 2)
+  const pointer = new Float32Array(3)
+  const view = new Float32Array(5)
   let level = 0
   let clock = 0
   let drift = 0
@@ -375,7 +436,7 @@ export function createLife(initial: Mood = 'idle', look: Look = 'hud'): Life {
   let sinceSample = 0
 
   return {
-    step({ mood, look: current, level: heard, bands, gaze: target, load, delta, still }) {
+    step({ mood, look: current, level: heard, bands, gaze: target, load, around, delta, still }) {
       const ease = 1 - Math.exp(-delta * MOOD_RATE)
       for (const each of MOODS) weights[each] += ((each === mood ? 1 : 0) - weights[each]) * ease
       for (const each of LOOKS) {
@@ -434,6 +495,15 @@ export function createLife(initial: Mood = 'idle', look: Look = 'hud'): Life {
           const pace = 1 + (mote.thinking - 1) * weights.thinking + weights.working
           motes[index] = ((((motes[index] ?? 0) + delta * mote.pace * pace * (1 - sleeping)) % 1) + 1) % 1
         })
+        // Thinking, a deck tumbles; once it stops thinking, it comes back round to face the front, the nearest way.
+        const home = (1 - Math.exp(-delta * 3.2)) * (1 - weights.thinking)
+        HUD_DECKS.forEach((deck, index) => {
+          for (const axis of [0, 1] as const) {
+            const at = index * 2 + axis
+            const spun = (tumbled[at] ?? 0) + delta * deck.tumble[axis] * weights.thinking
+            tumbled[at] = spun + (Math.round(spun / (Math.PI * 2)) * Math.PI * 2 - spun) * home
+          }
+        })
         // Working, the markers step round once a beat: a quick move, then still, as a mechanism counts.
         const beat = beats % 1
         const stepped = smooth(beat * 3) - smooth((beat - delta / WORK_PERIOD) * 3)
@@ -453,6 +523,25 @@ export function createLife(initial: Mood = 'idle', look: Look = 'hud'): Life {
           }
         }
       }
+
+      // The decks: swaying at rest, each at its own pace, and less while it listens; leaning and going round while
+      // it works; folded back asleep, and until it has woken, the nearest rising first.
+      HUD_DECKS.forEach((deck, index) => {
+        const sway = deck.sway * (1 - 0.75 * weights.listening) * (1 - sleeping)
+        const angle = (clock / deck.period) * Math.PI * 2 + deck.phase
+        const survey = deck.survey * weights.working
+        const round = beats * 0.2 * Math.PI * 2 + index
+        const risen = smooth((wake.hud - 0.04 - index * 0.05) / 0.5)
+        decks[index * 2] = sway * Math.cos(angle) + (tumbled[index * 2] ?? 0) + survey * Math.cos(round)
+        decks[index * 2 + 1] = sway * Math.sin(angle) + (tumbled[index * 2 + 1] ?? 0) + survey * Math.sin(round) + HUD_FOLD * Math.max(sleeping, 1 - risen)
+      })
+
+      // What is round it: where it was last told, showing while it is there and fading once it is gone.
+      const showing = 1 - Math.exp(-delta * 5)
+      if (around?.pointer) pointer.set(around.pointer)
+      pointer[2] = (pointer[2] ?? 0) + ((around?.pointer ? 1 : 0) - (pointer[2] ?? 0)) * showing
+      if (around?.view) view.set(around.view)
+      view[4] = (view[4] ?? 0) + ((around?.view ? 1 : 0) - (view[4] ?? 0)) * showing
 
       // Asleep, a slow breath; awake, the lens's swell and the instrument's breath. Held still, each rests halfway.
       const breath = still ? 0.5 : 0.5 - 0.5 * Math.cos((clock / BREATH_PERIOD) * Math.PI * 2)
@@ -493,6 +582,9 @@ export function createLife(initial: Mood = 'idle', look: Look = 'hud'): Life {
         gaze: [gaze[0] ?? 0, gaze[1] ?? 0],
         attention,
         power,
+        clock,
+        pointer,
+        view,
         lens: {
           lamp:
             (lensOf('lamp') + hearing * 0.25 + saying * 0.5 + working * throb * 0.12) *
@@ -500,10 +592,16 @@ export function createLife(initial: Mood = 'idle', look: Look = 'hud'): Life {
             (1 - flickering) *
             (1 - sleeping * 0.4 * (1 - breath)) *
             vigor,
-          heart: lensOf('heart') * (1 + (swelling - 0.5) * 0.03 * pulse + focusing * 0.06 * weights.thinking) * (0.95 + 0.15 * power) + saying * 0.006,
+          heart:
+            lensOf('heart') * (1 + (swelling - 0.5) * 0.03 * pulse + focusing * 0.12 * weights.thinking) * (0.95 + 0.15 * power) +
+            saying * 0.012 +
+            hearing * 0.008,
           iris: lensOf('iris') * (0.92 + 0.27 * (power - RESTING_LOAD)) + saying * 0.09 + hearing * 0.04,
           catch: (lensOf('catch') + hearing * 0.6 + saying * 0.3) * (0.85 + 0.4 * power),
           room: lensOf('room'),
+          corona: lensOf('corona') * (0.8 + 0.6 * power),
+          scan: weights.thinking,
+          scanAngle,
           shimmer: weights.thinking,
           // The shimmer enters before the outer element and leaves past the inner one, so it never jumps.
           shimmerAt: still ? 0.5 : -0.35 + 1.7 * ((clock / FOCUS_PERIOD) % 1),
@@ -514,7 +612,8 @@ export function createLife(initial: Mood = 'idle', look: Look = 'hud'): Life {
           sheen: 2.2 + Math.sin(drift * 0.11) * 0.5 + Math.sin(drift * 0.047 + 1.3) * 0.3,
           turn,
           depth: [Math.sin(drift * 0.21) * drifting + (gaze[0] ?? 0) * looking, Math.sin(drift * 0.16 + 1.1) * drifting + (gaze[1] ?? 0) * looking],
-          voice
+          voice,
+          sway: [Math.sin(drift * 0.21) * drifting * 1.6, Math.sin(drift * 0.16 + 1.1) * drifting * 1.6]
         },
         hud: {
           core:
@@ -535,7 +634,8 @@ export function createLife(initial: Mood = 'idle', look: Look = 'hud'): Life {
           dormant: sleeping * (0.3 + 0.7 * breath),
           parallax: [Math.sin(drift * 0.19 + 0.4) * 0.006 * (1 - sleeping), Math.sin(drift * 0.13 + 2.2) * 0.006 * (1 - sleeping)],
           motes,
-          glintAt: still ? 2 : -0.25 + 1.5 * ((clock / GLINT_PERIOD) % 1)
+          glintAt: still ? 2 : -0.25 + 1.5 * ((clock / GLINT_PERIOD) % 1),
+          decks
         },
         echo,
         echoShift: sinceSample / ECHO_STEP,
