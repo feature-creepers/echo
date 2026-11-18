@@ -10,6 +10,7 @@ import { useDeviceSpeech } from '../audio/use-speech.ts'
 import { Stage } from '../conversation/stage.tsx'
 import { DeviceProvider, keyPress, useDevice } from '../device/device.tsx'
 import type { DeviceHost } from '../device/host.ts'
+import { useFileActions } from '../files/file-actions.ts'
 import { LibraryContext, type LibraryControls } from '../library/library-context.ts'
 import { PinnedDocksView, usePinnedDocks } from '../library/pinned-docks.tsx'
 import { PlayerProvider, usePlayer } from '../media/player-provider.tsx'
@@ -170,13 +171,15 @@ function Connected({ productName, client, engine }: { productName: string; clien
     [client]
   )
   /** What the blocks of a pinned or saved widget can do. Nothing there starts playing by itself. */
+  const files = useFileActions()
   const actions = useMemo<ViewActions>(
     () => ({
       say,
       readFile: (file: string) => client.session.run('file.read', { file }),
-      readShapes: (url: string) => client.session.run('shapes.read', { url }).then((read) => read.shapes)
+      readShapes: (url: string) => client.session.run('shapes.read', { url }).then((read) => read.shapes),
+      files
     }),
-    [say, client]
+    [say, client, files]
   )
 
   useEffect(() => {

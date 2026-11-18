@@ -5,10 +5,14 @@ import type { PersonaId, Settings, ShownView } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AccessIndicator } from '../access/access-indicator.tsx'
+import { type Dropped, DropState, useWindowDrop } from '../attachments/drop-state.tsx'
+import { useAttachments } from '../attachments/use-attachments.ts'
 import type { SpeechEngine } from '../audio/engine.ts'
 import { useTalk } from '../audio/use-talk.ts'
 import { keyPress, useDevice } from '../device/device.tsx'
 import { useShownPresence } from '../device/presence.ts'
+import { useFileActions } from '../files/file-actions.ts'
+import { QuickLook } from '../files/quick-look.tsx'
 import { usePlayer } from '../media/player-provider.tsx'
 import { refusalCopy } from '../personas/copy.ts'
 import { Orb } from '../presence/orb.tsx'
@@ -168,14 +172,34 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
     },
     [client]
   )
+  // What the composer sends goes with the files and folders waiting in it, once they have all arrived.
+  const attachments = useAttachments(client)
+  const send = useCallback(
+    async (text: string) => {
+      setProblem(undefined)
+      client.speech.stop()
+      const handed = attachments.pending.length > 0 ? await attachments.take() : {}
+      if (handed === undefined) return
+      client.channel.say(text, undefined, handed).catch(() => setProblem(refusalCopy('failed')))
+    },
+    [client, attachments]
+  )
+  const files = useFileActions()
   const actions = useMemo(
     () => ({
       say,
       readFile: (file: string) => client.session.run('file.read', { file }),
-      readShapes: (url: string) => client.session.run('shapes.read', { url }).then((read) => read.shapes)
+      readShapes: (url: string) => client.session.run('shapes.read', { url }).then((read) => read.shapes),
+      files
     }),
-    [say, client]
+    [say, client, files]
   )
+  // Files and folders dropped anywhere on the main screen wait in the composer. A folder needs the desktop, which knows where it is.
+  const { host } = useDevice()
+  const dropping = useWindowDrop((dropped: Dropped) => {
+    attachments.add(dropped.files, dropped.folders)
+    if (dropped.unplaced > 0) attachments.refuse('A folder can be given only in the desktop app, which knows where it is.')
+  }, host?.files?.pathOf)
   /**
    * Only a view shown in answer to what the person just asked may start what it plays. One read on opening,
    * or an earlier topic's view brought back on screen, never does: the person may have stopped it.
@@ -298,7 +322,8 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
           exit={{ opacity: 0, transition: { duration: 0.12 } }}
           className={cn('text-balance text-text-faint', streaming ? 'line-clamp-2 text-[0.9375rem] leading-relaxed' : 'text-lg leading-snug')}
         >
-          “{last.said}”
+          {/* Files handed over without a word are named instead. */}
+          {last.said === '' ? (last.attached?.map((one) => one.name).join(', ') ?? '') : `“${last.said}”`}
         </motion.p>
       ) : failed || problem ? (
         <motion.div key="problem" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="grid justify-items-center gap-3">
@@ -330,8 +355,9 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
     <InputLine
       name={active.name}
       busy={running || voicing}
-      onSay={say}
+      onSay={(text) => void send(text)}
       onStop={stop}
+      attachments={attachments}
       pause={
         speaking.sentence || speaking.paused
           ? { paused: speaking.paused, onToggle: () => (speaking.paused ? client.speech.resume() : client.speech.pause()) }
@@ -431,13 +457,33 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
       <div ref={composerBox} className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-8 pb-4">
         <div className={cn('pointer-events-auto mx-auto grid w-full gap-1.5', COLUMN)}>
           {composer}
-          {/* What it may reach and what it thinks with: there to read, and changed on the spot from their menus. */}
-          <div className="-mt-0.5 flex justify-end gap-2">
-            <AccessIndicator client={client} />
-            <EngineIndicator client={client} onOpenSettings={onSetUpEngine} />
+          {/* Why a file was not added, quietly on the left; what it may reach and what it thinks with on the right, changed
+              on the spot from their menus. */}
+          <div className="-mt-0.5 flex items-start justify-between gap-4">
+            <AnimatePresence>
+              {attachments.notice && (
+                <motion.span
+                  key={attachments.notice}
+                  role="status"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: DURATION.calm, ease: EASE }}
+                  className="min-w-0 pt-1 pl-1 text-text-soft text-xs leading-snug"
+                >
+                  {attachments.notice}
+                </motion.span>
+              )}
+            </AnimatePresence>
+            <div className="ml-auto flex shrink-0 gap-2">
+              <AccessIndicator client={client} />
+              <EngineIndicator client={client} onOpenSettings={onSetUpEngine} />
+            </div>
           </div>
         </div>
       </div>
+      <DropState over={dropping} name={active.name} />
+      <QuickLook client={client} />
     </div>
   )
 }
