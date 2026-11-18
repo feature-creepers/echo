@@ -36,6 +36,10 @@ export interface FilesBridge {
   pick(kind: 'folder' | 'file'): Promise<string[]>
   /** Show a folder or a file in the system's file manager. Nothing is opened or run. */
   reveal(path: string): Promise<void>
+  /** Open a file with the app the system gives its kind, or a folder in the file manager. A file that would run a program is shown in its folder instead. */
+  open(path: string): Promise<void>
+  /** Where a file or a folder dropped on the window is on this computer. */
+  pathOf(file: File): string | undefined
 }
 
 export type ShortcutName = keyof DeviceSettings['shortcuts']
@@ -112,7 +116,8 @@ export const APP_CHANNELS = {
   updateDownload: 'updates:download',
   updateInstall: 'updates:install',
   filesPick: 'files:pick',
-  filesReveal: 'files:reveal'
+  filesReveal: 'files:reveal',
+  filesOpen: 'files:open'
 } as const
 
 /** The channel the global shortcut to talk comes on. */

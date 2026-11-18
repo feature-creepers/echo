@@ -5,6 +5,7 @@ import { type ReactNode, useEffect, useLayoutEffect, useRef } from 'react'
 import { AccessSection } from '../access/access-section.tsx'
 import type { DeviceSpeech } from '../audio/use-speech.ts'
 import { useDevice } from '../device/device.tsx'
+import { FilesSection } from '../files/files-section.tsx'
 import { WidgetsSection, type WidgetsSectionProps } from '../library/widgets-section.tsx'
 import { MemorySection } from '../memory/memory-section.tsx'
 import { PersonasForm } from '../personas/personas-form.tsx'
@@ -55,6 +56,11 @@ const PAGES = {
     title: 'Widgets',
     lead: (name) => `The views you saved from what ${name} showed you. Pin them beside the conversation, sort them into collections, or ask for a change.`,
     render: (hub) => <WidgetsSection {...hub.widgets} onShown={hub.onBack} />
+  },
+  files: {
+    title: 'Files',
+    lead: (name) => `What ${name} keeps in its own folder: the files you hand it, in its inbox, and the files it writes for you.`,
+    render: (hub) => <FilesSection client={hub.client} productName={hub.productName} />
   },
   memory: {
     title: 'Memory',
@@ -135,7 +141,7 @@ export const HUB_PAGES = Object.keys(PAGES) as HubPage[]
  * to the next (docs/SPEC.md, section 5.2).
  */
 const GROUPS: { title: string; pages: HubPage[] }[] = [
-  { title: 'Library', pages: ['widgets', 'memory', 'reminders'] },
+  { title: 'Library', pages: ['widgets', 'files', 'memory', 'reminders'] },
   { title: 'This computer', pages: ['general', 'voice', 'microphone', 'shortcuts'] },
   { title: 'Your assistant', pages: ['personalities', 'models', 'access'] }
 ]

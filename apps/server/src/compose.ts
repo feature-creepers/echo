@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { createBrowser } from '@repo/browser'
 import { type Core, createCore } from '@repo/core'
-import { createComputer, createHarnesses } from '@repo/harness'
+import { createComputer, createHarnesses, createWorkspace } from '@repo/harness'
 import { openStore } from '@repo/store'
 import { serveTools } from '@repo/tools'
 import manifest from '../package.json' with { type: 'json' }
@@ -28,6 +28,8 @@ export async function compose(config: Config): Promise<Composition> {
   const computer = await createComputer({ workspace: join(config.data, 'workspace') })
   // The browser the assistant drives, with a profile of its own beside the user's data; what it downloads goes to the assistant's folder.
   const browser = createBrowser({ profile: join(config.data, 'browser'), downloads: join(computer.workspace, 'downloads'), log })
+  // The same folder, as the person browses it and hands files into it.
+  const workspace = await createWorkspace(computer.workspace)
   const core = createCore({
     version: manifest.version,
     acceptsCredential: localToken(config.token),
@@ -40,6 +42,7 @@ export async function compose(config: Config): Promise<Composition> {
     web: publicWeb,
     computer,
     browser,
+    workspace,
     timers: {
       after(ms, work) {
         // A timer of the core never keeps the process alive on its own.

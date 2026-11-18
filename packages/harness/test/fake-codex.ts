@@ -90,6 +90,8 @@ function appServer(): void {
   }
 
   const said = (params: Message) => String((params.input as Message[] | undefined)?.[0]?.text ?? '')
+  /** The parts of the last message, as words: a text, or a picture by where it is. */
+  let parts: unknown[] = []
 
   /** A message of the assistant, written piece by piece unless `whole`, then given whole. */
   async function message(turn: string, pieces: string[], whole = false): Promise<void> {
@@ -161,6 +163,16 @@ function appServer(): void {
       await message(id, [`Another server's tool was ${String((reply.result as Message).action)}d.`])
       return complete(id)
     }
+    if (text.includes('write a file')) {
+      // A change of files is announced, put to the client, then made or not.
+      const item = { type: 'fileChange', id: 'item-w', changes: [{ path: 'trip.md', kind: { type: 'add' } }], status: 'inProgress' }
+      notify('item/started', { threadId: 'thread-1', turnId: id, item })
+      const reply = await ask('item/fileChange/requestApproval', { threadId: 'thread-1', itemId: 'item-w' })
+      const accepted = (reply.result as Message).decision === 'accept'
+      notify('item/completed', { threadId: 'thread-1', turnId: id, item: { ...item, status: accepted ? 'completed' : 'declined' } })
+      await message(id, [accepted ? 'Written.' : 'Not written.'])
+      return complete(id)
+    }
     if (text.includes('command')) {
       const command = await ask('item/commandExecution/requestApproval', { threadId: 'thread-1', itemId: 'item-c', command: 'rm -rf /' })
       const change = await ask('item/fileChange/requestApproval', { threadId: 'thread-1', itemId: 'item-f' })
@@ -172,7 +184,8 @@ function appServer(): void {
     }
 
     let answer = `You said: ${text}`
-    if (text.includes('argv')) answer = JSON.stringify(args)
+    if (text.includes('what came with this')) answer = JSON.stringify(parts)
+    else if (text.includes('argv')) answer = JSON.stringify(args)
     else if (text.includes('thread')) answer = JSON.stringify(thread)
     else if (text.includes('folder')) answer = process.cwd()
     else if (text.includes('pid')) answer = String(process.pid)
@@ -208,6 +221,7 @@ function appServer(): void {
           const turnId = `turn-${++turns}`
           running = { id: turnId }
           print({ id, result: { turn: { id: turnId } } })
+          parts = ((params.input as Message[] | undefined) ?? []).map((item) => (item.type === 'localImage' ? { localImage: item.path } : item.type))
           void turn(turnId, said(params))
           return
         }

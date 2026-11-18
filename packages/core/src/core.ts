@@ -1,12 +1,16 @@
 import { CLEAR_TOOL, describeCatalog, MEDIA_TOOL, SHOW_TOOL, SHOW_TOOL_INPUT, validateView } from '@repo/catalog'
 import { type Event, MEDIA_ACTIONS, type Result } from '@repo/protocol'
 import { createAccess } from './access/access.ts'
+import { createAttachments } from './attachments/attachments.ts'
+import { giveFolders } from './attachments/folders.ts'
 import { createBrowserControl } from './browser/browser.ts'
 import { createChannel } from './channel/channel.ts'
 import { createExecutor } from './commands/execute.ts'
 import { type Admission, admit } from './devices/admission.ts'
 import { createEngineRoom } from './engines/engines.ts'
+import { createBrowsing } from './files/browse.ts'
 import { createFiles } from './files/files.ts'
+import { createWrittenFiles } from './files/written.ts'
 import { createLibrary } from './library/library.ts'
 import { createMemory } from './memory/memory.ts'
 import { createObjections } from './personas/objection.ts'
@@ -20,6 +24,7 @@ import type { Records } from './ports/records.ts'
 import type { Search } from './ports/search.ts'
 import type { ToolHost } from './ports/tools.ts'
 import type { Web } from './ports/web.ts'
+import type { Workspace } from './ports/workspace.ts'
 import { memorySearch } from './records/memory-search.ts'
 import { createSchedule } from './schedule/schedule.ts'
 import { SCHEDULE_INSTRUCTIONS, SCHEDULE_ROUTING, scheduleTools } from './schedule/tools.ts'
@@ -56,6 +61,11 @@ export interface CoreOptions {
   computer?: Computer
   /** The web browser of the computer the core runs on, which the assistant drives as the user allows. Left out, it has none. */
   browser?: Browser
+  /**
+   * The assistant's own folder, as the person browses it and hands files into it. Left out, nothing can be handed
+   * over and there is nothing to browse.
+   */
+  workspace?: Workspace
 }
 
 /** The core as the listeners see it. */
@@ -146,6 +156,16 @@ export function createCore(options: CoreOptions): Core {
   const objections = createObjections({ records: options.records, screen, now })
   const files = createFiles({ records: options.records, blobs: options.blobs, now, newId: options.newId })
 
+  // The person's files and the assistant's (docs/SPEC.md, section 9.7): handed over with what is said, browsed in
+  // the assistant's folder, and each file a thread writes on the computer shown on a card of its turn.
+  const { workspace } = options
+  const workspaceChanged = (paths: string[]) => {
+    if (paths.length > 0) emit({ type: 'event', name: 'workspace.changed', paths })
+  }
+  const attachments = createAttachments({ workspace, now, newId: options.newId, onChange: (path) => workspaceChanged([path]) })
+  const browsing = createBrowsing({ workspace, settings })
+  const written = workspace ? createWrittenFiles({ screen, workspace, newId: options.newId }) : undefined
+
   // Memory (docs/SPEC.md, section 10): recalled into each turn, written while the assistant sleeps, and its tools.
   let currentTurn: () => string | undefined = () => undefined
   const memory = createMemory({
@@ -214,7 +234,11 @@ export function createCore(options: CoreOptions): Core {
       // The person's files and commands, within what they granted (docs/SPEC.md, section 12.2).
       reach: (showing) => access.reach(showing),
       version: () => `${access.version()} ${browser.version()}`,
-      hear: (said) => access.hear(said)
+      hear: (said) => access.hear(said),
+      wrote: (showing, paths) => {
+        written?.add(showing, paths).catch((error: unknown) => options.log.error(`The card of written files could not be shown: ${String(error)}`))
+        workspaceChanged(paths.flatMap((path) => workspace?.pathOf(path) ?? []))
+      }
     },
     memory,
     // A notification for what finished while the person may not be looking: only when the window is not in front of
@@ -241,7 +265,23 @@ export function createCore(options: CoreOptions): Core {
         const change = settings.setPersonas(input)
         return change.ok ? { ok: true, output: { settings: change.settings } } : change
       },
-      'utterance.send': (input) => ({ ok: true, output: { turn: channel.say(input.text, input.language) } }),
+      'utterance.send': async (input) => {
+        const named = input.attachments ?? []
+        const gone = attachments.missing(named)
+        if (gone.length > 0) return { ok: false, error: { code: 'invalid-input', message: 'A file handed over is no longer here: hand it over again.' } }
+        const folders = input.folders && input.folders.length > 0 ? await giveFolders(input.folders, { settings, computer: options.computer }) : []
+        const handed = { files: attachments.take(named), folders }
+        return { ok: true, output: { turn: channel.say(input.text, input.language, handed) } }
+      },
+      'attachment.open': (input) => attachments.open(input),
+      'attachment.write': (input) => attachments.write(input.attachment, input.data),
+      'attachment.close': (input) => attachments.close(input.attachment),
+      'attachment.discard': async (input) => {
+        await attachments.discard(input.attachment)
+        return { ok: true, output: {} }
+      },
+      'workspace.list': (input) => browsing.list(input.path),
+      'workspace.read': (input) => browsing.read(input.path, input.offset, input.length),
       'assistant.greet': () => {
         const turn = channel.greet()
         return { ok: true, output: turn === undefined ? {} : { turn } }

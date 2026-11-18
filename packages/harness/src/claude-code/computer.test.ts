@@ -108,6 +108,29 @@ describe('Claude Code on the computer', () => {
     expect(followed.text()).toBe('Refused: The person said no.')
   })
 
+  it('names the file it wrote, absolute, once the change is made', async () => {
+    const { session, home, answer, asked } = setup()
+    const followed = follow(session)
+    session.send(`use Write ${JSON.stringify({ file_path: 'trip.md', content: 'x' })}`)
+    await eventually(() => asked.length === 1)
+    answer({ allow: true })
+    await followed.until('turn-end')
+    const ended = followed.events.filter((event) => event.type === 'tool' && event.phase === 'ended')
+    expect(ended).toEqual([expect.objectContaining({ name: 'computer_write', wrote: [join(home, 'trip.md')] })])
+  })
+
+  it('names no file when a change was refused', async () => {
+    const { session, home, answer, asked } = setup()
+    const followed = follow(session)
+    session.send(`use Edit ${JSON.stringify({ file_path: join(home, 'trip.md'), old_string: 'a', new_string: 'b' })}`)
+    await eventually(() => asked.length === 1)
+    answer({ allow: false, reason: 'The person said no.' })
+    await followed.until('turn-end')
+    const ended = followed.events.find((event) => event.type === 'tool' && event.phase === 'ended')
+    expect(ended).toMatchObject({ name: 'computer_write', failed: true })
+    expect(ended).not.toHaveProperty('wrote')
+  })
+
   it('withdraws the question when the turn is interrupted', async () => {
     const { session, asked, signals } = setup()
     const followed = follow(session)

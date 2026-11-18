@@ -22,6 +22,8 @@ export function createClaudeCode(options: HarnessOptions): Harness {
   return {
     id: CLAUDE_CODE_ID,
     name: 'Claude Code',
+    // Pictures the person hands over are shown to the model with what they said.
+    capabilities: { images: true },
     status: () => status(cli),
     models: async () => CLAUDE_CODE_CHOICES,
     async signIn() {

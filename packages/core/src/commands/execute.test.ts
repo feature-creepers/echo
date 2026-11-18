@@ -56,6 +56,12 @@ function setup(overrides: Partial<Handlers> = {}) {
     'schedule.delete': () => ({ ok: true, output: { schedule } }),
     'schedule.quiet.set': () => ({ ok: true, output: { schedule } }),
     'schedule.hold': () => ({ ok: true, output: { schedule } }),
+    'attachment.open': () => ({ ok: true, output: { attachment: 'a1' } }),
+    'attachment.write': () => ({ ok: true, output: { received: 0 } }),
+    'attachment.close': () => ({ ok: false, error: { code: 'invalid-input', message: 'none' } }),
+    'attachment.discard': () => ({ ok: true, output: {} }),
+    'workspace.list': () => ({ ok: false, error: { code: 'invalid-input', message: 'none' } }),
+    'workspace.read': () => ({ ok: false, error: { code: 'invalid-input', message: 'none' } }),
     ...overrides
   }
   return { execute: createExecutor(handlers, log), log }

@@ -10,6 +10,8 @@ import { useDeviceSpeech } from '../audio/use-speech.ts'
 import { Stage } from '../conversation/stage.tsx'
 import { DeviceProvider, keyPress, useDevice } from '../device/device.tsx'
 import type { DeviceHost } from '../device/host.ts'
+import { useFileActions } from '../files/file-actions.ts'
+import { QuickLook } from '../files/quick-look.tsx'
 import { type HubPage, HubScreen } from '../hub/hub-screen.tsx'
 import { HUB_KEEPS, hubMakesRoom } from '../hub/room.ts'
 import { LibraryContext, type LibraryControls } from '../library/library-context.ts'
@@ -175,13 +177,15 @@ function Connected({ productName, client, engine }: { productName: string; clien
     [client]
   )
   /** What the blocks of a pinned or saved widget can do. Nothing there starts playing by itself. */
+  const files = useFileActions()
   const actions = useMemo<ViewActions>(
     () => ({
       say,
       readFile: (file: string) => client.session.run('file.read', { file }),
-      readShapes: (url: string) => client.session.run('shapes.read', { url }).then((read) => read.shapes)
+      readShapes: (url: string) => client.session.run('shapes.read', { url }).then((read) => read.shapes),
+      files
     }),
-    [say, client]
+    [say, client, files]
   )
 
   useEffect(() => {
@@ -353,6 +357,8 @@ function Connected({ productName, client, engine }: { productName: string; clien
               )}
             </motion.div>
           </AnimatePresence>
+          {/* A file shown from any view, the stream's, a pinned widget's or a saved one's, opens in one quick look. */}
+          <QuickLook client={client} />
           {/* The sheet slides over whatever screen is there and stays from one screen to the next: it never pushes
               the stage off centre, and the hub, when the window has room for both, ends where it starts. */}
           <AnimatePresence initial={false}>

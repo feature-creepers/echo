@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { type DeviceSettingsChange, isShortcut, shortcutClash } from '@repo/client'
+import { basename, isAbsolute, join } from 'node:path'
+import { type DeviceSettingsChange, isShortcut, runsWhenOpened, shortcutClash } from '@repo/client'
 import { type AccentName, accents, color, frame } from '@repo/tokens'
 import { app, BrowserWindow, dialog, ipcMain, nativeImage, nativeTheme, session, shell } from 'electron'
 import {
@@ -295,6 +295,14 @@ function start(): void {
   // Shown in its folder, never opened: opening a file could run it.
   ipcMain.handle(APP_CHANNELS.filesReveal, (_event, path: string) => {
     if (typeof path === 'string' && path !== '') shell.showItemInFolder(path)
+  })
+  // Opened with the app the system gives its kind, or a folder in the file manager. What would run a program when
+  // opened is shown in its folder instead, so a file the assistant wrote never runs by a click.
+  ipcMain.handle(APP_CHANNELS.filesOpen, async (_event, path: string) => {
+    if (typeof path !== 'string' || path === '' || !isAbsolute(path)) return
+    if (runsWhenOpened(basename(path))) return shell.showItemInFolder(path)
+    const problem = await shell.openPath(path)
+    if (problem !== '') shell.showItemInFolder(path)
   })
   ipcMain.handle(APP_CHANNELS.updateState, () => updater.state())
   ipcMain.handle(APP_CHANNELS.updateCheck, () => updater.check())

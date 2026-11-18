@@ -1,5 +1,6 @@
 import type { Exchange, Persona, TurnId } from '@repo/protocol'
 import { useLayoutEffect, useRef } from 'react'
+import { AttachedLine } from '../attachments/attached-line.tsx'
 import { ArrowGlyph } from '../primitives/icons.tsx'
 import { accentStyle } from '../styles/accent.ts'
 import { whoAsked } from './who-asked.ts'
@@ -40,6 +41,7 @@ export function Transcript({ exchanges, personas, onOpenAnswer }: TranscriptProp
                     {whoAsked(exchange)} <time dateTime={exchange.at}>{clock.format(new Date(exchange.at))}</time>
                   </span>
                   {exchange.said && <p className="text-sm text-text-soft leading-relaxed [overflow-wrap:anywhere]">{exchange.said}</p>}
+                  <AttachedLine attached={exchange.attached} />
                 </div>
                 <div className="grid grid-cols-1 gap-1 border-accent/50 border-l pl-3">
                   <span className="text-accent text-label">{persona?.name ?? 'Assistant'}</span>

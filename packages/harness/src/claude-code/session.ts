@@ -1,9 +1,9 @@
 import type { ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { mkdir } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { Log, Session, SessionRequest, Verdict } from '@repo/core'
-import { kindAt } from '../computer/paths.ts'
+import type { Attachment, Log, Session, SessionRequest, Verdict } from '@repo/core'
+import { absolute, kindAt } from '../computer/paths.ts'
 import { outsideScope } from '../computer/scope.ts'
 import { type Cli, NotInstalled } from '../process/cli.ts'
 import { createSessionEvents } from '../process/events.ts'
@@ -251,6 +251,8 @@ export function openSession(request: SessionRequest, context: SessionContext): S
     const known = calls.get(call)
     if (known === undefined) return
     calls.delete(call)
+    // A file written or edited is named, wherever it is, so the person is shown it.
+    const path = known.tool === WRITE_TOOL && output !== undefined && !failed ? asString(asObject(known.input)?.file_path) : undefined
     events.emit({
       type: 'tool',
       name: known.tool,
@@ -258,7 +260,8 @@ export function openSession(request: SessionRequest, context: SessionContext): S
       call,
       ...(known.input === undefined ? {} : { input: known.input }),
       ...(output === undefined ? {} : { output }),
-      ...(failed ? { failed } : {})
+      ...(failed ? { failed } : {}),
+      ...(path === undefined ? {} : { wrote: [absolute(path, workingFolder)] })
     })
   }
 
@@ -356,21 +359,42 @@ export function openSession(request: SessionRequest, context: SessionContext): S
     asking.clear()
   }
 
+  /**
+   * What goes to the CLI goes in the order it was given, though a message with pictures takes a moment to read:
+   * while one is being read, what follows waits behind it.
+   */
+  let sending: Promise<void> = Promise.resolve()
+  let reading = 0
+  const inOrder = (work: () => void | Promise<void>) => {
+    if (reading === 0) return void work()
+    sending = sending.then(work)
+  }
+
   void begin()
 
   return {
-    send(text) {
+    send(text, attachments = []) {
       if (closed) return
       // The identifier comes back with the result that answers the message.
       const uuid = randomUUID()
       unanswered.add(uuid)
-      write({ type: 'user', uuid, message: { role: 'user', content: text }, parent_tool_use_id: null })
+      const message = (content: unknown) => ({ type: 'user', uuid, message: { role: 'user', content }, parent_tool_use_id: null })
+      if (!attachments.some((attachment) => attachment.image)) return inOrder(() => write(message(text)))
+      reading++
+      sending = sending
+        .then(async () => {
+          const content = [...(await pictures(attachments, log)), { type: 'text', text }]
+          if (!closed) write(message(content))
+        })
+        .finally(() => {
+          reading--
+        })
     },
     interrupt() {
       if (closed || unanswered.size === 0) return
       withdraw()
       interrupting = true
-      write({ type: 'control_request', request_id: randomUUID(), request: { subtype: 'interrupt' } })
+      inOrder(() => write({ type: 'control_request', request_id: randomUUID(), request: { subtype: 'interrupt' } }))
     },
     close() {
       if (closed) return
@@ -389,4 +413,25 @@ export function resultText(content: unknown): string | undefined {
     .map((part) => (part?.type === 'text' ? (asString(part.text) ?? '') : part?.type === 'image' ? '[an image]' : ''))
     .filter((part) => part !== '')
   return parts.length > 0 ? parts.join('\n\n') : undefined
+}
+
+/** The name the core reports a write or an edit of a file under. */
+const WRITE_TOOL = 'computer_write'
+
+/**
+ * The pictures among the files the person handed over, as blocks of a message the model sees: each read whole and
+ * sent in base64, ahead of the words. One that cannot be read is left out; the words still name it by its path.
+ */
+export async function pictures(attachments: readonly Attachment[], log: Log): Promise<JsonObject[]> {
+  const blocks: JsonObject[] = []
+  for (const attachment of attachments) {
+    if (!attachment.image) continue
+    try {
+      const data = (await readFile(attachment.path)).toString('base64')
+      blocks.push({ type: 'image', source: { type: 'base64', media_type: attachment.mediaType, data } })
+    } catch (error) {
+      log.error(`A picture handed over could not be read: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+  return blocks
 }

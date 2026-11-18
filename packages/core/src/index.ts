@@ -21,8 +21,10 @@ export type {
 export type { Timers } from './ports/clock.ts'
 export type { Computer } from './ports/computer.ts'
 export type {
+  Attachment,
   ComputerUse,
   Harness,
+  HarnessCapabilities,
   HarnessModel,
   HarnessModels,
   HarnessStatus,
@@ -42,6 +44,7 @@ export { ERASURE, type Erasure, erasedBy, type NewRecord, type Records, type Sto
 export type { Search, SearchHit, SearchQuery } from './ports/search.ts'
 export type { ToolDefinition, ToolHost, ToolImage, ToolResult } from './ports/tools.ts'
 export type { Web } from './ports/web.ts'
+export type { NewFile, Workspace, WorkspaceItem } from './ports/workspace.ts'
 export { type MemoryRecordsOptions, memoryRecords } from './records/memory.ts'
 export { memorySearch } from './records/memory-search.ts'
 export { type ManualTimers, manualTimers } from './replay/manual-timers.ts'

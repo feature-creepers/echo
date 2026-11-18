@@ -20,6 +20,53 @@ afterEach(() => {
 const home = '/home/ada/workspace'
 const base = { folder: '/data/codex', model: 'm', instructions: 'i' }
 
+/** A Codex session given the computer, whose changes are all allowed. */
+function onComputer() {
+  const root = realpathSync.native(folder())
+  const workspace = join(root, 'workspace')
+  mkdirSync(workspace)
+  const reach: Reach = {
+    scope: () => ({ places: [{ path: workspace, kind: 'folder', write: true }], computer: 'read', home: workspace }),
+    approve: async () => ({ allow: true })
+  }
+  const codex = createCodex({ folder: join(root, 'codex'), log: recordingLog(), command: fake('fake-codex.ts'), env: { ...process.env, CODEX_HOME: folder() } })
+  const session = codex.open({ role: 'thread', instructions: 'You are Ada.', computer: reach })
+  open.push(session)
+  return { session, workspace }
+}
+
+describe('Codex and files', () => {
+  it('reports a change of files as a write, naming the files it made', async () => {
+    const { session, workspace } = onComputer()
+    const followed = follow(session)
+    session.send('write a file')
+    await followed.until('turn-end')
+    const tools = followed.events.filter((event) => event.type === 'tool')
+    expect(tools).toEqual([
+      { type: 'tool', name: 'computer_write', phase: 'started', call: 'item-w', input: { paths: [join(workspace, 'trip.md')] } },
+      {
+        type: 'tool',
+        name: 'computer_write',
+        phase: 'ended',
+        call: 'item-w',
+        input: { paths: [join(workspace, 'trip.md')] },
+        wrote: [join(workspace, 'trip.md')]
+      }
+    ])
+  })
+
+  it('shows Codex the pictures handed over, by where they are, after the words', async () => {
+    const { session } = onComputer()
+    const followed = follow(session)
+    session.send('what came with this', [
+      { path: '/home/ada/inbox/photo.png', name: 'photo.png', mediaType: 'image/png', image: true },
+      { path: '/home/ada/inbox/plan.pdf', name: 'plan.pdf', mediaType: 'application/pdf', image: false }
+    ])
+    await followed.until('turn-end')
+    expect(JSON.parse(followed.text())).toEqual(['text', { localImage: '/home/ada/inbox/photo.png' }])
+  })
+})
+
 describe('Codex’s sandbox, from what the person granted', () => {
   it('has no command line, and a read-only sandbox, unless the whole computer may be read', () => {
     const folders: Scope = { places: [{ path: home, kind: 'folder', write: true }], computer: 'off', home }

@@ -1,6 +1,6 @@
 import type { ChildProcess } from 'node:child_process'
 import { mkdir } from 'node:fs/promises'
-import type { ComputerUse, Log, Role, Session, SessionRequest } from '@repo/core'
+import type { Attachment, ComputerUse, Log, Role, Session, SessionRequest } from '@repo/core'
 import { absolute } from '../computer/paths.ts'
 import { outsideScope } from '../computer/scope.ts'
 import { type Cli, NotInstalled } from '../process/cli.ts'
@@ -30,6 +30,15 @@ const CLOSE_GRACE_MS = 1500
 const CLIENT = { name: 'core', title: 'Core', version: '1' }
 
 const text = (value: string) => [{ type: 'text', text: value, text_elements: [] }]
+
+/** What is said, and the pictures handed over with it, which Codex reads from where they are. */
+const input = (value: string, attachments: readonly Attachment[]) => [
+  ...text(value),
+  ...attachments.filter((attachment) => attachment.image).map((attachment) => ({ type: 'localImage', path: attachment.path }))
+]
+
+/** The name the core reports a change of files under. */
+const WRITE_TOOL = 'computer_write'
 
 /** A command as Codex gives it, a line or its words, as one line to show the person. */
 const commandLine = (value: unknown) => (Array.isArray(value) ? value.map(String).join(' ') : typeof value === 'string' ? value : '')
@@ -148,11 +157,11 @@ export function openSession(request: SessionRequest, context: SessionContext): S
   }
 
   /** Give a message to Codex: into the turn under way when there is one, else as a new turn. */
-  async function deliver(message: string): Promise<void> {
+  async function deliver(message: string, attachments: readonly Attachment[]): Promise<void> {
     if (closed) return
     if (turn !== undefined) {
       try {
-        await call('turn/steer', { threadId: thread, expectedTurnId: turn, input: text(message) })
+        await call('turn/steer', { threadId: thread, expectedTurnId: turn, input: input(message, attachments) })
         return
       } catch {
         // The turn ended before the message reached it: the message starts the next one.
@@ -160,7 +169,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
       }
     }
     try {
-      const started = await call('turn/start', { threadId: thread, input: text(message) })
+      const started = await call('turn/start', { threadId: thread, input: input(message, attachments) })
       const id = asString(asObject(asObject(started)?.turn)?.id)
       if (id !== undefined && id !== ended) turn = id
       if (interruptDue) interrupt()
@@ -281,6 +290,11 @@ export function openSession(request: SessionRequest, context: SessionContext): S
     }
   }
 
+  /** The folder a change names its files from. */
+  function filesBase(): string {
+    return shell && scope?.home ? scope.home : context.folder
+  }
+
   function withdraw(): void {
     for (const controller of asking) controller.abort()
     asking.clear()
@@ -291,7 +305,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
     if (method === 'item/started' && item.type === 'fileChange') {
       const touched = asArray(item.changes).map(asObject)
       const kinds = touched.map((change) => asString(asObject(change?.kind)?.type) ?? asString(change?.kind))
-      const base = shell && scope?.home ? scope.home : context.folder
+      const base = filesBase()
       const paths = touched.map((change) => absolute(asString(change?.path) ?? '.', base))
       const action = kinds.every((kind) => kind === 'add') ? 'create' : kinds.every((kind) => kind === 'delete') ? 'delete' : 'change'
       if (paths.length > 0) changes.set(asString(item.id) ?? '', { action, tool: 'apply_patch', paths })
@@ -327,10 +341,25 @@ export function openSession(request: SessionRequest, context: SessionContext): S
       }
       case 'item/started':
         if (ours !== undefined) events.emit({ type: 'tool', name: ours, phase: 'started', ...callOf(item) })
+        else if (item.type === 'fileChange') {
+          events.emit({ type: 'tool', name: WRITE_TOOL, phase: 'started', ...changeOf(item, filesBase()).call })
+        }
         return
       case 'item/completed':
         if (ours !== undefined) events.emit({ type: 'tool', name: ours, phase: 'ended', ...callOf(item), ...outcomeOf(item) })
-        else if (item.type === 'agentMessage' && !streamed.has(asString(item.id) ?? '')) {
+        else if (item.type === 'fileChange') {
+          // A change made is named, so the person is shown the files; one declined or failed is not.
+          const { call, kept } = changeOf(item, filesBase())
+          const done = item.status === 'completed'
+          events.emit({
+            type: 'tool',
+            name: WRITE_TOOL,
+            phase: 'ended',
+            ...call,
+            ...(done ? {} : { failed: true }),
+            ...(kept.length > 0 && done ? { wrote: kept } : {})
+          })
+        } else if (item.type === 'agentMessage' && !streamed.has(asString(item.id) ?? '')) {
           paragraphDue = wrote
           say(asString(item.text) ?? '')
         }
@@ -347,11 +376,11 @@ export function openSession(request: SessionRequest, context: SessionContext): S
   let queue: Promise<void> = begin()
 
   return {
-    send(message) {
+    send(message, attachments = []) {
       if (closed) return
       undelivered += 1
       queue = queue
-        .then(() => deliver(message))
+        .then(() => deliver(message, attachments))
         .then(() => {
           undelivered -= 1
           settle()
@@ -382,4 +411,17 @@ function outcomeOf(item: JsonObject): { output?: string; failed?: boolean } {
     .map((part) => (part?.type === 'text' ? (asString(part.text) ?? '') : ''))
     .filter((part) => part !== '')
   return parts.length > 0 ? { output: parts.join('\n\n') } : {}
+}
+
+/** A change of files as a call (which it is, and the files it touches), and the files it makes or keeps, absolute. */
+function changeOf(item: JsonObject, base: string): { call: { call?: string; input: { paths: string[] } }; kept: string[] } {
+  const touched = asArray(item.changes).map(asObject)
+  const paths = touched.map((change) => absolute(asString(change?.path) ?? '.', base))
+  const kept = touched.flatMap((change, index) => {
+    const kind = asString(asObject(change?.kind)?.type) ?? asString(change?.kind)
+    const path = paths[index]
+    return kind === 'delete' || path === undefined ? [] : [path]
+  })
+  const id = asString(item.id)
+  return { call: { ...(id === undefined ? {} : { call: id }), input: { paths } }, kept }
 }
