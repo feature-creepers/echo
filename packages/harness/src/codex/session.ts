@@ -312,11 +312,11 @@ export function openSession(request: SessionRequest, context: SessionContext): S
     asking.clear()
   }
 
-  /** A command or a change that was allowed has completed: the core is told how it went. */
-  function reportUse(item: JsonObject): void {
+  /** A command or a change that was allowed has completed: the core is told how it went. Gives back the use, if any. */
+  function reportUse(item: JsonObject): string | undefined {
     const id = asString(item.id) ?? ''
     const use = allowedUses.get(id)
-    if (use === undefined) return
+    if (use === undefined) return undefined
     allowedUses.delete(id)
     const status = asString(item.status)
     const exit = typeof item.exitCode === 'number' ? item.exitCode : undefined
@@ -326,6 +326,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
       use,
       ok ? { ok } : { ok, error: exit === undefined ? `It ${status ?? 'failed'}.` : `It ended with code ${exit}.${output ? ` ${lastLines(output)}` : ''}` }
     )
+    return use
   }
 
   function notified(method: string, params: JsonObject): void {
@@ -373,8 +374,8 @@ export function openSession(request: SessionRequest, context: SessionContext): S
           events.emit({ type: 'tool', name: WRITE_TOOL, phase: 'started', ...changeOf(item, filesBase()).call })
         }
         return
-      case 'item/completed':
-        reportUse(item)
+      case 'item/completed': {
+        const use = reportUse(item)
         if (ours !== undefined) events.emit({ type: 'tool', name: ours, phase: 'ended', ...callOf(item), ...outcomeOf(item) })
         else if (item.type === 'fileChange') {
           // A change made is named, so the person is shown the files; one declined or failed is not.
@@ -386,13 +387,15 @@ export function openSession(request: SessionRequest, context: SessionContext): S
             phase: 'ended',
             ...call,
             ...(done ? {} : { failed: true }),
-            ...(kept.length > 0 && done ? { wrote: kept } : {})
+            ...(kept.length > 0 && done ? { wrote: kept } : {}),
+            ...(use === undefined ? {} : { use })
           })
         } else if (item.type === 'agentMessage' && !streamed.has(asString(item.id) ?? '')) {
           paragraphDue = wrote
           say(asString(item.text) ?? '')
         }
         return
+      }
       case 'error': {
         const error = asString(asObject(params.error)?.message)
         if (error !== undefined && params.willRetry !== true) fail(problem('Codex reported an error', error))

@@ -8,4 +8,10 @@ describe('what the assistant is doing', () => {
     expect(doing('a_new_tool')).toBe('Working')
     expect(doing(undefined)).toBeUndefined()
   })
+
+  it('names the work on the computer and in the browser', () => {
+    expect(doing('computer_write')).toBe('Changing a file')
+    expect(doing('computer_run')).toBe('Running a command')
+    expect(doing('browser_click')).toBe('Clicking')
+  })
 })

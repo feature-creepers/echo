@@ -1,0 +1,64 @@
+import type { Client } from '@repo/client'
+import type { FileDiff } from '@repo/protocol'
+import { useCallback, useEffect, useState } from 'react'
+import { Button } from '../primitives/button.tsx'
+import { DiffView, type Relative } from './diff-view.tsx'
+
+type Reading = { is: 'reading' } | { is: 'failed' } | { is: 'read'; files: FileDiff[] }
+
+/**
+ * The diffs of a use, or of a whole turn, read from the core when shown, and read again when `version` changes:
+ * once the change is known to be done, or undone.
+ */
+export function Changes({ client, of, relative, version }: { client: Client; of: { use: string } | { turn: string }; relative: Relative; version?: string }) {
+  const [reading, setReading] = useState<Reading>({ is: 'reading' })
+  const key = 'use' in of ? `use:${of.use}` : `turn:${of.turn}`
+
+  const read = useCallback(
+    (live: () => boolean) => {
+      const asked = key.startsWith('use:') ? { use: key.slice(4) } : { turn: key.slice(5) }
+      client.session.run('activity.diff', asked).then(
+        ({ files }) => live() && setReading({ is: 'read', files }),
+        () => live() && setReading({ is: 'failed' })
+      )
+    },
+    [client, key]
+  )
+
+  // Read again whenever `version` changes, though the reading does not use it: it says the change moved on.
+  useEffect(() => {
+    let live = true
+    read(() => live)
+    return () => {
+      live = false
+    }
+  }, [read, version])
+
+  if (reading.is === 'reading') {
+    return (
+      <div aria-busy="true" className="grid grid-cols-1 gap-1.5">
+        <div className="h-8 animate-pulse rounded-md bg-white/[0.035]" />
+        <p className="text-[0.6875rem] text-text-faint">Reading the changes…</p>
+      </div>
+    )
+  }
+  if (reading.is === 'failed') {
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-danger text-xs">The changes could not be read.</span>
+        <Button
+          kind="quiet"
+          size="sm"
+          onClick={() => {
+            setReading({ is: 'reading' })
+            read(() => true)
+          }}
+        >
+          Try again
+        </Button>
+      </div>
+    )
+  }
+  if (reading.files.length === 0) return <p className="text-text-faint text-xs">No file was changed.</p>
+  return <DiffView files={reading.files} relative={relative} />
+}

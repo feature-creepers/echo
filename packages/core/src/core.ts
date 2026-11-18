@@ -446,6 +446,11 @@ export function createCore(options: CoreOptions): Core {
         const undone = await access.undo(input.use, input.anyway)
         return { ok: true, output: undone.use ? { outcome: undone.outcome, use: undone.use } : { outcome: undone.outcome } }
       },
+      'activity.diff': async (input) => {
+        const files = await access.diff(input)
+        return files ? { ok: true, output: { files } } : { ok: false, error: { code: 'invalid-input', message: 'There is no such use in the activity.' } }
+      },
+      'activity.changes': async (input) => ({ ok: true, output: { turns: await access.changes(input.turns) } }),
       'everything.stop': () => {
         access.stopEverything()
         return { ok: true, output: {} }

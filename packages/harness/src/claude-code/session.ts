@@ -257,7 +257,8 @@ export function openSession(request: SessionRequest, context: SessionContext): S
     events.emit(input === undefined ? { type: 'tool', name: tool, phase: 'started', call } : { type: 'tool', name: tool, phase: 'started', call, input })
   }
 
-  function toolEnded(call: string, output?: string, failed?: boolean): void {
+  /** A call ended: with what it gave back, whether it failed, and, for a use of the computer the core allowed, that use. */
+  function toolEnded(call: string, output?: string, failed?: boolean, use?: string): void {
     const known = calls.get(call)
     if (known === undefined) return
     calls.delete(call)
@@ -271,7 +272,8 @@ export function openSession(request: SessionRequest, context: SessionContext): S
       ...(known.input === undefined ? {} : { input: known.input }),
       ...(output === undefined ? {} : { output }),
       ...(failed ? { failed } : {}),
-      ...(path === undefined ? {} : { wrote: [absolute(path, workingFolder)] })
+      ...(path === undefined ? {} : { wrote: [absolute(path, workingFolder)] }),
+      ...(use === undefined ? {} : { use })
     })
   }
 
@@ -287,7 +289,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
         allowedUses.delete(call)
         request.computer?.report?.(use, block.is_error === true ? { ok: false, error: output ?? 'It failed.' } : { ok: true })
       }
-      toolEnded(call, output, block.is_error === true)
+      toolEnded(call, output, block.is_error === true, use)
     }
   }
 

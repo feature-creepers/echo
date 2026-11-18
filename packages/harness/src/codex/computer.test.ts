@@ -27,7 +27,7 @@ function onComputer() {
   mkdirSync(workspace)
   const reach: Reach = {
     scope: () => ({ places: [{ path: workspace, kind: 'folder', write: true }], computer: 'read', home: workspace }),
-    approve: async () => ({ allow: true })
+    approve: async () => ({ allow: true, use: 'use-1' })
   }
   const codex = createCodex({ folder: join(root, 'codex'), log: recordingLog(), command: fake('fake-codex.ts'), env: { ...process.env, CODEX_HOME: folder() } })
   const session = codex.open({ role: 'thread', instructions: 'You are Ada.', computer: reach })
@@ -36,7 +36,7 @@ function onComputer() {
 }
 
 describe('Codex and files', () => {
-  it('reports a change of files as a write, naming the files it made', async () => {
+  it('reports a change of files as a write, naming the files it made and the use the core allowed', async () => {
     const { session, workspace } = onComputer()
     const followed = follow(session)
     session.send('write a file')
@@ -50,7 +50,8 @@ describe('Codex and files', () => {
         phase: 'ended',
         call: 'item-w',
         input: { paths: [join(workspace, 'trip.md')] },
-        wrote: [join(workspace, 'trip.md')]
+        wrote: [join(workspace, 'trip.md')],
+        use: 'use-1'
       }
     ])
   })
