@@ -29,6 +29,8 @@ import manifest from '../package.json' with { type: 'json' }
 
 const ENTRY = fileURLToPath(new URL('../src/main.ts', import.meta.url))
 const TOKEN = 'the-right-token'
+/** How long to wait, after the last answer, for the core to hang up. */
+const CLOSE_GRACE_MS = 1000
 
 const hello: Hello = {
   type: 'hello',
@@ -103,7 +105,9 @@ function exchange(endpoint: string, say: string, until = 1): Promise<{ replies: 
     socket.on('error', reject)
     socket.on('data', (text: string) => {
       for (const line of decoder.push(text)) replies.push(line.ok ? line.message : line)
-      if (replies.length >= until) setTimeout(() => resolve({ replies, closedByCore: socket.destroyed, socket }), 100)
+      // A core that hangs up does so right after its answer, but a Windows pipe can take a few hundred
+      // milliseconds to say it closed while every package's tests run at once, so the wait is generous.
+      if (replies.length >= until) setTimeout(() => resolve({ replies, closedByCore: socket.destroyed, socket }), CLOSE_GRACE_MS)
     })
     socket.on('close', () => resolve({ replies, closedByCore: true, socket }))
   })
