@@ -260,6 +260,10 @@ export function createCore(options: CoreOptions): Core {
 
   // Reminders and scheduled tasks (docs/SPEC.md, section 7.10): they ring as turns the assistant starts itself, through
   // the channel made below. Nothing rings before a client has sent a command, by which time the channel is there.
+  // A job may also ring when files arrive in a folder the person granted (section 7.10), when the computer can watch one.
+  const { computer } = options
+  const watch = computer?.watch?.bind(computer)
+  const fileAt = computer?.fileAt?.bind(computer)
   const schedule = createSchedule({
     records: options.records,
     now,
@@ -271,9 +275,26 @@ export function createCore(options: CoreOptions): Core {
       remind: (reminder) => void channel.remind(reminder),
       run: (task) => void channel.task(task),
       notify: (notification) => emit({ type: 'event', name: 'device.notify', notification })
-    }
+    },
+    files: watch && fileAt ? { watch, fileAt, reaches: (folder) => access.reaches(folder) } : undefined,
+    log: options.log
   })
-  const timeTools = scheduleTools({ schedule, now, zone })
+  const timeTools = scheduleTools({
+    schedule,
+    now,
+    zone,
+    ...(computer && watch
+      ? {
+          folders: {
+            locate: async (path: string) => {
+              const found = await computer.locate(path)
+              return found?.kind === 'folder' ? found.path : undefined
+            },
+            reaches: (path: string) => access.reaches(path)
+          }
+        }
+      : {})
+  })
 
   const channel = createChannel({
     engines,

@@ -187,6 +187,7 @@ export {
 } from './personas.ts'
 export {
   clockTimeSchema,
+  FILE_PATTERN_MAX_LENGTH,
   JOB_KINDS,
   JOB_REQUEST_MAX_LENGTH,
   JOB_SENTENCE_MAX_LENGTH,
@@ -199,6 +200,7 @@ export {
   jobKindSchema,
   jobSchema,
   jobStateSchema,
+  lastName,
   listed,
   localDateTimeSchema,
   MAX_EVERY_HOURS,
@@ -213,6 +215,7 @@ export {
   scheduleViewSchema,
   type Timing,
   timingSchema,
+  WATCHED_FOLDER_MAX_LENGTH,
   WEEKDAYS,
   type Weekday,
   weekdaySchema

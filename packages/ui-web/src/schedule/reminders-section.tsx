@@ -1,6 +1,6 @@
 import { type Client, followSchedule, type ScheduleState } from '@repo/client'
 import { useFollowed } from '@repo/client/react'
-import type { Job, QuietHours, ScheduleView } from '@repo/protocol'
+import { type Job, lastName, type QuietHours, type ScheduleView } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useEffect, useId, useState } from 'react'
 import { useDevice } from '../device/device.tsx'
@@ -129,11 +129,23 @@ function Row({ first, children }: { first: boolean; children: ReactNode }) {
   )
 }
 
-/** The clock time a job shows when it has no next time: the one it is set for. */
+/** The clock time a job shows when it has no next time: the one it is set for. Nothing for a job on files, which has none. */
 const setFor = (job: Job) => {
   const { timing } = job
+  if (timing.kind === 'files') return undefined
   if (timing.kind === 'once') return timing.at.slice(11, 16)
   return timing.kind === 'hourly' ? timing.from : timing.time
+}
+
+/** What a job shows where its time goes: its next time, the time it is set for, or for a job on files, the folder it watches. */
+function whenShown(job: Job, view: ScheduleView, now: Date): { top: string; under: string } {
+  const paused = job.state === 'paused'
+  if (job.timing.kind === 'files') return { top: lastName(job.timing.folder), under: paused ? 'Paused' : 'Watching' }
+  const set = setFor(job)
+  return {
+    top: job.next ? timeOf(job.next, view.timeZone) : set === undefined ? '—' : clockWords(set),
+    under: paused ? 'Paused' : job.next ? dayOf(job.next, now, view.timeZone) : '—'
+  }
 }
 
 interface WaitingProps {
@@ -150,13 +162,14 @@ interface WaitingProps {
 function Waiting({ job, view, now, held, onPause, onDelete }: WaitingProps) {
   const paused = job.state === 'paused'
   const words = whatItDoes(job)
+  const when = whenShown(job, view, now)
   return (
     <div className="flex items-start gap-4">
       <div className={cn('grid w-24 shrink-0 gap-0.5 pt-px transition-opacity duration-(--duration-calm) ease-soft', (paused || held) && 'opacity-45')}>
-        <span className="font-medium text-[1.0625rem] text-text tabular-nums leading-tight tracking-[-0.01em]">
-          {job.next ? timeOf(job.next, view.timeZone) : clockWords(setFor(job))}
+        <span className="truncate font-medium text-[1.0625rem] text-text tabular-nums leading-tight tracking-[-0.01em]" title={when.top}>
+          {when.top}
         </span>
-        <span className="text-text-faint text-xs">{paused ? 'Paused' : job.next ? dayOf(job.next, now, view.timeZone) : '—'}</span>
+        <span className="text-text-faint text-xs">{when.under}</span>
       </div>
 
       <div className={cn('grid min-w-0 flex-1 gap-1 transition-opacity duration-(--duration-calm) ease-soft', paused && 'opacity-55')}>

@@ -48,9 +48,14 @@ export const localDateTimeSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}T([01]\d|
 export const MIN_EVERY_HOURS = 1
 export const MAX_EVERY_HOURS = 12
 
+/** The longest a folder's path, and a pattern of file names, a job watches can be. */
+export const WATCHED_FOLDER_MAX_LENGTH = 1024
+export const FILE_PATTERN_MAX_LENGTH = 120
+
 /**
  * When a job rings, always on the person's clock in their time zone, so 8:00 stays 8:00 when the clocks change.
- * A day of the month a month does not have (the 31st in April) rings on its last day.
+ * A day of the month a month does not have (the 31st in April) rings on its last day. A job can also ring when
+ * files arrive or change in a folder the person granted, rather than at a time: a download finished, a scan.
  */
 export const timingSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('once'), at: localDateTimeSchema }),
@@ -59,7 +64,17 @@ export const timingSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('weekly'), time: clockTimeSchema, days: z.array(weekdaySchema).min(1).max(7) }),
   z.object({ kind: z.literal('monthly'), time: clockTimeSchema, day: z.number().int().min(1).max(31) }),
   /** Every few hours from one time of day to another, every day: "every 2 hours from 9:00 to 17:00". */
-  z.object({ kind: z.literal('hourly'), every: z.number().int().min(MIN_EVERY_HOURS).max(MAX_EVERY_HOURS), from: clockTimeSchema, until: clockTimeSchema })
+  z.object({ kind: z.literal('hourly'), every: z.number().int().min(MIN_EVERY_HOURS).max(MAX_EVERY_HOURS), from: clockTimeSchema, until: clockTimeSchema }),
+  /**
+   * When a file arrives or changes in a folder, once its writing is over: the folder as the system names it, the
+   * names it is about ("*.pdf"), and whether it rings each time or only the first.
+   */
+  z.object({
+    kind: z.literal('files'),
+    folder: z.string().min(1).max(WATCHED_FOLDER_MAX_LENGTH),
+    pattern: z.string().min(1).max(FILE_PATTERN_MAX_LENGTH).optional(),
+    repeat: z.boolean()
+  })
 ])
 export type Timing = z.infer<typeof timingSchema>
 
@@ -152,9 +167,15 @@ export function listed(words: readonly string[]): string {
   return words.length <= 1 ? (words[0] ?? '') : `${words.slice(0, -1).join(', ')} and ${words.at(-1)}`
 }
 
+/** The last name of a path, on any system: "Downloads" for "C:\Users\ada\Downloads" or "/home/ada/Downloads/". */
+export function lastName(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
+}
+
 /**
  * A recurring job's timing in plain words, "every weekday at 07:30", for the person and for a model, each side
- * writing the times its own way through `time`. Nothing for a one-time job, whose words depend on the day it is.
+ * writing the times its own way through `time`. Nothing for a one-time job, whose words depend on the day it is. A
+ * job on files is said by what sets it off: "each time a file arrives in Downloads".
  */
 export function recurrenceWords(timing: Timing, time: (clock: string) => string = (clock) => clock): string | undefined {
   switch (timing.kind) {
@@ -174,5 +195,7 @@ export function recurrenceWords(timing: Timing, time: (clock: string) => string 
       return `on the ${ordinal(timing.day)} of every month at ${time(timing.time)}`
     case 'hourly':
       return `every ${timing.every === 1 ? 'hour' : `${timing.every} hours`} from ${time(timing.from)} to ${time(timing.until)}`
+    case 'files':
+      return `${timing.repeat ? 'each time' : 'when'} a file${timing.pattern ? ` named ${timing.pattern}` : ''} arrives in ${lastName(timing.folder)}`
   }
 }

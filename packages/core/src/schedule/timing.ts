@@ -1,4 +1,15 @@
-import { clockTimeSchema, localDateTimeSchema, MAX_EVERY_HOURS, MIN_EVERY_HOURS, recurrenceWords, type Timing, WEEKDAYS, type Weekday } from '@repo/protocol'
+import {
+  clockTimeSchema,
+  FILE_PATTERN_MAX_LENGTH,
+  localDateTimeSchema,
+  MAX_EVERY_HOURS,
+  MIN_EVERY_HOURS,
+  recurrenceWords,
+  type Timing,
+  WATCHED_FOLDER_MAX_LENGTH,
+  WEEKDAYS,
+  type Weekday
+} from '@repo/protocol'
 import { z } from 'zod'
 import { addDays, daysInMonth, instantOf, sameDate, type WallDate, type WallTime, wallTimeAt, weekdayOf } from './zoned.ts'
 
@@ -40,7 +51,7 @@ const minutesOf = (clock: string) => {
 }
 
 /** The times of day a recurring timing rings on a date, in minutes from midnight, in order. */
-function timesOn(timing: Exclude<Timing, { kind: 'once' }>, date: WallDate): number[] {
+function timesOn(timing: Exclude<Timing, { kind: 'once' | 'files' }>, date: WallDate): number[] {
   const weekday = weekdayOf(date)
   switch (timing.kind) {
     case 'daily':
@@ -70,6 +81,8 @@ export function onceAt(timing: Extract<Timing, { kind: 'once' }>, zone: string):
  * when it never rings again: a one-time timing whose moment is past.
  */
 export function nextTime(timing: Timing, after: number, zone: string): number | undefined {
+  // A job on files rings when they arrive, at no time of its own.
+  if (timing.kind === 'files') return undefined
   if (timing.kind === 'once') {
     const at = onceAt(timing, zone)
     return at > after ? at : undefined
@@ -87,7 +100,7 @@ export function nextTime(timing: Timing, after: number, zone: string): number | 
 
 /** A timing as a model writes it: one kind, and the fields that kind needs. */
 const timingInput = z.object({
-  kind: z.enum(['once', 'daily', 'weekdays', 'weekly', 'monthly', 'hourly']),
+  kind: z.enum(['once', 'daily', 'weekdays', 'weekly', 'monthly', 'hourly', 'files']),
   at: z.string().optional(),
   inMinutes: z.number().optional(),
   time: z.string().optional(),
@@ -95,16 +108,19 @@ const timingInput = z.object({
   day: z.number().optional(),
   every: z.number().optional(),
   from: z.string().optional(),
-  until: z.string().optional()
+  until: z.string().optional(),
+  folder: z.string().optional(),
+  pattern: z.string().optional(),
+  repeat: z.boolean().optional()
 })
 
 /** The timing a tool takes, as a JSON Schema, for a model. */
 export const TIMING_INPUT_SCHEMA = {
   type: 'object',
   description:
-    'When, on the person\'s clock. "once" with "at" (a local date and time, "2026-11-19T08:00") or "inMinutes" (for "in 10 minutes"); "daily" or "weekdays" with "time" ("07:30"); "weekly" with "time" and "days"; "monthly" with "time" and "day" (1 to 31); "hourly" with "every" (hours, 1 to 12), "from" and "until" (times of day).',
+    'When, on the person\'s clock. "once" with "at" (a local date and time, "2026-11-19T08:00") or "inMinutes" (for "in 10 minutes"); "daily" or "weekdays" with "time" ("07:30"); "weekly" with "time" and "days"; "monthly" with "time" and "day" (1 to 31); "hourly" with "every" (hours, 1 to 12), "from" and "until" (times of day). Or "files", when files arrive or change in a folder the person granted: "folder" ("~/Downloads"), "pattern" ("*.pdf") if only some, and "repeat" for each time rather than the first.',
   properties: {
-    kind: { type: 'string', enum: ['once', 'daily', 'weekdays', 'weekly', 'monthly', 'hourly'] },
+    kind: { type: 'string', enum: ['once', 'daily', 'weekdays', 'weekly', 'monthly', 'hourly', 'files'] },
     at: { type: 'string', description: 'For once: the local date and time, "2026-11-19T08:00".' },
     inMinutes: { type: 'number', description: 'For once, instead of "at": how many minutes from now.' },
     time: { type: 'string', description: 'The time of day, "07:30".' },
@@ -112,7 +128,10 @@ export const TIMING_INPUT_SCHEMA = {
     day: { type: 'number', description: 'For monthly: the day of the month. A month without it rings on its last day.' },
     every: { type: 'number', description: 'For hourly: how many hours apart, 1 to 12.' },
     from: { type: 'string', description: 'For hourly: the first time of the day, "09:00".' },
-    until: { type: 'string', description: 'For hourly: the last time of the day, "17:00".' }
+    until: { type: 'string', description: 'For hourly: the last time of the day, "17:00".' },
+    folder: { type: 'string', description: 'For files: the folder, absolute or from the home folder with ~.' },
+    pattern: { type: 'string', description: 'For files: the names it is about, "*.pdf"; several separated by commas. Left out, any file.' },
+    repeat: { type: 'boolean', description: 'For files: true to ring each time, false (the default) for the first time only.' }
   },
   required: ['kind']
 } as const
@@ -130,7 +149,7 @@ const clockProblem = (field: string, value: string | undefined) =>
  */
 export function readTiming(input: unknown, now: number, zone: string): TimingReading {
   const read = timingInput.safeParse(input)
-  if (!read.success) return refuse('Give the timing as an object with a "kind": once, daily, weekdays, weekly, monthly or hourly.')
+  if (!read.success) return refuse('Give the timing as an object with a "kind": once, daily, weekdays, weekly, monthly, hourly or files.')
   const given = read.data
   const furthest = now + FURTHEST_YEARS * 366 * 24 * 60 * MINUTE_MS
   const clock = (field: 'time' | 'from' | 'until') => (clockTimeSchema.safeParse(given[field]).success ? (given[field] as string) : undefined)
@@ -186,6 +205,14 @@ export function readTiming(input: unknown, now: number, zone: string): TimingRea
       }
       if (minutesOf(until) <= minutesOf(from)) return refuse('"until" is a later time of the same day than "from".')
       return { ok: true, timing: { kind: 'hourly', every: given.every, from, until } }
+    }
+    case 'files': {
+      const folder = given.folder?.trim()
+      if (!folder) return refuse('For files, give "folder": the folder to watch, such as "~/Downloads".')
+      if (folder.length > WATCHED_FOLDER_MAX_LENGTH) return refuse('That folder path is too long.')
+      const pattern = given.pattern?.trim()
+      if (pattern !== undefined && pattern.length > FILE_PATTERN_MAX_LENGTH) return refuse(`"pattern" is ${FILE_PATTERN_MAX_LENGTH} characters at most.`)
+      return { ok: true, timing: { kind: 'files', folder, ...(pattern ? { pattern } : {}), repeat: given.repeat ?? false } }
     }
   }
 }

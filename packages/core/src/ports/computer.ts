@@ -31,4 +31,12 @@ export interface Computer {
   fingerprint(path: string): Promise<string | undefined>
   /** Move a file to the core's own trash, in a folder of the day. Gives back where it went. */
   trash(path: string): Promise<string>
+  /**
+   * Watch a folder, not its subfolders, for files that arrive, change or leave: `changed` is given their paths as
+   * the system reports them, often many times for one file being written, and the core waits for them to settle.
+   * Returns a function that stops watching. Left out, nothing is watched, and no job rings on files.
+   */
+  watch?(folder: string, changed: (paths: readonly string[]) => void): () => void
+  /** What a file is now: its size in bytes. Nothing when there is no file there, or a folder. */
+  fileAt?(path: string): Promise<{ size: number } | undefined>
 }

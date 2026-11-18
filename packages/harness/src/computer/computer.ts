@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { watch } from 'node:fs'
 import { copyFile, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, dirname, extname, join } from 'node:path'
@@ -83,6 +84,23 @@ export async function createComputer({ workspace, data, where = { home: homedir(
         await rm(path)
       }
       return target
+    },
+    watch(folder, changed) {
+      // The folder alone, not its subfolders: what the person watches is where their files land.
+      const watcher = watch(folder, { persistent: false }, (_event, name) => {
+        if (name) changed([join(folder, name.toString())])
+      })
+      // A folder removed or no longer readable ends its watch; the job is watched again when the jobs change.
+      watcher.on('error', () => watcher.close())
+      return () => watcher.close()
+    },
+    async fileAt(path) {
+      try {
+        const found = await stat(path)
+        return found.isFile() ? { size: found.size } : undefined
+      } catch {
+        return undefined
+      }
     }
   }
 }

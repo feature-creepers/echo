@@ -5,7 +5,7 @@ import type { ToolResult } from '../ports/tools.ts'
 import { languageOf } from '../speech/language.ts'
 import type { Tool } from '../tools/tools.ts'
 import { isWaiting, type Schedule } from './schedule.ts'
-import { readTiming, TIMING_INPUT_SCHEMA, timingWords } from './timing.ts'
+import { readTiming, TIMING_INPUT_SCHEMA, type TimingReading, timingWords } from './timing.ts'
 
 /** The tools that set, list, change and cancel reminders and scheduled tasks (docs/SPEC.md, section 7.10). */
 export const SCHEDULE_CREATE_TOOL = 'schedule_create'
@@ -19,6 +19,7 @@ export const SCHEDULE_INSTRUCTIONS = [
   '- Set one only when the person asks for it ("remind me…", "every morning, tell me…", "in ten minutes, check…"). Never offer one.',
   '- A reminder is a sentence you will say at the time, written now, short, in the language you are speaking: "It\'s eight: time to feed the cat." A task is a request you will carry out at the time, as if the person had just asked it: "Give me the weather in Lyon."',
   '- The timing is on the person\'s clock, from the line with the moment: a local date and time for once, "inMinutes" for "in 10 minutes", or a repeat (daily, weekdays, weekly on days, monthly on a day, every few hours between two times).',
+  '- It can also go off when files arrive or change in a folder the person granted, rather than at a time ("tell me when my download is done", "each time a scan lands in Scans, file it"): timing "files", with "repeat" for each time.',
   '- When the time could mean two things (morning or evening, which day), ask in one short question before setting it. "At 8" said in the evening for tonight is clear; said at 9 in the morning, ask.',
   '- Once set, confirm it in one short sentence, with the time as a person says it: "Okay, 8:00 tomorrow: feed the cat." Nothing more.',
   `- To change, pause or cancel one, use ${SCHEDULE_UPDATE_TOOL} or ${SCHEDULE_CANCEL_TOOL}; ${SCHEDULE_LIST_TOOL} says what is set.`,
@@ -58,10 +59,37 @@ export interface ScheduleToolsOptions {
   schedule: Schedule
   now: () => Date
   zone: () => string
+  /**
+   * The folders a job on files may watch: a folder as the person named it, found on the computer, and whether the
+   * person lets the assistant read it. Left out, no job rings on files.
+   */
+  folders?: {
+    locate(path: string): Promise<string | undefined>
+    reaches(path: string): boolean
+  }
 }
 
 /** The tools of the schedule, for any session: the orchestrator sets a reminder itself, and so can a thread. */
-export function scheduleTools({ schedule, now, zone }: ScheduleToolsOptions): Tool[] {
+export function scheduleTools({ schedule, now, zone, folders }: ScheduleToolsOptions): Tool[] {
+  /**
+   * A timing as a model wrote it, read and checked; a folder to watch is found on the computer and must be one the
+   * person granted, since what arrives there is read.
+   */
+  const timingOf = async (written: unknown): Promise<TimingReading> => {
+    const timing = readTiming(written, now().getTime(), zone())
+    if (!timing.ok || timing.timing.kind !== 'files') return timing
+    if (!folders) return { ok: false, problem: 'This computer cannot watch folders: set it for a time instead.' }
+    const folder = await folders.locate(timing.timing.folder)
+    if (folder === undefined) return { ok: false, problem: `There is no folder at "${timing.timing.folder}".` }
+    if (!folders.reaches(folder)) {
+      return {
+        ok: false,
+        problem: `${folder} is outside what the person granted, so what arrives there cannot be read. They can give it in Settings, Access, or by saying so; then set it again.`
+      }
+    }
+    return { ok: true, timing: { ...timing.timing, folder } }
+  }
+
   /** A job in one line, for a model: its id, what it is, and when it rings. */
   const line = (job: Job) => {
     const next = job.next === undefined ? undefined : Date.parse(job.next)
@@ -104,13 +132,13 @@ export function scheduleTools({ schedule, now, zone }: ScheduleToolsOptions): To
           required: ['kind', 'title', 'timing']
         }
       },
-      run(input) {
+      async run(input) {
         const asked = createInput.safeParse(input)
         if (!asked.success) return refuse(`Give "kind" (reminder or task), a "title" of ${JOB_TITLE_MAX_LENGTH} characters at most, and a "timing".`)
         const { kind, title, sentence, request, timing: written } = asked.data
         if (kind === 'reminder' && sentence === undefined) return refuse('A reminder needs "sentence": what you will say at the time.')
         if (kind === 'task' && request === undefined) return refuse('A task needs "request": what to carry out at the time.')
-        const timing = readTiming(written, now().getTime(), zone())
+        const timing = await timingOf(written)
         if (!timing.ok) return refuse(timing.problem)
         const language = asked.data.language ?? languageOf(sentence ?? request ?? title, LANGUAGE_CODES, undefined)
         const set = schedule.create({ kind, title, sentence, request, language, timing: timing.timing })
@@ -149,11 +177,11 @@ export function scheduleTools({ schedule, now, zone }: ScheduleToolsOptions): To
           required: ['job']
         }
       },
-      run(input) {
+      async run(input) {
         const asked = updateInput.safeParse(input)
         if (!asked.success) return refuse('Give the id of the job as "job", and what changes.')
         const { job, timing: written, ...rest } = asked.data
-        const timing = written === undefined ? undefined : readTiming(written, now().getTime(), zone())
+        const timing = written === undefined ? undefined : await timingOf(written)
         if (timing && !timing.ok) return refuse(timing.problem)
         const changed = schedule.change(job, { ...rest, ...(timing?.ok ? { timing: timing.timing } : {}) })
         if (!changed.ok) return refuse(`${changed.problem} The jobs are:\n${schedule.read().jobs.filter(isWaiting).map(line).join('\n') || 'none.'}`)

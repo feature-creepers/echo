@@ -5,6 +5,8 @@ import {
   type JobKind,
   type JobState,
   jobSchema,
+  lastName,
+  listed,
   type Notification,
   type QuietHours,
   recurrenceWords,
@@ -13,8 +15,10 @@ import {
 } from '@repo/protocol'
 import { z } from 'zod'
 import type { Timers } from '../ports/clock.ts'
+import type { Log } from '../ports/log.ts'
 import { ERASURE, type Records, type StoredRecord } from '../ports/records.ts'
 import type { Checked } from '../views/screen.ts'
+import { createFileWatch, type Watching } from './files.ts'
 import { DEFAULT_QUIET, isQuiet, QUIET_SET, readQuietHours } from './quiet.ts'
 import { clockAt, nextTime, onceAt } from './timing.ts'
 import { lateSentence, reminderCard } from './words.ts'
@@ -49,6 +53,9 @@ const LOOK_MS = 60_000
 const PAUSE_LOOK_MS = 1_000
 /** How many jobs can wait to ring at once. More is more likely a model gone wrong than a person's plan. */
 export const MAX_JOBS = 100
+/** How many files a reminder's card names, and a task's request: the rest are counted. */
+const FILES_NAMED = 3
+const FILES_TOLD = 20
 
 const jobRecordSchema = jobSchema.omit({ id: true, next: true, last: true }).extend({
   job: z.string().min(1).max(64),
@@ -87,6 +94,9 @@ export interface ScheduleOptions {
   timers?: Timers | undefined
   newId: () => string
   proactive: Proactive
+  /** The folders jobs may ring on, as the computer watches them. Left out, a job on files never rings. */
+  files?: Watching | undefined
+  log?: Log | undefined
 }
 
 /** A job to set, as read from a tool. */
@@ -185,7 +195,7 @@ export function createSchedule(options: ScheduleOptions): Schedule {
   /** When a job rings next, if it is active: a recurring one never for a time before `from`, nor one it rang at. */
   const nextOf = (entry: Kept, now: number): number | undefined => {
     const { record } = entry
-    if (record.state !== 'active') return undefined
+    if (record.state !== 'active' || record.timing.kind === 'files') return undefined
     if (record.timing.kind === 'once') return entry.last === undefined ? onceAt(record.timing, options.zone()) : undefined
     // A recurring job does not ring again for the times it missed: only one due a moment ago still counts.
     const after = Math.max(Date.parse(record.from) - 1, entry.last ?? Number.NEGATIVE_INFINITY, now - ON_TIME_MS)
@@ -221,6 +231,7 @@ export function createSchedule(options: ScheduleOptions): Schedule {
     const schedule = read()
     for (const listener of listeners) listener({ type: 'event', name: 'schedule.changed', schedule })
     arm()
+    followFiles()
     return schedule
   }
 
@@ -263,6 +274,59 @@ export function createSchedule(options: ScheduleOptions): Schedule {
     }
   }
 
+  /** Files arrived or changed in the folder a job watches, and their writing is over: it rings, naming them. */
+  const ringFiles = (id: string, paths: readonly string[]) => {
+    const entry = kept.get(id)
+    if (!entry || held || !listening || entry.record.state !== 'active' || entry.record.timing.kind !== 'files') return
+    const { record } = entry
+    const timing = entry.record.timing
+    const now = clock()
+    const silent = isQuiet(quiet, now, options.zone())
+    const [rang] = records.append([{ type: RANG, payload: { job: record.job, due: new Date(now).toISOString() } }])
+    if (rang) take(rang)
+    if (!timing.repeat) write({ ...record, state: 'done' })
+
+    const names = paths.map(lastName)
+    const shown = names.length <= FILES_NAMED ? listed(names) : `${names.slice(0, FILES_NAMED).join(', ')} and ${names.length - FILES_NAMED} more`
+    if (record.kind === 'reminder') {
+      const sentence = record.sentence ?? record.title
+      proactive.notify({ title: record.title, body: `${sentence} (${shown})`, silent, unlessFocused: false })
+      waiting.push(() =>
+        proactive.remind({ sentence, language: record.language, card: reminderCard(record.title, `${shown} · in ${lastName(timing.folder)}`), silent })
+      )
+    } else {
+      const told = paths.slice(0, FILES_TOLD).join(', ')
+      const more = paths.length > FILES_TOLD ? `, and ${paths.length - FILES_TOLD} more` : ''
+      const what = paths.length === 1 ? 'this file' : `these ${paths.length} files`
+      const request = `${record.request ?? record.title}\n\n(What set it off: ${what} arrived or changed in ${timing.folder}, written in full: ${told}${more}.)`
+      waiting.push(() => proactive.run({ title: record.title, request, language: record.language, silent }))
+    }
+    sayWhenFree()
+    changed()
+  }
+
+  const fileWatch =
+    options.files && timers
+      ? createFileWatch({
+          ...options.files,
+          timers,
+          now: clock,
+          ring: ringFiles,
+          problem: (message) => options.log?.error(message)
+        })
+      : undefined
+
+  /** Watch the folders of the active jobs on files, while a client listens and nothing is held. */
+  function followFiles() {
+    if (!fileWatch) return
+    const jobs = [...kept.values()].flatMap(({ record }) =>
+      listening && !held && record.state === 'active' && record.timing.kind === 'files'
+        ? [{ job: record.job, folder: record.timing.folder, ...(record.timing.pattern === undefined ? {} : { pattern: record.timing.pattern }) }]
+        : []
+    )
+    fileWatch.follow(jobs)
+  }
+
   /** Look at the clock: ring what is due, mark missed what is too late to ring, then sleep until the next time. */
   const look = () => {
     if (held || !listening) return
@@ -296,7 +360,7 @@ export function createSchedule(options: ScheduleOptions): Schedule {
   const pending = () => [...kept.values()].filter((entry) => entry.record.state === 'active' || entry.record.state === 'paused').length
 
   const neverRings = (timing: Timing, now: number) =>
-    timing.kind === 'once' ? onceAt(timing, options.zone()) <= now : nextTime(timing, now, options.zone()) === undefined
+    timing.kind === 'files' ? false : timing.kind === 'once' ? onceAt(timing, options.zone()) <= now : nextTime(timing, now, options.zone()) === undefined
 
   const create: Schedule['create'] = (job) => {
     if (pending() >= MAX_JOBS) return { ok: false, problem: `${MAX_JOBS} reminders and tasks are already waiting. Cancel some first.` }
@@ -360,6 +424,7 @@ export function createSchedule(options: ScheduleOptions): Schedule {
       if (listening) return
       listening = true
       look()
+      followFiles()
     },
     get(id) {
       const entry = kept.get(id)
@@ -397,6 +462,7 @@ export function createSchedule(options: ScheduleOptions): Schedule {
     close() {
       cancelLook()
       cancelPause()
+      fileWatch?.close()
     }
   }
 }

@@ -19,7 +19,13 @@ describe('reading the timing a model gives', () => {
       { kind: 'weekly', time: '18:00', days: ['monday', 'thursday'] }
     ],
     ['a day of the month', { kind: 'monthly', time: '09:00', day: 31 }, { kind: 'monthly', time: '09:00', day: 31 }],
-    ['every few hours', { kind: 'hourly', every: 2, from: '09:00', until: '17:00' }, { kind: 'hourly', every: 2, from: '09:00', until: '17:00' }]
+    ['every few hours', { kind: 'hourly', every: 2, from: '09:00', until: '17:00' }, { kind: 'hourly', every: 2, from: '09:00', until: '17:00' }],
+    ['files arriving, the first time', { kind: 'files', folder: ' ~/Downloads ' }, { kind: 'files', folder: '~/Downloads', repeat: false }],
+    [
+      'files of a kind, each time',
+      { kind: 'files', folder: 'C:\\Scans', pattern: '*.pdf', repeat: true },
+      { kind: 'files', folder: 'C:\\Scans', pattern: '*.pdf', repeat: true }
+    ]
   ])('takes %s', (_case, input, expected) => {
     expect(readTiming(input, NOW, PARIS)).toEqual({ ok: true, timing: expected })
   })
@@ -36,7 +42,8 @@ describe('reading the timing a model gives', () => {
     ['a day that is not a weekday', { kind: 'weekly', time: '08:00', days: ['lundi'] }, /"lundi"/],
     ['a day of the month out of range', { kind: 'monthly', time: '08:00', day: 32 }, /from 1 to 31/],
     ['less than an hour apart', { kind: 'hourly', every: 0, from: '09:00', until: '17:00' }, /from 1 to 12/],
-    ['an hour that ends before it starts', { kind: 'hourly', every: 1, from: '17:00', until: '09:00' }, /later time/]
+    ['an hour that ends before it starts', { kind: 'hourly', every: 1, from: '17:00', until: '09:00' }, /later time/],
+    ['files with no folder', { kind: 'files', pattern: '*.pdf' }, /"folder"/]
   ])('refuses %s, saying why', (_case, input, problem) => {
     const read = readTiming(input, NOW, PARIS)
     expect(read.ok).toBe(false)
@@ -84,5 +91,13 @@ describe('words for a model', () => {
     const next = Date.parse('2026-11-19T06:30:00Z')
     expect(timingWords({ kind: 'weekdays', time: '07:30' }, next, NOW, PARIS)).toBe('every weekday at 07:30 (next tomorrow at 07:30)')
     expect(timingWords({ kind: 'once', at: '2026-11-19T07:30' }, next, NOW, PARIS)).toBe('tomorrow at 07:30')
+  })
+
+  it.each<[Timing, string]>([
+    [{ kind: 'files', folder: 'C:\\Users\\ada\\Downloads', repeat: false }, 'when a file arrives in Downloads'],
+    [{ kind: 'files', folder: '/home/ada/Scans/', pattern: '*.pdf', repeat: true }, 'each time a file named *.pdf arrives in Scans']
+  ])('says what sets off a job on files, with no time', (timing, words) => {
+    expect(timingWords(timing, undefined, NOW, PARIS)).toBe(words)
+    expect(nextTime(timing, NOW, PARIS)).toBeUndefined()
   })
 })

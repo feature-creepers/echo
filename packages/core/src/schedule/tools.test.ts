@@ -7,7 +7,7 @@ import { SCHEDULE_CANCEL_TOOL, SCHEDULE_CREATE_TOOL, SCHEDULE_LIST_TOOL, SCHEDUL
 /** Wednesday 18 November 2026, 14:13 in Paris. */
 const START = Date.parse('2026-11-18T13:13:00Z')
 
-function setup() {
+function setup({ folders }: { folders?: { locate(path: string): Promise<string | undefined>; reaches(path: string): boolean } } = {}) {
   const timers = manualTimers()
   const now = () => new Date(START + timers.elapsed())
   let ids = 0
@@ -19,7 +19,7 @@ function setup() {
     newId: () => `job-${++ids}`,
     proactive: { busy: () => false, remind: () => undefined, run: () => undefined, notify: () => undefined }
   })
-  const tools = scheduleTools({ schedule, now, zone: () => 'Europe/Paris' })
+  const tools = scheduleTools({ schedule, now, zone: () => 'Europe/Paris', ...(folders ? { folders } : {}) })
   const call = async (name: string, input: unknown) => {
     const tool = tools.find((one) => one.definition.name === name)
     if (!tool) throw new Error(`No tool ${name}`)
@@ -29,6 +29,32 @@ function setup() {
 }
 
 const feedTheCat = { kind: 'reminder', title: 'Feed the cat', sentence: "It's eight: time to feed the cat.", timing: { kind: 'once', at: '2026-11-19T08:00' } }
+
+describe('a job on files, set by a tool', () => {
+  const download = { kind: 'reminder', title: 'Download done', sentence: 'Your download is done.', timing: { kind: 'files', folder: '~/Downloads' } }
+  const folders = (reaches: boolean) => ({
+    locate: async (path: string) => (path === '~/Downloads' ? '/home/ada/Downloads' : undefined),
+    reaches: () => reaches
+  })
+
+  it('watches the folder found on the computer, when the person granted it', async () => {
+    const { schedule, call } = setup({ folders: folders(true) })
+    expect(await call(SCHEDULE_CREATE_TOOL, download)).toMatchObject({ ok: true, text: expect.stringContaining('when a file arrives in Downloads') })
+    expect(schedule.read().jobs[0]?.timing).toEqual({ kind: 'files', folder: '/home/ada/Downloads', repeat: false })
+  })
+
+  it.each([
+    ['a folder not granted', folders(false), /outside what the person granted/],
+    ['a folder that is not there', { ...folders(true), locate: async () => undefined }, /no folder at "~\/Downloads"/],
+    ['a computer that cannot watch', undefined, /cannot watch folders/]
+  ])('refuses %s, saying why', async (_case, given, problem) => {
+    const { schedule, call } = setup(given ? { folders: given } : {})
+    const result = await call(SCHEDULE_CREATE_TOOL, download)
+    expect(result.ok).toBe(false)
+    expect(result.text).toMatch(problem)
+    expect(schedule.read().jobs).toEqual([])
+  })
+})
 
 describe('the schedule tools', () => {
   it('set a reminder, and say when it rings for the model to confirm', async () => {

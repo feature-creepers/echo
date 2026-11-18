@@ -285,3 +285,77 @@ describe('everything paused at once', () => {
     expect(setup({ records: first.records }).schedule.held()).toBe(true)
   })
 })
+
+describe('a job on files', () => {
+  /** A schedule whose folders are watched by hand: `arrive` reports paths in a folder, as the system would. */
+  function watched({ held = false } = {}) {
+    const timers = manualTimers()
+    const watchers = new Map<string, (paths: readonly string[]) => void>()
+    const done: string[] = []
+    let ids = 0
+    const schedule = createSchedule({
+      records: memoryRecords(),
+      now: () => new Date(START + timers.elapsed()),
+      zone: () => PARIS,
+      timers,
+      newId: () => `job-${++ids}`,
+      proactive: {
+        busy: () => false,
+        remind: ({ sentence, card }) => done.push(`${sentence} | ${(card.spec.elements.when?.props as { text?: string } | undefined)?.text}`),
+        run: ({ request }) => done.push(request),
+        notify: () => undefined
+      },
+      files: {
+        watch(folder, changed) {
+          watchers.set(folder, changed)
+          return () => watchers.delete(folder)
+        },
+        fileAt: async () => ({ size: 1 }),
+        reaches: () => true
+      }
+    })
+    if (held) schedule.hold(true)
+    schedule.listen()
+    const arrive = async (folder: string, ...paths: string[]) => {
+      watchers.get(folder)?.(paths)
+      timers.advance(3_000)
+      for (let step = 0; step < 10; step++) await Promise.resolve()
+    }
+    return { schedule, watchers, done, arrive }
+  }
+
+  it('says a reminder the first time a file arrives, naming it, and is done', async () => {
+    const { schedule, watchers, done, arrive } = watched()
+    schedule.create(reminder({ kind: 'files', folder: '/home/ada/Downloads', repeat: false }, 'Download done', 'Your download is done.'))
+    expect([...watchers.keys()]).toEqual(['/home/ada/Downloads'])
+    expect(schedule.read().jobs[0]).toMatchObject({ state: 'active' })
+    expect(schedule.read().jobs[0]?.next).toBeUndefined()
+    await arrive('/home/ada/Downloads', '/home/ada/Downloads/film.mkv')
+    expect(done).toEqual(['Your download is done. | film.mkv · in Downloads'])
+    expect(schedule.read().jobs[0]).toMatchObject({ state: 'done' })
+    expect(watchers.size).toBe(0)
+  })
+
+  it('carries out a task each time, told which files set it off', async () => {
+    const { schedule, done, arrive } = watched()
+    schedule.create({
+      kind: 'task',
+      title: 'File the scans',
+      request: 'File the new scans.',
+      timing: { kind: 'files', folder: '/s', pattern: '*.pdf', repeat: true }
+    })
+    await arrive('/s', '/s/a.pdf')
+    expect(done[0]).toBe('File the new scans.\n\n(What set it off: this file arrived or changed in /s, written in full: /s/a.pdf.)')
+    expect(schedule.read().jobs[0]).toMatchObject({ state: 'active' })
+  })
+
+  it('watches nothing while everything is held, nor while the job is paused', () => {
+    const { schedule, watchers } = watched({ held: true })
+    const set = schedule.create(reminder({ kind: 'files', folder: '/d', repeat: true }))
+    expect(watchers.size).toBe(0)
+    schedule.hold(false)
+    expect(watchers.size).toBe(1)
+    if (set.ok) schedule.change(set.job.id, { paused: true })
+    expect(watchers.size).toBe(0)
+  })
+})
