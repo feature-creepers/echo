@@ -93,6 +93,12 @@ describe('Codex’s sandbox, from what the person granted', () => {
     })
   })
 
+  it('works in a project’s folder when it has the command line, and in its own otherwise', () => {
+    const scope: Scope = { places: [{ path: '/home/ada/code/echo', kind: 'folder', write: true }], computer: 'read', home }
+    expect(threadSettings({ ...base, scope, project: '/home/ada/code/echo' })).toMatchObject({ cwd: '/home/ada/code/echo' })
+    expect(threadSettings({ ...base, scope: { ...scope, computer: 'off' }, project: '/home/ada/code/echo' })).toMatchObject({ cwd: '/data/codex' })
+  })
+
   it('has no sandbox when the whole computer may be changed', () => {
     expect(threadSettings({ ...base, scope: { places: [], computer: 'write' } })).toMatchObject({ sandbox: 'danger-full-access' })
   })

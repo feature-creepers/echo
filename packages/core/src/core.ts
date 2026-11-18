@@ -25,6 +25,7 @@ import type { Search } from './ports/search.ts'
 import type { ToolHost } from './ports/tools.ts'
 import type { Web } from './ports/web.ts'
 import type { Workspace } from './ports/workspace.ts'
+import { guideText, readGuide } from './projects/guide.ts'
 import { memorySearch } from './records/memory-search.ts'
 import { createSchedule } from './schedule/schedule.ts'
 import { SCHEDULE_INSTRUCTIONS, SCHEDULE_ROUTING, scheduleTools } from './schedule/tools.ts'
@@ -153,6 +154,14 @@ export function createCore(options: CoreOptions): Core {
   ]
 
   const library = createLibrary({ records: options.records, screen, now, newId: options.newId })
+
+  /** What the orchestrator is told of the folders a project's thread may work in. */
+  const projectsStanding = () => {
+    const folders = access.projects()
+    return folders.length === 0
+      ? undefined
+      : `Projects\n\nThe folders the person lets you change, where a project's thread may work:\n${folders.map((folder) => `- ${folder}`).join('\n')}`
+  }
   const access = createAccess({
     settings,
     screen,
@@ -246,12 +255,26 @@ export function createCore(options: CoreOptions): Core {
         [
           objections.standing(),
           library.standing(role),
-          ...(role === 'thread' ? [access.standing(), browser.standing()] : [`${SCHEDULE_INSTRUCTIONS}\n${SCHEDULE_ROUTING}`])
+          ...(role === 'thread' ? [browser.standing()] : [`${SCHEDULE_INSTRUCTIONS}\n${SCHEDULE_ROUTING}`, projectsStanding()])
         ]
           .filter(Boolean)
           .join('\n\n') || undefined,
-      // The person's files and commands, within what they granted (docs/SPEC.md, section 12.2).
+      // The person's files and commands, within what they granted (docs/SPEC.md, section 12.2). What a thread may do is
+      // told to it apart, so a session kept open hears when it changes.
+      told: () => access.standing(),
       reach: (showing) => access.reach(showing),
+      // Projects (docs/SPEC.md, section 7.9): a thread works in a folder the person lets it change, follows the
+      // project's own instructions, and is reminded of what it did there when a new session carries on.
+      workIn: async (path, showing) => {
+        const granted = await access.grant({ path, write: true, purpose: 'work' }, showing)
+        return granted.ok ? { ok: true, folder: granted.path } : granted
+      },
+      guide: async (folder) => {
+        if (!options.computer) return undefined
+        const guide = await readGuide(options.computer, folder).catch(() => undefined)
+        return guide && guideText(guide)
+      },
+      worked: (thread, folder) => access.worked(thread, folder),
       version: () => `${access.version()} ${browser.version()}`,
       hear: (said) => access.hear(said),
       wrote: (showing, paths) => {

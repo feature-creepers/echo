@@ -78,6 +78,8 @@ export function appServerArguments(userServers: string[], shell = false): string
 /** How a conversation is opened on that server. */
 export function threadSettings(options: {
   folder: string
+  /** A project's folder, which the session works in when it has the command line. */
+  project?: string | undefined
   model: string
   instructions: string
   tools?: ToolServer | undefined
@@ -100,7 +102,7 @@ export function threadSettings(options: {
     ...(sandbox === 'workspace-write' ? { sandbox_workspace_write: { writable_roots: writable, network_access: false } } : {})
   }
   return {
-    cwd: shell && scope?.home ? scope.home : options.folder,
+    cwd: shell ? (options.project ?? scope?.home ?? options.folder) : options.folder,
     model: options.model,
     // Ask before anything that is not plainly harmless. Each question is checked against what the person granted.
     approvalPolicy: 'untrusted',

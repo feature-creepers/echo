@@ -12,8 +12,8 @@ const INDEXED = 12
 export interface ThreadRegistry {
   read(): Threads
   get(id: string): Thread | undefined
-  /** Open a thread. An aside is given the topic it sits beside. */
-  open(title: string, kind: Thread['kind'], parent?: string): Thread
+  /** Open a thread. An aside is given the topic it sits beside; a project's topic, the folder it works in. */
+  open(asked: { title: string; kind: Thread['kind']; parent?: string | undefined; folder?: string | undefined }): Thread
   setState(id: string, state: Thread['state']): void
   /** Bring a topic to the stage. An aside never takes the focus. */
   focus(id: string): void
@@ -62,14 +62,15 @@ export function createThreadRegistry({ records, now, newId }: RegistryOptions): 
   return {
     read,
     get: (id) => threads.get(id),
-    open(title, kind, parent) {
+    open({ title, kind, parent, folder }) {
       const thread: Thread = {
         id: newId(),
         title,
         kind,
         state: 'working',
         at: now().toISOString(),
-        ...(kind === 'aside' && parent !== undefined && threads.has(parent) ? { parent } : {})
+        ...(kind === 'aside' && parent !== undefined && threads.has(parent) ? { parent } : {}),
+        ...(kind === 'topic' && folder !== undefined ? { folder } : {})
       }
       write(thread)
       return thread
@@ -93,7 +94,7 @@ export function createThreadRegistry({ records, now, newId }: RegistryOptions): 
       return recent
         .map(
           (thread) =>
-            `- ${thread.id}: "${thread.title}" (${thread.kind}, ${thread.state}${thread.id === focus ? ', on screen' : ''}, last used ${thread.at.slice(0, 16).replace('T', ' ')})`
+            `- ${thread.id}: "${thread.title}" (${thread.kind}, ${thread.state}${thread.folder === undefined ? '' : `, working in ${thread.folder}`}${thread.id === focus ? ', on screen' : ''}, last used ${thread.at.slice(0, 16).replace('T', ' ')})`
         )
         .join('\n')
     },

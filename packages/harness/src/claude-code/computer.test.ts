@@ -13,7 +13,7 @@ afterEach(() => {
 })
 
 /** A session given the computer: a home folder, a granted folder, and a reach that records what it is asked. */
-function setup(options: { write?: boolean; refuse?: string } = {}) {
+function setup(options: { write?: boolean; refuse?: string; project?: 'granted' | 'gone' } = {}) {
   const root = realpathSync.native(folder())
   const home = join(root, 'workspace')
   const granted = join(root, 'granted')
@@ -45,7 +45,8 @@ function setup(options: { write?: boolean; refuse?: string } = {}) {
     }
   }
   const harness = createClaudeCode({ folder: join(root, 'harness'), log: recordingLog(), command: fake('fake-claude.ts'), env: process.env })
-  const session = harness.open({ role: 'thread', instructions: 'You are Ada.', computer: reach })
+  const project = options.project === 'granted' ? granted : options.project === 'gone' ? join(root, 'gone') : undefined
+  const session = harness.open({ role: 'thread', instructions: 'You are Ada.', computer: reach, ...(project ? { folder: project } : {}) })
   open.push(session)
   return { session, home, granted, root, asked, signals, answer: (verdict: Parameters<typeof answer>[0]) => answer(verdict) }
 }
@@ -64,6 +65,33 @@ describe('Claude Code on the computer', () => {
     session.send('folder')
     await followed.until('turn-end', 2)
     expect(followed.text()).toContain(home)
+  })
+
+  it('works in a project’s folder, with the assistant’s own folder at hand, and gives commands time to finish', async () => {
+    const { session, home, granted } = setup({ write: true, project: 'granted' })
+    const followed = follow(session)
+    session.send('argv')
+    await followed.until('turn-end')
+    const args = JSON.parse(followed.text()) as string[]
+    expect(args[args.indexOf('--add-dir') + 1]).toBe(home)
+    expect(args.filter((arg) => arg === '--add-dir')).toHaveLength(1)
+
+    session.send('folder')
+    await followed.until('turn-end', 2)
+    expect(followed.text()).toContain(granted)
+
+    session.send('environment')
+    await followed.until('turn-end', 3)
+    expect(followed.text()).toContain('"BASH_DEFAULT_TIMEOUT_MS":"600000"')
+    expect(followed.text()).toContain('"BASH_MAX_TIMEOUT_MS":"1800000"')
+  })
+
+  it('says so when a project’s folder is gone, rather than making an empty one', async () => {
+    const { session, root } = setup({ project: 'gone' })
+    const followed = follow(session)
+    session.send('argv')
+    await followed.until('failed')
+    expect(followed.events.find((event) => event.type === 'failed')).toMatchObject({ reason: expect.stringContaining(join(root, 'gone')) })
   })
 
   it('sends every use to the permission prompt, so none runs unchecked', async () => {

@@ -8,7 +8,7 @@ import { createUserSettings } from '../settings/settings.ts'
 import { createTools } from '../tools/tools.ts'
 import { createScreen } from '../views/screen.ts'
 import { type Abilities, createChannel, EXCHANGE } from './channel.ts'
-import { SPEAK_FIRST } from './instructions.ts'
+import { SPEAK_FIRST, WORK_FIRST } from './instructions.ts'
 
 interface Setup {
   harness?: ScriptedHarness
@@ -17,11 +17,13 @@ interface Setup {
   server?: boolean
   /** More of what sessions can do: the computer. */
   more?: Partial<Abilities>
+  /** What new identifiers start with: a core started again over the same records must not make the same ones. */
+  run?: string
 }
 
-function setup({ harness = scriptedHarness(), records = memoryRecords(), server = true, more = {} }: Setup = {}) {
+function setup({ harness = scriptedHarness(), records = memoryRecords(), server = true, more = {}, run = '' }: Setup = {}) {
   let ids = 0
-  const newId = () => `id-${++ids}`
+  const newId = () => `${run}id-${++ids}`
   const settings = createUserSettings(records, [
     { id: 'first', name: 'Ada', stance: 'accommodating', accent: 'cyan', look: 'hud' },
     { id: 'second', name: 'Grace', stance: 'critical', accent: 'red', look: 'lens' }
@@ -868,5 +870,140 @@ describe('files a thread writes', () => {
     harness.sessions[1]?.emit({ type: 'tool', name: 'computer_write', phase: 'ended', call: 'c1', output: 'ok', wrote: ['/w/trip.md'] })
     harness.sessions[1]?.emit({ type: 'tool', name: 'computer_write', phase: 'ended', call: 'c2', failed: true, wrote: ['/w/no.md'] })
     expect(wrote).toEqual([{ showing: expect.objectContaining({ turn, slot: 'stage', focused: true }), paths: ['/w/trip.md'] }])
+  })
+})
+
+describe('a project', () => {
+  const reach = { scope: () => ({ places: [], computer: 'off' as const }), approve: async () => ({ allow: true as const }) }
+  /** What sessions can do on a computer with one project: its folder, its instructions, and what was done there. */
+  const projectAbilities = (asked: string[] = [], told = { text: 'You may change files at once.' }): Partial<Abilities> => ({
+    reach: () => reach,
+    told: () => told.text,
+    workIn: async (path) => {
+      asked.push(path)
+      return path === '~/code/echo' ? { ok: true, folder: '/home/ada/code/echo' } : { ok: false, text: `There is nothing at ${path}.` }
+    },
+    guide: async (folder) => `The project's own instructions\n--- AGENTS.md\nRun pnpm check in ${folder}.`,
+    worked: (thread, folder) => `- changed src/a.ts (thread ${thread}, from ${folder})`
+  })
+
+  /** Open a project's thread, as the orchestrator does when the person asks for work on it. */
+  async function openProject(more: Partial<Abilities>) {
+    const context = setup({ more })
+    context.channel.say('In the echo repo, make the handle wider.')
+    await settled()
+    const opened = await context.call(0, 'thread_open', { title: 'Echo', folder: '~/code/echo' })
+    context.harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+    return { ...context, opened, thread: context.harness.sessions[1] }
+  }
+
+  it('opens a thread in the folder the person lets it change, which works there with the project’s instructions', async () => {
+    const asked: string[] = []
+    const { opened, thread, channel } = await openProject(projectAbilities(asked))
+    expect(opened.ok).toBe(true)
+    expect(asked).toEqual(['~/code/echo'])
+    expect(channel.threads().threads).toMatchObject([{ title: 'Echo', kind: 'topic', folder: '/home/ada/code/echo' }])
+    expect(thread?.request.folder).toBe('/home/ada/code/echo')
+    expect(thread?.request.instructions).toContain('you work on a project with the person: "Echo", in the folder /home/ada/code/echo')
+    expect(thread?.request.instructions).toContain('Run pnpm check in /home/ada/code/echo.')
+    expect(thread?.request.instructions).toContain('You may change files at once.')
+    expect(thread?.request.instructions).toContain('- changed src/a.ts')
+    expect(thread?.sent[0]?.endsWith(WORK_FIRST)).toBe(true)
+  })
+
+  it('opens no thread when the folder cannot be worked in, and tells the orchestrator why', async () => {
+    const { channel, harness, call } = setup({ more: projectAbilities() })
+    channel.say('Work on my thesis.')
+    await settled()
+    const opened = await call(0, 'thread_open', { title: 'Thesis', folder: '~/nowhere' })
+    expect(opened).toEqual({ ok: false, text: expect.stringContaining('There is nothing at ~/nowhere.') })
+    expect(channel.threads().threads).toEqual([])
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+  })
+
+  it('says what it will do and how it went, and none of what it writes between its calls', async () => {
+    const { thread, spoken, ended } = await openProject(projectAbilities())
+    thread?.emit({ type: 'text', text: 'I will widen the handle and run the checks. ' })
+    thread?.emit({ type: 'tool', name: 'computer_read', phase: 'started', call: 'r1' })
+    thread?.emit({ type: 'tool', name: 'computer_read', phase: 'ended', call: 'r1', output: '…' })
+    thread?.emit({ type: 'text', text: 'Now let me look at the styles. ' })
+    thread?.emit({ type: 'tool', name: 'computer_write', phase: 'started', call: 'w1' })
+    thread?.emit({ type: 'tool', name: 'computer_write', phase: 'ended', call: 'w1', output: 'ok' })
+    thread?.emit({ type: 'text', text: 'The handle is wider, ' })
+    thread?.emit({ type: 'text', text: 'and the checks pass.' })
+    thread?.emit({ type: 'turn-end' })
+    await settled()
+    expect(spoken()).toEqual(['I will widen the handle and run the checks.', 'The handle is wider, and the checks pass.'])
+    expect(ended().at(-1)?.replied).toBe('I will widen the handle and run the checks. The handle is wider, and the checks pass.')
+  })
+
+  it('says how the work went before writing its report', async () => {
+    const { thread, spoken, call } = await openProject(projectAbilities())
+    thread?.emit({ type: 'tool', name: 'computer_run', phase: 'started', call: 'b1' })
+    thread?.emit({ type: 'tool', name: 'computer_run', phase: 'ended', call: 'b1', output: 'ok' })
+    thread?.emit({ type: 'text', text: 'Done: the checks pass. ' })
+    thread?.emit({ type: 'tool', name: 'answer_write', phase: 'started', call: 'a1' })
+    expect(spoken()).toEqual(['Done: the checks pass.'])
+    expect((await call(1, 'answer_write', { text: '## Changes\n- src/a.ts' })).ok).toBe(true)
+    thread?.emit({ type: 'text', text: 'That is all.' })
+    thread?.emit({ type: 'turn-end' })
+    await settled()
+    expect(spoken()).toEqual(['Done: the checks pass.'])
+  })
+
+  it('tells a session kept open that its approval level changed, instead of opening it again', async () => {
+    const told = { text: 'Every change waits for approval.' }
+    const { channel, harness, thread, call } = await openProject(projectAbilities([], told))
+    thread?.emit({ type: 'text', text: 'Done.' })
+    thread?.emit({ type: 'turn-end' })
+    await settled()
+    told.text = 'Changes run at once.'
+    channel.say('Now run the tests.')
+    await settled()
+    expect((await call(0, 'thread_send', { thread: channel.threads().threads[0]?.id })).ok).toBe(true)
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+    expect(harness.sessions).toHaveLength(2)
+    expect(thread?.sent[1]).toContain('What you may do on the computer changed since your instructions were written')
+    expect(thread?.sent[1]).toContain('Changes run at once.')
+    // Told once: the next message says nothing of it.
+    thread?.emit({ type: 'turn-end' })
+    channel.say('And commit.')
+    await settled()
+    await call(0, 'thread_send', { thread: channel.threads().threads[0]?.id })
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+    expect(thread?.sent[2]).not.toContain('What you may do on the computer changed')
+  })
+
+  it('carries on after a restart with its reports and how its answers ended', async () => {
+    const records = memoryRecords()
+    const first = setup({ records, more: projectAbilities() })
+    first.channel.say('In the echo repo, make the handle wider.')
+    await settled()
+    await first.call(0, 'thread_open', { title: 'Echo', folder: '~/code/echo' })
+    first.harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+    first.harness.sessions[1]?.emit({ type: 'text', text: 'Done. ' })
+    await first.call(1, 'answer_write', { text: 'Changed the handle in src/handle.tsx.' })
+    first.harness.sessions[1]?.emit({ type: 'turn-end' })
+    first.channel.say('Now publish it.')
+    await settled()
+    await first.call(0, 'thread_send', { thread: first.channel.threads().threads[0]?.id })
+    first.harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+    first.harness.sessions[1]?.emit({ type: 'failed', reason: 'Claude Code stopped unexpectedly.' })
+    await settled()
+
+    const second = setup({ records, more: projectAbilities(), run: 'again-' })
+    second.channel.say('Try again.')
+    await settled()
+    await second.call(0, 'thread_send', { thread: second.channel.threads().threads[0]?.id })
+    second.harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+    const instructions = second.harness.sessions[1]?.request.instructions ?? ''
+    expect(instructions).toContain('Your report:\nChanged the handle in src/handle.tsx.')
+    expect(instructions).toContain('(It failed: Claude Code stopped unexpectedly.)')
   })
 })

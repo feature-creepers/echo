@@ -15,7 +15,10 @@ export interface Computer {
   locate(path: string): Promise<{ path: string; kind: 'folder' | 'file' } | undefined>
   /** Places never reached on this computer, whatever is granted (docs/SPEC.md, section 12.2). */
   protected: readonly ProtectedPath[]
-  /** A file's content, to keep before it is changed. Nothing when there is no file there; `too-large` beyond `limit` bytes. */
+  /**
+   * A file's content: to keep its version before it is changed, or a project's instructions. Nothing when there is
+   * no file there; `too-large` beyond `limit` bytes.
+   */
   read(path: string, limit: number): Promise<Uint8Array | 'too-large' | undefined>
   /** Put a file's content back, making its folder when it is gone. */
   write(path: string, bytes: Uint8Array): Promise<void>

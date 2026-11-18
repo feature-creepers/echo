@@ -45,6 +45,12 @@ export const SESSION_ARGUMENTS = [
 /** A tool of the core may wait a long time for the user: an approval, an answer. The CLI must not give up on it first. */
 const TOOL_TIMEOUT_MS = 3_600_000
 
+/**
+ * How long a command may run. A project's build or test suite takes minutes; the CLI's own two minutes would stop it
+ * half way. The person can stop a turn at any time, and the command with it.
+ */
+const COMMAND_VARIABLES = { BASH_DEFAULT_TIMEOUT_MS: String(10 * 60_000), BASH_MAX_TIMEOUT_MS: String(30 * 60_000) }
+
 /** How long the CLI has to stop by itself once its input is closed, before it is stopped. */
 const CLOSE_GRACE_MS = 1500
 
@@ -89,17 +95,19 @@ export function openSession(request: SessionRequest, context: SessionContext): S
     let running: ChildProcess
     try {
       const launch = await context.cli.launch()
-      // On the computer, the session works in the assistant's own folder, or in an empty one of its own: never
-      // in the adapter's folder, whose files hold the session's instructions and token.
+      // On the computer, the session works in its project's folder, the assistant's own folder, or an empty one of
+      // its own: never in the adapter's folder, whose files hold the session's instructions and token.
       const scope = request.computer?.scope()
       computer = computerTools(scope)
       if (computer.length > 0) {
-        workingFolder = scope?.home ?? join(context.folder, 'empty')
-        await mkdir(workingFolder, { recursive: true })
+        workingFolder = request.folder ?? scope?.home ?? join(context.folder, 'empty')
+        if (request.folder === undefined) await mkdir(workingFolder, { recursive: true })
+        else if ((await kindAt(workingFolder)) !== 'folder') return fail(`The project's folder is no longer there: ${workingFolder}.`)
       }
+      // The other folders granted, the assistant's own among them when the session works in a project's.
       const folders = []
       for (const place of scope?.places ?? [])
-        if (place.kind === 'folder' && place.path !== scope?.home && (await kindAt(place.path)) === 'folder') folders.push(place.path)
+        if (place.kind === 'folder' && place.path !== workingFolder && (await kindAt(place.path)) === 'folder') folders.push(place.path)
       const paths = {
         instructions: await files.write('instructions.txt', request.instructions),
         settings: await files.write('settings.json', JSON.stringify(sessionSettings(computer))),
@@ -110,7 +118,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
       if (closed) return void files.remove()
       running = start(launch.command, [...SESSION_ARGUMENTS, ...isolationArguments(context.model, paths)], {
         cwd: workingFolder,
-        env: { ...launch.env, ...ISOLATION_VARIABLES, MCP_TOOL_TIMEOUT: String(TOOL_TIMEOUT_MS) }
+        env: { ...launch.env, ...ISOLATION_VARIABLES, ...COMMAND_VARIABLES, MCP_TOOL_TIMEOUT: String(TOOL_TIMEOUT_MS) }
       })
     } catch (error) {
       return fail(error instanceof NotInstalled ? error.message : `Claude Code could not be started: ${error instanceof Error ? error.message : String(error)}`)

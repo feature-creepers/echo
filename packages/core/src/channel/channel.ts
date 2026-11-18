@@ -26,7 +26,7 @@ import { createSentenceCutter, type SentenceCutter, speakable } from '../speech/
 import { createThreadRegistry } from '../threads/registry.ts'
 import type { Grant, Tool } from '../tools/tools.ts'
 import type { Checked, Screen, Showing } from '../views/screen.ts'
-import { instructionsFor, orchestratorInstructions, SPEAK_FIRST, threadInstructions } from './instructions.ts'
+import { instructionsFor, orchestratorInstructions, SPEAK_FIRST, threadInstructions, WORK_FIRST } from './instructions.ts'
 
 /** The type of the record written when a turn is over: one line of the channel log, word for word. */
 export const EXCHANGE = 'channel.exchange'
@@ -75,6 +75,21 @@ export interface Abilities {
   instructions: string
   /** What every session must keep in mind, such as decisions already made and widgets saved. Read each time a session opens. */
   standing?(role: 'orchestrator' | 'thread'): string | undefined
+  /**
+   * What a thread is told of what it may do on the computer, as it stands now. When it changes while a session is
+   * open (the person chose another approval level), the session is told the new one with its next message instead
+   * of being opened again, so work under way keeps its context.
+   */
+  told?(): string | undefined
+  /**
+   * Have a folder for a project's thread to work in, asking the person on screen, where `showing` says, when it is
+   * not theirs to change yet. Gives back the folder as the system names it, or why not.
+   */
+  workIn?(path: string, showing: Showing): Promise<{ ok: true; folder: string } | { ok: false; text: string }>
+  /** What a project tells those who work in it: its own instructions, read from its folder each time a session opens. */
+  guide?(folder: string): Promise<string | undefined>
+  /** What a thread did on the computer so far, for a new session carrying on its work. Paths are written from `folder`. */
+  worked?(thread: string, folder?: string): string | undefined
   /** The person's computer as a thread reaches it, its questions going where `showing` says. */
   reach?(showing: () => Showing): Reach | undefined
   /** Changes when what a thread is given changes, such as its access to the computer: its session is then opened again. */
@@ -215,6 +230,13 @@ interface Turn {
   title: string | undefined
   /** A notification already told the person it is done. */
   noticed: boolean
+  /**
+   * For a project's thread: a tool call has started. What it writes after that is held, since it is commentary on
+   * the way unless the turn ends after it: then it is how the work went, and it is said.
+   */
+  working: boolean
+  /** What it wrote since its last call, held. */
+  narration: string[]
 }
 
 /** A live session, and what it was opened for. When any of that changes, the session is replaced. */
@@ -224,6 +246,8 @@ interface Live {
   grant: Grant | undefined
   /** The date of the oldest line the session was told about: recall leaves out what it already has. */
   knownSince: string
+  /** What it was last told of what it may do on the computer. */
+  told?: string | undefined
 }
 
 /** A thread at work: its session, the turn it answers, and what waits for it. */
@@ -238,7 +262,12 @@ interface Runtime {
   showing: (() => Showing) | undefined
 }
 
-const openInput = z.object({ title: z.string().trim().min(1).max(80), kind: z.enum(['topic', 'aside']).default('topic'), request: z.string().optional() })
+const openInput = z.object({
+  title: z.string().trim().min(1).max(80),
+  kind: z.enum(['topic', 'aside']).default('topic'),
+  request: z.string().optional(),
+  folder: z.string().trim().min(1).max(4096).optional()
+})
 const sendInput = z.object({ thread: z.string().min(1), request: z.string().optional() })
 const focusInput = z.object({ thread: z.string().min(1) })
 const answerInput = z.object({ text: z.string().trim().min(1) })
@@ -261,7 +290,9 @@ const newTurn = (exchange: Exchange, language: string | undefined, handed: Hande
   shown: false,
   silent,
   title,
-  noticed: false
+  noticed: false,
+  working: false,
+  narration: []
 })
 
 /**
@@ -432,8 +463,9 @@ export function createChannel(options: ChannelOptions): Channel {
     return runtime
   }
 
-  const threadSession = (runtime: Runtime, engine: Harness, server: string): Session => {
+  const threadSession = async (runtime: Runtime, engine: Harness, server: string): Promise<Session> => {
     const thread = registry.get(runtime.thread)
+    const folder = thread?.folder
     const persona = activePersona()
     const profile = memory?.profile()
     const granted = abilities?.reach?.(() => showing())
@@ -450,11 +482,16 @@ export function createChannel(options: ChannelOptions): Channel {
       profile?.version ?? null,
       abilities?.version?.() ?? null,
       // A session that could read nothing is opened again once it is handed something to read.
-      computer === undefined ? null : reads(computer.scope())
+      computer === undefined ? null : reads(computer.scope()),
+      folder ?? null
     ])
     if (runtime.live?.key === key) return runtime.live.session
     end(runtime.live)
+    runtime.live = undefined
     const kind = thread?.kind ?? 'topic'
+    const told = abilities?.told?.()
+    // A project's thread is given what the project tells those who work in it, and what it did there so far.
+    const project = folder ? { folder, guide: await abilities?.guide?.(folder), worked: abilities?.worked?.(runtime.thread, folder) } : undefined
     const showing = (): Showing => ({
       thread: runtime.thread,
       turn: runtime.answering?.exchange.turn,
@@ -474,17 +511,19 @@ export function createChannel(options: ChannelOptions): Channel {
       profile: profile?.text,
       title: thread?.title ?? 'A topic',
       kind,
-      ...(abilities ? { abilities: [abilities.instructions, abilities.standing?.('thread')].filter(Boolean).join('\n\n') } : {})
+      project,
+      ...(abilities ? { abilities: [abilities.instructions, abilities.standing?.('thread'), told].filter(Boolean).join('\n\n') } : {})
     })
-    // A thread may search the web and read pages with the harness's own tools.
+    // A thread may search the web and read pages with the harness's own tools. A project's works in its folder.
     const session = engine.open({
       role: 'thread',
       instructions,
       web: true,
       ...(grant ? { tools: { url: server, token: grant.token } } : {}),
-      ...(computer ? { computer } : {})
+      ...(computer ? { computer } : {}),
+      ...(folder ? { folder } : {})
     })
-    const live: Live = { session, key, grant, knownSince: earlier[0]?.at ?? now().toISOString() }
+    const live: Live = { session, key, grant, knownSince: earlier[0]?.at ?? now().toISOString(), told }
     runtime.live = live
     session.onEvent((event) => hearThread(runtime, live, event))
     return session
@@ -493,18 +532,35 @@ export function createChannel(options: ChannelOptions): Channel {
   const hearThread = (runtime: Runtime, live: Live, event: SessionEvent) => {
     if (runtime.live !== live) return
     const turn = runtime.answering
+    const project = registry.get(runtime.thread)?.folder !== undefined
     switch (event.type) {
       case 'text':
         // The view and the full answer come after the spoken answer: what a thread writes after them would only say
         // the answer again.
-        if (turn && turn.exchange.written === undefined && !turn.shown) for (const sentence of turn.cutter.push(event.text)) say(turn, sentence)
+        if (turn && turn.exchange.written === undefined && !turn.shown) {
+          const sentences = turn.cutter.push(event.text)
+          if (turn.working) turn.narration.push(...sentences)
+          else for (const sentence of sentences) say(turn, sentence)
+        }
         return
       case 'tool':
         if (!turn) return
-        // What was written before a call is whole: it is said now, while the tool runs, not once more text follows.
-        if (event.phase === 'started') for (const sentence of turn.cutter.flush()) say(turn, sentence)
+        if (event.phase === 'started') {
+          // What was written before a call is whole: it is said now, while the tool runs, not once more text follows.
+          const written = turn.cutter.flush()
+          if (!turn.working) for (const sentence of written) say(turn, sentence)
+          else {
+            // A project's thread, at work: what it wrote between two calls was commentary on the way, and is dropped.
+            // Before its report or a view, it is how the work went, and is said.
+            turn.narration.push(...written)
+            const held = turn.narration.splice(0)
+            if (SPOKEN_FIRST.has(event.name)) for (const sentence of held) say(turn, sentence)
+          }
+          if (project) turn.working = true
+        }
         step(turn, runtime.thread, event)
-        if (event.phase === 'ended' && event.name === SHOW_TOOL && !event.failed && turn.sentences.size > 0) turn.shown = true
+        // At work on a project, a view shown on the way does not end what is said.
+        if (event.phase === 'ended' && event.name === SHOW_TOOL && !event.failed && turn.sentences.size > 0 && !project) turn.shown = true
         if (event.phase === 'ended' && !event.failed && event.wrote && event.wrote.length > 0 && runtime.showing)
           abilities?.wrote?.(runtime.showing(), event.wrote)
         return
@@ -513,6 +569,8 @@ export function createChannel(options: ChannelOptions): Channel {
         // An answer is waiting to be seen when some of it was said while another turn had the stage, or when it
         // finished out of sight before saying anything.
         const outOfSight = current !== turn && !(turn.after !== undefined && current === turn.after)
+        // What a project's thread wrote after its last call is how the work went.
+        for (const sentence of turn.narration.splice(0)) say(turn, sentence)
         finish(turn, turn.stopped ? 'stopped' : 'done')
         const missed = (unheard.get(turn.exchange.turn)?.length ?? 0) > 0 || (outOfSight && turn.heard === 0)
         runtime.answering = undefined
@@ -552,13 +610,27 @@ export function createChannel(options: ChannelOptions): Channel {
       finish(waiting.turn, 'stopped')
       return void next(runtime)
     }
-    const session = threadSession(runtime, engine, server)
+    const live = runtime.live
+    const session = await threadSession(runtime, engine, server)
+    if (waiting.turn.stopped) {
+      runtime.answering = undefined
+      finish(waiting.turn, 'stopped')
+      return void next(runtime)
+    }
+    // A session kept open is told what changed of what it may do on the computer, rather than opened again.
+    const told = abilities?.told?.()
+    const changed =
+      runtime.live === live && live !== undefined && live.told !== told
+        ? `(What you may do on the computer changed since your instructions were written. It now stands as follows, in place of what they said:)\n${told ?? 'You have no access to the computer.'}\n\n`
+        : ''
+    if (runtime.live) runtime.live.told = told
     const recalled = memory?.recall(waiting.text, runtime.live?.knownSince)
     const { handed } = waiting.turn
     const images = engine.capabilities?.images === true
     const note = noteForThread(handed, waiting.text, images)
+    const reminder = registry.get(runtime.thread)?.folder === undefined ? SPEAK_FIRST : WORK_FIRST
     session.send(
-      `${context()}\n${recalled ? `${recalled}\n\n` : ''}${waiting.text}\n\n${note ? `${note}\n\n` : ''}${SPEAK_FIRST}`,
+      `${context()}\n${changed}${recalled ? `${recalled}\n\n` : ''}${waiting.text}\n\n${note ? `${note}\n\n` : ''}${reminder}`,
       attachmentsFor(handed, images)
     )
   }
@@ -657,28 +729,41 @@ export function createChannel(options: ChannelOptions): Channel {
     {
       definition: {
         name: 'thread_open',
-        description: 'Open a new thread and pass it what the person said. kind "topic" for something to work on, "aside" for a quick side question.',
+        description:
+          'Open a new thread and pass it what the person said. kind "topic" for something to work on, "aside" for a quick side question. For work on a project, a code repository or a folder of files the person works on with you, give `folder`: the thread works there.',
         inputSchema: {
           type: 'object',
           properties: {
             title: { type: 'string', description: 'The topic in a few words.' },
             kind: { type: 'string', enum: ['topic', 'aside'] },
-            request: { type: 'string', description: 'What to pass on. Left out, what the person said.' }
+            request: { type: 'string', description: 'What to pass on. Left out, what the person said.' },
+            folder: {
+              type: 'string',
+              description: 'For a project: its folder, absolute or from ~. The person is asked on screen first when it is not one they let you change.'
+            }
           },
           required: ['title']
         }
       },
-      run(input) {
+      async run(input) {
         const turn = deciding
         const asked = openInput.safeParse(input)
         if (!turn) return { ok: false, text: 'There is nothing to pass on.' }
-        if (!asked.success) return { ok: false, text: 'thread_open takes a title, a kind ("topic" or "aside") and a request.' }
+        if (!asked.success) return { ok: false, text: 'thread_open takes a title, a kind ("topic" or "aside"), a request, and for a project its folder.' }
         if (turn.next) return { ok: false, text: 'This has already been passed on. Write nothing more.' }
+        let folder: string | undefined
+        if (asked.data.folder !== undefined) {
+          if (!abilities?.workIn) return { ok: false, text: 'Projects cannot be worked on here: there is no computer to work on.' }
+          const found = await abilities.workIn(asked.data.folder, { thread: undefined, turn: turn.exchange.turn, slot: 'stage', focused: true })
+          if (!found.ok) return { ok: false, text: `${found.text} Tell the person in a sentence.` }
+          if (deciding !== turn || turn.stopped) return { ok: false, text: 'The person moved on. Write nothing more.' }
+          folder = found.folder
+        }
         // An aside sits beside the topic on the stage. With no topic on the stage, there is nothing to sit beside:
-        // the question is a topic of its own.
+        // the question is a topic of its own. A project is always a topic.
         const beside = registry.focused()
-        const aside = asked.data.kind === 'aside' && beside !== undefined && screen.current() !== undefined
-        const thread = registry.open(asked.data.title, aside ? 'aside' : 'topic', aside ? beside.id : undefined)
+        const aside = folder === undefined && asked.data.kind === 'aside' && beside !== undefined && screen.current() !== undefined
+        const thread = registry.open({ title: asked.data.title, kind: aside ? 'aside' : 'topic', parent: aside ? beside.id : undefined, folder })
         return passOn(turn, thread, asked.data.request ?? turn.exchange.said)
       }
     },

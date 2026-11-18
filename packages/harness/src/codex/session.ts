@@ -117,6 +117,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
         'thread/start',
         threadSettings({
           folder: context.folder,
+          project: request.folder,
           model: request.model ?? models[request.role],
           instructions: request.instructions,
           tools: request.tools,

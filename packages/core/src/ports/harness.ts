@@ -119,6 +119,11 @@ export interface SessionRequest {
   model?: string
   /** The person's files and commands, within what they granted. Left out, the session reaches nothing of the computer. */
   computer?: Reach
+  /**
+   * The folder the session works in: a project's, which its commands run in and its relative paths start from. Left
+   * out, the assistant's own folder. Either way, what it may reach is the scope's: the folder grants nothing.
+   */
+  folder?: string
 }
 
 export type SessionEvent =
