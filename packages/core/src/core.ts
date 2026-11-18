@@ -277,7 +277,8 @@ export function createCore(options: CoreOptions): Core {
         return granted.ok ? { ok: true, folder: granted.path } : granted
       },
       guide: async (folder) => {
-        if (!options.computer) return undefined
+        // Read only while the folder is still within reach: the person may have taken it back since the thread began.
+        if (!options.computer || !access.reaches(folder)) return undefined
         const guide = await readGuide(options.computer, folder).catch(() => undefined)
         return guide && guideText(guide)
       },

@@ -42,6 +42,11 @@ export interface AccessControl {
   /** The folders the person lets the assistant change, besides its own: where it may work on a project. */
   projects(): string[]
   /**
+   * Whether a place is within reach now, for reading or, with `write`, for changing, and not a place never reached.
+   * Read from its words: what the core reads itself, such as a project's instructions, it reads only from there.
+   */
+  reaches(path: string, write?: boolean): boolean
+  /**
    * What a thread did on the computer, most recent last, in lines a session reads: what it changed and ran, how it
    * went, and what was refused and why. Paths inside `folder` are written from it. Nothing when it did nothing.
    */
@@ -190,6 +195,10 @@ export function createAccess({ settings, screen, computer, timers, records, vers
     }
   }
 
+  /** The place never reached that a path is in, if any. A place inside one that is reached all the same is not. */
+  const neverReached = (path: string) =>
+    computer?.protected.find((place) => place.path !== undefined && inside(path, place.path) && !(place.except ?? []).some((open) => inside(path, open)))
+
   /** Where a path is, said for the person: the assistant's own folder by that name. */
   const where = (path: string) => (computer && inside(path, computer.workspace) ? "The assistant's folder" : path)
 
@@ -302,9 +311,7 @@ export function createAccess({ settings, screen, computer, timers, records, vers
     if (!found) return { ok: false, text: `There is nothing at ${path}. Ask the person where it is.` }
     if (purpose === 'work' && found.kind !== 'folder') return { ok: false, text: `${found.path} is a file: a project is a folder.` }
     // A place never reached is not given either. A folder that holds one may be: what is inside stays refused.
-    const never = computer.protected.find(
-      (place) => place.path !== undefined && inside(found.path, place.path) && !(place.except ?? []).some((open) => inside(found.path, open))
-    )
+    const never = neverReached(found.path)
     if (never) return { ok: false, text: `${found.path} holds ${never.label.toLowerCase()}, which is never reached, whatever is granted.` }
     const current = scope()
     const covered =
@@ -434,6 +441,16 @@ export function createAccess({ settings, screen, computer, timers, records, vers
       return access()
         .places.filter((place) => place.kind === 'folder' && place.write)
         .map((place) => place.path)
+    },
+
+    reaches(path, write = false) {
+      if (!computer || neverReached(path)) return false
+      const current = scope()
+      return (
+        current.computer === 'write' ||
+        (current.computer === 'read' && !write) ||
+        current.places.some((place) => inside(path, place.path) && (place.write || !write))
+      )
     },
 
     worked(thread, folder) {

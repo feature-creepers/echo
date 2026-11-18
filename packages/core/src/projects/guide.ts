@@ -1,6 +1,6 @@
 import '../encoding.ts'
 import type { Computer } from '../ports/computer.ts'
-import { inFolder } from './folders.ts'
+import { inFolder, partsFrom } from './folders.ts'
 
 /**
  * What a project tells those who work in it (docs/SPEC.md, section 7.11): the instruction files its developers keep
@@ -40,14 +40,20 @@ function onlyPointsAt(text: string, read: ReadonlySet<string>): boolean {
   return lines.length > 0 && lines.every((line) => /^@\S+$/.test(line) && read.has(line.slice(1).replace(/^\.\//, '')))
 }
 
-/** Read a project's instruction files. Nothing when it has none, or none could be read. */
-export async function readGuide(computer: Pick<Computer, 'read'>, folder: string): Promise<ProjectGuide | undefined> {
+/**
+ * Read a project's instruction files. Nothing when it has none, or none could be read. A file is read only where it
+ * really is inside the folder, links followed: a link named AGENTS.md that leads elsewhere, to keys or another
+ * person's files, is not read, since reading it would reach past what the person granted.
+ */
+export async function readGuide(computer: Pick<Computer, 'read' | 'locate'>, folder: string): Promise<ProjectGuide | undefined> {
   const files: ProjectGuide['files'] = []
   const read = new Set<string>()
   let room = GUIDE_LIMIT
   let cut = false
   for (const name of GUIDE_FILES) {
-    const bytes = await computer.read(inFolder(folder, name), FILE_LIMIT).catch(() => undefined)
+    const found = await computer.locate(inFolder(folder, name)).catch(() => undefined)
+    if (found?.kind !== 'file' || partsFrom(folder, found.path) === undefined) continue
+    const bytes = await computer.read(found.path, FILE_LIMIT).catch(() => undefined)
     if (bytes === undefined) continue
     if (bytes === 'too-large') {
       cut = true

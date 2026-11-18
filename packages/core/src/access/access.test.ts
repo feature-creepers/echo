@@ -351,6 +351,17 @@ describe('places never reached', () => {
     const { grant } = setup()
     expect(await grant?.run({ path: '~/.ssh' })).toEqual({ ok: false, text: expect.stringContaining('never reached') })
   })
+
+  it('says what is within reach for what the core reads itself, and never a place never reached', () => {
+    const { access, settings } = setup()
+    settings.setAccess({ places: [{ path: '/home/ada/Documents', kind: 'folder', write: false }] })
+    expect(access.reaches('/home/ada/Documents/notes')).toBe(true)
+    expect(access.reaches('/home/ada/Documents/notes', true)).toBe(false)
+    expect(access.reaches('/home/ada/Music')).toBe(false)
+    settings.setAccess({ computer: 'write' })
+    expect(access.reaches('/home/ada/Music', true)).toBe(true)
+    expect(access.reaches('/home/ada/.ssh/id_ed25519')).toBe(false)
+  })
 })
 
 describe('the activity', () => {

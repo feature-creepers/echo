@@ -3,9 +3,13 @@ import { GUIDE_LIMIT, guideText, readGuide } from './guide.ts'
 
 const encoder = new TextEncoder()
 
-/** A computer holding these files, by path. */
-function holding(files: Record<string, string | 'too-large'>) {
+/** A computer holding these files, by path, and links from one path to another, followed as the system does. */
+function holding(files: Record<string, string | 'too-large'>, links: Record<string, string> = {}) {
   return {
+    locate: async (path: string) => {
+      const real = links[path] ?? path
+      return files[real] === undefined ? undefined : { path: real, kind: 'file' as const }
+    },
     read: async (path: string) => {
       const text = files[path]
       return text === undefined ? undefined : text === 'too-large' ? ('too-large' as const) : encoder.encode(text)
@@ -47,6 +51,12 @@ describe('readGuide', () => {
     expect(guide?.files).toHaveLength(1)
     expect(guide?.files[0]?.text).toHaveLength(GUIDE_LIMIT)
     expect(await readGuide(holding({ '/p/AGENTS.md': 'too-large' }), '/p')).toEqual({ files: [], cut: true })
+  })
+
+  it('follows a link inside the project, and never one that leads out of it', async () => {
+    const files = { '/p/docs/agents.md': 'Rules.', '/home/ada/.ssh/id_ed25519': 'PRIVATE KEY' }
+    expect((await readGuide(holding(files, { '/p/AGENTS.md': '/p/docs/agents.md' }), '/p'))?.files).toEqual([{ name: 'AGENTS.md', text: 'Rules.' }])
+    expect(await readGuide(holding(files, { '/p/AGENTS.md': '/home/ada/.ssh/id_ed25519' }), '/p')).toBeUndefined()
   })
 
   it('reads a Windows folder with its own separator', async () => {
