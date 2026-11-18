@@ -2,7 +2,8 @@ import { EXAMPLE_VIEW } from '@repo/catalog'
 import type { Event } from '@repo/protocol'
 import { describe, expect, it } from 'vitest'
 import { memoryRecords } from '../records/memory.ts'
-import { createScreen, type Showing } from './screen.ts'
+import { manualTimers } from '../replay/manual-timers.ts'
+import { ASIDE_STAYS_MS, createScreen, type Showing } from './screen.ts'
 
 function setup(records = memoryRecords()) {
   let ids = 0
@@ -14,6 +15,37 @@ function setup(records = memoryRecords()) {
 
 const onStage = (thread = 'a'): Showing => ({ thread, turn: 't1', slot: 'stage', focused: true })
 const shown = (title: string) => ({ title, view: EXAMPLE_VIEW })
+
+describe('an aside card leaving by itself', () => {
+  const aside = { thread: 'b', turn: 't2', slot: 'margin', focused: false } as const
+  const timed = () => {
+    const timers = manualTimers()
+    let ids = 0
+    return { timers, screen: createScreen({ records: memoryRecords(), newId: () => `view-${++ids}`, timers }) }
+  }
+
+  it('leaves a while after it was shown, and the stage stays', () => {
+    const { timers, screen } = timed()
+    screen.show(shown('Lyon'), onStage())
+    screen.show(shown('Time in Montreal'), aside)
+    timers.advance(ASIDE_STAYS_MS - 1)
+    expect(screen.margin().map((view) => view.title)).toEqual(['Time in Montreal'])
+    timers.advance(1)
+    expect(screen.margin()).toEqual([])
+    expect(screen.current()?.title).toBe('Lyon')
+  })
+
+  it('stays its full time again when brought back', () => {
+    const { timers, screen } = timed()
+    screen.show(shown('Time in Montreal'), aside)
+    timers.advance(ASIDE_STAYS_MS - 10)
+    screen.recall('b')
+    timers.advance(ASIDE_STAYS_MS - 10)
+    expect(screen.margin()).toHaveLength(1)
+    timers.advance(10)
+    expect(screen.margin()).toEqual([])
+  })
+})
 
 describe('the screen', () => {
   it('shows a valid view on the stage, tied to its thread and turn', () => {

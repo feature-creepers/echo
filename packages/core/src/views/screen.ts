@@ -1,6 +1,7 @@
 import { type ViewSpec, validateView } from '@repo/catalog'
 import { type Event, onTop, type ShownView, type TurnId, viewSchema } from '@repo/protocol'
 import { z } from 'zod'
+import type { Timers } from '../ports/clock.ts'
 import type { Records } from '../ports/records.ts'
 import type { ToolResult } from '../ports/tools.ts'
 
@@ -11,12 +12,18 @@ export const VIEW_CLEARED = 'view.cleared'
 /** How many aside cards the margin holds; an older one leaves when a new one comes. */
 const MARGIN = 3
 
+/** How long an aside's card stays once shown, before it leaves by itself: long enough to read it twice. */
+export const ASIDE_STAYS_MS = 3 * 60_000
+
 const request = z.object({ title: z.string().trim().min(1).max(120), view: z.unknown() })
 
 export interface ScreenOptions {
   records: Records
   /** A new identifier, unique for good. */
   newId: () => string
+  /** Time passing, for aside cards to leave by themselves. Left out, they stay until closed. */
+  timers?: Timers | undefined
+  now?: () => Date
 }
 
 /** Who asks to show something: a thread, the turn it is answering, and where its views go. */
@@ -59,7 +66,7 @@ export interface Screen {
   latest(thread: string | undefined): ShownView | undefined
   /** Every view a thread showed, oldest first, from the records. */
   history(thread: string): ShownView[]
-  /** Put an aside's latest card back in the margin. */
+  /** Put an aside's latest card back in the margin, for a while again. */
   recall(thread: string): void
   /** The focus moved to this thread: the stage shows its view, or nothing. */
   focus(thread: string | undefined): void
@@ -73,7 +80,7 @@ export interface Screen {
  * and the answer lists every problem so it can be written again. Every view is recorded, so an earlier one
  * is never lost, and the screen is as it was after a restart.
  */
-export function createScreen({ records, newId }: ScreenOptions): Screen {
+export function createScreen({ records, newId, timers, now = () => new Date() }: ScreenOptions): Screen {
   const listeners = new Set<(event: Event) => void>()
   const emit = (event: Event) => {
     for (const listener of listeners) listener(event)
@@ -101,12 +108,51 @@ export function createScreen({ records, newId }: ScreenOptions): Screen {
     // away: it comes back when its aside is opened again.
     for (const [thread, view] of byThread) if (view.id === target && view.slot === 'stage') byThread.delete(thread)
   }
+
+  /**
+   * An aside's card leaves by itself a while after it was shown, unless it was shown again since: an aside answers
+   * in passing, and its card should not stay on top of the stream for good. Each card has one timer, the latest.
+   */
+  const leaving = new Map<string, () => void>()
+  const leaveLater = (view: ShownView, ms: number) => {
+    if (!timers || view.slot !== 'margin') return
+    leaving.get(view.id)?.()
+    leaving.set(
+      view.id,
+      timers.after(Math.max(ms, 0), () => {
+        leaving.delete(view.id)
+        clear(view.id)
+      })
+    )
+  }
+
+  /** When each aside card in the margin was last shown, from the records, for those still there after a restart. */
+  const shownAt = new Map<string, number>()
   for (const record of records.read([VIEW_SHOWN, VIEW_CLEARED])) {
     if (record.type === VIEW_CLEARED) remove((record.payload as { view?: string }).view)
     else {
       const view = viewSchema.safeParse(record.payload)
-      if (view.success) place(view.data)
+      if (!view.success) continue
+      place(view.data)
+      if (view.data.slot === 'margin') shownAt.set(view.data.id, Date.parse(record.at))
     }
+  }
+
+  function clear(id?: string) {
+    const target = id ?? stage?.id
+    if (target === undefined) return
+    if (stage?.id !== target && !margin.some((card) => card.id === target) && !stream.some((view) => view.id === target)) return
+    leaving.get(target)?.()
+    leaving.delete(target)
+    remove(target)
+    records.append([{ type: VIEW_CLEARED, payload: { view: target } }])
+    emit({ type: 'event', name: 'view.cleared', view: target })
+  }
+
+  // The cards still in the margin after a restart leave when their time is up, or at once if it already was.
+  for (const card of margin) {
+    const at = shownAt.get(card.id)
+    if (at !== undefined && !Number.isNaN(at)) leaveLater(card, at + ASIDE_STAYS_MS - now().getTime())
   }
 
   const present = (checked: Checked, showing: Showing): ToolResult => {
@@ -126,6 +172,7 @@ export function createScreen({ records, newId }: ScreenOptions): Screen {
     }
     place(view)
     emit({ type: 'event', name: 'view.shown', view })
+    leaveLater(view, ASIDE_STAYS_MS)
     return { ok: true, text: 'Shown.' }
   }
 
@@ -176,6 +223,7 @@ export function createScreen({ records, newId }: ScreenOptions): Screen {
       if (!margin.some((card) => card.id === view.id)) records.append([{ type: VIEW_SHOWN, payload: view }])
       place(view)
       emit({ type: 'event', name: 'view.shown', view })
+      leaveLater(view, ASIDE_STAYS_MS)
     },
 
     focus(thread) {
@@ -192,14 +240,7 @@ export function createScreen({ records, newId }: ScreenOptions): Screen {
       }
     },
 
-    clear(id) {
-      const target = id ?? stage?.id
-      if (target === undefined) return
-      if (stage?.id !== target && !margin.some((card) => card.id === target) && !stream.some((view) => view.id === target)) return
-      remove(target)
-      records.append([{ type: VIEW_CLEARED, payload: { view: target } }])
-      emit({ type: 'event', name: 'view.cleared', view: target })
-    },
+    clear,
 
     onEvent(listener) {
       listeners.add(listener)
