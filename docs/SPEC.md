@@ -805,6 +805,42 @@ The assistant reaches the user's computer the way a coding agent does: it reads,
 
 Version 1 has no server of ours, no account and no analytics. With the later service, a user who chooses it has their records on their own hosted instance (section 5).
 
+### 12.4 Toward the whole computer: what comes after
+
+On 18 November 2026 the assistant, running in the app on the owner's Windows computer, reviewed its own tools. The owner wants it to act on the whole machine, behind guardrails he sets. Its report ranked fifteen blockers. These are built:
+
+- One boundary for every tool, approval levels the owner chooses, approvals that last a session, protected paths, the activity log with undo, and stop everything (section 12.2).
+- Attachments, the assistant's files on view, and a card for each file it writes (section 9.7).
+- Reminders and scheduled tasks (section 7.8).
+- A browser of its own (section 12.1).
+
+Two of the report's findings were mistaken. A question can already be answered aloud ("yes, go ahead"). Its web search returning American results comes from the harness's own tool, not from this product.
+
+The rest is designed here and built in this order, each behind the same gate as everything else: the core classifies the use, the owner's policy decides, the activity log records it.
+
+1. **Confinement by the system.** Today a command is checked against what it names, and the approval card is the backstop. Next, the system holds commands to the scope as well. On macOS and Linux this is Claude Code's own sandbox (Seatbelt, bubblewrap), given the granted places as its rules. On Windows it is a restricted token or an AppContainer for the shell the harness starts. Until then, the spec and the Access section say plainly that the check reads what a command names.
+2. **Desktop control.** Seeing and operating other apps (`device.screen`, section 12.1).
+   - **Reading:** a screenshot of a window, the list of windows, and the accessibility tree: UI Automation on Windows, the accessibility API on macOS, AT-SPI on Linux. The tree, not pixels, is what the model acts on, by element.
+   - **Acting:** focus, click, type, scroll and keys, each an act that the policy decides.
+   - **Guardrails:**
+     - an allowlist of apps the owner keeps;
+     - a visible marker while the assistant has control;
+     - the owner's own mouse or keyboard pausing it at once;
+     - password fields never typed into.
+   - It waits for confinement and for the browser's lessons, since a desktop gives far more reach than a web page.
+3. **Accounts.** Mail, calendar and contacts through each provider's own sign-in (OAuth), with fixed verbs and their decisions: reading and drafting are observations or reversible, while sending and deleting always ask, whatever the level. Until then, the browser reaches the sites the owner signs in to there.
+4. **A vault for secrets.** Kept by the system: Credential Manager and DPAPI on Windows, the Keychain on macOS, the Secret Service on Linux. The assistant refers to a secret by name and never sees its value: the executor puts it in place, and it is masked in the activity log and in every transcript. It comes with accounts, since the browser keeps its own sign-ins.
+5. **Elevation.** A signed helper that accepts only typed operations: install a package with the system's installer, set a firewall rule, start or stop a service, write a registry value under the machine's key. Each always asks, and no free administrator shell exists outside an explicit expert mode.
+6. **More of the device.**
+   - **Clipboard:** reading asks; writing is free.
+   - **Printers.**
+   - **Removable drives:** asked like any change.
+   - **The camera:** always asked, with a marker while in use.
+   - **The media player:** volume, seeking and a queue.
+7. **Raw audio, by choice.** Recognising the speaker and a song, and a vocabulary of the owner's own words for the recogniser. It is off by default, since audio would then leave the transcript.
+8. **Approvals away from the screen.** A phone notification that approves or refuses, once the phone app exists (section 5). An act with an outside effect (sending, paying, publishing) also asks for a spoken confirmation phrase the owner sets.
+9. **A signed log.** The activity records are chained by hash, so the log cannot be changed unseen. It can be exported.
+
 ## 13. Look and layout
 
 ### 13.1 Direction
