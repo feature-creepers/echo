@@ -388,7 +388,9 @@ export function createCore(options: CoreOptions): Core {
     memory,
     // A notification for what finished while the person may not be looking: only when the window is not in front of
     // them, and with no sound in the quiet hours.
-    notify: (notice) => emit({ type: 'event', name: 'device.notify', notification: { ...notice, silent: schedule.quiet(), unlessFocused: true } })
+    notify: (notice) => emit({ type: 'event', name: 'device.notify', notification: { ...notice, silent: schedule.quiet(), unlessFocused: true } }),
+    // In the quiet hours, an answer finished out of sight is left to its chip and its notification.
+    quiet: () => schedule.quiet()
   })
   currentTurn = channel.turn
   /** Whether the work the last run left was taken up: once, with the first command of a client. */
@@ -580,6 +582,7 @@ export function createCore(options: CoreOptions): Core {
         return { ok: true, output: {} }
       },
       'languages.set': (input) => ({ ok: true, output: { settings: settings.setLanguages(input) } }),
+      'interruptions.set': (input) => ({ ok: true, output: { settings: settings.setInterruptions(input) } }),
       'browser.read': async () => ({ ok: true, output: { browser: await browser.state() } }),
       'desktop.read': async () => ({ ok: true, output: { desktop: await desktop.state() } }),
       'browser.show': async () => {

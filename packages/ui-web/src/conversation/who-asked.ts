@@ -14,6 +14,8 @@ export function whoAsked(exchange: Exchange): string {
       return 'Scheduled'
     case 'resume':
       return 'Resumed'
+    case 'ready':
+      return 'Ready'
     default:
       return 'You'
   }

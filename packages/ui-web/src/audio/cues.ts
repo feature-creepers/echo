@@ -1,10 +1,13 @@
 import { route } from './devices.ts'
 
-/** The sounds that mark the microphone opening and closing. */
-export type Cue = 'open' | 'close'
+/** The sounds that mark the microphone opening and closing, and an answer ready in the background. */
+export type Cue = 'open' | 'close' | 'ready'
 
-/** Each cue's notes, in hertz: rising as the app starts to listen, falling as it stops. */
-const NOTES: Record<Cue, [number, number]> = { open: [587.33, 880], close: [880, 587.33] }
+/**
+ * Each cue's notes, in hertz: rising as the app starts to listen, falling as it stops, and higher, a step apart, for
+ * an answer that is ready, so it is not taken for the microphone.
+ */
+const NOTES: Record<Cue, [number, number]> = { open: [587.33, 880], close: [880, 587.33], ready: [1046.5, 1174.66] }
 
 let context: AudioContext | undefined
 

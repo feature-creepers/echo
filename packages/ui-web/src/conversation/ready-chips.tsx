@@ -1,5 +1,9 @@
 import type { Thread } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
+import { useEffect, useRef } from 'react'
+import { playCue } from '../audio/cues.ts'
+import { findDevice } from '../audio/devices.ts'
+import { useDevice } from '../device/device.tsx'
 import { ArrowGlyph } from '../primitives/icons.tsx'
 import { EASE } from '../styles/motion.ts'
 
@@ -11,6 +15,18 @@ export interface ReadyChipsProps {
 
 /** Topics whose answer is waiting, as small chips under what the assistant is saying: one press brings one back. */
 export function ReadyChips({ ready, onFocus }: ReadyChipsProps) {
+  // A new chip comes with a soft sound when answers are heard on this device, for a person looking elsewhere. Those
+  // already there when the window opens make none.
+  const { settings } = useDevice()
+  const known = useRef<ReadonlySet<string> | undefined>(undefined)
+  useEffect(() => {
+    const ids = new Set(ready.map((thread) => thread.id))
+    const before = known.current
+    known.current = ids
+    if (before === undefined || !settings.voice.aloud || ![...ids].some((id) => !before.has(id))) return
+    void findDevice(settings.speaker, 'audiooutput').then((sink) => playCue('ready', sink))
+  }, [ready, settings.voice.aloud, settings.speaker])
+
   return (
     <div className="flex flex-wrap justify-center gap-2">
       <AnimatePresence initial={false}>

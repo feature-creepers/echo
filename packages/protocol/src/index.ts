@@ -116,6 +116,7 @@ export {
   type Welcome,
   welcomeSchema
 } from './handshake.ts'
+export { BACKGROUND_RESULTS, type BackgroundResult, DEFAULT_INTERRUPTIONS, type Interruptions, interruptionsSchema } from './interruptions.ts'
 export {
   answerLanguageSchema,
   DEFAULT_LANGUAGES,

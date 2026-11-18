@@ -19,9 +19,11 @@ interface Setup {
   more?: Partial<Abilities>
   /** What new identifiers start with: a core started again over the same records must not make the same ones. */
   run?: string
+  /** Whether it is the quiet hours. */
+  quiet?: boolean
 }
 
-function setup({ harness = scriptedHarness(), records = memoryRecords(), server = true, more = {}, run = '' }: Setup = {}) {
+function setup({ harness = scriptedHarness(), records = memoryRecords(), server = true, more = {}, run = '', quiet = false }: Setup = {}) {
   let ids = 0
   const newId = () => `${run}id-${++ids}`
   const settings = createUserSettings(records, [
@@ -58,7 +60,8 @@ function setup({ harness = scriptedHarness(), records = memoryRecords(), server 
       instructions: 'THE SCREEN',
       ...more
     },
-    notify: (notice) => notices.push(notice)
+    notify: (notice) => notices.push(notice),
+    quiet: () => quiet
   })
   const events: Event[] = []
   channel.onEvent((event) => events.push(event))
@@ -448,6 +451,98 @@ describe('threads', () => {
     harness.sessions[1]?.reply('A risotto would do.')
 
     expect(notices).toEqual([{ title: 'Recipe', body: 'A risotto would do.' }])
+  })
+})
+
+describe('an answer finished out of sight', () => {
+  /** A recipe is asked for, then something else while it is worked on: the recipe is done before the other answer. */
+  async function finishedWhileAnswered(options: Setup = {}) {
+    const context = setup(options)
+    const { channel, harness, call } = context
+    channel.say('Find me a recipe')
+    await settled()
+    await call(0, 'thread_open', { title: 'Recipe' })
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+    const recipe = harness.sessions[1]
+    recipe?.emit({ type: 'text', text: 'Let me look. ' })
+    channel.say('Hello there')
+    await settled()
+    await call(1, 'ui_render', { title: 'Risotto', view: EXAMPLE_VIEW })
+    recipe?.reply('A risotto would do.')
+    await settled()
+    const thread = () => channel.threads().threads.find((one) => one.title === 'Recipe')
+    return { ...context, recipe: thread()?.id as string, state: () => thread()?.state }
+  }
+
+  it('is mentioned at the next pause, once, and said when it is brought back', async () => {
+    const { channel, harness, spoken, ended, recipe, state } = await finishedWhileAnswered()
+    // The person is being answered: nothing is said over it.
+    expect(spoken()).toEqual(['Let me look.'])
+    harness.sessions[0]?.reply('Hello!')
+    await settled()
+
+    expect(spoken()).toEqual(['Let me look.', 'Hello!', "By the way, it's ready: Recipe."])
+    expect(ended().at(-1)).toMatchObject({ trigger: 'ready', said: '', replied: "By the way, it's ready: Recipe.", outcome: 'done' })
+    expect(state()).toBe('ready')
+    expect(channel.busy()).toBe(false)
+
+    // Brought back, what was not heard is said; and at the next pause, nothing is mentioned again.
+    channel.focus(recipe)
+    channel.say('Thanks')
+    await settled()
+    harness.sessions[0]?.reply('You are welcome.')
+    await settled()
+    expect(spoken().slice(3)).toEqual(['A risotto would do.', 'You are welcome.'])
+  })
+
+  it('is said whole at the next pause, with its view, when the person chose so', async () => {
+    const { harness, settings, spoken, ended, screen, state } = await finishedWhileAnswered()
+    settings.setInterruptions({ results: 'speak' })
+    harness.sessions[0]?.reply('Hello!')
+    await settled()
+
+    expect(spoken()).toEqual(['Let me look.', 'Hello!', 'A risotto would do.'])
+    expect(ended().at(-1)).toMatchObject({ trigger: 'ready', replied: 'A risotto would do.' })
+    expect(screen.current()?.title).toBe('Risotto')
+    expect(state()).toBe('parked')
+  })
+
+  it.each([
+    ['when the person chose the chip only', { results: 'chip' as const }, false],
+    ['during the quiet hours', {}, true]
+  ])('is left to its chip %s', async (_case, chosen, quiet) => {
+    const { harness, settings, spoken, notices, state } = await finishedWhileAnswered({ quiet })
+    settings.setInterruptions(chosen)
+    harness.sessions[0]?.reply('Hello!')
+    await settled()
+
+    expect(spoken()).toEqual(['Let me look.', 'Hello!'])
+    expect(state()).toBe('ready')
+    expect(notices).toEqual([{ title: 'Recipe', body: 'Let me look. A risotto would do.' }])
+  })
+
+  it('is not mentioned once the person quieted the assistant', async () => {
+    const { channel, spoken, state } = await finishedWhileAnswered()
+    channel.stop()
+    await settled()
+    expect(spoken()).toEqual(['Let me look.'])
+    expect(state()).toBe('ready')
+  })
+
+  it('is said in the turn that asks for it, when the orchestrator brings it back', async () => {
+    const { channel, harness, settings, call, spoken, recipe, state } = await finishedWhileAnswered()
+    settings.setInterruptions({ results: 'chip' })
+    harness.sessions[0]?.reply('Hello!')
+    await settled()
+    channel.say('What is ready?')
+    await settled()
+
+    expect(await call(0, 'thread_focus', { thread: recipe })).toEqual({ ok: true, text: expect.stringContaining('Write nothing more.') })
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+    expect(spoken()).toEqual(['Let me look.', 'Hello!', 'A risotto would do.'])
+    expect(state()).toBe('parked')
   })
 })
 
@@ -940,6 +1035,15 @@ describe('a project', () => {
     await settled()
     expect(spoken()).toEqual(['I will widen the handle and run the checks.', 'The handle is wider, and the checks pass.'])
     expect(ended().at(-1)?.replied).toBe('I will widen the handle and run the checks. The handle is wider, and the checks pass.')
+  })
+
+  it('leaves a pause while it works, saying nothing, for what the assistant says by itself', async () => {
+    const { thread, channel } = await openProject(projectAbilities())
+    thread?.emit({ type: 'text', text: 'I will widen the handle. ' })
+    expect(channel.busy()).toBe(true)
+    thread?.emit({ type: 'tool', name: 'computer_read', phase: 'started', call: 'r1' })
+    expect(channel.busy()).toBe(false)
+    thread?.emit({ type: 'turn-end' })
   })
 
   it('says how the work went before writing its report', async () => {

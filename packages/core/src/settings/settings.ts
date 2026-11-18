@@ -3,7 +3,10 @@ import {
   accessSchema,
   type CommandError,
   type CommandInput,
+  DEFAULT_INTERRUPTIONS,
   DEFAULT_LANGUAGES,
+  type Interruptions,
+  interruptionsSchema,
   type Languages,
   languagesSchema,
   type Persona,
@@ -34,6 +37,8 @@ export const ACCESS_SET = 'access.set'
 const ACCESS_LEVELS = 3
 /** The type of the record written when the user sets the languages of the conversation. It carries both. */
 export const LANGUAGES_SET = 'languages.set'
+/** The type of the record written when the user sets when the assistant speaks up by itself. It carries all of it. */
+export const INTERRUPTIONS_SET = 'interruptions.set'
 
 const preferredSchema = z.object({ harness: z.string().min(1).nullable() })
 const modelSchema = z.object({ harness: z.string().min(1), model: z.string().min(1).nullable() })
@@ -54,6 +59,8 @@ export interface UserSettings {
   setAccess(change: AccessChange): Settings
   /** The language the person speaks and the one the assistant answers in. What is left out keeps its value. */
   setLanguages(change: { [Name in keyof Languages]?: Languages[Name] | undefined }): Settings
+  /** When the assistant speaks up by itself. What is left out keeps its value. */
+  setInterruptions(change: { [Name in keyof Interruptions]?: Interruptions[Name] | undefined }): Settings
   /** Be told each time the settings change. Returns a function that stops the telling. */
   onChange(listener: (settings: Settings) => void): () => void
 }
@@ -76,13 +83,17 @@ export function createUserSettings(
     personas: { available: [...defaults], active: defaults[0].id, confirmed: false },
     engines: { models: {}, efforts: {} },
     access: accessSchema.parse(folder === undefined ? {} : { folder }),
-    languages: DEFAULT_LANGUAGES
+    languages: DEFAULT_LANGUAGES,
+    interruptions: DEFAULT_INTERRUPTIONS
   }
   const listeners = new Set<(settings: Settings) => void>()
 
   // A record this version cannot read is skipped, so one written by another version never breaks this one.
-  for (const record of records.read([PERSONAS_SET, ENGINES_PREFERRED, ENGINES_MODEL, ENGINES_EFFORT, ACCESS_SET, LANGUAGES_SET])) {
-    if (record.type === LANGUAGES_SET) {
+  for (const record of records.read([PERSONAS_SET, ENGINES_PREFERRED, ENGINES_MODEL, ENGINES_EFFORT, ACCESS_SET, LANGUAGES_SET, INTERRUPTIONS_SET])) {
+    if (record.type === INTERRUPTIONS_SET) {
+      const read = interruptionsSchema.safeParse(record.payload)
+      if (read.success) settings = { ...settings, revision: settings.revision + 1, interruptions: read.data }
+    } else if (record.type === LANGUAGES_SET) {
       const read = languagesSchema.safeParse(record.payload)
       if (read.success) settings = { ...settings, revision: settings.revision + 1, languages: read.data }
     } else if (record.type === ACCESS_SET) {
@@ -147,6 +158,12 @@ export function createUserSettings(
       const next: Languages = { spoken: asked.spoken ?? settings.languages.spoken, answers: asked.answers ?? settings.languages.answers }
       if (next.spoken === settings.languages.spoken && next.answers === settings.languages.answers) return settings
       return change({ ...settings, revision: settings.revision + 1, languages: next }, { type: LANGUAGES_SET, payload: next })
+    },
+
+    setInterruptions(asked) {
+      const next: Interruptions = { results: asked.results ?? settings.interruptions.results }
+      if (next.results === settings.interruptions.results) return settings
+      return change({ ...settings, revision: settings.revision + 1, interruptions: next }, { type: INTERRUPTIONS_SET, payload: next })
     },
 
     onChange(listener) {

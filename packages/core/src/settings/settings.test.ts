@@ -1,4 +1,4 @@
-import { DEFAULT_ACCESS, DEFAULT_LANGUAGES, type Persona, type Settings } from '@repo/protocol'
+import { DEFAULT_ACCESS, DEFAULT_INTERRUPTIONS, DEFAULT_LANGUAGES, type Persona, type Settings } from '@repo/protocol'
 import { describe, expect, it, vi } from 'vitest'
 import { PERSONAS_SET } from '../personas/choice.ts'
 import { memoryRecords } from '../records/memory.ts'
@@ -16,7 +16,8 @@ describe('the settings of a new user', () => {
       personas: { available: [first, second], active: 'first', confirmed: false },
       engines: { models: {}, efforts: {} },
       access: DEFAULT_ACCESS,
-      languages: DEFAULT_LANGUAGES
+      languages: DEFAULT_LANGUAGES,
+      interruptions: DEFAULT_INTERRUPTIONS
     })
   })
 })
@@ -35,7 +36,8 @@ describe('setPersonas', () => {
         personas: { available: [first, second], active: 'first', confirmed: true },
         engines: { models: {}, efforts: {} },
         access: DEFAULT_ACCESS,
-        languages: DEFAULT_LANGUAGES
+        languages: DEFAULT_LANGUAGES,
+        interruptions: DEFAULT_INTERRUPTIONS
       }
     })
     expect(records.read([PERSONAS_SET])).toHaveLength(1)
@@ -53,7 +55,8 @@ describe('setPersonas', () => {
       personas: { available: [first, { ...second, name: 'MARVIN' }], active: 'second', confirmed: true },
       engines: { models: {}, efforts: {} },
       access: DEFAULT_ACCESS,
-      languages: DEFAULT_LANGUAGES
+      languages: DEFAULT_LANGUAGES,
+      interruptions: DEFAULT_INTERRUPTIONS
     }
     expect(settings.read()).toEqual(expected)
     expect(heard).toHaveBeenCalledExactlyOnceWith(expected)
@@ -136,7 +139,8 @@ describe('settings read back from the records', () => {
       personas: { available: [first, second], active: 'second', confirmed: true },
       engines: { models: {}, efforts: {} },
       access: DEFAULT_ACCESS,
-      languages: DEFAULT_LANGUAGES
+      languages: DEFAULT_LANGUAGES,
+      interruptions: DEFAULT_INTERRUPTIONS
     })
   })
 })
@@ -242,6 +246,27 @@ describe('the languages the user set', () => {
 
     expect(settings.read().languages).toEqual({ spoken: 'fr', answers: 'en' })
     expect(heard).toHaveBeenCalledTimes(2)
+    expect(createUserSettings(records, defaults).read()).toEqual(settings.read())
+  })
+})
+
+describe('when the assistant speaks up by itself', () => {
+  it('mentions an answer finished out of sight at first', () => {
+    expect(createUserSettings(memoryRecords(), defaults).read().interruptions).toEqual({ results: 'mention' })
+  })
+
+  it('keeps what was left out, writes nothing when unchanged, and reads back the same', () => {
+    const records = memoryRecords()
+    const settings = createUserSettings(records, defaults)
+    const heard = vi.fn()
+    settings.onChange(heard)
+
+    settings.setInterruptions({ results: 'speak' })
+    settings.setInterruptions({ results: 'speak' })
+    settings.setInterruptions({ results: undefined })
+
+    expect(settings.read().interruptions).toEqual({ results: 'speak' })
+    expect(heard).toHaveBeenCalledTimes(1)
     expect(createUserSettings(records, defaults).read()).toEqual(settings.read())
   })
 })

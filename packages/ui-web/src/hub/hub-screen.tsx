@@ -90,9 +90,18 @@ const PAGES = {
     title: 'Voice',
     lead: () => 'To hear you and answer aloud, this computer runs its own speech models. Your voice never leaves it.',
     render: (hub) => {
-      const { personas, languages } = hub.settings
+      const { personas, languages, interruptions } = hub.settings
       const active = personas.available.find((persona) => persona.id === personas.active)
-      return <VoiceSection client={hub.client} languages={languages} speech={hub.speech} personas={personas.available} active={active} />
+      return (
+        <VoiceSection
+          client={hub.client}
+          languages={languages}
+          interruptions={interruptions}
+          speech={hub.speech}
+          personas={personas.available}
+          active={active}
+        />
+      )
     }
   },
   microphone: {

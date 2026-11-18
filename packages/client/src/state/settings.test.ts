@@ -1,4 +1,4 @@
-import { DEFAULT_ACCESS, DEFAULT_LANGUAGES, type Event, type Settings } from '@repo/protocol'
+import { DEFAULT_ACCESS, DEFAULT_INTERRUPTIONS, DEFAULT_LANGUAGES, type Event, type Settings } from '@repo/protocol'
 import { describe, expect, it, vi } from 'vitest'
 import { CommandFailed, type Session } from '../session.ts'
 import { followSettings } from './settings.ts'
@@ -9,7 +9,8 @@ function at(revision: number): Settings {
     personas: { available: [{ id: 'first', name: 'Ada', stance: 'accommodating', accent: 'cyan', look: 'hud' }], active: 'first', confirmed: revision > 0 },
     engines: { models: {}, efforts: {} },
     access: DEFAULT_ACCESS,
-    languages: DEFAULT_LANGUAGES
+    languages: DEFAULT_LANGUAGES,
+    interruptions: DEFAULT_INTERRUPTIONS
   }
 }
 

@@ -673,7 +673,8 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
         >
           <SpokenLine text={speaking.sentence.text} since={speaking.since} seconds={speaking.seconds} paused={speaking.paused} />
         </motion.p>
-      ) : (running || voicing) && (last?.trigger === 'greeting' || last?.trigger === 'reminder') ? null : (running || voicing) && last ? (
+      ) : (running || voicing) && (last?.trigger === 'greeting' || last?.trigger === 'reminder' || last?.trigger === 'ready') ? null : (running || voicing) &&
+        last ? (
         <motion.p
           key={`said:${last.turn}`}
           initial={{ opacity: 0 }}

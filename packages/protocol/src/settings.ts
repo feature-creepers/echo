@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { accessSchema, DEFAULT_ACCESS } from './access.ts'
+import { DEFAULT_INTERRUPTIONS, interruptionsSchema } from './interruptions.ts'
 import { DEFAULT_LANGUAGES, languagesSchema } from './languages.ts'
 import { personaIdSchema, personaSchema } from './personas.ts'
 
@@ -35,6 +36,8 @@ export const settingsSchema = z.object({
   /** What the assistant may reach on the computer its core runs on, and what it asks first. */
   access: accessSchema.default(DEFAULT_ACCESS),
   /** The language the person speaks, and the one the assistant answers in. */
-  languages: languagesSchema.default(DEFAULT_LANGUAGES)
+  languages: languagesSchema.default(DEFAULT_LANGUAGES),
+  /** When the assistant speaks up by itself: what it does when an answer finishes out of sight. */
+  interruptions: interruptionsSchema.default(DEFAULT_INTERRUPTIONS)
 })
 export type Settings = z.infer<typeof settingsSchema>

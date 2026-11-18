@@ -1,4 +1,4 @@
-import { DEFAULT_ACCESS, DEFAULT_LANGUAGES, type LibraryView, type MemoryView, type ScheduleView, type Settings } from '@repo/protocol'
+import { DEFAULT_ACCESS, DEFAULT_INTERRUPTIONS, DEFAULT_LANGUAGES, type LibraryView, type MemoryView, type ScheduleView, type Settings } from '@repo/protocol'
 import { describe, expect, it, vi } from 'vitest'
 import { createExecutor, type Handlers } from './execute.ts'
 
@@ -13,7 +13,8 @@ const settings: Settings = {
   personas: { available: [{ id: 'first', name: 'Ada', stance: 'accommodating', accent: 'cyan', look: 'hud' }], active: 'first', confirmed: false },
   engines: { models: {}, efforts: {} },
   access: DEFAULT_ACCESS,
-  languages: DEFAULT_LANGUAGES
+  languages: DEFAULT_LANGUAGES,
+  interruptions: DEFAULT_INTERRUPTIONS
 }
 
 function setup(overrides: Partial<Handlers> = {}) {
@@ -47,6 +48,7 @@ function setup(overrides: Partial<Handlers> = {}) {
     'activity.changes': async () => ({ ok: true, output: { turns: [] } }),
     'everything.stop': () => ({ ok: true, output: {} }),
     'languages.set': () => ({ ok: true, output: { settings } }),
+    'interruptions.set': () => ({ ok: true, output: { settings } }),
     'browser.read': () => ({ ok: true, output: { browser: { found: false, problem: 'none', running: false } } }),
     'browser.show': () => ({ ok: false, error: { code: 'invalid-input', message: 'none' } }),
     'desktop.read': () => ({ ok: true, output: { desktop: { available: false, problem: 'none', open: [] } } }),

@@ -1,5 +1,5 @@
 import { type Client, SPEEDS } from '@repo/client'
-import { type CommandInput, LANGUAGES, type Languages, type Persona } from '@repo/protocol'
+import { type BackgroundResult, type CommandInput, type Interruptions, LANGUAGES, type Languages, type Persona } from '@repo/protocol'
 import { useState } from 'react'
 import { playCue } from '../audio/cues.ts'
 import { findDevice } from '../audio/devices.ts'
@@ -15,6 +15,13 @@ import { Switch } from '../primitives/switch.tsx'
 import { SettingGroup, SettingRow } from './rows.tsx'
 
 const PACES: Record<(typeof SPEEDS)[number], string> = { 0.85: 'Slower', 1: 'Natural', 1.15: 'Faster', 1.3: 'Fastest' }
+
+/** What the assistant does when an answer is done while the person is on another topic. */
+const RESULTS: readonly { value: BackgroundResult; label: string }[] = [
+  { value: 'mention', label: 'Mention it' },
+  { value: 'chip', label: 'Chip only' },
+  { value: 'speak', label: 'Say it' }
+]
 
 /** The value of the list that stands for the system's own choice. */
 const SYSTEM = ''
@@ -34,6 +41,8 @@ interface VoiceSectionProps {
   client: Client
   /** The languages of the conversation: the user's, not this computer's. */
   languages: Languages
+  /** When the assistant speaks up by itself: the user's, not this computer's. */
+  interruptions: Interruptions
   speech: DeviceSpeech | undefined
   personas: readonly Persona[]
   active: Persona | undefined
@@ -43,12 +52,19 @@ interface VoiceSectionProps {
  * The voice of this computer: the models it needs to hear and speak, each personality's voice, the languages
  * spoken and answered in, and how the answers are heard: aloud or not, at what pace, on which speakers.
  */
-export function VoiceSection({ client, languages, speech, personas, active }: VoiceSectionProps) {
+export function VoiceSection({ client, languages, interruptions, speech, personas, active }: VoiceSectionProps) {
   const { settings, change } = useDevice()
   const [problem, setProblem] = useState<string>()
   const setLanguages = (asked: CommandInput<'languages.set'>) => {
     setProblem(undefined)
     client.session.run('languages.set', asked).catch((error: unknown) => setProblem(error instanceof Error ? error.message : 'The change could not be saved.'))
+  }
+  const [interruptionProblem, setInterruptionProblem] = useState<string>()
+  const setInterruptions = (asked: CommandInput<'interruptions.set'>) => {
+    setInterruptionProblem(undefined)
+    client.session
+      .run('interruptions.set', asked)
+      .catch((error: unknown) => setInterruptionProblem(error instanceof Error ? error.message : 'The change could not be saved.'))
   }
   const outputs = useAudioDevices('audiooutput')
   const speaker = settings.speaker
@@ -139,6 +155,22 @@ export function VoiceSection({ client, languages, speech, personas, active }: Vo
               Play a test
             </Button>
           </div>
+        </SettingRow>
+      </SettingGroup>
+
+      <SettingGroup title="Speaking up by itself" note="On every device">
+        <SettingRow
+          title="An answer finished in the background"
+          detail="Done while you were on another topic: a word at the next pause that it is ready, only its chip under the caption, or the answer itself at the next pause, with its view. In the quiet hours, only the chip."
+          problem={interruptionProblem}
+          stacked
+        >
+          <Choice
+            label="An answer finished in the background"
+            value={interruptions.results}
+            options={RESULTS}
+            onChange={(results) => setInterruptions({ results })}
+          />
         </SettingRow>
       </SettingGroup>
     </div>

@@ -1,6 +1,16 @@
 import { connect, type Socket } from 'node:net'
 import type { Core } from '@repo/core'
-import { createLineDecoder, DEFAULT_ACCESS, DEFAULT_LANGUAGES, type Event, encodeLine, MAX_LINE_LENGTH, PROTOCOL_VERSION, type Settings } from '@repo/protocol'
+import {
+  createLineDecoder,
+  DEFAULT_ACCESS,
+  DEFAULT_INTERRUPTIONS,
+  DEFAULT_LANGUAGES,
+  type Event,
+  encodeLine,
+  MAX_LINE_LENGTH,
+  PROTOCOL_VERSION,
+  type Settings
+} from '@repo/protocol'
 import { afterEach, describe, expect, it } from 'vitest'
 import { type LocalListener, listenLocal } from './index.ts'
 
@@ -9,7 +19,8 @@ const settings: Settings = {
   personas: { available: [{ id: 'first', name: 'Ada', stance: 'accommodating', accent: 'cyan', look: 'hud' }], active: 'first', confirmed: true },
   engines: { models: {}, efforts: {} },
   access: DEFAULT_ACCESS,
-  languages: DEFAULT_LANGUAGES
+  languages: DEFAULT_LANGUAGES,
+  interruptions: DEFAULT_INTERRUPTIONS
 }
 const changed: Event = { type: 'event', name: 'settings.changed', settings }
 

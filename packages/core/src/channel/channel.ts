@@ -28,6 +28,7 @@ import { createThreadRegistry } from '../threads/registry.ts'
 import type { Grant, Tool } from '../tools/tools.ts'
 import type { Checked, Screen, Showing } from '../views/screen.ts'
 import { instructionsFor, orchestratorInstructions, SPEAK_FIRST, threadInstructions, WORK_FIRST } from './instructions.ts'
+import { readySentence } from './ready.ts'
 
 /** The type of the record written when a turn is over: one line of the channel log, word for word. */
 export const EXCHANGE = 'channel.exchange'
@@ -142,6 +143,11 @@ export interface ChannelOptions {
    * answer finished in the background (docs/SPEC.md, section 7.4). Left out, nothing is told.
    */
   notify?(notice: { title: string; body: string }): void
+  /**
+   * Whether it is the quiet hours now: what the assistant would say by itself about an answer finished out of sight
+   * is then left to its chip and its notification. Left out, it is never the quiet hours.
+   */
+  quiet?(): boolean
 }
 
 /** What the channel asks of the memory (docs/SPEC.md, section 10.5). */
@@ -195,7 +201,10 @@ export interface Channel {
    * thread asked to be woken with, each run by its thread out of sight, as if just asked. Once only.
    */
   resume(): TurnId[]
-  /** Whether the person is being answered: a turn on the stage, or one waiting to be. Work in the background does not count. */
+  /**
+   * Whether the person is being answered: a turn on the stage, or one waiting to be. Work in the background does not
+   * count, nor a project's thread at work on the stage, which says nothing until it is done.
+   */
   busy(): boolean
   /**
    * Stop the answer on the stage, if there is one. A project's thread at work is left to work: stopping a long piece
@@ -411,6 +420,11 @@ export function createChannel(options: ChannelOptions): Channel {
    * brought back. Only what was not heard, so nothing is ever said twice.
    */
   const unheard = new Map<TurnId, string[]>()
+  /**
+   * Threads whose answer finished out of sight, still to be mentioned or said at the next pause (docs/SPEC.md,
+   * section 7.4). One the person brings back first, from its chip or by asking, is not told again.
+   */
+  const toTell = new Set<string>()
 
   /** The turn on the stage: what is said is said aloud. */
   let current: Turn | undefined
@@ -489,8 +503,8 @@ export function createChannel(options: ChannelOptions): Channel {
 
   const finish = (turn: Turn, outcome: Exchange['outcome'], problem?: string) => {
     if (turn.exchange.outcome !== 'running') return
-    // A reminder said by itself does not wake an assistant asleep at its work: nobody spoke to it.
-    if (turn.exchange.trigger !== 'reminder') memory?.wake()
+    // What the assistant says by itself with nothing to work out does not wake it asleep at its work: nobody spoke to it.
+    if (turn.exchange.trigger !== 'reminder' && turn.exchange.trigger !== 'ready') memory?.wake()
     for (const sentence of turn.cutter.flush()) say(turn, sentence)
     // A call cut short has no end of its own: it is recorded as it stood.
     for (const open of [...turn.steps.values()]) step(turn, open.thread, { type: 'tool', name: open.tool, phase: 'ended', call: open.call })
@@ -510,6 +524,101 @@ export function createChannel(options: ChannelOptions): Channel {
       }
     }
     emit({ type: 'event', name: 'turn.ended', exchange: turn.exchange })
+    // A turn ending may be the pause an answer finished out of sight waits for.
+    atPause()
+  }
+
+  /** Whether the person is being answered. A project's thread at work on the stage says nothing until it is done. */
+  const busy = () => (current !== undefined && current.exchange.outcome === 'running' && !current.working) || deciding !== undefined || pending !== undefined
+
+  /**
+   * Look for the pause once what is under way has settled: a turn that ends as the next one starts, in the same
+   * moment, leaves none.
+   */
+  const atPause = () => {
+    if (toTell.size > 0) void Promise.resolve().then(tellReady)
+  }
+
+  /**
+   * At a pause, tell what finished out of sight, as the person set it (docs/SPEC.md, section 7.4): a sentence saying
+   * it is ready, the answer itself with its view, or nothing beyond its chip. During the quiet hours the chip and the
+   * notification say it, and nothing is said.
+   */
+  const tellReady = () => {
+    if (toTell.size === 0 || busy()) return
+    const ready = [...toTell].flatMap((id) => {
+      const thread = registry.get(id)
+      return thread?.state === 'ready' ? [thread] : []
+    })
+    toTell.clear()
+    const { results } = settings.read().interruptions
+    if (ready.length === 0 || results === 'chip' || options.quiet?.()) return
+    if (results === 'mention') {
+      const language = answerLanguage() ?? conversationLanguage
+      byItself(
+        'ready',
+        [
+          readySentence(
+            ready.map((thread) => thread.title),
+            language
+          )
+        ],
+        language
+      )
+      return
+    }
+    for (const thread of ready) {
+      const missed = bringBack(thread)
+      if (missed && missed.sentences.length > 0) byItself('ready', missed.sentences, undefined)
+    }
+  }
+
+  /**
+   * A turn the assistant starts by itself with nothing to work out, so no model is asked: its sentences are said
+   * whole, through the same voice and caption as any answer, and it ends at once. `showing` shows what goes with
+   * it, such as a reminder's card, while it is heard. Silent, it is kept and not said.
+   */
+  const byItself = (
+    trigger: 'reminder' | 'ready',
+    sentences: readonly string[],
+    language: string | undefined,
+    silent = false,
+    showing?: (turn: TurnId) => void
+  ): TurnId => {
+    const exchange: Exchange = { turn: newId(), at: now().toISOString(), persona: activePersona().id, said: '', trigger, replied: '', outcome: 'running' }
+    const turn = newTurn(exchange, language, NOTHING_HANDED, silent)
+    transcript.push(exchange)
+    emit({ type: 'event', name: 'turn.started', exchange })
+    for (const sentence of sentences) {
+      const spoken = speakable(sentence)
+      if (spoken === '') continue
+      turn.exchange = { ...turn.exchange, replied: turn.exchange.replied ? `${turn.exchange.replied} ${spoken}` : spoken }
+      voice(turn, spoken)
+    }
+    showing?.(exchange.turn)
+    finish(turn, 'done')
+    return exchange.turn
+  }
+
+  /**
+   * Bring a thread back: a topic to the stage, an aside's card beside it. When its answer was waiting, marked ready,
+   * gives back what of it was not heard yet, to be said now, and its turn.
+   */
+  const bringBack = (thread: Thread): { turn: TurnId; sentences: string[] } | undefined => {
+    if (thread.kind === 'topic') {
+      registry.focus(thread.id)
+      screen.focus(thread.id)
+    } else screen.recall(thread.id)
+    toTell.delete(thread.id)
+    if (thread.state !== 'ready') return undefined
+    registry.setState(thread.id, 'parked')
+    const answer = transcript.findLast((line) => line.thread === thread.id && line.outcome === 'done')
+    if (!answer) return undefined
+    const missed = unheard.get(answer.turn)
+    unheard.delete(answer.turn)
+    // After a restart nothing is known of what was heard: the answer is said whole.
+    const cutter = createSentenceCutter()
+    return { turn: answer.turn, sentences: missed ?? [...cutter.push(answer.replied), ...cutter.flush()] }
   }
 
   /** Tell the person, in a notification, that an answer is there: once per turn, and only for an answer with words. */
@@ -647,10 +756,12 @@ export function createChannel(options: ChannelOptions): Channel {
             const held = turn.narration.splice(0)
             if (SPOKEN_FIRST.has(event.name)) for (const sentence of held) say(turn, sentence)
           }
-          // Its work begins with its first call that is not the report or a view: a quick answer has none.
+          // Its work begins with its first call that is not the report or a view: a quick answer has none. Saying
+          // nothing until it is done, it leaves a pause.
           if (project && !turn.working && !SPOKEN_FIRST.has(event.name)) {
             turn.working = true
             turn.saidBeforeWork = turn.sentences.size
+            atPause()
           }
         }
         step(turn, runtime.thread, event)
@@ -670,8 +781,13 @@ export function createChannel(options: ChannelOptions): Channel {
         const missed = (unheard.get(turn.exchange.turn)?.length ?? 0) > 0 || (outOfSight && turn.heard === 0)
         runtime.answering = undefined
         registry.setState(runtime.thread, missed && !turn.stopped ? 'ready' : 'parked')
-        // An answer finished out of sight waits, marked ready; a notification says so to a person not looking.
+        // An answer finished out of sight waits, marked ready; a notification says so to a person not looking, and
+        // the assistant at the next pause.
         if (missed) notice(turn)
+        if (missed && !turn.stopped) {
+          toTell.add(runtime.thread)
+          atPause()
+        }
         return void next(runtime)
       }
       case 'failed':
@@ -982,17 +1098,21 @@ export function createChannel(options: ChannelOptions): Channel {
     {
       definition: {
         name: 'thread_focus',
-        description: 'Bring an earlier topic back on screen. Then say in a few words that it is back.',
+        description:
+          'Bring an earlier topic back on screen, or one marked ready when the person asks for it. Then say in a few words that it is back, unless told its answer is being said.',
         inputSchema: { type: 'object', properties: { thread: { type: 'string' } }, required: ['thread'] }
       },
       run(input) {
+        const turn = deciding
         const asked = focusInput.safeParse(input)
         const thread = asked.success ? registry.get(asked.data.thread) : undefined
         if (thread?.kind !== 'topic') return { ok: false, text: `There is no such topic. The threads are:\n${registry.index()}` }
-        registry.focus(thread.id)
-        screen.focus(thread.id)
-        if (thread.state === 'ready') registry.setState(thread.id, 'parked')
-        return { ok: true, text: `"${thread.title}" is on screen.` }
+        const missed = bringBack(thread)
+        if (!turn || !missed || missed.sentences.length === 0) return { ok: true, text: `"${thread.title}" is on screen.` }
+        // An answer that finished out of sight is said now, in this turn, after what was already written.
+        for (const sentence of turn.cutter.flush()) say(turn, sentence)
+        for (const sentence of missed.sentences) say(turn, sentence)
+        return { ok: true, text: `"${thread.title}" is on screen, and the part of its answer not heard yet is being said. Write nothing more.` }
       }
     }
   ]
@@ -1181,7 +1301,10 @@ export function createChannel(options: ChannelOptions): Channel {
         const second = previous.next
         if (second && second.held.length > 0) {
           unheard.set(second.exchange.turn, [...(unheard.get(second.exchange.turn) ?? []), ...second.held.splice(0)])
-          if (second.exchange.outcome !== 'running' && second.routed) registry.setState(second.routed.thread, 'ready')
+          if (second.exchange.outcome !== 'running' && second.routed) {
+            registry.setState(second.routed.thread, 'ready')
+            toTell.add(second.routed.thread)
+          }
         }
       }
       if (pending) finish(pending, 'stopped')
@@ -1206,23 +1329,11 @@ export function createChannel(options: ChannelOptions): Channel {
     },
 
     remind({ sentence, language, card, silent }) {
-      const persona = activePersona()
-      const at = now().toISOString()
-      const exchange: Exchange = { turn: newId(), at, persona: persona.id, said: '', trigger: 'reminder', replied: '', outcome: 'running' }
-      const turn = newTurn(exchange, language, NOTHING_HANDED, silent)
-      transcript.push(exchange)
-      emit({ type: 'event', name: 'turn.started', exchange })
       // Said whole, as one turn the assistant started; the card shows what it is about while it is heard.
       const cutter = createSentenceCutter()
-      for (const text of [...cutter.push(sentence), ...cutter.flush()]) {
-        const spoken = speakable(text)
-        if (spoken === '') continue
-        turn.exchange = { ...turn.exchange, replied: turn.exchange.replied ? `${turn.exchange.replied} ${spoken}` : spoken }
-        voice(turn, spoken)
-      }
-      screen.present(card, { thread: undefined, turn: exchange.turn, slot: 'stage', focused: true })
-      finish(turn, 'done')
-      return exchange.turn
+      return byItself('reminder', [...cutter.push(sentence), ...cutter.flush()], language, silent, (turn) =>
+        screen.present(card, { thread: undefined, turn, slot: 'stage', focused: true })
+      )
     },
 
     resume() {
@@ -1281,9 +1392,11 @@ export function createChannel(options: ChannelOptions): Channel {
       return exchange.turn
     },
 
-    busy: () => (current !== undefined && current.exchange.outcome === 'running') || deciding !== undefined || pending !== undefined,
+    busy,
 
     stop() {
+      // Quieting the voice quiets what was still to be told by itself too; the chips stay.
+      toTell.clear()
       if (current && !current.working) halt(current)
     },
 
@@ -1299,6 +1412,7 @@ export function createChannel(options: ChannelOptions): Channel {
     },
 
     stopAll() {
+      toTell.clear()
       const running = new Set<Turn>()
       for (const turn of [pending, current, deciding]) if (turn) running.add(turn)
       for (const runtime of runtimes.values()) {
@@ -1337,26 +1451,13 @@ export function createChannel(options: ChannelOptions): Channel {
     focus(id) {
       const thread = registry.get(id)
       if (!thread) return false
-      if (thread.kind === 'topic') {
-        registry.focus(id)
-        screen.focus(id)
-      } else screen.recall(id)
-      if (thread.state === 'ready') {
-        registry.setState(id, 'parked')
-        // Its answer was written while another turn was on the stage: what was not heard of it is said now.
-        const answer = transcript.findLast((line) => line.thread === id && line.outcome === 'done')
-        if (answer) {
-          const missed = unheard.get(answer.turn)
-          unheard.delete(answer.turn)
-          // After a restart nothing is known of what was heard: the answer is said whole.
-          const cutter = createSentenceCutter()
-          const sentences = missed ?? [...cutter.push(answer.replied), ...cutter.flush()]
-          for (const sentence of sentences) {
-            const language = answerIn(sentence, undefined)
-            emit({ type: 'event', name: 'speech.say', turn: answer.turn, text: sentence, ...(language === undefined ? {} : { language }) })
-          }
+      // Its answer was written while another turn was on the stage: what was not heard of it is said now.
+      const missed = bringBack(thread)
+      if (missed)
+        for (const sentence of missed.sentences) {
+          const language = answerIn(sentence, undefined)
+          emit({ type: 'event', name: 'speech.say', turn: missed.turn, text: sentence, ...(language === undefined ? {} : { language }) })
         }
-      }
       return true
     },
 

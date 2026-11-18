@@ -381,9 +381,15 @@ The order is held by the instructions, by a reminder at the end of each request,
 
 ### 7.4 Background results
 
-When a thread finishes while another is in focus, its result does not interrupt. A "ready" chip appears under the caption, in the centre column, with a soft sound. The assistant mentions it at the next pause ("Your recipe is ready, by the way"), or the user asks for it. This is a setting: mention, chip only, or speak at once.
+When a thread finishes while another is in focus, its result does not interrupt. A "ready" chip appears under the caption, in the centre column, with a soft sound (two high notes made on the spot, like the microphone's cues, when answers are heard aloud on the device). The assistant mentions it at the next pause ("By the way, it's ready: Recipe."), or the user asks for it. This is a setting: mention, chip only, or speak at once.
 
-**A notification says it too**, for a person who is not looking (`device.notify`, section 12.1): when an answer finishes in the background, when a scheduled task is answered, and when an answer took more than twenty seconds, which is how "tell me when it's done" works once the person has turned to another app. Each carries the thread's title and the start of what was said, and is shown only while the app's window is hidden, minimised or not in front; pressed, it brings the window forward. Built and verified in the built app: a recipe finished while another question was answered, the window hidden, and its notification went out. The mention at the next pause and the setting are not built yet.
+- **The mention** is a turn the assistant starts itself with nothing to work out, so no model is asked (`trigger: 'ready'`, labelled "Ready"): the topics' titles, joined as a person would, in the few words the core knows in English, French, Spanish, German, Italian, Portuguese and Dutch (English for the others), in the language of the conversation. Several ready at once are named in one sentence (`channel/ready.ts`).
+- **The next pause** is when nobody is being answered: no turn on the stage or waiting for the orchestrator. A project's thread at work on the stage says nothing until it is done, so it leaves a pause, for reminders too (section 7.8). The core looks for it as each turn ends; the device's voice then says it after what it is still saying, never cutting it, as for a reminder.
+- **Asked for** ("what's ready?"), the orchestrator brings the topic back with `thread_focus`, which says the part of its answer not heard yet in that turn, as a press on the chip does.
+- **The setting** (`interruptions.results`, `interruptions.set`; on the Voice page, "Speaking up by itself", on every device): `mention` by default; `chip` leaves it to its chip and its notification; `speak` says the answer itself at the next pause, in a "Ready" turn, and brings its view back.
+- **Left to the chip:** during the quiet hours (section 7.10), and once the person pressed Escape or stopped everything; a topic brought back before the pause is not mentioned. Tested through the scripted harness.
+
+**A notification says it too**, for a person who is not looking (`device.notify`, section 12.1): when an answer finishes in the background, when a scheduled task is answered, and when an answer took more than twenty seconds, which is how "tell me when it's done" works once the person has turned to another app. Each carries the thread's title and the start of what was said, and is shown only while the app's window is hidden, minimised or not in front; pressed, it brings the window forward. Built and verified in the built app: a recipe finished while another question was answered, the window hidden, and its notification went out.
 
 ### 7.5 Asides
 
@@ -422,15 +428,15 @@ An aside is a question that does not change the topic: "By the way, what time is
 
 ### 7.8 Proactive turns
 
-The assistant can start a turn itself: the briefing at launch or on greeting, a reminder, a scheduled task, a background result. Each is started by a trigger (time, app start, greeting, thread finished) rather than by an utterance, and the line of the transcript says which (`trigger` on the exchange: `greeting`, `reminder`, `task`, `resume`), so the transcript and the threads label it "Briefing", "Reminder", "Scheduled" or "Resumed" where they would say "You". The proof of concept's briefing and daily news become two such triggers.
+The assistant can start a turn itself: the briefing at launch or on greeting, a reminder, a scheduled task, a background result. Each is started by a trigger (time, app start, greeting, thread finished) rather than by an utterance, and the line of the transcript says which (`trigger` on the exchange: `greeting`, `reminder`, `task`, `resume`, `ready`), so the transcript and the threads label it "Briefing", "Reminder", "Scheduled", "Resumed" or "Ready" where they would say "You". The proof of concept's briefing and daily news become two such triggers.
 
 As built:
 
 - **The briefing** is a turn the orchestrator answers when the window opens, at most every six hours.
 - **A reminder** is a turn with nothing to work out: its sentence was written when it was set, so it is said at once through the same voice and caption as any answer, in the persona's voice, with no model asked. A card in the stream shows what it is about and when it was due.
 - **A scheduled task** is a turn whose request the orchestrator hears as if the person had just said it, told that it is scheduled and that the person may be away. It routes it like any other.
-- **They wait their turn.** What the assistant starts itself waits while the person is being answered, looking again every second, and its sentences are queued after what is being said rather than cutting it; a turn the person starts still cuts everything. A reminder said by itself does not wake an assistant asleep at its memory's work (section 10.6).
-- **A background result** is the "ready" chip and its notification (section 7.4); its mention at the next pause is not built yet.
+- **They wait their turn.** What the assistant starts itself waits while the person is being answered (a project's thread at work on the stage, saying nothing until it is done, does not count), looking again every second, and its sentences are queued after what is being said rather than cutting it; a turn the person starts still cuts everything. A reminder said by itself does not wake an assistant asleep at its memory's work (section 10.6).
+- **A background result** is the "ready" chip, its notification, and its mention at the next pause, or the answer itself, as the person set it (section 7.4).
 
 ### 7.9 Routing cost
 
@@ -1370,6 +1376,7 @@ packages/core/src/
 │   └── ids.ts  log.ts
 ├── channel/                the single conversation
 │   ├── channel.ts          intake and ordering of turns
+│   ├── ready.ts            the sentence that says answers finished out of sight are ready
 │   ├── turn.ts
 │   ├── context.ts          what is attached to a turn: time, place, focus, memories
 │   └── local-intents/      commands handled with no model, one grammar per language

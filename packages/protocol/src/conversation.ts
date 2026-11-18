@@ -43,10 +43,11 @@ export const exchangeSchema = z.object({
   attached: z.array(attachedSchema).optional(),
   /**
    * Why the assistant started this turn itself, when it did: the greeting and briefing when the app opens, a
-   * reminder ringing, a task the person scheduled, whose request is then in `said`, or work taken up again after the
-   * app restarted, the request it carries on in `said`.
+   * reminder ringing, a task the person scheduled, whose request is then in `said`, work taken up again after the
+   * app restarted, the request it carries on in `said`, or answers that finished out of sight, mentioned or said at
+   * the next pause.
    */
-  trigger: z.enum(['greeting', 'reminder', 'task', 'resume']).optional(),
+  trigger: z.enum(['greeting', 'reminder', 'task', 'resume', 'ready']).optional(),
   /** What the assistant said aloud, so far: short, as a friend says it. */
   replied: z.string(),
   /**
