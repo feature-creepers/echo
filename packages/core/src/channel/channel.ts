@@ -23,6 +23,7 @@ import type { ToolResult } from '../ports/tools.ts'
 import type { UserSettings } from '../settings/settings.ts'
 import { languageOf } from '../speech/language.ts'
 import { createSentenceCutter, type SentenceCutter, speakable } from '../speech/sentences.ts'
+import { fitThread } from '../threads/fit.ts'
 import { createThreadRegistry } from '../threads/registry.ts'
 import type { Grant, Tool } from '../tools/tools.ts'
 import type { Checked, Screen, Showing } from '../views/screen.ts'
@@ -192,7 +193,11 @@ export interface Channel {
    */
   focus(thread: string): boolean
   /** A thread whole, for the side sheet: what it answered, the calls it made, the views it showed. */
-  thread(id: string): { thread: Thread; exchanges: Exchange[]; steps: Step[]; views: ShownView[] } | undefined
+  /**
+   * One thread, for the side sheet: its requests with their steps, cut to fit one message. `earlier` says how many of
+   * its oldest requests were left out to fit.
+   */
+  thread(id: string): { thread: Thread; exchanges: Exchange[]; steps: Step[]; views: ShownView[]; earlier: number } | undefined
   /** Be told each event of the conversation. Returns a function that stops the telling. */
   onEvent(listener: (event: Event) => void): () => void
   /** End every session. The next thing said opens new ones. */
@@ -1192,7 +1197,10 @@ export function createChannel(options: ChannelOptions): Channel {
       for (const turn of [current, deciding, ...[...runtimes.values()].map((runtime) => runtime.answering)]) {
         if (turn && turns.has(turn.exchange.turn)) for (const open of turn.steps.values()) if (!steps.some((one) => one.call === open.call)) steps.push(open)
       }
-      return { thread, exchanges, steps, views: screen.history(id) }
+      const fitted = fitThread(exchanges, steps)
+      const kept = new Set(fitted.exchanges.map((line) => line.turn))
+      const views = screen.history(id).filter((view) => fitted.earlier === 0 || view.turn === undefined || kept.has(view.turn))
+      return { thread, ...fitted, views }
     },
 
     onEvent(listener) {

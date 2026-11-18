@@ -12,11 +12,18 @@ export const threadCommands = {
 
   /**
    * Read one thread whole, for the side sheet: every exchange it answered with its full written answer, every
-   * tool call it made with what went in and came out, and the views it showed. Asides included.
+   * tool call it made with what went in and came out, and the views it showed. Asides included. A long thread is cut
+   * to fit one message: each step's long texts are cut, and its oldest requests left out, `earlier` saying how many.
    */
   'thread.read': {
     input: z.object({ thread: threadIdSchema }),
-    output: z.object({ thread: threadSchema, exchanges: z.array(exchangeSchema), steps: z.array(stepSchema), views: z.array(viewSchema) })
+    output: z.object({
+      thread: threadSchema,
+      exchanges: z.array(exchangeSchema),
+      steps: z.array(stepSchema),
+      views: z.array(viewSchema),
+      earlier: z.number().int().nonnegative().default(0)
+    })
   },
 
   /**

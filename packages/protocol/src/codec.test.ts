@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createLineDecoder, encodeLine } from './codec.ts'
+import { createLineDecoder, encodeEvent, encodeLine, encodeResult } from './codec.ts'
 
 describe('line framing', () => {
   it('round-trips a message', () => {
@@ -47,5 +47,21 @@ describe('line framing', () => {
     const decoder = createLineDecoder(8)
     expect(decoder.push('"123456789"\n{"a":1}\n')).toEqual([{ ok: false, error: 'too-long' }])
     expect(decoder.push('{"a":1}\n')).toEqual([])
+  })
+
+  it.each([
+    ['a result that fits is sent as it is', 'x'.repeat(10), true],
+    ['a result too long is sent as a failure, on one line the client reads', 'x'.repeat(400), false]
+  ])('%s', (_name, text, whole) => {
+    const line = encodeResult({ type: 'result', id: 'c1', ok: true, output: { text } }, 300)
+    expect(line.endsWith('\n')).toBe(true)
+    const [decoded] = createLineDecoder(300).push(line)
+    expect(decoded?.ok).toBe(true)
+    expect(decoded?.ok && decoded.message).toMatchObject(whole ? { id: 'c1', ok: true } : { id: 'c1', ok: false, error: { code: 'failed' } })
+  })
+
+  it('drops an event too long for one line, rather than cut the link', () => {
+    expect(encodeEvent({ type: 'event', name: 'a' }, 100)).toBeDefined()
+    expect(encodeEvent({ type: 'event', name: 'a', text: 'x'.repeat(200) }, 100)).toBeUndefined()
   })
 })

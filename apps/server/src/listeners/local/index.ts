@@ -1,6 +1,6 @@
 import { createServer, type Socket } from 'node:net'
 import type { Core } from '@repo/core'
-import { createLineDecoder, encodeLine } from '@repo/protocol'
+import { createLineDecoder, encodeEvent, encodeLine, encodeResult } from '@repo/protocol'
 import { createEndpoint, type Endpoint } from './endpoint/index.ts'
 
 /** How long a client has to say hello before it is disconnected. */
@@ -33,7 +33,8 @@ export function listenLocal(core: Core, options: LocalListenerOptions = {}): Pro
   const admitted = new Set<Socket>()
 
   const stopEvents = core.onEvent((event) => {
-    const line = encodeLine(event)
+    const line = encodeEvent(event)
+    if (line === undefined) return
     for (const socket of admitted) socket.write(line)
   })
 
@@ -57,7 +58,7 @@ export function listenLocal(core: Core, options: LocalListenerOptions = {}): Pro
           // A line too long to be a message ends the connection: nothing after it can be trusted to be whole.
           if (!line.ok && line.error === 'too-long') return void socket.destroy()
           void core.execute(line.ok ? line.message : undefined).then((result) => {
-            if (result && !socket.destroyed) socket.write(encodeLine(result))
+            if (result && !socket.destroyed) socket.write(encodeResult(result))
           })
           continue
         }

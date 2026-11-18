@@ -125,6 +125,11 @@ export function ThreadView({ client, thread, personas, onBack }: ThreadViewProps
           <p className="text-sm text-text-faint">Nothing has been answered here yet.</p>
         ) : (
           <ol className="grid grid-cols-1 gap-6">
+            {read.earlier > 0 && (
+              <li className="text-label text-text-faint">
+                {read.earlier === 1 ? 'One earlier request is' : `${read.earlier} earlier requests are`} not shown: this thread is too long to show whole.
+              </li>
+            )}
             {read.exchanges.map((exchange) => (
               <ExchangeEntry
                 key={exchange.turn}

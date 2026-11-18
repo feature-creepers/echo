@@ -35,7 +35,7 @@ export {
 export { decodeBase64, encodeBase64 } from './base64.ts'
 export { type BrowserState, browserStateSchema } from './browser.ts'
 export { CAPABILITIES, type Capability, capabilitySchema } from './capabilities.ts'
-export { createLineDecoder, type DecodedLine, encodeLine, type LineDecoder, MAX_LINE_LENGTH } from './codec.ts'
+export { createLineDecoder, type DecodedLine, encodeEvent, encodeLine, encodeResult, type LineDecoder, MAX_LINE_LENGTH } from './codec.ts'
 export {
   COMMANDS,
   type CommandDefinition,
