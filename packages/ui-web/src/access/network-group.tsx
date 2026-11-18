@@ -38,6 +38,18 @@ export function NetworkGroup({ access, busy, change }: NetworkGroupProps) {
         />
       </SettingRow>
       <SettingRow
+        title="Always ask before sending files out"
+        detail={
+          access.askSending ? (
+            'A command that sends one of your files to another machine (an upload, a copy to a server) is asked every time, naming the file, unless it goes only where you allow below.'
+          ) : (
+            <span className="text-warn">A command that sends your files to another machine follows the choice above, like any other command.</span>
+          )
+        }
+      >
+        <Switch label="Always ask before sending files out" on={access.askSending} disabled={busy} onChange={(on) => void change({ askSending: on })} />
+      </SettingRow>
+      <SettingRow
         title="Always ask before reaching the internet"
         detail={
           access.askNetwork

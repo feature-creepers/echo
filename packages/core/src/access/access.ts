@@ -161,20 +161,35 @@ function reachesWords(hosts: readonly string[]): string {
   return `It reaches ${shown.join(', ')}${named.length > 4 ? `, and ${named.length - 4} more` : ''}.`
 }
 
+/** What a command sends, for the card: the files by name, and where they go when it says. */
+function sendsWords(sends: readonly string[], hosts: readonly string[]): string {
+  const files = sends.map((file) => (file === '-' ? 'the output of the command before it' : file))
+  const shown = files.slice(0, 3).join(', ') + (files.length > 3 ? `, and ${files.length - 3} more` : '')
+  const named = hosts.filter((host) => !isLoopback(host)).map((host) => (isLocalNetwork(host) ? `${host} (on your local network)` : host))
+  return `It sends ${shown} from this computer to ${named.length > 0 ? named.slice(0, 3).join(', ') : 'another machine'}.`
+}
+
 /** What a session is told of the network policy: only what the person set beyond what any command does. */
 function networkLines({
   askNetwork,
   askLocalNetwork,
+  askSending,
   allowedHosts,
   refusedHosts
 }: {
   askNetwork: boolean
   askLocalNetwork: boolean
+  askSending: boolean
   allowedHosts: readonly string[]
   refusedHosts: readonly string[]
 }): string[] {
   const allowed = allowedHosts.length > 0 ? ` except ${allowedHosts.join(', ')}` : ''
   return [
+    ...(askSending
+      ? [
+          `- A command that sends a file of this computer to another machine is always asked${allowed}: an upload (curl -T or -F, wget --post-file), a copy to a server (scp, rsync, aws s3 cp), or a file piped to ssh or nc. The card names the file.`
+        ]
+      : []),
     ...(askNetwork
       ? [
           `- A command that reaches the network is always asked, whatever they chose${allowed}: a download, an API call, a package installed, a git fetch or push. Name the address on the line when you can; a command that names none is asked too. They may allow it for the session.`
@@ -265,11 +280,13 @@ export function createAccess({ settings, screen, computer, timers, records, vers
             }
           : reading?.publishes
             ? { text: `It puts something before others, beyond this computer.${askPublishing ? ' This is always asked.' : ''}`, tone: 'soft' as const }
-            : reading?.network
-              ? { text: `${reachesWords(reading.hosts)}${guard ? ' This is always asked.' : ''}`, tone: 'soft' as const }
-              : reading?.opaque
-                ? { text: 'Part of what it runs cannot be read in advance.', tone: 'soft' as const }
-                : undefined
+            : reading && reading.sends.length > 0
+              ? { text: `${sendsWords(reading.sends, reading.hosts)}${guard ? ' This is always asked.' : ''}`, tone: 'soft' as const }
+              : reading?.network
+                ? { text: `${reachesWords(reading.hosts)}${guard ? ' This is always asked.' : ''}`, tone: 'soft' as const }
+                : reading?.opaque
+                  ? { text: 'Part of what it runs cannot be read in advance.', tone: 'soft' as const }
+                  : undefined
         return {
           heading: 'Run this command?',
           subject: 'On your computer',
@@ -477,6 +494,7 @@ export function createAccess({ settings, screen, computer, timers, records, vers
         askPublishing,
         askNetwork,
         askLocalNetwork,
+        askSending,
         allowedHosts,
         refusedHosts,
         approvalWait
@@ -510,7 +528,7 @@ export function createAccess({ settings, screen, computer, timers, records, vers
         askPublishing
           ? '- A command that puts something before others, beyond this computer, is always asked too, whatever they chose: a git push, a package published, a release, a pull request, an issue or a comment, a deployment. They may allow it for the session.'
           : '- They chose not to have what publishes asked every time: a git push, a package published, a release, a pull request, an issue or a comment, or a deployment follows the level above, like any other command.',
-        ...networkLines({ askNetwork, askLocalNetwork, allowedHosts, refusedHosts }),
+        ...networkLines({ askNetwork, askLocalNetwork, askSending, allowedHosts, refusedHosts }),
         `- When a card asks them, your call returns once they answered${approvalWait === null ? '' : `, or after ${approvalWait} minutes without an answer, which counts as a no`}. They can allow it once, or for the session: the same program and subcommand (git commit, npm run, python), or any change in the same folder, then runs at once until the app quits.`,
         '- Every use is checked first against what they granted. A command is checked by the paths it names, with ~, variables and .. read: one that names a place outside, or a place never reached, is refused before anyone is asked. This reads what the command names, not what a program works out once it runs, so never use a command to reach around it: name the places you work on.',
         ...(computer?.confines

@@ -22,21 +22,28 @@ import { isLocalNetwork, isLoopback, listedHost } from './hosts.ts'
  * The network has two guardrails of its own. With `askLocalNetwork`, on by default, a command that reaches a device
  * of the local network is asked at every level. With `askNetwork`, off by default, so is a command that reaches
  * the network anywhere, this computer itself aside, unless every destination it names is one the person allows;
- * a line that names none goes somewhere it cannot tell, and is asked. A yes for the session covers either.
+ * a line that names none goes somewhere it cannot tell, and is asked. With `askSending`, on by default, a command
+ * that sends a file of this computer to another machine (an upload, a copy to a server, what it is fed through a
+ * pipe) is asked at every level, unless it names where it goes and every destination is allowed. A yes for the
+ * session covers each of them.
  */
 export type Decision =
   | { run: true; because: 'read-only' | 'level' | 'session' }
   /** Asked first. `session` when a yes for the session may be offered: never for what destroys while it is guarded. */
   | { run: false; destructive: boolean; session: boolean }
 
-/** What the policy reads of the access: the level and the two guardrails above it. */
-export type Policy = Pick<Access, 'approvals' | 'askDestroying' | 'askPublishing'> & Partial<Pick<Access, 'askNetwork' | 'askLocalNetwork' | 'allowedHosts'>>
+/** What the policy reads of the access: the level and the guardrails above it. */
+export type Policy = Pick<Access, 'approvals' | 'askDestroying' | 'askPublishing'> &
+  Partial<Pick<Access, 'askNetwork' | 'askLocalNetwork' | 'askSending' | 'allowedHosts'>>
 
 /** Why a command that reaches the network is asked at every level, if it is: the guardrail that holds it. */
-export function networkGuard(reading: CommandReading, policy: Policy): 'local' | 'network' | undefined {
+export function networkGuard(reading: CommandReading, policy: Policy): 'sending' | 'local' | 'network' | undefined {
   if (!reading.network) return undefined
   const allowed = policy.allowedHosts ?? []
   const held = reading.hosts.filter((host) => !isLoopback(host) && !listedHost(host, allowed))
+  // What is sent to this computer itself stays on it; anywhere else is held, unless every destination named is allowed.
+  const leaves = reading.hosts.length === 0 || held.length > 0
+  if ((policy.askSending ?? true) && reading.sends.length > 0 && leaves) return 'sending'
   if ((policy.askLocalNetwork ?? true) && held.some(isLocalNetwork)) return 'local'
   if (policy.askNetwork && (reading.hosts.length === 0 || held.length > 0)) return 'network'
   return undefined

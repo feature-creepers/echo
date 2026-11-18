@@ -153,6 +153,7 @@ describe('access to the computer', () => {
       askPublishing: true,
       askNetwork: false,
       askLocalNetwork: true,
+      askSending: true,
       allowedHosts: [],
       refusedHosts: [],
       approvalWait: 10,
@@ -336,6 +337,21 @@ describe('the three levels', () => {
     expect(await asked).toMatchObject({ allow: false })
     expect(access.standing()).toContain('a device of their local network')
     expect(access.standing()).toContain('Commands never reach tracker.example')
+  })
+
+  it('asks before a file is sent to another machine, naming the file and where it goes', async () => {
+    const { reach, access, settings, screen } = setup()
+    settings.setAccess({ approvals: 'auto' })
+    const asked = reach.approve(command('curl -F file=@report.pdf https://uploads.example.com/'), signal())
+    await settle()
+    expect(cardText(screen)).toContain('It sends report.pdf from this computer to uploads.example.com. This is always asked.')
+    access.hear('no')
+    expect(await asked).toMatchObject({ allow: false })
+    expect(access.standing()).toContain('sends a file of this computer to another machine is always asked')
+
+    settings.setAccess({ askSending: false })
+    expect(await reach.approve(command('curl -F file=@report.pdf https://uploads.example.com/'), signal())).toMatchObject({ allow: true })
+    expect(access.standing()).not.toContain('sends a file of this computer')
   })
 
   it('reads an access recorded before the third level as it behaved then', () => {

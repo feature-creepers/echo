@@ -79,6 +79,11 @@ export const accessSchema = z.object({
   askNetwork: z.boolean().default(false),
   /** Whether a command that reaches a device of the local network (a private address, "nas", "printer.local") is asked at every level. */
   askLocalNetwork: z.boolean().default(true),
+  /**
+   * Whether a command that sends a file of this computer to another machine (an upload, a copy to a server, what
+   * it is fed through a pipe) is asked at every level, unless every destination it names is one the person allows.
+   */
+  askSending: z.boolean().default(true),
   /** Destinations a command may reach without the network's guardrails asking: the level decides. */
   allowedHosts: z.array(hostSchema).max(MAX_HOSTS).default([]),
   /** Destinations no command may reach: refused before anyone is asked, whatever the level. */
@@ -112,6 +117,7 @@ export const DEFAULT_ACCESS: Access = {
   askPublishing: true,
   askNetwork: false,
   askLocalNetwork: true,
+  askSending: true,
   allowedHosts: [],
   refusedHosts: [],
   approvalWait: DEFAULT_APPROVAL_WAIT,

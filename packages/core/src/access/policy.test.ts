@@ -56,6 +56,31 @@ const CASES: [string, ComputerUse, Policy, boolean, Decision][] = [
     false,
     RUNS('level')
   ],
+  ['a file sent to another machine: asked at auto', run('curl -F file=@report.pdf https://example.com/up'), guarded('auto'), false, ASKS(false, true)],
+  ['a file sent to another machine: covered for the session', run('scp report.pdf server.example.com:'), guarded('auto'), true, RUNS('session')],
+  ['a file piped to another machine: asked at auto', run('cat notes.txt | ssh ada@example.com "cat > notes.txt"'), guarded('auto'), false, ASKS(false, true)],
+  ['a file sent to this computer itself: run at auto', run('curl -T build.zip http://localhost:8080/'), guarded('auto'), false, RUNS('level')],
+  [
+    'a file sent where the person allows: run at auto',
+    run('curl -F file=@report.pdf https://uploads.example.com/'),
+    { ...guarded('auto'), allowedHosts: ['example.com'] },
+    false,
+    RUNS('level')
+  ],
+  [
+    'a file sent somewhere the line does not name, even with allowed destinations: asked at auto',
+    run('rclone copy Documents drive:backup'),
+    { ...guarded('auto'), allowedHosts: ['example.com'] },
+    false,
+    ASKS(false, true)
+  ],
+  [
+    'a file sent, the guardrail off: run at auto',
+    run('curl -F file=@report.pdf https://example.com/up'),
+    { ...guarded('auto'), askSending: false },
+    false,
+    RUNS('level')
+  ],
   [
     'the internet, guarded, to somewhere the line does not name: asked at auto',
     run('npm install'),

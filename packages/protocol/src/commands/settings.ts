@@ -51,6 +51,7 @@ export const settingsCommands = {
       askPublishing: z.boolean().optional(),
       askNetwork: z.boolean().optional(),
       askLocalNetwork: z.boolean().optional(),
+      askSending: z.boolean().optional(),
       allowedHosts: z.array(hostSchema).max(MAX_HOSTS).optional(),
       refusedHosts: z.array(hostSchema).max(MAX_HOSTS).optional(),
       approvalWait: z.number().int().min(1).max(MAX_APPROVAL_WAIT).nullable().optional(),

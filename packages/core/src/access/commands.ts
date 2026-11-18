@@ -1,5 +1,6 @@
 import { isPlain, type Piece, type Shell, type Stage, scan, textOf, type Word } from './command-words.ts'
 import { hostsOf } from './hosts.ts'
+import { sentBy } from './sending.ts'
 
 export type { Shell }
 
@@ -31,6 +32,13 @@ export interface ReadCommand {
   opaque: boolean
   /** It goes through the folders it names and everything in them. */
   recursive: boolean
+  /**
+   * The local files whose contents it sends to another machine, as written (`sending.ts`). `-` is what it is given
+   * through a pipe: the output of the command before it.
+   */
+  sends: string[]
+  /** Where what it sends goes, when the copy names it: the host of `scp file nas:/backups`. */
+  sendsTo: string[]
 }
 
 /** A path a line names, as written, for the adapter to resolve: `~/Documents`, `${HOME}/x`, `C:\Users`, `../a`. */
@@ -56,6 +64,8 @@ export interface CommandReading {
   paths: NamedPath[]
   /** Where on the network its commands that reach it go, as far as the line names it, each once: `github.com`, `192.168.1.20`. */
   hosts: string[]
+  /** The local files it sends to another machine, each once, as written; `-` for the output of a command piped to one that sends it. */
+  sends: string[]
   /** The keys of its commands that are not read-only: what a session approval of this line would cover. */
   keys: string[]
 }
@@ -118,7 +128,8 @@ export function readCommand(line: string, shell: Shell = 'posix'): CommandReadin
     unresolved: false,
     paths: [],
     keys: [],
-    hosts: []
+    hosts: [],
+    sends: []
   }
   readLine(line, { shell, folder: undefined, bound: new Set(), reading, depth: 0 })
   reading.programs = [...new Set(reading.commands.map((command) => command.program))]
@@ -126,7 +137,10 @@ export function readCommand(line: string, shell: Shell = 'posix'): CommandReadin
   reading.readOnly = reading.readOnly && !reading.opaque && !reading.unresolved && reading.commands.every((command) => command.readOnly)
   reading.destructive = reading.commands.some((command) => command.destructive)
   reading.network = reading.commands.some((command) => command.network)
-  reading.hosts = [...new Set(reading.commands.filter((command) => command.network).flatMap((command) => hostsOf(command.program, command.args)))]
+  reading.hosts = [
+    ...new Set(reading.commands.filter((command) => command.network).flatMap((command) => [...hostsOf(command.program, command.args), ...command.sendsTo]))
+  ]
+  reading.sends = [...new Set(reading.commands.flatMap((command) => command.sends))]
   reading.publishes = reading.commands.some((command) => command.publishes)
   reading.opaque = reading.opaque || reading.commands.some((command) => command.opaque)
   if (reading.network || reading.destructive || reading.opaque || reading.publishes) reading.readOnly = false
@@ -1720,6 +1734,12 @@ function readStage(stage: Stage, context: Context): void {
     else if (!textOf(word).startsWith('-')) name(word, context, options)
   }
 
+  // What it sends to another machine: the files an upload or a copy to a server carries, and what it is fed from a
+  // file or a pipe when it sends its input. A file it is fed is said by its name.
+  const input = stage.redirects.find((redirect) => !redirect.writes)
+  const sent = sentBy(program, argTexts, stage.piped || input !== undefined)
+  const sends = (sent?.files ?? []).map((file) => (file === '-' && input ? textOf(input.target) : file))
+
   const key = kind.sub && WITH_SUBCOMMANDS.has(found.name) ? `${program} ${kind.sub.toLowerCase()}` : program
   reading.commands.push(
     command(program, key, argTexts, {
@@ -1728,12 +1748,15 @@ function readStage(stage: Stage, context: Context): void {
         kind.network !== true &&
         kind.publishes !== true &&
         kind.destructive !== true &&
-        kind.opaque !== true,
+        kind.opaque !== true &&
+        sent === undefined,
       destructive: kind.destructive === true,
-      network: kind.network === true || kind.publishes === true,
+      network: kind.network === true || kind.publishes === true || sent !== undefined,
       publishes: kind.publishes === true,
       opaque: kind.opaque === true,
-      recursive: kind.recursive === true
+      recursive: kind.recursive === true,
+      sends,
+      sendsTo: sent?.to ?? []
     })
   )
 }
@@ -1753,6 +1776,8 @@ function command(program: string, key: string, args: string[], flags: Partial<Om
     network: flags.network ?? false,
     publishes: flags.publishes ?? false,
     opaque: flags.opaque ?? false,
-    recursive: flags.recursive ?? false
+    recursive: flags.recursive ?? false,
+    sends: flags.sends ?? [],
+    sendsTo: flags.sendsTo ?? []
   }
 }
