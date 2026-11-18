@@ -47,6 +47,13 @@ export interface DeviceHost {
     pick(kind: 'folder' | 'file'): Promise<string[]>
     /** Show a folder or a file in the system's file manager. */
     reveal(path: string): Promise<void>
+    /**
+     * Open a file with the app the system gives its kind, or a folder in the file manager. A file that would run a
+     * program is shown in its folder instead. Left out, files are not opened from here.
+     */
+    open?(path: string): Promise<void>
+    /** Where a file or a folder dropped on the window is on this computer. Left out, the window cannot tell. */
+    pathOf?(file: File): string | undefined
   }
   updates: {
     state(): Promise<UpdateState>

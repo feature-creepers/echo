@@ -47,6 +47,12 @@ function setup(overrides: Partial<Handlers> = {}) {
     'library.arrange': () => ({ ok: true, output: { library } }),
     'library.delete': () => ({ ok: true, output: { library } }),
     'library.show': () => ({ ok: true, output: {} }),
+    'attachment.open': () => ({ ok: true, output: { attachment: 'a1' } }),
+    'attachment.write': () => ({ ok: true, output: { received: 0 } }),
+    'attachment.close': () => ({ ok: false, error: { code: 'invalid-input', message: 'none' } }),
+    'attachment.discard': () => ({ ok: true, output: {} }),
+    'workspace.list': () => ({ ok: false, error: { code: 'invalid-input', message: 'none' } }),
+    'workspace.read': () => ({ ok: false, error: { code: 'invalid-input', message: 'none' } }),
     ...overrides
   }
   return { execute: createExecutor(handlers, log), log }

@@ -88,7 +88,16 @@ function session(): void {
   let sequence = 0
 
   const id = (prefix: string) => `${prefix}_${++sequence}`
-  const said = (message: Message) => String((message.message as Message | undefined)?.content ?? '')
+  /** The blocks of a message: its text alone, or text and pictures. */
+  const blocks = (message: Message) => {
+    const content = (message.message as Message | undefined)?.content
+    return Array.isArray(content) ? (content as Message[]) : [{ type: 'text', text: String(content ?? '') }]
+  }
+  const said = (message: Message) =>
+    blocks(message)
+      .filter((block) => block.type === 'text')
+      .map((block) => String(block.text))
+      .join('')
 
   function init(): void {
     const given = (flag('--tools') ?? '').split(',').filter((tool) => tool !== '' && !['WebSearch', 'WebFetch'].includes(tool))
@@ -258,7 +267,15 @@ function session(): void {
       return result([user, second])
     }
 
-    const answer = inspect(text) ?? `You said: ${text}`
+    // "what came with this": the blocks of the message, a picture by its kind and the length of its data.
+    const came = text.includes('what came with this')
+      ? JSON.stringify(
+          blocks(user).map((block) =>
+            block.type === 'image' ? { image: (block.source as Message).media_type, length: String((block.source as Message).data).length } : 'text'
+          )
+        )
+      : undefined
+    const answer = came ?? inspect(text) ?? `You said: ${text}`
     const third = Math.ceil(answer.length / 3)
     await write(message, 0, [answer.slice(0, third), answer.slice(third, 2 * third), answer.slice(2 * third)])
     result([user])

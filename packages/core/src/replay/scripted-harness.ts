@@ -1,4 +1,4 @@
-import type { Harness, HarnessModels, HarnessStatus, OneShot, Session, SessionEvent, SessionRequest } from '../ports/harness.ts'
+import type { Attachment, Harness, HarnessModels, HarnessStatus, OneShot, Session, SessionEvent, SessionRequest } from '../ports/harness.ts'
 
 /**
  * A harness that plays a script instead of running a model. For tests, and for replaying a recorded
@@ -8,6 +8,8 @@ export interface ScriptedSession {
   request: SessionRequest
   /** Everything sent to the session, in order. */
   sent: string[]
+  /** The files sent with each message, in the same order. */
+  attached: (readonly Attachment[])[]
   interrupted: number
   closed: boolean
   /** Make the session produce an event, as a real one would on its own. */
@@ -34,6 +36,8 @@ export interface ScriptOptions {
   complete?: (request: OneShot) => string
   /** The models it offers. Left out, a fast one by default and a strong one. */
   models?: HarnessModels
+  /** Whether its sessions show the model pictures. Left out, they do not. */
+  images?: boolean
 }
 
 const SCRIPTED_MODELS: HarnessModels = {
@@ -49,6 +53,7 @@ export function scriptedHarness(options: ScriptOptions = {}): ScriptedHarness {
   const harness: ScriptedHarness = {
     id: options.id ?? 'scripted',
     name: options.name ?? 'Scripted',
+    ...(options.images ? { capabilities: { images: true } } : {}),
     sessions: [],
     completions: [],
     signIns: 0,
@@ -70,6 +75,7 @@ export function scriptedHarness(options: ScriptOptions = {}): ScriptedHarness {
       const scripted: ScriptedSession = {
         request,
         sent: [],
+        attached: [],
         interrupted: 0,
         closed: false,
         emit(event) {
@@ -83,7 +89,10 @@ export function scriptedHarness(options: ScriptOptions = {}): ScriptedHarness {
       }
       harness.sessions.push(scripted)
       const session: Session = {
-        send: (text) => void scripted.sent.push(text),
+        send: (text, attachments = []) => {
+          scripted.sent.push(text)
+          scripted.attached.push(attachments)
+        },
         interrupt: () => {
           scripted.interrupted++
         },

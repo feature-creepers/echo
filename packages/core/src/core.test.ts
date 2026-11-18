@@ -1,7 +1,8 @@
-import { COMMANDS, type CommandInput, type CommandName, type CommandOutput, type Event, PROTOCOL_VERSION } from '@repo/protocol'
+import { COMMANDS, type CommandInput, type CommandName, type CommandOutput, type Event, encodeBase64, PROTOCOL_VERSION } from '@repo/protocol'
 import { describe, expect, it, vi } from 'vitest'
 import { createCore } from './core.ts'
 import { memoryRecords } from './records/memory.ts'
+import { memoryWorkspace } from './replay/memory-workspace.ts'
 import { scriptedHarness } from './replay/scripted-harness.ts'
 
 function start(records = memoryRecords(), harness = scriptedHarness()) {
@@ -344,5 +345,83 @@ describe('the library through the core', () => {
     await run(core, 'library.show', { widget: widget.id })
     expect((await run(core, 'view.read', {})).view).toMatchObject({ widget: widget.id, title: 'Jazz radio' })
     expect((await core.execute({ type: 'command', id: 'c2', name: 'library.show', input: { widget: 'nothing' } }))?.ok).toBe(false)
+  })
+})
+
+describe('files between the person and the assistant', () => {
+  function withFolder() {
+    let ids = 0
+    const workspace = memoryWorkspace()
+    const harness = scriptedHarness({ images: true })
+    const core = createCore({
+      version: '1',
+      acceptsCredential: () => true,
+      records: memoryRecords(),
+      blobs: { put: () => 'hash', get: () => undefined },
+      log: { error: vi.fn() },
+      harnesses: [harness],
+      newId: () => `id-${++ids}`,
+      now: () => new Date('2026-11-17T08:00:00Z'),
+      workspace,
+      computer: {
+        workspace: workspace.location,
+        locate: async (path) => (path.startsWith('/home/ada/') ? { path, kind: 'folder' } : undefined)
+      }
+    })
+    const events: Event[] = []
+    core.onEvent((event) => events.push(event))
+    return { core, harness, workspace, events }
+  }
+
+  it('keeps a file handed over in pieces, sends it with what is said, and lets the person browse and read it', async () => {
+    const { core, harness, events } = withFolder()
+    const { attachment } = await run(core, 'attachment.open', { name: 'photo.png', type: 'image/png', size: 6 })
+    await run(core, 'attachment.write', { attachment, data: encodeBase64(new Uint8Array([1, 2, 3])) })
+    await run(core, 'attachment.write', { attachment, data: encodeBase64(new Uint8Array([4, 5, 6])) })
+    const kept = await run(core, 'attachment.close', { attachment })
+    expect(kept.attachment).toMatchObject({ name: 'photo.png', path: 'inbox/2026-11-17/photo.png', image: true, size: 6 })
+    expect(events).toContainEqual({ type: 'event', name: 'workspace.changed', paths: ['inbox/2026-11-17/photo.png'] })
+
+    await run(core, 'utterance.send', { text: 'What is this?', attachments: [attachment] })
+    await settled()
+    // With no tool server, one session answers everything, and is given the file itself.
+    expect(harness.sessions[0]?.sent[0]).toContain('- photo.png (image/png, 6 bytes), at /home/ada/workspace/inbox/2026-11-17/photo.png: shown to you')
+    expect(harness.sessions[0]?.attached[0]).toEqual([
+      { path: '/home/ada/workspace/inbox/2026-11-17/photo.png', name: 'photo.png', mediaType: 'image/png', image: true }
+    ])
+    // Gone with that turn: it cannot be sent twice.
+    const again = await core.execute({ type: 'command', id: 'c2', name: 'utterance.send', input: { text: 'And this?', attachments: [attachment] } })
+    expect(again).toMatchObject({ ok: false, error: { code: 'invalid-input' } })
+
+    const top = await run(core, 'workspace.list', { path: '' })
+    expect(top.entries.map((entry) => entry.path)).toEqual(['inbox'])
+    const read = await run(core, 'workspace.read', { path: 'inbox/2026-11-17/photo.png' })
+    expect(read).toMatchObject({ data: encodeBase64(new Uint8Array([1, 2, 3, 4, 5, 6])), size: 6 })
+  })
+
+  it('takes a file back when the person removes it before saying anything', async () => {
+    const { core, workspace } = withFolder()
+    const { attachment } = await run(core, 'attachment.open', { name: 'a.txt', size: 1 })
+    await run(core, 'attachment.write', { attachment, data: encodeBase64(new Uint8Array([65])) })
+    await run(core, 'attachment.close', { attachment })
+    await run(core, 'attachment.discard', { attachment })
+    expect(workspace.files.size).toBe(0)
+  })
+
+  it('grants a folder handed over, read only, and says so in the turn', async () => {
+    const { core, harness } = withFolder()
+    await run(core, 'utterance.send', { text: '', folders: ['/home/ada/Projects'] })
+    await settled()
+    const { settings } = await run(core, 'settings.read', {})
+    expect(settings.access.places).toEqual([{ path: '/home/ada/Projects', kind: 'folder', write: false }])
+    expect(harness.sessions[0]?.sent[0]).toContain('The folder /home/ada/Projects: yours to read from now on, read only.')
+  })
+
+  it('refuses something said with nothing in it', async () => {
+    const { core } = withFolder()
+    expect(await core.execute({ type: 'command', id: 'c1', name: 'utterance.send', input: { text: '  ' } })).toMatchObject({
+      ok: false,
+      error: { code: 'invalid-input' }
+    })
   })
 })

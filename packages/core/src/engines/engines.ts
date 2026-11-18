@@ -120,6 +120,7 @@ export function createEngineRoom(harnesses: readonly Harness[], choice: EngineCh
     const made: Harness = {
       id: harness.id,
       name: harness.name,
+      ...(harness.capabilities ? { capabilities: harness.capabilities } : {}),
       status: () => harness.status(),
       models: () => harness.models(),
       signIn: () => harness.signIn(),

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { attachedSchema } from './files.ts'
 import { personaIdSchema } from './personas.ts'
 
 /**
@@ -38,6 +39,8 @@ export const exchangeSchema = z.object({
   thread: z.string().min(1).max(64).optional(),
   /** What the user said. Empty when the assistant started the turn itself: see `trigger`. */
   said: z.string(),
+  /** What the user handed over with it: files and folders. */
+  attached: z.array(attachedSchema).optional(),
   /** Why the assistant started this turn itself, when it did: the greeting and briefing when the app opens. */
   trigger: z.enum(['greeting']).optional(),
   /** What the assistant said aloud, so far: short, as a friend says it. */

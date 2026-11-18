@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { type Core, createCore } from '@repo/core'
-import { createComputer, createHarnesses } from '@repo/harness'
+import { createComputer, createHarnesses, createWorkspace } from '@repo/harness'
 import { openStore } from '@repo/store'
 import { serveTools } from '@repo/tools'
 import manifest from '../package.json' with { type: 'json' }
@@ -25,6 +25,8 @@ export async function compose(config: Config): Promise<Composition> {
   const log = { error: (message: string) => void process.stderr.write(`${message}\n`) }
   // The assistant's own folder, where it keeps the files it makes for the user: in the data folder, created now.
   const computer = await createComputer({ workspace: join(config.data, 'workspace') })
+  // The same folder, as the person browses it and hands files into it.
+  const workspace = await createWorkspace(computer.workspace)
   const core = createCore({
     version: manifest.version,
     acceptsCredential: localToken(config.token),
@@ -36,6 +38,7 @@ export async function compose(config: Config): Promise<Composition> {
     newId: randomUUID,
     web: publicWeb,
     computer,
+    workspace,
     timers: {
       after(ms, work) {
         // A timer of the core never keeps the process alive on its own.

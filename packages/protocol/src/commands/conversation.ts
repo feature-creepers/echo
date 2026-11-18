@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { enginesSchema, exchangeSchema, languageSchema, turnIdSchema, UTTERANCE_MAX_LENGTH } from '../conversation.ts'
+import { ATTACHMENTS_PER_TURN, attachmentIdSchema } from '../files.ts'
 
 export const conversationCommands = {
   /**
@@ -8,11 +9,21 @@ export const conversationCommands = {
    * Said while the assistant is answering, it stops that answer first.
    */
   'utterance.send': {
-    input: z.object({
-      text: z.string().trim().min(1).max(UTTERANCE_MAX_LENGTH),
-      /** The language spoken, when the device's recogniser could tell. */
-      language: languageSchema.optional()
-    }),
+    input: z
+      .object({
+        text: z.string().trim().max(UTTERANCE_MAX_LENGTH),
+        /** The language spoken, when the device's recogniser could tell. */
+        language: languageSchema.optional(),
+        /** Files handed over with it, each sent first with `attachment.open`. */
+        attachments: z.array(attachmentIdSchema).max(ATTACHMENTS_PER_TURN).optional(),
+        /**
+         * Folders given with it, by where they are on the core's computer: a desktop knows where a folder dropped
+         * on it is. Giving one is consent to read it: it is granted read only.
+         */
+        folders: z.array(z.string().min(1).max(4096)).max(ATTACHMENTS_PER_TURN).optional()
+      })
+      // Something said, or something handed over without a word.
+      .refine((input) => input.text !== '' || (input.attachments?.length ?? 0) + (input.folders?.length ?? 0) > 0),
     output: z.object({ turn: turnIdSchema })
   },
 

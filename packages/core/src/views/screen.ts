@@ -30,6 +30,8 @@ export interface Showing {
 
 /** A view already checked against the catalogue, to show as it is: a saved widget brought back. */
 export interface Checked {
+  /** The view this is a new version of, which it replaces wherever it is. Left out, it is a view of its own. */
+  id?: string
   title: string
   spec: ViewSpec
   /** The saved widget of the library it shows again. */
@@ -109,7 +111,7 @@ export function createScreen({ records, newId }: ScreenOptions): Screen {
 
   const present = (checked: Checked, showing: Showing): ToolResult => {
     const view: ShownView = {
-      id: newId(),
+      id: checked.id ?? newId(),
       title: checked.title,
       slot: showing.slot,
       spec: checked.spec,
@@ -158,8 +160,11 @@ export function createScreen({ records, newId }: ScreenOptions): Screen {
       const views: ShownView[] = []
       for (const record of records.read([VIEW_SHOWN])) {
         const view = viewSchema.safeParse(record.payload)
-        // A card brought back is recorded again: it is still one view.
-        if (view.success && view.data.thread === thread && !views.some((one) => one.id === view.data.id)) views.push(view.data)
+        // A card brought back, or brought up to date, is recorded again: it is still one view, as it was last shown.
+        if (!view.success || view.data.thread !== thread) continue
+        const at = views.findIndex((one) => one.id === view.data.id)
+        if (at < 0) views.push(view.data)
+        else views[at] = view.data
       }
       return views
     },

@@ -1,4 +1,5 @@
 export { type Access, APPROVALS, accessSchema, COMPUTER_REACH, DEFAULT_ACCESS, MAX_PLACES, type Place, placeSchema } from './access.ts'
+export { decodeBase64, encodeBase64 } from './base64.ts'
 export { CAPABILITIES, type Capability, capabilitySchema } from './capabilities.ts'
 export { createLineDecoder, type DecodedLine, encodeLine, type LineDecoder, MAX_LINE_LENGTH } from './codec.ts'
 export {
@@ -40,6 +41,22 @@ export {
 } from './envelope.ts'
 export { MEDIA_ACTIONS } from './events/views.ts'
 export { type Event, type EventName, type EventOf, eventSchema } from './events.ts'
+export {
+  ATTACHMENT_MAX_BYTES,
+  ATTACHMENTS_PER_TURN,
+  type Attached,
+  type Attachment,
+  attachedSchema,
+  attachmentIdSchema,
+  attachmentSchema,
+  FILE_PIECE_BYTES,
+  MODEL_IMAGE_MAX_BYTES,
+  MODEL_IMAGE_MAX_SIDE,
+  MODEL_IMAGE_TYPES,
+  mediaTypeOf,
+  type WorkspaceEntry,
+  workspaceEntrySchema
+} from './files.ts'
 export {
   CLIENT_KINDS,
   type HandshakeReply,

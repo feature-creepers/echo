@@ -23,6 +23,15 @@ export interface ViewActions {
    * is a key for that showing, so drawing the view again does not start it again. Left out, nothing starts.
    */
   autoplay?: string | undefined
+  /** What can be done with a file on the computer, by its absolute path. Each is left out where it cannot be done here. */
+  files?: FileActions | undefined
+}
+
+/** A file on the computer: opened with its app, shown in its folder, or looked at without leaving the app. */
+export interface FileActions {
+  open?: ((path: string) => void) | undefined
+  reveal?: ((path: string) => void) | undefined
+  preview?: ((path: string) => void) | undefined
 }
 
 export const ViewActionsContext = createContext<ViewActions>({ say: () => undefined, readFile: () => Promise.reject(new Error('No file can be read here.')) })

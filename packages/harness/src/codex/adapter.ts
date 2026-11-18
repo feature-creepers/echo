@@ -23,6 +23,8 @@ export function createCodex(options: HarnessOptions): Harness {
   return {
     id: CODEX_ID,
     name: 'Codex',
+    // Pictures the person hands over are shown to the model with what they said.
+    capabilities: { images: true },
     status: () => status(cli),
     // Codex keeps the list of models it offers this account in its own folder, which the environment can move.
     models: async () => codexChoices(codexHome(await loadEnvironment(options.env))),

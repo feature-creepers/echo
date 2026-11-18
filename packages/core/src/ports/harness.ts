@@ -101,18 +101,45 @@ export type SessionEvent =
   /**
    * A tool of the core, or a web tool of the harness, started or ended. `name` is the tool's name as the core
    * serves it. `call` tells the calls apart. A call can be reported started twice: as soon as the session begins
-   * writing it, then again once its input is complete. Its end carries what the tool gave back, whole.
+   * writing it, then again once its input is complete. Its end carries what the tool gave back, whole, and, for
+   * a use of the computer that made or changed files, where they are, absolute.
    */
-  | { type: 'tool'; name: string; phase: 'started' | 'ended'; call?: string; input?: unknown; output?: string; failed?: boolean }
+  | {
+      type: 'tool'
+      name: string
+      phase: 'started' | 'ended'
+      call?: string
+      input?: unknown
+      output?: string
+      failed?: boolean
+      wrote?: string[]
+    }
   /** The turn is over. Nothing more comes until the next `send`. */
   | { type: 'turn-end' }
   /** The session cannot go on, and why, in words for the user. It is closed. */
   | { type: 'failed'; reason: string }
 
+/**
+ * A file the person handed over with what they said, kept on the computer the harness runs on. The text sent with
+ * it names it; a picture is also shown to the model, when the harness can show it one.
+ */
+export interface Attachment {
+  /** Where it is, absolute. */
+  path: string
+  name: string
+  /** Its media type: "image/png", "application/pdf". */
+  mediaType: string
+  /** Shown to the model as a picture. Otherwise the model reads it with its tools, by its path. */
+  image: boolean
+}
+
 /** A live conversation with a harness. It keeps what was said, turn after turn, until it is closed. */
 export interface Session {
-  /** Say something. Accepted while a turn is running: it then steers that turn or follows it. */
-  send(text: string): void
+  /**
+   * Say something, with files the person handed over. Accepted while a turn is running: it then steers that turn
+   * or follows it.
+   */
+  send(text: string, attachments?: readonly Attachment[]): void
   /** Stop the turn under way. The session stays usable. */
   interrupt(): void
   /** End the session and its process. */
@@ -148,11 +175,19 @@ export interface HarnessModels {
   default: string
 }
 
+/** What a harness can do beyond text. */
+export interface HarnessCapabilities {
+  /** Its sessions show the model the pictures sent with what is said. Without it, pictures are named by their path. */
+  images: boolean
+}
+
 export interface Harness {
   /** Identifies the harness in settings and records: 'claude-code', 'codex'. */
   id: string
   /** Its name, as the user knows it. */
   name: string
+  /** Left out, it can do nothing beyond text. */
+  capabilities?: HarnessCapabilities
   status(): Promise<HarnessStatus>
   /** Open the vendor's own sign-in, in a terminal. The core never sees the credentials. */
   signIn(): Promise<void>

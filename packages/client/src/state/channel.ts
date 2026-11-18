@@ -10,6 +10,12 @@ export interface ChannelSnapshot {
   running: TurnId | undefined
 }
 
+/** What goes with something said: files handed over with `handOver`, by what names them, and folders, by where they are. */
+export interface Handed {
+  attachments?: readonly string[]
+  folders?: readonly string[]
+}
+
 /** One sentence to say aloud, as the core announced it. */
 export interface Sentence {
   turn: TurnId
@@ -19,8 +25,11 @@ export interface Sentence {
 
 /** The conversation, kept current for as long as the session lasts. */
 export interface ChannelState extends Followed<ChannelSnapshot> {
-  /** Say something to the assistant. Rejects with `CommandFailed` when the core does not take it. */
-  say(text: string, language?: string): Promise<void>
+  /**
+   * Say something to the assistant, with the files already handed over and the folders given, if any. Rejects with
+   * `CommandFailed` when the core does not take it.
+   */
+  say(text: string, language?: string, handed?: Handed): Promise<void>
   /** The app has opened: let the assistant greet and brief the user, if it is time to. */
   greet(): Promise<void>
   /** Stop the answer under way. */
@@ -86,8 +95,13 @@ export function followChannel(session: Session): ChannelState {
   return {
     current: state.current,
     subscribe: state.subscribe,
-    async say(text, language) {
-      await session.run('utterance.send', language === undefined ? { text } : { text, language })
+    async say(text, language, handed) {
+      await session.run('utterance.send', {
+        text,
+        ...(language === undefined ? {} : { language }),
+        ...(handed?.attachments && handed.attachments.length > 0 ? { attachments: [...handed.attachments] } : {}),
+        ...(handed?.folders && handed.folders.length > 0 ? { folders: [...handed.folders] } : {})
+      })
     },
     async greet() {
       await session.run('assistant.greet', {})

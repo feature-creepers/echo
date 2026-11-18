@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, realpathSync } from 'node:fs'
+import { existsSync, readdirSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Harness, Session } from '@repo/core'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -72,6 +72,43 @@ describe('a Claude Code session', () => {
     await followed.until('turn-end')
 
     expect(followed.outline()).toEqual(['text:All at once.', 'turn-end'])
+  })
+
+  it('shows the model the pictures handed over, ahead of the words, and names the other files only in the words', async () => {
+    const { session: start, folder: at } = harness()
+    const session = start()
+    const picture = join(at, 'photo.png')
+    writeFileSync(picture, new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]))
+    const followed = follow(session)
+    session.send('what came with this', [
+      { path: picture, name: 'photo.png', mediaType: 'image/png', image: true },
+      { path: join(at, 'plan.pdf'), name: 'plan.pdf', mediaType: 'application/pdf', image: false }
+    ])
+    await followed.until('turn-end')
+    expect(JSON.parse(followed.text())).toEqual([{ image: 'image/png', length: 12 }, 'text'])
+  })
+
+  it('keeps what is said in order behind a message whose pictures are still being read', async () => {
+    const { session: start, folder: at } = harness()
+    const session = start()
+    const picture = join(at, 'photo.png')
+    writeFileSync(picture, new Uint8Array([1, 2, 3]))
+    const followed = follow(session)
+    session.send('first', [{ path: picture, name: 'photo.png', mediaType: 'image/png', image: true }])
+    session.send('second')
+    // Both are answered in one turn, the second taken in as the first ends.
+    await followed.until('turn-end')
+    expect(followed.text().replace(/\s+/g, ' ')).toBe('You said: first You said: second')
+  })
+
+  it('leaves out a picture it cannot read, and says so in its log', async () => {
+    const { session: start, folder: at, log } = harness()
+    const session = start()
+    const followed = follow(session)
+    session.send('what came with this', [{ path: join(at, 'gone.png'), name: 'gone.png', mediaType: 'image/png', image: true }])
+    await followed.until('turn-end')
+    expect(JSON.parse(followed.text())).toEqual(['text'])
+    expect(log.errors.join()).toContain('could not be read')
   })
 
   it('reports the calls to the tools of the core by the names the core gave them', async () => {

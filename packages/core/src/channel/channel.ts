@@ -14,8 +14,9 @@ import {
   type TurnId
 } from '@repo/protocol'
 import { z } from 'zod'
+import { attachmentsFor, type Handed, handedAny, NOTHING_HANDED, noteForOrchestrator, noteForThread } from '../attachments/framing.ts'
 import type { EngineRoom } from '../engines/engines.ts'
-import type { Harness, Reach, Session, SessionEvent } from '../ports/harness.ts'
+import type { Harness, Reach, Scope, Session, SessionEvent } from '../ports/harness.ts'
 import type { Log } from '../ports/log.ts'
 import type { Records } from '../ports/records.ts'
 import type { ToolResult } from '../ports/tools.ts'
@@ -69,6 +70,8 @@ export interface Abilities {
   version?(): string
   /** Something the person said that answers a question on screen, taken before any turn. True when it did. */
   hear?(said: string): boolean
+  /** A thread made or changed files on the computer, at these places, absolute: they are shown where `showing` says. */
+  wrote?(showing: Showing, paths: readonly string[]): void
 }
 
 export interface ChannelOptions {
@@ -118,8 +121,11 @@ export function moment(at: Date, timeZone?: string): string {
 
 /** The single conversation: it takes what the user says, one turn at a time, and announces the answer as it comes. */
 export interface Channel {
-  /** The user said something. The answer follows as events. Said during an answer, it takes the answer's place. */
-  say(text: string, language?: string): TurnId
+  /**
+   * The user said something, and may have handed over files and folders with it. The answer follows as events.
+   * Said during an answer, it takes the answer's place.
+   */
+  say(text: string, language?: string, handed?: Handed): TurnId
   /** Greet the user and brief them, unless it was done a little while ago or a turn is under way. */
   greet(): TurnId | undefined
   /** Stop the answer under way, if there is one. */
@@ -146,6 +152,8 @@ export interface Channel {
 interface Turn {
   exchange: Exchange
   language: string | undefined
+  /** The files and folders the person handed over with it. They follow it to the thread that answers. */
+  handed: Handed
   /** Cuts the text of whoever is speaking into sentences. Each speaker gets its own, so one's words never run into another's. */
   cutter: SentenceCutter
   /** How many of its sentences were said aloud while it was on the stage. */
@@ -188,6 +196,10 @@ interface Runtime {
   live: Live | undefined
   answering: Turn | undefined
   queue: { turn: Turn; text: string }[]
+  /** Files the person handed this thread, by where they are: it may read them, whatever else it may reach. */
+  readable: string[]
+  /** Where its views go, once its session is open. */
+  showing: (() => Showing) | undefined
 }
 
 const openInput = z.object({ title: z.string().trim().min(1).max(80), kind: z.enum(['topic', 'aside']).default('topic'), request: z.string().optional() })
@@ -195,9 +207,10 @@ const sendInput = z.object({ thread: z.string().min(1), request: z.string().opti
 const focusInput = z.object({ thread: z.string().min(1) })
 const answerInput = z.object({ text: z.string().trim().min(1) })
 
-const newTurn = (exchange: Exchange, language: string | undefined): Turn => ({
+const newTurn = (exchange: Exchange, language: string | undefined, handed: Handed = NOTHING_HANDED): Turn => ({
   exchange,
   language,
+  handed,
   cutter: createSentenceCutter(),
   heard: 0,
   sentences: new Set(),
@@ -356,7 +369,7 @@ export function createChannel(options: ChannelOptions): Channel {
   const runtimeFor = (thread: string): Runtime => {
     let runtime = runtimes.get(thread)
     if (!runtime) {
-      runtime = { thread, live: undefined, answering: undefined, queue: [] }
+      runtime = { thread, live: undefined, answering: undefined, queue: [], readable: [], showing: undefined }
       runtimes.set(thread, runtime)
     }
     return runtime
@@ -366,6 +379,9 @@ export function createChannel(options: ChannelOptions): Channel {
     const thread = registry.get(runtime.thread)
     const persona = activePersona()
     const profile = memory?.profile()
+    const granted = abilities?.reach?.(() => showing())
+    // Files handed to the thread are readable by it, whatever else it may reach: the person gave them.
+    const computer: Reach | undefined = granted && { ...granted, scope: () => withReadable(granted.scope(), runtime.readable) }
     // A change of program, model or persona opens a new session for the next question, told what was said before.
     const key = JSON.stringify([
       engine.id,
@@ -375,7 +391,9 @@ export function createChannel(options: ChannelOptions): Channel {
       persona.stance,
       server,
       profile?.version ?? null,
-      abilities?.version?.() ?? null
+      abilities?.version?.() ?? null,
+      // A session that could read nothing is opened again once it is handed something to read.
+      computer === undefined ? null : reads(computer.scope())
     ])
     if (runtime.live?.key === key) return runtime.live.session
     end(runtime.live)
@@ -386,12 +404,12 @@ export function createChannel(options: ChannelOptions): Channel {
       slot: kind === 'aside' ? 'margin' : 'stage',
       focused: registry.focused()?.id === runtime.thread
     })
+    runtime.showing = showing
     const grant = abilities?.grant(
       [...abilities.threadTools(showing, persona.stance), answerTool(runtime)].map((tool) =>
         SPOKEN_FIRST.has(tool.definition.name) ? speakFirst(runtime, tool) : tool
       )
     )
-    const computer = abilities?.reach?.(showing)
     const earlier = recapFor(runtime.thread)
     const instructions = threadInstructions({
       persona,
@@ -430,6 +448,8 @@ export function createChannel(options: ChannelOptions): Channel {
         if (event.phase === 'started') for (const sentence of turn.cutter.flush()) say(turn, sentence)
         step(turn, runtime.thread, event)
         if (event.phase === 'ended' && event.name === SHOW_TOOL && !event.failed && turn.sentences.size > 0) turn.shown = true
+        if (event.phase === 'ended' && !event.failed && event.wrote && event.wrote.length > 0 && runtime.showing)
+          abilities?.wrote?.(runtime.showing(), event.wrote)
         return
       case 'turn-end': {
         if (!turn) return
@@ -475,7 +495,13 @@ export function createChannel(options: ChannelOptions): Channel {
     }
     const session = threadSession(runtime, engine, server)
     const recalled = memory?.recall(waiting.text, runtime.live?.knownSince)
-    session.send(`${context()}\n${recalled ? `${recalled}\n\n` : ''}${waiting.text}\n\n${SPEAK_FIRST}`)
+    const { handed } = waiting.turn
+    const images = engine.capabilities?.images === true
+    const note = noteForThread(handed, waiting.text, images)
+    session.send(
+      `${context()}\n${recalled ? `${recalled}\n\n` : ''}${waiting.text}\n\n${note ? `${note}\n\n` : ''}${SPEAK_FIRST}`,
+      attachmentsFor(handed, images)
+    )
   }
 
   /** Pass a turn to a thread, which answers it as soon as it is free. */
@@ -490,6 +516,7 @@ export function createChannel(options: ChannelOptions): Channel {
     turn.routed = runtime
     turn.exchange = { ...turn.exchange, thread: thread.id }
     replace(turn.exchange)
+    for (const file of turn.handed.files) if (!runtime.readable.includes(file.location)) runtime.readable.push(file.location)
     if (thread.kind === 'topic') {
       registry.focus(thread.id)
       screen.focus(thread.id)
@@ -509,7 +536,7 @@ export function createChannel(options: ChannelOptions): Channel {
     }
     if (turn.next || turn.routed.thread === thread.id) return { ok: false, text: 'This has already been passed on. Write nothing more.' }
     const exchange: Exchange = { turn: newId(), at: now().toISOString(), persona: turn.exchange.persona, said: request, replied: '', outcome: 'running' }
-    const second = newTurn(exchange, turn.language)
+    const second = newTurn(exchange, turn.language, turn.handed)
     second.after = turn
     turn.next = second
     transcript.push(exchange)
@@ -716,17 +743,25 @@ export function createChannel(options: ChannelOptions): Channel {
     return `(Now: ${moment(now(), options.timeZone)}${language === undefined ? '' : `. Answer in ${languageName(language)}.`})`
   }
 
-  /** What the person said, or what the assistant starts on by itself. */
-  const what = (turn: Turn) =>
-    turn.exchange.trigger === 'greeting'
-      ? 'The person has just opened the app; nobody has said anything yet. Greet them by their name if you know it, in one short sentence, then give a brief briefing for today: the day, the weather where they are if you can find it (their time zone says roughly where), and anything left pending from earlier topics. Keep it short. Either say it all yourself, or pass it whole to a thread if a view of the day would help, saying nothing yourself.'
-      : `The person says: ${turn.exchange.said}`
+  /** What the person said, or what the assistant starts on by itself, and what they handed over with it. */
+  const what = (turn: Turn) => {
+    if (turn.exchange.trigger === 'greeting')
+      return 'The person has just opened the app; nobody has said anything yet. Greet them by their name if you know it, in one short sentence, then give a brief briefing for today: the day, the weather where they are if you can find it (their time zone says roughly where), and anything left pending from earlier topics. Keep it short. Either say it all yourself, or pass it whole to a thread if a view of the day would help, saying nothing yourself.'
+    const note = noteForOrchestrator(turn.handed)
+    const said = turn.exchange.said === '' ? 'The person says nothing.' : `The person says: ${turn.exchange.said}`
+    return note ? `${said}\n${note}` : said
+  }
 
-  /** What the orchestrator reads for each turn: the moment, the threads, then what the person said. */
-  const message = (turn: Turn) =>
-    abilities?.server() === undefined
-      ? `${context()}\n${turn.exchange.trigger === 'greeting' ? what(turn) : turn.exchange.said}`
-      : `${context()}\nThreads:\n${registry.index()}\n\n${what(turn)}`
+  /**
+   * What the orchestrator reads for each turn: the moment, the threads, then what the person said. With no tools,
+   * it is the one session that answers, and is given the files itself.
+   */
+  const message = (turn: Turn, images: boolean) => {
+    if (abilities?.server() !== undefined) return `${context()}\nThreads:\n${registry.index()}\n\n${what(turn)}`
+    if (turn.exchange.trigger === 'greeting') return `${context()}\n${what(turn)}`
+    const note = noteForThread(turn.handed, turn.exchange.said, images)
+    return `${context()}\n${[turn.exchange.said, note].filter(Boolean).join('\n\n')}`
+  }
 
   const decide = async (turn: Turn) => {
     deciding = turn
@@ -745,7 +780,11 @@ export function createChannel(options: ChannelOptions): Channel {
     }
     const session = orchestratorSession(engine)
     const recalled = turn.exchange.trigger ? undefined : memory?.recall(turn.exchange.said, orchestrator?.knownSince)
-    session.send(recalled ? `${recalled}\n\n${message(turn)}` : message(turn))
+    const images = engine.capabilities?.images === true
+    const text = recalled ? `${recalled}\n\n${message(turn, images)}` : message(turn, images)
+    // Only the one session that answers everything is given the files; an orchestrator is told of them, and routes.
+    if (abilities?.server() === undefined && handedAny(turn.handed)) session.send(text, attachmentsFor(turn.handed, images))
+    else session.send(text)
   }
 
   const decideNext = () => {
@@ -773,15 +812,25 @@ export function createChannel(options: ChannelOptions): Channel {
   }
 
   return {
-    say(text, language) {
+    say(text, language, handed = NOTHING_HANDED) {
       // A yes or a no to a question on screen answers it: the turn that asked goes on, and no new one starts.
-      if (abilities?.hear?.(text)) return current?.exchange.turn ?? newId()
+      // Files handed over are something new to look at, never an answer.
+      if (!handedAny(handed) && abilities?.hear?.(text)) return current?.exchange.turn ?? newId()
       memory?.wake()
       const persona = activePersona()
-      const exchange: Exchange = { turn: newId(), at: now().toISOString(), persona: persona.id, said: text, replied: '', outcome: 'running' }
-      const spoken = spokenIn(text, language)
+      const attached = attachedOf(handed)
+      const exchange: Exchange = {
+        turn: newId(),
+        at: now().toISOString(),
+        persona: persona.id,
+        said: text,
+        ...(attached.length > 0 ? { attached } : {}),
+        replied: '',
+        outcome: 'running'
+      }
+      const spoken = text === '' ? undefined : spokenIn(text, language)
       if (spoken) conversationLanguage = spoken
-      const turn = newTurn(exchange, spoken)
+      const turn = newTurn(exchange, spoken, handed)
       transcript.push(exchange)
 
       const previous = current
@@ -882,4 +931,21 @@ export function createChannel(options: ChannelOptions): Channel {
       runtimes.clear()
     }
   }
+}
+
+/** A scope with files added that may be read: those the person handed a thread. */
+function withReadable(scope: Scope, readable: readonly string[]): Scope {
+  const added = readable.filter((path) => !scope.places.some((place) => place.path === path))
+  return added.length === 0 ? scope : { ...scope, places: [...scope.places, ...added.map((path) => ({ path, kind: 'file' as const, write: false }))] }
+}
+
+/** Whether a scope lets a session read anything at all. */
+const reads = (scope: Scope) => scope.computer !== 'off' || scope.places.length > 0
+
+/** What the person handed over, as the transcript keeps it: names and sizes, and a file's place in the assistant's folder. */
+function attachedOf(handed: Handed): NonNullable<Exchange['attached']> {
+  return [
+    ...handed.files.map((file) => ({ name: file.name, kind: file.image ? ('image' as const) : ('file' as const), size: file.size, path: file.path })),
+    ...handed.folders.map((folder) => ({ name: folder.split(/[\\/]/).filter(Boolean).at(-1) ?? folder, kind: 'folder' as const }))
+  ]
 }
