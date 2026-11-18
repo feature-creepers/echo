@@ -48,6 +48,8 @@ export interface CoreOptions {
   web?: Web
   /** The computer the core runs on, whose files the assistant may reach as the user grants. Left out, it reaches none. */
   computer?: Computer
+  /** Where the previous versions of files the assistant changes are kept, for the person to undo. Left out, with `blobs`. */
+  versions?: Blobs
 }
 
 /** The core as the listeners see it. */
@@ -132,7 +134,17 @@ export function createCore(options: CoreOptions): Core {
   ]
 
   const library = createLibrary({ records: options.records, screen, now, newId: options.newId })
-  const access = createAccess({ settings, screen, computer: options.computer, timers: options.timers })
+  const access = createAccess({
+    settings,
+    screen,
+    computer: options.computer,
+    timers: options.timers,
+    records: options.records,
+    versions: options.versions ?? options.blobs,
+    now,
+    newId: options.newId
+  })
+  access.onEvent(emit)
   const objections = createObjections({ records: options.records, screen, now })
   const files = createFiles({ records: options.records, blobs: options.blobs, now, newId: options.newId })
 
@@ -182,6 +194,9 @@ export function createCore(options: CoreOptions): Core {
     memory
   })
   currentTurn = channel.turn
+  // Stop everything (docs/SPEC.md, section 12.2): every turn and thread of the conversation is interrupted. What
+  // else runs on its own registers here with `access.onStopEverything`.
+  access.onStopEverything(() => channel.stopAll())
 
   settings.onChange((changed) => {
     emit({ type: 'event', name: 'settings.changed', settings: changed })
@@ -286,6 +301,20 @@ export function createCore(options: CoreOptions): Core {
       'access.set': async (input) => {
         const change = await access.set(input)
         return change.ok ? { ok: true, output: { settings: change.settings } } : change
+      },
+      'access.read': () => ({ ok: true, output: access.standingRules() }),
+      'access.forget': (input) =>
+        access.forget(input.allowance)
+          ? { ok: true, output: access.standingRules() }
+          : { ok: false, error: { code: 'invalid-input', message: `Nothing "${input.allowance}" is allowed for the session.` } },
+      'activity.read': (input) => ({ ok: true, output: access.activity(input.limit, input.before) }),
+      'activity.undo': async (input) => {
+        const undone = await access.undo(input.use, input.anyway)
+        return { ok: true, output: undone.use ? { outcome: undone.outcome, use: undone.use } : { outcome: undone.outcome } }
+      },
+      'everything.stop': () => {
+        access.stopEverything()
+        return { ok: true, output: {} }
       },
       'languages.set': (input) => ({ ok: true, output: { settings: settings.setLanguages(input) } }),
       'engines.model.set': async (input) => {

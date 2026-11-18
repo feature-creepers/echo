@@ -16,8 +16,12 @@ export type Place = z.infer<typeof placeSchema>
 /** Beyond the places granted: nothing more, reading anywhere, or reading and changing anywhere. */
 export const COMPUTER_REACH = ['off', 'read', 'write'] as const
 
-/** Whether the user approves each change and command (`ask`), or lets the assistant act within what it was granted (`trust`). */
-export const APPROVALS = ['ask', 'trust'] as const
+/**
+ * How much the assistant does without asking, within what it was granted. Reading, and commands that only read,
+ * never ask. `ask`: every change to a file and every other command is asked. `trust`: changes to files are made,
+ * other commands are asked. `auto`: nothing is asked but what destroys, which always is.
+ */
+export const APPROVALS = ['ask', 'trust', 'auto'] as const
 
 export const MAX_PLACES = 64
 
@@ -34,3 +38,27 @@ export type Access = z.infer<typeof accessSchema>
 
 /** A fresh install: the assistant's own folder, nothing else, and every change asked first. */
 export const DEFAULT_ACCESS: Access = { workspace: true, places: [], computer: 'off', approvals: 'ask' }
+
+/**
+ * A yes that lasts until the app quits, the access changes, or the person stops everything: for a command, the
+ * same program and subcommand (`git commit`); for a change, any change in the same folder. A command that
+ * destroys is never covered.
+ */
+export const allowanceSchema = z.object({
+  id: z.string().min(1).max(64),
+  kind: z.enum(['command', 'change']),
+  /** The program and subcommand, or the folder, as the person reads it. */
+  subject: z.string().min(1).max(4096),
+  /** When it was given: an ISO 8601 date. */
+  at: z.string()
+})
+export type Allowance = z.infer<typeof allowanceSchema>
+
+/** A place the assistant never reaches, whatever was granted: keys, credentials, browser profiles, password stores. */
+export const protectedPlaceSchema = z.object({
+  /** What it holds, in a few words: "SSH keys". */
+  label: z.string(),
+  /** Where it is on this computer, or the files it is (`*.kdbx`). */
+  path: z.string()
+})
+export type ProtectedPlace = z.infer<typeof protectedPlaceSchema>

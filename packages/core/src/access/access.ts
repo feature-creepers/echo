@@ -1,22 +1,29 @@
-import type { CommandInput, Place } from '@repo/protocol'
+import type { AccessUse, Allowance, CommandInput, Event, Place, ProtectedPlace } from '@repo/protocol'
 import { z } from 'zod'
+import type { Blobs } from '../ports/blobs.ts'
 import type { Timers } from '../ports/clock.ts'
 import type { Computer } from '../ports/computer.ts'
 import type { ComputerUse, Reach, Scope, Verdict } from '../ports/harness.ts'
+import type { Records } from '../ports/records.ts'
 import type { SettingsChange, UserSettings } from '../settings/settings.ts'
 import type { Tool } from '../tools/tools.ts'
 import type { Screen, Showing } from '../views/screen.ts'
-import { type Answer, createApprovals, type Question } from './approvals.ts'
+import { type Activity, createActivity, type NewUse, type UndoResult } from './activity.ts'
+import { createAllowances } from './allowances.ts'
+import { type Answer, type Answered, createApprovals, type Question } from './approvals.ts'
+import { type CommandReading, readCommand } from './commands.ts'
+import { decide } from './policy.ts'
+import { stopsEverything } from './words.ts'
 
 /**
  * What the assistant may reach on the person's computer, and the questions it asks before acting there
  * (docs/SPEC.md, section 12.2).
  *
  * The person grants: the assistant's own folder, folders and files read only or read and write, or the
- * whole computer. The harness checks every use of its own tools against that and refuses what falls outside;
- * what falls inside comes here, and a change or a command waits for the person's approval unless they chose
- * to trust the assistant within what they granted. A command can reach beyond any folder, so it is always
- * approved, unless the whole computer was given to change.
+ * whole computer. Some places are never reached whatever is granted. The harness checks every use of its own
+ * tools against that, commands by the paths they name, and the core refuses what falls outside; what falls
+ * inside runs or is asked first, as the level the person chose says. Every use is kept in the activity, with
+ * the previous version of a file changed, for 30 days.
  */
 export interface AccessControl {
   /** The computer as a thread reaches it, its questions going where `showing` says. Nothing when the core has no computer. */
@@ -27,10 +34,34 @@ export interface AccessControl {
   standing(): string | undefined
   /** Changes when what a session is given changes: it is then opened again, with the new access. */
   version(): string
-  /** Something the person said, which may answer a question on screen. True when it did. */
+  /** Something the person said, which may answer a question on screen, or stop everything. True when it did. */
   hear(said: string): boolean
   /** Change the access, checking each new place exists. */
   set(asked: CommandInput<'access.set'>): Promise<SettingsChange>
+  /** What was allowed for the session, and the places never reached on this computer. */
+  standingRules(): { allowances: Allowance[]; protected: ProtectedPlace[] }
+  /** Take back something allowed for the session. False when there is no such one. */
+  forget(allowance: string): boolean
+  /**
+   * Keep a use of the computer that did not come through `reach`, such as a tool of the core's own acting in a
+   * browser: it shows in the activity like any other. Gives back its identifier, to report how it went with
+   * `report`.
+   */
+  record(use: NewUse): string
+  /** How a use went. */
+  report(use: string, outcome: { ok: boolean; error?: string | undefined }): void
+  /** The activity, the latest first. */
+  activity(limit: number, before?: string): { uses: AccessUse[]; more: boolean }
+  /** Undo a use: its files' previous versions put back, or the files it created moved to the trash. */
+  undo(use: string, anyway: boolean): Promise<UndoResult>
+  /**
+   * Stop everything: every question waiting is withdrawn, the session's approvals are forgotten, and whoever
+   * listens with `onStopEverything` stops too: the conversation's turns and threads, and what runs on its own.
+   */
+  stopEverything(): void
+  onStopEverything(listener: () => void): () => void
+  /** Be told what changed: the session's approvals, a use kept. */
+  onEvent(listener: (event: Event) => void): () => void
 }
 
 export interface AccessOptions {
@@ -39,6 +70,12 @@ export interface AccessOptions {
   /** The computer the core runs on. Left out, the assistant reaches no file: a core with no computer of its own. */
   computer?: Computer | undefined
   timers?: Timers | undefined
+  /** Where the activity is kept. Left out, nothing is kept (a core with no computer has nothing to keep). */
+  records?: Records | undefined
+  /** Where previous versions of changed files are kept. */
+  versions?: Blobs | undefined
+  now?: (() => Date) | undefined
+  newId?: (() => string) | undefined
 }
 
 const grantInput = z.object({ path: z.string().trim().min(1).max(4096), write: z.boolean().default(false) })
@@ -56,45 +93,159 @@ const inside = (path: string, place: string) => {
   return one === other || one.startsWith(`${other}/`) || one.startsWith(`${other}\\`)
 }
 
-const REFUSED: Record<Exclude<Answer, 'yes'>, string> = {
+const REFUSED: Record<Exclude<Answer, 'yes' | 'session'>, string> = {
   no: 'The person said no. Do not try it again unless they ask.',
   'moved-on': 'The person moved on to something else without answering, so it was not done.',
-  stopped: 'The turn was stopped, so it was not done.',
+  stopped: 'It was stopped, so it was not done.',
   unanswered: 'No answer came, so it was not done. Ask again if it still matters.'
 }
 
-export function createAccess({ settings, screen, computer, timers }: AccessOptions): AccessControl {
+const REASON_OF: Record<Exclude<Answer, 'yes' | 'session'>, NewUse['reason']> = {
+  no: 'declined',
+  'moved-on': 'unanswered',
+  stopped: 'stopped',
+  unanswered: 'unanswered'
+}
+
+/** Keeps nothing: for a core with no records, which has no computer either. */
+const NO_RECORDS: Records = { append: () => [], read: () => [] }
+const NO_VERSIONS: Blobs = { put: () => '', get: () => undefined }
+
+export function createAccess({ settings, screen, computer, timers, records, versions, now = () => new Date(), newId }: AccessOptions): AccessControl {
   const approvals = createApprovals({ screen, timers })
+  let ids = 0
+  const nextId = newId ?? (() => `use-${++ids}`)
   const access = () => settings.read().access
+  const allowances = createAllowances({ newId: nextId, now })
+  const activity: Activity = createActivity({ records: records ?? NO_RECORDS, versions: versions ?? NO_VERSIONS, computer, now, newId: nextId })
+  const listeners = new Set<(event: Event) => void>()
+  const stopping = new Set<() => void>()
+  const emit = (event: Event) => {
+    for (const listener of listeners) listener(event)
+  }
+  allowances.onChange((list) => emit({ type: 'event', name: 'allowances.changed', allowances: list }))
+  activity.onUse((use) => emit({ type: 'event', name: 'activity.used', use }))
+  // What is kept is erased after 30 days; the core starts often enough for that to be on time.
+  activity.expire()
+
+  // What was allowed for the session ends when the access changes: the person chose again.
+  let lastAccess = JSON.stringify(access())
+  settings.onChange((changed) => {
+    const next = JSON.stringify(changed.access)
+    if (next === lastAccess) return
+    lastAccess = next
+    allowances.clear()
+  })
 
   const scope = (): Scope => {
     const { workspace, places, computer: reach } = access()
     const home = computer && workspace ? computer.workspace : undefined
-    return { places: [...(home ? [{ path: home, kind: 'folder' as const, write: true }] : []), ...places], computer: reach, home }
+    return {
+      places: [...(home ? [{ path: home, kind: 'folder' as const, write: true }] : []), ...places],
+      computer: reach,
+      home,
+      protected: computer?.protected ?? []
+    }
   }
 
   /** Where a path is, said for the person: the assistant's own folder by that name. */
   const where = (path: string) => (computer && inside(path, computer.workspace) ? "The assistant's folder" : path)
 
-  const question = (use: ComputerUse): Question => {
+  const question = (use: ComputerUse, reading: CommandReading | undefined, offerSession: boolean): Question => {
     const path = use.paths[0] ?? ''
     const { name, folder } = parts(path)
+    const session = (text: string) => (offerSession ? { session: text } : {})
     switch (use.action) {
-      case 'run':
+      case 'run': {
+        const keys = reading?.keys ?? []
+        const note = reading?.destructive
+          ? { text: 'It deletes or overwrites something for good, or changes the system. This is always asked.', tone: 'danger' as const }
+          : reading?.network
+            ? { text: 'It uses the network.', tone: 'soft' as const }
+            : reading?.opaque
+              ? { text: 'Part of what it runs cannot be read in advance.', tone: 'soft' as const }
+              : undefined
         return {
           heading: 'Run this command?',
           subject: 'On your computer',
           command: use.command ?? '',
           facts: [{ label: 'In', value: where(path) }],
-          allow: 'Run it'
+          ...(note ? { note } : {}),
+          allow: 'Run it',
+          ...session(keys.length === 1 ? `Any “${keys[0]}” until you quit` : `Any of ${keys.map((key) => `“${key}”`).join(', ')} until you quit`)
         }
+      }
       case 'delete':
-        return { heading: 'Delete this file?', subject: name, facts: [{ label: 'In', value: where(folder) }], allow: 'Delete it' }
+        return {
+          heading: 'Delete this file?',
+          subject: name,
+          facts: [{ label: 'In', value: where(folder) }],
+          note: { text: 'Its last version is kept: you can restore it from Activity.', tone: 'soft' },
+          allow: 'Delete it'
+        }
       case 'create':
-        return { heading: 'Create this file?', subject: name, facts: [{ label: 'In', value: where(folder) }], allow: 'Create it' }
+        return {
+          heading: 'Create this file?',
+          subject: name,
+          facts: [{ label: 'In', value: where(folder) }],
+          allow: 'Create it',
+          ...session(`Any change in ${folderName(folder)} until you quit`)
+        }
       default:
-        return { heading: 'Change this file?', subject: name, facts: [{ label: 'In', value: where(folder) }], allow: 'Change it' }
+        return {
+          heading: use.paths.length > 1 ? `Change these ${use.paths.length} files?` : 'Change this file?',
+          subject: use.paths.length > 1 ? use.paths.map((one) => parts(one).name).join(', ') : name,
+          facts: [{ label: 'In', value: where(folder) }],
+          allow: 'Change it',
+          ...session(`Any change in ${folderName(folder)} until you quit`)
+        }
     }
+  }
+
+  /** A folder named for the person: the assistant's folder by that name, any other by its last part. */
+  const folderName = (folder: string) => (computer && inside(folder, computer.workspace) ? "the assistant's folder" : parts(folder).name || folder)
+
+  /** Keep a use that was refused. */
+  const refusal = (
+    use: ComputerUse,
+    thread: string | undefined,
+    reading: CommandReading | undefined,
+    decision: Pick<NewUse, 'decision' | 'reason' | 'detail'>
+  ) =>
+    activity.record({
+      ...(thread === undefined ? {} : { thread }),
+      tool: use.tool,
+      action: use.action,
+      ...(use.command === undefined ? {} : { command: use.command }),
+      paths: use.paths,
+      ...decision,
+      ...(reading?.destructive ? { destructive: true } : {}),
+      ...(reading?.network ? { network: true } : {})
+    })
+
+  /** A use allowed: the versions of the files it changes are kept first, then it is recorded, and it may go. */
+  const allowed = async (use: ComputerUse, thread: string | undefined, reading: CommandReading | undefined, reason: NewUse['reason']): Promise<Verdict> => {
+    const changes = use.action === 'create' || use.action === 'change' || use.action === 'delete'
+    const versions = changes ? await activity.keep(use.paths) : { kept: [], created: [] }
+    const recorded = activity.record({
+      ...(thread === undefined ? {} : { thread }),
+      tool: use.tool,
+      action: use.action,
+      ...(use.command === undefined ? {} : { command: use.command }),
+      paths: use.paths,
+      decision: reason === 'pressed' || reason === 'said' ? 'approved' : 'ran',
+      reason,
+      ...(reading?.destructive ? { destructive: true } : {}),
+      ...(reading?.network ? { network: true } : {}),
+      ...versions
+    })
+    return { allow: true, use: recorded.id }
+  }
+
+  const stopEverything = () => {
+    approvals.withdraw()
+    allowances.clear()
+    for (const listener of [...stopping]) listener()
   }
 
   return {
@@ -103,13 +254,25 @@ export function createAccess({ settings, screen, computer, timers }: AccessOptio
       return {
         scope,
         async approve(use, signal): Promise<Verdict> {
-          const { approvals: policy, computer: reach } = access()
-          if (use.action === 'read') return { allow: true }
-          // Trusted within what was granted; a command still asks, as it can reach beyond, unless all of the computer was given.
-          if (policy === 'trust' && (use.action !== 'run' || reach === 'write')) return { allow: true }
-          const answer = await approvals.ask(question(use), showing(), signal)
-          return answer === 'yes' ? { allow: true } : { allow: false, reason: REFUSED[answer] }
-        }
+          const thread = showing().thread
+          if (use.refused) {
+            refusal(use, thread, undefined, { decision: 'refused', reason: use.refused.why, detail: use.refused.reason })
+            return { allow: false, reason: use.refused.reason }
+          }
+          const reading = use.action === 'run' ? readCommand(use.command ?? '', use.shell ?? 'posix') : undefined
+          const decision = decide(use, access().approvals, reading, allowances.covers(use, reading))
+          if (decision.run) return allowed(use, thread, reading, decision.because)
+
+          const answered: Answered = await approvals.ask(question(use, reading, decision.session), showing(), signal)
+          const { answer } = answered
+          if (answer === 'yes' || answer === 'session') {
+            if (answer === 'session' && decision.session) allowances.allow(use, reading)
+            return allowed(use, thread, reading, answered.pressed ? 'pressed' : 'said')
+          }
+          refusal(use, thread, reading, { decision: 'refused', reason: REASON_OF[answer], detail: REFUSED[answer] })
+          return { allow: false, reason: REFUSED[answer] }
+        },
+        report: (use, outcome) => void activity.outcome(use, outcome)
       }
     },
 
@@ -132,6 +295,11 @@ export function createAccess({ settings, screen, computer, timers }: AccessOptio
             if (!asked.success) return { ok: false, text: 'computer_grant takes a path, absolute or from ~, and whether you may change things there.' }
             const found = await computer.locate(asked.data.path)
             if (!found) return { ok: false, text: `There is nothing at ${asked.data.path}. Ask the person where it is.` }
+            // A place never reached is not given either. A folder that holds one may be: what is inside stays refused.
+            const never = computer.protected.find(
+              (place) => place.path !== undefined && inside(found.path, place.path) && !(place.except ?? []).some((open) => inside(found.path, open))
+            )
+            if (never) return { ok: false, text: `${found.path} holds ${never.label.toLowerCase()}, which is never reached, whatever is granted.` }
             const { write } = asked.data
             const current = scope()
             const covered =
@@ -139,7 +307,7 @@ export function createAccess({ settings, screen, computer, timers }: AccessOptio
               (current.computer === 'read' && !write) ||
               current.places.some((place) => inside(found.path, place.path) && (place.write || !write))
             if (covered) return { ok: true, text: `${found.path} is already within your reach.` }
-            const answer = await approvals.ask(
+            const { answer } = await approvals.ask(
               {
                 heading: found.kind === 'folder' ? 'Give access to this folder?' : 'Give access to this file?',
                 subject: found.path,
@@ -148,7 +316,7 @@ export function createAccess({ settings, screen, computer, timers }: AccessOptio
               },
               showing()
             )
-            if (answer !== 'yes') return { ok: false, text: REFUSED[answer] }
+            if (answer !== 'yes' && answer !== 'session') return { ok: false, text: REFUSED[answer] }
             const places = access().places.filter((place) => place.path !== found.path)
             settings.setAccess({ places: [...places, { path: found.path, kind: found.kind, write }] })
             return { ok: true, text: `Granted: ${found.path}, ${write ? 'read and write' : 'read only'}. You can use it now.` }
@@ -159,33 +327,52 @@ export function createAccess({ settings, screen, computer, timers }: AccessOptio
 
     standing() {
       if (!computer) return undefined
-      const { places, computer: reach, approvals: policy, workspace } = access()
+      const { places, computer: reach, approvals: level, workspace } = access()
+      if (!workspace && places.length === 0 && reach === 'off') {
+        return "The computer\n\nYou have no access to the person's files. If they want you to work with some, they can grant a folder in Settings, Access, or tell you which one: then call computer_grant."
+      }
       const lines = [
         ...(workspace ? [`- Your own folder, ${computer.workspace}: read and write. A file you put on the computer goes there unless they say where.`] : []),
         ...places.map((place) => `- ${place.path} (${place.kind}): ${place.write ? 'read and write' : 'read only'}.`),
         reach === 'off' ? '- Nothing else of the computer.' : `- The rest of the computer: ${reach === 'write' ? 'read and write' : 'read only'}.`
       ]
-      if (!workspace && places.length === 0 && reach === 'off') {
-        return "The computer\n\nYou have no access to the person's files. If they want you to work with some, they can grant a folder in Settings, Access, or tell you which one: then call computer_grant."
-      }
+      const asking = {
+        ask: 'Reading, and commands that only read (ls, cat, grep, find, git status and the like), run at once. Every change to a file, and every other command, waits for their approval on screen, shown as it will be done.',
+        trust:
+          'Reading, commands that only read, and changes to files where you may change them run at once. Every other command waits for their approval on screen, shown as it will run.',
+        auto: 'Everything within what they granted runs at once: reading, changes to files, and commands that name only places you may change. A command that names a place you may only read is asked.'
+      }[level]
       return [
         'The computer',
         '',
-        "You can work with the person's files with your Read, Glob, Grep, Write, Edit and Bash tools, within what they granted:",
+        "You can work with the person's files and run commands with your Read, Glob, Grep, Write, Edit and Bash tools, within what they granted:",
         ...lines,
-        policy === 'ask'
-          ? 'Every change and every command waits for their approval on screen, where it is shown as it will be done: call the tool, which returns once they answered.'
-          : `You may change files within what they granted without asking.${reach === 'write' ? '' : ' A command still waits for their approval on screen, shown as it will run.'}`,
+        'Some places are never reached, whatever they granted: keys and credentials (such as ~/.ssh, ~/.aws, ~/.git-credentials), browser profiles, password stores, and the app’s own data. Do not try them.',
+        '',
+        'How each use is decided:',
+        `- ${asking}`,
+        '- A command that deletes, formats, shuts the computer down, changes permissions, the registry or services, force-stops a process, or rewrites git history is always asked, whatever they chose, and is never covered for the session.',
+        '- When a card asks them, your call returns once they answered. They can allow it once, or for the session: the same program and subcommand (git commit, npm run, python), or any change in the same folder, then runs at once until the app quits.',
+        '- Every use is checked first against what they granted. A command is checked by the paths it names, with ~, variables and .. read: one that names a place outside, or a place never reached, is refused before anyone is asked. This reads what the command names, not what a program works out once it runs, so never use a command to reach around it: name the places you work on.',
+        '- A use that is refused comes back with the reason: tell them in a sentence, and that they can grant more in Settings, Access.',
+        '',
+        'The web tools are for looking things up and reading pages. Commands may use the network when the task needs it: downloading what the person asked for, calling an API, installing a package, reaching a device on their network. Such a command is decided like any other command that changes something.',
+        'Look with Read, Glob and Grep, change with Write and Edit, and use Bash for what these cannot do; a command that only reads runs at once, so prefer one when looking is all you need.',
         'file_write keeps a document with the conversation, to show and download. When the person wants a file on their computer, in your folder or one of theirs, write it there with Write.',
-        "These tools are for the person's files and for what they ask you to do on their computer, nothing else: never use them to reach the web, to check a link or a stream, or to look something up. The web tools do that.",
-        'Look with Read, Glob and Grep, change with Write and Edit, and use Bash only for what these cannot do. A use outside what they granted is refused with the reason: tell them in a sentence, and that they can grant more in Settings, Access.',
+        'The person sees every use in Settings, Activity, and can put back a file you changed or move one you created to the trash. A command cannot be undone.',
         'When they give you a folder or a file by voice, call computer_grant with its path; they confirm on screen.'
       ].join('\n')
     },
 
     version: () => JSON.stringify([access(), computer?.workspace ?? null]),
 
-    hear: (said) => approvals.hear(said),
+    hear(said) {
+      if (stopsEverything(said)) {
+        stopEverything()
+        return true
+      }
+      return approvals.hear(said)
+    },
 
     async set(asked) {
       if (asked.places === undefined) return { ok: true, settings: settings.setAccess(asked) }
@@ -197,6 +384,33 @@ export function createAccess({ settings, screen, computer, timers }: AccessOptio
         if (!places.some((known) => known.path === found.path)) places.push({ path: found.path, kind: found.kind, write: place.write })
       }
       return { ok: true, settings: settings.setAccess({ ...asked, places }) }
+    },
+
+    standingRules: () => ({
+      allowances: allowances.list(),
+      protected: (computer?.protected ?? []).map((place) => ({ label: place.label, path: place.path ?? `*${place.ending ?? ''}` }))
+    }),
+
+    forget: (allowance) => allowances.forget(allowance),
+
+    record: (use) => activity.record(use).id,
+
+    report: (use, outcome) => void activity.outcome(use, outcome),
+
+    activity: (limit, before) => activity.read(limit, before),
+
+    undo: (use, anyway) => activity.undo(use, anyway),
+
+    stopEverything,
+
+    onStopEverything(listener) {
+      stopping.add(listener)
+      return () => void stopping.delete(listener)
+    },
+
+    onEvent(listener) {
+      listeners.add(listener)
+      return () => void listeners.delete(listener)
     }
   }
 }

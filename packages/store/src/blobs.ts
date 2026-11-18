@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Blobs } from '@repo/core'
 
@@ -23,6 +23,9 @@ export function createBlobs(folder: string): Blobs {
       if (!HASH.test(hash)) return undefined
       const file = join(folder, hash)
       return existsSync(file) ? new Uint8Array(readFileSync(file)) : undefined
+    },
+    remove(hash) {
+      if (HASH.test(hash)) rmSync(join(folder, hash), { force: true })
     }
   }
 }

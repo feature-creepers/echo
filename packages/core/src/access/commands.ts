@@ -1121,14 +1121,14 @@ function kindOf(program: string, args: readonly string[], context: Context): Kin
       return { sub: first, readOnly: ['list', 'info'].includes(first), destructive: /^(erase|partition|zero|secureerase|reformat|apfs)/i.test(first) }
     case 'defaults':
       return { sub: first, readOnly: first === 'read' || first === 'read-type' || first === 'domains', destructive: first === 'delete' }
-    case 'systemctl':
+    case 'systemctl': {
+      const sub = positionals(args)[0]?.word ?? ''
       return {
-        sub: positionals(args)[0]?.word,
-        readOnly: ['status', 'list-units', 'list-unit-files', 'is-active', 'is-enabled', 'show', 'cat', 'list-timers'].includes(
-          positionals(args)[0]?.word ?? ''
-        ),
-        destructive: ['poweroff', 'reboot', 'halt', 'kexec'].includes(positionals(args)[0]?.word ?? '')
+        sub,
+        readOnly: ['status', 'list-units', 'list-unit-files', 'is-active', 'is-enabled', 'show', 'cat', 'list-timers'].includes(sub),
+        destructive: ['poweroff', 'reboot', 'halt', 'kexec'].includes(sub)
       }
+    }
     case 'crontab':
       return { readOnly: has(args, '-l'), destructive: has(args, '-r') }
     case 'docker':

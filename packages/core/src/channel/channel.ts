@@ -124,6 +124,8 @@ export interface Channel {
   greet(): TurnId | undefined
   /** Stop the answer under way, if there is one. */
   stop(): void
+  /** Stop every turn: the one on the stage, those waiting for the orchestrator, and every thread at work or with work waiting. */
+  stopAll(): void
   /** The latest lines of the transcript, oldest first. */
   read(limit: number): Exchange[]
   /** The threads, and the one in focus. */
@@ -819,6 +821,23 @@ export function createChannel(options: ChannelOptions): Channel {
 
     stop() {
       if (current) halt(current)
+    },
+
+    stopAll() {
+      if (pending) {
+        pending.stopped = true
+        finish(pending, 'stopped')
+        pending = undefined
+      }
+      if (current) halt(current)
+      if (deciding) halt(deciding)
+      for (const runtime of runtimes.values()) {
+        for (const waiting of runtime.queue.splice(0)) {
+          waiting.turn.stopped = true
+          finish(waiting.turn, 'stopped')
+        }
+        if (runtime.answering) halt(runtime.answering)
+      }
     },
 
     read: (limit) => transcript.slice(-limit),

@@ -22,6 +22,17 @@ describe('blobs', () => {
     expect(new TextDecoder().decode(blobs.get(hash))).toBe('hello')
   })
 
+  it('lets go of bytes it was told to, and nothing else', () => {
+    const at = folder()
+    const blobs = createBlobs(at)
+    const kept = blobs.put(new Uint8Array([1]))
+    const gone = blobs.put(new Uint8Array([2]))
+    blobs.remove?.(gone)
+    blobs.remove?.('../not-a-hash')
+    expect(blobs.get(gone)).toBeUndefined()
+    expect(blobs.get(kept)).toEqual(new Uint8Array([1]))
+  })
+
   it('keeps the same content once', () => {
     const at = folder()
     const blobs = createBlobs(at)

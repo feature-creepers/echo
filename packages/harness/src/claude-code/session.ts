@@ -4,7 +4,7 @@ import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Log, Session, SessionRequest, Verdict } from '@repo/core'
 import { kindAt } from '../computer/paths.ts'
-import { outsideScope } from '../computer/scope.ts'
+import { checkUse } from '../computer/scope.ts'
 import { type Cli, NotInstalled } from '../process/cli.ts'
 import { createSessionEvents } from '../process/events.ts'
 import { asArray, asObject, asString, type JsonObject } from '../process/json.ts'
@@ -77,6 +77,8 @@ export function openSession(request: SessionRequest, context: SessionContext): S
   let workingFolder = context.folder
   /** Questions to the core about a use of the computer, waiting for the person: withdrawn when the turn stops. */
   const asking = new Set<AbortController>()
+  /** Uses of the computer allowed, by the call that makes them: how each went is told to the core once its result comes. */
+  const allowedUses = new Map<string, string>()
 
   function write(message: unknown): void {
     if (child) writeJsonLine(child.stdin, message)
@@ -266,7 +268,15 @@ export function openSession(request: SessionRequest, context: SessionContext): S
   function toolResults(message: JsonObject): void {
     for (const item of asArray(asObject(message.message)?.content)) {
       const block = asObject(item)
-      if (block?.type === 'tool_result') toolEnded(asString(block.tool_use_id) ?? '', resultText(block.content), block.is_error === true)
+      if (block?.type !== 'tool_result') continue
+      const call = asString(block.tool_use_id) ?? ''
+      const output = resultText(block.content)
+      const use = allowedUses.get(call)
+      if (use !== undefined) {
+        allowedUses.delete(call)
+        request.computer?.report?.(use, block.is_error === true ? { ok: false, error: output ?? 'It failed.' } : { ok: true })
+      }
+      toolEnded(call, output, block.is_error === true)
     }
   }
 
@@ -312,7 +322,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
     const input = asObject(question.input) ?? {}
     const tool = asString(question.tool_name) ?? ''
     if (computer.includes(tool)) {
-      void onComputer(tool, input).then(answer)
+      void onComputer(tool, input, asString(question.tool_use_id) ?? callOf(tool, input)).then(answer)
       return
     }
     // The core decides for itself whether one of its tools may run, when it is called. Nothing else may run at all.
@@ -327,12 +337,12 @@ export function openSession(request: SessionRequest, context: SessionContext): S
    * A use of the computer: refused when it falls outside what the person granted, and otherwise put to the
    * core, which has the person approve a change or a command first when they asked to.
    */
-  async function onComputer(tool: string, input: JsonObject): Promise<JsonObject> {
+  async function onComputer(tool: string, input: JsonObject, call: string | undefined): Promise<JsonObject> {
     const reach = request.computer
-    const use = reach ? await useOf(tool, input, workingFolder) : undefined
-    if (!reach || !use) return { behavior: 'deny', message: 'This tool is not available in this session.' }
-    const outside = await outsideScope(use, reach.scope(), [context.folder])
-    if (outside) return { behavior: 'deny', message: `Refused: ${outside} The person can grant more in Settings, Access.` }
+    const found = reach ? await useOf(tool, input, workingFolder) : undefined
+    if (!reach || !found) return { behavior: 'deny', message: 'This tool is not available in this session.' }
+    // Every tool is held to the same boundary, a command by the paths it names; the core refuses what is beyond it.
+    const use = await checkUse(found, reach.scope(), [context.folder])
     const controller = new AbortController()
     asking.add(controller)
     try {
@@ -341,13 +351,22 @@ export function openSession(request: SessionRequest, context: SessionContext): S
         controller.signal.addEventListener('abort', () => resolve({ allow: false, reason: 'The turn was stopped, so it was not done.' }), { once: true })
       )
       const verdict = await Promise.race([reach.approve(use, controller.signal), stopped])
-      return verdict.allow ? { behavior: 'allow', updatedInput: input } : { behavior: 'deny', message: verdict.reason }
+      if (!verdict.allow) return { behavior: 'deny', message: use.refused ? `Refused: ${verdict.reason}` : verdict.reason }
+      if (verdict.use !== undefined && call !== undefined) allowedUses.set(call, verdict.use)
+      return { behavior: 'allow', updatedInput: input }
     } catch (error) {
       log.error(`A use of the computer could not be decided: ${error instanceof Error ? error.message : String(error)}`)
       return { behavior: 'deny', message: 'It could not be approved.' }
     } finally {
       asking.delete(controller)
     }
+  }
+
+  /** The call a permission is asked for, when the question does not say: the latest of that tool with the same input. */
+  function callOf(tool: string, input: JsonObject): string | undefined {
+    const name = reportedToolName(tool, request.web === true, computer)
+    const written = JSON.stringify(input)
+    return [...calls.entries()].reverse().find(([, known]) => known.tool === name && JSON.stringify(known.input) === written)?.[0]
   }
 
   /** Withdraw the questions waiting for the person: the turn they belong to is over. */

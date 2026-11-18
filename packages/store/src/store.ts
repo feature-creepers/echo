@@ -19,6 +19,11 @@ export interface Store {
   records: Records
   /** Files' contents, in the `files` folder beside the database. */
   blobs: Blobs
+  /**
+   * The previous versions of files the assistant changed on the computer, in the `versions` folder beside the
+   * database, kept apart so that letting one go after 30 days never touches a file of the conversation.
+   */
+  versions: Blobs
   /** Keyword search over the text of the records, kept in step with them. */
   search: Search
   /** Let go of the file. Nothing can be read or written afterwards. */
@@ -31,5 +36,11 @@ export function openStore({ folder, now }: StoreOptions): Store {
   const search = createKeywordIndex(database)
   // Records written before the index existed, or by a version that did not keep it, are taken in now.
   search.catchUp()
-  return { records: createRecords(database, now, search), search, blobs: createBlobs(join(folder, 'files')), close: () => database.close() }
+  return {
+    records: createRecords(database, now, search),
+    search,
+    blobs: createBlobs(join(folder, 'files')),
+    versions: createBlobs(join(folder, 'versions')),
+    close: () => database.close()
+  }
 }
