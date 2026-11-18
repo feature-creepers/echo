@@ -385,6 +385,9 @@ describe('the speech service', () => {
       clientPort.postMessage({ id: 900, call: 'transcribe', input: { sound: { sampleRate: 16_000, samples: [0, 0.5] } } })
       clientPort.postMessage({ id: 901, call: 'sing', input: {} })
       clientPort.postMessage('hello')
+      // The refusal crosses a message channel, which takes longer than a fixed wait on a busy machine; once it
+      // has come, a little more time shows the other two get no answer.
+      await vi.waitFor(() => expect(replies).toHaveLength(1))
       await settled()
 
       expect(replies).toEqual([{ id: 900, reply: 'failed', code: 'invalid', message: 'The speech service was sent a "transcribe" request it cannot read.' }])
