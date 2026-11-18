@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@repo/browser": "workspace:*",
     "@repo/core": "workspace:*",
     "@repo/harness": "workspace:*",
     "@repo/protocol": "workspace:*",

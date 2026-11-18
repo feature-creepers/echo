@@ -32,8 +32,11 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # Typecheck, lint (including the dependency rules), formatting and tests.
+      # Typecheck, lint (including the dependency rules), formatting and tests. The browser's tests drive the
+      # runner's own Chrome or Edge, with no window; a Linux runner's sandbox helper is not set up (see below).
       - run: pnpm check
+        env:
+          ASSISTANT_BROWSER_SANDBOX: ${{ runner.os == 'Linux' && 'off' || '' }}
 
       - run: pnpm build
 

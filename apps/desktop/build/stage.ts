@@ -8,8 +8,8 @@ import { appIcon, appIconPixels, icns, ico } from '../src/main/mark.ts'
 
 /**
  * Lays out what the packager turns into an app, in `stage/`: the built program, a manifest with no
- * development dependencies and with the repository whose releases it updates from, and the one native library the speech engines load at run time, for the system
- * the package is for. That system need not be this one: a Windows package can be made on Linux.
+ * development dependencies and with the repository whose releases it updates from, the one native library the speech engines load at run time, for the system
+ * the package is for, and the library that drives the browser, which the core loads at run time. That system need not be this one: a Windows package can be made on Linux.
  *
  *   node build/stage.ts --os win32 --arch x64
  */
@@ -55,9 +55,13 @@ function repository(): string | undefined {
 const manifest = JSON.parse(readFileSync(here('package.json'), 'utf8'))
 const feed = repository()
 if (!feed) process.stderr.write('No GitHub repository was found: the package will not look for updates.\n')
-const speech = createRequire(here('package.json'))
-const libraryFolder = dirname(speech.resolve('sherpa-onnx-node/package.json'))
+const modules = createRequire(here('package.json'))
+const libraryFolder = dirname(modules.resolve('sherpa-onnx-node/package.json'))
 const library = JSON.parse(readFileSync(join(libraryFolder, 'package.json'), 'utf8'))
+// Playwright drives the browser from the core's process. It is plain JavaScript with no dependency of its own, the same on every system,
+// and it reads its own files when it starts, so it is shipped as published rather than bundled into the core.
+const driverFolder = dirname(modules.resolve('playwright-core/package.json'))
+const driver = JSON.parse(readFileSync(join(driverFolder, 'package.json'), 'utf8'))
 writeFileSync(
   join(stage, 'package.json'),
   `${JSON.stringify(
@@ -71,12 +75,15 @@ writeFileSync(
       type: manifest.type,
       main: manifest.main,
       ...(feed ? { repository: { type: 'git', url: `https://github.com/${feed}` } } : {}),
-      dependencies: { 'sherpa-onnx-node': library.version }
+      dependencies: { 'playwright-core': driver.version, 'sherpa-onnx-node': library.version }
     },
     null,
     2
   )}\n`
 )
+
+// The browser's driver, as published.
+cpSync(driverFolder, join(stage, 'node_modules', 'playwright-core'), { recursive: true, dereference: true })
 
 // The speech library, and its native part for the target system, fetched from the registry as published.
 cpSync(libraryFolder, join(stage, 'node_modules', 'sherpa-onnx-node'), { recursive: true, dereference: true })

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
+import { createBrowser } from '@repo/browser'
 import { type Core, createCore } from '@repo/core'
 import { createComputer, createHarnesses } from '@repo/harness'
 import { openStore } from '@repo/store'
@@ -25,6 +26,8 @@ export async function compose(config: Config): Promise<Composition> {
   const log = { error: (message: string) => void process.stderr.write(`${message}\n`) }
   // The assistant's own folder, where it keeps the files it makes for the user: in the data folder, created now.
   const computer = await createComputer({ workspace: join(config.data, 'workspace') })
+  // The browser the assistant drives, with a profile of its own beside the user's data; what it downloads goes to the assistant's folder.
+  const browser = createBrowser({ profile: join(config.data, 'browser'), downloads: join(computer.workspace, 'downloads'), log })
   const core = createCore({
     version: manifest.version,
     acceptsCredential: localToken(config.token),
@@ -36,6 +39,7 @@ export async function compose(config: Config): Promise<Composition> {
     newId: randomUUID,
     web: publicWeb,
     computer,
+    browser,
     timers: {
       after(ms, work) {
         // A timer of the core never keeps the process alive on its own.
@@ -52,6 +56,7 @@ export async function compose(config: Config): Promise<Composition> {
     core,
     async close() {
       core.close()
+      await browser.close()
       await tools.close()
       store.close()
     }
