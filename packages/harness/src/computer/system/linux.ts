@@ -17,5 +17,21 @@ export const linux: ComputerSystem = {
     ]
   },
   shellPath: (path) => path,
-  caseless: false
+  caseless: false,
+  confines: true,
+  caches({ home, env }) {
+    return [
+      env.XDG_CACHE_HOME ?? path.join(home, '.cache'),
+      path.join(env.XDG_DATA_HOME ?? path.join(home, '.local', 'share'), 'pnpm'),
+      path.join(home, '.npm'),
+      path.join(home, '.yarn'),
+      path.join(home, '.bun'),
+      path.join(home, '.cargo', 'registry'),
+      path.join(home, '.cargo', 'git'),
+      path.join(home, 'go', 'pkg'),
+      path.join(home, '.gradle', 'caches'),
+      path.join(home, '.m2', 'repository'),
+      env.TMPDIR ?? '/tmp'
+    ]
+  }
 }

@@ -105,6 +105,7 @@ function session(): void {
     print({
       type: 'system',
       subtype: 'init',
+      session_id: process.env.FAKE_SESSION_ID ?? 'fake-session',
       tools: process.env.FAKE_LEAK ? [...tools, 'Bash'] : tools,
       mcp_servers: flag('--mcp-config') !== undefined ? [{ name: 'core', status: process.env.FAKE_TOOL_SERVER_STATUS ?? 'connected' }] : [],
       slash_commands: [],

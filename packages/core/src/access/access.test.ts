@@ -72,7 +72,14 @@ function versions(): Blobs & { held: Map<string, Uint8Array> } {
   }
 }
 
-function setup({ withComputer = true, records = memoryRecords(), now = () => new Date('2026-11-18T10:00:00Z'), kept = versions(), core = 'id' } = {}) {
+function setup({
+  withComputer = true,
+  records = memoryRecords(),
+  now = () => new Date('2026-11-18T10:00:00Z'),
+  kept = versions(),
+  core = 'id',
+  confines = false
+} = {}) {
   let ids = 0
   const screen = createScreen({ records, newId: () => `v${++ids}` })
   const settings = createUserSettings(records, undefined, withComputer ? WORKSPACE : undefined)
@@ -81,7 +88,7 @@ function setup({ withComputer = true, records = memoryRecords(), now = () => new
   const access = createAccess({
     settings,
     screen,
-    computer: withComputer ? computer : undefined,
+    computer: withComputer ? { ...computer, confines } : undefined,
     timers,
     records,
     versions: kept,
@@ -740,5 +747,13 @@ describe('what a thread is told', () => {
     expect(access.version()).not.toBe(before)
     settings.setAccess({ places: [] })
     expect(access.standing()).toContain('You have no access')
+  })
+
+  it.each([
+    { confines: true, told: true },
+    { confines: false, told: false }
+  ])('says the system holds commands too only where it does ($confines)', ({ confines, told }) => {
+    const { access } = setup({ confines })
+    expect(access.standing()?.includes('The system also holds each command to what they granted')).toBe(told)
   })
 })

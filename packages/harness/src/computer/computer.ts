@@ -42,6 +42,7 @@ export async function createComputer({ workspace, data, where = { home: homedir(
       return kind === undefined ? undefined : { path: found, kind }
     },
     protected: protectedPaths({ where, data, workspace }),
+    confines: system.confines,
     async read(path, limit) {
       try {
         const found = await stat(path)

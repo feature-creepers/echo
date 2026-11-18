@@ -31,5 +31,8 @@ export const win32: ComputerSystem = {
     if (!drive) return path
     return `${(drive[1] as string).toUpperCase()}:\\${(drive[2] ?? '').slice(1).replace(/\//g, '\\')}`
   },
-  caseless: true
+  caseless: true,
+  // Claude Code has no sandbox on Windows itself, only inside WSL2.
+  confines: false,
+  caches: () => []
 }

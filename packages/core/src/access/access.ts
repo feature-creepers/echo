@@ -453,6 +453,11 @@ export function createAccess({ settings, screen, computer, timers, records, vers
           : '- They chose not to have what publishes asked every time: a git push, a package published, a release, a pull request, an issue or a comment, or a deployment follows the level above, like any other command.',
         `- When a card asks them, your call returns once they answered${approvalWait === null ? '' : `, or after ${approvalWait} minutes without an answer, which counts as a no`}. They can allow it once, or for the session: the same program and subcommand (git commit, npm run, python), or any change in the same folder, then runs at once until the app quits.`,
         '- Every use is checked first against what they granted. A command is checked by the paths it names, with ~, variables and .. read: one that names a place outside, or a place never reached, is refused before anyone is asked. This reads what the command names, not what a program works out once it runs, so never use a command to reach around it: name the places you work on.',
+        ...(computer?.confines
+          ? [
+              '- The system also holds each command to what they granted: it can change only the places you may change, and package caches and the temporary folder, and never read a place never reached. A command that fails for it ("Operation not permitted", "Read-only file system") was held there, and is never run outside: say what it needed, and that they can grant it in Settings, Access.'
+            ]
+          : []),
         '- A use that is refused comes back with the reason: tell them in a sentence, and that they can grant more in Settings, Access.',
         '',
         'The web tools are for looking things up and reading pages. Commands may use the network when the task needs it: downloading what the person asked for, calling an API, installing a package, reaching a device on their network. Such a command is decided like any other command that changes something.',

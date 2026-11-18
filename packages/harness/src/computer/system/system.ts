@@ -14,4 +14,14 @@ export interface ComputerSystem {
   shellPath(path: string): string
   /** Whether names are found whatever their capitals. */
   caseless: boolean
+  /**
+   * Whether the system itself can hold a command to what was granted: Claude Code's sandbox, Seatbelt on macOS and
+   * bubblewrap on Linux. It has none on Windows, where the paths a command names and the approval card are the check.
+   */
+  confines: boolean
+  /**
+   * Folders the person's programs write to on their own while a command runs: package caches and stores, and the
+   * temporary folder. A confined command may change them, or `npm install` and a build would fail outside the scope.
+   */
+  caches(where: Where): string[]
 }

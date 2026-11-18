@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import type { ComputerUse, Reach, Scope, Session } from '@repo/core'
 import { afterEach, describe, expect, it } from 'vitest'
 import { eventually, fake, folder, follow, recordingLog, removeFolders } from '../../test/sessions.ts'
+import { system } from '../computer/system/index.ts'
 import { createClaudeCode } from './adapter.ts'
 import { computerTools, useOf } from './computer-tools.ts'
 
@@ -13,7 +14,7 @@ afterEach(() => {
 })
 
 /** A session given the computer: a home folder, a granted folder, and a reach that records what it is asked. */
-function setup(options: { write?: boolean; refuse?: string; project?: 'granted' | 'gone' } = {}) {
+function setup(options: { write?: boolean; refuse?: string; project?: 'granted' | 'gone'; env?: Record<string, string> } = {}) {
   const root = realpathSync.native(folder())
   const home = join(root, 'workspace')
   const granted = join(root, 'granted')
@@ -44,7 +45,12 @@ function setup(options: { write?: boolean; refuse?: string; project?: 'granted' 
       })
     }
   }
-  const harness = createClaudeCode({ folder: join(root, 'harness'), log: recordingLog(), command: fake('fake-claude.ts'), env: process.env })
+  const harness = createClaudeCode({
+    folder: join(root, 'harness'),
+    log: recordingLog(),
+    command: fake('fake-claude.ts'),
+    env: { ...process.env, ...options.env }
+  })
   const project = options.project === 'granted' ? granted : options.project === 'gone' ? join(root, 'gone') : undefined
   const session = harness.open({ role: 'thread', instructions: 'You are Ada.', computer: reach, ...(project ? { folder: project } : {}) })
   open.push(session)
@@ -100,7 +106,46 @@ describe('Claude Code on the computer', () => {
     session.send('files')
     await followed.until('turn-end')
     const settings = JSON.parse(String((JSON.parse(followed.text()) as { settings: string }).settings))
-    expect(settings).toEqual({ autoMemoryEnabled: false, permissions: { ask: ['Read', 'Glob', 'Grep', 'Write', 'Edit', 'Bash'] } })
+    expect(settings.autoMemoryEnabled).toBe(false)
+    expect(settings.permissions.ask).toEqual(['Read', 'Glob', 'Grep', 'Write', 'Edit', 'Bash'])
+  })
+
+  it('holds its commands to the scope by the system where it can, with the places granted the only ones changed', async () => {
+    const { session, home, root } = setup()
+    const followed = follow(session)
+    session.send('files')
+    await followed.until('turn-end')
+    const settings = JSON.parse(String((JSON.parse(followed.text()) as { settings: string }).settings))
+    if (!system.confines) return expect(settings.sandbox).toBeUndefined()
+    expect(settings.sandbox).toMatchObject({ enabled: true, allowUnsandboxedCommands: false, autoAllowBashIfSandboxed: false })
+    expect(settings.sandbox.filesystem.allowWrite).toContain(home)
+    // The granted folder is read only, and the adapter's own folder, which holds the session's token, is never read.
+    expect(settings.sandbox.filesystem.allowWrite).not.toContain(join(root, 'granted'))
+    expect(settings.sandbox.filesystem.denyRead).toContain(join(root, 'harness'))
+    expect(settings.permissions.allow).toEqual(['WebFetch(domain:*)'])
+  })
+
+  it('reads back what the CLI kept of its own long outputs, and only its own session’s', async () => {
+    const cli = realpathSync.native(folder())
+    const own = join(cli, 'projects', 'C--work', 'fake-session', 'tool-results')
+    const other = join(cli, 'projects', 'C--work', 'another-session', 'tool-results')
+    for (const place of [own, other]) {
+      mkdirSync(place, { recursive: true })
+      writeFileSync(join(place, 'output.txt'), 'long')
+    }
+    const { session, asked } = setup({ env: { CLAUDE_CONFIG_DIR: cli } })
+    const followed = follow(session)
+    // The CLI says who it is before the first turn: the session's identifier comes with it.
+    session.send('hello')
+    await followed.until('turn-end')
+    session.send(`use Read ${JSON.stringify({ file_path: join(own, 'output.txt') })}`)
+    await followed.until('turn-end', 2)
+    expect(asked).toEqual([{ action: 'read', tool: 'Read', paths: [join(own, 'output.txt')] }])
+
+    session.send(`use Read ${JSON.stringify({ file_path: join(other, 'output.txt') })}`)
+    await followed.until('turn-end', 3)
+    expect(followed.text()).toContain('outside what the person granted')
+    expect(asked).toHaveLength(1)
   })
 
   it('reads within what was granted, and reports the use under the core’s name', async () => {

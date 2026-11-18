@@ -17,5 +17,22 @@ export const darwin: ComputerSystem = {
     ]
   },
   shellPath: (path) => path,
-  caseless: true
+  caseless: true,
+  confines: true,
+  caches({ home, env }) {
+    return [
+      path.join(home, 'Library', 'Caches'),
+      path.join(home, 'Library', 'pnpm'),
+      path.join(home, '.cache'),
+      path.join(home, '.npm'),
+      path.join(home, '.yarn'),
+      path.join(home, '.bun'),
+      path.join(home, '.cargo', 'registry'),
+      path.join(home, '.cargo', 'git'),
+      path.join(home, 'go', 'pkg'),
+      path.join(home, '.gradle', 'caches'),
+      path.join(home, '.m2', 'repository'),
+      env.TMPDIR ?? '/tmp'
+    ]
+  }
 }

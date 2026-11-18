@@ -49,9 +49,14 @@ export const ISOLATION_SETTINGS = { autoMemoryEnabled: false }
  * The settings of a session given tools on the computer. Left to itself the CLI lets a read in its working
  * folders, or a command it judges harmless, run without asking. Asking for every use of each tool sends all of
  * them to the session's permission prompt, so the core checks each one against what the person granted.
+ *
+ * `confined`, the sandbox's settings where the system holds commands too (`confinement.ts`), is given when the
+ * session runs commands.
  */
-export function sessionSettings(computer: readonly string[]): Record<string, unknown> {
-  return computer.length === 0 ? ISOLATION_SETTINGS : { ...ISOLATION_SETTINGS, permissions: { ask: [...computer] } }
+export function sessionSettings(computer: readonly string[], confined?: Record<string, unknown>): Record<string, unknown> {
+  if (computer.length === 0) return ISOLATION_SETTINGS
+  const permissions = { ...(confined?.permissions as Record<string, unknown> | undefined), ask: [...computer] }
+  return { ...ISOLATION_SETTINGS, ...(confined ?? {}), permissions }
 }
 
 /** Variables that switch off what no flag does. */

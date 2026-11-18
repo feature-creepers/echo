@@ -1,10 +1,12 @@
 import type { ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { Attachment, Log, Session, SessionRequest, Verdict } from '@repo/core'
-import { absolute, kindAt } from '../computer/paths.ts'
+import { absolute, kindAt, real, within } from '../computer/paths.ts'
 import { checkUse } from '../computer/scope.ts'
+import { system } from '../computer/system/index.ts'
 import { type Cli, NotInstalled } from '../process/cli.ts'
 import { createSessionEvents } from '../process/events.ts'
 import { asArray, asObject, asString, type JsonObject } from '../process/json.ts'
@@ -14,6 +16,7 @@ import { platform } from '../process/platform/index.ts'
 import { start } from '../process/run.ts'
 import { createWorkingFiles } from '../process/working-files.ts'
 import { computerTools, useOf } from './computer-tools.ts'
+import { sandboxSettings } from './confinement.ts'
 import { ISOLATION_VARIABLES, isolationArguments, isolationLeaks, reportedToolName, sessionSettings, TOOL_SERVER, toolServerConfig } from './isolation.ts'
 import { SIGNED_OUT } from './status.ts'
 
@@ -89,6 +92,9 @@ export function openSession(request: SessionRequest, context: SessionContext): S
   /** The CLI's own tools on the computer this session was given, and the folder it works in. */
   let computer: string[] = []
   let workingFolder = context.folder
+  /** The CLI's own folder, and the identifier of this session in it: a long output is kept there for the session to read. */
+  let cliFolder: string | undefined
+  let sessionId: string | undefined
   /** Questions to the core about a use of the computer, waiting for the person: withdrawn when the turn stops. */
   const asking = new Set<AbortController>()
   /** Uses of the computer allowed, by the call that makes them: how each went is told to the core once its result comes. */
@@ -103,6 +109,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
     let running: ChildProcess
     try {
       const launch = await context.cli.launch()
+      cliFolder = launch.env.CLAUDE_CONFIG_DIR ?? process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude')
       // On the computer, the session works in its project's folder, the assistant's own folder, or an empty one of
       // its own: never in the adapter's folder, whose files hold the session's instructions and token.
       const scope = request.computer?.scope()
@@ -116,9 +123,13 @@ export function openSession(request: SessionRequest, context: SessionContext): S
       const folders = []
       for (const place of scope?.places ?? [])
         if (place.kind === 'folder' && place.path !== workingFolder && (await kindAt(place.path)) === 'folder') folders.push(place.path)
+      // Where the system can, it holds the session's commands to the scope as well (confinement.ts).
+      const where = { home: homedir(), env: process.env }
+      const confined =
+        scope && computer.includes('Bash') && system.confines ? sandboxSettings(scope, { never: [context.folder], caches: system.caches(where) }) : undefined
       const paths = {
         instructions: await files.write('instructions.txt', request.instructions),
-        settings: await files.write('settings.json', JSON.stringify(sessionSettings(computer))),
+        settings: await files.write('settings.json', JSON.stringify(sessionSettings(computer, confined))),
         tools: request.tools ? await files.write('tools.json', toolServerConfig(request.tools)) : undefined,
         web: request.web === true,
         computer: { tools: computer, folders: computer.length > 0 ? folders : [] }
@@ -200,6 +211,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
   function check(init: JsonObject): void {
     if (checked) return
     checked = true
+    sessionId = asString(init.session_id)
     const leaks = isolationLeaks(init, request.web === true, computer)
     if (leaks.length > 0) log.error(`A Claude Code session started with ${leaks.join(', ')}, which should all be switched off.`)
     if (!request.tools) return
@@ -363,7 +375,10 @@ export function openSession(request: SessionRequest, context: SessionContext): S
     const found = reach ? await useOf(tool, input, workingFolder) : undefined
     if (!reach || !found) return { behavior: 'deny', message: 'This tool is not available in this session.' }
     // Every tool is held to the same boundary, a command by the paths it names; the core refuses what is beyond it.
-    const use = await checkUse(found, reach.scope(), [context.folder])
+    // The session may read back what the CLI kept of a long output of its own, wherever the CLI keeps it.
+    const scope = reach.scope()
+    const kept = found.action === 'read' ? await ownOutputs(found.paths) : undefined
+    const use = await checkUse(found, kept ? { ...scope, places: [...scope.places, { path: kept, kind: 'folder', write: false }] } : scope, [context.folder])
     const controller = new AbortController()
     asking.add(controller)
     try {
@@ -381,6 +396,28 @@ export function openSession(request: SessionRequest, context: SessionContext): S
     } finally {
       asking.delete(controller)
     }
+  }
+
+  /**
+   * The folder where the CLI keeps this session's long outputs, when every path read is inside it. A command's output
+   * too long to give back whole is written to `projects/<folder>/<session>/tool-results/` in the CLI's own folder, and
+   * the session is told to read it there.
+   */
+  async function ownOutputs(paths: readonly string[]): Promise<string | undefined> {
+    if (cliFolder === undefined || sessionId === undefined || paths.length === 0) return undefined
+    const projects = await real(join(cliFolder, 'projects'))
+    let folder: string | undefined
+    for (const path of paths) {
+      const target = await real(path)
+      if (!within(target, projects)) return undefined
+      const parts = target.slice(projects.length + 1).split(/[\\/]/)
+      // A folder named after the working folder, then this session's, then its outputs.
+      if (parts.length < 4 || parts[1] !== sessionId || parts[2] !== 'tool-results') return undefined
+      const own = join(projects, parts[0] as string, sessionId, 'tool-results')
+      if (folder !== undefined && folder !== own) return undefined
+      folder = own
+    }
+    return folder
   }
 
   /** The call a permission is asked for, when the question does not say: the latest of that tool with the same input. */
