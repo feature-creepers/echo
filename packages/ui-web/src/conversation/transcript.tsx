@@ -1,5 +1,6 @@
 import type { Exchange, Persona } from '@repo/protocol'
 import { useEffect, useRef } from 'react'
+import { AttachedLine } from '../attachments/attached-line.tsx'
 import { accentStyle } from '../styles/accent.ts'
 import { Markdown } from '../view/blocks/markdown.tsx'
 
@@ -35,6 +36,7 @@ export function Transcript({ exchanges, personas }: TranscriptProps) {
                     {exchange.trigger === 'greeting' ? 'Briefing' : 'You'} <time dateTime={exchange.at}>{clock.format(new Date(exchange.at))}</time>
                   </span>
                   {exchange.said && <p className="text-sm text-text-soft leading-relaxed">{exchange.said}</p>}
+                  <AttachedLine attached={exchange.attached} />
                 </div>
                 <div className="grid gap-1 border-accent/50 border-l pl-3">
                   <span className="text-accent text-label">{persona?.name ?? 'Assistant'}</span>

@@ -1,6 +1,7 @@
 import type { Client, ThreadRead } from '@repo/client'
 import type { Exchange, Persona, Step } from '@repo/protocol'
 import { useCallback, useEffect, useState } from 'react'
+import { AttachedLine } from '../attachments/attached-line.tsx'
 import { Button } from '../primitives/button.tsx'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
@@ -153,6 +154,7 @@ function ExchangeEntry({ exchange, steps, views, persona }: { exchange: Exchange
           {exchange.trigger === 'greeting' ? 'Briefing' : 'You'} <time dateTime={exchange.at}>{clock.format(new Date(exchange.at))}</time>
         </span>
         {exchange.said && <p className="text-sm text-text-soft leading-relaxed">{exchange.said}</p>}
+        <AttachedLine attached={exchange.attached} />
       </div>
 
       {(steps.length > 0 || (!shownByCalls && views.length > 0)) && (
