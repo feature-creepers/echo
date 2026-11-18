@@ -43,7 +43,7 @@ export async function useOf(tool: string, input: JsonObject, folder: string): Pr
       return { action: 'read', tool, paths: [path(input.file_path)] }
     case 'Glob': {
       const base = path(input.path)
-      return { action: 'read', tool, paths: [base, absolute(fixedPart(asString(input.pattern) ?? ''), base)] }
+      return { action: 'read', tool, paths: [...new Set([base, absolute(fixedPart(asString(input.pattern) ?? ''), base)])] }
     }
     case 'Grep':
       return { action: 'read', tool, paths: [path(input.path)] }

@@ -10,7 +10,7 @@ import { settle } from '../styles/motion.ts'
 import { useActivity } from './use-activity.ts'
 import { dayOf, decisionInWords, FILTER_LABELS, FILTERS, type Filter, shownUnder, summary, timeOf } from './words.ts'
 
-const TONE_DOT = { ok: 'bg-ok', accent: 'bg-accent', danger: 'bg-danger' } as const
+const TONE_DOT = { ok: 'bg-ok', accent: 'bg-accent', danger: 'bg-danger', soft: 'bg-text-faint' } as const
 
 /** A path shown in full when it fits, and by its end when it does not: the end says which file it is. */
 function PathText({ path }: { path: string }) {

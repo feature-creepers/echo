@@ -85,7 +85,7 @@ export function AccessIndicator({ client }: { client: Client }) {
         { heading: 'Before acting' },
         {
           label: LEVELS.ask.label,
-          detail: 'Reading goes ahead; changes and commands ask',
+          detail: 'Changes and commands are asked',
           checked: access.approvals === 'ask',
           onSelect: () => change({ approvals: 'ask' })
         },

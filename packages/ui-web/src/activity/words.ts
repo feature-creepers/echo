@@ -26,18 +26,16 @@ const named = (path: string | undefined) => path?.split(/[\\/]/).filter(Boolean)
 /** What a use did, in a few words: "Created notes.txt", "Read 3 files", or its command. */
 export function summary(use: AccessUse): { text: string; code: boolean } {
   if (use.action === 'run') return { text: use.command?.trim().split('\n')[0] ?? 'A command', code: true }
-  const what = use.paths.length > 1 ? `${use.paths.length} files` : named(use.paths[0])
-  const verb = {
-    read: ['Glob', 'Grep'].includes(use.tool) ? 'Searched' : 'Read',
-    create: 'Created',
-    change: 'Changed',
-    delete: 'Deleted'
-  }[use.action]
+  // A search names the folder it searches first.
+  if (['Glob', 'Grep'].includes(use.tool)) return { text: `Searched ${named(use.paths[0])}`, code: false }
+  const paths = [...new Set(use.paths)]
+  const what = paths.length > 1 ? `${paths.length} files` : named(paths[0])
+  const verb = { read: 'Read', create: 'Created', change: 'Changed', delete: 'Deleted' }[use.action]
   return { text: `${verb} ${what}`, code: false }
 }
 
 /** The decision, as the row shows it: a word, and why, in a few more. */
-export function decisionInWords(use: AccessUse): { word: string; why: string; tone: 'ok' | 'accent' | 'danger' } {
+export function decisionInWords(use: AccessUse): { word: string; why: string; tone: 'ok' | 'accent' | 'danger' | 'soft' } {
   const why: Record<AccessUse['reason'], string> = {
     'read-only': 'only reads',
     level: 'your level allows it',
@@ -50,7 +48,9 @@ export function decisionInWords(use: AccessUse): { word: string; why: string; to
     unanswered: 'no answer',
     stopped: 'stopped'
   }
-  if (use.decision === 'refused') return { word: 'Refused', why: why[use.reason], tone: 'danger' }
+  // Refused by the boundary is in the danger colour; refused by the person, or for want of an answer, is quiet.
+  if (use.decision === 'refused')
+    return { word: 'Refused', why: why[use.reason], tone: use.reason === 'outside' || use.reason === 'protected' ? 'danger' : 'soft' }
   if (use.decision === 'approved') return { word: 'Approved', why: why[use.reason], tone: 'accent' }
   return { word: 'Ran', why: why[use.reason], tone: 'ok' }
 }

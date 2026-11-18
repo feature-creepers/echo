@@ -459,6 +459,35 @@ describe('stopping', () => {
     expect(ended()).toMatchObject([{ outcome: 'stopped' }])
   })
 
+  it('stops everything: the thread on the stage and one still working out of sight', async () => {
+    const { channel, harness, call, ended } = setup()
+    channel.say('Plan a trip')
+    await settled()
+    await call(0, 'thread_open', { title: 'Trip' })
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+    // Said next, it takes the stage: the trip goes on working out of sight.
+    channel.say('Write me a long report')
+    await settled()
+    await call(0, 'thread_open', { title: 'Report' })
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+
+    channel.stopAll()
+    // Both are stopped at once, and every session ends, with whatever it still runs in the background.
+    expect(ended().map((line) => [line.said, line.outcome])).toEqual([
+      ['Write me a long report', 'stopped'],
+      ['Plan a trip', 'stopped']
+    ])
+    expect(harness.sessions.every((session) => session.closed)).toBe(true)
+    expect(channel.threads().threads.every((thread) => thread.state !== 'working')).toBe(true)
+
+    // The next thing said opens new sessions.
+    channel.say('Hello again')
+    await settled()
+    expect(harness.sessions).toHaveLength(4)
+  })
+
   it('decides about what is said during a direct answer once that answer has stopped', async () => {
     const { channel, harness, ended } = setup()
     channel.say('First question')

@@ -17,6 +17,7 @@ describe('the activity, in words', () => {
   it.each([
     [use({}), 'Read a.md', false],
     [use({ tool: 'Grep', paths: ['/w/src'] }), 'Searched src', false],
+    [use({ tool: 'Glob', paths: ['/w', '/w'] }), 'Searched w', false],
     [use({ tool: 'Write', action: 'create', paths: ['C:\\Users\\me\\notes.txt'] }), 'Created notes.txt', false],
     [use({ tool: 'apply_patch', action: 'change', paths: ['/a', '/b'] }), 'Changed 2 files', false],
     [use({ tool: 'Bash', action: 'run', command: 'git status\ngit log' }), 'git status', true]
@@ -29,9 +30,15 @@ describe('the activity, in words', () => {
     [use({ decision: 'approved', reason: 'said' }), 'Approved', 'you said yes'],
     [use({ decision: 'ran', reason: 'session' }), 'Ran', 'allowed for this session'],
     [use({ decision: 'refused', reason: 'protected' }), 'Refused', 'never reached'],
-    [use({ decision: 'refused', reason: 'outside' }), 'Refused', 'outside what you gave']
+    [use({ decision: 'refused', reason: 'outside' }), 'Refused', 'outside what you gave'],
+    [use({ decision: 'refused', reason: 'declined' }), 'Refused', 'you said no']
   ])('says what was decided', (given, word, why) => {
     expect(decisionInWords(given)).toMatchObject({ word, why })
+  })
+
+  it('keeps the danger colour for what the boundary refused', () => {
+    expect(decisionInWords(use({ decision: 'refused', reason: 'protected' })).tone).toBe('danger')
+    expect(decisionInWords(use({ decision: 'refused', reason: 'declined' })).tone).toBe('soft')
   })
 
   it.each([

@@ -32,6 +32,7 @@ describe('readCommand: what only reads', () => {
     'ls > /dev/null 2>&1',
     'cd src && ls',
     'for f in *.txt; do wc -l "$f"; done',
+    'for i in $(seq 1 40); do echo $i; sleep 1; done',
     "awk '{print $1}' data.csv",
     'jq .name package.json',
     'sort data.txt | uniq -c',

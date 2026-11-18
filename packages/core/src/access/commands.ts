@@ -1484,7 +1484,8 @@ function readStage(stage: Stage, context: Context): void {
   if (context.shell === 'posix' && (head === 'for' || head === 'select')) {
     // `for f in a b c`: the words it goes through are named; the name it sets is the line's own.
     context.bound.add(textOf(words[1] ?? { pieces: [] }))
-    for (const word of words.slice(3)) name(word, context)
+    // A command's output in the list was read on its own; its words are values, checked wherever they are used.
+    for (const word of words.slice(3)) if (isPlain(word)) name(word, context)
     return
   }
   if (context.shell === 'posix' && (head === 'case' || head === 'function' || head === 'coproc')) {

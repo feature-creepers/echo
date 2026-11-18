@@ -237,13 +237,18 @@ export function AccessSection({ client, settings, productName }: { client: Clien
               <span className="shrink-0 text-text-faint">{allowance.kind === 'command' ? <CommandMark /> : <FolderMark kind="folder" />}</span>
               <div className="grid min-w-0 flex-1 gap-0.5">
                 {allowance.kind === 'command' ? (
-                  <span className="truncate font-mono text-[0.8125rem]">{allowance.subject}</span>
+                  <>
+                    <span className="truncate font-mono text-[0.8125rem]">{allowance.subject}</span>
+                    <span className="text-text-faint text-xs">Any use of this command, the places it names still checked</span>
+                  </>
                 ) : (
-                  <span className="truncate text-[0.8125rem]">Changes in {lastPart(allowance.subject)}</span>
+                  <>
+                    <span className="truncate text-[0.8125rem]">
+                      Changes in {allowance.subject === access.folder ? `${productName}'s folder` : lastPart(allowance.subject)}
+                    </span>
+                    <PathText path={allowance.subject} className="text-text-faint" />
+                  </>
                 )}
-                <span className="text-text-faint text-xs">
-                  {allowance.kind === 'command' ? 'Any use of this command, its paths still checked' : <PathText path={allowance.subject} />}
-                </span>
               </div>
               <Button kind="quiet" size="sm" onClick={() => void rules.forget(allowance.id).catch(() => setProblem('It could not be forgotten.'))}>
                 Forget
