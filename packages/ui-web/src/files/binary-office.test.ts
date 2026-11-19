@@ -1189,6 +1189,35 @@ describe('an Excel 97 workbook', () => {
     })
   })
 
+  it('works out a sheet’s conditional formats, the first of a block’s that holds, in the font, borders and fill each sets', async () => {
+    const font = record(0x0031, new Bytes().u16(200).u16(0).u16(0x7fff).u16(400).u16(0).u8(0).u8(0).u8(0).u8(0).u8(5).u8(0).narrow('Arial'))
+    // What a condition sets: alignment, protection and borders unchanged, then a font and a fill as its flags say.
+    const flags = (font: boolean) => 0x0000ffff | (1 << 17) | (1 << 19) | (1 << 20) | 0x2000_0000 | (font ? 0x0400_0000 : 0)
+    const fill = (background: number) => new Bytes().u16(1 << 10).u16(0x40 | (background << 7))
+    // Bold, slanted, not struck, in red; its size and lines unchanged.
+    const bold = new Bytes().zeros(64).u32(0xffffffff).u32(0x02).u16(700).u16(0).u8(0).u8(0).u8(0).u8(0).u32(10).u32(0)
+    bold.u32(0).u32(1).u32(1).u32(0).u32(0).u32(0xffffffff).u32(0xffffffff).u16(1)
+    const greater = new Bytes().u8(0x1e).u16(10)
+    const odd = new Bytes().u8(0x42).u8(0).u16(8).u8(0x1e).u16(2).u8(0x41).u16(39).u8(0x1e).u16(1).u8(0x0b)
+    const conditions = [
+      record(0x01b0, new Bytes().u16(2).u16(1).u16(0).u16(2).u16(0).u16(0).u16(1).u16(0).u16(2).u16(0).u16(0)),
+      record(0x01b1, new Bytes().u8(1).u8(5).u16(greater.length).u16(0).u32(flags(true)).u16(0).raw(bold.done()).raw(fill(13).done()).raw(greater.done())),
+      record(0x01b1, new Bytes().u8(2).u8(0).u16(odd.length).u16(0).u32(flags(false)).u16(0).raw(fill(11).done()).raw(odd.done()))
+    ]
+    const sheet = [bof(), ...[5, 20, 12].map((value, row) => record(0x0203, cell(row, 0).f64(value))), ...conditions, EOF]
+    const sheetName = new Bytes().u8(5).u8(0).narrow('Notes')
+    const globals = (sheetAt: number) => [bof(), font, record(0x0085, new Bytes().u32(sheetAt).u8(0).u8(0).raw(sheetName.done())), EOF]
+    const length = globals(0).reduce((sum, one) => sum + one.length, 0)
+    const all = new Bytes()
+    for (const part of [...globals(length), ...sheet]) all.raw(part)
+    const preview = await readOlderExcel(compound({ Workbook: all.done() }))
+    const look = preview.kind === 'workbook' ? preview.sheets[0]?.look : undefined
+    const cells = look?.cells.map((row) => row.map((index) => (index === undefined ? undefined : look.looks[index])))
+    expect(cells?.map((row) => row[0]?.fill)).toEqual(['#00ff00', '#ffff00', '#ffff00'])
+    expect(cells?.[1]?.[0]?.text).toMatchObject({ font: 'Arial', bold: true, italic: true, struck: false, color: '#ff0000' })
+    expect(cells?.[0]?.[0]?.text.bold).toBeUndefined()
+  })
+
   it('shows a string’s runs of format in the fonts they name, the fifth font that Excel never writes skipped', async () => {
     /** A font of Excel 97: its height, its weight and its name. */
     const font = (height: number, weight: number, name: string) =>

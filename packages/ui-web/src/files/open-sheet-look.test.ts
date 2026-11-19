@@ -70,7 +70,7 @@ describe('an OpenDocument spreadsheet as it looks', () => {
         headings: true,
         zoom: 0.75
       },
-      numbers
+      { numbers }
     )
     expect(look.columns.map(Math.round)).toEqual([57, 72, 72, 0])
     expect(look.rows).toEqual([36, 12.8, 12.8])
@@ -95,7 +95,7 @@ describe('an OpenDocument spreadsheet as it looks', () => {
 
   it('turns a cell’s text by its angle, down for one past the half turn, or stacks its letters', () => {
     if (!table) throw new Error('No table.')
-    const look = readOpenSheetLook(table, { rows: 4, columns: 2 }, book, new Map(), { grid: true, headings: true, zoom: 1 }, numbers)
+    const look = readOpenSheetLook(table, { rows: 4, columns: 2 }, book, new Map(), { grid: true, headings: true, zoom: 1 }, { numbers })
     const at = (row: number, column: number) => look.looks[look.cells[row]?.[column] ?? -1]
     expect([at(3, 0)?.rotation, at(3, 1)?.rotation]).toEqual([-90, 'stacked'])
   })

@@ -14,6 +14,7 @@ import { unpack } from './archive.ts'
 import { type ChartContext, type ChartRecord, readGraphChart, readOlderChart } from './binary-chart.ts'
 import { damaged, operandSize, type Reader, reader } from './binary-records.ts'
 import { type Compound, openCompound } from './compound.ts'
+import { cellValue, serialNow, withConditions } from './conditional-formats.ts'
 import { builtInFormat, formatNumber, generalNumber, type NumberFormatOptions, numberColor } from './number-format.ts'
 import {
   ART,
@@ -45,6 +46,7 @@ import {
   SHEET_LIMIT,
   SLIDE_LIMIT
 } from './office-text.ts'
+import { readOlderConditions } from './older-sheet-conditions.ts'
 import { type OlderBookRecords, type OlderSheetRecords, readOlderBookStyles, readOlderPalette, readOlderSheetLook } from './older-sheet-look.ts'
 import { drawOlderSlide, type OlderDeck, olderDeck } from './older-slide-drawing.ts'
 import { type FloatingAnchor, readOlderWordLook, type TextPiece } from './older-word-look.ts'
@@ -1056,16 +1058,25 @@ export async function readOlderExcel(bytes: Uint8Array, options: NumberFormatOpt
   return {
     kind: 'workbook',
     sheets: await Promise.all(
-      withFigures(parts).map(async ({ name, rows, cut, figures }, index) => {
+      withFigures(parts).map(async ({ name, rows, cut, figures, cells }, index) => {
         const { layout, laid, looks } = parts.sheets[index] ?? {}
         const styles = looks && (await stylesOf(looks))
         let look: SheetLook | undefined
-        if (styles && layout && laid && rows.length > 0)
+        if (styles && layout && laid && rows.length > 0) {
           try {
             look = readOlderSheetLook(laid, layout, styles, { rows: rows.length, columns: Math.max(0, ...rows.map((row) => row.length)) })
           } catch {
             look = undefined
           }
+          // Its conditional formats, worked out from its cells' values.
+          const date1904 = laid.date1904 ?? false
+          if (look && laid.conditions)
+            look = withConditions(look, () => readOlderConditions(laid.conditions ?? [], styles.colors), {
+              value: (row, column) => cellValue(layout.kinds[row]?.[column], rows[row]?.[column], cells.get(`${row},${column}`)?.number),
+              now: serialNow(date1904),
+              date1904
+            })
+        }
         return { name, rows, cut, figures, look }
       })
     )
@@ -1485,7 +1496,7 @@ function sheetRows(
   const rows: string[][] = []
   // Each cell's style, what it holds and the colour its format writes its number in, and the records of the sheet's layout, for its look.
   const layout: SheetLayout = { styles: [], kinds: [], heights: [], numberColors: [] }
-  const laid: OlderSheetRecords = { two: version === 2, columns: [], rows: [], merges: [] }
+  const laid: OlderSheetRecords = { two: version === 2, columns: [], rows: [], merges: [], date1904: options.date1904 }
   const styled = (row: number, column: number, style: number, kind: CellKind, value?: number) => {
     if (row >= ROW_LIMIT || column >= COLUMN_LIMIT) return
     layout.styles[row] ??= []
@@ -1602,7 +1613,10 @@ function sheetRows(
     else if (type === 0x0225 && size >= 4) laid.defaultHeight = book.u16(at + 2)
     else if (type === 0x023e) laid.window = book.bytes(at, size)
     else if (type === 0x00a0) laid.zoom = book.bytes(at, size)
-    else if (type === 0x0201 && size >= 6) styled(row(), column(), book.u16(at + 4), 'empty')
+    else if (type === 0x01b0 || type === 0x01b1) {
+      laid.conditions ??= []
+      laid.conditions.push({ type, bytes: book.bytes(at, size) })
+    } else if (type === 0x0201 && size >= 6) styled(row(), column(), book.u16(at + 4), 'empty')
     else if (type === 0x00be && size >= 6)
       for (let index = 0; index < Math.min(Math.floor((size - 6) / 2), COLUMN_LIMIT); index++)
         styled(row(), column() + index, book.u16(at + 4 + index * 2), 'empty')

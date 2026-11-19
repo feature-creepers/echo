@@ -62,10 +62,13 @@ export interface OlderSheetRecords {
   merges: Uint8Array[]
   window?: Uint8Array | undefined
   zoom?: Uint8Array | undefined
+  /** The records of its conditional formats (`CFHEADER` and `CF`), in order, and whether the workbook counts its days from 1904, as their dates do. */
+  conditions?: { type: number; bytes: Uint8Array }[] | undefined
+  date1904?: boolean | undefined
 }
 
 /** Excel's kinds of line, by their number: thin, medium, dashed, dotted, thick, double, hair, then the medium and dashed ones. */
-const LINES: (Pick<BorderLook, 'width' | 'style'> | undefined)[] = [
+export const EXCEL_LINES: (Pick<BorderLook, 'width' | 'style'> | undefined)[] = [
   undefined,
   { width: 0.75, style: 'solid' },
   { width: 1.5, style: 'solid' },
@@ -147,7 +150,7 @@ function readFont(bytes: Uint8Array, five: boolean, eight: (bytes: Uint8Array) =
 
 /** A side's border: its kind of line and its colour. */
 function side(kind: number, color: string | undefined): BorderLook | undefined {
-  const line = LINES[kind]
+  const line = EXCEL_LINES[kind]
   return line && { ...line, color: color ?? '#000000' }
 }
 

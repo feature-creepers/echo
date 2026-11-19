@@ -1,13 +1,15 @@
 /**
  * A sheet shown as it looks (docs/SPEC.md, section 9.7): its columns at their widths and its rows at their heights,
  * under the letters and beside the numbers that head them, each cell in its font, fill, borders and alignment, merged
- * cells as one, the grid where the sheet shows it, and text that does not wrap running on over the empty cells beside
- * it, as Excel draws it. Made of the window's own elements, its text escaped, its colours checked as they were read.
+ * cells as one, the grid where the sheet shows it, text that does not wrap running on over the empty cells beside it,
+ * and the bars and icons of its conditional formats, as Excel draws them. Made of the window's own elements, its text
+ * escaped, its colours checked as they were read.
  */
 
 import type { CSSProperties, ReactNode } from 'react'
 import type { BorderLook, TextLook } from './document-look.ts'
-import type { CellRun, Rotation, SheetLook } from './sheet-look.ts'
+import { SheetIcon } from './sheet-icons.tsx'
+import type { CellMark, CellRun, Rotation, SheetLook } from './sheet-look.ts'
 import { fontStack } from './slide-svg.ts'
 
 const pt = (value: number) => `${Math.round(value * 100) / 100}pt`
@@ -103,7 +105,11 @@ export function SheetView({ look, rows }: { look: SheetLook; rows: readonly (rea
                   if (covered.has(`${row},${column}`)) return null
                   const merged = starts.get(`${row},${column}`)
                   const cell = lookAt(row, column)
-                  const text = rows[row]?.[column] ?? ''
+                  const mark = look.marks?.[row]?.[column]
+                  // A value its conditional format hides leaves its bar or its icon alone.
+                  const text = mark?.hidden ? '' : (rows[row]?.[column] ?? '')
+                  // An icon as tall as the cell's text, within its row.
+                  const icon = mark?.icon ? Math.max(6, Math.min(cell?.text.size ?? look.text.size ?? 11, height - 2)) : 0
                   // Each edge is drawn once, by the cell before it, from either cell's border, else the grid.
                   const last = { row: row + (merged?.rows ?? 1) - 1, column: column + (merged?.columns ?? 1) - 1 }
                   const right = cell?.borders.right ?? lookAt(row, last.column + 1)?.borders.left
@@ -141,7 +147,8 @@ export function SheetView({ look, rows }: { look: SheetLook; rows: readonly (rea
                     borderLeft: column === 0 ? borderCss(cell?.borders.left) : undefined,
                     verticalAlign: cell?.vertical ?? 'bottom',
                     overflow: spills || turn !== undefined ? 'visible' : 'hidden',
-                    ...(turn === undefined ? {} : { position: 'relative', textAlign: cell?.align ?? 'left' })
+                    ...(turn === undefined ? {} : { position: 'relative', textAlign: cell?.align ?? 'left' }),
+                    ...(mark ? { position: 'relative' } : {})
                   }
                   // A cell whose text is in stretches leaves the lines under and through it to them, which cannot take a line away.
                   const stretched = look.runs?.[row]?.[column]
@@ -149,13 +156,15 @@ export function SheetView({ look, rows }: { look: SheetLook; rows: readonly (rea
                   const content: CSSProperties = {
                     ...textCss(cell),
                     ...lines,
-                    padding: `0 ${pt(1.5)} 0 ${pt(1.5 + (cell?.align === 'left' ? (cell.indent ?? 0) : 0))}`,
+                    padding: `0 ${pt(1.5)} 0 ${pt(1.5 + (cell?.align === 'left' ? (cell.indent ?? 0) : 0) + (icon > 0 ? icon + 1.5 : 0))}`,
                     paddingRight: cell?.align === 'right' && cell.indent ? pt(1.5 + cell.indent) : undefined,
                     textAlign: cell?.align ?? 'left',
                     whiteSpace: cell?.wrap ? 'pre-wrap' : 'pre',
                     overflowWrap: cell?.wrap ? 'break-word' : undefined,
                     lineHeight: 1.2,
                     overflow: 'hidden',
+                    // Over the cell's bar, which is drawn under its text.
+                    ...(mark ? { position: 'relative' } : {}),
                     ...(spills ? { width: pt(own + reach.start + reach.end), marginLeft: reach.start > 0 ? pt(-reach.start) : undefined } : {})
                   }
                   return (
@@ -169,6 +178,7 @@ export function SheetView({ look, rows }: { look: SheetLook; rows: readonly (rea
                       rowSpan={merged && merged.rows > 1 ? look.rows.slice(row, row + merged.rows).filter((one) => one > 0).length : undefined}
                       style={style}
                     >
+                      {mark && <Marks mark={mark} icon={icon} vertical={cell?.vertical ?? 'bottom'} />}
                       {text !== '' && turn === undefined && <div style={content}>{stretches(text, stretched)}</div>}
                       {turn !== undefined && <div style={{ ...turnedCss(cell, turn), ...lines }}>{stretches(text, stretched)}</div>}
                     </td>
@@ -180,6 +190,50 @@ export function SheetView({ look, rows }: { look: SheetLook; rows: readonly (rea
         </tbody>
       </table>
     </div>
+  )
+}
+
+/**
+ * What a cell's conditional formats draw under and beside its text: a data bar from its start or either way from its
+ * axis, fading to white where it is a gradient and drawn dashed at the axis, and an icon at its left edge.
+ */
+function Marks({ mark, icon, vertical }: { mark: CellMark; icon: number; vertical: 'top' | 'middle' | 'bottom' }): ReactNode {
+  const { bar } = mark
+  const backwards = bar?.axis !== undefined && bar.end <= bar.axis + 1e-9
+  return (
+    <>
+      {bar && bar.end > bar.start && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            left: `${bar.start * 100}%`,
+            width: `${(bar.end - bar.start) * 100}%`,
+            top: pt(1.5),
+            bottom: pt(1.5),
+            background: bar.gradient
+              ? `linear-gradient(to ${backwards ? 'left' : 'right'}, ${bar.color}, color-mix(in srgb, ${bar.color} 12%, #ffffff))`
+              : bar.color,
+            border: bar.border ? `0.75pt solid ${bar.border}` : undefined,
+            boxSizing: 'border-box'
+          }}
+        />
+      )}
+      {bar?.axis !== undefined && bar.axis > 0 && (
+        <div aria-hidden="true" style={{ position: 'absolute', left: `${bar.axis * 100}%`, top: 0, bottom: 0, borderLeft: '0.75pt dashed #000000' }} />
+      )}
+      {mark.icon && (
+        <div
+          style={{
+            position: 'absolute',
+            left: pt(1.5),
+            ...(vertical === 'top' ? { top: pt(1) } : vertical === 'middle' ? { top: '50%', transform: 'translateY(-50%)' } : { bottom: pt(1) })
+          }}
+        >
+          <SheetIcon set={mark.icon.set} index={mark.icon.index} size={pt(icon)} />
+        </div>
+      )}
+    </>
   )
 }
 

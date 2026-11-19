@@ -37,6 +37,51 @@ describe('a sheet shown as it looks', () => {
     expect(html).toContain('bottom:0;transform-origin:left bottom;transform:rotate(-45deg)">Rising<')
   })
 
+  it('draws a cell’s data bar under its text, back from its axis for a negative one, and its icon at its left, its value hidden where it says so', () => {
+    const html = renderToStaticMarkup(
+      <SheetView
+        look={sheet({
+          rows: [15],
+          cells: [[0, 0, 0]],
+          looks: [cell()],
+          marks: [
+            [
+              { bar: { start: 0, end: 0.5, color: '#638ec6', gradient: true } },
+              { bar: { start: 0.25, end: 0.5, color: '#ff0000', gradient: false, axis: 0.5, border: '#c00000' }, hidden: true },
+              { icon: { set: '3Arrows', index: 2 } }
+            ]
+          ]
+        })}
+        rows={[['50', '-10', '100']]}
+      />
+    )
+    expect(html).toContain('left:0%;width:50%')
+    expect(html).toContain('linear-gradient(to right, #638ec6, color-mix(in srgb, #638ec6 12%, #ffffff))')
+    expect(html).toContain('background:#ff0000;border:0.75pt solid #c00000')
+    expect(html).toContain('left:50%;top:0;bottom:0;border-left:0.75pt dashed #000000')
+    expect(html).toContain('>50</div>')
+    expect(html).not.toContain('-10')
+    expect(html).toMatch(/<svg viewBox="0 0 16 16" width="11pt" height="11pt"[^>]*><polygon points="8,1 14.5,8[^"]*" fill="#3fa34d"/)
+    // The text of a cell with an icon starts after it.
+    expect(html).toContain('padding:0 1.5pt 0 14pt')
+  })
+
+  it.each([
+    ['3Arrows', 3],
+    ['4Rating', 4],
+    ['5Quarters', 5],
+    ['5Boxes', 5],
+    ['3Stars', 3],
+    ['3Symbols', 3],
+    ['3Flags', 3],
+    ['3ColorSmilies', 3]
+  ])('draws each of the %s icons, and nothing past them', (set, count) => {
+    const html = (index: number) =>
+      renderToStaticMarkup(<SheetView look={sheet({ rows: [15], cells: [[0]], looks: [cell()], marks: [[{ icon: { set, index } }]] })} rows={[['1']]} />)
+    for (let index = 0; index < count; index++) expect(html(index)).toContain('<svg')
+    expect(html(count)).not.toContain('<svg')
+  })
+
   it('writes each stretch of a cell’s text in its own font, the lines under its text left to the stretches', () => {
     const html = renderToStaticMarkup(
       <SheetView

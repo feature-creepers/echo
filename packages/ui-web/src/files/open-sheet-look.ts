@@ -5,9 +5,12 @@
  * headings and zoom its settings give it.
  */
 
+import { cellValue, serialNow, withConditions } from './conditional-formats.ts'
 import { colorOf, type TextLook } from './document-look.ts'
 import { bordersOf, definedLook, points, textLook } from './open-look.ts'
+import { readOpenConditions } from './open-sheet-conditions.ts'
 import type { Properties, StyleBook } from './open-styles.ts'
+import { type FormulaValue, serialOf } from './sheet-formula.ts'
 import { type CellKind, type CellLook, generalAlign, type MergedCells, type SheetLook } from './sheet-look.ts'
 import { childAt, childrenNamed, type XmlNode, xmlTree } from './xml.ts'
 
@@ -113,9 +116,32 @@ export interface OpenRun {
   styles: readonly string[]
 }
 
+/** What else a sheet's look is read with: its number styles, the stretches of its cells' text, its name and its cells' text as shown. */
+export interface OpenSheetParts {
+  numbers?: ReadonlyMap<string, XmlNode> | undefined
+  /** The stretches of its cells' text in spans of their own, by row and column. */
+  stretches?: readonly ((readonly OpenRun[] | undefined)[] | undefined)[] | undefined
+  /** Its name, which its conditions' formulas may name it by, and its cells' text, which they test. */
+  name?: string | undefined
+  shown?: readonly (readonly string[])[] | undefined
+}
+
+/** A date or a time as OpenDocument writes it (`2026-11-19T18:00:00`, `PT18H00M00S`), as a spreadsheet counts days from 1899-12-30. */
+export function openSerial(date: string | undefined, time: string | undefined): number | undefined {
+  const day = /^(-?\d{4,})-(\d\d)-(\d\d)(?:T(\d\d):(\d\d)(?::(\d\d(?:\.\d+)?))?)?/.exec(date ?? '')
+  if (day) {
+    const [hours, minutes, seconds] = [day[4], day[5], day[6]].map((part) => Number(part ?? 0)) as [number, number, number]
+    const whole = serialOf(Number(day[1]), Number(day[2]), Number(day[3]), false)
+    return whole + (hours * 3600 + minutes * 60 + seconds) / 86_400
+  }
+  const span = /^-?PT(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?$/.exec(time ?? '')
+  if (!span) return undefined
+  return (Number(span[1] ?? 0) * 3600 + Number(span[2] ?? 0) * 60 + Number(span[3] ?? 0)) / 86_400
+}
+
 /**
  * A sheet's look, at the size its text was read at, from its table and the spreadsheet's styles and fonts, with the
- * stretches of its cells' text in spans of their own, by row and column.
+ * stretches of its cells' text in spans of their own and its conditional formats worked out over it.
  */
 export function readOpenSheetLook(
   table: XmlNode,
@@ -123,9 +149,9 @@ export function readOpenSheetLook(
   book: StyleBook,
   fonts: ReadonlyMap<string, string>,
   view: SheetView,
-  numbers: ReadonlyMap<string, XmlNode> = new Map(),
-  stretches: readonly ((readonly OpenRun[] | undefined)[] | undefined)[] = []
+  parts: OpenSheetParts = {}
 ): SheetLook {
+  const { numbers = new Map(), stretches = [], name = '', shown = [] } = parts
   const usualText = textLook(book.properties('table-cell', 'Default', 'text', false), fonts)
   const text = { font: usualText.font, size: usualText.size, color: usualText.color }
   const columns: number[] = []
@@ -148,6 +174,8 @@ export function readOpenSheetLook(
   const styles: (string | undefined)[][] = []
   const kinds: CellKind[][] = []
   const values: (number | undefined)[][] = []
+  // Each cell's value as its conditions test it: a date or a time as its serial number.
+  const held: FormulaValue[][] = []
   const merges: MergedCells[] = []
   for (const row of members(table, 'table:table-row', ROW_GROUPS)) {
     if (rows.length >= size.rows) break
@@ -158,6 +186,7 @@ export function readOpenSheetLook(
     const rowStyles: (string | undefined)[] = []
     const rowKinds: CellKind[] = []
     const rowValues: (number | undefined)[] = []
+    const rowHeld: FormulaValue[] = []
     for (const cell of row.children) {
       if (cell.name !== 'table:table-cell' && cell.name !== 'table:covered-table-cell') continue
       const times = repeated(cell.attributes['table:number-columns-repeated'], size.columns - rowStyles.length)
@@ -167,6 +196,16 @@ export function readOpenSheetLook(
         rowStyles.push(cell.attributes['table:style-name'] ?? rowStyle ?? columnStyles[column])
         rowKinds.push(kind)
         rowValues.push(kind === 'number' && cell.attributes['office:value'] !== undefined ? Number(cell.attributes['office:value']) : undefined)
+        const shownText = shown[rows.length]?.[column]
+        rowHeld.push(
+          kind === 'logical'
+            ? cell.attributes['office:boolean-value'] === 'true'
+            : cellValue(
+                kind,
+                shownText,
+                kind === 'number' ? (rowValues.at(-1) ?? openSerial(cell.attributes['office:date-value'], cell.attributes['office:time-value'])) : undefined
+              )
+        )
         const across = Number(cell.attributes['table:number-columns-spanned']) || 1
         const down = Number(cell.attributes['table:number-rows-spanned']) || 1
         if (cell.name === 'table:table-cell' && (across > 1 || down > 1))
@@ -184,6 +223,7 @@ export function readOpenSheetLook(
       styles.push(rowStyles)
       kinds.push(rowKinds)
       values.push(rowValues)
+      held.push(rowHeld)
     }
   }
   while (rows.length < size.rows) {
@@ -239,7 +279,16 @@ export function readOpenSheetLook(
       })
     })
   )
-  return { columns, rows, cells, looks, merges, ...view, text, ...(runs.length > 0 ? { runs } : {}) }
+  const look: SheetLook = { columns, rows, cells, looks, merges, ...view, text, ...(runs.length > 0 ? { runs } : {}) }
+  return withConditions(
+    look,
+    () =>
+      readOpenConditions(table, book, fonts, name, (row, column) => styles[row]?.[column] ?? columnStyles[column], {
+        rows: rows.length,
+        columns: columns.length
+      }),
+    { value: (row, column) => held[row]?.[column] ?? null, now: serialNow(false), date1904: false }
+  )
 }
 
 function cellLook(cell: Properties, paragraph: Properties, text: Properties, kind: CellKind, fonts: ReadonlyMap<string, string>): CellLook {

@@ -243,6 +243,62 @@ describe('an Office file previewed', () => {
     ])
   })
 
+  it('works out a sheet’s conditional formats over its look, with the workbook’s differential formats and what Excel 2010 adds', async () => {
+    const cells = [
+      [5, -5, 0, 1],
+      [20, 10, 50, 2],
+      [-10, 5, 100, 3],
+      [15, 0, 25, 4]
+    ]
+    const sheetData = cells
+      .map((row, at) => `<row r="${at + 1}">${row.map((value, column) => `<c r="${'ABCD'[column]}${at + 1}"><v>${value}</v></c>`).join('')}</row>`)
+      .join('')
+    const file = await zip({
+      'xl/workbook.xml': '<workbook><sheets><sheet name="Sales" r:id="rId1"/></sheets></workbook>',
+      'xl/_rels/workbook.xml.rels':
+        '<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Target="styles.xml"/></Relationships>',
+      'xl/styles.xml':
+        '<styleSheet><fonts><font><sz val="11"/><name val="Calibri"/></font></fonts><cellXfs><xf fontId="0"/></cellXfs>' +
+        '<dxfs><dxf><font><b/><color rgb="FF9C0006"/></font><fill><patternFill><bgColor rgb="FFFFC7CE"/></patternFill></fill></dxf></dxfs></styleSheet>',
+      'xl/worksheets/sheet1.xml':
+        `<worksheet><sheetData>${sheetData}</sheetData>` +
+        '<conditionalFormatting sqref="A1:A4"><cfRule type="cellIs" dxfId="0" priority="2" operator="greaterThan"><formula>10</formula></cfRule></conditionalFormatting>' +
+        '<conditionalFormatting sqref="B1:B4"><cfRule type="dataBar" priority="1"><dataBar><cfvo type="min"/><cfvo type="max"/><color rgb="FF638EC6"/></dataBar>' +
+        '<extLst><ext uri="{B025F937-C7B1-47D3-B67F-A62EFF666E3E}"><x14:id>{1}</x14:id></ext></extLst></cfRule></conditionalFormatting>' +
+        '<conditionalFormatting sqref="C1:C4"><cfRule type="iconSet" priority="3"><iconSet iconSet="3Arrows" showValue="0"><cfvo type="percent" val="0"/>' +
+        '<cfvo type="percent" val="33"/><cfvo type="percent" val="67"/></iconSet></cfRule><cfRule type="colorScale" priority="4"><colorScale><cfvo type="min"/>' +
+        '<cfvo type="max"/><color rgb="FFF8696B"/><color rgb="FF63BE7B"/></colorScale></cfRule></conditionalFormatting>' +
+        '<conditionalFormatting sqref="D1:D4"><cfRule type="expression" dxfId="0" priority="5"><formula>Other!A1&gt;0</formula></cfRule></conditionalFormatting>' +
+        '<extLst><ext uri="{78C0D931-6437-407d-A8EE-F0AAD7539E65}"><x14:conditionalFormattings><x14:conditionalFormatting><x14:cfRule type="dataBar" id="{1}">' +
+        '<x14:dataBar minLength="0" maxLength="100" gradient="0" axisPosition="automatic"><x14:cfvo type="autoMin"/><x14:cfvo type="autoMax"/>' +
+        '<x14:negativeFillColor rgb="FFFF0000"/></x14:dataBar></x14:cfRule><xm:sqref>B1:B4</xm:sqref></x14:conditionalFormatting><x14:conditionalFormatting>' +
+        '<x14:cfRule type="iconSet" priority="6" id="{2}"><x14:iconSet iconSet="3Stars"><x14:cfvo type="percent"><xm:f>0</xm:f></x14:cfvo>' +
+        '<x14:cfvo type="percent"><xm:f>33</xm:f></x14:cfvo><x14:cfvo type="percent"><xm:f>67</xm:f></x14:cfvo></x14:iconSet></x14:cfRule>' +
+        '<xm:sqref>D1:D4</xm:sqref></x14:conditionalFormatting></x14:conditionalFormattings></ext></extLst></worksheet>'
+    })
+    const preview = await readOffice('xlsx', file)
+    if (preview.kind !== 'workbook') throw new Error('Not a workbook.')
+    const look = preview.sheets[0]?.look
+    const at = (row: number, column: number) => look?.looks[look.cells[row]?.[column] ?? -1]
+    expect([0, 1, 2, 3].map((row) => at(row, 0)?.fill)).toEqual([undefined, '#ffc7ce', undefined, '#ffc7ce'])
+    expect(at(1, 0)?.text).toMatchObject({ font: 'Calibri', bold: true, color: '#9c0006' })
+    expect(look?.marks?.[0]?.[1]?.bar).toEqual({ start: 0, end: 1 / 3, color: '#ff0000', axis: 1 / 3, gradient: false, border: undefined })
+    expect(look?.marks?.[1]?.[1]?.bar).toMatchObject({ start: 1 / 3, end: 1, color: '#638ec6' })
+    expect([0, 1, 2, 3].map((row) => look?.marks?.[row]?.[2])).toEqual([
+      { icon: { set: '3Arrows', index: 0 }, hidden: true },
+      { icon: { set: '3Arrows', index: 1 }, hidden: true },
+      { icon: { set: '3Arrows', index: 2 }, hidden: true },
+      { icon: { set: '3Arrows', index: 0 }, hidden: true }
+    ])
+    expect([at(0, 2)?.fill, at(2, 2)?.fill]).toEqual(['#f8696b', '#63be7b'])
+    // A rule naming another sheet is left out; Excel 2010's own icon set is read.
+    expect(at(3, 3)?.fill).toBeUndefined()
+    expect([0, 3].map((row) => look?.marks?.[row]?.[3]?.icon)).toEqual([
+      { set: '3Stars', index: 0 },
+      { set: '3Stars', index: 2 }
+    ])
+  })
+
   it('shows each number of a workbook as the format of its style shows it, and its dates as the workbook counts them', async () => {
     const workbook = (properties: string) =>
       zip({
@@ -637,6 +693,56 @@ describe('an OpenDocument file previewed', () => {
     ])
     // Spans of no style leave their cell's text as it is.
     expect(look?.runs?.[0]?.[2]).toBeUndefined()
+  })
+
+  it('works out a spreadsheet’s conditional formats, LibreOffice’s own, else those its cells’ styles map', async () => {
+    const named =
+      '<office:document-styles><office:styles><style:style style:name="Default" style:family="table-cell"><style:text-properties style:font-name="Liberation Sans"/></style:style>' +
+      '<style:style style:name="Good" style:family="table-cell" style:parent-style-name="Default"><style:table-cell-properties fo:background-color="#ccffcc"/>' +
+      '<style:text-properties fo:color="#006600" fo:font-weight="bold"/></style:style></office:styles></office:document-styles>'
+    const number = (value: number) => `<table:table-cell office:value-type="float" office:value="${value}"><text:p>${value}</text:p></table:table-cell>`
+    const words = (text: string) => `<table:table-cell office:value-type="string"><text:p>${text}</text:p></table:table-cell>`
+    const rows = [
+      [1, 'kiwi'],
+      [5, 'banana'],
+      [9, 'pie'],
+      [12, 'apple']
+    ]
+      .map(([value, text]) => `<table:table-row>${number(value as number)}${words(text as string)}</table:table-row>`)
+      .join('')
+    const formats =
+      '<calcext:conditional-formats><calcext:conditional-format calcext:target-range-address="Notes.A1:Notes.A4">' +
+      '<calcext:condition calcext:apply-style-name="Good" calcext:value="&gt;=[.$A$2]" calcext:base-cell-address="Notes.A1"/>' +
+      '<calcext:data-bar calcext:max-length="100" calcext:positive-color="#2a6099" calcext:gradient="false"><calcext:formatting-entry calcext:value="0" calcext:type="auto-minimum"/>' +
+      '<calcext:formatting-entry calcext:value="0" calcext:type="auto-maximum"/></calcext:data-bar></calcext:conditional-format>' +
+      '<calcext:conditional-format calcext:target-range-address="Notes.B1:Notes.B4">' +
+      '<calcext:condition calcext:apply-style-name="Good" calcext:value="contains-text(&quot;an&quot;)" calcext:base-cell-address="Notes.B1"/>' +
+      '<calcext:condition calcext:apply-style-name="Good" calcext:value="formula-is(MOD(ROW();2)=0)" calcext:base-cell-address="Notes.B1"/></calcext:conditional-format>' +
+      '<calcext:conditional-format calcext:target-range-address="Notes.A1:Notes.A4"><calcext:icon-set calcext:icon-set-type="3Arrows">' +
+      '<calcext:formatting-entry calcext:value="0" calcext:type="percent"/><calcext:formatting-entry calcext:value="33" calcext:type="percent"/>' +
+      '<calcext:formatting-entry calcext:value="67" calcext:type="percent"/></calcext:icon-set></calcext:conditional-format></calcext:conditional-formats>'
+    const mapped =
+      '<style:style style:name="ce1" style:family="table-cell" style:parent-style-name="Default">' +
+      '<style:map style:condition="cell-content()&gt;3" style:apply-style-name="Good" style:base-cell-address="Plain.A1"/></style:style>'
+    const plain = `<table:table table:name="Plain"><table:table-row><table:table-cell table:style-name="ce1" office:value-type="float" office:value="2"><text:p>2</text:p></table:table-cell><table:table-cell table:style-name="ce1" office:value-type="float" office:value="4"><text:p>4</text:p></table:table-cell></table:table-row></table:table>`
+    const preview = await readOffice(
+      'ods',
+      await zip({
+        'content.xml': odf(mapped, `<office:spreadsheet><table:table table:name="Notes">${rows}${formats}</table:table>${plain}</office:spreadsheet>`),
+        'styles.xml': named
+      })
+    )
+    if (preview.kind !== 'workbook') throw new Error('Not a workbook.')
+    const look = preview.sheets[0]?.look
+    const at = (row: number, column: number) => look?.looks[look.cells[row]?.[column] ?? -1]
+    expect([0, 1, 2, 3].map((row) => at(row, 0)?.fill)).toEqual([undefined, '#ccffcc', '#ccffcc', '#ccffcc'])
+    expect(at(1, 0)?.text).toMatchObject({ font: 'Liberation Sans', color: '#006600', bold: true })
+    expect([0, 1, 2, 3].map((row) => at(row, 1)?.fill)).toEqual([undefined, '#ccffcc', undefined, '#ccffcc'])
+    expect(look?.marks?.[0]?.[0]?.bar?.end).toBeCloseTo(1 / 12)
+    expect(look?.marks?.[3]?.[0]?.bar?.end).toBe(1)
+    expect([0, 1, 2, 3].map((row) => look?.marks?.[row]?.[0]?.icon?.index)).toEqual([0, 1, 2, 2])
+    const other = preview.sheets[1]?.look
+    expect([0, 1].map((column) => other?.looks[other.cells[0]?.[column] ?? -1]?.fill)).toEqual([undefined, '#ccffcc'])
   })
 
   it('cuts a sheet past its rows and columns shown, and says so', async () => {

@@ -11,6 +11,7 @@
 import { type Archive, openArchive, partOf, relationships, resolvePart, textOf } from './archive.ts'
 import { readOlderExcel, readOlderPowerPoint, readOlderSheets, readOlderWord } from './binary-office.ts'
 import { openCompound } from './compound.ts'
+import { cellValue, serialNow, withConditions } from './conditional-formats.ts'
 import type { TextLook } from './document-look.ts'
 import { builtInFormat, formatNumber, generalNumber, type NumberFormatOptions, numberColor } from './number-format.ts'
 import { type CellRange, type CellSource, type CellValue, cellRange, emuPixels, Figures, lengthPixels, readChart, readOpenChart } from './office-figures.ts'
@@ -38,6 +39,7 @@ import { readOpenLook } from './open-look.ts'
 import { dataStyles, type OpenRun, readOpenSheetLook, readSheetViews } from './open-sheet-look.ts'
 import { drawOpenPage, type OpenDeck, openDeck } from './open-slide-drawing.ts'
 import { fontFaces, StyleBook } from './open-styles.ts'
+import { readSheetConditions } from './sheet-conditions.ts'
 import {
   type CellKind,
   type LaidRun,
@@ -585,7 +587,7 @@ export async function readWorkbook(archive: Archive, options: NumberFormatOption
   const cells = sheetCells(sheets)
   const figures = new Figures(archive, shown, async () => cells)
   const read: Extract<OfficePreview, { kind: 'workbook' }>['sheets'] = []
-  for (const { name, rows, cut, xml, target, layout } of sheets) {
+  for (const { name, rows, cut, xml, target, layout, cells: values } of sheets) {
     // A sheet's pictures and charts are in its drawing, a part of their own.
     const drawing = (await relationships(archive, target)).get(/<drawing\b[^>]*\br:id="([^"]*)"/.exec(xml)?.[1] ?? '')
     const drawn = drawing === undefined ? undefined : await textOf(archive, drawing)
@@ -597,6 +599,13 @@ export async function readWorkbook(archive: Archive, options: NumberFormatOption
     } catch {
       look = undefined
     }
+    // Its conditional formats, worked out from its cells' values.
+    if (look)
+      look = withConditions(look, () => readSheetConditions(xml, styles, name), {
+        value: (row, column) => cellValue(layout.kinds[row]?.[column], rows[row]?.[column], values.get(`${row},${column}`)?.number),
+        now: serialNow(shown.date1904 ?? false),
+        date1904: shown.date1904 ?? false
+      })
     read.push({ name, rows, cut, figures: figuresAt(figures, placed), look })
   }
   return { kind: 'workbook', sheets: read }
@@ -1396,8 +1405,7 @@ export async function readOpenSpreadsheet(archive: Archive): Promise<OfficePrevi
         book,
         fonts,
         views(read.name),
-        numbers,
-        stretches[index]
+        { numbers, stretches: stretches[index], name: read.name, shown: read.rows }
       )
     } catch {
       read.look = undefined

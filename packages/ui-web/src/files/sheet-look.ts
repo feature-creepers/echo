@@ -57,6 +57,26 @@ export interface LaidRun {
   font: number | TextLook
 }
 
+/** What a conditional format sets over a cell's look when its condition holds: its text's colour, weight, slant and lines, its fill, its borders. */
+export interface ConditionLook {
+  text?: TextLook | undefined
+  fill?: string | undefined
+  borders?: Sides<BorderLook> | undefined
+}
+
+/** What a cell's conditional formats draw in it besides its look. */
+export interface CellMark {
+  /**
+   * A data bar, from and to shares of the cell's width, in its colour, fading to white where it is a gradient; with the
+   * share of the width its axis is at, when it has one.
+   */
+  bar?: { start: number; end: number; color: string; gradient: boolean; border?: string | undefined; axis?: number | undefined } | undefined
+  /** An icon of a set, by the set's name and its place in it, from the one for the lowest values. */
+  icon?: { set: string; index: number } | undefined
+  /** Whether the cell's value is hidden, its bar or its icon shown alone. */
+  hidden?: boolean | undefined
+}
+
 /**
  * A sheet's look: each column's width and each row's height (none for one hidden), the look of each cell by its place
  * in `looks`, its merged cells, whether it shows its grid and its headings, how much it is zoomed, and its default text.
@@ -68,6 +88,8 @@ export interface SheetLook {
   looks: CellLook[]
   /** The stretches of a cell's text in fonts of their own, by row and column, for the cells that have them. */
   runs?: ((CellRun[] | undefined)[] | undefined)[] | undefined
+  /** What the cells' conditional formats draw in them, by row and column, for the cells that have something. */
+  marks?: ((CellMark | undefined)[] | undefined)[] | undefined
   merges: MergedCells[]
   grid: boolean
   headings: boolean
@@ -304,6 +326,8 @@ export interface WorkbookStyles {
   text: TextLook
   /** The workbook's fonts by the number a stretch of text names them by, where its stretches name them so. */
   fonts?: TextLook[] | undefined
+  /** What its conditional formats set over a cell's look, by their number (`dxfs`). */
+  differences?: ConditionLook[] | undefined
 }
 
 export function readWorkbookStyles(xml: string | undefined, theme: Pick<WorkbookColors, 'theme' | 'fonts'>): WorkbookStyles {
@@ -333,8 +357,37 @@ export function readWorkbookStyles(xml: string | undefined, theme: Pick<Workbook
       rotation: excelRotation(Number(alignment.textRotation ?? 0))
     }
   })
-  return { colors, cells, text: fonts[0] ?? {} }
+  const differences = childrenNamed(childAt(root, 'dxfs'), 'dxf').map((difference) => readConditionLook(difference, colors))
+  return { colors, cells, text: fonts[0] ?? {}, ...(differences.length > 0 ? { differences } : {}) }
 }
+
+/** What a conditional format sets (`dxf`): only what it names, a solid fill in its background colour, unlike a style's. */
+export function readConditionLook(node: XmlNode, colors: WorkbookColors): ConditionLook {
+  const font = childAt(node, 'font')
+  const fill = childAt(node, 'fill')
+  const pattern = childAt(fill, 'patternFill')
+  const kind = pattern?.attributes.patternType
+  const border = childAt(node, 'border')
+  const sides = border && {
+    top: borderOf(childAt(border, 'top'), colors),
+    right: borderOf(childAt(border, 'right') ?? childAt(border, 'end'), colors),
+    bottom: borderOf(childAt(border, 'bottom'), colors),
+    left: borderOf(childAt(border, 'left') ?? childAt(border, 'start'), colors)
+  }
+  const look: ConditionLook = {}
+  if (font) look.text = defined(fontOf(font, colors))
+  if (pattern && kind !== 'none')
+    look.fill =
+      kind === undefined || kind === 'solid'
+        ? (workbookColor(childAt(pattern, 'bgColor'), colors) ?? workbookColor(childAt(pattern, 'fgColor'), colors))
+        : fillOf(fill, colors)
+  else if (childAt(fill, 'gradientFill')) look.fill = fillOf(fill, colors)
+  if (sides && Object.values(sides).some(Boolean)) look.borders = defined(sides)
+  return look
+}
+
+/** What an object sets, without what it leaves out. */
+const defined = <Value extends object>(value: Value): Value => Object.fromEntries(Object.entries(value).filter(([, one]) => one !== undefined)) as Value
 
 /** The width of a font's widest digit in pixels, which Excel measures its columns by. */
 export function digitWidth(text: TextLook): number {
