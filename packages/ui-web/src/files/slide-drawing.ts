@@ -714,6 +714,8 @@ async function drawShape(shape: XmlNode, placeholder: Placeholder | undefined, d
     }
     const model = childAt(data, 'dgm:relIds')?.attributes['r:dm']
     if (model) content.push(await smartArt(model, deck, part, drawing, depth))
+    const object = await objectPicture(data, deck, part)
+    if (object) content.push(pictureElement(object, undefined, size))
   } else if (shape.name === 'p:pic') {
     const fill = await fillOf(
       childAt(shape, 'p:blipFill') && { name: '', attributes: {}, children: [{ ...(childAt(shape, 'p:blipFill') as XmlNode), name: 'a:blipFill' }], text: '' },
@@ -762,6 +764,45 @@ async function drawShape(shape: XmlNode, placeholder: Placeholder | undefined, d
     }
   }
   if (content.length > 0) canvas.parts.push(`<g transform="${placed(box)}">${content.join('')}</g>`)
+}
+
+/**
+ * The picture an object of another app shows in its frame (`p:oleObj`), as an address of data: the one PowerPoint
+ * keeps beside it for older apps (a `p:pic` in it, in `mc:Fallback` since PowerPoint 2010), else, as PowerPoint 2007
+ * keeps it, the picture of the shape it draws the object as in the slide's drawing of VML, named by the object's
+ * `spid`. None for a frame that holds no object.
+ */
+async function objectPicture(data: XmlNode | undefined, deck: Deck, part: Part): Promise<string | undefined> {
+  const alternatives = childAt(data, 'mc:AlternateContent')
+  const objects = [childAt(alternatives, 'mc:Fallback'), childAt(alternatives, 'mc:Choice'), data]
+    .map((node) => childAt(node, 'p:oleObj'))
+    .filter((node): node is XmlNode => node !== undefined)
+  for (const object of objects) {
+    const href = await pictureAddress(childAt(object, 'p:pic', 'p:blipFill', 'a:blip')?.attributes['r:embed'], deck, part)
+    if (href) return href
+  }
+  const shape = objects.map((object) => object.attributes.spid).find((spid) => spid !== undefined)
+  if (shape === undefined) return undefined
+  for (const target of part.targets.values()) {
+    if (!/\.vml$/i.test(target)) continue
+    const legacy = await readPart(deck.archive, target).catch(() => undefined)
+    const drawn = legacy && findNode(legacy.tree, (node) => node.name === 'v:shape' && node.attributes.id === shape)
+    const picture = childAt(drawn, 'v:imagedata')?.attributes
+    const href = legacy && (await pictureAddress(picture?.['o:relid'] ?? picture?.['r:id'], deck, legacy))
+    if (href) return href
+  }
+  return undefined
+}
+
+/** The first element in a tree, depth first, that is what is sought. */
+function findNode(node: XmlNode | undefined, sought: (node: XmlNode) => boolean, depth = 0): XmlNode | undefined {
+  if (!node || depth > 64) return undefined
+  if (sought(node)) return node
+  for (const child of node.children) {
+    const found = findNode(child, sought, depth + 1)
+    if (found) return found
+  }
+  return undefined
 }
 
 /** A SmartArt's shapes, as PowerPoint last drew them, from the drawing its data names: in the frame's own place. */

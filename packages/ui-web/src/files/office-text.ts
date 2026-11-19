@@ -43,11 +43,26 @@ export type ObjectRead = OfficeFigure | { kind: 'text'; markdown: string; lines:
  */
 export type ObjectReader = (program: string, source: Uint8Array | Compound) => Promise<ObjectRead | undefined>
 
-/** The most lines of a held document a slide shows. */
+/** The most lines of a held document or worksheet a slide shows. */
 const HELD_LINE_LIMIT = 20
 
-/** A held document's text as lines of a slide, at most a number of them; none for anything else. */
-export const heldLines = (read: ObjectRead | undefined): string[] => (read?.kind === 'text' ? read.lines.slice(0, HELD_LINE_LIMIT) : [])
+/**
+ * What an object holds as lines of a slide, at most a number of them: a document's text, or a worksheet's cells, a row
+ * to a line and its cells apart by tabs, as Excel copies cells as text; none for anything else.
+ */
+export function heldLines(read: ObjectRead | undefined): string[] {
+  if (read?.kind === 'text') return read.lines.slice(0, HELD_LINE_LIMIT)
+  if (read?.kind !== 'sheet') return []
+  return read.rows
+    .map((row) =>
+      row
+        .map((cell) => cell.replace(/\s+/g, ' ').trim())
+        .join('\t')
+        .replace(/\t+$/, '')
+    )
+    .filter((line) => line.trim() !== '')
+    .slice(0, HELD_LINE_LIMIT)
+}
 
 /** A picture of a file, from its bytes, at the size the file gives it. */
 export type PictureFigure = { kind: 'picture'; type: string; bytes: Uint8Array; alt: string; width?: number | undefined; height?: number | undefined }

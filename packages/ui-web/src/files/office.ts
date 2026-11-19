@@ -1050,7 +1050,8 @@ export async function readPresentation(archive: Archive, options: NumberFormatOp
 
 /**
  * The lines a part's objects hold (`p:oleObj`, `o:OLEObject`), by their relationship's identifier: an equation of
- * Equation Editor or MathType as linear text, a document of Word by the lines of its text.
+ * Equation Editor or MathType as linear text, a document of Word by the lines of its text, a worksheet of Excel by its
+ * cells, a row to a line, the slide drawing the picture Excel last drew of it.
  */
 async function objectLines(xml: string, targets: ReadonlyMap<string, string>, figures: Figures): Promise<Map<string, string[]>> {
   const found = new Map<string, string[]>()
@@ -1063,7 +1064,7 @@ async function objectLines(xml: string, targets: ReadonlyMap<string, string>, fi
       const written = await figures.equation(targets.get(id))
       if (written !== undefined) found.set(id, [written])
     } else {
-      const lines = heldLines(await figures.text(targets.get(id), program))
+      const lines = heldLines(await figures.held(targets.get(id), program))
       if (lines.length > 0) found.set(id, lines)
     }
   }

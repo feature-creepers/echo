@@ -117,7 +117,7 @@ export class Figures {
   private bytes = 0
   private readonly found = new Map<string, number>()
   private readonly equations = new Map<string, Promise<string | undefined>>()
-  private readonly held = new Map<string, Promise<ObjectRead | undefined>>()
+  private readonly reads = new Map<string, Promise<ObjectRead | undefined>>()
   private readonly archive: Archive
   private readonly options: NumberFormatOptions
   private readonly cells: CellSource | undefined
@@ -139,22 +139,22 @@ export class Figures {
    * place in the list; none when it holds nothing read here, and its picture is shown instead.
    */
   async object(part: string | undefined, program: string, alt: string): Promise<number | undefined> {
-    const read = await this.read(part, program)
+    const read = await this.held(part, program)
     if (part === undefined || !read || read.kind === 'text') return undefined
     return this.add(JSON.stringify(['object', part]), async () => (read.kind === 'sheet' ? { ...read, alt: read.alt || alt } : read))
   }
 
   /** The text of a document an object holds, from its part, as a quotation and as lines; none for another object. */
   async text(part: string | undefined, program: string): Promise<Extract<ObjectRead, { kind: 'text' }> | undefined> {
-    const read = await this.read(part, program)
+    const read = await this.held(part, program)
     return read?.kind === 'text' ? read : undefined
   }
 
-  /** What an object holds, from its part, read once. */
-  private read(part: string | undefined, program: string): Promise<ObjectRead | undefined> {
+  /** What an object holds, from its part, read once: a worksheet's sheet, a document's text. */
+  held(part: string | undefined, program: string): Promise<ObjectRead | undefined> {
     const objects = this.objects
     if (part === undefined || !objects) return Promise.resolve(undefined)
-    let read = this.held.get(part)
+    let read = this.reads.get(part)
     if (!read) {
       const bytes = partOf(this.archive, part)
       read = bytes
@@ -163,7 +163,7 @@ export class Figures {
             () => undefined
           )
         : Promise.resolve(undefined)
-      this.held.set(part, read)
+      this.reads.set(part, read)
     }
     return read
   }

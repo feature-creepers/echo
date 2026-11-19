@@ -680,6 +680,22 @@ describe('an object of another app in a document or a presentation', () => {
     // A document held is the lines of its text.
     expect(await readOffice('pptx', file)).toMatchObject({ slides: [{ title: '', lines: ['x²', 'Agenda'] }] })
   })
+
+  it('gives a slide the cells of a worksheet it holds as lines, a row to a line, Excel naming it by its kind or its program', async () => {
+    const frame = (id: string, program: string) =>
+      `<p:graphicFrame><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/presentationml/2006/ole"><p:oleObj name="Worksheet" r:id="${id}" progId="${program}"><p:embed/></p:oleObj></a:graphicData></a:graphic></p:graphicFrame>`
+    const file = storedZip({
+      'ppt/presentation.xml': '<p:presentation><p:sldIdLst><p:sldId id="256" r:id="rId2"/></p:sldIdLst></p:presentation>',
+      'ppt/_rels/presentation.xml.rels': '<Relationships><Relationship Id="rId2" Target="slides/slide1.xml"/></Relationships>',
+      'ppt/slides/slide1.xml': `<p:sld><p:cSld><p:spTree>${frame('rId2', 'Excel.Sheet.12')}${frame('rId3', 'Worksheet')}</p:spTree></p:cSld></p:sld>`,
+      'ppt/slides/_rels/slide1.xml.rels':
+        '<Relationships><Relationship Id="rId2" Target="../embeddings/Microsoft_Excel_Worksheet.xlsx"/><Relationship Id="rId3" Target="../embeddings/Other.xlsx"/></Relationships>',
+      'ppt/embeddings/Microsoft_Excel_Worksheet.xlsx': COSTS,
+      'ppt/embeddings/Other.xlsx': COSTS
+    })
+    // Each object gives its own lines, the same cells twice when two hold them.
+    expect(await readOffice('pptx', file)).toMatchObject({ slides: [{ lines: ['Tea\t10', 'Milk\t4', 'Tea\t10', 'Milk\t4'] }] })
+  })
 })
 const JPEG = [0xff, 0xd8, 0xff, 0xe0, 0, 0x10]
 
@@ -2120,6 +2136,13 @@ describe('a PowerPoint 97 presentation', () => {
     // An object that holds no chart shows nothing of it.
     const [, other] = drawings(await readOlderPowerPoint(presentation(false, false, await packedObject(compound({ Other: new Uint8Array([1]) })))))
     expect(other).not.toContain('<g transform="translate(3.33 1.67)">')
+  })
+
+  it('gives a slide the cells of a worksheet it holds as lines, a row to a line, its program named in its storage', async () => {
+    const named = new Bytes().zeros(28).u32(13).narrow('Excel.Sheet.8').u8(0).done()
+    const storage = compound({ Workbook: openCompound(workbook()).stream('Workbook') as Uint8Array, '\x01CompObj': named })
+    const read = await readOffice('ppt', presentation(false, false, await packedObject(storage)))
+    expect(read.kind === 'presentation' ? read.slides[1]?.lines : undefined).toEqual(['Item\t\tPaid', 'Hôtel\t42.5\tTRUE', '1.2\t7\t-3', 'ok\t162.5\t#DIV/0!'])
   })
 
   it('writes an object’s equation of Equation Editor as a line of its slide', async () => {

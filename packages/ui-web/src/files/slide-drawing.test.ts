@@ -57,6 +57,31 @@ async function drawn(slideShapes: string, extra: Record<string, string | Uint8Ar
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3])
 
 describe('a slide drawn', () => {
+  it('draws an object of another app with the picture its app last drew, kept beside it or in the slide’s drawing of VML', async () => {
+    const frame = (x: number, object: string) =>
+      `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="4" name="Object"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x="${x * 9525}" y="0"/><a:ext cx="${200 * 9525}" cy="${80 * 9525}"/></p:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/presentationml/2006/ole">${object}</a:graphicData></a:graphic></p:graphicFrame>`
+    const kept =
+      '<mc:AlternateContent><mc:Choice Requires="v"><p:oleObj spid="_x0000_s1025" r:id="rId3" progId="Excel.Sheet.12"><p:embed/></p:oleObj></mc:Choice><mc:Fallback><p:oleObj r:id="rId3" progId="Excel.Sheet.12"><p:embed/><p:pic><p:blipFill><a:blip r:embed="rId2"/></p:blipFill></p:pic></p:oleObj></mc:Fallback></mc:AlternateContent>'
+    const legacy = '<p:oleObj spid="_x0000_s1026" r:id="rId3" progId="Excel.Sheet.12"><p:embed/></p:oleObj>'
+    const slide = await drawn(`${frame(100, kept)}${frame(400, legacy)}`, {
+      'ppt/slides/_rels/slide1.xml.rels': relationshipsOf(
+        ['rId1', '../slideLayouts/slideLayout1.xml'],
+        ['rId2', '../media/image1.png'],
+        ['rId4', '../drawings/vmlDrawing1.vml']
+      ),
+      'ppt/drawings/vmlDrawing1.vml':
+        '<xml><v:shape id="_x0000_s1026" style="width:150pt;height:60pt"><v:imagedata o:relid="rId1" o:title=""/></v:shape></xml>',
+      'ppt/drawings/_rels/vmlDrawing1.vml.rels': relationshipsOf(['rId1', '../media/image2.png']),
+      'ppt/media/image1.png': PNG,
+      'ppt/media/image2.png': new Uint8Array([...PNG, 4])
+    })
+    const pictures = [...(slide?.text ?? '').matchAll(/<g transform="translate\((\d+) 0\)"><svg[^>]*><image[^>]*href="data:image\/png;base64,([^"]+)"/g)]
+    expect(pictures.map(([, x, data]) => [Number(x), atob(data ?? '').length])).toEqual([
+      [100, PNG.length],
+      [400, PNG.length + 1]
+    ])
+  })
+
   it('draws its background and its master’s own shapes, at the size of the presentation’s slides', async () => {
     const slide = await drawn('')
     expect(slide && [slide.width, slide.height]).toEqual([960, 540])

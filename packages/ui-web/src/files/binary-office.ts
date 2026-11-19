@@ -2300,7 +2300,7 @@ function presentationObjects(raw: Uint8Array, container: PowerPointRecord): Map<
 export function storageProgram(storage: Compound): string {
   try {
     const kept = storage.stream('\x01CompObj')
-    return (kept && /\b(?:Word\.Document|Excel\.Sheet|Excel\.Chart|Equation)(?:\.[\w]+)?/.exec(latin1(kept))?.[0]) ?? ''
+    return (kept && /\b(?:Word\.Document|Excel\.Sheet|Excel\.Chart|Equation)(?:\.\w+)?/.exec(latin1(kept))?.[0]) ?? ''
   } catch {
     return ''
   }
@@ -2411,7 +2411,7 @@ export async function readOlderPowerPoint(bytes: Uint8Array, read?: ObjectReader
       else slide.lines.push(...text.lines.filter((line) => !slide.lines.includes(line)))
     }
     // An equation of Equation Editor or MathType on the slide, an object, is a line of its text; a document of Word,
-    // the lines of its own, its program named in its storage.
+    // the lines of its own, and a worksheet of Excel its cells, a row to a line, its program named in its storage.
     const drawing = drawn?.type === 0x03ee ? childOf(raw, drawn, 0x040c) : undefined
     const shapes = drawing && childOf(raw, drawing, ART.drawing)
     for (const shape of shapes ? artShapes(raw, shapes) : []) {
@@ -2419,8 +2419,7 @@ export async function readOlderPowerPoint(bytes: Uint8Array, read?: ObjectReader
       if (!storage) continue
       const equation = objectEquation(storage)
       const program = storageProgram(storage)
-      const lines =
-        equation !== undefined ? [equation] : read && /^Word\.Document\b/i.test(program) ? heldLines(await read(program, storage).catch(() => undefined)) : []
+      const lines = equation !== undefined ? [equation] : read ? heldLines(await read(program, storage).catch(() => undefined)) : []
       slide.lines.push(...lines.filter((line) => !slide.lines.includes(line)))
     }
     const drawnSlide =
