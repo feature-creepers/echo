@@ -173,6 +173,34 @@ describe('a metafile', () => {
     expect(text).toContain('>ab</text>')
   })
 
+  it('draws an EMF’s picture with transparent parts, a mask laid down with OR then the picture with AND, through masks', () => {
+    // Two pixels: the mask of one bit is white where the picture shows, the picture white where it does not.
+    const stretched = (information: number[], pixels: number[], operation: number) =>
+      emf(
+        81,
+        ...u32(0, 0, 0, 0, 5, 5, 0, 0, 2, 1, 80, information.length, 80 + information.length, pixels.length, 0, operation, 20, 10),
+        ...information,
+        ...pixels
+      )
+    const mask = stretched([...u32(40, 2, 1), ...u16(1, 1), ...u32(0, 0, 0, 0, 2, 0), ...u32(0, 0xffffff)], [0b0100_0000, 0, 0, 0], 0x00ee0086)
+    const picture = stretched([...u32(40, 2, 1), ...u16(1, 24), ...u32(0, 0, 0, 0, 0, 0)], [255, 255, 255, 0, 0, 255, 0, 0], 0x008800c6)
+    const text = svgOf(enhancedMetafile(mask, picture))?.text ?? ''
+    expect(text.match(/<mask id="m\d+" maskUnits="userSpaceOnUse" x="0" y="0" width="2" height="1">/g)).toHaveLength(2)
+    expect(text.match(/<image width="2" height="1" preserveAspectRatio="none" mask="url\(#m\d+\)"/g)).toHaveLength(2)
+    // A transparent copy leaves out the colour it names, and a mask whose every pixel is left out draws nothing.
+    const left = emf(
+      116,
+      ...u32(0, 0, 0, 0, 5, 5, 20, 10, 0x000000ff, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 108, 40, 148, 8, 2, 1),
+      ...u32(40, 2, 1),
+      ...u16(1, 24),
+      ...u32(0, 0, 0, 0, 0, 0),
+      ...[0, 0, 255, 0, 255, 0, 0, 0]
+    )
+    expect(svgOf(enhancedMetafile(left))?.text).toMatch(/<mask id="m\d+"/)
+    const blackOnly = stretched([...u32(40, 2, 1), ...u16(1, 24), ...u32(0, 0, 0, 0, 0, 0)], [0, 0, 0, 0, 0, 0, 0, 0], 0x00ee0086)
+    expect(svgOf(enhancedMetafile(blackOnly, emf(43, ...u32(10, 10, 20, 20))))?.text).not.toContain('<image')
+  })
+
   it('draws what came before a damaged record, and nothing for a metafile that draws nothing or none at all', () => {
     const whole = enhancedMetafile(emf(43, ...u32(10, 10, 20, 20)), emf(43, ...u32(30, 30, 40, 40)))
     const cut = whole.slice(0, 108 + 24 + 10)

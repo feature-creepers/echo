@@ -745,10 +745,12 @@ export class Canvas {
 
   /**
    * A bitmap in a box of the picture, from a box of its own pixels, as clear as `opacity` says. A device-independent
-   * bitmap's own box counts its rows from the bottom when they go up (`fromBottom`), as Windows counts them.
+   * bitmap's own box counts its rows from the bottom when they go up (`fromBottom`), as Windows counts them. A `mask`,
+   * a grey bitmap of the same size white where the picture shows, leaves out the pixels that leave the picture under them
+   * as it was (`bitmap-mask.ts`).
    */
-  bitmap(destination: Box, picture: Bitmap, source?: Box, options: { opacity?: number; fromBottom?: boolean } = {}) {
-    const { opacity = 1, fromBottom = false } = options
+  bitmap(destination: Box, picture: Bitmap, source?: Box, options: { opacity?: number; fromBottom?: boolean; mask?: Bitmap | undefined } = {}) {
+    const { opacity = 1, fromBottom = false, mask } = options
     const matrix = this.matrix()
     const width = destination.right - destination.left
     const height = destination.bottom - destination.top
@@ -758,10 +760,14 @@ export class Canvas {
     this.point(destination.left, destination.top, matrix)
     this.point(destination.right, destination.bottom, matrix)
     const flip = `${width < 0 || height < 0 ? ` scale(${width < 0 ? -1 : 1} ${height < 0 ? -1 : 1})` : ''}`
+    const masked = mask ? this.id('m') : undefined
     this.element(
       `<g transform="matrix(${matrix.map(number).join(' ')}) translate(${number(destination.left)} ${number(destination.top)})${flip}"${opacity < 1 ? ` opacity="${number(opacity)}"` : ''}>` +
         `<svg width="${number(Math.abs(width))}" height="${number(Math.abs(height))}" viewBox="${number(from.left)} ${number(from.top)} ${number(from.right - from.left)} ${number(from.bottom - from.top)}" preserveAspectRatio="none" overflow="hidden">` +
-        `<image width="${picture.width}" height="${picture.height}" preserveAspectRatio="none" href="data:${picture.type};base64,${base64(picture.bytes)}"/></svg></g>`
+        (mask && masked
+          ? `<mask id="${masked}" maskUnits="userSpaceOnUse" x="0" y="0" width="${picture.width}" height="${picture.height}"><image width="${picture.width}" height="${picture.height}" preserveAspectRatio="none" href="data:${mask.type};base64,${base64(mask.bytes)}"/></mask>`
+          : '') +
+        `<image width="${picture.width}" height="${picture.height}" preserveAspectRatio="none"${masked ? ` mask="url(#${masked})"` : ''} href="data:${picture.type};base64,${base64(picture.bytes)}"/></svg></g>`
     )
   }
 

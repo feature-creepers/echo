@@ -10,7 +10,9 @@
  * Every read is checked against the record that holds it, so a damaged metafile draws what came before the damage.
  */
 
+import { colourLeftOut, type Transparency, throughMask, transparencyOf } from './bitmap-mask.ts'
 import {
+  type Bitmap,
   BLACK,
   type Box,
   box,
@@ -46,6 +48,27 @@ export { type DrawnMetafile, dibBitmap, type MetafileHint, shownSize } from './m
 
 /** The most records played: past them, the picture is drawn as far as it got. */
 const RECORD_LIMIT = 500_000
+
+/** AND of a bitmap and the picture under it: a mask, left out when its pixels cannot be read, as it would black it. */
+const SRCAND = 0x008800c6
+
+/**
+ * A bitmap drawn as Windows draws it through a raster operation, a colour left out or each pixel's opacity: through a
+ * mask of the pixels that show (`bitmap-mask.ts`), or not at all when none does.
+ */
+function drawBitmap(
+  canvas: Canvas,
+  destination: Box,
+  bitmap: Bitmap,
+  source: Box | undefined,
+  transparency: Transparency | undefined,
+  options: { opacity?: number; fromBottom?: boolean; operation?: number } = {}
+) {
+  const { operation, ...placed } = options
+  const shown = transparency ? throughMask(bitmap, transparency) : undefined
+  if (shown === 'nothing' || (!shown && operation === SRCAND)) return
+  canvas.bitmap(destination, shown?.picture ?? bitmap, source, { ...placed, mask: shown?.mask })
+}
 
 /** The objects Windows keeps for any picture to select, by their number. */
 const STOCK: Record<number, DrawingObject> = {
@@ -362,10 +385,16 @@ function drawWindows(bytes: Uint8Array, hint: MetafileHint): DrawnMetafile | und
       }
       case 0x0f43: {
         const bitmap = packedBitmap(record.bytes.subarray(22))
-        if (bitmap && record.u32(0) !== 0x008800c6)
-          canvas.bitmap(box(word(10), word(9), word(10) + word(8), word(9) + word(7)), bitmap, box(word(6), word(5), word(6) + word(4), word(5) + word(3)), {
-            fromBottom: true
-          })
+        const operation = record.u32(0)
+        if (bitmap)
+          drawBitmap(
+            canvas,
+            box(word(10), word(9), word(10) + word(8), word(9) + word(7)),
+            bitmap,
+            box(word(6), word(5), word(6) + word(4), word(5) + word(3)),
+            transparencyOf(operation),
+            { fromBottom: true, operation }
+          )
         break
       }
       case 0x0b41:
@@ -385,7 +414,7 @@ function drawWindows(bytes: Uint8Array, hint: MetafileHint): DrawnMetafile | und
           const source = stretched
             ? box(value(3), value(2), value(3) + value(1), value(2) + value(0))
             : box(value(1), value(0), value(1) + value(3), value(0) + value(2))
-          if (bitmap && operation !== 0x008800c6) canvas.bitmap(destination, bitmap, source)
+          if (bitmap) drawBitmap(canvas, destination, bitmap, source, transparencyOf(operation), { operation })
         }
         break
       }
@@ -760,8 +789,13 @@ function drawEnhanced(bytes: Uint8Array, hint: MetafileHint): DrawnMetafile | un
           record.i32(44) + (stretched ? record.i32(100) : record.i32(32)),
           record.i32(48) + (stretched ? record.i32(104) : record.i32(36))
         )
-        if (type === 114) canvas.bitmap(destination, bitmap, source, { opacity: ((operation >>> 16) & 0xff) / 255 })
-        else if (operation !== 0x008800c6) canvas.bitmap(destination, bitmap, source)
+        // A blend's fourth byte says each pixel keeps its opacity (`AC_SRC_ALPHA`); a transparent copy names the colour it leaves out.
+        if (type === 114)
+          drawBitmap(canvas, destination, bitmap, source, operation >>> 24 === 1 ? { kind: 'alpha' } : undefined, {
+            opacity: ((operation >>> 16) & 0xff) / 255
+          })
+        else if (type === 116) drawBitmap(canvas, destination, bitmap, source, colourLeftOut(operation))
+        else drawBitmap(canvas, destination, bitmap, source, transparencyOf(operation), { operation })
         break
       }
       case 80: {
@@ -778,12 +812,14 @@ function drawEnhanced(bytes: Uint8Array, hint: MetafileHint): DrawnMetafile | un
       case 81: {
         const bitmap = bitmapAt(48, 52, 56, 60)
         const operation = record.u32(68)
-        if (bitmap && operation !== 0x008800c6)
-          canvas.bitmap(
+        if (bitmap)
+          drawBitmap(
+            canvas,
             box(record.i32(24), record.i32(28), record.i32(24) + record.i32(72), record.i32(28) + record.i32(76)),
             bitmap,
             box(record.i32(32), record.i32(36), record.i32(32) + record.i32(40), record.i32(36) + record.i32(44)),
-            { fromBottom: true }
+            transparencyOf(operation),
+            { fromBottom: true, operation }
           )
         break
       }
