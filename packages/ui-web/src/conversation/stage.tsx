@@ -38,6 +38,7 @@ import { RunningThreads } from './running-threads.tsx'
 import { type ScrollEdges, useScrollEdges } from './scroll-edges.ts'
 import { SpokenLine } from './spoken-line.tsx'
 import { Suggestions } from './suggestions.tsx'
+import { arrivedAt, restOn, TRAVEL, travelTowards } from './travel.ts'
 
 export interface StageProps {
   client: Client
@@ -103,12 +104,6 @@ export interface Sight {
  * at, so it stays sharp at every size on its way from one place to another.
  */
 const LARGEST = 280
-
-/**
- * How the core travels between its places, and how its name and state go with it: a spring soft enough to follow
- * with the eye, damped so it settles without bouncing, in about half a second.
- */
-const TRAVEL = { stiffness: 210, damping: 30 } as const
 
 /**
  * How firmly the person must scroll on down at home to go on to the stream: this many pixels of wheel within this
@@ -187,34 +182,18 @@ function Core({ mood, level, bands, load, sight, place, onArrive }: CoreProps) {
       const here = at.current
       if (!element || !slot || !stage) return
       const kept = slot.getBoundingClientRect()
-      const target = { x: kept.left - stage.left + kept.width / 2, y: kept.top - stage.top + kept.height / 2, size: kept.width }
+      const spot = { x: kept.left - stage.left + kept.width / 2, y: kept.top - stage.top + kept.height / 2, size: kept.width }
       const now = performance.now()
-      if (!here.placed || here.rested === slot || still.matches) {
-        Object.assign(here, target, { speedX: 0, speedY: 0, growth: 0, placed: true, rested: slot })
-      } else if (drawing) {
-        // Small steps, so a long frame never throws it.
-        for (let left = Math.min(0.05, (now - here.time) / 1000); left > 1e-6; left -= 1 / 240) {
-          const step = Math.min(left, 1 / 240)
-          here.speedX += (TRAVEL.stiffness * (target.x - here.x) - TRAVEL.damping * here.speedX) * step
-          here.speedY += (TRAVEL.stiffness * (target.y - here.y) - TRAVEL.damping * here.speedY) * step
-          here.growth += (TRAVEL.stiffness * (target.size - here.size) - TRAVEL.damping * here.growth) * step
-          here.x += here.speedX * step
-          here.y += here.speedY * step
-          here.size += here.growth * step
-        }
-        // It rests on its new place once it is within half a pixel of it and all but still.
-        const away = Math.hypot(target.x - here.x, target.y - here.y) + Math.abs(target.size - here.size)
-        if (away < 0.5 && Math.hypot(here.speedX, here.speedY) < 4) here.rested = slot
-      } else {
+      if (!here.placed || still.matches) {
+        restOn(here, slot, spot)
+        here.placed = true
+      } else if (!travelTowards(here, slot, spot, drawing ? (now - here.time) / 1000 : undefined)) {
         return
       }
       here.time = now
       here.left = stage.left
       here.top = stage.top
-      // Arrived once it is within a few pixels of its place and nearly still.
-      const arrived =
-        here.rested === slot ||
-        (Math.hypot(target.x - here.x, target.y - here.y) + Math.abs(target.size - here.size) < 6 && Math.hypot(here.speedX, here.speedY) < 60)
+      const arrived = arrivedAt(here, slot, spot)
       if (arrived !== here.arrived) {
         here.arrived = arrived
         arrive.current(arrived)
