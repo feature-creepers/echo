@@ -173,14 +173,27 @@ function twoPropertySize(word: Reader, at: number): number {
   const code = word.u8(at)
   if (code === 23) return sixPropertySize(word, at)
   if (TWO_COUNTED_OPERANDS.has(code)) return 2 + word.u8(at + 1)
+  // The properties of no operand: the one passed over, the ruler, plain characters.
+  if (code === 0 || code === 52 || code === 58) return 1
   return TWO_SIZES.get(code) ?? (TWO_TWO_BYTE_OPERANDS.has(code) ? 3 : 2)
 }
 
-const TWO_COUNTED_OPERANDS = new Set([3, 15, 78, 152, 154, 155])
+const TWO_COUNTED_OPERANDS = new Set([3, 15, 57, 78, 152, 154, 155])
 const TWO_TWO_BYTE_OPERANDS = new Set([
-  16, 17, 18, 19, 21, 22, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 38, 39, 40, 41, 42, 43, 45, 46, 47, 48, 49, 68, 71, 72, 82, 83, 96, 97, 98, 99, 115, 116, 119,
-  120, 123, 124, 129, 130, 131, 132, 135, 136, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 153, 159, 161, 162
+  16, 17, 18, 19, 20, 21, 22, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 38, 39, 40, 41, 42, 43, 45, 46, 47, 48, 49, 68, 71, 72, 82, 83, 96, 97, 98, 99, 115, 116,
+  119, 120, 123, 124, 129, 130, 131, 132, 135, 136, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 153, 159, 161, 162
 ])
+
+/**
+ * How many bytes a property of Word 1 takes: as Word 2's, but for those Word 1 counts in their first byte (numbering,
+ * whole characters, a picture's scale) and its table's definition, counted in two.
+ */
+function onePropertySize(word: Reader, at: number): number {
+  const code = word.u8(at)
+  if (code === 12 || code === 57 || code === 95) return 2 + word.u8(at + 1)
+  if (code === 152) return 3 + word.u16(at + 1)
+  return twoPropertySize(word, at)
+}
 const TWO_SIZES = new Map([
   [70, 4],
   [95, 14],
@@ -215,8 +228,9 @@ function codedParagraphFormat(word: Reader, style: number, from: number, end: nu
 /** A paragraph's format in Word 6 and 95: its style in two bytes, then its properties. */
 const sixParagraphFormat = (word: Reader, at: number, size: number) => codedParagraphFormat(word, word.u16(at), at + 2, at + size, sixPropertySize)
 
-/** A paragraph's format in Word 2: its style's code in one byte, six bytes of its lines' heights, then its properties. */
-const twoParagraphFormat = (word: Reader, at: number, size: number) => codedParagraphFormat(word, word.u8(at), at + 7, at + size, twoPropertySize)
+/** A paragraph's format in Word 2, and in Word 1: its style's code in one byte, six bytes of its lines' heights, then its properties. */
+const twoParagraphFormat = (word: Reader, at: number, size: number, one = false) =>
+  codedParagraphFormat(word, word.u8(at), at + 7, at + size, one ? onePropertySize : twoPropertySize)
 
 /**
  * The heading level of each style of a Word 2 document, by its code: the built-in headings 1 to 9 are the codes 254
@@ -585,14 +599,15 @@ const FIGURE_END = '\ue001'
  * one-byte codes; Word 2 wrote the same straight into the file, with places and codes of its own.
  */
 export async function readOlderWord(bytes: Uint8Array): Promise<OfficePreview> {
-  if (readU16(bytes, 0) === 0xa59b) throw new Error('It is a document of Word 1 or older, which is not read here.')
-  const two = readU16(bytes, 0) === 0xa5db
+  // Word 1 wrote its documents as Word 2 did, a few of its places and properties its own.
+  const one = readU16(bytes, 0) === 0xa59b
+  const two = one || readU16(bytes, 0) === 0xa5db
   const file = two ? undefined : openCompound(bytes)
   const stream = file ? file.stream('WordDocument') : bytes
   if (!stream) throw new Error('This is not a Word document.')
   const word = reader(stream)
   // Word 2's header ends with the count of its pages of paragraph formats.
-  if (word.length < (two ? 0x146 : 0x200)) damaged()
+  if (word.length < (one ? 0x192 : two ? 0x146 : 0x200)) damaged()
   const identifier = word.u16(0)
   const version = word.u16(2)
   if (identifier !== 0xa5ec && identifier !== 0xa5dc && !two) throw new Error('This is not a Word document.')
@@ -617,7 +632,7 @@ export async function readOlderWord(bytes: Uint8Array): Promise<OfficePreview> {
     textLength = Math.min(word.u32(0x34), CHARACTER_LIMIT)
     styles = { at: word.u32(0x5e), size: word.u16(0x62) }
     formats = { at: word.u32(0xa6), size: word.u16(0xaa) }
-    complex = flags & 0x0004 ? { at: word.u32(0x11e), size: word.u16(0x122) } : undefined
+    complex = flags & 0x0004 ? (one ? { at: word.u32(0x112), size: word.u16(0x116) } : { at: word.u32(0x11e), size: word.u16(0x122) }) : undefined
   } else if (six || !file) {
     textLength = Math.min(word.u32(0x34), CHARACTER_LIMIT)
     styles = { at: word.u32(0x60), size: word.u32(0x64) }
@@ -699,7 +714,7 @@ export async function readOlderWord(bytes: Uint8Array): Promise<OfficePreview> {
     pageNumbers.push(six ? table.u16(at) : table.u32(at) & 0x3fffff)
   }
   if (six && listed > 0) {
-    const all = word.u16(two ? 0x144 : 0x190)
+    const all = word.u16(two && !one ? 0x144 : 0x190)
     for (let next = (pageNumbers.at(-1) ?? 0) + 1; pageNumbers.length < Math.min(all, 4096); next++) pageNumbers.push(next)
   }
   const entrySize = two ? 1 : six ? 7 : 13
@@ -736,7 +751,7 @@ export async function readOlderWord(bytes: Uint8Array): Promise<OfficePreview> {
               run.at === undefined || run.size === undefined
                 ? plainFormat()
                 : two
-                  ? twoParagraphFormat(word, run.at, run.size)
+                  ? twoParagraphFormat(word, run.at, run.size, one)
                   : six
                     ? sixParagraphFormat(word, run.at, run.size)
                     : paragraphFormat(word, run.at, run.size)

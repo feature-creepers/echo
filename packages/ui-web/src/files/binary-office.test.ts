@@ -721,13 +721,14 @@ describe('a Word 6 or 95 document', () => {
  * quickly, a page of paragraph formats, and a style sheet of one built-in style and two of the document's own, the
  * second named "Title".
  */
-function twoDocument(paragraphs: { bytes: number[]; format: number[] }[], options: { quick?: boolean; encrypted?: boolean } = {}): Uint8Array {
-  const TEXT_AT = 0x180
+function twoDocument(paragraphs: { bytes: number[]; format: number[] }[], options: { quick?: boolean; encrypted?: boolean; one?: boolean } = {}): Uint8Array {
+  const TEXT_AT = 0x200
   const PAGE = 2
   const text = paragraphs.flatMap((one) => one.bytes)
+  // Word 1 wrote its documents as Word 2 did, its quick save's pieces and its count of pages at places of their own.
   const word = new Bytes()
-    .u16(0xa5db)
-    .u16(45)
+    .u16(options.one ? 0xa59b : 0xa5db)
+    .u16(options.one ? 33 : 45)
     .u16(0)
     .u16(0x0409)
     .u16(0)
@@ -789,9 +790,9 @@ function twoDocument(paragraphs: { bytes: number[]; format: number[] }[], option
   view.setUint16(0x62, stylesSize, true)
   view.setUint32(0xa6, papx, true)
   view.setUint16(0xaa, papxSize, true)
-  view.setUint32(0x11e, clx, true)
-  view.setUint16(0x122, clxSize, true)
-  view.setUint16(0x144, 1, true)
+  view.setUint32(options.one ? 0x112 : 0x11e, clx, true)
+  view.setUint16(options.one ? 0x116 : 0x122, clxSize, true)
+  view.setUint16(options.one ? 0x190 : 0x144, 1, true)
   return document
 }
 
@@ -804,7 +805,7 @@ describe('a Word 2 document', () => {
   const paragraphs = [
     { bytes: [...ascii('Trip'), 0x0d], format: twoFormatting(253) },
     { bytes: [...ascii('Caf'), 0xe9, 0x0d], format: twoFormatting(0) },
-    { bytes: [...ascii('Coat'), 0x0d], format: twoFormatting(0, [17, 0x40, 0x01], [70, 0, 0, 0], [3, 2, 0, 0], [13, 10]) },
+    { bytes: [...ascii('Coat'), 0x0d], format: twoFormatting(0, [17, 0x40, 0x01], [70, 0, 0, 0], [3, 2, 0, 0], [20, 0xf0, 0x00], [58], [13, 10]) },
     { bytes: [0x41, 0x07], format: twoFormatting(0, [24, 1]) },
     { bytes: [0x42, 0x07], format: twoFormatting(0, [24, 1]) },
     { bytes: [0x07], format: twoFormatting(0, [24, 1], [25, 1]) },
@@ -818,10 +819,18 @@ describe('a Word 2 document', () => {
       expect(await readOlderWord(twoDocument(paragraphs, { quick }))).toEqual({ kind: 'document', markdown: expected, figures: [], cut: false })
   })
 
-  it('says when it is protected with a password, cut short, or of Word 1 or older', async () => {
+  it('reads a document of Word 1 the same way, the properties Word 1 counts in their first byte read so', async () => {
+    const one = paragraphs.map((paragraph, index) =>
+      index === 2 ? { ...paragraph, format: twoFormatting(0, [12, 2, 7, 7], [57, 1, 0], [13, 10]) } : paragraph
+    )
+    for (const quick of [false, true])
+      expect(await readOlderWord(twoDocument(one, { quick, one: true }))).toEqual({ kind: 'document', markdown: expected, figures: [], cut: false })
+  })
+
+  it('says when it is protected with a password, or cut short', async () => {
     await expect(readOlderWord(twoDocument(paragraphs, { encrypted: true }))).rejects.toThrow('protected with a password')
     await expect(readOlderWord(twoDocument(paragraphs).subarray(0, 0x100))).rejects.toThrow('damaged')
-    await expect(readOlderWord(new Uint8Array([0x9b, 0xa5, 0x21, 0x00, ...new Array(600).fill(0)]))).rejects.toThrow('Word 1 or older')
+    await expect(readOlderWord(twoDocument(paragraphs, { one: true }).subarray(0, 0x180))).rejects.toThrow('damaged')
   })
 })
 
