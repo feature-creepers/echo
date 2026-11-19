@@ -1,0 +1,36 @@
+# Roadmap
+
+What may be built next, and who decided it. The owners decide; an agent proposes.
+
+- An item under **Approved** may be worked on without being asked again, within its description, and is moved to the spec's state of the code (section 14.8) once built.
+- An item under **Waiting for a decision** is not to be started. Propose it, with its size and its cost, and wait.
+- **Not planned** says what was decided against, so it is not proposed again without a new reason.
+
+Nothing else is a request: a "Not built yet" or "Not done" note in the spec records a limit, and a TODO in the code is not a task (`AGENTS.md`, Scope).
+
+## Approved
+
+Nothing at the moment.
+
+## Waiting for a decision
+
+| Item                                             | Spec           | What is to decide                                                                                                                                              |
+| ------------------------------------------------ | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Confinement of Claude Code's commands on Windows | 12.2, 12.4 (1) | A runtime of Echo's own for confined commands, since a restricted Git Bash cannot start                                                                        |
+| Accounts: mail, calendar and contacts            | 12.4 (3), 7.10 | Which providers, their sign-in (OAuth) and where tokens are kept; mail arriving as a trigger depends on it                                                     |
+| A vault for secrets                              | 12.4 (4)       | The system's own store on each system; comes with accounts                                                                                                     |
+| Elevation                                        | 12.4 (5)       | A signed helper with typed operations, and whether an expert mode exists at all                                                                                |
+| Recognising a song or the speaker                | 12.4 (7)       | Which service hears a song, if any; what recognising the speaker is for                                                                                        |
+| Approvals from the phone                         | 12.4 (8)       | Depends on the phone app                                                                                                                                       |
+| Vector search                                    | 10.4           | The embedding model and where it is downloaded from                                                                                                            |
+| A second copy of the app from its sources        | 7.11           | Whether a project's thread may run the app it works on                                                                                                         |
+| Signed builds                                    | 14.7           | Certificates for Windows and macOS, and their cost                                                                                                             |
+| The phone app and the paid service               | 5              | Their design, after version 1                                                                                                                                  |
+| The view renderer                                | 9.1            | The spec chose json-render's renderer and UI SDK; the code uses json-render's format with a renderer of its own. Adopt them, or record the choice to keep ours |
+| A minimum release age for dependencies           | —              | pnpm's `minimumReleaseAge` of two weeks rejects 73 packages of today's lockfile; enforce it once they are old enough                                           |
+
+## Not planned
+
+| Item                              | Decided          | Why                                                                                                                                        |
+| --------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Drawing Office files as they look | 20 November 2026 | A preview shows what a file says (spec 9.7); the file's own app shows how it looks. The renderer written for it, 40,000 lines, was removed |
