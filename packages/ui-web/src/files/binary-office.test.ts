@@ -681,9 +681,117 @@ describe('a Word 6 or 95 document', () => {
       expect(readOlderWord(sixDocument(paragraphs, { quick }))).toEqual({ kind: 'document', markdown: expected, figures: [], cut: false })
   })
 
-  it('says when it is protected with a password, or is of Word 2 or older', () => {
+  it('says when it is protected with a password', () => {
     expect(() => readOlderWord(sixDocument(paragraphs, { encrypted: true }))).toThrow('protected with a password')
-    expect(() => readOlderWord(new Uint8Array([0x9b, 0xa5, 0x21, 0x00, ...new Array(600).fill(0)]))).toThrow('Word 2 or older')
+  })
+})
+
+/**
+ * A Word 2 document of paragraphs, written straight into the file: its header, its text whole or in a piece when saved
+ * quickly, a page of paragraph formats, and a style sheet of one built-in style and two of the document's own, the
+ * second named "Title".
+ */
+function twoDocument(paragraphs: { bytes: number[]; format: number[] }[], options: { quick?: boolean; encrypted?: boolean } = {}): Uint8Array {
+  const TEXT_AT = 0x180
+  const PAGE = 2
+  const text = paragraphs.flatMap((one) => one.bytes)
+  const word = new Bytes()
+    .u16(0xa5db)
+    .u16(45)
+    .u16(0)
+    .u16(0x0409)
+    .u16(0)
+    .u16((options.quick ? 0x0004 : 0) | (options.encrypted ? 0x0100 : 0))
+  word.padTo(TEXT_AT).raw(text)
+  word.padTo(PAGE * 512)
+  const page = new Uint8Array(512)
+  const pageView = new DataView(page.buffer)
+  let fc = TEXT_AT
+  pageView.setUint32(0, fc, true)
+  paragraphs.forEach((one, index) => {
+    fc += one.bytes.length
+    pageView.setUint32((index + 1) * 4, fc, true)
+  })
+  let free = 510
+  paragraphs.forEach((one, index) => {
+    const length = one.format.length % 2 === 1 ? one.format.length : one.format.length + 1
+    free -= length + 1
+    free -= free % 2
+    page[free] = (length + 1) / 2
+    page.set(one.format, free + 1)
+    page[(paragraphs.length + 1) * 4 + index] = free / 2
+  })
+  page[511] = paragraphs.length
+  word.raw(page)
+  // One built-in style, so the document's own are codes 0 and 1; the names, then empty properties and the styles' links.
+  const styles = word.length
+  word
+    .u16(1)
+    .u16(2 + 1 + 1 + 1 + 5)
+    .u8(0xff)
+    .u8(0)
+    .u8(5)
+    .narrow('Title')
+  word.u16(2).u16(2).u16(0)
+  const stylesSize = word.length - styles
+  const papx = word.length
+  word.u32(TEXT_AT).u32(fc).u16(PAGE)
+  const papxSize = word.length - papx
+  const clx = word.length
+  if (options.quick)
+    word
+      .u8(1)
+      .u16(2)
+      .u16(0)
+      .u8(2)
+      .u16(4 * 2 + 8)
+      .u32(0)
+      .u32(text.length)
+      .u16(0)
+      .u32(TEXT_AT)
+      .u16(0)
+  const clxSize = word.length - clx
+  const document = word.done()
+  const view = new DataView(document.buffer)
+  view.setUint32(0x18, TEXT_AT, true)
+  view.setUint32(0x34, text.length, true)
+  view.setUint32(0x5e, styles, true)
+  view.setUint16(0x62, stylesSize, true)
+  view.setUint32(0xa6, papx, true)
+  view.setUint16(0xaa, papxSize, true)
+  view.setUint32(0x11e, clx, true)
+  view.setUint16(0x122, clxSize, true)
+  view.setUint16(0x144, 1, true)
+  return document
+}
+
+/** A paragraph's properties in Word 2: its style's code, six bytes of its lines' heights, then one-byte codes and their operands. */
+const twoFormatting = (style: number, ...properties: number[][]) => [style, 0, 0, 0, 0, 0, 0, ...properties.flat()]
+
+const ascii = (text: string) => [...text].map((letter) => letter.charCodeAt(0))
+
+describe('a Word 2 document', () => {
+  const paragraphs = [
+    { bytes: [...ascii('Trip'), 0x0d], format: twoFormatting(253) },
+    { bytes: [...ascii('Caf'), 0xe9, 0x0d], format: twoFormatting(0) },
+    { bytes: [...ascii('Coat'), 0x0d], format: twoFormatting(0, [17, 0x40, 0x01], [70, 0, 0, 0], [3, 2, 0, 0], [13, 10]) },
+    { bytes: [0x41, 0x07], format: twoFormatting(0, [24, 1]) },
+    { bytes: [0x42, 0x07], format: twoFormatting(0, [24, 1]) },
+    { bytes: [0x07], format: twoFormatting(0, [24, 1], [25, 1]) },
+    { bytes: [...ascii('Plan'), 0x0d], format: twoFormatting(1) },
+    { bytes: [...ascii('End'), 0x0d], format: twoFormatting(0) }
+  ]
+  const expected = ['## Trip', 'Café', '- Coat', '| A | B |\n| --- | --- |', '# Plan', 'End'].join('\n\n')
+
+  it('reads its headings, built in or named, its lists and tables, saved whole or quickly', () => {
+    for (const quick of [false, true])
+      expect(readOlderWord(twoDocument(paragraphs, { quick }))).toEqual({ kind: 'document', markdown: expected, figures: [], cut: false })
+  })
+
+  it('says when it is protected with a password, cut short, or of Word 1 or older', () => {
+    expect(() => readOlderWord(twoDocument(paragraphs, { encrypted: true }))).toThrow('protected with a password')
+    expect(() => readOlderWord(twoDocument(paragraphs).subarray(0, 0x100))).toThrow('damaged')
+    expect(() => readOlderWord(new Uint8Array([0x9b, 0xa5, 0x21, 0x00, ...new Array(600).fill(0)]))).toThrow('Word 1 or older')
   })
 })
 

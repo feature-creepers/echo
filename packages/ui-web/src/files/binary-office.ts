@@ -204,13 +204,38 @@ const COUNTED_OPERANDS = new Set([3, 12, 15, 81, 103, 108, 188, 190, 191])
 const FOUR_BYTE_OPERANDS = new Set([20, 70, 74, 192, 194, 196, 200])
 
 /**
- * A paragraph's format in Word 6 and 95, from its style and its properties, each a one-byte code: in a table (24),
- * ending a row (25), numbered or bulleted at a level (13, `nLvlAnm`, 1 to 9 an outline's levels, more a list of one).
+ * How many bytes a property of Word 2 takes with its one-byte code, as Word 6's do with sizes of their own: most one
+ * byte of operand, some two, some counting their operand in their first byte, tab stops as Word 6 changes them.
  */
-function sixParagraphFormat(word: Reader, at: number, size: number): ParagraphFormat {
-  const format: ParagraphFormat = { style: word.u16(at), inTable: false, rowEnd: false, list: false, level: 0 }
-  let place = at + 2
-  const end = at + size
+function twoPropertySize(word: Reader, at: number): number {
+  const code = word.u8(at)
+  if (code === 23) return sixPropertySize(word, at)
+  if (TWO_COUNTED_OPERANDS.has(code)) return 2 + word.u8(at + 1)
+  return TWO_SIZES.get(code) ?? (TWO_TWO_BYTE_OPERANDS.has(code) ? 3 : 2)
+}
+
+const TWO_COUNTED_OPERANDS = new Set([3, 15, 78, 152, 154, 155])
+const TWO_TWO_BYTE_OPERANDS = new Set([
+  16, 17, 18, 19, 21, 22, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 38, 39, 40, 41, 42, 43, 45, 46, 47, 48, 49, 68, 71, 72, 82, 83, 96, 97, 98, 99, 115, 116, 119,
+  120, 123, 124, 129, 130, 131, 132, 135, 136, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 153, 159, 161, 162
+])
+const TWO_SIZES = new Map([
+  [70, 4],
+  [95, 14],
+  [157, 6],
+  [163, 6],
+  [158, 5],
+  [160, 5],
+  [164, 5]
+])
+
+/**
+ * A paragraph's format from properties each a one-byte code, as Word 6, 95 and 2 write them: in a table (24), ending
+ * a row (25), numbered or bulleted at a level (13, `nLvlAnm`, 1 to 9 an outline's levels, more a list of one).
+ */
+function codedParagraphFormat(word: Reader, style: number, from: number, end: number, sizeOf: (word: Reader, at: number) => number): ParagraphFormat {
+  const format: ParagraphFormat = { style, inTable: false, rowEnd: false, list: false, level: 0 }
+  let place = from
   while (place + 1 < end) {
     const code = word.u8(place)
     if (code === 24) format.inTable = (word.u8(place + 1) & 1) !== 0
@@ -220,9 +245,43 @@ function sixParagraphFormat(word: Reader, at: number, size: number): ParagraphFo
       format.list = level > 0
       format.level = level >= 1 && level <= 9 ? level - 1 : 0
     }
-    place += sixPropertySize(word, place)
+    place += sizeOf(word, place)
   }
   return format
+}
+
+/** A paragraph's format in Word 6 and 95: its style in two bytes, then its properties. */
+const sixParagraphFormat = (word: Reader, at: number, size: number) => codedParagraphFormat(word, word.u16(at), at + 2, at + size, sixPropertySize)
+
+/** A paragraph's format in Word 2: its style's code in one byte, six bytes of its lines' heights, then its properties. */
+const twoParagraphFormat = (word: Reader, at: number, size: number) => codedParagraphFormat(word, word.u8(at), at + 7, at + size, twoPropertySize)
+
+/**
+ * The heading level of each style of a Word 2 document, by its code: the built-in headings 1 to 9 are the codes 254
+ * down to 246, and a style may be named as one. Its style sheet lists the names first, the built-in styles' then the
+ * document's own, a style's code its place less the count of built-in ones.
+ */
+function twoHeadingStyles(word: Reader, at: number, size: number): Map<number, number> {
+  const levels = new Map<number, number>()
+  for (let level = 1; level <= 9; level++) levels.set(255 - level, Math.min(level, 6))
+  if (size < 4) return levels
+  const builtIn = word.u16(at)
+  const end = Math.min(at + size, at + 2 + word.u16(at + 2))
+  for (let place = at + 4, index = 0; place < end; index++) {
+    // A style left undefined is one byte.
+    const length = word.u8(place)
+    if (length === 0xff) {
+      place++
+      continue
+    }
+    if (length > 0 && place + 1 + length <= end) {
+      const name = latin1(word.bytes(place + 1, length)).toLowerCase()
+      const level = name === 'title' ? 1 : name === 'subtitle' ? 2 : Number(/^heading (\d)$/.exec(name)?.[1] ?? 0)
+      if (level > 0) levels.set((index - builtIn) & 0xff, Math.min(level, 6))
+    }
+    place += 1 + length
+  }
+  return levels
 }
 
 /** The code page of a language's 8-bit text, as Windows wrote it, by the language's identifier. */
@@ -497,38 +556,44 @@ const FIGURE_START = '\ue000'
 const FIGURE_END = '\ue001'
 
 /**
- * A Word document of 97 to 2003, or of Word 6 and 95, as Markdown: its headings, paragraphs, list items and tables,
- * in order, and the pictures of a Word 97 document where they are. Word 6 and 95 keep everything in one stream,
+ * A Word document of 97 to 2003, of Word 6 and 95, or of Word 2, as Markdown: its headings, paragraphs, list items and
+ * tables, in order, and the pictures of a Word 97 document where they are. Word 6 and 95 keep everything in one stream,
  * behind a header of their own, their text in the 8-bit code page of the document's language and their properties in
- * one-byte codes.
+ * one-byte codes; Word 2 wrote the same straight into the file, with places and codes of its own.
  */
 export function readOlderWord(bytes: Uint8Array): OfficePreview {
-  if (bytes.length >= 2 && (readU16(bytes, 0) === 0xa59b || readU16(bytes, 0) === 0xa5db))
-    throw new Error('It is a document of Word 2 or older, which is not read here.')
-  const file = openCompound(bytes)
-  const stream = file.stream('WordDocument')
+  if (readU16(bytes, 0) === 0xa59b) throw new Error('It is a document of Word 1 or older, which is not read here.')
+  const two = readU16(bytes, 0) === 0xa5db
+  const file = two ? undefined : openCompound(bytes)
+  const stream = file ? file.stream('WordDocument') : bytes
   if (!stream) throw new Error('This is not a Word document.')
   const word = reader(stream)
-  if (word.length < 0x200) damaged()
+  // Word 2's header ends with the count of its pages of paragraph formats.
+  if (word.length < (two ? 0x146 : 0x200)) damaged()
   const identifier = word.u16(0)
   const version = word.u16(2)
-  if (identifier !== 0xa5ec && identifier !== 0xa5dc) throw new Error('This is not a Word document.')
+  if (identifier !== 0xa5ec && identifier !== 0xa5dc && !two) throw new Error('This is not a Word document.')
   const six = version < 0xc1
-  if (six && version < 0x65) throw new Error('It is a document of Word 2 or older, which is not read here.')
+  if (six && version < 0x65 && !two) throw new Error('It is a document of Word 2 or older, which is not read here.')
   const flags = word.u16(0x0a)
   if (flags & 0x0100) throw new Error(PROTECTED)
-  const tableStream = six ? stream : file.stream(flags & 0x0200 ? '1Table' : '0Table')
+  const tableStream = six || !file ? stream : file.stream(flags & 0x0200 ? '1Table' : '0Table')
   if (!tableStream) damaged()
   const table = reader(tableStream as Uint8Array)
 
   // Where things are: in Word 97 a fixed part, then counts of 16-bit and 32-bit values, then pairs of where and how
-  // long; in Word 6 and 95, at places of their own.
+  // long; in Word 6 and 95, at places of their own; in Word 2, at others, how long in two bytes.
   let textLength: number
   let styles: WordPlace
   let formats: WordPlace
   let complex: WordPlace | undefined
   let pictures: ReturnType<typeof wordPictures> | undefined
-  if (six) {
+  if (two) {
+    textLength = Math.min(word.u32(0x34), CHARACTER_LIMIT)
+    styles = { at: word.u32(0x5e), size: word.u16(0x62) }
+    formats = { at: word.u32(0xa6), size: word.u16(0xaa) }
+    complex = flags & 0x0004 ? { at: word.u32(0x11e), size: word.u16(0x122) } : undefined
+  } else if (six || !file) {
     textLength = Math.min(word.u32(0x34), CHARACTER_LIMIT)
     styles = { at: word.u32(0x60), size: word.u32(0x64) }
     formats = { at: word.u32(0xc0), size: word.u32(0xc4) }
@@ -561,7 +626,7 @@ export function readOlderWord(bytes: Uint8Array): OfficePreview {
   }
 
   // The text is in pieces, each where the file keeps it: in 8-bit characters, or in UTF-16. A Word 6 file saved
-  // whole has one, from the start of its text; one saved quickly lists them, all 8-bit.
+  // whole has one, from the start of its text; one saved quickly lists them, all 8-bit, Word 2 their size in two bytes.
   const pieces: { start: number; end: number; at: number; narrow: boolean }[] = []
   if (complex === undefined) pieces.push({ start: 0, end: textLength, at: word.u32(0x18), narrow: true })
   else
@@ -572,8 +637,8 @@ export function readOlderWord(bytes: Uint8Array): OfficePreview {
         continue
       }
       if (kind !== 2) damaged()
-      const size = table.u32(at + 1)
-      const list = at + 5
+      const size = two ? table.u16(at + 1) : table.u32(at + 1)
+      const list = at + (two ? 3 : 5)
       const count = Math.floor((size - 4) / 12)
       for (let index = 0; index < count; index++) {
         const raw = table.u32(list + (count + 1) * 4 + index * 8 + 2)
@@ -586,7 +651,8 @@ export function readOlderWord(bytes: Uint8Array): OfficePreview {
   if (pieces.length === 0) damaged()
 
   // Each paragraph's format is found by where its mark is in the file, in pages of runs of 512 bytes: their numbers
-  // in four bytes in Word 97, in two in Word 6, whose list a quick save may leave short of the pages that follow.
+  // in four bytes in Word 97, in two in Word 6 and 2, whose list a quick save may leave short of the pages that follow.
+  // Each run names its format in 13 bytes in Word 97, 7 in Word 6, 1 in Word 2.
   const runs: { start: number; end: number; at?: number; size?: number; format?: ParagraphFormat }[] = []
   const numberSize = six ? 2 : 4
   const listed = formats.size >= 4 ? Math.floor((formats.size - 4) / (4 + numberSize)) : 0
@@ -596,10 +662,10 @@ export function readOlderWord(bytes: Uint8Array): OfficePreview {
     pageNumbers.push(six ? table.u16(at) : table.u32(at) & 0x3fffff)
   }
   if (six && listed > 0) {
-    const all = word.u16(0x190)
+    const all = word.u16(two ? 0x144 : 0x190)
     for (let next = (pageNumbers.at(-1) ?? 0) + 1; pageNumbers.length < Math.min(all, 4096); next++) pageNumbers.push(next)
   }
-  const entrySize = six ? 7 : 13
+  const entrySize = two ? 1 : six ? 7 : 13
   for (const number of pageNumbers) {
     const page = number * 512
     if (page + 512 > word.length) continue
@@ -632,9 +698,11 @@ export function readOlderWord(bytes: Uint8Array): OfficePreview {
             run.format =
               run.at === undefined || run.size === undefined
                 ? plainFormat()
-                : six
-                  ? sixParagraphFormat(word, run.at, run.size)
-                  : paragraphFormat(word, run.at, run.size)
+                : two
+                  ? twoParagraphFormat(word, run.at, run.size)
+                  : six
+                    ? sixParagraphFormat(word, run.at, run.size)
+                    : paragraphFormat(word, run.at, run.size)
           } catch {
             run.format = plainFormat()
           }
@@ -646,7 +714,7 @@ export function readOlderWord(bytes: Uint8Array): OfficePreview {
   }
   let headings = new Map<number, number>()
   try {
-    headings = headingStyles(table, styles.at, styles.size, !six)
+    headings = two ? twoHeadingStyles(word, styles.at, styles.size) : headingStyles(table, styles.at, styles.size, !six)
   } catch {
     // Styles that cannot be read name no headings.
   }
@@ -721,7 +789,7 @@ export function readOlderWord(bytes: Uint8Array): OfficePreview {
     else if (code === 0x09 || (code >= 0x20 && char !== FIGURE_START && char !== FIGURE_END)) paragraph += char
   }
   let read = 0
-  // Word 97 writes its 8-bit text in Western European; Word 6 and 95, in the code page of the document's language,
+  // Word 97 writes its 8-bit text in Western European; Word 2 to 95, in the code page of the document's language,
   // which may take two bytes for a character: the marks that matter are single bytes, found before decoding.
   const narrow = six
     ? word.u16(0x14) === 256
