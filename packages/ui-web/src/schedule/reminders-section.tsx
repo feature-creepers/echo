@@ -1,6 +1,6 @@
 import { type Client, followSchedule, type ScheduleState } from '@repo/client'
 import { useFollowed } from '@repo/client/react'
-import { type Job, lastName, type QuietHours, type ScheduleView } from '@repo/protocol'
+import { type CommandInput, type Job, lastName, type QuietHours, type ScheduleView } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useEffect, useId, useState } from 'react'
 import { useDevice } from '../device/device.tsx'
@@ -8,10 +8,11 @@ import { Button } from '../primitives/button.tsx'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { IconButton } from '../primitives/icon-button.tsx'
-import { ChevronGlyph, TrashGlyph } from '../primitives/icons.tsx'
+import { ChevronGlyph, EditGlyph, TrashGlyph } from '../primitives/icons.tsx'
 import { Switch } from '../primitives/switch.tsx'
 import { SettingGroup, SettingRow } from '../settings/rows.tsx'
 import { glide, settle } from '../styles/motion.ts'
+import { JobEditor } from './job-editor.tsx'
 import { clockWords, dayOf, howOften, KIND_WORDS, timeOf, whatItDoes, whenPast } from './words.ts'
 
 /** The time now, again every half minute, so "Today" turns to "Tomorrow" while the page is open. */
@@ -37,7 +38,7 @@ function useSchedule(client: Client): ScheduleState | undefined {
 
 /**
  * The Reminders page (docs/SPEC.md, section 7.10): what the person asked the assistant to do later, the next to
- * ring first, each to pause or delete; the past ones folded under them; the quiet hours; and what it takes for a
+ * ring first, each to edit, pause or delete; the past ones folded under them; the quiet hours; and what it takes for a
  * reminder to ring while the window is closed. It follows the core, so a reminder set by voice appears at once.
  */
 export function RemindersSection({ client, productName }: { client: Client; productName: string }) {
@@ -96,6 +97,7 @@ function Schedule({ state, productName }: { state: ScheduleState; productName: s
                     held={view.held}
                     onPause={(paused) => act(state.pause(job.id, paused), 'It could not be changed.')}
                     onDelete={() => act(state.remove([job.id]), 'It could not be deleted.')}
+                    onChange={(change) => state.change({ job: job.id, ...change })}
                   />
                 </Row>
               ))}
@@ -156,13 +158,20 @@ interface WaitingProps {
   held: boolean
   onPause(paused: boolean): void
   onDelete(): void
+  /** Change its words or timing. Rejects with why not, in words for the person. */
+  onChange(change: Omit<CommandInput<'schedule.change'>, 'job'>): Promise<void>
 }
 
-/** A job still to ring: when, what, how often, and its switch. A paused one is dimmed, its switch off. */
-function Waiting({ job, view, now, held, onPause, onDelete }: WaitingProps) {
+/**
+ * A job still to ring: when, what, how often, and its switch. A paused one is dimmed, its switch off. Its pencil
+ * opens it in place, to change its words or its timing.
+ */
+function Waiting({ job, view, now, held, onPause, onDelete, onChange }: WaitingProps) {
+  const [editing, setEditing] = useState(false)
   const paused = job.state === 'paused'
   const words = whatItDoes(job)
   const when = whenShown(job, view, now)
+  if (editing) return <JobEditor job={job} zone={view.timeZone} now={now} onSave={onChange} onDone={() => setEditing(false)} />
   return (
     <div className="flex items-start gap-4">
       <div className={cn('grid w-24 shrink-0 gap-0.5 pt-px transition-opacity duration-(--duration-calm) ease-soft', (paused || held) && 'opacity-45')}>
@@ -183,6 +192,9 @@ function Waiting({ job, view, now, held, onPause, onDelete }: WaitingProps) {
 
       <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
         <Switch label={`${job.title}: ${paused ? 'paused' : 'on'}`} on={!paused} onChange={(on) => onPause(!on)} />
+        <IconButton label={`Edit “${job.title}”`} onClick={() => setEditing(true)}>
+          <EditGlyph />
+        </IconButton>
         <IconButton label={`Delete “${job.title}”`} onClick={onDelete}>
           <TrashGlyph />
         </IconButton>

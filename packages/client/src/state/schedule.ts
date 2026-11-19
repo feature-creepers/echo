@@ -1,4 +1,4 @@
-import type { QuietHours, ScheduleView } from '@repo/protocol'
+import type { CommandInput, QuietHours, ScheduleView } from '@repo/protocol'
 import type { Session } from '../session.ts'
 import { cell, type Followed } from './followed.ts'
 
@@ -8,6 +8,8 @@ export interface ScheduleState extends Followed<ScheduleView | undefined> {
   unread: Followed<boolean>
   /** Pause a job, or resume it from its next time. */
   pause(job: string, paused: boolean): Promise<void>
+  /** Change a job's words or its timing. Rejects with why not, in words for the person. */
+  change(change: CommandInput<'schedule.change'>): Promise<void>
   /** Delete jobs for good. */
   remove(jobs: readonly string[]): Promise<void>
   /** Choose the quiet hours. What is left out keeps its value. */
@@ -42,6 +44,9 @@ export function followSchedule(session: Session): ScheduleState {
     unread: { current: unread.current, subscribe: unread.subscribe },
     async pause(job, paused) {
       accept((await session.run('schedule.pause', { job, paused })).schedule)
+    },
+    async change(change) {
+      accept((await session.run('schedule.change', change)).schedule)
     },
     async remove(jobs) {
       accept((await session.run('schedule.delete', { jobs: [...jobs] })).schedule)

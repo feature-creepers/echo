@@ -1,5 +1,14 @@
 import { z } from 'zod'
-import { jobIdSchema, MAX_SNOOZE_MINUTES, quietHoursSchema, scheduleViewSchema } from '../schedule.ts'
+import {
+  JOB_REQUEST_MAX_LENGTH,
+  JOB_SENTENCE_MAX_LENGTH,
+  JOB_TITLE_MAX_LENGTH,
+  jobIdSchema,
+  MAX_SNOOZE_MINUTES,
+  quietHoursSchema,
+  scheduleViewSchema,
+  timingSchema
+} from '../schedule.ts'
 
 const scheduleOutput = z.object({ schedule: scheduleViewSchema })
 
@@ -22,6 +31,22 @@ export const scheduleCommands = {
    */
   'schedule.snooze': {
     input: z.object({ job: jobIdSchema, minutes: z.number().int().min(1).max(MAX_SNOOZE_MINUTES) }),
+    output: scheduleOutput
+  },
+
+  /**
+   * Change a job's words or its timing, from the Reminders page. What is left out keeps its value. The timing is
+   * checked as when a job is set: a moment to come, at most five years ahead. A new timing counts from now, and leaves
+   * a snooze behind. A job on files keeps its folder: it is changed by asking, which checks the folder.
+   */
+  'schedule.change': {
+    input: z.object({
+      job: jobIdSchema,
+      title: z.string().trim().min(1).max(JOB_TITLE_MAX_LENGTH).optional(),
+      sentence: z.string().trim().min(1).max(JOB_SENTENCE_MAX_LENGTH).optional(),
+      request: z.string().trim().min(1).max(JOB_REQUEST_MAX_LENGTH).optional(),
+      timing: timingSchema.optional()
+    }),
     output: scheduleOutput
   },
 

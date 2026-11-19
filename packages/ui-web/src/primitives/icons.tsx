@@ -131,6 +131,12 @@ export const VolumeGlyph = ({ muted = false }: { muted?: boolean }) => (
   </Glyph>
 )
 
+export const EditGlyph = () => (
+  <Glyph>
+    <path d="M10.5 3.5 12.5 5.5M3.5 12.5l.5-2.5 6.5-6.5 2 2-6.5 6.5-2.5.5Z" />
+  </Glyph>
+)
+
 export const TrashGlyph = () => (
   <Glyph>
     <path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5" />

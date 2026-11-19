@@ -37,6 +37,7 @@ import type { Workspace } from './ports/workspace.ts'
 import { guideText, readGuide } from './projects/guide.ts'
 import { memorySearch } from './records/memory-search.ts'
 import { createSchedule } from './schedule/schedule.ts'
+import { readTiming } from './schedule/timing.ts'
 import { SCHEDULE_INSTRUCTIONS, SCHEDULE_ROUTING, scheduleTools } from './schedule/tools.ts'
 import { createUserSettings } from './settings/settings.ts'
 import { createTools, type Tool } from './tools/tools.ts'
@@ -520,6 +521,17 @@ export function createCore(options: CoreOptions): Core {
       'schedule.pause': (input) => {
         const change = schedule.change(input.job, { paused: input.paused })
         return change.ok ? { ok: true, output: { schedule: schedule.read() } } : { ok: false, error: { code: 'invalid-input', message: change.problem } }
+      },
+      'schedule.change': (input) => {
+        const { job, timing: asked, ...words } = input
+        const refused = (message: string) => ({ ok: false as const, error: { code: 'invalid-input' as const, message } })
+        // A folder is checked against what the person granted when a job on files is set, which this does not do.
+        if (asked !== undefined && (asked.kind === 'files' || schedule.get(job)?.timing.kind === 'files'))
+          return refused('A job that rings on files is changed by asking, so its folder is checked.')
+        const timing = asked === undefined ? undefined : readTiming(asked, now().getTime(), zone())
+        if (timing && !timing.ok) return refused(timing.problem)
+        const changed = schedule.change(job, { ...words, ...(timing?.ok ? { timing: timing.timing } : {}) })
+        return changed.ok ? { ok: true, output: { schedule: schedule.read() } } : refused(changed.problem)
       },
       'schedule.snooze': (input) => {
         const snoozed = schedule.snooze(input.job, input.minutes)

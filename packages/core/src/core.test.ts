@@ -440,6 +440,38 @@ describe('reminders through the core', () => {
     expect(second.harness.sessions).toHaveLength(0)
   })
 
+  it("changes a job's words and timing from the page, checked as when it is set", async () => {
+    const { core, harness } = timed()
+    await run(core, 'utterance.send', { text: 'Remind me in two minutes to stretch' })
+    await settled()
+    const token = harness.sessions[0]?.request.tools?.token ?? ''
+    await core.toolHost.call(token, 'schedule_create', {
+      kind: 'reminder',
+      title: 'Stretch',
+      sentence: 'Time to stretch.',
+      timing: { kind: 'once', inMinutes: 2 }
+    })
+    harness.sessions[0]?.reply('Okay.')
+    const job = (await run(core, 'schedule.read', {})).schedule.jobs[0]?.id as string
+
+    const changed = await run(core, 'schedule.change', { job, title: 'Stretch and walk', timing: { kind: 'daily', time: '10:00' } })
+    expect(changed.schedule.jobs[0]).toMatchObject({
+      title: 'Stretch and walk',
+      sentence: 'Time to stretch.',
+      timing: { kind: 'daily', time: '10:00' },
+      next: '2026-11-17T09:00:00.000Z'
+    })
+    const passed = await core.execute({ type: 'command', id: 'c2', name: 'schedule.change', input: { job, timing: { kind: 'once', at: '2026-11-17T08:00' } } })
+    expect(passed).toMatchObject({ ok: false, error: { message: expect.stringContaining('That moment has passed') } })
+    const files = await core.execute({
+      type: 'command',
+      id: 'c3',
+      name: 'schedule.change',
+      input: { job, timing: { kind: 'files', folder: '/home/ada/Downloads', repeat: true } }
+    })
+    expect(files).toMatchObject({ ok: false, error: { message: expect.stringContaining('changed by asking') } })
+  })
+
   it('pauses everything and resumes on command, and keeps the quiet hours', async () => {
     const { core } = timed()
     expect((await run(core, 'schedule.hold', { held: true })).schedule.held).toBe(true)

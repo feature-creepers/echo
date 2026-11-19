@@ -73,6 +73,7 @@ function setup(overrides: Partial<Handlers> = {}) {
     'schedule.pause': () => ({ ok: true, output: { schedule } }),
     'schedule.delete': () => ({ ok: true, output: { schedule } }),
     'schedule.snooze': () => ({ ok: true, output: { schedule } }),
+    'schedule.change': () => ({ ok: true, output: { schedule } }),
     'schedule.quiet.set': () => ({ ok: true, output: { schedule } }),
     'schedule.hold': () => ({ ok: true, output: { schedule } }),
     'attachment.open': () => ({ ok: true, output: { attachment: 'a1' } }),
