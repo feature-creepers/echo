@@ -34,6 +34,7 @@ import type { Grant, Tool } from '../tools/tools.ts'
 import { ASIDE_STAYS_MS, type Checked, type Screen, type Showing } from '../views/screen.ts'
 import { DELEGATED_FIRST, instructionsFor, orchestratorInstructions, SIDE_QUESTION, SPEAK_FIRST, threadInstructions, WORK_FIRST } from './instructions.ts'
 import { readySentence } from './ready.ts'
+import { lastRequest, RESUMES_WITHOUT_THE_PERSON, resumesInARow, wakeRequest } from './resume.ts'
 import { isThanks } from './thanks.ts'
 
 /** The type of the record written when a turn is over: one line of the channel log, word for word. */
@@ -480,6 +481,11 @@ export function createChannel(options: ChannelOptions): Channel {
   }
   const registry = createThreadRegistry({ records, now, newId })
   registry.onEvent(emit)
+  /** The thread whose work a thread does: a sub-thread's is the thread that opened it. */
+  const ownerOf = (id: string): string => {
+    const thread = registry.get(id)
+    return thread?.kind === 'subthread' ? (thread.parent ?? id) : id
+  }
 
   /**
    * What the last run of the app left to do: the requests its threads were answering when it stopped, and what a
@@ -1119,6 +1125,12 @@ export function createChannel(options: ChannelOptions): Channel {
     run(input) {
       const asked = resumeInput.safeParse(input)
       if (!asked.success) return { ok: false, text: `${RESUME_TOOL} takes what to carry on with, as text.` }
+      const owner = ownerOf(runtime.thread)
+      if (resumesInARow(transcript, owner) >= RESUMES_WITHOUT_THE_PERSON)
+        return {
+          ok: false,
+          text: `You have already carried this work on by yourself across ${RESUMES_WITHOUT_THE_PERSON} restarts since the person last spoke to you. Do not restart the app: say where the work stands, write your report, and wait for them.`
+        }
       records.append([{ type: RESUME, payload: { id: newId(), thread: runtime.thread, request: asked.data.request } }])
       return { ok: true, text: 'Kept: when the app opens again, you are woken with it.' }
     }
@@ -1806,24 +1818,42 @@ export function createChannel(options: ChannelOptions): Channel {
 
     resume() {
       const started: TurnId[] = []
-      for (const resumption of resumptions.splice(0)) {
-        records.append([{ type: RESUMED, payload: { id: resumption.id } }])
-        const thread = registry.get(resumption.thread)
+      // One turn for each thread: what it planned for after the restart, else the request the restart cut short.
+      const byThread = new Map<string, Resumption[]>()
+      for (const resumption of resumptions.splice(0)) byThread.set(resumption.thread, [...(byThread.get(resumption.thread) ?? []), resumption])
+      // Counted before any is woken, so a thread woken now does not hold back its own sub-threads, and with the turns
+      // this restart cut short, which are in the transcript only once they are closed below.
+      const counted = [...transcript, ...[...byThread.values()].flat().flatMap((resumption) => (resumption.cut ? [resumption.cut] : []))]
+      const held = new Set([...byThread.keys()].map(ownerOf).filter((owner) => resumesInARow(counted, owner) >= RESUMES_WITHOUT_THE_PERSON))
+
+      for (const [id, waiting] of byThread) {
+        records.append(waiting.map((resumption) => ({ type: RESUMED, payload: { id: resumption.id } })))
+        const thread = registry.get(id)
         if (!thread) continue
-        // The request cut short is closed as stopped, and taken up again as a turn of its own.
-        if (resumption.cut) {
-          const cut: Exchange = { ...resumption.cut, outcome: 'stopped', problem: 'The app restarted.' }
-          transcript.push(cut)
-          records.append([{ type: EXCHANGE, payload: cut }])
+        const owner = ownerOf(thread.id)
+        // The requests cut short are closed as stopped; a thread that has carried on by itself enough waits for the person.
+        const problem = held.has(owner)
+          ? `The app restarted. Not carried on by itself: it already had been ${RESUMES_WITHOUT_THE_PERSON} times since you last spoke to it.`
+          : 'The app restarted.'
+        for (const { cut } of waiting) {
+          if (!cut) continue
+          const stopped: Exchange = { ...cut, outcome: 'stopped', problem }
+          transcript.push(stopped)
+          records.append([{ type: EXCHANGE, payload: stopped }])
         }
+        if (held.has(owner)) continue
+
+        const planned = waiting.find((resumption) => !resumption.cut)
+        const cutShort = waiting.find((resumption) => resumption.cut)
+        const cut = cutShort?.cut
         // A sub-thread takes up its part for the thread that opened it, out of the conversation, as before.
-        const delegated = thread.kind === 'subthread' ? (thread.parent ?? thread.id) : undefined
+        const delegated = thread.kind === 'subthread' ? owner : undefined
         const exchange: Exchange = {
           turn: newId(),
           at: now().toISOString(),
-          persona: resumption.cut?.persona ?? activePersona().id,
+          persona: cut?.persona ?? activePersona().id,
           thread: thread.id,
-          said: resumption.cut?.said ?? resumption.request,
+          said: planned?.request ?? cut?.said ?? '',
           trigger: delegated === undefined ? 'resume' : 'delegated',
           replied: '',
           outcome: 'running'
@@ -1834,9 +1864,7 @@ export function createChannel(options: ChannelOptions): Channel {
         emit({ type: 'event', name: 'turn.started', exchange })
         const runtime = runtimeFor(thread.id)
         turn.routed = runtime
-        const request = resumption.cut
-          ? `(The app restarted while you were working on this: it was updated, or reopened. Your session is new. Check where the work stands, in the files and what you did above, then carry it on to the end without redoing what is done.)\n\n${resumption.request}`
-          : `(The app has opened again, as you planned before it restarted. Carry on with this:)\n\n${resumption.request}`
+        const request = wakeRequest({ planned: planned?.request, cut: cutShort?.request, asked: lastRequest(transcript, owner) })
         runtime.queue.push({ turn, text: request })
         void next(runtime)
         started.push(exchange.turn)

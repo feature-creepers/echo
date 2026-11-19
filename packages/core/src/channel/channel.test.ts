@@ -11,6 +11,7 @@ import { createTools } from '../tools/tools.ts'
 import { ASIDE_STAYS_MS, createScreen } from '../views/screen.ts'
 import { type Abilities, createChannel, EXCHANGE, planProgress, SUBTHREADS_AT_ONCE } from './channel.ts'
 import { DELEGATED_FIRST, SIDE_QUESTION, SPEAK_FIRST, WORK_FIRST } from './instructions.ts'
+import { RESUMES_WITHOUT_THE_PERSON } from './resume.ts'
 
 interface Setup {
   harness?: ScriptedHarness
@@ -1507,10 +1508,56 @@ describe('a project', () => {
     const second = setup({ records, more: projectAbilities(), run: 'again-' })
     expect(second.channel.resume()).toHaveLength(1)
     await settled()
-    expect(second.harness.sessions[0]?.sent[0]).toContain(
-      '(The app has opened again, as you planned before it restarted. Carry on with this:)\n\nCheck the installed build'
-    )
+    const woken = second.harness.sessions[0]?.sent[0]
+    expect(woken).toContain('(The app has opened again, as you planned before it restarted. Carry on only with what the person asked')
+    expect(woken).toContain('What the person asked, in their words: Build the app and install it.')
+    expect(woken).toContain('Your note for now: Check the installed build')
     expect(second.channel.read(10).at(-1)).toMatchObject({ trigger: 'resume', said: 'Check the installed build, then go on with the plan.' })
+  })
+
+  /** One run of the app in which the thread plans its wake-up and restarts the app while still at work. */
+  const restartWhileWorking = async (records: ReturnType<typeof memoryRecords>, run: string, first: boolean) => {
+    const app = setup({ records, more: projectAbilities(), run })
+    if (first) {
+      app.channel.say('Build the app and install it.')
+      await settled()
+      await app.call(0, 'thread_open', { title: 'Echo', folder: '~/code/echo' })
+      app.harness.sessions[0]?.emit({ type: 'turn-end' })
+      await settled()
+    } else {
+      app.channel.resume()
+      await settled()
+    }
+    const thread = app.harness.sessions[first ? 1 : 0]
+    const asked = await app.call(first ? 1 : 0, 'resume_after_restart', { request: 'Check the installed build, then go on.' })
+    thread?.emit({ type: 'tool', name: 'Bash', phase: 'started', call: 'install' })
+    return { app, asked }
+  }
+
+  it('wakes a thread with one turn when the restart both cut its work short and was planned', async () => {
+    const records = memoryRecords()
+    await restartWhileWorking(records, '', true)
+    const second = setup({ records, more: projectAbilities(), run: 'again-' })
+    expect(second.channel.resume()).toHaveLength(1)
+    await settled()
+    expect(second.channel.read(10).map((line) => [line.trigger, line.outcome])).toEqual([
+      [undefined, 'stopped'],
+      ['resume', 'running']
+    ])
+  })
+
+  it(`carries work on by itself across ${RESUMES_WITHOUT_THE_PERSON} restarts at most, then waits for the person`, async () => {
+    const records = memoryRecords()
+    await restartWhileWorking(records, '', true)
+    for (let run = 1; run < RESUMES_WITHOUT_THE_PERSON; run++)
+      expect((await restartWhileWorking(records, `run${run}-`, false)).asked).toMatchObject({ ok: true })
+    // Woken for the last time it may be: it can no longer plan to be woken again.
+    const last = await restartWhileWorking(records, 'last-', false)
+    expect(last.asked).toMatchObject({ ok: false, text: expect.stringContaining('wait for them') })
+
+    const after = setup({ records, more: projectAbilities(), run: 'after-' })
+    expect(after.channel.resume()).toEqual([])
+    expect(after.channel.read(1).at(-1)).toMatchObject({ trigger: 'resume', outcome: 'stopped', problem: expect.stringContaining('Not carried on by itself') })
   })
 })
 
