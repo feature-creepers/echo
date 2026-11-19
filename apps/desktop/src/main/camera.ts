@@ -1,7 +1,7 @@
-import { openSession } from '@repo/client'
+import { CONFIRM_TIMEOUT_MS, checkDeviceRequest, type DeviceConfirmation, openSession } from '@repo/client'
 import { type CommandInput, deviceCameraSchema, encodeBase64 } from '@repo/protocol'
 import { type AccentName, accents, neutralAccent, radius } from '@repo/tokens'
-import { BrowserWindow, ipcMain, screen, type WebContents } from 'electron'
+import { BrowserWindow, dialog, ipcMain, screen, type WebContents } from 'electron'
 import { CAMERA_CHANNELS, type CameraAnswer } from '../preload/bridge.ts'
 import type { CoreProcess } from './core-process.ts'
 
@@ -30,7 +30,8 @@ export interface CameraService {
  * The `camera` capability of this device (docs/SPEC.md, section 12.4, more of the device). The core asks for a picture
  * once the person allowed it on a card; the window takes it, and may use the camera only while that request waits, so
  * nothing else in it ever turns the camera on. While it is on, and a moment after, a marker at the top of the screen
- * says so, above every window, letting every click through and never taking the focus.
+ * says so, above every window, letting every click through and never taking the focus. A remote core is not taken at
+ * its word that the person allowed it: the device asks them itself first, with the system's own dialog.
  */
 export function serveCamera(core: CoreProcess, window: BrowserWindow): CameraService {
   const session = openSession({ send: (message) => core.send(message), onMessage: (listener) => void core.observe(listener) })
@@ -78,11 +79,20 @@ export function serveCamera(core: CoreProcess, window: BrowserWindow): CameraSer
     session.run('camera.picture', input).catch(() => undefined)
   }
 
-  core.observe((message) => {
-    if ((message as { name?: unknown } | null)?.name !== 'device.camera') return
-    const read = deviceCameraSchema.safeParse(message)
-    if (!read.success) return
-    const { request, camera } = read.data
+  /** The person's own answer on this device, asked with the system's dialog. No answer in time counts as a no. */
+  const confirm = async (question: DeviceConfirmation): Promise<boolean> => {
+    const shown = { type: 'question' as const, buttons: [question.allow, question.refuse], defaultId: 1, cancelId: 1, noLink: true }
+    const ask = { ...shown, title: question.heading, message: question.heading, detail: question.detail, signal: AbortSignal.timeout(CONFIRM_TIMEOUT_MS) }
+    try {
+      const { response } = window.isDestroyed() ? await dialog.showMessageBox(ask) : await dialog.showMessageBox(window, ask)
+      return response === 0
+    } catch {
+      return false
+    }
+  }
+
+  /** Take the picture the core asked for, in the window, with the marker on. */
+  const take = (request: string, camera: string | undefined) => {
     if (taking) {
       session.run('camera.picture', { request, problem: 'The camera is already taking a picture.' }).catch(() => undefined)
       return
@@ -94,6 +104,19 @@ export function serveCamera(core: CoreProcess, window: BrowserWindow): CameraSer
     taking = { id: request, timer: setTimeout(() => answer({ request, problem: 'The camera took too long to answer.' }), TAKE_TIMEOUT_MS) }
     showMarker()
     window.webContents.send(CAMERA_CHANNELS.capture, { id: request, ...(camera === undefined ? {} : { camera }) })
+  }
+
+  core.observe((message) => {
+    if ((message as { name?: unknown } | null)?.name !== 'device.camera') return
+    const read = deviceCameraSchema.safeParse(message)
+    if (!read.success) return
+    const { request, camera } = read.data
+    const check = checkDeviceRequest({ name: 'device.camera' }, { remote: core.remote() })
+    if (check.run) return take(request, camera)
+    void confirm(check.confirm).then((allowed) => {
+      if (allowed) take(request, camera)
+      else session.run('camera.picture', { request, problem: check.confirm.refused }).catch(() => undefined)
+    })
   })
 
   ipcMain.on(CAMERA_CHANNELS.picture, (event, given: CameraAnswer) => {

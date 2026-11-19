@@ -77,6 +77,7 @@ export function connect(transport: Transport, identity: Identity): Promise<Conne
       settled = true
       resolve({
         core: reply.data.core,
+        remote: transport.remote,
         send: (next) => transport.send(next),
         onMessage: (listener) => {
           messageListener = listener

@@ -21,6 +21,8 @@ export function openLocal(endpoint: string): Promise<Transport> {
     let failure: Error | undefined
 
     const transport: Transport = {
+      // A core on this machine runs as the person's own account: it could reach anything the device reaches.
+      remote: false,
       send: (message) => void socket.write(encodeLine(message)),
       onMessage: (listener) => {
         onMessage = listener

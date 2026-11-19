@@ -26,6 +26,8 @@ export interface CoreProcess extends SessionLink {
   onLink(listener: (link: CoreLink) => void): void
   /** Resolves when the link is settled: connected or failed. */
   settled(): Promise<CoreLink>
+  /** The core is on another machine, so what it asks of this device is checked here again. False until connected. */
+  remote(): boolean
   /**
    * Be told every message from the core, beside the session the window holds: how the app hears what is meant for
    * this device itself, such as a notification. Returns a function that stops the telling.
@@ -126,6 +128,7 @@ export function startCore(options: CoreProcessOptions): CoreProcess {
       listener = next
     },
     settled: () => settled,
+    remote: () => connection?.remote ?? false,
     observe(observer) {
       observers.add(observer)
       return () => void observers.delete(observer)

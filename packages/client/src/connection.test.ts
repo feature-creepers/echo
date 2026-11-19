@@ -5,13 +5,14 @@ import type { Transport } from './transport.ts'
 
 const identity: Identity = { client: { kind: 'desktop', version: '0.1.0', device: 'device-1' }, capabilities: ['display'], credential: 'token' }
 
-/** A transport whose other end is the test. */
-function fakeTransport() {
+/** A transport whose other end is the test, to a core on this machine unless it says so. */
+function fakeTransport(remote = false) {
   let onMessage: (message: unknown) => void = () => undefined
   let onClose: (cause?: Error) => void = () => undefined
   const sent: unknown[] = []
   let closed = false
   const transport: Transport = {
+    remote,
     send: (message) => sent.push(message),
     onMessage: (listener) => (onMessage = listener),
     onClose: (listener) => (onClose = listener),
@@ -33,6 +34,15 @@ describe('connect', () => {
     link.receive({ type: 'welcome', protocol: PROTOCOL_VERSION, core: { version: '1.2.3' } })
     expect((await connecting).core).toEqual({ version: '1.2.3' })
     expect(link.isClosed()).toBe(false)
+  })
+
+  it('says whether the core it reached is on another machine, as its transport does', async () => {
+    for (const remote of [false, true]) {
+      const link = fakeTransport(remote)
+      const connecting = connect(link.transport, identity)
+      link.receive({ type: 'welcome', protocol: PROTOCOL_VERSION, core: { version: '1.2.3' } })
+      expect((await connecting).remote).toBe(remote)
+    }
   })
 
   it('rejects with the reason when the core refuses, and closes the link', async () => {

@@ -1,5 +1,6 @@
 export { type Client, openClient } from './client.ts'
 export { type Connection, ConnectionRefused, connect, HandshakeFailed, type Identity } from './connection.ts'
+export { CONFIRM_TIMEOUT_MS, checkDeviceRequest, type DeviceCheck, type DeviceConfirmation, type DeviceRequest } from './device/checks.ts'
 export {
   type AudioDevice,
   changeDeviceSettings,
