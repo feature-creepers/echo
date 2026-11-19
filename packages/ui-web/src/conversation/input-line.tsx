@@ -2,7 +2,7 @@ import { describeShortcut } from '@repo/client'
 import type { Look } from '@repo/protocol'
 import { type ClipboardEvent, type FormEvent, type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { AttachmentChips } from '../attachments/attachment-chips.tsx'
-import type { Attachments } from '../attachments/use-attachments.ts'
+import { type Attachments, anyCopied, copiedFile } from '../attachments/use-attachments.ts'
 import { lastPart } from '../changes/words.ts'
 import { useDevice } from '../device/device.tsx'
 import { PaperclipGlyph } from '../files/glyphs.tsx'
@@ -118,10 +118,25 @@ export function InputLine({ name, stopAll, onSay, onStop, talk, persona, pause, 
 
   // Pictures and files pasted go with the message; text pasted is text, as always.
   const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    if (!attachments) return
     const files = [...event.clipboardData.files]
-    if (!attachments || files.length === 0) return
+    if (files.length > 0) {
+      event.preventDefault()
+      attachments.add(files)
+      return
+    }
+    // Files a Linux file manager copied come as their addresses, which would be pasted as text: the device is asked
+    // for them first, and the text is pasted as it came when none were copied.
+    const take = host?.files?.takeCopied
+    if (!take) return
     event.preventDefault()
-    attachments.add(files)
+    const text = event.clipboardData.getData('text/plain')
+    const field = event.currentTarget
+    const pasteText = () => {
+      field.focus()
+      if (text !== '') document.execCommand('insertText', false, text)
+    }
+    void take().then((copied) => (anyCopied(copied) ? attachments.add(copied.files.map(copiedFile), copied.folders, copied) : pasteText()), pasteText)
   }
 
   return (

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { fittedSize, renamedFor } from './fit-for-model.ts'
-import { pastedName, refusalOf } from './use-attachments.ts'
+import { anyCopied, copiedFile, pastedName, refusalOf } from './use-attachments.ts'
 
 describe('a picture made to fit a model', () => {
   it.each([
@@ -25,6 +25,14 @@ describe('the composer’s files', () => {
     expect(pastedName(new Date(2026, 10, 18, 9, 5, 7), 'image/png')).toBe('Pasted image 09.05.07.png')
     expect(pastedName(new Date(2026, 10, 18, 14, 0, 0), 'image/jpeg')).toBe('Pasted image 14.00.00.jpg')
     expect(pastedName(new Date(2026, 10, 18, 14, 0, 0), 'image/svg+xml')).toBe('Pasted image 14.00.00.svg')
+  })
+
+  it('hands over a file a file manager copied as a file of its kind', () => {
+    const picture = copiedFile({ name: 'sea.jpg', data: new Uint8Array([1, 2, 3]) })
+    expect([picture.name, picture.type, picture.size]).toEqual(['sea.jpg', 'image/jpeg', 3])
+    expect(copiedFile({ name: 'notes', data: new Uint8Array() }).type).toBe('')
+    expect(anyCopied({ files: [], folders: [], tooLarge: [], more: 0 })).toBe(false)
+    expect(anyCopied({ files: [], folders: [], tooLarge: ['film.mov'], more: 0 })).toBe(true)
   })
 
   it.each([

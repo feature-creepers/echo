@@ -53,6 +53,23 @@ export interface FilesBridge {
   open(path: string): Promise<void>
   /** Where a file or a folder dropped on the window is on this computer. */
   pathOf(file: File): string | undefined
+  /**
+   * The files copied in a file manager that the window is not given when they are pasted, read by the app: Linux's
+   * file managers put their addresses on the clipboard, not their content. Each file's name and bytes, the folders
+   * by where they are, and what cannot go; nothing in them when none were copied. Left out where the window is given
+   * copied files as files.
+   */
+  takeCopied?(): Promise<CopiedFiles>
+}
+
+/** Files copied in a file manager, read by the app. */
+export interface CopiedFiles {
+  files: { name: string; data: Uint8Array }[]
+  folders: { name: string; path: string }[]
+  /** The names of files over the most a file can be. */
+  tooLarge: string[]
+  /** How many more files and folders were copied than can go with one message. */
+  more: number
 }
 
 export type ShortcutName = keyof DeviceSettings['shortcuts']
@@ -137,7 +154,8 @@ export const APP_CHANNELS = {
   updateInstall: 'updates:install',
   filesPick: 'files:pick',
   filesReveal: 'files:reveal',
-  filesOpen: 'files:open'
+  filesOpen: 'files:open',
+  filesTakeCopied: 'files:take-copied'
 } as const
 
 /** The channel the global shortcut to talk comes on. */

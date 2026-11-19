@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { basename, isAbsolute, join } from 'node:path'
 import { type DeviceSettingsChange, isShortcut, runsWhenOpened, shortcutClash } from '@repo/client'
 import { type AccentName, accents, color, frame } from '@repo/tokens'
-import { app, BrowserWindow, dialog, ipcMain, nativeImage, nativeTheme, type OpenDialogOptions, session, shell, type WebContents } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, nativeTheme, type OpenDialogOptions, session, shell, type WebContents } from 'electron'
 import {
   type About,
   APP_CHANNELS,
@@ -18,6 +18,7 @@ import {
 import { setLaunchAtLogin, startedAtLogin } from './autostart/index.ts'
 import { serveCamera } from './camera.ts'
 import { chrome } from './chrome/index.ts'
+import { copiedLists, copiedPaths, readCopied } from './copied-files.ts'
 import { type CoreProcess, startCore } from './core-process.ts'
 import { serveDesktopMarker } from './desktop-marker.ts'
 import { deviceId } from './device.ts'
@@ -361,6 +362,11 @@ function start(): void {
     const problem = await shell.openPath(path)
     if (problem !== '') shell.showItemInFolder(path)
   })
+  // Files copied in a Linux file manager, which puts their addresses on the clipboard: read as the person pastes, and
+  // only those the clipboard names.
+  ipcMain.handle(APP_CHANNELS.filesTakeCopied, async () =>
+    process.platform === 'linux' ? readCopied(copiedPaths(await copiedLists(await clipboard.read()))) : { files: [], folders: [], tooLarge: [], more: 0 }
+  )
   ipcMain.handle(APP_CHANNELS.updateState, () => updater.state())
   ipcMain.handle(APP_CHANNELS.updateCheck, () => updater.check())
   ipcMain.handle(APP_CHANNELS.updateDownload, () => updater.download())

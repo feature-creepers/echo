@@ -1,5 +1,5 @@
 import { type Client, type Handed, HandOverCancelled, handOver } from '@repo/client'
-import { ATTACHMENT_MAX_BYTES, ATTACHMENTS_PER_TURN } from '@repo/protocol'
+import { ATTACHMENT_MAX_BYTES, ATTACHMENTS_PER_TURN, mediaTypeOf } from '@repo/protocol'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { fitForModel } from './fit-for-model.ts'
 
@@ -27,8 +27,11 @@ export interface Attachments {
   pending: readonly Pending[]
   /** Why something was not added, in a few quiet words. It goes by itself after a while. */
   notice: string | undefined
-  /** Add files, and folders by where they are. Beyond ten, or over 25 MB, they are refused with a notice. */
-  add(files: readonly File[], folders?: readonly { name: string; path: string }[]): void
+  /**
+   * Add files, and folders by where they are. Beyond ten, or over 25 MB, they are refused with a notice, as are the
+   * ones the device did not read for those reasons (`unread`).
+   */
+  add(files: readonly File[], folders?: readonly { name: string; path: string }[], unread?: Unread): void
   /** Say why something could not be added. */
   refuse(notice: string): void
   remove(key: string): void
@@ -38,6 +41,12 @@ export interface Attachments {
    * when one of them could not be sent: the composer keeps them, and says so.
    */
   take(): Promise<Handed | undefined>
+}
+
+/** Files the device did not read: those over the most a file can be, by name, and how many more than can go. */
+interface Unread {
+  tooLarge: readonly string[]
+  more: number
 }
 
 interface Sending {
@@ -55,6 +64,15 @@ export function pastedName(at: Date, type: string): string {
   const time = [at.getHours(), at.getMinutes(), at.getSeconds()].map((part) => String(part).padStart(2, '0')).join('.')
   const extension = type.split('/')[1]?.replace('jpeg', 'jpg').replace(/\+.*$/, '') ?? 'png'
   return `Pasted image ${time}.${extension}`
+}
+
+/** Whether a file manager copied anything the device read, or would have but for the limits. */
+export const anyCopied = (copied: { files: readonly unknown[]; folders: readonly unknown[]; tooLarge: readonly unknown[]; more: number }) =>
+  copied.files.length + copied.folders.length + copied.tooLarge.length + copied.more > 0
+
+/** A file a file manager copied, read by the device, as the window hands a file over: its kind found by its name. */
+export function copiedFile({ name, data }: { name: string; data: Uint8Array }): File {
+  return new File([data as Uint8Array<ArrayBuffer>], name, { type: mediaTypeOf(name) ?? '' })
 }
 
 /** The largest file, as the person reads it: "25 MB". */
@@ -123,12 +141,12 @@ export function useAttachments(client: Client): Attachments {
   )
 
   const add = useCallback(
-    (files: readonly File[], folders: readonly { name: string; path: string }[] = []) => {
+    (files: readonly File[], folders: readonly { name: string; path: string }[] = [], unread: Unread = { tooLarge: [], more: 0 }) => {
       const room = ATTACHMENTS_PER_TURN - current.current.length
-      const tooLarge = files.filter((file) => file.size > ATTACHMENT_MAX_BYTES).map((file) => file.name)
+      const tooLarge = [...files.filter((file) => file.size > ATTACHMENT_MAX_BYTES).map((file) => file.name), ...unread.tooLarge]
       const fitting = [...folders.map((folder) => ({ folder })), ...files.filter((file) => file.size <= ATTACHMENT_MAX_BYTES).map((file) => ({ file }))]
       const taken = fitting.slice(0, Math.max(0, room))
-      const refused = refusalOf(fitting.length, room, tooLarge)
+      const refused = refusalOf(fitting.length + unread.more, room, tooLarge)
       if (refused) setNotice(refused)
       if (taken.length === 0) return
       const added: Pending[] = []

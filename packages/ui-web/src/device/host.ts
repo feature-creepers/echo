@@ -30,6 +30,16 @@ export interface About {
  */
 export type PickPurpose = 'access' | 'project' | 'import' | 'attach'
 
+/** Files copied in a file manager, read by the app that hosts the window. */
+export interface CopiedFiles {
+  files: { name: string; data: Uint8Array }[]
+  folders: { name: string; path: string }[]
+  /** The names of files over the most a file can be. */
+  tooLarge: string[]
+  /** How many more files and folders were copied than can go with one message. */
+  more: number
+}
+
 export interface DeviceHost {
   settings: {
     read(): Promise<DeviceSettings>
@@ -70,6 +80,13 @@ export interface DeviceHost {
     open?(path: string): Promise<void>
     /** Where a file or a folder dropped on the window is on this computer. Left out, the window cannot tell. */
     pathOf?(file: File): string | undefined
+    /**
+     * The files copied in a file manager that the window is not given when they are pasted, read by the app: Linux's
+     * file managers put their addresses on the clipboard, not their content. Each file's name and bytes, the folders
+     * by where they are, and what cannot go; nothing in them when none were copied. Left out where the window is
+     * given copied files as files.
+     */
+    takeCopied?(): Promise<CopiedFiles>
   }
   updates: {
     state(): Promise<UpdateState>

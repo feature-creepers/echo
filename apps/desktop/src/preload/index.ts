@@ -71,7 +71,9 @@ const bridge: DesktopBridge = {
     reveal: (path) => ipcRenderer.invoke(APP_CHANNELS.filesReveal, path),
     open: (path) => ipcRenderer.invoke(APP_CHANNELS.filesOpen, path),
     // Only the preload can ask where a dropped file is: the window itself is never told a path it was not given.
-    pathOf: (file) => webUtils.getPathForFile(file) || undefined
+    pathOf: (file) => webUtils.getPathForFile(file) || undefined,
+    // Only Linux's file managers copy files as their addresses; elsewhere the window is given them on paste.
+    ...(process.platform === 'linux' ? { takeCopied: () => ipcRenderer.invoke(APP_CHANNELS.filesTakeCopied) } : {})
   },
   speech: {
     status: () => ipcRenderer.invoke(SPEECH_CHANNELS.status),
