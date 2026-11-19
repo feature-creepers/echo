@@ -46,7 +46,7 @@ export interface Paint {
 export const css = (paint: Paint) =>
   `#${[paint.red, paint.green, paint.blue]
     .map((part) =>
-      Math.round(Math.min(255, Math.max(0, part)))
+      Math.round(Math.min(255, Math.max(0, Number.isFinite(part) ? part : 0)))
         .toString(16)
         .padStart(2, '0')
     )

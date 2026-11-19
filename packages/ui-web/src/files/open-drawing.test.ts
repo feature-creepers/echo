@@ -202,6 +202,28 @@ describe('a Fontwork drawn as LibreOffice draws it', () => {
   })
 })
 
+describe('an extruded shape drawn as LibreOffice draws it', () => {
+  it('draws its solid, reaching up and to the right past its box, under its text, with no outline', async () => {
+    const drawn = await lone(
+      '<draw:custom-shape draw:style-name="green" svg:width="1in" svg:height="1in"><text:p>Deep</text:p><draw:enhanced-geometry draw:extrusion="true" draw:extrusion-depth="1in 0" draw:enhanced-path="M 0 0 L 21600 0 21600 21600 0 21600 Z N"/></draw:custom-shape>'
+    )
+    expect(drawn?.box).toEqual(box(0, 0, 96, 96))
+    expect(drawn?.reach.right).toBeGreaterThan(30)
+    expect(drawn?.reach.top).toBeGreaterThan(30)
+    expect(drawn?.reach.bottom).toBeLessThan(5)
+    expect(drawn?.text.match(/<path /g)).toHaveLength(3)
+    expect(drawn?.text.indexOf('<path ')).toBeLessThan(drawn?.text.indexOf('>Deep<') ?? 0)
+    expect(drawn?.text).not.toContain('fill="#00ff00"')
+  })
+
+  it('draws an extruded Fontwork as its letters again along its depth', async () => {
+    const drawn = await lone(
+      '<draw:custom-shape draw:style-name="green" svg:width="2in" svg:height="1in"><text:p>3D</text:p><draw:enhanced-geometry draw:extrusion="true" draw:text-path="true" draw:enhanced-path="M 0 0 L 21600 0 N M 0 21600 L 21600 21600 N"/></draw:custom-shape>'
+    )
+    expect((drawn?.text.match(/<text /g) ?? []).length).toBeGreaterThan(20)
+  })
+})
+
 describe('a path flattened into lines', () => {
   it.each([
     { data: 'M0 0L10 0L10 10', count: 3, last: [10, 10] },

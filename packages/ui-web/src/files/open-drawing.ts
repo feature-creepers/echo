@@ -5,7 +5,8 @@
  * line with its dashes and the arrows at its ends, and its text. A style takes what it leaves out from the style it
  * comes from, then from its family's default, then from what LibreOffice gives a shape whose styles say nothing: its
  * own blue fill and line, or the colours of the app that wrote the file when that is an older one (`shapeColours`). A placeholder's text takes the style of its master's outline at its level. Lists are bulleted or
- * numbered as their list style says. A Fontwork's text is laid along its path in place of its outline (`fontwork.ts`).
+ * numbered as their list style says. A Fontwork's text is laid along its path in place of its outline (`fontwork.ts`), and
+ * an extruded shape is drawn as its solid (`extrusion.ts`).
  *
  * What cannot be read is left out of the drawing rather than failing it: a shape whose parts are missing, a picture
  * of a format the window does not show.
@@ -14,6 +15,7 @@
 import { type Archive, partOf, textOf } from './archive.ts'
 import { customGeometry, type PathCommand } from './custom-geometry.ts'
 import { enhancedGeometry } from './enhanced-geometry.ts'
+import { type ExtrudedPart, extrudedElement, readExtrusion, stackedElement } from './extrusion.ts'
 import { type FontworkGlyph, type FontworkStyle, fontworkElement, glyphCorners, layFontwork } from './fontwork.ts'
 import { drawMetafile } from './metafile.ts'
 import { pictureType, readOpenChart } from './office-figures.ts'
@@ -1367,7 +1369,13 @@ async function drawShape(node: XmlNode, context: DrawingContext, inMaster: boole
         : { geometry: { fill: rectangle(width, height), stroke: rectangle(width, height) }, flipH: false, flipV: false, text: undefined }
       let element: string
       const fontwork = fontworkOf(node, base, graphic, context, { width, height })
-      if (fontwork) {
+      const solid = extrudedShape(node, base, graphic, context, { width, height }, await fill(), canvas)
+      if (solid) {
+        // An extruded shape is drawn as its solid, under its text, which LibreOffice leaves flat.
+        canvas.parts.push(`<g transform="${solid.placement}">${solid.svg}</g>`)
+        element = ''
+        if (fontwork) textHolder = undefined
+      } else if (fontwork) {
         // A Fontwork draws its text in its fill and line, in place of its geometry and of its text's frame.
         element = fontworkElement(fontwork.glyphs, fontwork.style, await fill(), outline, canvas)
         textHolder = undefined
@@ -1395,6 +1403,75 @@ async function drawShape(node: XmlNode, context: DrawingContext, inMaster: boole
   }
   const drawn = content.filter(Boolean)
   if (drawn.length > 0) canvas.parts.push(transform ? `<g transform="${transform}">${drawn.join('')}</g>` : drawn.join(''))
+}
+
+/**
+ * A custom shape's extrusion drawn, its fill on its ends and its sides in the fill's colour, or in its second fill
+ * colour when its extrusion says so, as LibreOffice paints them: its outline pushed back, or a Fontwork's letters
+ * drawn again at depths along the way. The shape is turned over and turned by its own rotation before it is
+ * extruded, so its depth goes the way its skew says on the page, and the drawing is placed by the move that puts its
+ * middle where its transform does (`placement`); its points are given back in the shape's own box, for the room it
+ * takes. None for a shape that is not extruded.
+ */
+function extrudedShape(
+  node: XmlNode,
+  base: TextBase,
+  graphic: Properties,
+  context: DrawingContext,
+  size: { width: number; height: number },
+  fill: Fill,
+  canvas: Canvas
+): { svg: string; points: Point[]; placement: string } | undefined {
+  const geometry = node.name === 'draw:custom-shape' ? childAt(node, 'draw:enhanced-geometry') : undefined
+  const extrusion = geometry ? readExtrusion(geometry.attributes) : undefined
+  if (!geometry || !extrusion) return undefined
+  const drawn = enhancedGeometry(geometry, size)
+  const steps = transformSteps(node)
+  const matrix = matrixOf(steps)
+  const [a, b, c, d] = matrix
+  const turning = Math.abs(a * d - b * c - 1) < 1e-6 && Math.abs(a - d) < 1e-6 && Math.abs(b + c) < 1e-6
+  const turn = turning ? (Math.atan2(b, a) * 180) / Math.PI : 0
+  const lying = { horizontal: drawn.flipH, vertical: drawn.flipV, turn }
+  const { colours } = context.source
+  const blue = { red: 114, green: 159, blue: 207, opacity: 1 }
+  const fillColour = paintOf(graphic['draw:fill-color'] ?? colours.fill) ?? blue
+  const second = paintOf(graphic['draw:secondary-fill-color'] ?? colours.fill) ?? fillColour
+  const side = extrusion.sideColour ? second : fill.kind === 'paint' ? fill.paint : fillColour
+  // A shape with no fill is filled when it is extruded, as LibreOffice fills its solid.
+  const ends: Fill = fill.kind === 'none' ? { kind: 'paint', paint: fillColour } : fill
+  let solid: { svg: string; points: Point[] }
+  const fontwork = fontworkOf(node, base, graphic, context, size)
+  if (fontwork)
+    solid = stackedElement(
+      (paint) => fontworkElement(fontwork.glyphs, fontwork.style, paint, undefined, canvas),
+      glyphCorners(fontwork.glyphs, fontwork.style),
+      side,
+      ends,
+      extrusion,
+      size,
+      lying
+    )
+  else {
+    const pieces = drawn.geometry.pieces ?? (drawn.geometry.fill ? [drawn.geometry.fill] : [])
+    // A shape of lines only is extruded as walls in its line's colour.
+    const parts: ExtrudedPart[] =
+      pieces.length > 0
+        ? pieces.map((piece) => ({ outlines: flattened(piece), side, fill: ends }))
+        : [{ outlines: flattened(drawn.geometry.stroke), side: outlineOf(graphic, context)?.paint ?? fillColour, fill: undefined }]
+    solid = extrudedElement(parts, extrusion, size, lying, canvas)
+  }
+  const middle: Point = [size.width / 2, size.height / 2]
+  const placed = applied(matrix, middle)
+  const angle = (-turn * Math.PI) / 180
+  const back = ([x, y]: Point): Point => [
+    middle[0] + Math.cos(angle) * (x - middle[0]) - Math.sin(angle) * (y - middle[1]),
+    middle[1] + Math.sin(angle) * (x - middle[0]) + Math.cos(angle) * (y - middle[1])
+  ]
+  return {
+    svg: solid.svg,
+    points: turning ? solid.points.map(back) : solid.points,
+    placement: turning ? `translate(${number(placed[0] - middle[0])} ${number(placed[1] - middle[1])})` : transformText(steps)
+  }
 }
 
 /** Whether a custom shape is a Fontwork: its geometry says its text follows its path. */
@@ -1629,7 +1706,17 @@ function outlinePoints(node: XmlNode, width: number, height: number, context: Dr
     const geometry = childAt(node, 'draw:enhanced-geometry')
     if (!geometry) return []
     const drawn = enhancedGeometry(geometry, { width, height })
-    // A Fontwork reaches as far as its letters, which may stand past its path.
+    // An extruded shape reaches as far as its solid; a Fontwork as far as its letters, which may stand past its path.
+    const solid = extrudedShape(
+      node,
+      textBase(node, context.source, inMaster),
+      graphicOf(node, context.source, inMaster),
+      context,
+      { width, height },
+      { kind: 'none' },
+      new Canvas()
+    )
+    if (solid) return solid.points
     const fontwork = fontworkOf(node, textBase(node, context.source, inMaster), graphicOf(node, context.source, inMaster), context, { width, height })
     if (fontwork) return glyphCorners(fontwork.glyphs, fontwork.style).map(([x, y]) => [drawn.flipH ? width - x : x, drawn.flipV ? height - y : y])
     return pathPoints(subpaths(`${drawn.geometry.fill} ${drawn.geometry.stroke}`)).map(([x, y]) => [drawn.flipH ? width - x : x, drawn.flipV ? height - y : y])
