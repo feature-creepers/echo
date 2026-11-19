@@ -16,8 +16,19 @@ import type { TextLook } from './document-look.ts'
 import { type CellArea, cellArea, sheetFigure } from './embedded-sheet.ts'
 import { isEquationProgram } from './equation-editor.ts'
 import { builtInFormat, formatNumber, generalNumber, type NumberFormatOptions, numberColor } from './number-format.ts'
-import { type CellRange, type CellSource, type CellValue, cellRange, emuPixels, Figures, lengthPixels, readChart, readOpenChart } from './office-figures.ts'
-import { mathMlText, mathText } from './office-math.ts'
+import {
+  type CellRange,
+  type CellSource,
+  type CellValue,
+  cellRange,
+  emuPixels,
+  Figures,
+  formulaPicture,
+  lengthPixels,
+  readChart,
+  readOpenChart
+} from './office-figures.ts'
+import { mathText, objectFormula } from './office-math.ts'
 import {
   BLOCK_LIMIT,
   COLUMN_LIMIT,
@@ -1225,12 +1236,7 @@ function readFrameStep(frame: OpenFrame, event: XmlEvent, describing: { now: boo
  */
 async function frameFormula(frame: OpenFrame, archive: Archive): Promise<string | undefined> {
   const object = openPart(frame.object)
-  if (object === undefined) return undefined
-  const xml = await textOf(archive, `${object}/content.xml`).catch(() => undefined)
-  if (!xml || !/<([\w-]+:)?math\b/.test(xml)) return undefined
-  const events = [...xmlEvents(xml)]
-  const start = events.findIndex((event) => event.type === 'open' && /^([\w-]+:)?math$/.test(event.name))
-  return (start < 0 ? '' : mathMlText(events.slice(start))) || undefined
+  return object === undefined ? undefined : objectFormula(archive, object)
 }
 
 /**
@@ -1245,9 +1251,10 @@ async function frameFigure(frame: OpenFrame, figures: Figures): Promise<number |
 
 /**
  * The pictures and charts of an OpenDocument spreadsheet or presentation, by the sheet or the slide (`container`)
- * whose frames place them, in order. Speaker notes and comments are passed over.
+ * whose frames place them, in order. An equation's linear text is its picture's words, or is drawn in its place when it
+ * keeps none. Speaker notes and comments are passed over.
  */
-async function openFrames(xml: string, container: string, figures: Figures): Promise<number[][]> {
+async function openFrames(xml: string, container: string, figures: Figures, archive: Archive): Promise<number[][]> {
   const placed: number[][] = []
   let body = false
   let notes = 0
@@ -1267,7 +1274,9 @@ async function openFrames(xml: string, container: string, figures: Figures): Pro
       if (frames++ === 0) frame = openFrame(event.attributes)
     } else if (event.type === 'close' && event.name === 'draw:frame') {
       if (--frames === 0 && frame) {
-        const figure = await frameFigure(frame, figures)
+        const formula = frame.object && !frame.alt ? await frameFormula(frame, archive) : undefined
+        if (formula) frame.alt = formula
+        const figure = (await frameFigure(frame, figures)) ?? (formula ? figures.drawing(formulaPicture(formula, frame)) : undefined)
         if (figure !== undefined) placed.at(-1)?.push(figure)
         frame = undefined
       }
@@ -1439,7 +1448,7 @@ export async function readOpenSpreadsheet(archive: Archive): Promise<OfficePrevi
   const content = await openDocumentContent(archive, 'spreadsheet')
   const { events } = openDocumentBody(content, PASSED_OVER)
   const figures = new Figures(archive)
-  const placed = await openFrames(content, 'table:table', figures)
+  const placed = await openFrames(content, 'table:table', figures, archive)
   const sheets: Extract<OfficePreview, { kind: 'workbook' }>['sheets'] = []
   // The stretches of each sheet's cells' text in spans of their own, by row and column, for the cells that have them.
   const stretches: (OpenRun[] | undefined)[][][] = []
@@ -1568,12 +1577,15 @@ export async function readOpenSpreadsheet(archive: Archive): Promise<OfficePrevi
 
 const isShape = (name: string) => name === 'draw:frame' || name === 'draw:custom-shape'
 
-/** An OpenDocument presentation's slides, in order: each one's title, from its title frame, the lines of its other text, and its pictures and charts. */
+/**
+ * An OpenDocument presentation's slides, in order: each one's title, from its title frame, the lines of its other text,
+ * an equation's linear text among them where its frame is, and its pictures and charts.
+ */
 export async function readOpenPresentation(archive: Archive): Promise<OfficePreview> {
   const content = await openDocumentContent(archive, 'presentation')
   const { events } = openDocumentBody(content, SLIDE_PASSED_OVER)
   const figures = new Figures(archive)
-  const placed = await openFrames(content, 'draw:page', figures)
+  const placed = await openFrames(content, 'draw:page', figures, archive)
   const tree = xmlTree(content)
   const pages = childrenNamed(childAt(tree, 'office:document-content', 'office:body', 'office:presentation'), 'draw:page')
   let deck: OpenDeck | undefined
@@ -1586,7 +1598,7 @@ export async function readOpenPresentation(archive: Archive): Promise<OfficePrev
   const slides: { title: string; lines: string[]; figures: OfficeFigure[]; drawing?: PictureFigure }[] = []
   let cut = false
   let slide: { title: string; lines: string[]; figures: OfficeFigure[]; drawing?: PictureFigure } | undefined
-  let shape: { title: boolean; paragraphs: string[] } | undefined
+  let shape: { title: boolean; paragraphs: string[]; object?: string | undefined } | undefined
   let shapes = 0
   let paragraph: string | undefined
 
@@ -1605,6 +1617,7 @@ export async function readOpenPresentation(archive: Archive): Promise<OfficePrev
         slide = { title: '', lines: [], figures: figuresAt(figures, placed[slides.length] ?? []) }
       } else if (isShape(event.name) && slide && ++shapes === 1) shape = { title: event.attributes['presentation:class'] === 'title', paragraphs: [] }
       else if (isParagraph(event.name) && slide) paragraph = ''
+      else if (event.name === 'draw:object' && shape) shape.object ??= event.attributes['xlink:href']
       continue
     }
     if (event.type !== 'close') continue
@@ -1613,6 +1626,9 @@ export async function readOpenPresentation(archive: Archive): Promise<OfficePrev
       if (text !== '') (shape ? shape.paragraphs : slide.lines).push(text)
       paragraph = undefined
     } else if (isShape(event.name) && slide && shapes > 0 && --shapes === 0 && shape) {
+      // An equation is a line of its linear text, where its frame is among the slide's shapes.
+      const formula = shape.object ? await frameFormula({ object: shape.object, alt: '' }, archive) : undefined
+      if (formula) shape.paragraphs.push(formula)
       if (shape.title && slide.title === '') slide.title = shape.paragraphs.join(' ')
       else slide.lines.push(...shape.paragraphs)
       shape = undefined

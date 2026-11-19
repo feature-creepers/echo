@@ -16,6 +16,7 @@ import { customGeometry, type PathCommand } from './custom-geometry.ts'
 import { enhancedGeometry } from './enhanced-geometry.ts'
 import { drawMetafile } from './metafile.ts'
 import { pictureType, readOpenChart } from './office-figures.ts'
+import { objectFormula } from './office-math.ts'
 import type { OfficeChart } from './office-text.ts'
 import { length, merged, type Properties, type StyleBook, share } from './open-styles.ts'
 import {
@@ -1217,6 +1218,11 @@ async function drawShape(node: XmlNode, context: DrawingContext, inMaster: boole
           content.push(pictureElement(held.href, cropOf(graphic['fo:clip'], held.size), size))
           break
         }
+      // An equation its app kept no picture of is written as its linear text in its frame.
+      if (object && content.length === 0) {
+        const formula = await objectFormula(source.archive, objectPart(object) ?? '').catch(() => undefined)
+        if (formula) content.push(textHtml(formulaFrame(formula, size), size))
+      }
       // A frame of text is filled and outlined as its style says; one of a picture, a chart or a table only outlined.
       const frameFill = textHolder ? await fill() : undefined
       content.unshift(customElement({ fill: rectangle(width, height), stroke: rectangle(width, height) }, frameFill, outline, canvas, size))
@@ -1363,12 +1369,34 @@ function viewBoxOf(value: string | undefined, width: number, height: number) {
 /** The colours LibreOffice draws a chart's series in. */
 const CHART_TONES = ['#004586', '#ff420e', '#ffd320', '#579d1c', '#7e0021', '#83caff']
 
+/** The folder of the file an object's content is in (`Object 1`); none for an address outside the file. */
+function objectPart(object: XmlNode): string | undefined {
+  const href = object.attributes['xlink:href']?.replace(/^\.\//, '').replace(/\/$/, '')
+  return !href || /^[a-z][a-z\d+.-]*:/i.test(href) ? undefined : href
+}
+
 /** The chart an object of the file holds, read from its own content. */
 async function objectChart(object: XmlNode, source: DrawingSource): Promise<OfficeChart | undefined> {
-  const href = object.attributes['xlink:href']?.replace(/^\.\//, '').replace(/\/$/, '')
-  if (!href || /^[a-z][a-z\d+.-]*:/i.test(href)) return undefined
+  const href = objectPart(object)
+  if (!href) return undefined
   const xml = await textOf(source.archive, `${href}/content.xml`)
   return xml === undefined ? undefined : readOpenChart(xml).catch(() => undefined)
+}
+
+/**
+ * An equation's linear text as the text of its frame: one centred line in the serif LibreOffice writes equations in, as
+ * large as the frame holds it, since LibreOffice draws an equation to its frame's size.
+ */
+function formulaFrame(formula: string, box: { width: number; height: number }): TextFrame {
+  const size = Math.max(4, Math.min(box.height * 0.75 * 0.7, ((box.width * 0.75) / Math.max(1, formula.length)) * 1.8))
+  return {
+    paragraphs: [{ align: 'center', size, pieces: [{ text: formula, style: { size } }] }],
+    insets: { top: 0, right: 0, bottom: 0, left: 0 },
+    anchor: 'middle',
+    wraps: true,
+    font: 'Liberation Serif',
+    paint: { red: 0, green: 0, blue: 0, opacity: 1 }
+  }
 }
 
 /**

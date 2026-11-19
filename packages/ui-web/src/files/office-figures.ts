@@ -9,9 +9,22 @@ import { type Archive, partOf, textOf } from './archive.ts'
 import { openCompound } from './compound.ts'
 import { objectEquation } from './equation-editor.ts'
 import { drawMetafile, shownSize } from './metafile.ts'
+import { escaped, number } from './metafile-canvas.ts'
 import { formatNumber, type NumberFormatOptions } from './number-format.ts'
 import type { ObjectRead, ObjectReader, OfficeChart, OfficeFigure, PictureFigure } from './office-text.ts'
 import { xmlEvents } from './xml.ts'
+
+/**
+ * An equation its app kept no picture of, drawn as its linear text in its frame's size, in pixels: one line, as large
+ * as the frame holds it, since its app draws an equation to its frame's size.
+ */
+export function formulaPicture(text: string, size: { width?: number | undefined; height?: number | undefined }): PictureFigure {
+  const width = Math.max(8, Math.round(size.width ?? text.length * 9 + 8))
+  const height = Math.max(8, Math.round(size.height ?? 24))
+  const fontSize = Math.max(6, Math.min(height * 0.7, (width / Math.max(1, text.length)) * 1.8))
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><text x="${number(width / 2)}" y="${number(height / 2)}" text-anchor="middle" dominant-baseline="central" font-family="'Liberation Serif', 'Times New Roman', serif" font-size="${number(fontSize)}">${escaped(text)}</text></svg>`
+  return { kind: 'picture', type: 'image/svg+xml', bytes: new TextEncoder().encode(svg), alt: text, width, height }
+}
 
 /** The most figures a file shows, and the most bytes its pictures hold together: a preview, not the file. */
 export const FIGURE_LIMIT = 200

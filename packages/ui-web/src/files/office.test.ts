@@ -604,6 +604,11 @@ describe('an Office file previewed', () => {
   })
 })
 
+/** An equation of OpenDocument (MathML), x², as its app writes it in an object's own content. */
+const MATH =
+  '<math:math xmlns:math="http://www.w3.org/1998/Math/MathML"><math:semantics><math:msup><math:mi>x</math:mi><math:mn>2</math:mn></math:msup>' +
+  '<math:annotation encoding="StarMath 5.0">x^2</math:annotation></math:semantics></math:math>'
+
 /** An OpenDocument's content part: its automatic styles, then its body. */
 const odf = (styles: string, body: string) =>
   `<?xml version="1.0" encoding="UTF-8"?><office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" office:version="1.3">` +
@@ -777,6 +782,49 @@ describe('an OpenDocument file previewed', () => {
     const drawn = read.kind === 'presentation' ? new TextDecoder().decode(read.slides[1]?.drawing?.bytes) : ''
     expect(drawn).toContain('>Ahead of plan</span>')
     expect(drawn).not.toContain('Speaker notes')
+  })
+
+  it.each([
+    { name: 'with no picture, written in its frame', inside: '', drawn: '>x²</span>' },
+    { name: 'with the picture its app drew, drawn in its frame', inside: '<draw:image xlink:href="./ObjectReplacements/Object 1"/>', drawn: '<image' }
+  ])('writes a presentation’s equation as linear text in its slide’s lines, $name', async ({ inside, drawn }) => {
+    const file = await zip({
+      'content.xml': odf(
+        '',
+        `<office:presentation><draw:page><draw:frame svg:width="4cm" svg:height="1cm"><draw:text-box><text:p>Area:</text:p></draw:text-box></draw:frame><draw:frame svg:x="1cm" svg:y="2cm" svg:width="4cm" svg:height="1cm"><draw:object xlink:href="./Object 1"/>${inside}</draw:frame><draw:frame svg:width="4cm" svg:height="1cm"><draw:object xlink:href="./Object 2"/></draw:frame></draw:page></office:presentation>`
+      ),
+      'Object 1/content.xml': MATH,
+      'Object 2/content.xml':
+        '<office:document-content><office:body><office:text><text:p>Not an equation</text:p></office:text></office:body></office:document-content>',
+      'ObjectReplacements/Object 1': PNG
+    })
+    const read = await readOffice('odp', file)
+    const slide = read.kind === 'presentation' ? read.slides[0] : undefined
+    expect(slide?.lines).toEqual(['Area:', 'x²'])
+    expect(slide?.drawing?.alt).toBe('Area:. x²')
+    expect(new TextDecoder().decode(slide?.drawing?.bytes)).toContain(drawn)
+  })
+
+  it('shows a spreadsheet’s equations among its figures: its picture with its linear text as its words, or its linear text drawn in its place', async () => {
+    const frame = (object: string, inside = '') => `<draw:frame svg:width="4cm" svg:height="1cm"><draw:object xlink:href="./${object}"/>${inside}</draw:frame>`
+    const file = await zip({
+      'content.xml': odf(
+        '',
+        `<office:spreadsheet><table:table table:name="Sheet 1"><table:shapes>${frame('Object 1', '<draw:image xlink:href="./ObjectReplacements/Object 1"/>')}${frame('Object 2')}</table:shapes><table:table-row><table:table-cell office:value-type="string"><text:p>a</text:p></table:table-cell></table:table-row></table:table></office:spreadsheet>`
+      ),
+      'Object 1/content.xml': MATH,
+      'Object 2/content.xml': MATH.replace('<math:mn>2</math:mn>', '<math:mn>3</math:mn>'),
+      'ObjectReplacements/Object 1': PNG
+    })
+    const read = await readOffice('ods', file)
+    const figures = read.kind === 'workbook' ? read.sheets[0]?.figures : undefined
+    expect(figures).toMatchObject([
+      { kind: 'picture', type: 'image/png', alt: 'x²' },
+      { kind: 'picture', type: 'image/svg+xml', alt: 'x³', width: 151, height: 38 }
+    ])
+    const written = figures?.[1]?.kind === 'picture' ? new TextDecoder().decode(figures[1].bytes) : ''
+    expect(written).toContain('>x³</text>')
+    expect(written).not.toMatch(/<script|href=/)
   })
 
   it('shows a text with its format, links, numbered lists, and the pictures and charts its frames show, not the text of a frame', async () => {

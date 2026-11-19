@@ -6,7 +6,8 @@
  * symbol are grouped in brackets, so the text reads as the equation does.
  */
 
-import type { XmlEvent } from './xml.ts'
+import { type Archive, textOf } from './archive.ts'
+import { type XmlEvent, xmlEvents } from './xml.ts'
 
 /** An element of an equation, with its attributes, the elements in it and its text. */
 interface MathNode {
@@ -273,4 +274,16 @@ function renderMathMl(node: MathNode, depth = 0): string {
 /** A MathML equation's events, from its `math` element to its end, as linear text. */
 export function mathMlText(events: readonly XmlEvent[]): string {
   return renderMathMl(tree(events)).replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * An OpenDocument object as linear text when it is an equation (MathML), read from its own content (`part` is its
+ * folder in the archive, `Object 1`); none for an object of another kind, or one that cannot be read.
+ */
+export async function objectFormula(archive: Archive, part: string): Promise<string | undefined> {
+  const xml = await textOf(archive, `${part}/content.xml`).catch(() => undefined)
+  if (!xml || !/<([\w-]+:)?math\b/.test(xml)) return undefined
+  const events = [...xmlEvents(xml)]
+  const start = events.findIndex((event) => event.type === 'open' && /^([\w-]+:)?math$/.test(event.name))
+  return (start < 0 ? '' : mathMlText(events.slice(start))) || undefined
 }
