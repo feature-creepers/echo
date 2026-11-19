@@ -16,7 +16,7 @@ import { PROFILE, sandbox } from './sandbox/index.ts'
 /** The name the core's tool server has for Codex. */
 export const TOOL_SERVER = 'core'
 
-/** Features that act beyond the core's tools, or remember beyond the core's memory. */
+/** Features that act beyond the core's tools, or remember beyond the core's memory. A thread keeps its sub-agents. */
 export const FEATURES_OFF = [
   'apps',
   'computer_use',
@@ -131,11 +131,20 @@ export async function userToolServers(home: string): Promise<string[]> {
 
 const settings = (values: string[]) => values.flatMap((value) => ['-c', value])
 
-/** The arguments of a live session: Codex as a server that takes requests on its standard input. */
-export function appServerArguments(userServers: string[], shell = false): string[] {
+/**
+ * Codex's own sub-agents, which a thread may hand parts of its work to (docs/SPEC.md, section 6.2). Each runs as a
+ * conversation of its own on the same server, under the same sandbox and the same questions to the core.
+ */
+export const AGENTS_FEATURE = 'multi_agent'
+
+/**
+ * The arguments of a live session: Codex as a server that takes requests on its standard input. A thread's keeps its
+ * sub-agents; every other session has them turned off.
+ */
+export function appServerArguments(userServers: string[], shell = false, agents = false): string[] {
   return [
     'app-server',
-    ...FEATURES_OFF.flatMap((feature) => ['--disable', feature]),
+    ...FEATURES_OFF.filter((feature) => !(agents && feature === AGENTS_FEATURE)).flatMap((feature) => ['--disable', feature]),
     ...settings(userServers.map((name) => `mcp_servers.${/^[A-Za-z0-9_-]+$/.test(name) ? name : JSON.stringify(name)}.enabled=false`)),
     ...settings(shell ? SETTINGS_OFF : [SHELL_OFF, ...SETTINGS_OFF]),
     ...sandbox.server

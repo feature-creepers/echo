@@ -1,4 +1,4 @@
-import type { Exchange, TurnId } from '@repo/protocol'
+import { type Exchange, inConversation, type TurnId } from '@repo/protocol'
 import type { Session } from '../session.ts'
 import { cell, type Followed } from './followed.ts'
 
@@ -51,6 +51,8 @@ export function followChannel(session: Session): ChannelState {
   const stops = new Set<(turn: TurnId) => void>()
 
   const put = (exchange: Exchange) => {
+    // What a thread hands a sub-thread is its own work, shown with that thread, never a line of the conversation.
+    if (!inConversation(exchange)) return
     const { exchanges } = state.current()
     const at = exchanges.findIndex((line) => line.turn === exchange.turn)
     const next = at >= 0 ? exchanges.map((line, index) => (index === at ? exchange : line)) : [...exchanges, exchange]

@@ -14,7 +14,7 @@ afterEach(() => {
 })
 
 /** A session given the computer: a home folder, a granted folder, and a reach that records what it is asked. */
-function setup(options: { write?: boolean; refuse?: string; project?: 'granted' | 'gone'; env?: Record<string, string> } = {}) {
+function setup(options: { write?: boolean; refuse?: string; project?: 'granted' | 'gone'; env?: Record<string, string>; agents?: boolean } = {}) {
   const root = realpathSync.native(folder())
   const home = join(root, 'workspace')
   const granted = join(root, 'granted')
@@ -52,7 +52,13 @@ function setup(options: { write?: boolean; refuse?: string; project?: 'granted' 
     env: { ...process.env, ...options.env }
   })
   const project = options.project === 'granted' ? granted : options.project === 'gone' ? join(root, 'gone') : undefined
-  const session = harness.open({ role: 'thread', instructions: 'You are Ada.', computer: reach, ...(project ? { folder: project } : {}) })
+  const session = harness.open({
+    role: 'thread',
+    instructions: 'You are Ada.',
+    computer: reach,
+    ...(project ? { folder: project } : {}),
+    ...(options.agents ? { agents: true } : {})
+  })
   open.push(session)
   return { session, home, granted, root, asked, signals, answer: (verdict: Parameters<typeof answer>[0]) => answer(verdict) }
 }
@@ -98,6 +104,23 @@ describe('Claude Code on the computer', () => {
     session.send('argv')
     await followed.until('failed')
     expect(followed.events.find((event) => event.type === 'failed')).toMatchObject({ reason: expect.stringContaining(join(root, 'gone')) })
+  })
+
+  it("holds a sub-agent's uses of the computer to the same scope and questions, and reports them as the session's", async () => {
+    const { session, home, asked } = setup({ agents: true })
+    writeFileSync(join(home, 'notes.txt'), 'notes')
+    const followed = follow(session)
+    session.send('delegate read')
+    await followed.until('turn-end')
+
+    expect(followed.text()).toBe('The sub-agent was allowed.')
+    expect(asked).toEqual([expect.objectContaining({ action: 'read', tool: 'Read', paths: [join(home, 'notes.txt')] })])
+    expect(followed.outline().filter((line) => line.startsWith('tool:'))).toEqual([
+      'tool:subagent:started',
+      'tool:computer_read:started',
+      'tool:computer_read:ended',
+      'tool:subagent:ended'
+    ])
   })
 
   it('sends every use to the permission prompt, so none runs unchecked', async () => {

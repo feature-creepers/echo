@@ -50,6 +50,8 @@ const input = (value: string, attachments: readonly Attachment[]) => [
 const WRITE_TOOL = 'computer_write'
 /** The name the core reports a command under, as it does Claude Code's. */
 const RUN_TOOL = 'computer_run'
+/** The name the core reports a call to a sub-agent under, as it does Claude Code's. */
+const AGENT_TOOL = 'subagent'
 
 /**
  * A live session with Codex, run as a server: requests and notifications go both ways as JSON lines, in
@@ -94,6 +96,15 @@ export function openSession(request: SessionRequest, context: SessionContext): S
   let lastCall = 0
   const calls = new Map<number, { resolve(result: unknown): void; reject(error: Error): void }>()
 
+  /**
+   * Whether what Codex says is about the session's own conversation rather than a sub-agent's: a sub-agent runs as a
+   * conversation of its own on the same server, and Codex names the conversation each message concerns.
+   */
+  const own = (params: JsonObject) => {
+    const id = asString(params.threadId)
+    return id === undefined || thread === '' || id === thread
+  }
+
   function call(method: string, params: unknown): Promise<unknown> {
     const id = ++lastCall
     return new Promise((resolve, reject) => {
@@ -120,7 +131,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
       // What a command reads to run the person's programs and writes on its own, and the adapter's folder it never reaches.
       const where = { home: platform.home(launch.env), env: launch.env }
       const confinement = { never: [context.folder], caches: system.caches(where), programs: system.programs(where) }
-      const running = start(launch.command, appServerArguments(userServers, shell), { cwd: context.folder, env: launch.env })
+      const running = start(launch.command, appServerArguments(userServers, shell, request.agents === true), { cwd: context.folder, env: launch.env })
       child = running
       running.stderr?.setEncoding('utf8').on('data', (chunk: string) => {
         errorOutput = (errorOutput + chunk).slice(-KEPT_OUTPUT)
@@ -270,7 +281,8 @@ export function openSession(request: SessionRequest, context: SessionContext): S
    * What Codex is told when it asks. A command or a file change is checked against what the person granted,
    * then put to the core, which has the person approve it when they asked to; without access to the computer,
    * every one is declined. It asks before calling a tool server's tool too: the core's are accepted, since the
-   * core decides for itself when the call arrives, and any other server's are declined.
+   * core decides for itself when the call arrives, and any other server's are declined. A sub-agent is declined the
+   * core's tools too: they speak, show and ask for the session, and a sub-agent works with files and commands only.
    */
   function answer(method: string, params: JsonObject): Reply | Promise<Reply> {
     const folder = asString(params.cwd) ?? base
@@ -297,7 +309,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
         }))
       }
       case 'mcpServer/elicitation/request':
-        return { result: params.serverName === TOOL_SERVER ? { action: 'accept', content: {} } : { action: 'decline', content: null } }
+        return { result: params.serverName === TOOL_SERVER && own(params) ? { action: 'accept', content: {} } : { action: 'decline', content: null } }
       case 'item/tool/requestUserInput':
         return { result: { answers: {} } }
       default:
@@ -365,7 +377,12 @@ export function openSession(request: SessionRequest, context: SessionContext): S
       const action = kinds.every((kind) => kind === 'add') ? 'create' : kinds.every((kind) => kind === 'delete') ? 'delete' : 'change'
       if (paths.length > 0) changes.set(asString(item.id) ?? '', { action, tool: 'apply_patch', paths })
     }
-    const ours = item.type === 'mcpToolCall' && item.server === TOOL_SERVER ? asString(item.tool) : undefined
+    const mine = own(params)
+    // A sub-agent's commands and changes are reported as the session's, so the person sees what it did and the files it
+    // changed. Its words, its plan, its turns and its errors are its own: they go back to the session as its result.
+    if (!mine && method !== 'item/started' && method !== 'item/completed') return
+    const ours = mine && item.type === 'mcpToolCall' && item.server === TOOL_SERVER ? asString(item.tool) : undefined
+    const delegation = mine && item.type === 'collabAgentToolCall' ? agentCallOf(item) : undefined
     switch (method) {
       case 'turn/started':
         turn = asString(asObject(params.turn)?.id) ?? turn
@@ -402,6 +419,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
       }
       case 'item/started':
         if (ours !== undefined) events.emit({ type: 'tool', name: ours, phase: 'started', ...callOf(item) })
+        else if (delegation) events.emit({ type: 'tool', name: AGENT_TOOL, phase: 'started', ...delegation })
         else if (item.type === 'fileChange') {
           events.emit({ type: 'tool', name: WRITE_TOOL, phase: 'started', ...changeOf(item, filesBase()).call })
         } else if (item.type === 'commandExecution') events.emit({ type: 'tool', name: RUN_TOOL, phase: 'started', ...runOf(item) })
@@ -409,6 +427,8 @@ export function openSession(request: SessionRequest, context: SessionContext): S
       case 'item/completed': {
         const use = reportUse(item)
         if (ours !== undefined) events.emit({ type: 'tool', name: ours, phase: 'ended', ...callOf(item), ...outcomeOf(item) })
+        else if (delegation)
+          events.emit({ type: 'tool', name: AGENT_TOOL, phase: 'ended', ...delegation, ...(item.status === 'failed' ? { failed: true } : {}) })
         else if (item.type === 'fileChange') {
           // A change made is named, so the person is shown the files; one declined or failed is not.
           const { call, kept } = changeOf(item, filesBase())
@@ -424,7 +444,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
           })
         } else if (item.type === 'commandExecution') {
           events.emit({ type: 'tool', name: RUN_TOOL, phase: 'ended', ...runOf(item), ...ranOf(item), ...(use === undefined ? {} : { use }) })
-        } else if (item.type === 'agentMessage' && !streamed.has(asString(item.id) ?? '')) {
+        } else if (mine && item.type === 'agentMessage' && !streamed.has(asString(item.id) ?? '')) {
           paragraphDue = wrote
           say(asString(item.text) ?? '')
         }
@@ -460,6 +480,13 @@ export function openSession(request: SessionRequest, context: SessionContext): S
     },
     onEvent: events.listen
   }
+}
+
+/** A call to Codex's sub-agents (start one, write to it, wait for it, close it), and what it asked. */
+function agentCallOf(item: JsonObject): { call?: string; input: JsonObject } {
+  const id = asString(item.id)
+  const prompt = asString(item.prompt)
+  return { ...(id === undefined ? {} : { call: id }), input: { action: asString(item.tool) ?? 'unknown', ...(prompt === undefined ? {} : { prompt }) } }
 }
 
 /** Which call an item is, and what it was given. */

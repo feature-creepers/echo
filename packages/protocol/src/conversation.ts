@@ -58,10 +58,11 @@ export const exchangeSchema = z.object({
   /**
    * Why the assistant started this turn itself, when it did: the greeting and briefing when the app opens, a
    * reminder ringing, a task the person scheduled, whose request is then in `said`, work taken up again after the
-   * app restarted, the request it carries on in `said`, or answers that finished out of sight, mentioned or said at
-   * the next pause.
+   * app restarted, the request it carries on in `said`, answers that finished out of sight, mentioned or said at
+   * the next pause, or part of a thread's work it handed to a sub-thread, what it asked in `said`. A line handed to a
+   * sub-thread is the assistant's own work: it is not a line of the conversation.
    */
-  trigger: z.enum(['greeting', 'reminder', 'task', 'resume', 'ready']).optional(),
+  trigger: z.enum(['greeting', 'reminder', 'task', 'resume', 'ready', 'delegated']).optional(),
   /** What the assistant said aloud, so far: short, as a friend says it. */
   replied: z.string(),
   /**
@@ -76,6 +77,9 @@ export const exchangeSchema = z.object({
   problem: z.string().optional()
 })
 export type Exchange = z.infer<typeof exchangeSchema>
+
+/** Whether a line belongs to the conversation the person sees: every line but those a thread handed to a sub-thread. */
+export const inConversation = (exchange: Exchange): boolean => exchange.trigger !== 'delegated'
 
 /** How hard a model reasons before it answers: a level the user can choose, described in plain words. */
 export const harnessEffortSchema = z.object({

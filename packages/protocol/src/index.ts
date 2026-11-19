@@ -65,6 +65,7 @@ export {
   harnessEffortSchema,
   harnessModelSchema,
   harnessStateSchema,
+  inConversation,
   languageSchema,
   PLAN_STEP_MAX_LENGTH,
   PLAN_STEPS_MAX,

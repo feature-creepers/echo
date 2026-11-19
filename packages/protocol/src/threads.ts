@@ -10,7 +10,12 @@ export const THREAD_KINDS = [
   /** A topic the conversation can come back to: a recipe, a form, a trip. */
   'topic',
   /** A side question answered without leaving the current topic. Its view goes in the margin. */
-  'aside'
+  'aside',
+  /**
+   * Part of a topic's work, handed by its thread to a thread of its own so both go on at once. It answers that thread,
+   * never the person: nothing it writes is said, and its result goes back to the thread that opened it.
+   */
+  'subthread'
 ] as const
 
 export const THREAD_STATES = [
@@ -27,7 +32,7 @@ export const threadSchema = z.object({
   title: z.string(),
   kind: z.enum(THREAD_KINDS),
   state: z.enum(THREAD_STATES),
-  /** For an aside: the topic on the stage when it was opened, which it sits beside. */
+  /** For an aside: the topic on the stage when it was opened, which it sits beside. For a sub-thread: the thread that opened it. */
   parent: threadIdSchema.optional(),
   /**
    * For a project: the folder the thread works in, absolute, as the system names it. Its session runs there, reads

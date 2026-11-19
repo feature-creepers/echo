@@ -20,7 +20,7 @@ import { useFollowLatest } from './follow-latest.ts'
 import { AnswerActions } from './full-answer.tsx'
 import { PlanList } from './plan-list.tsx'
 import { commandOf, stepSummary, stepTitle } from './steps.ts'
-import { StateDot } from './thread-list.tsx'
+import { KIND, StateDot } from './thread-list.tsx'
 import type { ThreadEntry } from './thread-pages.ts'
 import { type EarlierReading, useThreadPages } from './use-thread-pages.ts'
 import { whoAsked } from './who-asked.ts'
@@ -81,14 +81,17 @@ export function ThreadView({ client, thread, personas, onBack }: ThreadViewProps
               <span className="flex min-w-0 items-center gap-2 text-label text-text-faint">
                 <StateDot state={header.state} />
                 <span className="min-w-0 truncate">
-                  {header.kind === 'aside' ? 'Aside' : 'Topic'} · {STATE[header.state]}
+                  {KIND[header.kind]} · {STATE[header.state]}
                   {header.folder && <span title={header.folder}> · in {lastPart(header.folder)}</span>}
                 </span>
               </span>
             </div>
-            <Button kind="quiet" size="sm" className="shrink-0" onClick={() => void client.threads.focus(thread).catch(() => undefined)}>
-              {header.kind === 'aside' ? 'Show the card' : 'Show on screen'}
-            </Button>
+            {/* A sub-thread shows nothing of its own: its work is shown by its topic. */}
+            {header.kind !== 'subthread' && (
+              <Button kind="quiet" size="sm" className="shrink-0" onClick={() => void client.threads.focus(thread).catch(() => undefined)}>
+                {header.kind === 'aside' ? 'Show the card' : 'Show on screen'}
+              </Button>
+            )}
           </div>
         )}
       </div>

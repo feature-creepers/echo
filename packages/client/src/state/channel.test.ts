@@ -69,6 +69,16 @@ describe('followChannel', () => {
     expect(changed).toHaveBeenCalledTimes(4)
   })
 
+  it('leaves out of the conversation what a thread hands its sub-threads', () => {
+    const core = fakeSession()
+    const channel = followChannel(core.session)
+    core.emit({ type: 'event', name: 'turn.started', exchange: line('t1') })
+    core.emit({ type: 'event', name: 'turn.started', exchange: line('t2', { thread: 'sub', trigger: 'delegated' }) })
+    core.emit({ type: 'event', name: 'turn.ended', exchange: line('t2', { thread: 'sub', trigger: 'delegated', outcome: 'done' }) })
+
+    expect(channel.current()).toEqual({ exchanges: [line('t1')], running: 't1' })
+  })
+
   it('gives each sentence to say, with its language', () => {
     const core = fakeSession()
     const channel = followChannel(core.session)

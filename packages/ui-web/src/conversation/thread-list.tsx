@@ -5,21 +5,25 @@ import { Eyebrow } from '../primitives/eyebrow.tsx'
 
 const STATE = { working: 'working', ready: 'ready', parked: 'idle' } as const
 
-/** A topic, and the asides asked beside it, the most recent first. */
+/** What each kind of thread is called, on its row and over its work. */
+export const KIND = { topic: 'Topic', aside: 'Aside', subthread: 'Sub-thread' } as const
+
+/** A topic, and the asides asked beside it and the sub-threads it handed work to, the most recent first. */
 export interface TopicGroup {
   topic: Thread
   asides: Thread[]
 }
 
 /**
- * The threads as the side sheet lists them: each topic with the asides asked while it was on the stage under
- * it. Asides from before they knew their topic, or whose topic is gone, are listed apart.
+ * The threads as the side sheet lists them: each topic with the asides asked while it was on the stage and the
+ * sub-threads it opened under it. Asides from before they knew their topic, and those whose topic is gone, are
+ * listed apart.
  */
 export function groupThreads(threads: readonly Thread[]): { groups: TopicGroup[]; loose: Thread[] } {
   const topics = threads.filter((thread) => thread.kind === 'topic')
   const ids = new Set(topics.map((topic) => topic.id))
-  const groups = topics.map((topic) => ({ topic, asides: threads.filter((thread) => thread.kind === 'aside' && thread.parent === topic.id) }))
-  const loose = threads.filter((thread) => thread.kind === 'aside' && (thread.parent === undefined || !ids.has(thread.parent)))
+  const groups = topics.map((topic) => ({ topic, asides: threads.filter((thread) => thread.kind !== 'topic' && thread.parent === topic.id) }))
+  const loose = threads.filter((thread) => thread.kind !== 'topic' && (thread.parent === undefined || !ids.has(thread.parent)))
   return { groups, loose }
 }
 
@@ -49,7 +53,7 @@ export function ThreadList({ threads, onOpen, onStop }: { threads: Threads; onOp
       </ul>
       {loose.length > 0 && (
         <div className="mt-3 grid gap-1">
-          <Eyebrow className="px-3">Asides</Eyebrow>
+          <Eyebrow className="px-3">{loose.every((thread) => thread.kind === 'aside') ? 'Asides' : 'Without their topic'}</Eyebrow>
           <ul className="grid gap-px">
             {loose.map((aside) => (
               <li key={aside.id}>
@@ -80,9 +84,9 @@ function Row({
       <button type="button" onClick={() => onOpen(thread.id)} className="flex min-w-0 flex-1 items-center gap-3 rounded-sm px-3 py-2 text-left">
         <StateDot state={thread.state} />
         <span className="grid min-w-0 flex-1 gap-0.5">
-          <span className={cn('truncate', thread.kind === 'aside' ? 'text-[0.8125rem] text-text-soft' : 'text-sm')}>{thread.title}</span>
+          <span className={cn('truncate', thread.kind !== 'topic' ? 'text-[0.8125rem] text-text-soft' : 'text-sm')}>{thread.title}</span>
           <span className="truncate text-label text-text-faint">
-            {thread.kind === 'aside' ? 'Aside' : 'Topic'} · {STATE[thread.state]}
+            {KIND[thread.kind]} · {STATE[thread.state]}
             {onScreen ? ' · on screen' : ''}
             {thread.folder && <span title={thread.folder}> · in {lastPart(thread.folder)}</span>}
           </span>

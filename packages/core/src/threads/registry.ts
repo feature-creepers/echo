@@ -12,7 +12,10 @@ const INDEXED = 12
 export interface ThreadRegistry {
   read(): Threads
   get(id: string): Thread | undefined
-  /** Open a thread. An aside is given the topic it sits beside; a project's topic, the folder it works in. */
+  /**
+   * Open a thread. An aside is given the topic it sits beside; a sub-thread, the thread that opened it; a project's
+   * topic or sub-thread, the folder it works in.
+   */
   open(asked: { title: string; kind: Thread['kind']; parent?: string | undefined; folder?: string | undefined }): Thread
   setState(id: string, state: Thread['state']): void
   /** Bring a topic to the stage. An aside never takes the focus. */
@@ -80,8 +83,8 @@ export function createThreadRegistry({ records, now, newId }: RegistryOptions): 
         kind,
         state: 'working',
         at: now().toISOString(),
-        ...(kind === 'aside' && parent !== undefined && threads.has(parent) ? { parent } : {}),
-        ...(kind === 'topic' && folder !== undefined ? { folder } : {})
+        ...(kind !== 'topic' && parent !== undefined && threads.has(parent) ? { parent } : {}),
+        ...(kind !== 'aside' && folder !== undefined ? { folder } : {})
       }
       write(thread)
       return thread
@@ -93,14 +96,17 @@ export function createThreadRegistry({ records, now, newId }: RegistryOptions): 
     },
     focus(id) {
       const thread = threads.get(id)
-      if (!thread || thread.kind === 'aside' || focus === id) return
+      if (!thread || thread.kind !== 'topic' || focus === id) return
       focus = id
       records.append([{ type: FOCUS, payload: { thread: id } }])
       announce()
     },
     focused: () => (focus === undefined ? undefined : threads.get(focus)),
     index(doing, summary) {
-      const recent = read().threads.slice(0, INDEXED)
+      // A sub-thread answers the thread that opened it, never the person: nothing is passed to it from the conversation.
+      const recent = read()
+        .threads.filter((thread) => thread.kind !== 'subthread')
+        .slice(0, INDEXED)
       if (recent.length === 0) return 'There are no threads yet.'
       return recent
         .map(

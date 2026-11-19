@@ -240,6 +240,49 @@ function session(): void {
       await write(next, 0, [decision.behavior === 'allow' ? 'Planned.' : `Refused: ${String(decision.message)}`])
       return result([user])
     }
+    if (text.includes('delegate')) {
+      // A sub-agent, started with the tool the model calls Agent, which the CLI runs without asking. As the real CLI
+      // does, the sub-agent's question comes before its call is announced, and names the sub-agent.
+      const agent = id('toolu')
+      print({
+        type: 'assistant',
+        message: {
+          id: message,
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: agent, name: 'Agent', input: { description: 'Look', prompt: 'Look around' } }]
+        },
+        parent_tool_use_id: null
+      })
+      const tool = text.includes('read') ? 'Read' : 'mcp__core__ui_render'
+      const input = tool === 'Read' ? { file_path: 'notes.txt' } : { title: 'Hello' }
+      const inner = id('toolu')
+      const request = id('request')
+      print({
+        type: 'control_request',
+        request_id: request,
+        request: { subtype: 'can_use_tool', tool_name: tool, input, tool_use_id: inner, agent_id: 'agent_1' }
+      })
+      const reply = await new Promise<Message>((resolve) => {
+        answered = resolve
+      })
+      const decision = ((reply.response as Message).response ?? {}) as Message
+      const allowed = decision.behavior === 'allow'
+      print({
+        type: 'assistant',
+        message: { id: id('msg'), role: 'assistant', content: [{ type: 'tool_use', id: inner, name: tool, input }] },
+        parent_tool_use_id: agent
+      })
+      print({
+        type: 'user',
+        message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: inner, content: allowed ? 'Read.' : decision.message, is_error: !allowed }] },
+        parent_tool_use_id: agent
+      })
+      print({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: agent, content: 'Found it.' }] }, parent_tool_use_id: null })
+      const next = id('msg')
+      start(next)
+      await write(next, 0, [allowed ? 'The sub-agent was allowed.' : `The sub-agent was refused: ${String(decision.message)}`])
+      return result([user])
+    }
     if (text.includes('foreign')) {
       const decision = await callTool(message, 0, 'Bash')
       const next = id('msg')

@@ -2,13 +2,15 @@ import { EXAMPLE_VIEW } from '@repo/catalog'
 import type { Event, Exchange, PlanStep } from '@repo/protocol'
 import { describe, expect, it, vi } from 'vitest'
 import { createEngineRoom } from '../engines/engines.ts'
+import type { Timers } from '../ports/clock.ts'
 import { memoryRecords } from '../records/memory.ts'
+import { manualTimers } from '../replay/manual-timers.ts'
 import { type ScriptedHarness, scriptedHarness } from '../replay/scripted-harness.ts'
 import { createUserSettings } from '../settings/settings.ts'
 import { createTools } from '../tools/tools.ts'
 import { createScreen } from '../views/screen.ts'
-import { type Abilities, createChannel, EXCHANGE, planProgress } from './channel.ts'
-import { SPEAK_FIRST, WORK_FIRST } from './instructions.ts'
+import { type Abilities, createChannel, EXCHANGE, planProgress, SUBTHREADS_AT_ONCE } from './channel.ts'
+import { DELEGATED_FIRST, SPEAK_FIRST, WORK_FIRST } from './instructions.ts'
 
 interface Setup {
   harness?: ScriptedHarness
@@ -21,9 +23,11 @@ interface Setup {
   run?: string
   /** Whether the assistant may not speak up by itself now: the quiet hours, or past the cap on interruptions. */
   quiet?: boolean
+  /** Time passing, for waits that end by themselves. */
+  timers?: Timers
 }
 
-function setup({ harness = scriptedHarness(), records = memoryRecords(), server = true, more = {}, run = '', quiet = false }: Setup = {}) {
+function setup({ harness = scriptedHarness(), records = memoryRecords(), server = true, more = {}, run = '', quiet = false, timers }: Setup = {}) {
   let ids = 0
   const newId = () => `${run}id-${++ids}`
   const settings = createUserSettings(records, [
@@ -61,7 +65,8 @@ function setup({ harness = scriptedHarness(), records = memoryRecords(), server 
       ...more
     },
     notify: (notice) => notices.push(notice),
-    mayInterrupt: () => !quiet
+    mayInterrupt: () => !quiet,
+    timers
   })
   const events: Event[] = []
   channel.onEvent((event) => events.push(event))
@@ -1463,5 +1468,103 @@ describe('lines the retention period erased', () => {
     expect(channel.read(10).map((one) => one.turn)).toEqual(['old', 'kept'])
     channel.forgetLines(new Set(['old', 'unknown']))
     expect(channel.read(10).map((one) => one.turn)).toEqual(['kept'])
+  })
+})
+
+describe('sub-threads', () => {
+  /** A topic at work, as the orchestrator opens it. */
+  async function topicAtWork(options: Setup = {}) {
+    const context = setup(options)
+    context.channel.say('Compare three laptops for me.')
+    await settled()
+    await context.call(0, 'thread_open', { title: 'Laptops' })
+    context.harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+    return { ...context, topic: context.harness.sessions[1], id: context.channel.threads().threads[0]?.id as string }
+  }
+
+  it('take part of a topic’s work out of sight, and give their result back to it when it waits', async () => {
+    const { channel, harness, call, topic, id, spoken, events, notices } = await topicAtWork()
+    expect(topic?.request.agents).toBe(true)
+    expect(topic?.request.instructions).toContain('How you share out work')
+
+    const opened = await call(1, 'subthread_open', { title: 'Laptop A', request: 'Find the price of laptop A.' })
+    expect(opened).toMatchObject({ ok: true })
+    await settled()
+    const sub = harness.sessions[2]
+    expect(sub?.request.instructions).toContain('You are a sub-thread: the thread working on "Laptops" handed you part of its work, "Laptop A".')
+    expect(sub?.request.instructions).not.toContain('THE SCREEN')
+    expect(sub?.sent[0]).toContain('Find the price of laptop A.')
+    expect(sub?.sent[0]?.endsWith(DELEGATED_FIRST)).toBe(true)
+    expect(channel.threads().threads.find((thread) => thread.kind === 'subthread')).toMatchObject({ title: 'Laptop A', parent: id, state: 'working' })
+    // A sub-thread shows nothing and opens no sub-thread of its own.
+    expect(await call(2, 'ui_render', { title: 'A', view: EXAMPLE_VIEW })).toMatchObject({ ok: false })
+    expect(await call(2, 'subthread_open', { title: 'More', request: 'More.' })).toMatchObject({ ok: false })
+
+    const waited = call(1, 'subthread_wait', {})
+    sub?.emit({ type: 'text', text: 'It costs 900 euros. ' })
+    expect(await call(2, 'answer_write', { text: 'Laptop A: 900 euros, from the maker.' })).toMatchObject({ ok: true })
+    sub?.emit({ type: 'text', text: 'Done.' })
+    sub?.emit({ type: 'turn-end' })
+    const result = await waited
+    expect(result.ok).toBe(true)
+    expect(result.text).toContain('"Laptop A":\nLaptop A: 900 euros, from the maker.')
+
+    // Nothing of it was heard, nothing is ready for the person, and the conversation does not hold it.
+    expect(spoken().join(' ')).not.toContain('900')
+    expect(channel.threads().threads.find((thread) => thread.kind === 'subthread')?.state).toBe('parked')
+    expect(notices).toEqual([])
+    expect(channel.read(10).map((line) => line.said)).toEqual(['Compare three laptops for me.'])
+    expect(events.some((event) => event.name === 'turn.started' && event.exchange.trigger === 'delegated')).toBe(true)
+    // Read once: a second wait has nothing new.
+    expect((await call(1, 'subthread_wait', {})).text).toContain('Nothing to wait for.')
+  })
+
+  it('give back after the time the thread waits at most, saying which are still at work', async () => {
+    const timers = manualTimers()
+    const { call } = await topicAtWork({ timers })
+    await call(1, 'subthread_open', { title: 'Laptop B', request: 'Find laptop B.' })
+    await settled()
+    const waited = call(1, 'subthread_wait', { minutes: 2 })
+    await settled()
+    timers.advance(2 * 60_000)
+    const result = await waited
+    expect(result.text).toMatch(/Still at work: .+ "Laptop B"/)
+  })
+
+  it('are a few at once at most', async () => {
+    const { call } = await topicAtWork()
+    for (let at = 0; at < SUBTHREADS_AT_ONCE; at++)
+      expect(await call(1, 'subthread_open', { title: `Part ${at}`, request: 'Work.' })).toMatchObject({ ok: true })
+    expect(await call(1, 'subthread_open', { title: 'One too many', request: 'Work.' })).toMatchObject({ ok: false })
+  })
+
+  it('stop with the thread that opened them, and end its wait', async () => {
+    const { channel, harness, call, id } = await topicAtWork()
+    await call(1, 'subthread_open', { title: 'Laptop C', request: 'Find laptop C.' })
+    await settled()
+    const waited = call(1, 'subthread_wait', {})
+    expect(channel.stopThread(id)).toBe(true)
+    expect(harness.sessions[2]?.interrupted).toBe(1)
+    expect((await waited).text).toContain('stopped')
+  })
+
+  it('are never passed what the person says, nor listed for the orchestrator', async () => {
+    const { channel, harness, call, id } = await topicAtWork()
+    await call(1, 'subthread_open', { title: 'Laptop D', request: 'Find laptop D.' })
+    await settled()
+    const sub = channel.threads().threads.find((thread) => thread.kind === 'subthread')?.id as string
+    harness.sessions[1]?.emit({ type: 'turn-end' })
+    channel.say('And laptop E?')
+    await settled()
+    expect(harness.sessions[0]?.sent.at(-1)).not.toContain('Laptop D')
+    expect(await call(0, 'thread_send', { thread: sub, wait: true })).toMatchObject({ ok: true })
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+    // What the person said went to the thread the sub-thread works for, which is told its sub-thread is still at work.
+    expect(harness.sessions[1]?.sent.at(-1)).toContain('And laptop E?')
+    expect(harness.sessions[1]?.sent.at(-1)).toContain(`Your sub-threads: ${sub} "Laptop D" (at work)`)
+    expect(harness.sessions[2]?.sent).toHaveLength(1)
+    expect(channel.threads().threads.find((thread) => thread.id === id)?.state).toBe('working')
   })
 })

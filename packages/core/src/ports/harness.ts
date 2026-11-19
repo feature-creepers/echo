@@ -6,8 +6,9 @@ import type { PlanStep } from '@repo/protocol'
  * A harness is an engine. The core gives it instructions, the address of its own tool server and what the
  * user said; it takes back reply text and the fact that tools were used. Everything a harness would add by
  * itself is switched off by its adapter: its memory, the user's settings and project files, the user's own
- * tool servers, its own tools, slash commands, plugins and sub-agents. What it keeps of its own is its to-do list
- * for a piece of work, which it reports as a plan.
+ * tool servers, its own tools, slash commands and plugins. What it keeps of its own is its to-do list for a piece of
+ * work, which it reports as a plan, and for a thread its sub-agents, held to the thread's scope and kept from the
+ * core's tools.
  */
 
 /** What a session is for, which decides the model it runs on. Each adapter maps roles to its own models. */
@@ -145,6 +146,13 @@ export interface SessionRequest {
    * out, the assistant's own folder. Either way, what it may reach is the scope's: the folder grants nothing.
    */
   folder?: string
+  /**
+   * Whether the session may hand parts of its work to the harness's own sub-agents (docs/SPEC.md, section 6.2). They
+   * work with the harness's tools the session was given, within the same scope and approved the same way, and are
+   * refused the core's tools: the voice, the screen and the person are the session's. Their calls are reported as the
+   * session's, and the call that starts one as the tool `subagent`. Left out, there are none.
+   */
+  agents?: boolean
 }
 
 export type SessionEvent =

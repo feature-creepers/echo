@@ -113,6 +113,13 @@ describe('Codex’s sandbox, from what the person granted', () => {
     expect(appServerArguments([], true)).not.toContain('features.shell_tool=false')
   })
 
+  it("keeps Codex's own sub-agents for a thread, and turns them off for every other session", () => {
+    const disabled = (args: string[]) => args.flatMap((arg, at) => (args[at - 1] === '--disable' ? [arg] : []))
+    expect(disabled(appServerArguments([], false))).toContain('multi_agent')
+    expect(disabled(appServerArguments([], true, true))).not.toContain('multi_agent')
+    expect(disabled(appServerArguments([], true, true))).toContain('memories')
+  })
+
   it('holds commands to a profile of what was granted, naming no sandbox of its own', () => {
     const scope: Scope = {
       places: [

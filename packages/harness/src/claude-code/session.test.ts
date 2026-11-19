@@ -6,7 +6,7 @@ import { eventually, fake, folder, follow, recordingLog, removeFolders } from '.
 import { type Cli, NotInstalled } from '../process/cli.ts'
 import type { Environment } from '../process/environment.ts'
 import { createClaudeCode } from './adapter.ts'
-import { openSession } from './session.ts'
+import { AGENT_REFUSED, openSession } from './session.ts'
 import { NOT_INSTALLED } from './status.ts'
 
 const open: Session[] = []
@@ -182,6 +182,35 @@ describe('a Claude Code session', () => {
     await followed.until('turn-end')
 
     expect(followed.text()).toBe('Answered with error.')
+  })
+
+  it("gives a thread its sub-agents, reports the call that starts one, and refuses a sub-agent the core's tools", async () => {
+    const { harness: created } = harness()
+    const session = created.open({
+      role: 'thread',
+      instructions: 'You are Ada.',
+      tools: { url: 'http://127.0.0.1:4000/mcp', token: 'secret-token' },
+      agents: true
+    })
+    open.push(session)
+    const followed = follow(session)
+    session.send('delegate')
+    await followed.until('turn-end')
+
+    expect(followed.text()).toBe(`The sub-agent was refused: ${AGENT_REFUSED}`)
+    // The sub-agent's attempt at a view is not one the session showed.
+    expect(followed.outline().filter((line) => line.startsWith('tool:'))).toEqual(['tool:subagent:started', 'tool:subagent:ended'])
+    const started = followed.events.find((event) => event.type === 'tool' && event.phase === 'ended')
+    expect(started).toMatchObject({ name: 'subagent', input: { prompt: 'Look around' }, output: 'Found it.' })
+  })
+
+  it('gives no sub-agent to a session not given them', async () => {
+    const session = harness().session(true)
+    const followed = follow(session)
+    session.send('delegate')
+    await followed.until('turn-end')
+
+    expect(followed.outline().filter((line) => line.startsWith('tool:'))).toEqual([])
   })
 
   it('leaves out what a sub-agent says', async () => {

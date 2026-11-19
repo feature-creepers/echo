@@ -187,6 +187,24 @@ function appServer(): void {
       await message(id, text.includes('blocks') ? ['After', '.'] : [`The core's tool was ${String((reply.result as Message).action)}ed.`])
       return complete(id)
     }
+    if (text.includes('delegate')) {
+      // A sub-agent runs as a conversation of its own on the same server: it speaks, calls the core's tools and ends its
+      // own turn, all named by its own conversation.
+      const spawn = { type: 'collabAgentToolCall', id: `item-${++items}`, tool: 'spawnAgent', status: 'inProgress', prompt: 'Look around' }
+      notify('item/started', { threadId: 'thread-1', turnId: id, item: spawn })
+      notify('turn/started', { threadId: 'thread-2', turn: { id: 'turn-sub' } })
+      notify('item/agentMessage/delta', { threadId: 'thread-2', turnId: 'turn-sub', itemId: 'item-sub', delta: 'whispered by a sub-agent' })
+      notify('turn/plan/updated', { threadId: 'thread-2', turnId: 'turn-sub', plan: [{ step: 'Its own plan', status: 'inProgress' }] })
+      const call = { type: 'mcpToolCall', id: `item-${++items}`, server: 'core', tool: 'ui_render', status: 'inProgress', arguments: { title: 'Hello' } }
+      notify('item/started', { threadId: 'thread-2', turnId: 'turn-sub', item: call })
+      const reply = await ask('mcpServer/elicitation/request', { threadId: 'thread-2', serverName: 'core', message: 'Allow ui_render?' })
+      notify('item/completed', { threadId: 'thread-2', turnId: 'turn-sub', item: { ...call, status: 'failed' } })
+      notify('item/completed', { threadId: 'thread-2', turnId: 'turn-sub', item: { type: 'agentMessage', id: 'item-sub', text: 'said by a sub-agent' } })
+      notify('turn/completed', { threadId: 'thread-2', turn: { id: 'turn-sub', status: 'completed' } })
+      notify('item/completed', { threadId: 'thread-1', turnId: id, item: { ...spawn, status: 'completed' } })
+      await message(id, [`The sub-agent's call was ${String((reply.result as Message).action)}d.`])
+      return complete(id)
+    }
     if (text.includes('other server')) {
       const item = { type: 'mcpToolCall', id: `item-${++items}`, server: 'mail', tool: 'send', status: 'inProgress' }
       notify('item/started', { threadId: 'thread-1', turnId: id, item })

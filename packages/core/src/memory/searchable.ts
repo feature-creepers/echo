@@ -1,4 +1,4 @@
-import { exchangeSchema } from '@repo/protocol'
+import { exchangeSchema, inConversation } from '@repo/protocol'
 import { EXCHANGE } from '../channel/channel.ts'
 import type { NewRecord } from '../ports/records.ts'
 import { EARLIER_LINE, earlierLineSchema } from './earlier.ts'
@@ -16,7 +16,8 @@ export const SEARCHABLE_TYPES: readonly string[] = [EXCHANGE, FACT, EARLIER_LINE
 export function searchableText(record: NewRecord): string | undefined {
   if (record.type === EXCHANGE) {
     const exchange = exchangeSchema.safeParse(record.payload)
-    if (!exchange.success) return undefined
+    // What a thread handed a sub-thread is the assistant's own work, not something said: it is never recalled as such.
+    if (!exchange.success || !inConversation(exchange.data)) return undefined
     const text = [exchange.data.said, exchange.data.replied].filter((part) => part.trim() !== '').join('\n')
     return text === '' ? undefined : text
   }

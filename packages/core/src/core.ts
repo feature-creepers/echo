@@ -413,7 +413,9 @@ export function createCore(options: CoreOptions): Core {
     notify: (notice) => emit({ type: 'event', name: 'device.notify', notification: { ...notice, silent: schedule.quiet(), unlessFocused: true } }),
     // In the quiet hours, or past the cap on interruptions, an answer finished out of sight is left to its chip and
     // its notification.
-    mayInterrupt: () => !schedule.quiet() && interruptions.take()
+    mayInterrupt: () => !schedule.quiet() && interruptions.take(),
+    // A thread waiting for its sub-threads is told after a while which are still at work.
+    timers: options.timers
   })
   currentTurn = channel.turn
 

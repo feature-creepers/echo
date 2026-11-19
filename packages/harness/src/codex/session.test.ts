@@ -125,6 +125,23 @@ describe('a Codex session', () => {
     expect(followed.text()).toBe('Before.\n\nAfter.')
   })
 
+  it("reports a call to a sub-agent, keeps the sub-agent's words, plan and turns its own, and declines it the core's tools", async () => {
+    const { harness: created } = harness()
+    const session = created.open({
+      role: 'thread',
+      instructions: 'You are Ada.',
+      tools: { url: 'http://127.0.0.1:4000/mcp', token: 'secret-token' },
+      agents: true
+    })
+    open.push(session)
+    const followed = follow(session)
+    session.send('delegate')
+    await followed.until('turn-end')
+
+    expect(followed.outline()).toEqual(['tool:subagent:started', 'tool:subagent:ended', "text:The sub-agent's call was declined.", 'turn-end'])
+    expect(followed.events[0]).toMatchObject({ type: 'tool', name: 'subagent', input: { action: 'spawnAgent', prompt: 'Look around' } })
+  })
+
   it('declines the tools of any other server, and does not report them', async () => {
     const session = harness().session(true)
     const followed = follow(session)

@@ -8,6 +8,7 @@ import {
   FACT_KINDS,
   type Fact,
   type FactKind,
+  inConversation,
   type MemoryImport,
   type MemoryView,
   type SleepSettings
@@ -201,10 +202,11 @@ export function createMemory(options: MemoryOptions): Memory {
 
   // —— Reading ——
 
+  // What a thread handed a sub-thread is the assistant's own work, not the person's words: no fact or summary comes of it.
   const exchanges = (): LoggedExchange[] =>
     records.read([EXCHANGE]).flatMap((record) => {
       const exchange = exchangeSchema.safeParse(record.payload)
-      return exchange.success && exchange.data.outcome !== 'running' ? [{ record, exchange: exchange.data }] : []
+      return exchange.success && exchange.data.outcome !== 'running' && inConversation(exchange.data) ? [{ record, exchange: exchange.data }] : []
     })
 
   // What the user said in the turns facts came from, kept so the view is not built from the whole log each time.

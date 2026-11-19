@@ -19,6 +19,8 @@ import { createWorkingFiles } from '../process/working-files.ts'
 import { computerTools, useOf } from './computer-tools.ts'
 import { sandboxSettings } from './confinement.ts'
 import {
+  coreToolName,
+  type Given,
   ISOLATION_VARIABLES,
   isolationArguments,
   isolationLeaks,
@@ -105,6 +107,10 @@ export function openSession(request: SessionRequest, context: SessionContext): S
   let computer: string[] = []
   /** A project's session keeps its plan in the CLI's own to-do list. */
   const planning = request.folder !== undefined
+  /** A thread's session may hand parts of its work to the CLI's own sub-agents. */
+  const delegating = request.agents === true
+  /** What the session was given of the CLI's own, which its calls are reported by. */
+  const given = (): Given => ({ web: request.web === true, computer, plan: planning, agents: delegating })
   let workingFolder = context.folder
   /** The CLI's own folder, and the identifier of this session in it: a long output is kept there for the session to read. */
   let cliFolder: string | undefined
@@ -143,11 +149,12 @@ export function openSession(request: SessionRequest, context: SessionContext): S
         scope && computer.includes('Bash') && system.confines ? sandboxSettings(scope, { never: [context.folder], caches: system.caches(where) }) : undefined
       const paths = {
         instructions: await files.write('instructions.txt', request.instructions),
-        settings: await files.write('settings.json', JSON.stringify(sessionSettings(computer, confined))),
+        settings: await files.write('settings.json', JSON.stringify(sessionSettings(computer, confined, delegating))),
         tools: request.tools ? await files.write('tools.json', toolServerConfig(request.tools)) : undefined,
         web: request.web === true,
         computer: { tools: computer, folders: computer.length > 0 ? folders : [] },
-        plan: planning
+        plan: planning,
+        agents: delegating
       }
       if (closed) return void files.remove()
       running = start(launch.command, [...SESSION_ARGUMENTS, ...isolationArguments(context.model, paths, context.effort)], {
@@ -198,7 +205,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
   function receive(raw: unknown): void {
     const message = asObject(raw)
     if (!message || closed) return
-    // A sub-agent's messages carry the call that started it. There is none here, and its words would not be the reply.
+    // A sub-agent's messages carry the call that started it. Its words are not the reply; its calls are reported.
     const own = message.parent_tool_use_id === null || message.parent_tool_use_id === undefined
     switch (message.type) {
       case 'system':
@@ -209,6 +216,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
         return
       case 'assistant':
         if (own) reply(message)
+        else if (delegating) delegated(message)
         return
       case 'user':
         toolResults(message)
@@ -227,7 +235,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
     if (checked) return
     checked = true
     sessionId = asString(init.session_id)
-    const leaks = isolationLeaks(init, request.web === true, computer, planning)
+    const leaks = isolationLeaks(init, given())
     if (leaks.length > 0) log.error(`A Claude Code session started with ${leaks.join(', ')}, which should all be switched off.`)
     if (!request.tools) return
     const server = asArray(init.mcp_servers)
@@ -279,18 +287,32 @@ export function openSession(request: SessionRequest, context: SessionContext): S
   }
 
   /**
+   * A sub-agent's message, whole: the calls it makes on the computer and the web are reported as the session's, so the
+   * person sees what it did and the files it changed. Its calls of the core's tools are refused, and not reported as the
+   * session's: a refused view is not a view the session showed. Its words go back to the session that started it, as
+   * that call's result.
+   */
+  function delegated(message: JsonObject): void {
+    for (const item of asArray(asObject(message.message)?.content)) {
+      const block = asObject(item)
+      if (block?.type === 'tool_use' && coreToolName(block.name) === undefined) toolStarted(block.id, block.name, block.input, true)
+    }
+  }
+
+  /**
    * A call begins when its block starts, before its input is written, so the person sees at once what is under
    * way. It is reported again once the whole block, input included, has arrived.
    */
-  function toolStarted(id: unknown, name: unknown, input: unknown): void {
-    // The to-do list acts on nothing: what it is given is the plan, told once it is whole.
+  function toolStarted(id: unknown, name: unknown, input: unknown, byAgent = false): void {
+    // The to-do list acts on nothing: what it is given is the plan, told once it is whole. A sub-agent's own list is not
+    // the thread's plan.
     if (planning && name === PLAN_TOOL) {
-      const steps = input === undefined ? undefined : planFromTodos(input)
+      const steps = input === undefined || byAgent ? undefined : planFromTodos(input)
       if (steps) events.emit({ type: 'plan', steps })
       return
     }
     const call = asString(id)
-    const tool = reportedToolName(name, request.web === true, computer)
+    const tool = reportedToolName(name, given())
     if (call === undefined || tool === undefined) return
     const known = calls.get(call)
     if (known && (input === undefined || known.input !== undefined)) return
@@ -379,10 +401,16 @@ export function openSession(request: SessionRequest, context: SessionContext): S
       void onComputer(tool, input, asString(question.tool_use_id) ?? callOf(tool, input)).then(answer)
       return
     }
+    // A sub-agent works with files, commands and the web. The core's tools speak, show and ask for the session, so a
+    // sub-agent is refused them: the question says when one asks.
+    if (asString(question.agent_id) !== undefined && coreToolName(tool) !== undefined) {
+      answer({ behavior: 'deny', message: AGENT_REFUSED })
+      return
+    }
     // The core decides for itself whether one of its tools may run, when it is called. A project's to-do list acts on
     // nothing. Nothing else may run at all.
     answer(
-      reportedToolName(tool, request.web === true) === undefined && !(planning && tool === PLAN_TOOL)
+      reportedToolName(tool, { web: request.web === true, agents: delegating }) === undefined && !(planning && tool === PLAN_TOOL)
         ? { behavior: 'deny', message: 'This tool is not available in this session.' }
         : { behavior: 'allow', updatedInput: input }
     )
@@ -444,7 +472,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
 
   /** The call a permission is asked for, when the question does not say: the latest of that tool with the same input. */
   function callOf(tool: string, input: JsonObject): string | undefined {
-    const name = reportedToolName(tool, request.web === true, computer)
+    const name = reportedToolName(tool, given())
     const written = JSON.stringify(input)
     return [...calls.entries()].reverse().find(([, known]) => known.tool === name && JSON.stringify(known.input) === written)?.[0]
   }
@@ -513,6 +541,10 @@ export function resultText(content: unknown): string | undefined {
 
 /** The name the core reports a write or an edit of a file under. */
 const WRITE_TOOL = 'computer_write'
+
+/** Why a sub-agent may not call a tool of the core. */
+export const AGENT_REFUSED =
+  "A sub-agent works with files, commands and the web only. Showing, speaking, asking the person and the assistant's other tools belong to the thread that started you: give it your findings in your final answer."
 
 /**
  * The pictures among the files the person handed over, as blocks of a message the model sees: each read whole and

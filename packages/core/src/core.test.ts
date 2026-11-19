@@ -266,7 +266,10 @@ describe('threads and the screen through the core', () => {
       'schedule_cancel',
       'answer_write',
       'threads_beside',
-      'resume_after_restart'
+      'resume_after_restart',
+      'subthread_open',
+      'subthread_send',
+      'subthread_wait'
     ])
 
     const { EXAMPLE_VIEW } = await import('@repo/catalog')
