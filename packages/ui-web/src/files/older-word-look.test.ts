@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { reader } from './binary-records.ts'
 import type { DocumentBlock, DocumentParagraph, DocumentTable } from './document-look.ts'
-import { type OlderWordFile, readOlderWordLook, type WordFigures } from './older-word-look.ts'
+import { type OlderWordFile, readOlderWordLook, type WordFigures, type WordPart } from './older-word-look.ts'
 
 /** Little-endian bytes written in order. */
 class Bytes {
@@ -93,15 +93,6 @@ function runPages(runs: { start: number; end: number; properties: number[] | und
   return pages
 }
 
-/** A list of where pages of runs start, and the number of each page. */
-function runTable(runs: { start: number; end: number }[], first: number, count: number): number[] {
-  const bytes = new Bytes()
-  for (let page = 0; page < count; page++) bytes.u32(runs[page * 8]?.start ?? 0)
-  bytes.u32(runs.at(-1)?.end ?? 0)
-  for (let page = 0; page < count; page++) bytes.u32(first + page)
-  return bytes.values
-}
-
 const TEXT_AT = 1024
 
 /** A Word 97 document's parts, its text in one piece of 16-bit characters, each part where `part` says. */
@@ -138,14 +129,12 @@ function wordFile(options: WordOptions): OlderWordFile {
   })
 
   const table = new Bytes()
-  const parts = new Map<number, { at: number; size: number }>()
-  const add = (index: number, bytes: readonly number[]) => {
-    parts.set(index, { at: table.length, size: bytes.length })
+  const parts = new Map<WordPart, { at: number; size: number }>()
+  const add = (name: WordPart, bytes: readonly number[]) => {
+    parts.set(name, { at: table.length, size: bytes.length })
     table.raw(bytes)
   }
-  add(13, runTable(paragraphRuns, firstParagraphPage, paragraphPages.length))
-  add(12, runTable(characterRuns, firstCharacterPage, characterPages.length))
-  if (options.styles) add(1, options.styles)
+  if (options.styles) add('styles', options.styles)
   if (options.fonts) {
     const fonts = new Bytes().u16(options.fonts.length).u16(0)
     for (const name of options.fonts)
@@ -154,33 +143,39 @@ function wordFile(options: WordOptions): OlderWordFile {
         .zeros(39)
         .wide(name)
         .u16(0)
-    add(15, fonts.values)
+    add('fonts', fonts.values)
   }
   if (options.lists) {
-    add(73, options.lists.lists)
-    add(74, options.lists.overrides)
+    add('lists', options.lists.lists)
+    add('listOverrides', options.lists.overrides)
   }
   if (options.sections) {
     const plc = new Bytes().u32(0)
     for (const { end } of options.sections) plc.u32(end)
     for (const at of sections) plc.u16(0).u32(at).u16(0).u32(0)
-    add(6, plc.values)
+    add('sections', plc.values)
   }
-  if (options.headers) add(11, options.headers.flatMap(u32))
-  const notes = (references: number, texts: number, found: { references: number[]; texts: number[] } | undefined) => {
+  if (options.headers) add('headers', options.headers.flatMap(u32))
+  const notes = (references: WordPart, texts: WordPart, found: { references: number[]; texts: number[] } | undefined) => {
     if (!found) return
     add(references, [...[...found.references, 0].flatMap(u32), ...found.references.flatMap(() => u16(1))])
     add(texts, found.texts.flatMap(u32))
   }
-  notes(2, 3, options.footnotes)
-  notes(46, 47, options.endnotes)
-  if (options.settings) add(31, options.settings)
+  notes('footnoteReferences', 'footnoteTexts', options.footnotes)
+  notes('endnoteReferences', 'endnoteTexts', options.endnotes)
+  if (options.settings) add('settings', options.settings)
 
   return {
+    version: 97,
     word: reader(new Uint8Array(word.values)),
     table: reader(new Uint8Array(table.values)),
     data: undefined,
-    part: (index) => parts.get(index) ?? { at: 0, size: 0 },
+    part: (name) => parts.get(name) ?? { at: 0, size: 0 },
+    runPages: {
+      characters: characterPages.map((_, index) => firstCharacterPage + index),
+      paragraphs: paragraphPages.map((_, index) => firstParagraphPage + index)
+    },
+    codePage: 1252,
     lengths: options.lengths ?? [text.length],
     pieces: [{ start: 0, end: text.length, at: TEXT_AT, narrow: false }],
     figures: {
@@ -627,6 +622,325 @@ describe('the look of a Word 97 document', () => {
 
   it('says a document whose parts run past their stream is damaged', () => {
     const file = wordFile({ paragraphs: [{ text: 'Text\r' }] })
-    expect(() => readOlderWordLook({ ...file, part: (index) => (index === 1 ? { at: 10_000, size: 40 } : file.part(index)) })).toThrow('damaged')
+    expect(() => readOlderWordLook({ ...file, part: (name) => (name === 'styles' ? { at: 10_000, size: 40 } : file.part(name)) })).toThrow('damaged')
+  })
+})
+
+/** A paragraph of Word 6 or 2: its 8-bit characters, its style and one-byte properties, and runs of characters from its start. */
+interface OlderParagraph {
+  bytes: number[]
+  style?: number
+  paragraph?: number[]
+  runs?: { length: number; character: number[] }[]
+}
+
+interface OlderOptions {
+  paragraphs: OlderParagraph[]
+  lengths?: number[]
+  codePage?: number
+  styles?: number[]
+  fonts?: { name: string; set: number }[]
+  sections?: { end: number; properties: number[] }[]
+  headers?: number[]
+  settings?: number[]
+}
+
+/** A page of runs as Word 6 and 2 write it: a paragraph's entries seven bytes or one, its properties counted in words. */
+function olderRunPage(runs: { start: number; end: number; properties: number[] | undefined }[], entry: number, counted: boolean): number[] {
+  const page = new Uint8Array(512)
+  const view = new DataView(page.buffer)
+  runs.forEach((run, index) => {
+    view.setUint32(index * 4, run.start, true)
+    view.setUint32((index + 1) * 4, run.end, true)
+  })
+  let free = 511
+  runs.forEach((run, index) => {
+    if (!run.properties) return
+    const size = counted ? run.properties.length + (run.properties.length % 2) : run.properties.length
+    free -= size + 1
+    free -= free % 2
+    page[free] = counted ? size / 2 : size
+    page.set(run.properties, free + 1)
+    page[(runs.length + 1) * 4 + index * entry] = free / 2
+  })
+  page[511] = runs.length
+  return [...page]
+}
+
+/**
+ * A Word 6 or Word 2 document's one stream: its 8-bit text in one piece, a page of paragraphs' runs, one of characters'
+ * runs, its sections' properties, then its parts, each where `part` says.
+ */
+function olderFile(version: 6 | 2, options: OlderOptions): OlderWordFile {
+  const text = options.paragraphs.flatMap((one) => one.bytes)
+  const word = new Bytes().padTo(TEXT_AT).raw(text)
+  const paragraphRuns: { start: number; end: number; properties: number[] | undefined }[] = []
+  const characterRuns: { start: number; end: number; properties: number[] | undefined }[] = []
+  let place = TEXT_AT
+  for (const paragraph of options.paragraphs) {
+    const style = paragraph.style ?? 0
+    const head = version === 6 ? u16(style) : [style, 0, 0, 0, 0, 0, 0]
+    paragraphRuns.push({ start: place, end: place + paragraph.bytes.length, properties: [...head, ...(paragraph.paragraph ?? [])] })
+    let at = place
+    for (const run of paragraph.runs ?? []) {
+      characterRuns.push({ start: at, end: at + run.length, properties: run.character })
+      at += run.length
+    }
+    if (at < place + paragraph.bytes.length) characterRuns.push({ start: at, end: place + paragraph.bytes.length, properties: undefined })
+    place += paragraph.bytes.length
+  }
+  word.padTo(1536)
+  word.raw(olderRunPage(paragraphRuns, version === 6 ? 7 : 1, true))
+  word.raw(olderRunPage(characterRuns, 1, false))
+  const sections = (options.sections ?? []).map(({ properties }) => {
+    const at = word.length
+    if (version === 6) word.u16(properties.length)
+    else word.u8(properties.length)
+    word.raw(properties)
+    return at
+  })
+  const parts = new Map<WordPart, { at: number; size: number }>()
+  const add = (name: WordPart, bytes: readonly number[]) => {
+    parts.set(name, { at: word.length, size: bytes.length })
+    word.raw(bytes)
+  }
+  if (options.styles) add('styles', options.styles)
+  if (options.fonts) {
+    const fonts = new Bytes().u16(0)
+    for (const { name, set } of options.fonts)
+      if (version === 6)
+        fonts
+          .u8(5 + name.length + 1)
+          .u8(0)
+          .u16(400)
+          .u8(set)
+          .u8(0)
+          .raw(latin(name))
+          .u8(0)
+      else
+        fonts
+          .u8(2 + name.length + 1)
+          .u8(0)
+          .u8(set)
+          .raw(latin(name))
+          .u8(0)
+    add('fonts', fonts.values)
+  }
+  if (options.sections) {
+    const plc = new Bytes().u32(0)
+    for (const { end } of options.sections) plc.u32(end)
+    for (const at of sections) {
+      plc.u16(0).u32(at)
+      if (version === 6) plc.u16(0).u32(0)
+    }
+    add('sections', plc.values)
+  }
+  if (options.headers) add('headers', options.headers.flatMap(u32))
+  add('settings', options.settings ?? [0, 0])
+  const stream = reader(new Uint8Array(word.values))
+  return {
+    version,
+    word: stream,
+    table: stream,
+    data: undefined,
+    part: (name) => parts.get(name) ?? { at: 0, size: 0 },
+    runPages: { characters: [4], paragraphs: [3] },
+    codePage: options.codePage ?? 1252,
+    lengths: options.lengths ?? [text.length],
+    pieces: [{ start: 0, end: text.length, at: TEXT_AT, narrow: true }],
+    figures: {
+      inline: () => undefined,
+      object: () => undefined,
+      floating: () => undefined,
+      anchor: () => undefined,
+      rule: () => undefined,
+      size: () => undefined
+    },
+    limit: 4_000_000
+  }
+}
+
+/** Word 6's style sheet: its default font, then each style, its built-in number, kind, base, 8-bit name and one-byte properties. */
+function sixStyleSheet(
+  font: number,
+  styles: { builtIn: number; kind: number; base: number; name: string; paragraph?: number[]; character?: number[] }[]
+): number[] {
+  const bytes = new Bytes().u16(18).u16(styles.length).u16(8).zeros(8).u16(font).zeros(4)
+  for (const style of styles) {
+    const body = new Bytes()
+      .u16(style.builtIn)
+      .u16(style.kind | (style.base << 4))
+      .u16(style.kind === 1 ? 2 : 1)
+      .u16(0)
+      .u8(style.name.length)
+      .raw(latin(style.name))
+      .u8(0)
+    if (body.length % 2) body.u8(0)
+    const upx = (content: number[]) => {
+      body.u16(content.length).raw(content)
+      if (content.length % 2) body.u8(0)
+    }
+    if (style.kind === 1) upx([...u16(0), ...(style.paragraph ?? [])])
+    upx(style.character ?? [])
+    bytes.u16(body.length).raw(body.values)
+  }
+  return bytes.values
+}
+
+const latin = (text: string) => [...text].map((letter) => letter.charCodeAt(0))
+/** "При" in Windows' Cyrillic code page. */
+const CYRILLIC = [0xcf, 0xf0, 0xe8]
+const textsOf = (blocks: DocumentBlock[]) => blocks.map((block) => (block as DocumentParagraph).spans.map((span) => ('text' in span ? span.text : '')).join(''))
+
+describe('the look of a Word 6 or 95 document', () => {
+  it('sets each paragraph and run in its style and its own one-byte properties, its 8-bit text in its font’s code page', () => {
+    const file = olderFile(6, {
+      fonts: [
+        { name: 'Times New Roman', set: 0 },
+        { name: 'Arial', set: 204 },
+        { name: 'Courier Cyr', set: 0 }
+      ],
+      styles: sixStyleSheet(0, [
+        { builtIn: 0, kind: 1, base: 0xfff, name: 'Normal', character: [99, 24, 0] },
+        { builtIn: 1, kind: 1, base: 0, name: 'heading 1', paragraph: [5, 1, 22, 240, 0], character: [85, 1, 99, 32, 0] }
+      ]),
+      paragraphs: [
+        { bytes: [...latin('Title'), 0x0d], style: 1 },
+        {
+          bytes: [...latin('Caf'), 0xe9, 0x20, ...CYRILLIC, 0x20, ...CYRILLIC, 0x0d],
+          paragraph: [17, ...u16(720), 19, ...u16(-360), 21, ...u16(120), 38, 0x09, 0x00, 15, 5, 0, 1, ...u16(4320), 2],
+          runs: [
+            { length: 5, character: [] },
+            { length: 3, character: [93, 1, 0, 85, 1, 98, 6] },
+            { length: 1, character: [] },
+            { length: 3, character: [93, 2, 0, 94, 1, 104, 1] }
+          ]
+        }
+      ]
+    })
+    const { look } = readOlderWordLook(file)
+    const blocks = look.pages.flatMap((page) => page.bands.flatMap((band) => band.blocks))
+    expect(look.text).toEqual({ font: 'Times New Roman', size: 12 })
+    expect(paragraphAt(blocks, 0)).toEqual({
+      kind: 'paragraph',
+      look: { align: 'center', before: 0, after: 12 },
+      spans: [{ text: 'Title', look: { font: 'Times New Roman', size: 16, bold: true } }],
+      mark: { font: 'Times New Roman', size: 16, bold: true },
+      heading: 1
+    })
+    const plain = { font: 'Times New Roman', size: 12 }
+    expect(paragraphAt(blocks, 1)).toEqual({
+      kind: 'paragraph',
+      look: {
+        start: 36,
+        firstLine: -18,
+        before: 6,
+        after: 0,
+        borders: { top: { width: 0.75, style: 'solid', color: '#000000' } },
+        tabs: [{ position: 216, align: 'right' }]
+      },
+      spans: [
+        { text: 'Café ', look: plain },
+        { text: 'При', look: { font: 'Arial', size: 12, bold: true, color: '#ff0000' } },
+        { text: ' ', look: plain },
+        { text: 'При', look: { font: 'Courier Cyr', size: 12, underline: 'solid', position: 'super' } }
+      ],
+      mark: plain
+    })
+  })
+
+  it('lays out its sections’ pages, centred down the page where they say, with the headers each says it has', () => {
+    const main = [...latin('Body'), 0x0d]
+    const headers = [...latin('Odd head'), 0x0d, ...latin('Foot'), 0x0d, 0x0d]
+    const section = [164, ...u16(11906), 165, ...u16(16838), 166, ...u16(1134), 168, ...u16(720), 144, 1, 0, 159, 1, 153, 0b1010]
+    const { look } = readOlderWordLook(
+      olderFile(6, {
+        paragraphs: [{ bytes: main }, { bytes: headers }],
+        lengths: [main.length, 0, headers.length],
+        sections: [{ end: main.length, properties: section }],
+        headers: [0, 9, 14, 15]
+      })
+    )
+    expect(look.pages.map((page) => [page.width, page.height, page.margins.left, page.margins.top, page.vertical, page.bands[0]?.columns])).toEqual([
+      [595.3, 841.9, 56.7, 36, 'middle', 2]
+    ])
+    expect(look.pages.map((page) => [textsOf(page.header), textsOf(page.footer)])).toEqual([[['Odd head'], ['Foot']]])
+  })
+
+  it('numbers its paragraphs as their automatic numbers say, and builds its tables from their rows', () => {
+    // An automatic number's description: decimal, its text "." after the number, counted from 1.
+    const description = [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, ...new Array(8).fill(0), 0x2e, ...new Array(31).fill(0)]
+    const numbered = [13, 10, 12, description.length, ...description]
+    const cell = (border: number) => [0, 0, ...u16(border), 0, 0, ...u16(border), 0, 0]
+    const row = [190, ...u16(1 + 1 + 6 + 20), 2, ...u16(0), ...u16(1440), ...u16(2880), ...cell(0x09), ...cell(0x09)]
+    const blocks = blocksOf(
+      olderFile(6, {
+        paragraphs: [
+          { bytes: [...latin('One'), 0x0d], paragraph: numbered },
+          { bytes: [...latin('Two'), 0x0d], paragraph: numbered },
+          { bytes: [0x41, 0x07], paragraph: [24, 1] },
+          { bytes: [0x42, 0x07], paragraph: [24, 1] },
+          { bytes: [0x07], paragraph: [24, 1, 25, 1, ...row] }
+        ]
+      })
+    )
+    expect(blocks.slice(0, 2).map((block) => (block as DocumentParagraph).marker?.text)).toEqual(['1. ', '2. '])
+    const table = blocks[2] as DocumentTable
+    expect(table.columns).toEqual([72, 72])
+    expect(table.rows[0]?.cells.map((one) => [textsOf(one.blocks), one.borders.top])).toEqual([
+      [['A'], { width: 0.75, style: 'solid', color: '#000000' }],
+      [['B'], { width: 0.75, style: 'solid', color: '#000000' }]
+    ])
+  })
+})
+
+describe('the look of a Word 2 document', () => {
+  it('sets its paragraphs and runs in their styles, their characters described as Word 2 describes them, in their fonts’ code pages', () => {
+    // The styles' names, then each one's characters and paragraph properties, then which each comes from.
+    const names = [0, 9, ...latin('heading 1')]
+    const characters = [7, 0, 0, 0x06, 0, 0, 0, 24, 1, 0x01]
+    const paragraphs = [0xff, 9, 1, 0, 0, 0, 0, 0, 0, 5, 1]
+    const styles = new Bytes()
+      .u16(0)
+      .u16(names.length + 2)
+      .raw(names)
+      .u16(characters.length + 2)
+      .raw(characters)
+      .u16(paragraphs.length + 2)
+      .raw(paragraphs)
+      .u16(2)
+      .raw([0, 222, 0, 0]).values
+    const blocks = blocksOf(
+      olderFile(2, {
+        fonts: [
+          { name: 'Tms Rmn', set: 0 },
+          { name: 'Arial', set: 238 }
+        ],
+        styles,
+        paragraphs: [
+          { bytes: [...latin('Title'), 0x0d], style: 1 },
+          {
+            bytes: [...latin('Plain '), 0xe8, 0x0d],
+            paragraph: [17, ...u16(720)],
+            runs: [
+              { length: 6, character: [0x02, 0, 0x02, 0, 0, 0] },
+              { length: 1, character: [0, 0, 0x02, 0, 1, 0] }
+            ]
+          }
+        ]
+      })
+    )
+    expect(paragraphAt(blocks, 0)).toMatchObject({
+      look: { align: 'center' },
+      spans: [{ text: 'Title', look: { font: 'Tms Rmn', size: 12, bold: true } }],
+      heading: 1
+    })
+    expect(paragraphAt(blocks, 1)).toMatchObject({
+      look: { start: 36 },
+      spans: [
+        { text: 'Plain ', look: { font: 'Tms Rmn', size: 12, italic: true } },
+        { text: 'č', look: { font: 'Arial', size: 12 } }
+      ]
+    })
   })
 })

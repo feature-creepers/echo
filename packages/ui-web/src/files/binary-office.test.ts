@@ -986,7 +986,7 @@ describe('a Word 6 or 95 document', () => {
 
   it('reads its text in the code page of its language, its headings, lists and tables, saved whole or quickly', async () => {
     for (const quick of [false, true])
-      expect(await readOlderWord(sixDocument(paragraphs, { quick }))).toEqual({ kind: 'document', markdown: expected, figures: [], cut: false })
+      expect(textual(await readOlderWord(sixDocument(paragraphs, { quick })))).toEqual({ kind: 'document', markdown: expected, figures: [], cut: false })
   })
 
   it('says when it is protected with a password', async () => {
@@ -1094,7 +1094,7 @@ describe('a Word 2 document', () => {
 
   it('reads its headings, built in or named, its lists and tables, saved whole or quickly', async () => {
     for (const quick of [false, true])
-      expect(await readOlderWord(twoDocument(paragraphs, { quick }))).toEqual({ kind: 'document', markdown: expected, figures: [], cut: false })
+      expect(textual(await readOlderWord(twoDocument(paragraphs, { quick })))).toEqual({ kind: 'document', markdown: expected, figures: [], cut: false })
   })
 
   it('reads a document of Word 1 the same way, the properties Word 1 counts in their first byte read so', async () => {

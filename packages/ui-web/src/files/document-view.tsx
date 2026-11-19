@@ -93,21 +93,50 @@ function lineHeight(paragraph: DocumentParagraph): CSSProperties['lineHeight'] {
   return line.rule === 'exact' ? pt(line.value) : `max(${pt(line.value)}, ${ratio}em)`
 }
 
-/** Blocks one under the other, the space after one and before the next added together, as Word adds them. */
+const sameBorder = (one: BorderLook | undefined, other: BorderLook | undefined) =>
+  one?.width === other?.width && one?.style === other?.style && one?.color === other?.color
+
+/**
+ * Whether two paragraphs one under the other are boxed together, as Word boxes them: both bordered, with the same
+ * borders at the same indents.
+ */
+function boxedTogether(one: DocumentBlock | undefined, other: DocumentBlock | undefined): boolean {
+  if (one?.kind !== 'paragraph' || other?.kind !== 'paragraph') return false
+  const [first, second] = [one.look.borders, other.look.borders]
+  if (!first || !second || (one.look.start ?? 0) !== (other.look.start ?? 0) || (one.look.end ?? 0) !== (other.look.end ?? 0)) return false
+  return (['top', 'right', 'bottom', 'left'] as const).every((side) => sameBorder(first[side], second[side])) && Object.values(first).some(Boolean)
+}
+
+/**
+ * Blocks one under the other, the space after one and before the next added together, as Word adds them. Paragraphs
+ * with the same borders make one box, as in Word: its top line above the first, its bottom line under the last, its
+ * sides and shading running through the space between them.
+ */
 function Blocks({ blocks }: { blocks: readonly DocumentBlock[] }) {
   return blocks.map((block, index) => {
     const previous = blocks[index - 1]
     const above = (previous?.kind === 'paragraph' ? (previous.look.after ?? 0) : 0) + (block.kind === 'paragraph' ? (block.look.before ?? 0) : 0)
     const below = index === blocks.length - 1 && block.kind === 'paragraph' ? (block.look.after ?? 0) : 0
+    const boxed = { above: boxedTogether(previous, block), below: boxedTogether(block, blocks[index + 1]) }
     return block.kind === 'paragraph' ? (
-      <Paragraph key={index} paragraph={block} above={above} below={below} />
+      <Paragraph key={index} paragraph={block} above={above} below={below} boxed={boxed} />
     ) : (
       <Table key={index} table={block} above={above} />
     )
   })
 }
 
-function Paragraph({ paragraph, above, below }: { paragraph: DocumentParagraph; above: number; below: number }) {
+function Paragraph({
+  paragraph,
+  above,
+  below,
+  boxed = { above: false, below: false }
+}: {
+  paragraph: DocumentParagraph
+  above: number
+  below: number
+  boxed?: { above: boolean; below: boolean }
+}) {
   const shown = useContext(ShownContext)
   const { look, mark, marker } = paragraph
   const hanging = (look.firstLine ?? 0) < 0 ? -(look.firstLine ?? 0) : 0
@@ -117,7 +146,9 @@ function Paragraph({ paragraph, above, below }: { paragraph: DocumentParagraph; 
   const style: CSSProperties = {
     position: 'relative',
     margin: 0,
-    marginTop: above ? pt(above) : undefined,
+    // Within a box of paragraphs, the space between two is inside it, so that its sides run on.
+    marginTop: above && !boxed.above ? pt(above) : undefined,
+    paddingTop: above && boxed.above ? pt(above) : undefined,
     marginBottom: below ? pt(below) : undefined,
     textAlign: look.align,
     paddingLeft: look.start ? pt(look.start) : undefined,
@@ -125,7 +156,7 @@ function Paragraph({ paragraph, above, below }: { paragraph: DocumentParagraph; 
     textIndent: look.firstLine ? pt(look.firstLine) : undefined,
     lineHeight: lineHeight(paragraph),
     backgroundColor: look.shading,
-    ...bordersStyle(look.borders),
+    ...bordersStyle({ ...look.borders, top: boxed.above ? undefined : look.borders?.top, bottom: boxed.below ? undefined : look.borders?.bottom }),
     whiteSpace: 'pre-wrap',
     overflowWrap: 'break-word',
     tabSize: pt(shown.tab),
@@ -169,11 +200,29 @@ function Paragraph({ paragraph, above, below }: { paragraph: DocumentParagraph; 
   const heading = paragraph.heading === undefined ? {} : { role: 'heading', 'aria-level': paragraph.heading }
   const anchored = paragraph.spans.filter(fromParagraph)
   const flowing = anchored.length > 0 ? paragraph.spans.filter((span) => !fromParagraph(span)) : paragraph.spans
+  // A first line that hangs before the text, its number typed before a tab, goes on to the text's start at that tab as
+  // a list's number does: Word passes over the default stops before the text's start. A longer lead goes on to the
+  // next default stop after it.
+  const firstTab = flowing.findIndex((span) => 'tab' in span)
+  const lead =
+    hanging > 0 && !marker && !tabbed && firstTab > 0 && firstTab <= 4 && flowing.slice(0, firstTab).every((span) => 'text' in span && span.text.length <= 24)
+      ? firstTab + 1
+      : 0
+  const spans = flowing.map((span, index) => <Span key={index} span={span} />)
   return (
     <div style={style} {...heading}>
       {anchored.length > 0 && <Anchored spans={anchored} />}
       {markerShown}
-      {tabbed ? <TabbedSpans paragraph={{ ...paragraph, spans: flowing }} /> : flowing.map((span, index) => <Span key={index} span={span} />)}
+      {tabbed ? (
+        <TabbedSpans paragraph={{ ...paragraph, spans: flowing }} />
+      ) : lead > 0 ? (
+        <>
+          <span style={{ display: 'inline-block', minWidth: pt(hanging), textIndent: 0, whiteSpace: 'pre' }}>{spans.slice(0, lead)}</span>
+          {spans.slice(lead)}
+        </>
+      ) : (
+        spans
+      )}
       {/* An empty paragraph still makes a line, as tall as its mark's font, even when figures are placed from it. */}
       {flowing.length === 0 && <span style={textStyle(mark)}>{'​'}</span>}
     </div>
@@ -427,11 +476,17 @@ function Table({ table, above }: { table: DocumentTable; above: number }) {
                   padding: `${pt(cell.insets.top ?? 0)} ${pt(cell.insets.right ?? 5.4)} ${pt(cell.insets.bottom ?? 0)} ${pt(cell.insets.left ?? 5.4)}`,
                   backgroundColor: cell.shading,
                   verticalAlign: cell.vertical ?? 'top',
-                  ...bordersStyle(cell.borders),
-                  overflow: row.height?.exact ? 'hidden' : undefined
+                  ...bordersStyle(cell.borders)
                 }}
               >
-                <Blocks blocks={cell.blocks} />
+                {/* A row of an exact height cuts what does not fit in it, as Word does, where a table's row would grow. */}
+                {row.height?.exact && cell.rows === 1 ? (
+                  <div style={{ height: pt(Math.max(0, row.height.value - (cell.insets.top ?? 0) - (cell.insets.bottom ?? 0))), overflow: 'hidden' }}>
+                    <Blocks blocks={cell.blocks} />
+                  </div>
+                ) : (
+                  <Blocks blocks={cell.blocks} />
+                )}
               </td>
             ))}
           </tr>
@@ -505,18 +560,30 @@ function Page({ page, look, scale, last }: { page: DocumentPage; look: DocumentL
             </div>
           )
         )}
-        <header style={{ ...sides, boxSizing: 'border-box', minHeight: pt(margins.top), paddingTop: pt(margins.header), paddingBottom: '6pt' }}>
+        {/* A page of no header has its text from its top margin down, wherever a header would start. */}
+        <header
+          style={{
+            ...sides,
+            boxSizing: 'border-box',
+            minHeight: pt(margins.top),
+            paddingTop: page.header.length > 0 ? pt(margins.header) : undefined,
+            paddingBottom: page.header.length > 0 ? '6pt' : undefined
+          }}
+        >
           <Blocks blocks={page.header} />
         </header>
         <div style={{ ...sides, flex: 1, display: 'flex', flexDirection: 'column' }}>
-          {page.bands.map((band, index) => (
-            <div key={index} style={band.columns > 1 ? { columnCount: band.columns, columnGap: pt(band.gap) } : { display: 'flow-root' }}>
-              <Blocks blocks={band.blocks} />
-            </div>
-          ))}
-          {last && <Notes notes={look.endNotes} />}
+          {/* Text that does not fill its page sits at its top, in its middle or at its foot, as its section says. */}
+          <div style={{ marginTop: page.vertical ? 'auto' : undefined, marginBottom: page.vertical === 'middle' ? 'auto' : undefined }}>
+            {page.bands.map((band, index) => (
+              <div key={index} style={band.columns > 1 ? { columnCount: band.columns, columnGap: pt(band.gap) } : { display: 'flow-root' }}>
+                <Blocks blocks={band.blocks} />
+              </div>
+            ))}
+            {last && <Notes notes={look.endNotes} />}
+          </div>
           {/* Footnotes sit at the foot of the page's text. */}
-          <div style={{ marginTop: 'auto' }}>
+          <div style={{ marginTop: page.vertical ? undefined : 'auto' }}>
             <Notes notes={page.notes} />
           </div>
         </div>
@@ -525,8 +592,8 @@ function Page({ page, look, scale, last }: { page: DocumentPage; look: DocumentL
             ...sides,
             boxSizing: 'border-box',
             minHeight: pt(margins.bottom),
-            paddingBottom: pt(margins.footer),
-            paddingTop: '6pt',
+            paddingBottom: page.footer.length > 0 ? pt(margins.footer) : undefined,
+            paddingTop: page.footer.length > 0 ? '6pt' : undefined,
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'flex-end'

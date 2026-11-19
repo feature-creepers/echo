@@ -1,15 +1,16 @@
 /**
- * A Word document of 97 to 2003 as it looks (docs/SPEC.md, section 9.7), read into `document-look.ts` from the binary
- * records `binary-office.ts` finds: each paragraph and run in its style over the ones it comes from, then its own
- * properties (`sprm`s) and those of the piece of text it is in; lists numbered and bulleted as their list and its
- * overrides say at each level; tables with their columns, merged cells, row heights, borders, padding and shading;
- * pictures and charts in their line or floating; sections with their pages' size, margins and columns, their headers
- * and footers (first, odd and even pages) with the page's number and the count of pages; footnotes at their page's foot
- * and endnotes at the end. Word keeps no trace in these files of where it last broke their pages, so they break where
- * the text breaks them and between sections.
+ * A Word document of 97 to 2003, of Word 6 and 95, or of Word 2, as it looks (docs/SPEC.md, section 9.7), read into
+ * `document-look.ts` from the binary records `binary-office.ts` finds: each paragraph and run in its style over the
+ * ones it comes from, then its own properties (`sprm`s, an older version's written as Word 97's by
+ * `older-word-properties.ts`) and those of the piece of text it is in; lists numbered and bulleted as their list and
+ * its overrides say at each level, or as Word 6's automatic numbers say; tables with their columns, merged cells, row
+ * heights, borders, padding and shading; pictures and charts in their line or floating; sections with their pages'
+ * size, margins and columns, their headers and footers (first, odd and even pages) with the page's number and the count
+ * of pages; footnotes at their page's foot and endnotes at the end. Word keeps no trace in these files of where it last
+ * broke their pages, so they break where the text breaks them and between sections.
  */
 
-import { type Reader, type WordProperty, wordProperties } from './binary-records.ts'
+import { codePageDecoder, leadsTwoBytes, type Reader, reader, type WordProperty, wordProperties } from './binary-records.ts'
 import type {
   BorderLook,
   DocumentBlock,
@@ -27,6 +28,17 @@ import type {
   TextLook
 } from './document-look.ts'
 import { BLOCK_LIMIT } from './office-text.ts'
+import {
+  characterRun,
+  type FormattedRun,
+  formattedRuns,
+  type Properties,
+  paragraphRun,
+  runAt,
+  twoCharacters,
+  type WordVersion,
+  wordProperties97
+} from './older-word-properties.ts'
 import { isSymbolFont, listMark, symbolCharacter } from './word-look.ts'
 
 /** Where a part of the file is, and how long it is. */
@@ -37,7 +49,8 @@ export interface WordPlace {
 
 /**
  * A piece of the text: its characters' places in the text, where the file keeps them, in 8 bits or 16, and the
- * properties every character of it takes, in the table stream.
+ * properties every character of it takes, in the table stream, or the one property of Word 6 a piece names itself
+ * (its code, then its operand's one byte).
  */
 export interface TextPiece {
   start: number
@@ -45,6 +58,7 @@ export interface TextPiece {
   at: number
   narrow: boolean
   properties?: WordPlace | undefined
+  property?: number | undefined
 }
 
 /** Where a shape floating over the text is, in points, what its place is measured from, and how text wraps around it. */
@@ -73,43 +87,42 @@ export interface WordFigures {
   equation?(object: number | undefined): string | undefined
 }
 
-/** A Word 97 document's streams and the parts its header names, as `binary-office.ts` found them. */
+/**
+ * The parts of a document its look reads, each where its header says: its styles, the references and texts of its
+ * footnotes and endnotes, its sections, headers and footers, fonts, settings (`DOP`), and Word 97's lists.
+ */
+export type WordPart =
+  | 'styles'
+  | 'footnoteReferences'
+  | 'footnoteTexts'
+  | 'sections'
+  | 'headers'
+  | 'fonts'
+  | 'settings'
+  | 'endnoteReferences'
+  | 'endnoteTexts'
+  | 'lists'
+  | 'listOverrides'
+
+/** A document's streams and the parts its header names, as `binary-office.ts` found them. */
 export interface OlderWordFile {
+  /** The version of Word whose records the document is written in: Word 97 to 2003, Word 6 and 95, or Word 2. */
+  version: Exclude<WordVersion, 1>
   word: Reader
+  /** The stream of its parts: the table stream of Word 97, the main stream itself before it. */
   table: Reader
   data: Reader | undefined
-  /** A part of the table stream, by its place in the header's list (`FibRgFcLcb97`). */
-  part(index: number): WordPlace
+  part(name: WordPart): WordPlace
+  /** The pages of runs (`FKP`) of characters and of paragraphs, by their numbers in the main stream. */
+  runPages: { characters: readonly number[]; paragraphs: readonly number[] }
+  /** The code page of the 8-bit text: Western European in Word 97, the document's language's before it. */
+  codePage: number
   /** The length of each story, in characters: the text, its footnotes, headers, macros, comments, endnotes and boxes. */
   lengths: readonly number[]
   pieces: readonly TextPiece[]
   figures: WordFigures
   /** Past this many characters of the text, the rest is left out. */
   limit: number
-}
-
-// Parts of the table stream, by their place in the header's list.
-const PART = {
-  styles: 1,
-  footnoteReferences: 2,
-  footnoteTexts: 3,
-  sections: 6,
-  headers: 11,
-  characters: 12,
-  paragraphs: 13,
-  fonts: 15,
-  settings: 31,
-  endnoteReferences: 46,
-  endnoteTexts: 47,
-  lists: 73,
-  listOverrides: 74
-}
-
-/** A list of properties and the stream it is in. */
-interface Properties {
-  bytes: Reader
-  at: number
-  end: number
 }
 
 const each = (source: Properties | undefined): Iterable<WordProperty> => (source ? wordProperties(source.bytes, source.at, source.end) : [])
@@ -400,6 +413,9 @@ interface ParagraphProperties {
   tabs: WordTab[]
   contextual: boolean
   table: TableProperties | undefined
+  /** Word 6's automatic number: its level (`nLvlAnm`, 0 for none), and its look (`ANLD`) as Word 97 keeps it. */
+  numbering: number
+  anld: { bytes: Reader; at: number } | undefined
 }
 
 const plainParagraph = (style: number): ParagraphProperties => ({
@@ -426,7 +442,9 @@ const plainParagraph = (style: number): ParagraphProperties => ({
   borders: [],
   tabs: [],
   contextual: false,
-  table: undefined
+  table: undefined,
+  numbering: 0,
+  anld: undefined
 })
 
 const copyParagraph = (found: ParagraphProperties): ParagraphProperties => ({
@@ -563,6 +581,20 @@ function applyTable(table: TableProperties, bytes: Reader, { code, at, size }: W
       if (target) target.flags = (target.flags & ~0x60) | (merge === 3 ? 0x60 : merge === 1 ? 0x20 : 0)
       break
     }
+    case 0x5624:
+    case 0x5625:
+      // Cells merged across, the first of them starting the merge, or split again.
+      for (const index of range(bytes.u8(at), bytes.u8(at + 1))) {
+        const target = cell(index)
+        if (target) target.flags = (target.flags & ~3) | (code === 0x5625 ? 0 : index === bytes.u8(at) ? 1 : 2)
+      }
+      break
+    case 0x7627:
+      for (const index of range(bytes.u8(at), bytes.u8(at + 1))) {
+        const target = cell(index)
+        if (target) target.shading = shading80(bytes.u16(at + 2))
+      }
+      break
     case 0xd62c:
       for (const index of range(bytes.u8(at + 1), bytes.u8(at + 2))) {
         const target = cell(index)
@@ -688,6 +720,9 @@ function applyParagraph(found: ParagraphProperties, bytes: Reader, property: Wor
     case 0x246d:
       found.contextual = bytes.u8(at) !== 0
       break
+    case 0xc63e:
+      if (bytes.u8(at) >= ANLD_SIZE) found.anld = { bytes, at: at + 1 }
+      break
     case 0x6646: {
       // Properties too many for their page, kept in the data stream: their length, then them.
       if (!data || depth > 0) break
@@ -716,7 +751,11 @@ interface WordStyle {
   character?: Properties | undefined
 }
 
-/** The document's styles (`STSH`), each resolved over those it comes from when first asked for. */
+/**
+ * The document's styles (`STSH`), each resolved over those it comes from when first asked for. Word 97 and Word 6 write
+ * them alike, but for their names and properties; Word 2 writes all their names, then all their characters, then all
+ * their paragraphs' properties, then which each comes from, every style known by a code of one byte.
+ */
 class StyleSheet {
   private readonly styles: (WordStyle | undefined)[] = []
   private readonly font: number
@@ -724,45 +763,113 @@ class StyleSheet {
   private readonly characters = new Map<number, CharacterProperties>()
   private readonly data: Reader | undefined
 
-  constructor(table: Reader, place: WordPlace, data: Reader | undefined) {
-    this.data = data
-    let font = 0
-    if (place.size >= 6) {
-      const header = table.u16(place.at)
-      const count = table.u16(place.at + 2)
-      const base = table.u16(place.at + 4)
-      if (header >= 14) font = table.u16(place.at + 2 + 12)
-      const end = place.at + place.size
-      let at = place.at + 2 + header
-      for (let index = 0; index < count && at + 2 <= end; index++) {
-        const length = table.u16(at)
-        const start = at + 2
-        at = start + length
-        if (length < 2 || at > end) {
-          this.styles.push(undefined)
-          continue
-        }
-        // A style cut short is known by its built-in number alone, as a paragraph's style of no properties.
-        const second = length >= 4 ? table.u16(start + 2) : 1 | (0xfff << 4)
-        const style: WordStyle = { kind: second & 0xf, base: second >> 4, builtIn: table.u16(start) & 0xfff }
-        const named = start + base
-        let upx = named + 2 < at ? named + 2 + table.u16(named) * 2 + 2 : at
-        const parts: Properties[] = []
-        for (let count = length >= 6 ? table.u16(start + 4) & 0xf : 0; count > 0 && upx + 2 <= at; count--) {
-          const size = table.u16(upx)
-          parts.push({ bytes: table, at: upx + 2, end: Math.min(upx + 2 + size, at) })
-          upx += 2 + size + (size & 1)
-        }
-        if (style.kind === 1) {
-          // A paragraph style's paragraph properties follow the number of the style.
-          const paragraph = parts[0]
-          if (paragraph) style.paragraph = { ...paragraph, at: paragraph.at + 2 }
-          style.character = parts[1]
-        } else if (style.kind === 2) style.character = parts[0]
-        this.styles.push(style)
+  constructor(file: OlderWordFile, decode: (bytes: Uint8Array) => string) {
+    this.data = file.data
+    this.font = file.version === 2 ? this.readTwo(file.table, file.part('styles'), decode) : this.read(file, decode)
+  }
+
+  /** Word 97's and Word 6's styles, and the font of their text by default. */
+  private read({ table, version, part }: OlderWordFile, decode: (bytes: Uint8Array) => string): number {
+    const place = part('styles')
+    if (place.size < 6) return 0
+    const six = version === 6
+    const header = table.u16(place.at)
+    const count = table.u16(place.at + 2)
+    const base = table.u16(place.at + 4)
+    const end = place.at + place.size
+    let at = place.at + 2 + header
+    for (let index = 0; index < count && at + 2 <= end; index++) {
+      const length = table.u16(at)
+      const start = at + 2
+      at = start + length
+      if (length < 2 || at > end) {
+        this.styles.push(undefined)
+        continue
+      }
+      // A style cut short is known by its built-in number alone, as a paragraph's style of no properties.
+      const second = length >= 4 ? table.u16(start + 2) : 1 | (0xfff << 4)
+      const style: WordStyle = { kind: second & 0xf, base: second >> 4, builtIn: table.u16(start) & 0xfff }
+      // Word 97 names a style in 16 bits after its length in two bytes, Word 6 in 8 after its length in one, each
+      // name ending in a zero; its properties follow, each part at an even place from the style's start.
+      const named = start + base
+      let upx = six ? (named + 1 < at ? named + 2 + table.u8(named) : at) : named + 2 < at ? named + 2 + table.u16(named) * 2 + 2 : at
+      if ((upx - start) & 1) upx++
+      const parts: WordPlace[] = []
+      for (let count = length >= 6 ? table.u16(start + 4) & 0xf : 0; count > 0 && upx + 2 <= at; count--) {
+        const size = table.u16(upx)
+        parts.push({ at: upx + 2, size: Math.max(0, Math.min(size, at - upx - 2)) })
+        upx += 2 + size + (size & 1)
+      }
+      const properties = (part: WordPlace | undefined, skip: number): Properties | undefined => {
+        if (!part || part.size < skip) return undefined
+        return six ? wordProperties97(6, table, part.at + skip, part.at + part.size, decode) : { bytes: table, at: part.at + skip, end: part.at + part.size }
+      }
+      if (style.kind === 1) {
+        // A paragraph style's paragraph properties follow the number of the style.
+        style.paragraph = properties(parts[0], 2)
+        style.character = properties(parts[1], 0)
+      } else if (style.kind === 2) style.character = properties(parts[0], 0)
+      this.styles.push(style)
+    }
+    return header >= 14 ? table.u16(place.at + 14) : 0
+  }
+
+  /**
+   * Word 2's styles: a style's code is its place less the count of built-in ones; the built-in headings 1 to 9 are the
+   * codes 254 down to 246, and a style of the document's own may be named as one. Its characters are described as a
+   * run's are (`CHP`), and its paragraph's properties follow its code and six bytes of its lines' heights.
+   */
+  private readTwo(table: Reader, place: WordPlace, decode: (bytes: Uint8Array) => string): number {
+    if (place.size < 4) return 0
+    const end = place.at + place.size
+    const builtIns = table.u16(place.at)
+    const block = (at: number) => ({ at: at + 2, end: Math.min(end, at + table.u16(at)) })
+    const names = block(place.at + 2)
+    const found: { name: string | undefined; character?: Properties | undefined; paragraph?: Properties | undefined }[] = []
+    let at = names.at
+    while (at < names.end && found.length < 256) {
+      const length = table.u8(at++)
+      // A style left undefined is one byte; a built-in one has no name of its own.
+      found.push({ name: length === 0xff ? undefined : length > 0 && at + length <= names.end ? decode(table.bytes(at, length)).toLowerCase() : '' })
+      if (length !== 0xff) at += length
+    }
+    const characters = block(names.end)
+    at = characters.at
+    for (let slot = 0; at < characters.end && slot < found.length; slot++) {
+      const length = table.u8(at++)
+      if (length === 0xff) continue
+      const style = found[slot] as (typeof found)[number]
+      style.character = twoCharacters(table, at, Math.min(length, characters.end - at))
+      at += length
+    }
+    const paragraphs = block(characters.end)
+    at = paragraphs.at
+    for (let slot = 0; at < paragraphs.end && slot < found.length; slot++) {
+      const length = table.u8(at++)
+      if (length === 0xff) continue
+      const style = found[slot] as (typeof found)[number]
+      if (length >= 7) style.paragraph = wordProperties97(2, table, at + 7, Math.min(at + length, paragraphs.end), decode)
+      at += length
+    }
+    // Then how many styles say which they come from, and for each the next style's code and its base's.
+    const links = paragraphs.end
+    const linked = links + 2 <= end ? Math.min(table.u16(links), found.length) : 0
+    for (const [slot, style] of found.entries()) {
+      if (style.name === undefined) continue
+      const code = (slot - builtIns) & 0xff
+      const base = slot < linked && links + 4 + slot * 2 <= end ? table.u8(links + 3 + slot * 2) : 222
+      const level = /^heading (\d)$/.exec(style.name)?.[1]
+      const named = level ? Number(level) : style.name === 'title' ? 62 : style.name === 'subtitle' ? 74 : code === 0 ? 0 : 0xffe
+      // Every style comes at last from the null style (222), which is none.
+      this.styles[code] = {
+        kind: 1,
+        base: base === code || base === 222 ? 0xfff : base,
+        builtIn: code >= 246 && code <= 254 ? 255 - code : named,
+        paragraph: style.paragraph,
+        character: style.character
       }
     }
-    this.font = font
+    return 0
   }
 
   /** The heading a paragraph style makes, by the built-in style it is: Heading 1 to 9, the title and the subtitle. */
@@ -789,8 +896,10 @@ class StyleSheet {
     let found = this.paragraphs.get(index)
     if (!found) {
       found = plainParagraph(index)
-      for (const style of this.chain(index, 1))
+      for (const style of this.chain(index, 1)) {
         for (const property of each(style.paragraph)) applyParagraph(found, (style.paragraph as Properties).bytes, property, this.data)
+        if (style.paragraph?.numbering !== undefined) found.numbering = style.paragraph.numbering
+      }
       found.style = index
       this.paragraphs.set(index, found)
     }
@@ -837,6 +946,9 @@ interface ListLevel {
   paragraph: Properties | undefined
   character: Properties | undefined
 }
+
+/** How long Word 97's description of an automatic number of Word 6 is (`ANLD`): its look, then 32 characters of text. */
+const ANLD_SIZE = 84
 
 /** Word's number formats as `listMark` names them. */
 const NUMBER_FORMATS: Record<number, string> = {
@@ -978,15 +1090,27 @@ interface Section {
   restart: boolean
   first: number
   format: number
+  /** Which headers and footers Word 6 and 2 kept for it, a bit for each kind (`grpfIhdt`). */
+  headers: number
+  /** Where its text sits down its pages: 0 at the top, 1 in the middle, 2 spread, 3 at the bottom (`vjc`). */
+  vertical: number
 }
 
-/** A section's properties, from Word's defaults and those its `SEPX` sets. */
-function readSection(word: Reader, at: number, end: number): Section {
+/**
+ * A section's properties, from Word's defaults and those its `SEPX` sets: its length in two bytes, then them, in Word
+ * 97 and Word 6, whose are written as Word 97's; its length in one byte in Word 2.
+ */
+function readSection(file: OlderWordFile, at: number, end: number, decode: (bytes: Uint8Array) => string): Section {
+  const { word: main, version } = file
   const found = { width: 12240, height: 15840, left: 1800, right: 1800, top: 1440, bottom: 1440, header: 720, footer: 720, gutter: 0 }
-  const section = { columns: 1, gap: 720, start: 2, titlePage: false, restart: false, first: 1, format: 0 }
-  if (at !== 0xffffffff && at + 2 <= word.length) {
-    const length = word.u16(at)
-    for (const { code, at: operand } of wordProperties(word, at + 2, Math.min(at + 2 + length, word.length)))
+  const section = { columns: 1, gap: 720, start: 2, titlePage: false, restart: false, first: 1, format: 0, headers: 0, vertical: 0 }
+  const counted = version === 2 ? 1 : 2
+  if (at !== 0xffffffff && at + counted <= main.length) {
+    const length = version === 2 ? main.u8(at) : main.u16(at)
+    const last = Math.min(at + counted + length, main.length)
+    const properties = version === 97 ? { bytes: main, at: at + 2, end: last } : wordProperties97(version, main, at + counted, last, decode)
+    const word = properties.bytes
+    for (const { code, at: operand } of each(properties)) {
       switch (code) {
         case 0x3009:
           section.start = word.u8(operand)
@@ -1005,6 +1129,12 @@ function readSection(word: Reader, at: number, end: number): Section {
           break
         case 0x3011:
           section.restart = word.u8(operand) !== 0
+          break
+        case 0x3014:
+          section.headers = word.u8(operand)
+          break
+        case 0x301a:
+          section.vertical = word.u8(operand)
           break
         case 0x501c:
           section.first = word.u16(operand)
@@ -1040,6 +1170,7 @@ function readSection(word: Reader, at: number, end: number): Section {
           found.gutter = word.u16(operand)
           break
       }
+    }
   }
   const within = (value: number, lowest: number, highest: number) => Math.min(Math.max(value, lowest), highest)
   // Word's pages are 0.1 to 22 inches across and down.
@@ -1063,7 +1194,9 @@ function readSection(word: Reader, at: number, end: number): Section {
     titlePage: section.titlePage,
     restart: section.restart,
     first: section.first,
-    format: section.format
+    format: section.format,
+    headers: section.headers,
+    vertical: section.vertical
   }
 }
 
@@ -1078,11 +1211,27 @@ interface OpenField {
   link?: string | undefined
 }
 
-/** A story being read: its open fields, and the mark of the note it is, when it is one. */
+/**
+ * A story being read: its open fields, the mark of the note it is, when it is one, and Word 6's automatic numbers as
+ * they are counted along it: the paragraphs numbered one after another, and each outline level.
+ */
 interface Story {
   fields: OpenField[]
   note?: { mark: number; label: string } | undefined
   body: boolean
+  numbers?: { run: number | undefined; outline: (number | undefined)[] } | undefined
+}
+
+/**
+ * A character of the text: its place in the text, where the file keeps it, its code, the piece it is in, and its byte
+ * when the piece keeps it in 8 bits alone (-1 otherwise).
+ */
+interface WordCharacter {
+  place: number
+  at: number
+  code: number
+  piece: number
+  byte: number
 }
 
 /** What a paragraph's content is read into: its pieces, and where pages break between them. */
@@ -1105,58 +1254,20 @@ interface RowRead {
   table: TableProperties | undefined
 }
 
-/** The runs of characters or paragraphs with properties of their own, from their pages (`FKP`) in the main stream. */
-function formattedRuns(word: Reader, table: Reader, place: WordPlace, paragraphs: boolean): { start: number; end: number; at: number; size: number }[] {
-  const runs: { start: number; end: number; at: number; size: number }[] = []
-  const listed = place.size >= 4 ? Math.floor((place.size - 4) / 8) : 0
-  for (let index = 0; index < listed; index++) {
-    const page = (table.u32(place.at + (listed + 1) * 4 + index * 4) & 0x3fffff) * 512
-    if (page + 512 > word.length) continue
-    const count = Math.min(word.u8(page + 511), 101)
-    for (let run = 0; run < count; run++) {
-      const offset = word.u8(page + (count + 1) * 4 + run * (paragraphs ? 13 : 1)) * 2
-      const start = word.u32(page + run * 4)
-      const end = word.u32(page + (run + 1) * 4)
-      if (offset === 0) {
-        if (paragraphs) runs.push({ start, end, at: -1, size: 0 })
-        continue
-      }
-      const length = word.u8(page + offset)
-      if (!paragraphs) runs.push({ start, end, at: page + offset + 1, size: length })
-      else if (length === 0) runs.push({ start, end, at: page + offset + 2, size: word.u8(page + offset + 1) * 2 })
-      else runs.push({ start, end, at: page + offset + 1, size: length * 2 - 1 })
-    }
-  }
-  return runs.sort((one, other) => one.start - other.start)
-}
-
-/** The run a place falls in, by halves. */
-function runAt<Run extends { start: number; end: number }>(runs: readonly Run[], place: number): Run | undefined {
-  let low = 0
-  let high = runs.length - 1
-  while (low <= high) {
-    const middle = (low + high) >> 1
-    const run = runs[middle] as Run
-    if (place < run.start) high = middle - 1
-    else if (place >= run.end) low = middle + 1
-    else return run
-  }
-  return undefined
-}
-
-/** The characters of Windows' Western European code page, which Word 97 writes its 8-bit text in. */
-const WESTERN = new TextDecoder('windows-1252').decode(Uint8Array.from({ length: 256 }, (_, index) => index))
-
 class OlderWordReader {
   private readonly file: OlderWordFile
   private readonly styles: StyleSheet
   private readonly lists: Lists
-  private readonly fonts: string[]
+  private readonly fonts: WordFont[]
   readonly sections: Section[]
   private section = 0
-  private readonly characterRuns: ReturnType<typeof formattedRuns>
-  private readonly paragraphRuns: ReturnType<typeof formattedRuns>
+  private readonly characterRuns: FormattedRun[]
+  private readonly paragraphRuns: FormattedRun[]
+  /** Each run's properties as Word 97 writes them, by where the run's are. */
+  private readonly runProperties = new Map<string, { style: number; properties: Properties }>()
   private readonly characterLooks = new Map<string, CharacterProperties>()
+  /** The 8-bit text's characters, and a byte that starts a character of two, in the document's code page. */
+  private readonly narrow: { decode: (bytes: Uint8Array) => string; table: string; leads: (byte: number) => boolean }
   private readonly pieces: TextPiece[]
   private readonly footnotes = new Map<number, { from: number; to: number }>()
   private readonly endnotes = new Map<number, { from: number; to: number }>()
@@ -1175,21 +1286,28 @@ class OlderWordReader {
 
   constructor(file: OlderWordFile) {
     this.file = file
-    const { word, table, data } = file
-    this.styles = new StyleSheet(table, file.part(PART.styles), data)
-    this.lists = new Lists(table, file.part(PART.lists), file.part(PART.listOverrides))
-    this.fonts = readFonts(table, file.part(PART.fonts))
-    this.characterRuns = formattedRuns(word, table, file.part(PART.characters), false)
-    this.paragraphRuns = formattedRuns(word, table, file.part(PART.paragraphs), true)
+    const { word, table, version } = file
+    const decoder = codePageDecoder(file.codePage)
+    const decode = (bytes: Uint8Array) => decoder.decode(bytes)
+    this.narrow = {
+      decode,
+      table: Array.from({ length: 256 }, (_, index) => (leadsTwoBytes(file.codePage, index) ? '?' : (decode(Uint8Array.of(index))[0] ?? '?'))).join(''),
+      leads: (byte) => leadsTwoBytes(file.codePage, byte)
+    }
+    this.styles = new StyleSheet(file, decode)
+    this.lists = new Lists(table, file.part('lists'), file.part('listOverrides'))
+    this.fonts = readFonts(file, decode)
+    this.characterRuns = formattedRuns(word, version, file.runPages.characters, false)
+    this.paragraphRuns = formattedRuns(word, version, file.runPages.paragraphs, true)
     this.pieces = [...file.pieces].sort((one, other) => one.start - other.start)
     const [text = 0, foot = 0, header = 0, macro = 0, comment = 0] = file.lengths
     const [, , , , , end = 0] = file.lengths
-    this.readNotes(this.footnotes, PART.footnoteReferences, PART.footnoteTexts, { start: text, length: foot })
-    this.readNotes(this.endnotes, PART.endnoteReferences, PART.endnoteTexts, { start: text + foot + header + macro + comment, length: end })
+    this.readNotes(this.footnotes, 'footnoteReferences', 'footnoteTexts', { start: text, length: foot })
+    this.readNotes(this.endnotes, 'endnoteReferences', 'endnoteTexts', { start: text + foot + header + macro + comment, length: end })
     this.budget = file.limit * 2
     this.sections = this.readSections(text)
     // The settings keep each kind of note's first number, and their formats in the bits Word 6 put them in.
-    const settings = file.part(PART.settings)
+    const settings = file.part('settings')
     const formats = settings.size >= 0x38 ? table.u16(settings.at + 0x36) : 0
     const first = (at: number) => (settings.size >= at + 2 ? Math.max(1, table.u16(settings.at + at) >> 2) : 1)
     this.noteFormats = {
@@ -1199,7 +1317,7 @@ class OlderWordReader {
   }
 
   /** Where each note's reference is in the text, and where its own text is in its story, kept within that story. */
-  private readNotes(notes: Map<number, { from: number; to: number }>, references: number, texts: number, story: { start: number; length: number }): void {
+  private readNotes(notes: Map<number, { from: number; to: number }>, references: WordPart, texts: WordPart, story: { start: number; length: number }): void {
     const { table } = this.file
     const placed = this.file.part(references)
     const written = this.file.part(texts)
@@ -1211,16 +1329,18 @@ class OlderWordReader {
     }
   }
 
+  /** Each section's end and properties (`PLCFSED`): their descriptors take twelve bytes, six in Word 2, each naming where its properties are. */
   private readSections(text: number): Section[] {
-    const { word, table } = this.file
-    const place = this.file.part(PART.sections)
-    const count = place.size >= 4 ? Math.min(Math.floor((place.size - 4) / 16), 1000) : 0
+    const { table } = this.file
+    const place = this.file.part('sections')
+    const size = this.file.version === 2 ? 6 : 12
+    const count = place.size >= 4 ? Math.min(Math.floor((place.size - 4) / (4 + size)), 1000) : 0
     const sections: Section[] = []
     for (let index = 0; index < count; index++) {
-      const descriptor = place.at + (count + 1) * 4 + index * 12
-      sections.push(readSection(word, table.u32(descriptor + 2), table.u32(place.at + (index + 1) * 4)))
+      const descriptor = place.at + (count + 1) * 4 + index * size
+      sections.push(readSection(this.file, table.u32(descriptor + 2), table.u32(place.at + (index + 1) * 4), this.narrow.decode))
     }
-    if (sections.length === 0) sections.push(readSection(word, 0xffffffff, text))
+    if (sections.length === 0) sections.push(readSection(this.file, 0xffffffff, text, this.narrow.decode))
     return sections
   }
 
@@ -1278,7 +1398,7 @@ class OlderWordReader {
    * The characters of a range of the text, each with its place in the file and the piece it is in. A damaged file may
    * name the same text for many notes or headers: past twice as many characters as a preview shows, the rest is left out.
    */
-  private *characters(from: number, to: number): Generator<{ place: number; at: number; code: number; piece: number }> {
+  private *characters(from: number, to: number): Generator<WordCharacter> {
     const { word } = this.file
     for (const [index, piece] of this.pieces.entries()) {
       const start = Math.max(from, piece.start)
@@ -1290,31 +1410,73 @@ class OlderWordReader {
         }
         const offset = place - piece.start
         if (piece.narrow) {
+          // In a code page of two-byte characters, a character of two is at its first byte's place, and the second
+          // byte's place is passed over.
           const at = piece.at + offset
-          yield { place, at, code: WESTERN.charCodeAt(word.u8(at)), piece: index }
+          const byte = word.u8(at)
+          if (this.narrow.leads(byte) && place + 1 < end) {
+            const pair = this.narrow.decode(word.bytes(at, 2))
+            yield { place, at, code: pair.length === 1 ? pair.charCodeAt(0) : 0x3f, piece: index, byte: -1 }
+            place++
+          } else yield { place, at, code: this.narrow.table.charCodeAt(byte), piece: index, byte }
         } else {
           const at = piece.at + offset * 2
-          yield { place, at, code: word.u16(at), piece: index }
+          yield { place, at, code: word.u16(at), piece: index, byte: -1 }
         }
       }
     }
   }
 
+  /** The properties every character of a piece takes: Word 97's own, Word 6's written as Word 97's. */
   private pieceProperties(piece: number): Properties | undefined {
-    const place = this.pieces[piece]?.properties
-    return place && { bytes: this.file.table, at: place.at, end: place.at + place.size }
+    const found = this.pieces[piece]
+    const key = `piece:${piece}`
+    const known = this.runProperties.get(key)
+    if (known) return known.properties
+    const { table, version } = this.file
+    let properties: Properties | undefined
+    if (found?.properties) {
+      const { at, size } = found.properties
+      properties = version === 97 ? { bytes: table, at, end: at + size } : wordProperties97(version, table, at, at + size, this.narrow.decode)
+    } else if (found?.property !== undefined && version === 6)
+      properties = wordProperties97(6, reader(Uint8Array.of(found.property & 0xff, found.property >> 8)), 0, 2, this.narrow.decode)
+    if (properties) this.runProperties.set(key, { style: 0, properties })
+    return properties
+  }
+
+  /** A run's characters' properties as Word 97 writes them. */
+  private characterProperties(run: FormattedRun): Properties {
+    const key = `characters:${run.at}`
+    let known = this.runProperties.get(key)
+    if (!known) {
+      known = { style: 0, properties: characterRun(this.file.word, this.file.version, run, this.narrow.decode) }
+      this.runProperties.set(key, known)
+    }
+    return known.properties
   }
 
   /** A character's properties: its paragraph style's, its character style's, its own, then its piece's. */
   private characterAt(at: number, style: number, piece: number): CharacterProperties {
+    // Characters one after another are mostly of one run, or of none, of one style and piece: the last one's
+    // properties are theirs.
     const run = runAt(this.characterRuns, at)
+    const last = this.lastCharacter
+    if (last && last.run === run && style === last.style && piece === last.piece) return last.found
+    const found = this.characterOf(run, style, piece)
+    this.lastCharacter = { run, style, piece, found }
+    return found
+  }
+
+  private lastCharacter: { run: FormattedRun | undefined; style: number; piece: number; found: CharacterProperties } | undefined
+
+  private characterOf(run: FormattedRun | undefined, style: number, piece: number): CharacterProperties {
     const key = `${run?.at ?? -1}:${style}:${piece}`
     let found = this.characterLooks.get(key)
     if (found) return found
     const paragraph = this.styles.character(style)
     let styled = paragraph
     found = { ...paragraph }
-    const sources: (Properties | undefined)[] = [run && { bytes: this.file.word, at: run.at, end: run.at + run.size }, this.pieceProperties(piece)]
+    const sources: (Properties | undefined)[] = [run && this.characterProperties(run), this.pieceProperties(piece)]
     for (const source of sources)
       for (const property of each(source)) {
         if (property.code === 0x4a30) {
@@ -1330,14 +1492,20 @@ class OlderWordReader {
   /** A paragraph's properties, by the place of its mark: its style's, its list level's, then its own and its piece's. */
   private paragraphAt(at: number, piece: number): ParagraphProperties {
     const run = runAt(this.paragraphRuns, at)
-    const { word, data } = this.file
-    const style = run && run.at >= 0 && run.size >= 2 ? word.u16(run.at) : 0
-    const sources: (Properties | undefined)[] = [
-      run && run.at >= 0 ? { bytes: word, at: run.at + 2, end: run.at + run.size } : undefined,
-      this.pieceProperties(piece)
-    ]
+    const { data } = this.file
+    const key = `paragraphs:${run?.at ?? -1}`
+    let own = run && this.runProperties.get(key)
+    if (run && !own) {
+      own = paragraphRun(this.file.word, this.file.version, run, this.narrow.decode)
+      this.runProperties.set(key, own)
+    }
+    const style = own?.style ?? 0
+    const sources: (Properties | undefined)[] = [own?.properties, this.pieceProperties(piece)]
     const apply = (found: ParagraphProperties) => {
-      for (const source of sources) for (const property of each(source)) applyParagraph(found, (source as Properties).bytes, property, data)
+      for (const source of sources) {
+        for (const property of each(source)) applyParagraph(found, (source as Properties).bytes, property, data)
+        if (source?.numbering !== undefined) found.numbering = source.numbering
+      }
       return found
     }
     const found = apply(copyParagraph(this.styles.paragraph(style)))
@@ -1350,7 +1518,26 @@ class OlderWordReader {
   }
 
   private fontName(index: number): string | undefined {
-    return this.fonts[index] || undefined
+    return this.fonts[index]?.name || undefined
+  }
+
+  private readonly fontTables = new Map<number, string>()
+
+  /**
+   * A character of 8 bits as its font writes it: Word 6, 95 and 2 keep a character in the code page of its font's
+   * character set (a Russian font's in Cyrillic, whatever the document's language), when that is another code page of
+   * one byte a character than the document's.
+   */
+  private recoded(byte: number, code: number, font: number): number {
+    const codePage = this.fonts[font]?.codePage
+    if (byte < 0x80 || codePage === undefined || codePage === this.file.codePage || leadsTwoBytes(this.file.codePage, 0x81)) return code
+    let table = this.fontTables.get(codePage)
+    if (!table) {
+      const decoder = codePageDecoder(codePage)
+      table = Array.from({ length: 128 }, (_, index) => decoder.decode(Uint8Array.of(0x80 + index))[0] ?? '?').join('')
+      this.fontTables.set(codePage, table)
+    }
+    return table.charCodeAt(byte - 0x80)
   }
 
   textLook(found: CharacterProperties): TextLook {
@@ -1407,11 +1594,7 @@ class OlderWordReader {
   }
 
   /** The paragraph whose mark is the last of `characters`, its content in pieces, fields followed through it. */
-  private readParagraph(
-    characters: readonly { place: number; at: number; code: number; piece: number }[],
-    story: Story,
-    sectionEnds: ReadonlySet<number>
-  ): ParagraphRead {
+  private readParagraph(characters: readonly WordCharacter[], story: Story, sectionEnds: ReadonlySet<number>): ParagraphRead {
     this.blocks++
     const markCharacter = characters.at(-1) as (typeof characters)[number]
     const ending = markCharacter.code === 0x0d || markCharacter.code === 0x07 || (markCharacter.code === 0x0c && sectionEnds.has(markCharacter.place + 1))
@@ -1459,15 +1642,15 @@ class OlderWordReader {
         continue
       }
       // A field's code is not shown: only its result is.
-      if (story.fields.some((one) => !one.result)) {
-        if (field && !field.result) field.code += String.fromCharCode(code)
+      if (field && story.fields.some((one) => !one.result)) {
+        if (!field.result) field.code += String.fromCharCode(code)
         continue
       }
-      if (story.fields.some((one) => one.replaced)) continue
+      if (field && story.fields.some((one) => one.replaced)) continue
       const found = this.characterAt(character.at, properties.style, character.piece)
       if (found.hidden || found.deleted) continue
       const look = lookOf(found)
-      const link = story.fields.findLast((one) => one.link)?.link
+      const link = field && story.fields.findLast((one) => one.link)?.link
       if (code === 0x09) add({ tab: true, look })
       else if (code === 0x0b) add({ break: true })
       else if (code === 0x0c) add('page')
@@ -1488,7 +1671,13 @@ class OlderWordReader {
         const symbol = found.symbol.code
         if (isSymbolFont(font)) add({ text: symbolCharacter(font as string, String.fromCharCode(symbol)), look: { ...look, font: undefined }, link })
         else add({ text: String.fromCharCode(symbol >= 0xf000 ? symbol - 0xf000 : symbol), look: font ? { ...look, font } : look, link })
-      } else if (code >= 0x20) add({ text: String.fromCharCode(code), look, link })
+      } else if (code >= 0x20) {
+        // Text goes on the run before it when it is set alike, as most of it is.
+        const text = String.fromCharCode(this.recoded(character.byte, code, found.font))
+        const last = pieces.at(-1)
+        if (last && typeof last !== 'string' && 'text' in last && last.look === look && last.link === link) last.text += text
+        else pieces.push({ text, look, link })
+      }
     }
     const paragraph: DocumentParagraph = { kind: 'paragraph', look: this.paragraphLook(properties), spans: [], mark }
     const heading = this.styles.heading(properties.style) ?? (properties.outline < 9 ? Math.min(properties.outline + 1, 6) : undefined)
@@ -1511,7 +1700,10 @@ class OlderWordReader {
         if (numbered.level.align === 1) paragraph.marker.align = 'center'
         else if (numbered.level.align === 2) paragraph.marker.align = 'right'
       }
-    }
+    } else if (properties.numbering > 0 && !(properties.inTable && properties.rowEnd)) {
+      const marker = hidden ? undefined : this.autonumber(properties, markProperties, story)
+      if (marker) paragraph.marker = marker
+    } else if (story.numbers) story.numbers.run = undefined
     this.spaced.set(paragraph, {
       style: properties.style,
       contextual: properties.contextual,
@@ -1519,6 +1711,80 @@ class OlderWordReader {
       autoAfter: properties.afterAuto
     })
     return { paragraph, pieces, properties, cellEnd: markCharacter.code === 0x07, sectionEnd: markCharacter.code === 0x0c && ending, hidden }
+  }
+
+  /**
+   * Word 6's automatic number of a paragraph, as its description (`ANLD`) says: paragraphs numbered one after another
+   * count on from the first one's start, a paragraph at an outline level counts at that level, the deeper ones starting
+   * again, and a bulleted one shows its text alone; its text before and after the number, its format, and its own font,
+   * size, colour, weight and slant over its paragraph mark's. A paragraph whose numbering pauses keeps the count.
+   */
+  private autonumber(properties: ParagraphProperties, mark: CharacterProperties, story: Story): DocumentParagraph['marker'] {
+    const level = properties.numbering
+    story.numbers ??= { run: undefined, outline: [] }
+    const numbers = story.numbers
+    if (level < 1 || level > 11) return undefined
+    const anld = properties.anld
+    const { bytes, at } = anld ?? { bytes: reader(new Uint8Array(ANLD_SIZE)), at: 0 }
+    const start = anld ? bytes.u16(at + 10) : 1
+    let count: number
+    if (level >= 10) {
+      count = numbers.run === undefined ? start : numbers.run + 1
+      numbers.run = count
+    } else {
+      count = (numbers.outline[level - 1] ?? start - 1) + 1
+      numbers.outline[level - 1] = count
+      numbers.outline.length = level
+    }
+    // Its text: the characters before the number up to the first limit, those after it up to the second.
+    const text = Array.from({ length: 32 }, (_, index) => String.fromCharCode(bytes.u16(at + 20 + index * 2)))
+    const before = Math.min(bytes.u8(at + 1), 32)
+    const after = Math.min(Math.max(bytes.u8(at + 2), before), 32)
+    const flags = bytes.u8(at + 3)
+    const format = NUMBER_FORMATS[bytes.u8(at)] ?? 'decimal'
+    const shown =
+      level === 11 || format === 'bullet' || format === 'none'
+        ? ''
+        : // A number that includes the levels above it shows them first, each followed by a point.
+          `${
+            flags & 4 && level <= 9
+              ? numbers.outline
+                  .slice(0, level - 1)
+                  .map((upper) => `${upper ?? 1}.`)
+                  .join('')
+              : ''
+          }${listMark(format, count)}`
+    const found = { ...mark, underline: 0, highlight: undefined, shading: undefined }
+    const set = bytes.u8(at + 4)
+    if (anld) {
+      if (flags & 0x10) found.bold = (set & 0x08) !== 0
+      if (flags & 0x20) found.italic = (set & 0x10) !== 0
+      if (flags & 0x40) found.smallCaps = (set & 0x20) !== 0
+      if (flags & 0x80) found.caps = (set & 0x40) !== 0
+      if (set & 0x01) found.struck = (set & 0x80) !== 0
+      if (set & 0x02) found.underline = bytes.u8(at + 5) & 7
+      if (bytes.u8(at + 5) >> 3) found.color = icoColor(bytes.u8(at + 5) >> 3)
+      found.font = bytes.u16(at + 6)
+      if (bytes.u16(at + 8) > 0) found.size = bytes.u16(at + 8)
+    }
+    const look = this.textLook(found)
+    const symbol = isSymbolFont(look.font)
+    const words = (from: number, to: number) => {
+      const part = text.slice(from, to).join('').replace(/\0+$/, '')
+      return symbol ? [...part].map((character) => symbolCharacter(look.font as string, character)).join('') : part
+    }
+    const written = `${set & 0x04 ? ' ' : ''}${words(0, before)}${shown}${words(before, after)}`
+    if (written.trim() === '') return undefined
+    // A number set with a hanging indent is followed by a tab to the text, else by a space.
+    const hanging = (flags & 0x08) !== 0
+    const marker: NonNullable<DocumentParagraph['marker']> = {
+      text: hanging ? written : `${written} `,
+      look: symbol ? { ...look, font: undefined } : look,
+      tab: hanging
+    }
+    if ((flags & 3) === 1) marker.align = 'center'
+    else if ((flags & 3) === 2) marker.align = 'right'
+    return marker
   }
 
   /** A field's code is read: a page's number or the count of pages stands for its result, a link's result links. */
@@ -1592,7 +1858,7 @@ class OlderWordReader {
 
   /** The paragraphs of a range of the text, each read as its mark ends it. */
   private *paragraphs(from: number, to: number, story: Story, sectionEnds: ReadonlySet<number>): Generator<ParagraphRead> {
-    let characters: { place: number; at: number; code: number; piece: number }[] = []
+    let characters: WordCharacter[] = []
     for (const character of this.characters(from, Math.min(to, this.file.limit))) {
       characters.push(character)
       const { code } = character
@@ -1787,12 +2053,13 @@ class OlderWordReader {
   /** The body, its blocks placed on pages, breaking where it says and between its sections. */
   readBody(): void {
     const text = this.file.lengths[0] ?? 0
+    const story: Story = { fields: [], body: true }
     let from = 0
     for (const [index, section] of this.sections.entries()) {
       if (this.full || from >= text) break
       if (index > 0) this.endSection()
       const to = Math.min(section.end, text)
-      this.readBlocks(from, to, { fields: [], body: true }, new Set([to]))
+      this.readBlocks(from, to, story, new Set([to]))
       from = to
     }
     if (this.pages.length === 0) this.place({ kind: 'paragraph', look: {}, spans: [], mark: {} })
@@ -1827,28 +2094,62 @@ class OlderWordReader {
    * page's header, 5 its footer): its own, or the one a section before it has.
    */
   story(section: number, kind: number): DocumentBlock[] {
-    const { table } = this.file
-    const place = this.file.part(PART.headers)
-    const count = Math.floor(place.size / 4)
-    const [text = 0, foot = 0, header = 0] = this.file.lengths
-    for (let index = section; index >= 0; index--) {
-      const entry = 6 + index * 6 + kind
-      if (entry + 1 >= count) continue
-      const from = Math.min(table.u32(place.at + entry * 4), header)
-      const to = Math.min(table.u32(place.at + (entry + 1) * 4), header)
-      if (to <= from) continue
-      const key = `${from}:${to}`
-      let blocks = this.headerBlocks.get(key)
-      if (!blocks) {
-        blocks = this.readBlocks(text + foot + from, text + foot + to, { fields: [], body: false })
-        // The story's last paragraph mark ends it, and makes no line of its own.
-        const last = blocks.at(-1)
-        if (blocks.length > 1 && last?.kind === 'paragraph' && last.spans.length === 0 && !last.marker) blocks.pop()
-        this.headerBlocks.set(key, blocks)
-      }
-      return blocks
+    const range = this.file.version === 97 ? this.headerRange(section, kind) : this.olderHeaderRange(section, kind)
+    if (!range) return []
+    const [text = 0, foot = 0] = this.file.lengths
+    const key = `${range.from}:${range.to}`
+    let blocks = this.headerBlocks.get(key)
+    if (!blocks) {
+      blocks = this.readBlocks(text + foot + range.from, text + foot + range.to, { fields: [], body: false })
+      // The story's last paragraph mark ends it, and makes no line of its own.
+      const last = blocks.at(-1)
+      if (blocks.length > 1 && last?.kind === 'paragraph' && last.spans.length === 0 && !last.marker) blocks.pop()
+      this.headerBlocks.set(key, blocks)
     }
-    return []
+    return blocks
+  }
+
+  /** Where a story of the headers' is (`PLCFHDD`), by its place in their list, within the headers' text. */
+  private headerEntry(entry: number): { from: number; to: number } | undefined {
+    const { table } = this.file
+    const place = this.file.part('headers')
+    const [, , header = 0] = this.file.lengths
+    if (entry < 0 || entry + 1 >= Math.floor(place.size / 4)) return undefined
+    const from = Math.min(table.u32(place.at + entry * 4), header)
+    const to = Math.min(table.u32(place.at + (entry + 1) * 4), header)
+    return to > from ? { from, to } : undefined
+  }
+
+  /** Word 97 lists six stories for the notes' separators, then six for each section, an empty one taking the one before. */
+  private headerRange(section: number, kind: number): { from: number; to: number } | undefined {
+    for (let index = section; index >= 0; index--) {
+      const found = this.headerEntry(6 + index * 6 + kind)
+      if (found) return found
+    }
+    return undefined
+  }
+
+  /**
+   * Word 6 and 2 list only the stories each section says it has (`grpfIhdt`), after those of the notes' separators
+   * the settings say there are: a section without one of a kind has none, and one whose story of that kind is empty
+   * takes the section's before.
+   */
+  private olderHeaderRange(section: number, kind: number): { from: number; to: number } | undefined {
+    const settings = this.file.part('settings')
+    const count = (bits: number) => [0, 1, 2, 3, 4, 5].filter((bit) => bits & (1 << bit)).length
+    const starts: number[] = []
+    let next = settings.size >= 2 ? count(this.file.table.u16(settings.at) >> 8) : 0
+    for (const found of this.sections.slice(0, section + 1)) {
+      starts.push(next)
+      next += count(found.headers)
+    }
+    for (let index = section; index >= 0; index--) {
+      const headers = this.sections[index]?.headers ?? 0
+      if (!(headers & (1 << kind))) return undefined
+      const found = this.headerEntry((starts[index] ?? 0) + count(headers & ((1 << kind) - 1)))
+      if (found && found.to - found.from >= 2) return found
+    }
+    return undefined
   }
 
   get normal(): TextLook {
@@ -1856,21 +2157,56 @@ class OlderWordReader {
   }
 }
 
-/** The names of the document's fonts (`SttbfFfn`), by their number. */
-function readFonts(table: Reader, place: WordPlace): string[] {
-  const fonts: string[] = []
+/** A font of the document: its name, and the code page its character set names, when it names one. */
+interface WordFont {
+  name: string
+  codePage: number | undefined
+}
+
+/** The code pages of the character sets Windows names fonts by, those of one byte a character. */
+const CHARACTER_SET_CODE_PAGES: Record<number, number> = { 161: 1253, 162: 1254, 163: 1258, 177: 1255, 178: 1256, 186: 1257, 204: 1251, 222: 874, 238: 1250 }
+
+/** The code pages the fonts of Windows 3.1 named by their last word, their character set left Western. */
+const NAMED_CODE_PAGES: [RegExp, number][] = [
+  [/ CE$/, 1250],
+  [/ Cyr$/i, 1251],
+  [/ Greek$/i, 1253],
+  [/ Tur$/i, 1254],
+  [/ Baltic$/i, 1257]
+]
+
+/**
+ * The document's fonts (`SttbfFfn`), by their number: after their count in Word 97, each name in 16 bits 40 bytes into
+ * its entry; after the table's length before it, each name in 8 bits, six bytes in in Word 6, three in Word 2, after
+ * its character set (`chs`), which says which code page its characters of 8 bits are in.
+ */
+function readFonts({ table, version, part }: OlderWordFile, decode: (bytes: Uint8Array) => string): WordFont[] {
+  const fonts: WordFont[] = []
+  const place = part('fonts')
   if (place.size < 4) return fonts
-  const count = Math.min(table.u16(place.at), 4096)
+  const count = version === 97 ? Math.min(table.u16(place.at), 4096) : 4096
   const end = place.at + place.size
-  for (let at = place.at + 4, index = 0; index < count && at < end; index++) {
+  const named = version === 97 ? 40 : version === 6 ? 6 : 3
+  for (let at = place.at + (version === 97 ? 4 : 2), index = 0; index < count && at < end; index++) {
     const size = table.u8(at) + 1
+    const last = Math.min(at + size, end)
     let name = ''
-    for (let character = at + 40; character + 2 <= Math.min(at + size, end); character += 2) {
-      const code = table.u16(character)
-      if (code === 0) break
-      name += String.fromCharCode(code)
+    if (version === 97)
+      for (let character = at + named; character + 2 <= last; character += 2) {
+        const code = table.u16(character)
+        if (code === 0) break
+        name += String.fromCharCode(code)
+      }
+    else {
+      let character = at + named
+      while (character < last && table.u8(character) !== 0) character++
+      if (at + named < character) name = decode(table.bytes(at + named, character - at - named))
     }
-    fonts.push(name)
+    // Word 97 writes every character its font does not name in Western European in 16 bits.
+    const setAt = at + (version === 6 ? 4 : 2)
+    const set = setAt < last ? table.u8(setAt) : 0
+    const codePage = CHARACTER_SET_CODE_PAGES[set] ?? (set === 0 ? NAMED_CODE_PAGES.find(([pattern]) => pattern.test(name))?.[1] : undefined)
+    fonts.push({ name, codePage: version === 97 ? undefined : codePage })
     at += size
   }
   return fonts
@@ -1880,20 +2216,20 @@ function readFonts(table: Reader, place: WordPlace): string[] {
 const PAGE_FORMATS = ['decimal', 'upperRoman', 'lowerRoman', 'upperLetter', 'lowerLetter']
 
 /**
- * A Word 97 document's look: its pages as its sections lay them out, broken where its text breaks them, each with its
- * header, footer and footnotes, and its endnotes at the end.
+ * A Word document's look, of Word 97 to 2003, 6 and 95, or 2: its pages as its sections lay them out, broken where its
+ * text breaks them, each with its header, footer and footnotes, and its endnotes at the end.
  */
 export function readOlderWordLook(file: OlderWordFile): { look: DocumentLook; cut: boolean } {
-  const reader = new OlderWordReader(file)
-  reader.readBody()
-  const settings = file.part(PART.settings)
+  const wordReader = new OlderWordReader(file)
+  wordReader.readBody()
+  const settings = file.part('settings')
   const facing = settings.size >= 2 && (file.table.u16(settings.at) & 1) !== 0
   const tab = settings.size >= 12 ? file.table.u16(settings.at + 10) / 20 : 36
   const pages: DocumentPage[] = []
   let number = 0
   let previous = -1
-  for (const page of reader.pages) {
-    const section = reader.sections[page.section] ?? (reader.sections[0] as Section)
+  for (const page of wordReader.pages) {
+    const section = wordReader.sections[page.section] ?? (wordReader.sections[0] as Section)
     const firstOfSection = page.section !== previous
     previous = page.section
     number = firstOfSection && section.restart ? section.first : number + 1
@@ -1904,11 +2240,12 @@ export function readOlderWordLook(file: OlderWordFile): { look: DocumentLook; cu
       height: section.height,
       number: listMark(PAGE_FORMATS[section.format] ?? 'decimal', number),
       margins: section.margins,
-      header: reader.story(page.section, kind),
-      footer: reader.story(page.section, kind === 4 ? 5 : kind + 2),
+      header: wordReader.story(page.section, kind),
+      footer: wordReader.story(page.section, kind === 4 ? 5 : kind + 2),
       notes: page.notes,
-      bands: page.bands.filter((band, index) => band.blocks.length > 0 || index === 0)
+      bands: page.bands.filter((band, index) => band.blocks.length > 0 || index === 0),
+      vertical: section.vertical === 1 ? 'middle' : section.vertical === 3 ? 'bottom' : undefined
     })
   }
-  return { look: { pages, endNotes: reader.endNotes, text: reader.normal, tab: Math.min(Math.max(tab || 36, 9), 288) }, cut: reader.cut }
+  return { look: { pages, endNotes: wordReader.endNotes, text: wordReader.normal, tab: Math.min(Math.max(tab || 36, 9), 288) }, cut: wordReader.cut }
 }

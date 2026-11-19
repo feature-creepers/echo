@@ -145,8 +145,8 @@ export interface PageBand {
 }
 
 /**
- * A page: its size, margins, the number it shows, its header and footer, the notes it shows at its foot, and its
- * content in bands of columns.
+ * A page: its size, margins, the number it shows, its header and footer, the notes it shows at its foot, its content in
+ * bands of columns, and where that content sits down the page when it does not fill it: at the top unless it says.
  */
 export interface DocumentPage {
   width: number
@@ -157,6 +157,7 @@ export interface DocumentPage {
   footer: DocumentBlock[]
   notes: { mark: number; blocks: DocumentBlock[] }[]
   bands: PageBand[]
+  vertical?: 'middle' | 'bottom' | undefined
 }
 
 /** A whole document as it looks: its pages, the colour of its paper, its notes at its end, its default text and the distance between its default tab stops. */

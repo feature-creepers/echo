@@ -139,6 +139,76 @@ describe('a document shown as it looks', () => {
     expect(html).toContain('. . . ')
   })
 
+  it('boxes paragraphs of the same borders together, as Word does, the space between them inside the box', () => {
+    const line = { width: 0.75, style: 'solid' as const, color: '#000000' }
+    const boxed = { borders: { top: line, bottom: line, left: line, right: line }, before: 6 }
+    const html = shown({
+      pages: [
+        page({
+          bands: [
+            {
+              columns: 1,
+              gap: 36,
+              blocks: [
+                paragraph([{ text: 'One', look: {} }], { look: boxed }),
+                paragraph([{ text: 'Two', look: {} }], { look: boxed }),
+                paragraph([{ text: 'Apart', look: {} }], { look: { ...boxed, start: 36 } })
+              ]
+            }
+          ]
+        })
+      ],
+      endNotes: [],
+      text: {},
+      tab: 36
+    })
+    const styles = [...html.matchAll(/<div style="([^"]*)">(?:<span[^>]*>)?(One|Two|Apart)/g)].map((found) => [found[2], found[1]])
+    const [one, two, apart] = styles.map(([, style]) => style ?? '')
+    expect(one).toContain('border-top:0.75pt solid #000000')
+    expect(one).not.toContain('border-bottom')
+    expect(two).not.toContain('border-top')
+    expect(two).toContain('padding-top:6pt;')
+    expect(two).toContain('border-bottom:0.75pt solid #000000')
+    // A paragraph at other indents is a box of its own.
+    expect(apart).toContain('border-top:0.75pt solid #000000')
+    expect(apart).toContain('margin-top:6pt')
+  })
+
+  it('cuts a row of an exact height, sets text in the middle of a page that says so, and starts a page of no header at its top margin', () => {
+    const html = shown({
+      pages: [
+        page({
+          vertical: 'middle',
+          margins: { top: 20, right: 72, bottom: 72, left: 72, header: 50, footer: 36 },
+          bands: [
+            {
+              columns: 1,
+              gap: 36,
+              blocks: [
+                {
+                  kind: 'table',
+                  columns: [100],
+                  rows: [
+                    {
+                      height: { value: 17, exact: true },
+                      cells: [{ columns: 1, rows: 1, borders: {}, insets: { top: 2 }, blocks: [paragraph([{ text: 'Cell', look: {} }])] }]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        })
+      ],
+      endNotes: [],
+      text: {},
+      tab: 36
+    })
+    expect(html).toContain('<div style="height:15pt;overflow:hidden">')
+    expect(html).toContain('<div style="margin-top:auto;margin-bottom:auto">')
+    expect(html).toContain('<header style="padding-left:72pt;padding-right:72pt;box-sizing:border-box;min-height:20pt">')
+  })
+
   it('draws tables with their merged cells, borders and shading, and pictures at their size', () => {
     const figure: OfficeFigure = { kind: 'picture', type: 'image/png', bytes: new Uint8Array(), alt: 'A square' }
     const html = shown(

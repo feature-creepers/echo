@@ -12,7 +12,7 @@
 
 import { unpack } from './archive.ts'
 import { type ChartContext, type ChartRecord, readGraphChart, readOlderChart } from './binary-chart.ts'
-import { damaged, operandSize, type Reader, reader } from './binary-records.ts'
+import { codePageDecoder, damaged, languageCodePage, type Reader, reader, wordProperties } from './binary-records.ts'
 import { type Compound, openCompound } from './compound.ts'
 import { cellValue, serialNow, withConditions } from './conditional-formats.ts'
 import type { CellArea } from './embedded-sheet.ts'
@@ -54,7 +54,8 @@ import {
 import { readOlderConditions } from './older-sheet-conditions.ts'
 import { type OlderBookRecords, type OlderSheetRecords, readOlderBookStyles, readOlderPalette, readOlderSheetLook } from './older-sheet-look.ts'
 import { drawOlderSlide, type OlderDeck, olderDeck } from './older-slide-drawing.ts'
-import { type FloatingAnchor, readOlderWordLook, type TextPiece } from './older-word-look.ts'
+import { type FloatingAnchor, readOlderWordLook, type TextPiece, type WordPart, type WordPlace } from './older-word-look.ts'
+import { characterRun, type FormattedRun, formattedRuns, type Properties, paragraphRun, runAt, type WordVersion } from './older-word-properties.ts'
 import { type CellKind, type LaidRun, paletteColor, type SheetLayout, type SheetLook, type WorkbookStyles } from './sheet-look.ts'
 import { DRAWINGS_LIMIT } from './slide-svg.ts'
 
@@ -82,22 +83,25 @@ interface ParagraphFormat {
   outline?: number
 }
 
-/** A paragraph's format, from its style and the properties set on it (`grpprl`). */
-function paragraphFormat(word: Reader, at: number, size: number): ParagraphFormat {
-  const format: ParagraphFormat = { style: word.u16(at), inTable: false, rowEnd: false, list: false, level: 0 }
-  let place = at + 2
-  const end = at + size
-  while (place + 2 <= end) {
-    const property = word.u16(place)
-    place += 2
-    const operand = operandSize(property, word, place)
-    if (property === 0x2416) format.inTable = word.u8(place) !== 0
-    else if (property === 0x2417) format.rowEnd = word.u8(place) !== 0
-    else if (property === 0x6649) format.inTable = word.u32(place) > 0
-    else if (property === 0x460b) format.list = word.u16(place) !== 0
-    else if (property === 0x260a) format.level = Math.min(word.u8(place), 8)
-    else if (property === 0x2640) format.outline = word.u8(place)
-    place += operand
+/**
+ * A paragraph's format, from its style and its properties as Word 97 writes them (`grpprl`, an older version's written
+ * so), Word 6's automatic number at a level standing for a list's (1 to 9 an outline's levels, more a list of one).
+ */
+function paragraphFormat(style: number, properties: Properties): ParagraphFormat {
+  const format: ParagraphFormat = { style, inTable: false, rowEnd: false, list: false, level: 0 }
+  const { bytes } = properties
+  for (const { code, at } of wordProperties(bytes, properties.at, properties.end)) {
+    if (code === 0x2416) format.inTable = bytes.u8(at) !== 0
+    else if (code === 0x2417) format.rowEnd = bytes.u8(at) !== 0
+    else if (code === 0x6649) format.inTable = bytes.u32(at) > 0
+    else if (code === 0x460b) format.list = bytes.u16(at) !== 0
+    else if (code === 0x260a) format.level = Math.min(bytes.u8(at), 8)
+    else if (code === 0x2640) format.outline = bytes.u8(at)
+  }
+  const level = properties.numbering
+  if (level !== undefined) {
+    format.list = level > 0
+    format.level = level >= 1 && level <= 9 ? level - 1 : 0
   }
   return format
 }
@@ -144,102 +148,6 @@ function headingStyles(table: Reader, at: number, size: number, wide: boolean): 
 }
 
 /**
- * How many bytes a property of Word 6 and 95 takes with its one-byte code: most a fixed size by their code, some
- * counting their operand in their first byte, tab stops past 255 in their own way.
- */
-function sixPropertySize(word: Reader, at: number): number {
-  const code = word.u8(at)
-  if (TWO_BYTE_OPERANDS.has(code)) return 3
-  if (COUNTED_OPERANDS.has(code)) return 2 + word.u8(at + 1)
-  if (FOUR_BYTE_OPERANDS.has(code)) return 5
-  if (code === 23) {
-    const size = word.u8(at + 1)
-    if (size !== 255) return 2 + size
-    const removed = word.u8(at + 2)
-    return 2 + 2 + removed * 4 + word.u8(at + 3 + removed * 4) * 3
-  }
-  if (code === 68 || code === 193 || code === 199) return 6
-  if (code === 73 || code === 95 || code === 136 || code === 137) return 4
-  if (code === 120 || code === 187) return 13
-  return 2
-}
-
-const TWO_BYTE_OPERANDS = new Set([
-  2, 16, 17, 18, 19, 21, 22, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 38, 39, 40, 41, 42, 43, 45, 46, 47, 48, 49, 69, 72, 80, 93, 96, 97, 99, 101, 105, 106, 107,
-  109, 110, 121, 122, 123, 124, 140, 141, 144, 145, 148, 149, 154, 155, 156, 157, 160, 161, 164, 165, 166, 167, 168, 169, 170, 171, 182, 183, 184, 189, 195,
-  197, 198
-])
-const COUNTED_OPERANDS = new Set([3, 12, 15, 81, 103, 108, 188, 190, 191])
-const FOUR_BYTE_OPERANDS = new Set([20, 70, 74, 192, 194, 196, 200])
-
-/**
- * How many bytes a property of Word 2 takes with its one-byte code, as Word 6's do with sizes of their own: most one
- * byte of operand, some two, some counting their operand in their first byte, tab stops as Word 6 changes them.
- */
-function twoPropertySize(word: Reader, at: number): number {
-  const code = word.u8(at)
-  if (code === 23) return sixPropertySize(word, at)
-  if (TWO_COUNTED_OPERANDS.has(code)) return 2 + word.u8(at + 1)
-  // The properties of no operand: the one passed over, the ruler, plain characters.
-  if (code === 0 || code === 52 || code === 58) return 1
-  return TWO_SIZES.get(code) ?? (TWO_TWO_BYTE_OPERANDS.has(code) ? 3 : 2)
-}
-
-const TWO_COUNTED_OPERANDS = new Set([3, 15, 57, 78, 152, 154, 155])
-const TWO_TWO_BYTE_OPERANDS = new Set([
-  16, 17, 18, 19, 20, 21, 22, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 38, 39, 40, 41, 42, 43, 45, 46, 47, 48, 49, 68, 71, 72, 82, 83, 96, 97, 98, 99, 115, 116,
-  119, 120, 123, 124, 129, 130, 131, 132, 135, 136, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 153, 159, 161, 162
-])
-
-/**
- * How many bytes a property of Word 1 takes: as Word 2's, but for those Word 1 counts in their first byte (numbering,
- * whole characters, a picture's scale) and its table's definition, counted in two.
- */
-function onePropertySize(word: Reader, at: number): number {
-  const code = word.u8(at)
-  if (code === 12 || code === 57 || code === 95) return 2 + word.u8(at + 1)
-  if (code === 152) return 3 + word.u16(at + 1)
-  return twoPropertySize(word, at)
-}
-const TWO_SIZES = new Map([
-  [70, 4],
-  [95, 14],
-  [157, 6],
-  [163, 6],
-  [158, 5],
-  [160, 5],
-  [164, 5]
-])
-
-/**
- * A paragraph's format from properties each a one-byte code, as Word 6, 95 and 2 write them: in a table (24), ending
- * a row (25), numbered or bulleted at a level (13, `nLvlAnm`, 1 to 9 an outline's levels, more a list of one).
- */
-function codedParagraphFormat(word: Reader, style: number, from: number, end: number, sizeOf: (word: Reader, at: number) => number): ParagraphFormat {
-  const format: ParagraphFormat = { style, inTable: false, rowEnd: false, list: false, level: 0 }
-  let place = from
-  while (place + 1 < end) {
-    const code = word.u8(place)
-    if (code === 24) format.inTable = (word.u8(place + 1) & 1) !== 0
-    else if (code === 25) format.rowEnd = (word.u8(place + 1) & 1) !== 0
-    else if (code === 13) {
-      const level = word.u8(place + 1)
-      format.list = level > 0
-      format.level = level >= 1 && level <= 9 ? level - 1 : 0
-    }
-    place += sizeOf(word, place)
-  }
-  return format
-}
-
-/** A paragraph's format in Word 6 and 95: its style in two bytes, then its properties. */
-const sixParagraphFormat = (word: Reader, at: number, size: number) => codedParagraphFormat(word, word.u16(at), at + 2, at + size, sixPropertySize)
-
-/** A paragraph's format in Word 2, and in Word 1: its style's code in one byte, six bytes of its lines' heights, then its properties. */
-const twoParagraphFormat = (word: Reader, at: number, size: number, one = false) =>
-  codedParagraphFormat(word, word.u8(at), at + 7, at + size, one ? onePropertySize : twoPropertySize)
-
-/**
  * The heading level of each style of a Word 2 document, by its code: the built-in headings 1 to 9 are the codes 254
  * down to 246, and a style may be named as one. Its style sheet lists the names first, the built-in styles' then the
  * document's own, a style's code its place less the count of built-in ones.
@@ -267,104 +175,14 @@ function twoHeadingStyles(word: Reader, at: number, size: number): Map<number, n
   return levels
 }
 
-/** The code page of a language's 8-bit text, as Windows wrote it, by the language's identifier. */
-export function languageCodePage(language: number): number {
-  const primary = language & 0x3ff
-  if (primary === 0x1a) return language === 0x0c1a ? 1251 : 1250
-  if (primary === 0x04) return language === 0x0804 || language === 0x1004 ? 936 : 950
-  return LANGUAGE_CODE_PAGES[primary] ?? 1252
-}
-
-const LANGUAGE_CODE_PAGES: Record<number, number> = {
-  2: 1251,
-  25: 1251,
-  34: 1251,
-  35: 1251,
-  47: 1251,
-  63: 1251,
-  5: 1250,
-  14: 1250,
-  21: 1250,
-  24: 1250,
-  27: 1250,
-  28: 1250,
-  36: 1250,
-  8: 1253,
-  31: 1254,
-  13: 1255,
-  1: 1256,
-  32: 1256,
-  41: 1256,
-  37: 1257,
-  38: 1257,
-  39: 1257,
-  42: 1258,
-  30: 874,
-  17: 932,
-  18: 949
-}
-
-/** A decoder of 8-bit text in a Windows code page; Western European for one the window does not know. */
-export function codePageDecoder(codePage: number): TextDecoder {
-  const label =
-    codePage >= 1250 && codePage <= 1258
-      ? `windows-${codePage}`
-      : // Excel 2 to 4 name the Mac's and Windows' own code pages 32768 and 32769.
-        (
-          {
-            874: 'windows-874',
-            932: 'shift_jis',
-            936: 'gbk',
-            949: 'euc-kr',
-            950: 'big5',
-            10000: 'macintosh',
-            1200: 'utf-16le',
-            32768: 'macintosh',
-            32769: 'windows-1252',
-            65001: 'utf-8'
-          } as Record<number, string>
-        )[codePage]
-  try {
-    return new TextDecoder(label ?? 'windows-1252')
-  } catch {
-    return new TextDecoder('windows-1252')
-  }
-}
-
-/** Where a part of a Word document is in its table stream, and how long it is. */
-interface WordPlace {
-  at: number
-  size: number
-}
-
-/** The runs of characters of a Word 97 document that have properties of their own, from their pages, in order. */
-function characterRuns(word: Reader, table: Reader, place: WordPlace): { start: number; end: number; at: number; size: number }[] {
-  const runs: { start: number; end: number; at: number; size: number }[] = []
-  const listed = place.size >= 4 ? Math.floor((place.size - 4) / 8) : 0
-  for (let index = 0; index < listed; index++) {
-    const page = (table.u32(place.at + (listed + 1) * 4 + index * 4) & 0x3fffff) * 512
-    if (page + 512 > word.length) continue
-    const count = Math.min(word.u8(page + 511), 101)
-    for (let run = 0; run < count; run++) {
-      const offset = word.u8(page + (count + 1) * 4 + run) * 2
-      if (offset > 0) runs.push({ start: word.u32(page + run * 4), end: word.u32(page + (run + 1) * 4), at: page + offset + 1, size: word.u8(page + offset) })
-    }
-  }
-  return runs.sort((one, other) => one.start - other.start)
-}
-
 /** What a run of characters says of the special character it holds: where its picture is, and whether it is an object. */
-function characterPicture(word: Reader, at: number, size: number): { location?: number; object: boolean; data: boolean } {
+function characterPicture(properties: Properties): { location?: number; object: boolean; data: boolean } {
   const found: { location?: number; object: boolean; data: boolean } = { object: false, data: false }
-  let place = at
-  while (place + 2 <= at + size) {
-    const property = word.u16(place)
-    place += 2
-    const operand = operandSize(property, word, place)
-    if (property === 0x6a03) found.location = word.u32(place)
-    else if (property === 0x080a) found.object = word.u8(place) !== 0
-    else if (property === 0x0806) found.data = word.u8(place) !== 0
-    place += operand
+  const { bytes } = properties
+  for (const { code, at } of wordProperties(bytes, properties.at, properties.end)) {
+    if (code === 0x6a03) found.location = bytes.u32(at)
+    else if (code === 0x080a) found.object = bytes.u8(at) !== 0
+    else if (code === 0x0806) found.data = bytes.u8(at) !== 0
   }
   return found
 }
@@ -390,20 +208,19 @@ export function embeddedChart(storage: Compound): OfficeChart | undefined {
 const GRAPH_VERSION = 0x0680
 
 /**
- * The pictures of a Word 97 document. One in its text is a character whose run names where it is in the `Data`
- * stream: a header (`PICF`) with its size, then its shape and the entry of the store that holds it. One floating over
- * the text is anchored at a character, and drawn from the document's OfficeArt, in its table stream, its picture kept
- * in the main stream. An object of another app (a field `EMBED`) is in a storage of its own under `ObjectPool`, named
- * by its field's separator; a chart's is drawn from it when its picture is not one the window shows. A picture that
- * cannot be read is left out: the text is still worth showing.
+ * The pictures of a Word 97 document, and of a Word 6 or 95 one. One in its text is a character whose run names where
+ * it is in the `Data` stream (in the main stream before Word 97): a header (`PICF`) with its size, then its shape and
+ * the entry of the store that holds it, or a metafile in Word 6's way. One floating over the text is anchored at a
+ * character, and drawn from the document's OfficeArt, in its table stream, its picture kept in the main stream. An
+ * object of another app (a field `EMBED`) is in a storage of its own under `ObjectPool`, named by its field's
+ * separator; a chart's is drawn from it when its picture is not one the window shows. A picture that cannot be read is
+ * left out: the text is still worth showing.
  */
 function wordPictures(
-  word: Reader,
   main: Uint8Array,
-  table: Reader,
-  tableBytes: Uint8Array,
+  characters: (place: number) => Properties | undefined,
   streams: { data: Uint8Array | undefined; objects: Compound | undefined; read?: ObjectReader | undefined },
-  places: { characters: WordPlace; anchors: WordPlace; drawings: WordPlace }
+  floats?: { table: Reader; tableBytes: Uint8Array; anchors: WordPlace; drawings: WordPlace }
 ) {
   const { data, objects } = streams
   const figures = new ArtFigures()
@@ -426,20 +243,6 @@ function wordPictures(
       equations.set(id, storage && objectEquation(storage))
     }
     return equations.get(id)
-  }
-  let runs: ReturnType<typeof characterRuns> | undefined
-  const runAt = (place: number) => {
-    runs ??= characterRuns(word, table, places.characters)
-    let low = 0
-    let high = runs.length - 1
-    while (low <= high) {
-      const middle = (low + high) >> 1
-      const run = runs[middle] as (typeof runs)[number]
-      if (place < run.start) high = middle - 1
-      else if (place >= run.end) low = middle + 1
-      else return run
-    }
-    return undefined
   }
 
   // A picture in the text: its header gives its size, in twentieths of a point scaled by thousandths. An object's
@@ -496,9 +299,11 @@ function wordPictures(
   const shapes = new Map<number, ReturnType<typeof artShapes>[number]>()
   let stored: (place: number) => StoredPicture | undefined = () => undefined
   try {
-    const count = places.anchors.size >= 4 ? Math.floor((places.anchors.size - 4) / 30) : 0
+    if (!floats) throw new Error('Only Word 97 floats its pictures over the text.')
+    const { table, tableBytes, anchors: placed, drawings } = floats
+    const count = placed.size >= 4 ? Math.floor((placed.size - 4) / 30) : 0
     for (let index = 0; index < count; index++) {
-      const spa = places.anchors.at + (count + 1) * 4 + index * 26
+      const spa = placed.at + (count + 1) * 4 + index * 26
       const span = (from: number, to: number) => twipPixels((table.u32(spa + to) | 0) - (table.u32(spa + from) | 0))
       // Where it is, from what, and how text wraps around it (`FSPA`).
       const flags = table.u16(spa + 20)
@@ -513,10 +318,10 @@ function wordPictures(
         down: (['margin', 'page', 'paragraph'] as const)[(flags >> 3) & 3] ?? 'paragraph',
         wrap: (flags >> 5) & 0xf
       }
-      anchors.set(table.u32(places.anchors.at + index * 4), { id: table.u32(spa), width: span(4, 12), height: span(8, 16), place })
+      anchors.set(table.u32(placed.at + index * 4), { id: table.u32(spa), width: span(4, 12), height: span(8, 16), place })
     }
-    const end = Math.min(places.drawings.at + places.drawings.size, tableBytes.length)
-    const [group] = places.drawings.size > 0 ? artRecords(tableBytes, places.drawings.at, end) : []
+    const end = Math.min(drawings.at + drawings.size, tableBytes.length)
+    const [group] = drawings.size > 0 ? artRecords(tableBytes, drawings.at, end) : []
     if (group?.type === ART.drawingGroup) {
       stored = storedPictures(tableBytes, childOf(tableBytes, group, ART.store), main)
       // After the group, each drawing follows a byte that says whether it is the main text's or its headers'.
@@ -564,9 +369,9 @@ function wordPictures(
   // A special character's figure: an object's chart or what says it is one, or the picture its run names.
   const inlineAt = (place: number, field: { object?: number | undefined; chart: boolean; program?: string | undefined }): number | undefined => {
     try {
-      const run = runAt(place)
-      if (!run) return undefined
-      const found = characterPicture(word, run.at, run.size)
+      const properties = characters(place)
+      if (!properties) return undefined
+      const found = characterPicture(properties)
       if (found.object) {
         const chart = objectChart(found.location)
         return chart ? figures.chart(chart) : figures.unshown('', field.chart ? 'chart' : 'picture')
@@ -603,8 +408,8 @@ function wordPictures(
     /** The object a field's separator names, by the number of its storage; none for a field of no object. */
     object(place: number): number | undefined {
       try {
-        const run = runAt(place)
-        const found = run && characterPicture(word, run.at, run.size)
+        const properties = characters(place)
+        const found = properties && characterPicture(properties)
         return found?.object ? found.location : undefined
       } catch {
         return undefined
@@ -623,8 +428,8 @@ function wordPictures(
     /** The rule across the text a special character is, by its place in the main stream, once its figure was asked for. */
     rule(place: number): ArtShape['rule'] {
       try {
-        const run = runAt(place)
-        const found = run && characterPicture(word, run.at, run.size)
+        const properties = characters(place)
+        const found = properties && characterPicture(properties)
         return found?.location === undefined ? undefined : rules.get(found.location)
       } catch {
         return undefined
@@ -640,15 +445,85 @@ function wordPictures(
   }
 }
 
+/** The figures of a document whose pictures are not read: none anywhere. */
+const NO_FIGURES = {
+  inline: () => undefined,
+  object: () => undefined,
+  floating: () => undefined,
+  anchor: () => undefined,
+  rule: () => undefined,
+  size: () => undefined
+}
+
 /** Where a figure stands in a paragraph's text until the paragraph is written: characters no text of the file keeps. */
 const FIGURE_START = '\ue000'
 const FIGURE_END = '\ue001'
 
 /**
+ * Where Word 6 and 95, and Word 2, keep the parts of a document, in their header: where each starts, then how long it
+ * is, in four bytes in Word 6 and two in Word 2. Their pages of runs follow the count of all those a quick save left.
+ */
+const OLDER_PARTS: Record<6 | 2, Record<WordPart | 'characters' | 'paragraphs' | 'complex', number | undefined>> = {
+  6: {
+    styles: 0x60,
+    footnoteReferences: 0x68,
+    footnoteTexts: 0x70,
+    sections: 0x88,
+    headers: 0xb0,
+    characters: 0xb8,
+    paragraphs: 0xc0,
+    fonts: 0xd0,
+    settings: 0x150,
+    complex: 0x160,
+    endnoteReferences: 0x1d2,
+    endnoteTexts: 0x1da,
+    lists: undefined,
+    listOverrides: undefined
+  },
+  2: {
+    styles: 0x5e,
+    footnoteReferences: 0x64,
+    footnoteTexts: 0x6a,
+    sections: 0x7c,
+    headers: 0x9a,
+    characters: 0xa0,
+    paragraphs: 0xa6,
+    fonts: 0xb2,
+    settings: 0x112,
+    complex: 0x11e,
+    endnoteReferences: undefined,
+    endnoteTexts: undefined,
+    lists: undefined,
+    listOverrides: undefined
+  }
+}
+
+/** Where Word 97 keeps the parts of a document, by their place in its header's list of where and how long (`FibRgFcLcb97`). */
+const PARTS_97: Record<WordPart | 'characters' | 'paragraphs' | 'complex' | 'anchors' | 'drawings', number> = {
+  styles: 1,
+  footnoteReferences: 2,
+  footnoteTexts: 3,
+  sections: 6,
+  headers: 11,
+  characters: 12,
+  paragraphs: 13,
+  fonts: 15,
+  settings: 31,
+  complex: 33,
+  anchors: 40,
+  endnoteReferences: 46,
+  endnoteTexts: 47,
+  drawings: 50,
+  lists: 73,
+  listOverrides: 74
+}
+
+/**
  * A Word document of 97 to 2003, of Word 6 and 95, or of Word 2, as Markdown: its headings, paragraphs, list items and
- * tables, in order, and the pictures of a Word 97 document where they are. Word 6 and 95 keep everything in one stream,
- * behind a header of their own, their text in the 8-bit code page of the document's language and their properties in
- * one-byte codes; Word 2 wrote the same straight into the file, with places and codes of its own.
+ * tables, in order, and the pictures of a Word 97, 6 or 95 document where they are; and its look, but for a document of
+ * Word 1. Word 6 and 95 keep everything in one stream, behind a header of their own, their text in the 8-bit code page
+ * of the document's language and their properties in one-byte codes; Word 2 wrote the same straight into the file,
+ * with places and codes of its own.
  */
 export async function readOlderWord(bytes: Uint8Array, objects?: ObjectReader): Promise<OfficePreview> {
   // Word 1 wrote its documents as Word 2 did, a few of its places and properties its own.
@@ -670,36 +545,25 @@ async function readWord(file: Compound | undefined, bytes: Uint8Array, one: bool
   // Word 2's header ends with the count of its pages of paragraph formats.
   if (word.length < (one ? 0x192 : two ? 0x146 : 0x200)) damaged()
   const identifier = word.u16(0)
-  const version = word.u16(2)
+  const number = word.u16(2)
   if (identifier !== 0xa5ec && identifier !== 0xa5dc && !two) throw new Error('This is not a Word document.')
-  const six = version < 0xc1
-  if (six && version < 0x65 && !two) throw new Error('It is a document of Word 2 or older, which is not read here.')
+  const six = number < 0xc1
+  if (six && number < 0x65 && !two) throw new Error('It is a document of Word 2 or older, which is not read here.')
+  const version: WordVersion = one ? 1 : two ? 2 : six || !file ? 6 : 97
   const flags = word.u16(0x0a)
   if (flags & 0x0100) throw new Error(PROTECTED)
-  const tableStream = six || !file ? stream : file.stream(flags & 0x0200 ? '1Table' : '0Table')
+  const tableStream = version !== 97 || !file ? stream : file.stream(flags & 0x0200 ? '1Table' : '0Table')
   if (!tableStream) damaged()
   const table = reader(tableStream as Uint8Array)
 
   // Where things are: in Word 97 a fixed part, then counts of 16-bit and 32-bit values, then pairs of where and how
-  // long; in Word 6 and 95, at places of their own; in Word 2, at others, how long in two bytes.
+  // long; in Word 6 and 95, at places of their own; in Word 2, at others, how long in two bytes. Word 1 keeps its
+  // quick save's pieces at a place of its own.
   let textLength: number
-  let styles: WordPlace
-  let formats: WordPlace
-  let complex: WordPlace | undefined
-  let pictures: ReturnType<typeof wordPictures> | undefined
-  // A Word 97 document's parts and stories' lengths, for its look.
-  let parts: { part: (index: number) => WordPlace; lengths: number[] } | undefined
-  if (two) {
-    textLength = Math.min(word.u32(0x34), CHARACTER_LIMIT)
-    styles = { at: word.u32(0x5e), size: word.u16(0x62) }
-    formats = { at: word.u32(0xa6), size: word.u16(0xaa) }
-    complex = flags & 0x0004 ? (one ? { at: word.u32(0x112), size: word.u16(0x116) } : { at: word.u32(0x11e), size: word.u16(0x122) }) : undefined
-  } else if (six || !file) {
-    textLength = Math.min(word.u32(0x34), CHARACTER_LIMIT)
-    styles = { at: word.u32(0x60), size: word.u32(0x64) }
-    formats = { at: word.u32(0xc0), size: word.u32(0xc4) }
-    complex = flags & 0x0004 ? { at: word.u32(0x160), size: word.u32(0x164) } : undefined
-  } else {
+  let lengths: number[]
+  let part: (name: WordPart | 'characters' | 'paragraphs' | 'complex' | 'anchors' | 'drawings') => WordPlace
+  const none = { at: 0, size: 0 }
+  if (version === 97) {
     const shorts = word.u16(32)
     const longsAt = 34 + shorts * 2
     const longs = word.u16(longsAt)
@@ -707,34 +571,45 @@ async function readWord(file: Compound | undefined, bytes: Uint8Array, one: bool
     const pairsAt = longsAt + 2 + longs * 4
     const pairCount = word.u16(pairsAt)
     if (pairCount < 34) damaged()
-    const pair = (index: number) =>
-      index < pairCount ? { at: word.u32(pairsAt + 2 + index * 8), size: word.u32(pairsAt + 6 + index * 8) } : { at: 0, size: 0 }
-    parts = { part: pair, lengths: Array.from({ length: 8 }, (_, index) => (index + 3 < longs ? word.u32(longsAt + 2 + (index + 3) * 4) : 0)) }
-    styles = pair(1)
-    formats = pair(13)
-    complex = pair(33)
-    const none = { at: 0, size: 0 }
-    pictures = wordPictures(
-      word,
-      stream,
-      table,
-      tableStream as Uint8Array,
-      { data: file.stream('Data'), objects: file.storage('ObjectPool'), read: objects },
-      {
-        characters: pair(12),
-        anchors: pair(40),
-        drawings: pairCount > 50 ? pair(50) : none
+    lengths = Array.from({ length: 8 }, (_, index) => (index + 3 < longs ? word.u32(longsAt + 2 + (index + 3) * 4) : 0))
+    part = (name) => {
+      const index = PARTS_97[name]
+      return index < pairCount ? { at: word.u32(pairsAt + 2 + index * 8), size: word.u32(pairsAt + 6 + index * 8) } : none
+    }
+  } else {
+    textLength = Math.min(word.u32(0x34), CHARACTER_LIMIT)
+    lengths = Array.from({ length: 8 }, (_, index) => word.u32(0x34 + index * 4))
+    const places = OLDER_PARTS[version === 6 ? 6 : 2]
+    part = (name) => {
+      const at = name === 'complex' && one ? 0x112 : places[name as keyof typeof places]
+      if (at === undefined) return none
+      return { at: word.u32(at), size: version === 6 ? word.u32(at + 4) : word.u16(at + 4) }
+    }
+    // Word 2 leaves its fonts' table without its length: it reaches the part after it.
+    if (version === 2) {
+      const counted = part
+      part = (name) => {
+        const found = counted(name)
+        if (name !== 'fonts' || found.size > 2) return found
+        const next = word.u32(0xb8)
+        return { at: found.at, size: next > found.at ? Math.min(next - found.at, 4096) : 0 }
       }
-    )
+    }
   }
+  const complex = version === 97 || flags & 0x0004 ? part('complex') : undefined
 
   // The text is in pieces, each where the file keeps it: in 8-bit characters, or in UTF-16. A Word 6 file saved
   // whole has one, from the start of its text; one saved quickly lists them, all 8-bit, Word 2 their size in two bytes.
-  // Word 97 lists the properties some pieces share first, each piece naming its own by their place in the list.
+  // Word 97 and 6 list the properties some pieces share first, each piece naming its own by their place in the list,
+  // or Word 6's one property in its name.
   const pieces: TextPiece[] = []
   const shared: WordPlace[] = []
-  if (complex === undefined) pieces.push({ start: 0, end: textLength, at: word.u32(0x18), narrow: true })
-  else
+  // A file saved whole keeps every story's text in one run from its start: the body's, then its notes', headers' and
+  // the rest, up to where its text ends (`fcMac`).
+  if (complex === undefined) {
+    const start = word.u32(0x18)
+    pieces.push({ start: 0, end: Math.max(textLength, Math.min(word.u32(0x1c), word.length) - start), at: start, narrow: true })
+  } else
     for (let at = complex.at; at < complex.at + complex.size; ) {
       const kind = table.u8(at)
       if (kind === 1) {
@@ -751,83 +626,84 @@ async function readWord(file: Compound | undefined, bytes: Uint8Array, one: bool
         const narrow = six || (raw & 0x40000000) !== 0
         const offset = six ? raw : raw & 0x3fffffff
         const modifier = table.u16(list + (count + 1) * 4 + index * 8 + 6)
-        pieces.push({
+        const piece: TextPiece = {
           start: table.u32(list + index * 4),
           end: table.u32(list + (index + 1) * 4),
           at: narrow && !six ? offset / 2 : offset,
-          narrow,
-          properties: !six && modifier & 1 ? shared[modifier >> 1] : undefined
-        })
+          narrow
+        }
+        if (!two && modifier & 1) piece.properties = shared[modifier >> 1]
+        else if (version === 6 && (modifier >> 1) & 0x7f) piece.property = ((modifier >> 1) & 0x7f) | (modifier & 0xff00)
+        pieces.push(piece)
       }
       break
     }
   if (pieces.length === 0) damaged()
 
-  // Each paragraph's format is found by where its mark is in the file, in pages of runs of 512 bytes: their numbers
-  // in four bytes in Word 97, in two in Word 6 and 2, whose list a quick save may leave short of the pages that follow.
-  // Each run names its format in 13 bytes in Word 97, 7 in Word 6, 1 in Word 2.
-  const runs: { start: number; end: number; at?: number; size?: number; format?: ParagraphFormat }[] = []
-  const numberSize = six ? 2 : 4
-  const listed = formats.size >= 4 ? Math.floor((formats.size - 4) / (4 + numberSize)) : 0
-  const pageNumbers: number[] = []
-  for (let index = 0; index < listed; index++) {
-    const at = formats.at + (listed + 1) * 4 + index * numberSize
-    pageNumbers.push(six ? table.u16(at) : table.u32(at) & 0x3fffff)
-  }
-  if (six && listed > 0) {
-    const all = word.u16(two && !one ? 0x144 : 0x190)
-    for (let next = (pageNumbers.at(-1) ?? 0) + 1; pageNumbers.length < Math.min(all, 4096); next++) pageNumbers.push(next)
-  }
-  const entrySize = two ? 1 : six ? 7 : 13
-  for (const number of pageNumbers) {
-    const page = number * 512
-    if (page + 512 > word.length) continue
-    const count = word.u8(page + 511)
-    for (let run = 0; run < count; run++) {
-      const offset = word.u8(page + (count + 1) * 4 + run * entrySize) * 2
-      const found: (typeof runs)[number] = { start: word.u32(page + run * 4), end: word.u32(page + (run + 1) * 4) }
-      if (offset > 0) {
-        const length = word.u8(page + offset)
-        found.at = length === 0 && !six ? page + offset + 2 : page + offset + 1
-        found.size = length === 0 && !six ? word.u8(page + offset + 1) * 2 : length * 2 - 1
-      }
-      runs.push(found)
+  // The runs of characters and of paragraphs are in pages of 512 bytes, numbered in four bytes in Word 97 and in two
+  // before it, whose list a quick save may leave short of the pages that follow.
+  const runPages = (kind: 'characters' | 'paragraphs'): number[] => {
+    const place = part(kind)
+    const numberSize = version === 97 ? 4 : 2
+    const listed = place.size >= 4 ? Math.floor((place.size - 4) / (4 + numberSize)) : 0
+    const pages: number[] = []
+    for (let index = 0; index < listed; index++) {
+      const at = place.at + (listed + 1) * 4 + index * numberSize
+      pages.push(version === 97 ? table.u32(at) & 0x3fffff : table.u16(at))
     }
+    if (version !== 97 && listed > 0) {
+      const all = word.u16(kind === 'paragraphs' ? (version === 2 ? 0x144 : 0x190) : version === 2 ? 0x142 : 0x18e)
+      for (let next = (pages.at(-1) ?? 0) + 1; pages.length < Math.min(all, 4096); next++) pages.push(next)
+    }
+    return pages
   }
-  runs.sort((one, other) => one.start - other.start)
+  const pages = { characters: version === 1 ? [] : runPages('characters'), paragraphs: runPages('paragraphs') }
+
+  // Word 97 writes its 8-bit text in Western European; Word 2 to 95, in the code page of the document's language,
+  // which may take two bytes for a character: the marks that matter are single bytes, found before decoding.
+  const codePage = version === 97 ? 1252 : word.u16(0x14) === 256 ? 10000 : languageCodePage(word.u16(0x06))
+  const narrow = codePageDecoder(codePage)
+  const decode = (bytes: Uint8Array) => narrow.decode(bytes)
+
+  // Each paragraph's format is found by where its mark is in the file, each run's of characters by where it is.
+  const runs = formattedRuns(word, version, pages.paragraphs, true)
+  const formats = new Map<FormattedRun, ParagraphFormat>()
   const plainFormat = (): ParagraphFormat => ({ style: 0, inTable: false, rowEnd: false, list: false, level: 0 })
   const formatAt = (place: number): ParagraphFormat | undefined => {
-    let low = 0
-    let high = runs.length - 1
-    while (low <= high) {
-      const middle = (low + high) >> 1
-      const run = runs[middle] as (typeof runs)[number]
-      if (place < run.start) high = middle - 1
-      else if (place >= run.end) low = middle + 1
-      else {
-        if (!run.format) {
-          // A format that cannot be read is no format: the text is still worth showing.
-          try {
-            run.format =
-              run.at === undefined || run.size === undefined
-                ? plainFormat()
-                : two
-                  ? twoParagraphFormat(word, run.at, run.size, one)
-                  : six
-                    ? sixParagraphFormat(word, run.at, run.size)
-                    : paragraphFormat(word, run.at, run.size)
-          } catch {
-            run.format = plainFormat()
-          }
-        }
-        return run.format
+    const run = runAt(runs, place)
+    if (!run) return undefined
+    let format = formats.get(run)
+    if (!format) {
+      // A format that cannot be read is no format: the text is still worth showing.
+      try {
+        const { style, properties } = paragraphRun(word, version, run, decode)
+        format = paragraphFormat(style, properties)
+      } catch {
+        format = plainFormat()
       }
+      formats.set(run, format)
     }
-    return undefined
+    return format
   }
+  let characters: FormattedRun[] | undefined
+  const characterProperties = (place: number): Properties | undefined => {
+    characters ??= formattedRuns(word, version, pages.characters, false)
+    const run = runAt(characters, place)
+    return run && characterRun(word, version, run, decode)
+  }
+  const pictures =
+    file && (version === 97 || version === 6)
+      ? wordPictures(
+          stream,
+          characterProperties,
+          { data: version === 97 ? file.stream('Data') : stream, objects: file.storage('ObjectPool'), read: objects },
+          version === 97 ? { table, tableBytes: tableStream as Uint8Array, anchors: part('anchors'), drawings: part('drawings') } : undefined
+        )
+      : undefined
+  const styles = part('styles')
   let headings = new Map<number, number>()
   try {
-    headings = two ? twoHeadingStyles(word, styles.at, styles.size) : headingStyles(table, styles.at, styles.size, !six)
+    headings = two ? twoHeadingStyles(word, styles.at, styles.size) : headingStyles(table, styles.at, styles.size, version === 97)
   } catch {
     // Styles that cannot be read name no headings.
   }
@@ -914,13 +790,6 @@ async function readWord(file: Compound | undefined, bytes: Uint8Array, one: bool
     else if (code === 0x09 || (code >= 0x20 && char !== FIGURE_START && char !== FIGURE_END)) paragraph += char
   }
   let read = 0
-  // Word 97 writes its 8-bit text in Western European; Word 2 to 95, in the code page of the document's language,
-  // which may take two bytes for a character: the marks that matter are single bytes, found before decoding.
-  const narrow = six
-    ? word.u16(0x14) === 256
-      ? new TextDecoder('macintosh')
-      : codePageDecoder(languageCodePage(word.u16(0x06)))
-    : new TextDecoder('windows-1252')
   for (const piece of [...pieces].sort((one, other) => one.start - other.start)) {
     if (blocks.length >= BLOCK_LIMIT || read >= textLength) break
     const count = Math.min(piece.end, textLength) - piece.start
@@ -950,19 +819,22 @@ async function readWord(file: Compound | undefined, bytes: Uint8Array, one: bool
   }
   if (paragraph.trim() !== '') endParagraph('\r', undefined)
   flushTable()
-  // A Word 97 document's look, read after its text with the same figures; one whose look cannot be read shows its text.
+  // The document's look, read after its text with the same figures; one whose look cannot be read shows its text.
   let look: ReturnType<typeof readOlderWordLook> | undefined
-  const dataStream = file?.stream('Data')
-  if (parts && pictures)
+  const dataStream = version === 97 ? file?.stream('Data') : undefined
+  if (version !== 1)
     try {
       look = readOlderWordLook({
+        version,
         word,
         table,
         data: dataStream && reader(dataStream),
-        part: parts.part,
-        lengths: parts.lengths,
+        part,
+        runPages: pages,
+        codePage,
+        lengths,
         pieces,
-        figures: pictures,
+        figures: pictures ?? NO_FIGURES,
         limit: CHARACTER_LIMIT
       })
     } catch {
