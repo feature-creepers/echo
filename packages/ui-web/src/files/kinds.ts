@@ -3,8 +3,11 @@
  * previewed. Read from its name, which is what every system goes by too.
  */
 
-/** How a file is previewed: rendered as the Prose block renders, as text, as a table, as a picture, as a document, or not at all. */
-export type PreviewMode = 'markdown' | 'text' | 'csv' | 'image' | 'pdf' | 'none'
+/**
+ * How a file is previewed: rendered as the Prose block renders, as text, as a table, as a picture, as a document, as
+ * the text of a Word, Excel or PowerPoint file, or not at all.
+ */
+export type PreviewMode = 'markdown' | 'text' | 'csv' | 'image' | 'pdf' | 'office' | 'none'
 
 export interface FileKind {
   /** In words, sentence case: "PNG image", "PDF document". */
@@ -59,11 +62,11 @@ const KINDS: Record<string, FileKind> = {
   ico: { label: 'Icon', preview: 'image' },
   pdf: { label: 'PDF document', preview: 'pdf' },
   doc: { label: 'Word document', preview: 'none' },
-  docx: { label: 'Word document', preview: 'none' },
+  docx: { label: 'Word document', preview: 'office' },
   xls: { label: 'Excel spreadsheet', preview: 'none' },
-  xlsx: { label: 'Excel spreadsheet', preview: 'none' },
+  xlsx: { label: 'Excel spreadsheet', preview: 'office' },
   ppt: { label: 'PowerPoint presentation', preview: 'none' },
-  pptx: { label: 'PowerPoint presentation', preview: 'none' },
+  pptx: { label: 'PowerPoint presentation', preview: 'office' },
   odt: { label: 'OpenDocument text', preview: 'none' },
   ods: { label: 'OpenDocument spreadsheet', preview: 'none' },
   zip: { label: 'ZIP archive', preview: 'none' },

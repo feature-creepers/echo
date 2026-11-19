@@ -10,7 +10,9 @@ describe('what a file is', () => {
     ['report.final.pdf', 'PDF document', 'pdf'],
     ['data.json', 'JSON data', 'text'],
     ['table.tsv', 'TSV table', 'csv'],
-    ['budget.xlsx', 'Excel spreadsheet', 'none'],
+    ['budget.xlsx', 'Excel spreadsheet', 'office'],
+    ['plan.docx', 'Word document', 'office'],
+    ['old.doc', 'Word document', 'none'],
     ['archive.weird', 'WEIRD file', 'none'],
     ['README', 'File', 'none'],
     ['.env', 'File', 'none']

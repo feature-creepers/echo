@@ -1,0 +1,420 @@
+/**
+ * Word, Excel and PowerPoint files read in the window itself, with no service and no library (docs/SPEC.md, section
+ * 9.7): each is a ZIP archive of XML parts, unpacked with the window's own decompression and read for what a
+ * preview shows. A document becomes Markdown, shown as the Prose block shows it; a workbook, its sheets as tables; a
+ * presentation, the text of each slide. Their look, pictures and charts are left to their app. The older binary
+ * formats (.doc, .xls, .ppt) are not read.
+ */
+
+/** What a preview of an Office file shows. */
+export type OfficePreview =
+  | { kind: 'document'; markdown: string; cut: boolean }
+  | { kind: 'workbook'; sheets: { name: string; rows: string[][]; cut: boolean }[] }
+  | { kind: 'presentation'; slides: { title: string; lines: string[] }[]; cut: boolean }
+
+/** The extensions read, and what each is. */
+export const OFFICE_KINDS = { docx: 'document', xlsx: 'workbook', pptx: 'presentation' } as const
+
+/** The most a part of an archive is unpacked to: a preview never needs more, and a crafted archive stops there. */
+const PART_LIMIT = 32 * 1024 * 1024
+/** How much of a document is shown, in paragraphs and table rows. */
+const BLOCK_LIMIT = 5_000
+/** How many rows and columns of a sheet are shown, and how many sheets. */
+const ROW_LIMIT = 500
+const COLUMN_LIMIT = 50
+const SHEET_LIMIT = 20
+/** How many slides are shown. */
+const SLIDE_LIMIT = 300
+
+/** The parts of a ZIP archive by name, each unpacked when asked for. */
+export type Archive = Map<string, () => Promise<Uint8Array>>
+
+const view = (bytes: Uint8Array) => new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+
+/** Read a ZIP archive's directory. Throws when it is not one. */
+export function openArchive(bytes: Uint8Array): Archive {
+  const data = view(bytes)
+  // The end of the directory is in the last 64 KB and 22 bytes: a comment may follow it.
+  let end = -1
+  for (let at = bytes.length - 22; at >= Math.max(0, bytes.length - 22 - 65_535); at--) {
+    if (data.getUint32(at, true) === 0x06054b50) {
+      end = at
+      break
+    }
+  }
+  if (end < 0) throw new Error('This is not a ZIP archive.')
+  const count = data.getUint16(end + 10, true)
+  let at = data.getUint32(end + 16, true)
+  const parts: Archive = new Map()
+  for (let index = 0; index < count; index++) {
+    if (at + 46 > bytes.length || data.getUint32(at, true) !== 0x02014b50) throw new Error('The archive is damaged.')
+    const method = data.getUint16(at + 10, true)
+    const packed = data.getUint32(at + 20, true)
+    const size = data.getUint32(at + 24, true)
+    const nameLength = data.getUint16(at + 28, true)
+    const extraLength = data.getUint16(at + 30, true)
+    const commentLength = data.getUint16(at + 32, true)
+    const local = data.getUint32(at + 42, true)
+    const name = new TextDecoder().decode(bytes.subarray(at + 46, at + 46 + nameLength))
+    at += 46 + nameLength + extraLength + commentLength
+    parts.set(name, async () => {
+      if (local + 30 > bytes.length || data.getUint32(local, true) !== 0x04034b50) throw new Error('The archive is damaged.')
+      const start = local + 30 + data.getUint16(local + 26, true) + data.getUint16(local + 28, true)
+      const stored = bytes.subarray(start, start + packed)
+      if (method === 0) return stored
+      if (method !== 8) throw new Error('The archive is packed in a way that is not read here.')
+      if (size > PART_LIMIT) throw new Error('A part of the file is too large to show.')
+      return inflate(stored)
+    })
+  }
+  return parts
+}
+
+/** Unpack deflated bytes with the window's own decompression, stopping past the limit. */
+async function inflate(packed: Uint8Array): Promise<Uint8Array> {
+  const stream = new Blob([packed as Uint8Array<ArrayBuffer>]).stream().pipeThrough(new DecompressionStream('deflate-raw'))
+  const reader = stream.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    total += value.byteLength
+    if (total > PART_LIMIT) {
+      await reader.cancel()
+      throw new Error('A part of the file is too large to show.')
+    }
+    chunks.push(value)
+  }
+  const whole = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    whole.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return whole
+}
+
+/** A step through an XML part: an element opened, with its attributes, closed, or text between. */
+export type XmlEvent = { type: 'open'; name: string; attributes: Record<string, string> } | { type: 'close'; name: string } | { type: 'text'; text: string }
+
+const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" }
+
+/** Text with its entities read: `&amp;`, `&#233;`, `&#xE9;`. */
+export function decodeEntities(text: string): string {
+  return text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole, entity: string) => {
+    if (entity[0] === '#') {
+      const code = entity[1] === 'x' || entity[1] === 'X' ? Number.parseInt(entity.slice(2), 16) : Number.parseInt(entity.slice(1), 10)
+      return Number.isFinite(code) && code >= 0 && code <= 0x10ffff ? String.fromCodePoint(code) : whole
+    }
+    return ENTITIES[entity] ?? whole
+  })
+}
+
+/**
+ * The steps through an XML part, as the Office formats write them: elements, attributes and text. A self-closed
+ * element is opened and closed; declarations, comments and instructions are passed over.
+ */
+export function* xmlEvents(xml: string): Generator<XmlEvent> {
+  let at = 0
+  while (at < xml.length) {
+    const open = xml.indexOf('<', at)
+    if (open < 0) {
+      if (at < xml.length) yield { type: 'text', text: decodeEntities(xml.slice(at)) }
+      return
+    }
+    if (open > at) yield { type: 'text', text: decodeEntities(xml.slice(at, open)) }
+    if (xml.startsWith('<!--', open)) {
+      const close = xml.indexOf('-->', open)
+      at = close < 0 ? xml.length : close + 3
+      continue
+    }
+    if (xml.startsWith('<![CDATA[', open)) {
+      const close = xml.indexOf(']]>', open)
+      yield { type: 'text', text: xml.slice(open + 9, close < 0 ? xml.length : close) }
+      at = close < 0 ? xml.length : close + 3
+      continue
+    }
+    const close = xml.indexOf('>', open)
+    if (close < 0) return
+    const tag = xml.slice(open + 1, close)
+    at = close + 1
+    if (tag.startsWith('?') || tag.startsWith('!')) continue
+    if (tag.startsWith('/')) {
+      yield { type: 'close', name: tag.slice(1).trim() }
+      continue
+    }
+    const selfClosed = tag.endsWith('/')
+    const body = selfClosed ? tag.slice(0, -1) : tag
+    const name = /^[^\s/>]+/.exec(body)?.[0] ?? ''
+    const attributes: Record<string, string> = {}
+    for (const match of body.slice(name.length).matchAll(/([^\s=]+)\s*=\s*("([^"]*)"|'([^']*)')/g)) {
+      attributes[match[1] as string] = decodeEntities(match[3] ?? match[4] ?? '')
+    }
+    yield { type: 'open', name, attributes }
+    if (selfClosed) yield { type: 'close', name }
+  }
+}
+
+const textOf = async (archive: Archive, name: string): Promise<string | undefined> => {
+  const part = archive.get(name)
+  return part ? new TextDecoder().decode(await part()) : undefined
+}
+
+/** Where the relationships of a part point, by their identifiers, as paths in the archive. */
+async function relationships(archive: Archive, part: string): Promise<Map<string, string>> {
+  const folder = part.slice(0, part.lastIndexOf('/') + 1)
+  const xml = await textOf(archive, `${folder}_rels/${part.slice(folder.length)}.rels`)
+  const found = new Map<string, string>()
+  for (const event of xmlEvents(xml ?? '')) {
+    if (event.type !== 'open' || event.name !== 'Relationship') continue
+    const { Id: id, Target: target } = event.attributes
+    if (id && target) found.set(id, resolvePart(folder, target))
+  }
+  return found
+}
+
+/** A target of a relationship as a path in the archive: from the archive's top when it starts with "/", else from the part's folder. */
+function resolvePart(folder: string, target: string): string {
+  const parts = (target.startsWith('/') ? target.slice(1) : folder + target).split('/')
+  const resolved: string[] = []
+  for (const part of parts) {
+    if (part === '..') resolved.pop()
+    else if (part !== '.' && part !== '') resolved.push(part)
+  }
+  return resolved.join('/')
+}
+
+/** Text written so Markdown shows it as it is: its marks escaped, a line not taken for a heading or a list. */
+function plain(text: string): string {
+  return text
+    .replace(/[\\`*_[\]<>|#]/g, '\\$&')
+    .replace(/^(\s*)(\d+)\. /, '$1$2\\. ')
+    .replace(/^(\s*)([-+]) /, '$1\\$2 ')
+}
+
+/** The heading level of each paragraph style a document defines, by the style's name: "heading 1", "Title". */
+async function headingStyles(archive: Archive): Promise<Map<string, number>> {
+  const levels = new Map<string, number>()
+  let style: string | undefined
+  for (const event of xmlEvents((await textOf(archive, 'word/styles.xml')) ?? '')) {
+    if (event.type === 'open' && event.name === 'w:style') style = event.attributes['w:styleId']
+    if (event.type === 'open' && event.name === 'w:name' && style !== undefined) {
+      const name = (event.attributes['w:val'] ?? '').toLowerCase()
+      const level = name === 'title' ? 1 : name === 'subtitle' ? 2 : Number(/^heading (\d)$/.exec(name)?.[1] ?? 0)
+      if (level > 0) levels.set(style, Math.min(level, 6))
+    }
+  }
+  return levels
+}
+
+/** A Word document as Markdown: its headings, paragraphs, list items and tables, in order. */
+export async function readDocument(archive: Archive): Promise<OfficePreview> {
+  const xml = await textOf(archive, 'word/document.xml')
+  if (xml === undefined) throw new Error('This is not a Word document.')
+  const headings = await headingStyles(archive)
+  const blocks: string[] = []
+  let paragraph: { text: string; style?: string | undefined; list: boolean } | undefined
+  let inText = false
+  let depth = 0
+  let table: string[][] = []
+  let row: string[] | undefined
+  let cell: string[] | undefined
+
+  for (const event of xmlEvents(xml)) {
+    if (blocks.length >= BLOCK_LIMIT) break
+    if (event.type === 'text') {
+      if (inText && paragraph) paragraph.text += event.text
+      continue
+    }
+    if (event.type === 'open') {
+      if (event.name === 'w:tbl' && ++depth === 1) table = []
+      else if (event.name === 'w:tr' && depth === 1) row = []
+      else if (event.name === 'w:tc' && depth === 1) cell = []
+      else if (event.name === 'w:p') paragraph = { text: '', list: false }
+      else if (event.name === 'w:pStyle' && paragraph) paragraph.style = event.attributes['w:val']
+      else if (event.name === 'w:numPr' && paragraph) paragraph.list = true
+      else if (event.name === 'w:tab' && paragraph) paragraph.text += '\t'
+      else if ((event.name === 'w:br' || event.name === 'w:cr') && paragraph) paragraph.text += '\n'
+      else if (event.name === 'w:t') inText = true
+      continue
+    }
+    if (event.name === 'w:t') inText = false
+    else if (event.name === 'w:p' && paragraph) {
+      const text = paragraph.text.trim()
+      if (cell) cell.push(text)
+      else if (text !== '') {
+        const level = paragraph.style === undefined ? undefined : headings.get(paragraph.style)
+        const lines = text.split('\n').map(plain)
+        blocks.push(level ? `${'#'.repeat(level)} ${lines.join(' ')}` : paragraph.list ? `- ${lines.join('  \n  ')}` : lines.join('  \n'))
+      }
+      paragraph = undefined
+    } else if (event.name === 'w:tc' && depth === 1 && cell && row) {
+      row.push(cell.filter(Boolean).join(' '))
+      cell = undefined
+    } else if (event.name === 'w:tr' && depth === 1 && row) {
+      table.push(row)
+      row = undefined
+    } else if (event.name === 'w:tbl' && --depth === 0 && table.length > 0) {
+      const width = Math.max(...table.map((one) => one.length))
+      const line = (cells: string[]) => `| ${Array.from({ length: width }, (_, column) => plain(cells[column] ?? '').replace(/\n/g, ' ')).join(' | ')} |`
+      const [head = [], ...body] = table
+      blocks.push([line(head), `|${' --- |'.repeat(width)}`, ...body.map(line)].join('\n'))
+    }
+  }
+  return { kind: 'document', markdown: blocks.join('\n\n'), cut: blocks.length >= BLOCK_LIMIT }
+}
+
+/** A cell's column from its reference: "A1" is 0, "AB7" is 27. */
+export function columnOf(reference: string): number {
+  let column = 0
+  for (const letter of /^[A-Z]+/i.exec(reference)?.[0].toUpperCase() ?? 'A') column = column * 26 + (letter.charCodeAt(0) - 64)
+  return column - 1
+}
+
+/** An Excel workbook's sheets, each as rows of its cells' values as stored. */
+export async function readWorkbook(archive: Archive): Promise<OfficePreview> {
+  const workbook = await textOf(archive, 'xl/workbook.xml')
+  if (workbook === undefined) throw new Error('This is not an Excel workbook.')
+  const targets = await relationships(archive, 'xl/workbook.xml')
+
+  const strings: string[] = []
+  let shared: string | undefined
+  let inText = false
+  // Phonetic guides (`rPh`) hold readings of East Asian text, not the text itself.
+  let phonetic = false
+  for (const event of xmlEvents((await textOf(archive, 'xl/sharedStrings.xml')) ?? '')) {
+    if (event.type === 'open' && event.name === 'si') shared = ''
+    else if (event.type === 'open' && event.name === 'rPh') phonetic = true
+    else if (event.type === 'close' && event.name === 'rPh') phonetic = false
+    else if (event.type === 'open' && event.name === 't') inText = !phonetic
+    else if (event.type === 'close' && event.name === 't') inText = false
+    else if (event.type === 'close' && event.name === 'si') {
+      strings.push(shared ?? '')
+      shared = undefined
+    } else if (event.type === 'text' && inText && shared !== undefined) shared += event.text
+  }
+
+  const sheets: { name: string; rows: string[][]; cut: boolean }[] = []
+  for (const event of xmlEvents(workbook)) {
+    if (sheets.length >= SHEET_LIMIT) break
+    if (event.type !== 'open' || event.name !== 'sheet') continue
+    const target = targets.get(event.attributes['r:id'] ?? '')
+    const xml = target === undefined ? undefined : await textOf(archive, target)
+    if (xml === undefined) continue
+    sheets.push({ name: event.attributes.name ?? `Sheet ${sheets.length + 1}`, ...sheetRows(xml, strings) })
+  }
+  return { kind: 'workbook', sheets }
+}
+
+/** The rows of a sheet, its cells in their columns, empty ones kept so the columns line up. */
+function sheetRows(xml: string, strings: readonly string[]): { rows: string[][]; cut: boolean } {
+  const rows: string[][] = []
+  let cut = false
+  let row: string[] | undefined
+  let cell: { column: number; type: string; value: string } | undefined
+  let reading = false
+  for (const event of xmlEvents(xml)) {
+    if (event.type === 'open') {
+      if (event.name === 'row') {
+        if (rows.length >= ROW_LIMIT) {
+          cut = true
+          break
+        }
+        // A row left out is an empty row: the rows keep their numbers.
+        const number = Number(event.attributes.r ?? rows.length + 1)
+        while (rows.length < Math.min(number - 1, ROW_LIMIT)) rows.push([])
+        row = []
+      } else if (event.name === 'c' && row) {
+        cell = { column: columnOf(event.attributes.r ?? ''), type: event.attributes.t ?? 'n', value: '' }
+        if (event.attributes.r === undefined) cell.column = row.length
+      } else if ((event.name === 'v' || event.name === 't') && cell) reading = true
+    } else if (event.type === 'text' && reading && cell) cell.value += event.text
+    else if (event.type === 'close') {
+      if (event.name === 'v' || event.name === 't') reading = false
+      else if (event.name === 'c' && cell && row) {
+        if (cell.column < COLUMN_LIMIT) {
+          while (row.length < cell.column) row.push('')
+          row[cell.column] = cellText(cell.type, cell.value, strings)
+        } else cut = true
+        cell = undefined
+      } else if (event.name === 'row' && row) {
+        rows.push(row)
+        row = undefined
+      }
+    }
+  }
+  while (rows.length > 0 && (rows.at(-1)?.every((value) => value === '') ?? false)) rows.pop()
+  return { rows, cut }
+}
+
+/** A cell's value as the sheet shows it, as far as it can be without its formats: a number stays as stored. */
+function cellText(type: string, value: string, strings: readonly string[]): string {
+  switch (type) {
+    case 's':
+      return strings[Number(value)] ?? ''
+    case 'b':
+      return value === '1' ? 'TRUE' : 'FALSE'
+    default:
+      return value
+  }
+}
+
+/** A PowerPoint presentation's slides, in order: each one's title and the lines of its other text. */
+export async function readPresentation(archive: Archive): Promise<OfficePreview> {
+  const presentation = await textOf(archive, 'ppt/presentation.xml')
+  if (presentation === undefined) throw new Error('This is not a PowerPoint presentation.')
+  const targets = await relationships(archive, 'ppt/presentation.xml')
+  const slides: { title: string; lines: string[] }[] = []
+  let cut = false
+  for (const event of xmlEvents(presentation)) {
+    if (event.type !== 'open' || event.name !== 'p:sldId') continue
+    if (slides.length >= SLIDE_LIMIT) {
+      cut = true
+      break
+    }
+    const target = targets.get(event.attributes['r:id'] ?? '')
+    const xml = target === undefined ? undefined : await textOf(archive, target)
+    if (xml !== undefined) slides.push(slideText(xml))
+  }
+  return { kind: 'presentation', slides, cut }
+}
+
+/** A slide's title, from its title placeholder, and the lines of its other shapes, in order. */
+function slideText(xml: string): { title: string; lines: string[] } {
+  let title = ''
+  const lines: string[] = []
+  let shape: { title: boolean; paragraphs: string[] } | undefined
+  let paragraph: string | undefined
+  let inText = false
+  for (const event of xmlEvents(xml)) {
+    if (event.type === 'open') {
+      if (event.name === 'p:sp') shape = { title: false, paragraphs: [] }
+      else if (event.name === 'p:ph' && shape) shape.title = event.attributes.type === 'title' || event.attributes.type === 'ctrTitle'
+      else if (event.name === 'a:p') paragraph = ''
+      else if (event.name === 'a:br' && paragraph !== undefined) paragraph += ' '
+      else if (event.name === 'a:t') inText = true
+    } else if (event.type === 'text') {
+      if (inText && paragraph !== undefined) paragraph += event.text
+    } else if (event.name === 'a:t') inText = false
+    else if (event.name === 'a:p' && paragraph !== undefined) {
+      const text = paragraph.trim()
+      if (text !== '') (shape ? shape.paragraphs : lines).push(text)
+      paragraph = undefined
+    } else if (event.name === 'p:sp' && shape) {
+      if (shape.title && title === '') title = shape.paragraphs.join(' ')
+      else lines.push(...shape.paragraphs)
+      shape = undefined
+    }
+  }
+  return { title, lines }
+}
+
+/** An Office file read for its preview, by its extension. */
+export async function readOffice(extension: string, bytes: Uint8Array): Promise<OfficePreview> {
+  const archive = openArchive(bytes)
+  if (extension === 'docx') return readDocument(archive)
+  if (extension === 'xlsx') return readWorkbook(archive)
+  if (extension === 'pptx') return readPresentation(archive)
+  throw new Error('This kind of file is not read here.')
+}

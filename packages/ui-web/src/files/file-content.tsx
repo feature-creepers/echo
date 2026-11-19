@@ -5,6 +5,7 @@ import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { Markdown } from '../view/blocks/markdown.tsx'
 import { badgeOf, extensionOf, kindOf, previewTypeOf } from './kinds.ts'
+import { type OfficePreview, readOffice } from './office.ts'
 import { sizeWords, tableRows } from './words.ts'
 
 /** How much of a text is read to show it: enough for any document a person reads in a pane. */
@@ -25,11 +26,12 @@ type Reading = { is: 'reading' } | { is: 'failed' } | { is: 'read'; bytes: Uint8
 
 /**
  * A file's content, shown as what it is: Markdown as the Prose block shows it, text and code in the monospace
- * face, a table as a table, a picture, a PDF in the window's own viewer, and anything else as its kind and size.
+ * face, a table as a table, a picture, a PDF in the window's own viewer, the text of a Word, Excel or PowerPoint
+ * file, and anything else as its kind and size.
  */
 export function FileContent({ client, path, name, size, modified, className }: FileContentProps) {
   const kind = kindOf(name)
-  const limit = kind.preview === 'image' || kind.preview === 'pdf' ? ATTACHMENT_MAX_BYTES : TEXT_LIMIT
+  const limit = kind.preview === 'image' || kind.preview === 'pdf' || kind.preview === 'office' ? ATTACHMENT_MAX_BYTES : TEXT_LIMIT
   const shown = kind.preview !== 'none' && (kind.preview === 'markdown' || kind.preview === 'text' || kind.preview === 'csv' || size <= limit)
   const [reading, setReading] = useState<Reading>({ is: 'reading' })
 
@@ -56,7 +58,10 @@ export function FileContent({ client, path, name, size, modified, className }: F
 function Shown({ name, bytes, size, className }: { name: string; bytes: Uint8Array; size: number; className?: string | undefined }) {
   const kind = kindOf(name)
   const cut = bytes.length < size
-  const text = useMemo(() => (kind.preview === 'image' || kind.preview === 'pdf' ? '' : new TextDecoder().decode(bytes)), [bytes, kind.preview])
+  const text = useMemo(
+    () => (kind.preview === 'image' || kind.preview === 'pdf' || kind.preview === 'office' ? '' : new TextDecoder().decode(bytes)),
+    [bytes, kind.preview]
+  )
   const url = useObjectUrl(kind.preview === 'image' || kind.preview === 'pdf' ? bytes : undefined, previewTypeOf(name))
   const note = cut ? (
     <p className="mt-4 text-text-faint text-xs">
@@ -73,6 +78,8 @@ function Shown({ name, bytes, size, className }: { name: string; bytes: Uint8Arr
       )
     case 'pdf':
       return <div className={cn('min-h-0', className)}>{url && <iframe src={url} title={name} className="h-full w-full border-0 bg-ground" />}</div>
+    case 'office':
+      return <Office name={name} bytes={bytes} className={className} />
     case 'markdown':
       return (
         <Scroll className={className}>
@@ -94,6 +101,80 @@ function Shown({ name, bytes, size, className }: { name: string; bytes: Uint8Arr
         <Scroll className={className}>
           <pre className="whitespace-pre-wrap font-mono text-[0.75rem] text-text-soft leading-relaxed [overflow-wrap:anywhere]">{readable(name, text)}</pre>
           {note}
+        </Scroll>
+      )
+  }
+}
+
+type OfficeReading = { is: 'reading' } | { is: 'failed'; why: string } | { is: 'read'; preview: OfficePreview }
+
+/**
+ * A Word, Excel or PowerPoint file, read in the window: a document as the Prose block shows it, each sheet as a
+ * table, each slide's title and text. What it looks like is left to its app, and the preview says so.
+ */
+function Office({ name, bytes, className }: { name: string; bytes: Uint8Array; className?: string | undefined }) {
+  const [reading, setReading] = useState<OfficeReading>({ is: 'reading' })
+  useEffect(() => {
+    let current = true
+    setReading({ is: 'reading' })
+    readOffice(extensionOf(name), bytes).then(
+      (preview) => current && setReading({ is: 'read', preview }),
+      (error: unknown) => current && setReading({ is: 'failed', why: error instanceof Error ? error.message : 'It could not be read.' })
+    )
+    return () => {
+      current = false
+    }
+  }, [name, bytes])
+
+  if (reading.is === 'reading') return <Opening className={className} />
+  if (reading.is === 'failed') return <NoPreview name={name} size={bytes.length} className={className} note={reading.why} />
+  const { preview } = reading
+  const note = (cut: boolean) => (
+    <p className="mt-6 text-text-faint text-xs">{cut ? 'Showing the start of it. ' : ''}Its text only: open it with its app for how it looks.</p>
+  )
+  switch (preview.kind) {
+    case 'document':
+      return (
+        <Scroll className={className}>
+          <div className="mx-auto max-w-[44rem] text-[0.875rem]">
+            {preview.markdown === '' ? <p className="text-sm text-text-faint">This document has no text.</p> : <Markdown text={preview.markdown} />}
+          </div>
+          {note(preview.cut)}
+        </Scroll>
+      )
+    case 'workbook':
+      return (
+        <Scroll className={className}>
+          <div className="grid gap-6">
+            {preview.sheets.length === 0 && <p className="text-sm text-text-faint">This workbook has no sheets.</p>}
+            {preview.sheets.map((sheet, index) => (
+              <section key={`${index}-${sheet.name}`} className="grid gap-2">
+                {preview.sheets.length > 1 && <Eyebrow>{sheet.name}</Eyebrow>}
+                <Table rows={sheet.rows} />
+              </section>
+            ))}
+          </div>
+          {note(preview.sheets.some((sheet) => sheet.cut))}
+        </Scroll>
+      )
+    case 'presentation':
+      return (
+        <Scroll className={className}>
+          <ol className="mx-auto grid max-w-[44rem] gap-3">
+            {preview.slides.length === 0 && <li className="text-sm text-text-faint">This presentation has no slides.</li>}
+            {preview.slides.map((slide, index) => (
+              <li key={index} className="grid gap-1.5 rounded-md border border-line px-4 py-3">
+                <span className="text-[0.6875rem] text-text-faint">Slide {index + 1}</span>
+                {slide.title !== '' && <span className="font-medium text-[0.9375rem]">{slide.title}</span>}
+                {slide.lines.map((line, at) => (
+                  <span key={at} className="text-[0.8125rem] text-text-soft">
+                    {line}
+                  </span>
+                ))}
+              </li>
+            ))}
+          </ol>
+          {note(preview.cut)}
         </Scroll>
       )
   }
