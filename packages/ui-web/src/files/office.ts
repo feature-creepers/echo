@@ -11,7 +11,7 @@
 import { type Archive, openArchive, partOf, relationships, resolvePart, textOf } from './archive.ts'
 import { readOlderExcel, readOlderPowerPoint, readOlderSheets, readOlderWord } from './binary-office.ts'
 import { openCompound } from './compound.ts'
-import { builtInFormat, formatNumber, generalNumber, type NumberFormatOptions } from './number-format.ts'
+import { builtInFormat, formatNumber, generalNumber, type NumberFormatOptions, numberColor } from './number-format.ts'
 import { type CellRange, type CellSource, type CellValue, cellRange, emuPixels, Figures, lengthPixels, readChart, readOpenChart } from './office-figures.ts'
 import { mathText } from './office-math.ts'
 import {
@@ -34,6 +34,16 @@ import {
   SLIDE_LIMIT
 } from './office-text.ts'
 import { drawOpenPage, type OpenDeck, openDeck } from './open-slide-drawing.ts'
+import {
+  type CellKind,
+  paletteColor,
+  readSheetLook,
+  readWorkbookStyles,
+  readWorkbookTheme,
+  type SheetLayout,
+  type SheetLook,
+  type WorkbookStyles
+} from './sheet-look.ts'
 import { drawSlide } from './slide-drawing.ts'
 import { DRAWINGS_LIMIT } from './slide-svg.ts'
 import { readWordLook } from './word-look.ts'
@@ -466,12 +476,13 @@ async function workbookFormats(archive: Archive, part: string): Promise<string[]
   return formats
 }
 
-/** A sheet of a workbook as it is read: its rows as shown, its cells with their numbers, and its own part. */
+/** A sheet of a workbook as it is read: its rows as shown, its cells with their numbers, how they are laid out, and its own part. */
 interface SheetRead {
   name: string
   rows: string[][]
   cut: boolean
   cells: Map<string, CellValue>
+  layout: SheetLayout
   xml: string
   target: string
 }
@@ -501,7 +512,10 @@ export function embeddedCells(archive: Archive, options: NumberFormatOptions = {
 }
 
 /** An Excel workbook's sheets as they are read, with the options its numbers are shown by. */
-async function workbookSheets(archive: Archive, options: NumberFormatOptions): Promise<{ sheets: SheetRead[]; shown: NumberFormatOptions }> {
+async function workbookSheets(
+  archive: Archive,
+  options: NumberFormatOptions
+): Promise<{ sheets: SheetRead[]; shown: NumberFormatOptions; styles: WorkbookStyles }> {
   const workbook = await textOf(archive, 'xl/workbook.xml')
   if (workbook === undefined) throw new Error('This is not an Excel workbook.')
   const targets = await relationships(archive, 'xl/workbook.xml')
@@ -510,6 +524,9 @@ async function workbookSheets(archive: Archive, options: NumberFormatOptions): P
   const shown: NumberFormatOptions = { ...options, date1904 }
   const stylesPart = [...targets.values()].find((target) => /styles\.xml$/i.test(target)) ?? 'xl/styles.xml'
   const formats = await workbookFormats(archive, stylesPart)
+  const themePart = [...targets.values()].find((target) => /theme\/[^/]+\.xml$/i.test(target)) ?? 'xl/theme/theme1.xml'
+  const styles = readWorkbookStyles(await textOf(archive, stylesPart), readWorkbookTheme(await textOf(archive, themePart)))
+  const palette = (index: number) => paletteColor(index, styles.colors)
 
   const strings: string[] = []
   let shared: string | undefined
@@ -535,9 +552,9 @@ async function workbookSheets(archive: Archive, options: NumberFormatOptions): P
     const target = targets.get(event.attributes['r:id'] ?? '')
     const xml = target === undefined ? undefined : await textOf(archive, target)
     if (xml === undefined || target === undefined) continue
-    sheets.push({ name: event.attributes.name ?? `Sheet ${sheets.length + 1}`, ...sheetRows(xml, strings, formats, shown), xml, target })
+    sheets.push({ name: event.attributes.name ?? `Sheet ${sheets.length + 1}`, ...sheetRows(xml, strings, formats, shown, palette), xml, target })
   }
-  return { sheets, shown }
+  return { sheets, shown, styles }
 }
 
 /**
@@ -545,17 +562,24 @@ async function workbookSheets(archive: Archive, options: NumberFormatOptions): P
  * charts its drawing places.
  */
 export async function readWorkbook(archive: Archive, options: NumberFormatOptions = {}): Promise<OfficePreview> {
-  const { sheets, shown } = await workbookSheets(archive, options)
+  const { sheets, shown, styles } = await workbookSheets(archive, options)
   // The sheets are read before their charts, which may name their cells rather than keep their values.
   const cells = sheetCells(sheets)
   const figures = new Figures(archive, shown, async () => cells)
-  const read: { name: string; rows: string[][]; cut: boolean; figures: OfficeFigure[] }[] = []
-  for (const { name, rows, cut, xml, target } of sheets) {
+  const read: Extract<OfficePreview, { kind: 'workbook' }>['sheets'] = []
+  for (const { name, rows, cut, xml, target, layout } of sheets) {
     // A sheet's pictures and charts are in its drawing, a part of their own.
     const drawing = (await relationships(archive, target)).get(/<drawing\b[^>]*\br:id="([^"]*)"/.exec(xml)?.[1] ?? '')
     const drawn = drawing === undefined ? undefined : await textOf(archive, drawing)
     const placed = drawn === undefined || drawing === undefined ? [] : await drawnFigures(drawn, await relationships(archive, drawing), figures)
-    read.push({ name, rows, cut, figures: figuresAt(figures, placed) })
+    // Its look, read from its part with its cells' styles; a sheet whose look cannot be read shows as a table.
+    let look: SheetLook | undefined
+    try {
+      look = readSheetLook(xml, layout, styles, { rows: rows.length, columns: Math.max(0, ...rows.map((row) => row.length)) })
+    } catch {
+      look = undefined
+    }
+    read.push({ name, rows, cut, figures: figuresAt(figures, placed), look })
   }
   return { kind: 'workbook', sheets: read }
 }
@@ -568,14 +592,17 @@ function sheetRows(
   xml: string,
   strings: readonly string[],
   formats: readonly string[],
-  options: NumberFormatOptions
-): { rows: string[][]; cut: boolean; cells: Map<string, CellValue> } {
+  options: NumberFormatOptions,
+  palette: (index: number) => string | undefined = () => undefined
+): { rows: string[][]; cut: boolean; cells: Map<string, CellValue>; layout: SheetLayout } {
   const rows: string[][] = []
   // Each cell shown, by its row and column, with its number, for the charts that name it.
   const cells = new Map<string, CellValue>()
+  // How each row and cell is laid out, for the sheet's look.
+  const layout: SheetLayout = { styles: [], kinds: [], heights: [], numberColors: [] }
   let cut = false
   let row: string[] | undefined
-  let cell: { column: number; type: string; value: string; format: string } | undefined
+  let cell: { column: number; type: string; value: string; format: string; style: number } | undefined
   let reading = false
   for (const event of xmlEvents(xml)) {
     if (event.type === 'open') {
@@ -588,12 +615,19 @@ function sheetRows(
         const number = Number(event.attributes.r ?? rows.length + 1)
         while (rows.length < Math.min(number - 1, ROW_LIMIT)) rows.push([])
         row = []
+        const height = Number(event.attributes.ht)
+        layout.heights[rows.length] = {
+          height: event.attributes.ht !== undefined && Number.isFinite(height) ? height : undefined,
+          hidden: event.attributes.hidden === '1' || event.attributes.hidden === 'true'
+        }
       } else if (event.name === 'c' && row) {
+        const style = Number(event.attributes.s ?? 0)
         cell = {
           column: columnOf(event.attributes.r ?? ''),
           type: event.attributes.t ?? 'n',
           value: '',
-          format: formats[Number(event.attributes.s ?? 0)] ?? 'General'
+          format: formats[style] ?? 'General',
+          style: Number.isFinite(style) ? style : 0
         }
         if (event.attributes.r === undefined) cell.column = row.length
       } else if ((event.name === 'v' || event.name === 't') && cell) reading = true
@@ -607,6 +641,13 @@ function sheetRows(
           row[cell.column] = text
           const number = cell.type === 'n' && cell.value.trim() !== '' ? Number(cell.value) : undefined
           cells.set(`${rows.length},${cell.column}`, { text, number: number !== undefined && Number.isFinite(number) ? number : undefined })
+          const at = rows.length
+          layout.styles[at] ??= []
+          layout.kinds[at] ??= []
+          layout.numberColors[at] ??= []
+          layout.styles[at][cell.column] = cell.style
+          layout.kinds[at][cell.column] = cellKind(cell)
+          if (number !== undefined && Number.isFinite(number)) layout.numberColors[at][cell.column] = numberColor(number, cell.format, palette)
         } else cut = true
         cell = undefined
       } else if (event.name === 'row' && row) {
@@ -616,7 +657,15 @@ function sheetRows(
     }
   }
   while (rows.length > 0 && (rows.at(-1)?.every((value) => value === '') ?? false)) rows.pop()
-  return { rows, cut, cells }
+  return { rows, cut, cells, layout }
+}
+
+/** What a cell holds, by its type, for where its content sits. */
+function cellKind(cell: { type: string; value: string }): CellKind {
+  if (cell.value.trim() === '' && cell.type !== 'inlineStr') return 'empty'
+  if (cell.type === 'n' || cell.type === 'd') return 'number'
+  if (cell.type === 'b') return 'logical'
+  return cell.type === 'e' ? 'error' : 'text'
 }
 
 /** A cell's value as the sheet shows it: a number as its format shows it, text as it is. */

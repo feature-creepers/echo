@@ -365,6 +365,31 @@ function formatFraction(value: number, read: readonly Token[], slash: number): s
   return `${whole > 0 ? `${whole} ` : ''}${numerator}/${denominator}`
 }
 
+const COLOR_NAMES: Record<string, string> = {
+  black: '#000000',
+  blue: '#0000ff',
+  cyan: '#00ffff',
+  green: '#00ff00',
+  magenta: '#ff00ff',
+  red: '#ff0000',
+  white: '#ffffff',
+  yellow: '#ffff00'
+}
+
+/**
+ * The colour a format writes a number in, from the section the number takes (`#,##0;[Red]-#,##0`): one of its eight
+ * names, or a colour of the palette by its number (`[Color10]`) as `palette` gives it; none when the section names none.
+ */
+export function numberColor(value: number, code: string, palette: (index: number) => string | undefined = () => undefined): string | undefined {
+  if (!Number.isFinite(value)) return undefined
+  const found = sections(code)
+  const [positive = '', negative, zero] = found
+  const section = value < 0 && negative !== undefined ? negative : value === 0 && zero !== undefined ? zero : positive
+  const named = /\[(black|blue|cyan|green|magenta|red|white|yellow|colou?r\s*(\d{1,2}))\]/i.exec(section.replace(/"[^"]*"/g, ''))
+  if (!named) return undefined
+  return named[2] !== undefined ? palette(Number(named[2]) + 7) : COLOR_NAMES[(named[1] as string).toLowerCase()]
+}
+
 /** A number as a format shows it, by its code: `0.00%`, `dd/mm/yyyy`, `#,##0 "€"`. */
 export function formatNumber(value: number, code: string, options: NumberFormatOptions = {}): string {
   if (!Number.isFinite(value)) return String(value)

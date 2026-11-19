@@ -2,8 +2,19 @@ import { describe, expect, it } from 'vitest'
 import { textOf } from './archive.ts'
 import { columnOf, decodeEntities, type OfficePreview, openArchive, readOffice, xmlEvents } from './office.ts'
 
-/** A Word document's preview without its look, which `word-look.test.ts` checks, once it is known to have one. */
+/**
+ * A preview without the look of its document or its sheets, which `word-look.test.ts` and `sheet-look.test.ts` check,
+ * once each is known to have one.
+ */
 function textual(preview: OfficePreview): OfficePreview {
+  if (preview.kind === 'workbook')
+    return {
+      ...preview,
+      sheets: preview.sheets.map(({ look, ...sheet }) => {
+        expect(look?.rows.length).toBe(sheet.rows.length)
+        return sheet
+      })
+    }
   if (preview.kind !== 'document') return preview
   const { look, ...text } = preview
   expect(look?.pages.length).toBeGreaterThan(0)
@@ -188,7 +199,7 @@ describe('an Office file previewed', () => {
         '<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="C1" t="inlineStr"><is><t>Paid</t></is></c></row>' +
         '<row r="3"><c r="A3" t="s"><v>1</v></c><c r="B3"><v>120.5</v></c><c r="C3" t="b"><v>1</v></c></row></sheetData></worksheet>'
     })
-    expect(await readOffice('xlsx', file)).toEqual({
+    expect(textual(await readOffice('xlsx', file))).toEqual({
       kind: 'workbook',
       sheets: [
         {
@@ -322,7 +333,7 @@ describe('an Office file previewed', () => {
       'xl/charts/chart1.xml': CHART,
       'xl/media/image1.png': PNG
     })
-    expect(await readOffice('xlsx', workbook)).toEqual({
+    expect(textual(await readOffice('xlsx', workbook))).toEqual({
       kind: 'workbook',
       sheets: [
         {

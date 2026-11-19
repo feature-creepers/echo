@@ -5,6 +5,7 @@
  */
 
 import type { DocumentLook } from './document-look.ts'
+import type { SheetLook } from './sheet-look.ts'
 
 /** A chart as its file last drew it: its kind, as near as the Chart block draws, and the values it kept. */
 export interface OfficeChart {
@@ -28,7 +29,7 @@ export type PictureFigure = { kind: 'picture'; type: string; bytes: Uint8Array; 
  */
 export type OfficePreview =
   | { kind: 'document'; markdown: string; figures: OfficeFigure[]; cut: boolean; look?: DocumentLook | undefined }
-  | { kind: 'workbook'; sheets: { name: string; rows: string[][]; cut: boolean; figures: OfficeFigure[] }[] }
+  | { kind: 'workbook'; sheets: { name: string; rows: string[][]; cut: boolean; figures: OfficeFigure[]; look?: SheetLook | undefined }[] }
   | { kind: 'presentation'; slides: { title: string; lines: string[]; figures: OfficeFigure[]; drawing?: PictureFigure }[]; cut: boolean }
 
 /** What a file protected with a password says, whatever its format. */

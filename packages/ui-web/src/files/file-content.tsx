@@ -8,6 +8,7 @@ import { DocumentPages } from './document-view.tsx'
 import { Figure, Figures, useFigureUrls } from './figure-view.tsx'
 import { badgeOf, extensionOf, kindOf, previewTypeOf } from './kinds.ts'
 import { type OfficePreview, readOffice } from './office.ts'
+import { SheetView } from './sheet-view.tsx'
 import { sizeWords, tableRows } from './words.ts'
 
 /** How much of a text is read to show it: enough for any document a person reads in a pane. */
@@ -147,7 +148,11 @@ function OfficeShown({ preview, className }: { preview: OfficePreview; className
   const urls = useFigureUrls(all)
   const shown = all.some((figure) => figure.kind !== 'unshown')
   const drawn =
-    preview.kind === 'presentation' ? preview.slides.some((slide) => slide.drawing) && 'Its slides' : preview.kind === 'document' && preview.look && 'Its pages'
+    preview.kind === 'presentation'
+      ? preview.slides.some((slide) => slide.drawing) && 'Its slides'
+      : preview.kind === 'document'
+        ? preview.look && 'Its pages'
+        : preview.sheets.some((sheet) => sheet.look) && 'Its sheets'
   const note = (cut: boolean) => (
     <p className="mt-6 text-text-faint text-xs">
       {cut ? 'Showing the start of it. ' : ''}
@@ -193,7 +198,12 @@ function OfficeShown({ preview, className }: { preview: OfficePreview; className
             {preview.sheets.map((sheet, index) => (
               <section key={`${index}-${sheet.name}`} className="grid gap-2">
                 {preview.sheets.length > 1 && <Eyebrow>{sheet.name}</Eyebrow>}
-                {(sheet.rows.length > 0 || sheet.figures.length === 0) && <Table rows={sheet.rows} />}
+                {/* A sheet whose look was read shows as it looks; any other, as a table. */}
+                {sheet.look && sheet.rows.length > 0 ? (
+                  <SheetView look={sheet.look} rows={sheet.rows} />
+                ) : (
+                  (sheet.rows.length > 0 || sheet.figures.length === 0) && <Table rows={sheet.rows} />
+                )}
                 {sheet.figures.length > 0 && <Figures figures={sheet.figures} urls={urls} />}
               </section>
             ))}
