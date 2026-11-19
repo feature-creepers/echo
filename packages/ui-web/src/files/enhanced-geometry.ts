@@ -9,7 +9,7 @@
  * equations naming each other taken as zero.
  */
 
-import { type CustomGeometry, customGeometry, type PathCommand, type ViewBox } from './custom-geometry.ts'
+import { type CustomGeometry, customGeometry, type PathCommand, type Shading, type ViewBox } from './custom-geometry.ts'
 import { presetPath } from './slide-svg.ts'
 import type { XmlNode } from './xml.ts'
 
@@ -39,6 +39,62 @@ const KINDS: Record<string, string> = {
   'flowchart-decision': 'diamond',
   'flowchart-terminator': 'flowChartTerminator',
   'flowchart-connector': 'ellipse'
+}
+
+/**
+ * The shading OpenOffice gives the parts of its older kinds of shape, by their kind's name, as LibreOffice keeps it
+ * (`m_nColorData`): the count of parts in the top four bits, then each part's change of brightness in four bits of its
+ * own, in tens of percent, signed. A kind named `col-` and eight hexadecimal digits carries its own.
+ */
+const PART_SHADES: Record<string, number> = {
+  can: 0x20400000,
+  cube: 0x302e0000,
+  'quad-bevel': 0x502ce400,
+  paper: 0x20e00000,
+  smiley: 0x20e00000,
+  'mso-spt102': 0x20d00000,
+  'mso-spt103': 0x20d00000,
+  'mso-spt104': 0x20d00000,
+  'mso-spt105': 0x20d00000,
+  'mso-spt53': 0x30ee0000,
+  'mso-spt54': 0x30ee0000,
+  'mso-spt107': 0x30ee0000,
+  'mso-spt108': 0x30ee0000,
+  'vertical-scroll': 0x30ee0000,
+  'horizontal-scroll': 0x30ee0000,
+  'mso-spt189': 0x502ce400,
+  'mso-spt190': 0x702ce4ce,
+  'mso-spt191': 0x602ce4c0,
+  'mso-spt192': 0x702ce4c5,
+  'mso-spt193': 0x602ce4c0,
+  'mso-spt194': 0x602ce4c0,
+  'mso-spt195': 0x602ce4c0,
+  'mso-spt196': 0x602ce4c0,
+  'mso-spt197': 0x602ce4c0,
+  'mso-spt198': 0x702ce4ec,
+  'mso-spt199': 0x602ce4c0,
+  'mso-spt200': 0x602ce4c0,
+  // Octagon and diamond bevels, whose own codes LibreOffice replaced with codes like OOXML's.
+  'col-60da8460': 0x60ecc240,
+  'col-502ad400': 0x502ce400
+}
+
+/**
+ * How a shape's filled paths are shaded, as LibreOffice decides by its kind: a shape of its own path (`non-primitive`)
+ * or one brought from OOXML by the darken and lighten commands of its path, any other by its kind's table, the paths
+ * after the last part it counts taking the last part's.
+ */
+export function shadingOf(type: string, geometry: CustomGeometry): Shading | undefined {
+  if (type === 'non-primitive' || type.startsWith('ooxml-')) return geometry.shading
+  const data = PART_SHADES[type] ?? (/^col-[\da-f]{8}$/i.test(type) ? Number.parseInt(type.slice(4), 16) : 0)
+  const count = data >>> 28
+  if (count === 0) return undefined
+  const parts = geometry.pieces?.length ?? (geometry.fill ? 1 : 0)
+  const amounts = Array.from({ length: parts }, (_, index) => {
+    const nibble = (data >>> ((6 - Math.min(index, count - 1)) * 4)) & 0xf
+    return ((nibble << 28) >> 28) / 10
+  })
+  return amounts.some((amount) => amount !== 0) ? { rule: 'value', amounts } : undefined
 }
 
 /**
@@ -160,7 +216,7 @@ export function evaluate(formula: string, context: Context): number {
 }
 
 /** The letters of the path's commands. */
-const COMMANDS = new Set(['M', 'L', 'C', 'Z', 'N', 'F', 'S', 'T', 'U', 'A', 'B', 'V', 'W', 'X', 'Y', 'Q', 'G'])
+const COMMANDS = new Set(['M', 'L', 'C', 'Z', 'N', 'F', 'S', 'H', 'I', 'J', 'K', 'T', 'U', 'A', 'B', 'V', 'W', 'X', 'Y', 'Q', 'G'])
 
 /** The commands whose numbers are all points, and those whose first pair of each group of six is (an ellipse's centre). */
 const POINTS = new Set(['M', 'L', 'C', 'Q', 'X', 'Y', 'A', 'B', 'V', 'W'])
@@ -260,8 +316,10 @@ export function enhancedGeometry(node: XmlNode, size: { width: number; height: n
   const flipH = attributes['draw:mirror-horizontal'] === 'true'
   const flipV = attributes['draw:mirror-vertical'] === 'true'
   let geometry: CustomGeometry
-  if (path) geometry = customGeometry(pathCommands(path, context), drawn, size)
-  else {
+  if (path) {
+    geometry = customGeometry(pathCommands(path, context), drawn, size)
+    geometry = { ...geometry, shading: shadingOf(attributes['draw:type'] ?? '', geometry) }
+  } else {
     const preset = presetPath(KINDS[attributes['draw:type'] ?? ''] ?? 'rect', size.width, size.height, (_, fallback) => fallback)
     geometry = { fill: preset.closed ? preset.data : '', stroke: preset.data }
   }

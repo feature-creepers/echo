@@ -43,6 +43,8 @@ import {
   pictureElement,
   type RunStyle,
   SHAPE_LIMIT,
+  shadedFill,
+  shadedPaint,
   slideSvg,
   strokeAttributes,
   type TextBullet,
@@ -1495,7 +1497,12 @@ function extrudedShape(
     // A shape of lines only is extruded as walls in its line's colour.
     const parts: ExtrudedPart[] =
       pieces.length > 0
-        ? pieces.map((piece) => ({ outlines: flattened(piece), side, fill: ends }))
+        ? pieces.map((piece, index) => {
+            // A part darkened or lightened in the flat shape is the colour of its own solid, as LibreOffice gives it.
+            const { rule = 'blend', amounts = [] } = drawn.geometry.shading ?? {}
+            const amount = amounts[index] ?? 0
+            return { outlines: flattened(piece), side: shadedPaint(side, rule, amount), fill: shadedFill(ends, rule, amount) }
+          })
         : [{ outlines: flattened(drawn.geometry.stroke), side: outlineOf(graphic, context)?.paint ?? fillColour, fill: undefined }]
     solid = extrudedElement(parts, extrusion, size, lying, canvas)
   }

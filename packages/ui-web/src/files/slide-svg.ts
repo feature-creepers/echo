@@ -8,6 +8,7 @@
  * SVG as an image, where nothing runs and nothing is fetched: a picture is written into it as data.
  */
 
+import type { Shading } from './custom-geometry.ts'
 import type { OfficeChart } from './office-text.ts'
 
 /** A number as SVG and CSS take it: two decimals at most. */
@@ -87,6 +88,47 @@ export function fromLightness(hue: number, saturation: number, lightness: number
     return lower
   }
   return { red: channel(1 / 3) * 255, green: channel(0) * 255, blue: channel(-1 / 3) * 255, opacity }
+}
+
+/**
+ * A colour darkened or lightened by an amount from -1 to 1: blended toward black or white, or, by the `value` rule, its
+ * value in HSV moved toward nothing or toward full and, lightened, its saturation lessened as much.
+ */
+export function shadedPaint(paint: Paint, rule: Shading['rule'], amount: number): Paint {
+  if (amount === 0 || !Number.isFinite(amount)) return paint
+  if (rule === 'blend')
+    return amount < 0
+      ? { ...paint, red: paint.red * (1 + amount), green: paint.green * (1 + amount), blue: paint.blue * (1 + amount) }
+      : {
+          ...paint,
+          red: paint.red * (1 - amount) + 255 * amount,
+          green: paint.green * (1 - amount) + 255 * amount,
+          blue: paint.blue * (1 - amount) + 255 * amount
+        }
+  const highest = Math.max(paint.red, paint.green, paint.blue)
+  const lowest = Math.min(paint.red, paint.green, paint.blue)
+  let value = highest / 255
+  let saturation = highest > 0 ? (highest - lowest) / highest : 0
+  if (amount > 0) {
+    saturation *= 1 - amount
+    value = amount + (1 - amount) * value
+  } else value *= 1 + amount
+  // The colour's hue kept: its parts placed again between its new lowest and highest.
+  const spread = highest - lowest
+  const part = (channel: number) => {
+    const share = spread > 0 ? (channel - lowest) / spread : 0
+    const top = value * 255
+    const bottom = top * (1 - saturation)
+    return bottom + (top - bottom) * share
+  }
+  return { ...paint, red: part(paint.red), green: part(paint.green), blue: part(paint.blue) }
+}
+
+/** A fill darkened or lightened: its colour, or each colour of its gradient; a picture as it is. */
+export function shadedFill(fill: Fill, rule: Shading['rule'], amount: number): Fill {
+  if (fill.kind === 'paint') return { kind: 'paint', paint: shadedPaint(fill.paint, rule, amount) }
+  if (fill.kind === 'gradient') return { ...fill, stops: fill.stops.map((stop) => ({ ...stop, paint: shadedPaint(stop.paint, rule, amount) })) }
+  return fill
 }
 
 // Fills and lines
@@ -646,7 +688,7 @@ export function shapeElement(
 
 /** A shape's own path filled and outlined: one element when what is filled is what is stroked, else one for each. */
 export function customElement(
-  geometry: { fill: string; stroke: string; pieces?: readonly string[] | undefined },
+  geometry: { fill: string; stroke: string; pieces?: readonly string[] | undefined; shading?: Shading | undefined },
   fill: Fill | undefined,
   outline: Outline | undefined,
   canvas: Canvas,
@@ -656,13 +698,20 @@ export function customElement(
   const strokes = geometry.stroke !== '' && outline?.paint !== undefined
   // Each path is filled on its own, a subpath inside another of the same path a hole, as both apps fill a shape's own path.
   const pieces = geometry.pieces && geometry.pieces.length > 1 ? geometry.pieces : [geometry.fill]
-  if (fills && strokes && pieces.length === 1 && geometry.fill === geometry.stroke)
+  const { shading } = geometry
+  if (fills && strokes && pieces.length === 1 && geometry.fill === geometry.stroke && !shading?.amounts[0])
     return `<path d="${geometry.fill}" ${fillAttribute(fill, canvas, box)} fill-rule="evenodd" ${strokeAttributes(outline)}/>`
   const painted = fills ? fillAttribute(fill, canvas, box) : ''
-  return (
-    (fills ? pieces.map((piece) => `<path d="${piece}" ${painted} fill-rule="evenodd" stroke="none"/>`).join('') : '') +
-    (strokes ? `<path d="${geometry.stroke}" fill="none" ${strokeAttributes(outline)}/>` : '')
-  )
+  // A part darkened or lightened is filled in its shade; a picture, which cannot be shaded, is veiled in black or white.
+  const filled = (piece: string, index: number) => {
+    const amount = shading?.amounts[index] ?? 0
+    if (!fill || amount === 0) return `<path d="${piece}" ${painted} fill-rule="evenodd" stroke="none"/>`
+    const shaded = `<path d="${piece}" ${fillAttribute(shadedFill(fill, shading?.rule ?? 'blend', amount), canvas, box)} fill-rule="evenodd" stroke="none"/>`
+    return fill.kind === 'picture'
+      ? `${shaded}<path d="${piece}" fill="${amount < 0 ? '#000000' : '#ffffff'}" fill-opacity="${number(Math.abs(amount))}" fill-rule="evenodd" stroke="none"/>`
+      : shaded
+  }
+  return (fills ? pieces.map(filled).join('') : '') + (strokes ? `<path d="${geometry.stroke}" fill="none" ${strokeAttributes(outline)}/>` : '')
 }
 
 /** A chart drawn simply in its frame: bars for amounts, lines for a course, its categories under it, in the tones and font given. */

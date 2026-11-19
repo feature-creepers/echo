@@ -112,3 +112,26 @@ describe('a shape drawn by its own path', () => {
     expect(drawn(commands)).toMatchObject({ fill: 'M0 100L200 100Z', stroke: 'M0 100L200 100Z', outlines: ['M0 0L200 0', 'M0 100L200 100Z'] })
   })
 })
+
+describe('a shape’s paths darkened and lightened', () => {
+  const square = (shade: string): PathCommand[] => [
+    ...(shade ? [{ command: shade, values: [] }] : []),
+    { command: 'M', values: [0, 0] },
+    { command: 'L', values: [100, 0] },
+    { command: 'L', values: [100, 100] },
+    { command: 'Z', values: [] },
+    { command: 'N', values: [] }
+  ]
+  it.each([
+    { name: 'darkened', shade: 'H', amount: -0.4 },
+    { name: 'darkened less', shade: 'I', amount: -0.2 },
+    { name: 'lightened', shade: 'J', amount: 0.4 },
+    { name: 'lightened less', shade: 'K', amount: 0.2 }
+  ])('keeps a path $name, until the path ends', ({ shade, amount }) => {
+    expect(drawn([...square(shade), ...square('')]).shading).toEqual({ rule: 'blend', amounts: [amount, 0] })
+  })
+
+  it('keeps no shading for paths that are not shaded', () => {
+    expect(drawn(square('')).shading).toBeUndefined()
+  })
+})

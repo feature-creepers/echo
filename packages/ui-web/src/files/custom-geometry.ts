@@ -2,7 +2,8 @@
  * A shape drawn by its own path, as PowerPoint 97 to 2003 and OpenDocument keep one (docs/SPEC.md, section 9.7). Both
  * describe it with the same commands, OfficeArt's segments and OpenDocument's `draw:enhanced-path` letters: moves,
  * lines, curves, arcs of an ellipse given by its box or by its angles, quarters of an ellipse, closing and ending a
- * path, and paths left unfilled or unstroked. The numbers are in the shape's own view box, drawn to its box in pixels.
+ * path, paths left unfilled or unstroked, and OpenDocument's paths filled darker or lighter (`H`, `I`, `J`, `K`). The
+ * numbers are in the shape's own view box, drawn to its box in pixels.
  *
  * Every subpath is filled, an open one as if it were closed, and stroked as it is drawn, unless its path says not to
  * be, as both apps draw them.
@@ -10,7 +11,7 @@
 
 import { number } from './slide-svg.ts'
 
-/** A command of a shape's own path, by its letter (`M`, `L`, `C`, `Z`, `N`, `F`, `S`, `T`, `U`, `A`, `B`, `V`, `W`, `X`, `Y`, `Q`, `G`), with its numbers. */
+/** A command of a shape's own path, by its letter (`M`, `L`, `C`, `Z`, `N`, `F`, `S`, `H`, `I`, `J`, `K`, `T`, `U`, `A`, `B`, `V`, `W`, `X`, `Y`, `Q`, `G`), with its numbers. */
 export interface PathCommand {
   command: string
   values: number[]
@@ -26,7 +27,22 @@ export interface CustomGeometry {
   pieces?: string[] | undefined
   /** Every subpath in the order it is drawn, filled, stroked or neither: the lines a Fontwork's text follows. */
   outlines?: string[] | undefined
+  /** How much each filled path is darkened or lightened, in the order of `pieces` (or of the one `fill`), and how. */
+  shading?: Shading | undefined
 }
+
+/**
+ * The shades of a shape's filled paths, from -1 to 1: blended toward black or white, as LibreOffice shades the paths
+ * its own shapes darken or lighten; or their value in HSV changed, as OpenOffice shades the parts of its older kinds
+ * of shape by a table of their own.
+ */
+export interface Shading {
+  rule: 'blend' | 'value'
+  amounts: number[]
+}
+
+/** The shades of OpenDocument's path commands: darken, darken less, lighten, lighten less. */
+const SHADES: Record<string, number> = { H: -0.4, I: -0.2, J: 0.4, K: 0.2 }
 
 /** The view box a path's numbers are in. */
 export interface ViewBox {
@@ -54,6 +70,8 @@ export function customGeometry(commands: readonly PathCommand[], view: ViewBox, 
   const x = (value: number) => (value - view.left) * scaleX
   const y = (value: number) => (value - view.top) * scaleY
   const pieces: string[] = []
+  const shades: number[] = []
+  let shade = 0
   const outlines: string[] = []
   const fills: string[] = []
   const strokes: string[] = []
@@ -75,10 +93,14 @@ export function customGeometry(commands: readonly PathCommand[], view: ViewBox, 
   }
   const endPath = () => {
     endSubpath(false)
-    if (filled && subpaths.length > 0) pieces.push(subpaths.join(''))
+    if (filled && subpaths.length > 0) {
+      pieces.push(subpaths.join(''))
+      shades.push(shade)
+    }
     if (filled) fills.push(...subpaths)
     if (stroked) strokes.push(...subpaths)
     subpaths = []
+    shade = 0
     filled = true
     stroked = true
   }
@@ -126,6 +148,7 @@ export function customGeometry(commands: readonly PathCommand[], view: ViewBox, 
         pen = start
       } else if (command === 'N') endPath()
       else if (command === 'F') filled = false
+      else if (SHADES[command] !== undefined) shade = SHADES[command] as number
       else if (command === 'S') stroked = false
       continue
     }
@@ -223,5 +246,11 @@ export function customGeometry(commands: readonly PathCommand[], view: ViewBox, 
   }
   endPath()
   // A shape of one path keeps no pieces: its fill is its one piece.
-  return { fill: fills.join(''), stroke: strokes.join(''), pieces: pieces.length > 1 ? pieces : undefined, outlines }
+  return {
+    fill: fills.join(''),
+    stroke: strokes.join(''),
+    pieces: pieces.length > 1 ? pieces : undefined,
+    outlines,
+    shading: shades.some((amount) => amount !== 0) ? { rule: 'blend', amounts: shades } : undefined
+  }
 }

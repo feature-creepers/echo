@@ -224,6 +224,26 @@ describe('an extruded shape drawn as LibreOffice draws it', () => {
   })
 })
 
+describe('a custom shape’s parts shaded as LibreOffice shades them', () => {
+  it.each([
+    {
+      name: 'a cube’s top lighter and its side darker, by its kind’s table',
+      element:
+        '<draw:custom-shape draw:style-name="green" svg:width="1in" svg:height="1in"><draw:enhanced-geometry draw:type="cube" draw:enhanced-path="M 0 0 L 100 0 100 100 Z N M 0 0 L 50 0 50 50 Z N M 50 50 L 100 50 100 100 Z N"/></draw:custom-shape>',
+      fills: ['#00ff00', '#33ff33', '#00cc00']
+    },
+    {
+      name: 'its own path’s parts darkened and lightened by their commands',
+      element:
+        '<draw:custom-shape draw:style-name="green" svg:width="1in" svg:height="1in"><draw:enhanced-geometry draw:type="non-primitive" draw:enhanced-path="M 0 0 L 100 0 100 100 Z N H M 0 0 L 50 0 50 50 Z N K M 50 50 L 100 50 100 100 Z N"/></draw:custom-shape>',
+      fills: ['#00ff00', '#009900', '#33ff33']
+    }
+  ])('fills $name', async ({ element, fills }) => {
+    const drawn = await lone(element)
+    expect([...(drawn?.text ?? '').matchAll(/<path d="[^"]*" fill="(#[0-9a-f]{6})"/g)].map(([, colour]) => colour)).toEqual(fills)
+  })
+})
+
 describe('a picture in a shape’s text', () => {
   const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
   const caption = (image: string, words: string) =>

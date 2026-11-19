@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { enhancedGeometry, evaluate, pathCommands } from './enhanced-geometry.ts'
+import { enhancedGeometry, evaluate, pathCommands, shadingOf } from './enhanced-geometry.ts'
 import { xmlTree } from './xml.ts'
 
 const context = {
@@ -33,11 +33,12 @@ describe('a formula of a custom shape', () => {
   })
 
   it('reads a path’s commands with their numbers worked out, passing over the letters it does not draw', () => {
-    expect(pathCommands('M 0 ?f0 L $0 bottom right 0 Z N I 1 2 F', context)).toEqual([
+    expect(pathCommands('M 0 ?f0 L $0 bottom right 0 Z N H R 1 2 F', context)).toEqual([
       { command: 'M', values: [0, 100] },
       { command: 'L', values: [5400, 10_800, 21_600, 0] },
       { command: 'Z', values: [] },
       { command: 'N', values: [] },
+      { command: 'H', values: [] },
       { command: 'F', values: [] }
     ])
   })
@@ -107,5 +108,28 @@ describe('a custom shape’s geometry', () => {
   it('draws a kind it names when it gives no path', () => {
     expect(enhancedGeometry(geometry('draw:type="ellipse"'), { width: 20, height: 10 }).geometry.fill).toBe('M0 5A10 5 0 1 1 20 5A10 5 0 1 1 0 5Z')
     expect(enhancedGeometry(geometry('draw:type="mso-spt100"'), { width: 2, height: 1 }).geometry.fill).toBe('M0 0L2 0L2 1L0 1Z')
+  })
+})
+
+describe('the shading of a custom shape’s parts', () => {
+  const geometry = (pieces: number) => ({
+    fill: 'M0 0Z',
+    stroke: 'M0 0Z',
+    pieces: pieces > 1 ? Array.from({ length: pieces }, () => 'M0 0Z') : undefined,
+    shading: { rule: 'blend' as const, amounts: [-0.4] }
+  })
+  it.each([
+    { type: 'non-primitive', pieces: 1, expected: { rule: 'blend', amounts: [-0.4] } },
+    { type: 'ooxml-cube', pieces: 1, expected: { rule: 'blend', amounts: [-0.4] } },
+    { type: 'cube', pieces: 3, expected: { rule: 'value', amounts: [0, 0.2, -0.2] } },
+    { type: 'can', pieces: 2, expected: { rule: 'value', amounts: [0, 0.4] } },
+    { type: 'paper', pieces: 3, expected: { rule: 'value', amounts: [0, -0.2, -0.2] } },
+    { type: 'col-60da8460', pieces: 7, expected: { rule: 'value', amounts: [0, -0.2, -0.4, -0.4, 0.2, 0.4, 0.4] } },
+    { type: 'col-20400000', pieces: 2, expected: { rule: 'value', amounts: [0, 0.4] } },
+    { type: 'cube', pieces: 1, expected: undefined },
+    { type: 'rectangle', pieces: 1, expected: undefined },
+    { type: '', pieces: 1, expected: undefined }
+  ])('shades the parts of a $type of $pieces parts', ({ type, pieces, expected }) => {
+    expect(shadingOf(type, geometry(pieces))).toEqual(expected)
   })
 })
