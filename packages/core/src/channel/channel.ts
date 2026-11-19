@@ -20,6 +20,7 @@ import type { Harness, HarnessComputer, Reach, Scope, Session, SessionEvent } fr
 import type { Log } from '../ports/log.ts'
 import type { Records } from '../ports/records.ts'
 import type { ToolResult } from '../ports/tools.ts'
+import { folderName, partsFrom } from '../projects/folders.ts'
 import type { UserSettings } from '../settings/settings.ts'
 import { languageOf } from '../speech/language.ts'
 import { createSentenceCutter, type SentenceCutter, speakable } from '../speech/sentences.ts'
@@ -189,6 +190,13 @@ export interface Channel {
    * Said during an answer, it takes the answer's place.
    */
   say(text: string, language?: string, handed?: Handed, spoken?: boolean): TurnId
+  /**
+   * The person asked for work on a project from the interface (docs/SPEC.md, section 7.11), in a folder already
+   * theirs to change: a turn of their own that takes the stage, passed straight to the project's thread, since they
+   * said where it goes. The thread already working in that folder carries on when it is free; at work, or with none,
+   * a new one opens there, named after the folder.
+   */
+  work(asked: { folder: string; request: string }, language?: string): { thread: string; turn: TurnId }
   /** Greet the user and brief them, unless it was done a little while ago or a turn is under way. */
   greet(): TurnId | undefined
   /**
@@ -1256,6 +1264,45 @@ export function createChannel(options: ChannelOptions): Channel {
     else session.send(text)
   }
 
+  /**
+   * What the person said or asked takes the stage, as a turn of theirs. A thread that was answering finishes in the
+   * background, and its answer waits, marked ready; an answer the orchestrator was still giving is stopped, and so is
+   * a turn still waiting for it.
+   */
+  const personsTurn = (text: string, language: string | undefined, handed: Handed): Turn => {
+    const attached = attachedOf(handed)
+    const exchange: Exchange = {
+      turn: newId(),
+      at: now().toISOString(),
+      persona: activePersona().id,
+      said: text,
+      ...(attached.length > 0 ? { attached } : {}),
+      replied: '',
+      outcome: 'running'
+    }
+    const spoken = text === '' ? undefined : spokenIn(text, language)
+    if (spoken) conversationLanguage = spoken
+    const turn = newTurn(exchange, spoken, handed)
+    transcript.push(exchange)
+
+    const previous = current
+    current = turn
+    if (previous) {
+      if (!previous.routed) halt(previous)
+      const second = previous.next
+      if (second && second.held.length > 0) {
+        unheard.set(second.exchange.turn, [...(unheard.get(second.exchange.turn) ?? []), ...second.held.splice(0)])
+        if (second.exchange.outcome !== 'running' && second.routed) {
+          registry.setState(second.routed.thread, 'ready')
+          toTell.add(second.routed.thread)
+        }
+      }
+    }
+    if (pending) finish(pending, 'stopped')
+    pending = undefined
+    return turn
+  }
+
   const decideNext = () => {
     const waiting = pending
     pending = undefined
@@ -1295,42 +1342,25 @@ export function createChannel(options: ChannelOptions): Channel {
         )
       )
         putAsidesAway()
-      const persona = activePersona()
-      const attached = attachedOf(handed)
-      const exchange: Exchange = {
-        turn: newId(),
-        at: now().toISOString(),
-        persona: persona.id,
-        said: text,
-        ...(attached.length > 0 ? { attached } : {}),
-        replied: '',
-        outcome: 'running'
-      }
-      const spoken = text === '' ? undefined : spokenIn(text, language)
-      if (spoken) conversationLanguage = spoken
-      const turn = newTurn(exchange, spoken, handed)
-      transcript.push(exchange)
-
-      const previous = current
-      current = turn
-      if (previous) {
-        // What is said now takes the stage. A thread that was answering finishes in the background, and its
-        // answer waits, marked ready; an answer the orchestrator was still giving is stopped.
-        if (!previous.routed) halt(previous)
-        const second = previous.next
-        if (second && second.held.length > 0) {
-          unheard.set(second.exchange.turn, [...(unheard.get(second.exchange.turn) ?? []), ...second.held.splice(0)])
-          if (second.exchange.outcome !== 'running' && second.routed) {
-            registry.setState(second.routed.thread, 'ready')
-            toTell.add(second.routed.thread)
-          }
-        }
-      }
-      if (pending) finish(pending, 'stopped')
-      pending = undefined
+      const turn = personsTurn(text, language, handed)
       if (deciding) pending = turn
       else void decide(turn)
-      return exchange.turn
+      return turn.exchange.turn
+    },
+
+    work({ folder, request }, language) {
+      memory?.wake()
+      const turn = personsTurn(request, language, NOTHING_HANDED)
+      // The project's thread carries on, unless it is at work: what is asked then runs beside it, as the
+      // orchestrator would have it, rather than waiting behind work it may have nothing to do with.
+      const same = registry
+        .read()
+        .threads.find((thread) => thread.kind === 'topic' && thread.folder !== undefined && partsFrom(thread.folder, folder)?.length === 0)
+      const free = same && runtimes.get(same.id)?.answering === undefined ? same : undefined
+      const thread = free ?? registry.open({ title: folderName(folder).slice(0, 80), kind: 'topic', folder })
+      emit({ type: 'event', name: 'turn.started', exchange: turn.exchange })
+      route(turn, thread, request)
+      return { thread: thread.id, turn: turn.exchange.turn }
     },
 
     greet() {

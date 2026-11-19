@@ -49,8 +49,11 @@ export interface DeviceHost {
   load?(listener: (load: number) => void): () => void
   /** The files of this computer, picked by the user for the assistant. Left out, folders cannot be picked here. */
   files?: {
-    /** The system's own picker, for folders or files. Nothing when the user cancels. */
-    pick(kind: 'folder' | 'file'): Promise<string[]>
+    /**
+     * The system's own picker: folders or files to give access to, or, for a project, the one folder it works in.
+     * Nothing when the user cancels.
+     */
+    pick(kind: 'folder' | 'file', purpose?: 'access' | 'project'): Promise<string[]>
     /** Show a folder or a file in the system's file manager. */
     reveal(path: string): Promise<void>
     /**

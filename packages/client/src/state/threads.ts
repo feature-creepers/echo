@@ -1,4 +1,4 @@
-import type { CommandOutput, Threads } from '@repo/protocol'
+import type { CommandInput, CommandOutput, Threads } from '@repo/protocol'
 import type { Session } from '../session.ts'
 import { cell, type Followed } from './followed.ts'
 
@@ -13,6 +13,11 @@ export interface ThreadsState extends Followed<Threads> {
   stop(thread?: string): Promise<void>
   /** One thread whole: its exchanges with their full answers, its tool calls, its views. */
   read(thread: string): Promise<ThreadRead>
+  /**
+   * Open a project in a folder the person chose, with what to do there first: its thread answers at once, on the
+   * stage. Rejects with why not, in words for the person.
+   */
+  open(project: CommandInput<'project.open'>): Promise<CommandOutput<'project.open'>>
   unfollow(): void
 }
 
@@ -40,6 +45,7 @@ export function followThreads(session: Session): ThreadsState {
       await session.run('threads.stop', thread === undefined ? {} : { thread })
     },
     read: (thread) => session.run('thread.read', { thread }),
+    open: (project) => session.run('project.open', project),
     unfollow: stopEvents
   }
 }

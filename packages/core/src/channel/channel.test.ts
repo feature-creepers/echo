@@ -1227,6 +1227,69 @@ describe('a project', () => {
     expect(channel.stopThread(id)).toBe(false)
   })
 
+  it('opens from the interface: what the person asked goes straight to a thread in the folder, named after it', async () => {
+    const { channel, harness, spoken, ended } = setup({ more: projectAbilities() })
+    const opened = channel.work({ folder: '/home/ada/code/echo', request: 'Make the handle wider.' })
+    await settled()
+    // No orchestrator is asked: the person said where it goes.
+    expect(harness.sessions).toHaveLength(1)
+    const thread = harness.sessions[0]
+    expect(thread?.request.role).toBe('thread')
+    expect(thread?.request.folder).toBe('/home/ada/code/echo')
+    expect(thread?.request.instructions).toContain('Run pnpm check in /home/ada/code/echo.')
+    expect(thread?.sent[0]).toContain('Make the handle wider.')
+    expect(channel.threads()).toMatchObject({
+      focus: opened.thread,
+      threads: [{ id: opened.thread, title: 'echo', kind: 'topic', folder: '/home/ada/code/echo' }]
+    })
+    expect(channel.turn()).toBe(opened.turn)
+
+    // It is the person's own line, answered aloud on the stage.
+    thread?.emit({ type: 'text', text: 'I will widen it. ' })
+    thread?.emit({ type: 'turn-end' })
+    await settled()
+    expect(spoken()).toEqual(['I will widen it.'])
+    expect(ended()).toMatchObject([{ turn: opened.turn, said: 'Make the handle wider.', thread: opened.thread, outcome: 'done' }])
+    expect(ended()[0]?.trigger).toBeUndefined()
+  })
+
+  it('carries on in the thread already there when it is free, and runs beside it when it is at work', async () => {
+    const { channel, harness } = setup({ more: projectAbilities() })
+    const first = channel.work({ folder: '/home/ada/code/echo', request: 'Make the handle wider.' })
+    await settled()
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+
+    // Free: the same thread answers.
+    const again = channel.work({ folder: '/home/ada/code/echo', request: 'Run the checks again.' })
+    await settled()
+    expect(again.thread).toBe(first.thread)
+    expect(harness.sessions[0]?.sent[1]).toContain('Run the checks again.')
+
+    // At work: a new thread in the same folder, told who works beside it.
+    harness.sessions[0]?.emit({ type: 'tool', name: 'Bash', phase: 'started', call: 'b1' })
+    const beside = channel.work({ folder: '/home/ada/code/echo', request: 'Add a dark mode.' })
+    await settled()
+    expect(beside.thread).not.toBe(first.thread)
+    expect(harness.sessions[1]?.sent[0]).toContain('Other threads are working in this folder at the same time: "echo", on: Run the checks again.')
+    // The work under way goes on in the background.
+    expect(harness.sessions[0]?.interrupted ?? 0).toBe(0)
+    expect(channel.threads().threads.filter((one) => one.state === 'working')).toHaveLength(2)
+  })
+
+  it('takes the stage from an answer the orchestrator was still giving', async () => {
+    const { channel, harness, ended } = setup({ more: projectAbilities() })
+    channel.say('What is the weather?')
+    await settled()
+    harness.sessions[0]?.emit({ type: 'text', text: 'Sunny' })
+    channel.work({ folder: '/home/ada/code/echo', request: 'Make the handle wider.' })
+    expect(harness.sessions[0]?.interrupted).toBe(1)
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+    expect(ended().map((line) => [line.said, line.outcome])).toEqual([['What is the weather?', 'stopped']])
+    expect(harness.sessions[1]?.request.folder).toBe('/home/ada/code/echo')
+  })
+
   it('lets a request wait behind the work it follows, when the orchestrator says so', async () => {
     const { channel, harness, call, thread } = await openProject(projectAbilities())
     thread?.emit({ type: 'tool', name: 'Edit', phase: 'started', call: 'e1' })

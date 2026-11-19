@@ -1,4 +1,4 @@
-import type { AccessUse, Allowance, CommandInput, Event, Place, ProtectedPlace } from '@repo/protocol'
+import { type AccessUse, type Allowance, type CommandInput, type Event, MAX_PLACES, type Place, type ProtectedPlace } from '@repo/protocol'
 import { z } from 'zod'
 import type { Blobs } from '../ports/blobs.ts'
 import type { Timers } from '../ports/clock.ts'
@@ -36,9 +36,10 @@ export interface AccessControl {
   /**
    * Have a place within reach: nothing to do when it already is, else the person is asked on screen, where
    * `showing` says, and it is granted once they agree. `purpose` words the card: a place to give, or a project's
-   * folder to work in.
+   * folder to work in. A place the person `chose` themselves in the interface is granted without a card: choosing
+   * it there is their consent, as in Settings, Access. What is never reached is refused all the same.
    */
-  grant(asked: { path: string; write: boolean; purpose?: 'grant' | 'work' }, showing: Showing): Promise<Granted>
+  grant(asked: GrantAsked, showing: Showing): Promise<Granted>
   /**
    * What a thread is told about its access, as it stands now, for the program it runs on: the names of its tools,
    * whether the system holds its commands, and what it needs to reach files (`DIRECT_TOOLS` when left out).
@@ -123,6 +124,14 @@ const grantInput = z.object({ path: z.string().trim().min(1).max(4096), write: z
 
 /** A place asked for: within reach now, as the system names it, or why not, in words the model can tell the person. */
 export type Granted = { ok: true; path: string; kind: 'folder' | 'file'; already: boolean } | { ok: false; text: string }
+
+/** A place to have within reach: what for, and whether the person chose it themselves in the interface. */
+export interface GrantAsked {
+  path: string
+  write: boolean
+  purpose?: 'grant' | 'work'
+  chosen?: boolean
+}
 
 /** How many of a thread's uses it is reminded of when a new session carries on its work. */
 const WORKED_LINES = 40
@@ -402,14 +411,14 @@ export function createAccess({ settings, screen, computer, timers, records, vers
     for (const listener of [...stopping]) listener()
   }
 
-  /** A place within reach: found first, never one that is never reached, and asked of the person unless it already is. */
-  const grant = async (
-    { path, write, purpose = 'grant' }: { path: string; write: boolean; purpose?: 'grant' | 'work' },
-    showing: Showing
-  ): Promise<Granted> => {
+  /**
+   * A place within reach: found first, never one that is never reached, and asked of the person unless it already is
+   * or they chose it themselves.
+   */
+  const grant = async ({ path, write, purpose = 'grant', chosen = false }: GrantAsked, showing: Showing): Promise<Granted> => {
     if (!computer) return { ok: false, text: 'This assistant runs where it cannot reach files.' }
     const found = await computer.locate(path)
-    if (!found) return { ok: false, text: `There is nothing at ${path}. Ask the person where it is.` }
+    if (!found) return { ok: false, text: chosen ? `There is nothing at ${path}.` : `There is nothing at ${path}. Ask the person where it is.` }
     if (purpose === 'work' && found.kind !== 'folder') return { ok: false, text: `${found.path} is a file: a project is a folder.` }
     // A place never reached is not given either. A folder that holds one may be: what is inside stays refused.
     const never = neverReached(found.path)
@@ -420,6 +429,13 @@ export function createAccess({ settings, screen, computer, timers, records, vers
       (current.computer === 'read' && !write) ||
       current.places.some((place) => inside(found.path, place.path) && (place.write || !write))
     if (covered) return { ok: true, path: found.path, kind: found.kind, already: true }
+    // The places are kept to their number, so that the settings stay readable when the app opens again.
+    const places = access().places.filter((place) => place.path !== found.path)
+    if (places.length >= MAX_PLACES) return { ok: false, text: `${MAX_PLACES} places are granted already: one must be taken away in Settings, Access first.` }
+    if (chosen) {
+      settings.setAccess({ places: [...places, { path: found.path, kind: found.kind, write }] })
+      return { ok: true, path: found.path, kind: found.kind, already: false }
+    }
     const working = purpose === 'work'
     const { answer } = await approvals.ask(
       {
@@ -432,8 +448,9 @@ export function createAccess({ settings, screen, computer, timers, records, vers
       showing
     )
     if (answer !== 'yes' && answer !== 'session') return { ok: false, text: REFUSED[answer] }
-    const places = access().places.filter((place) => place.path !== found.path)
-    settings.setAccess({ places: [...places, { path: found.path, kind: found.kind, write }] })
+    // Read again: the places may have changed while the question waited.
+    const kept = access().places.filter((place) => place.path !== found.path)
+    settings.setAccess({ places: [...kept, { path: found.path, kind: found.kind, write }] })
     return { ok: true, path: found.path, kind: found.kind, already: false }
   }
 

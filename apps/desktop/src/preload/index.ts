@@ -67,7 +67,7 @@ const bridge: DesktopBridge = {
     answer: (answer) => ipcRenderer.send(CAMERA_CHANNELS.picture, answer)
   },
   files: {
-    pick: (kind) => ipcRenderer.invoke(APP_CHANNELS.filesPick, kind),
+    pick: (kind, purpose) => ipcRenderer.invoke(APP_CHANNELS.filesPick, kind, purpose),
     reveal: (path) => ipcRenderer.invoke(APP_CHANNELS.filesReveal, path),
     open: (path) => ipcRenderer.invoke(APP_CHANNELS.filesOpen, path),
     // Only the preload can ask where a dropped file is: the window itself is never told a path it was not given.

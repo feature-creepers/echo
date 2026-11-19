@@ -1,5 +1,5 @@
 import { validateView } from '@repo/catalog'
-import type { Event } from '@repo/protocol'
+import { type Event, MAX_PLACES } from '@repo/protocol'
 import { describe, expect, it } from 'vitest'
 import type { Blobs } from '../ports/blobs.ts'
 import type { Computer } from '../ports/computer.ts'
@@ -767,6 +767,40 @@ describe('a project folder to work in', () => {
     expect(access.projects()).toEqual(['/home/ada/Documents'])
     // Already changeable: nothing is asked.
     expect(await access.grant({ path: '/home/ada/Documents', write: true, purpose: 'work' }, showing)).toMatchObject({ ok: true, already: true })
+  })
+
+  it('grants a folder the person chose in the interface without a card, and still refuses a place never reached', async () => {
+    const { access, settings, screen } = setup()
+    const showing = { thread: undefined, turn: undefined, slot: 'stage' as const, focused: true }
+    settings.setAccess({ places: [{ path: '/home/ada/Documents', kind: 'folder', write: false }] })
+    expect(await access.grant({ path: '~/Documents', write: true, purpose: 'work', chosen: true }, showing)).toEqual({
+      ok: true,
+      path: '/home/ada/Documents',
+      kind: 'folder',
+      already: false
+    })
+    expect(settings.read().access.places).toEqual([{ path: '/home/ada/Documents', kind: 'folder', write: true }])
+    expect(await access.grant({ path: '~/.ssh', write: true, purpose: 'work', chosen: true }, showing)).toEqual({
+      ok: false,
+      text: expect.stringContaining('never reached')
+    })
+    // What the person reads is not worded for the model.
+    expect(await access.grant({ path: '/nowhere', write: true, purpose: 'work', chosen: true }, showing)).toEqual({
+      ok: false,
+      text: 'There is nothing at /nowhere.'
+    })
+    expect(screen.current()).toBeUndefined()
+  })
+
+  it('grants no more places than the settings keep', async () => {
+    const { access, settings } = setup()
+    const showing = { thread: undefined, turn: undefined, slot: 'stage' as const, focused: true }
+    settings.setAccess({ places: Array.from({ length: MAX_PLACES }, (_, index) => ({ path: `/elsewhere/${index}`, kind: 'folder' as const, write: false })) })
+    expect(await access.grant({ path: '~/Documents', write: true, purpose: 'work', chosen: true }, showing)).toEqual({
+      ok: false,
+      text: expect.stringContaining('taken away in Settings, Access')
+    })
+    expect(settings.read().access.places).toHaveLength(MAX_PLACES)
   })
 
   it('refuses a file, and a place never reached, before anyone is asked', async () => {

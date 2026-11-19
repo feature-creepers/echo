@@ -568,6 +568,17 @@ export function createCore(options: CoreOptions): Core {
         channel.focus(input.thread)
           ? { ok: true, output: {} }
           : { ok: false, error: { code: 'invalid-input', message: `There is no thread "${input.thread}".` } },
+      'project.open': async (input) => {
+        if (toolServer === undefined || !options.computer)
+          return { ok: false, error: { code: 'failed', message: 'Projects cannot be worked on here: the assistant has no computer to work on.' } }
+        // The person chose the folder in the interface: that is their consent, and no card asks them again.
+        const granted = await access.grant(
+          { path: input.folder, write: true, purpose: 'work', chosen: true },
+          { thread: undefined, turn: undefined, slot: 'stage', focused: true }
+        )
+        if (!granted.ok) return { ok: false, error: { code: 'invalid-input', message: granted.text } }
+        return { ok: true, output: channel.work({ folder: granted.path, request: input.request }) }
+      },
       'thread.read': (input) => {
         const read = channel.thread(input.thread)
         return read ? { ok: true, output: read } : { ok: false, error: { code: 'invalid-input', message: `There is no thread "${input.thread}".` } }

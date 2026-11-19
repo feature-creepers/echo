@@ -5,11 +5,13 @@ import type { Persona, TurnId } from '@repo/protocol'
 import { motion } from 'motion/react'
 import { useState } from 'react'
 import { FullAnswer } from '../conversation/full-answer.tsx'
+import { ProjectForm } from '../conversation/project-form.tsx'
 import { ThreadList } from '../conversation/thread-list.tsx'
 import { ThreadView } from '../conversation/thread-view.tsx'
 import { Transcript } from '../conversation/transcript.tsx'
 import { useDevice } from '../device/device.tsx'
 import { Inspector } from '../inspector/inspector.tsx'
+import { Button } from '../primitives/button.tsx'
 import { cn } from '../primitives/cn.ts'
 import { IconButton } from '../primitives/icon-button.tsx'
 import { CloseGlyph } from '../primitives/icons.tsx'
@@ -56,6 +58,8 @@ export function SideSheet({ client, personas, tab, onTab, answer, onAnswer, onCl
   const transcriptKey = device.settings.shortcuts.transcript
   /** The thread opened in the Threads tab, kept while the user looks at another tab. */
   const [opened, setOpened] = useState<string>()
+  /** The Threads tab shows the form that opens a project, instead of the list. */
+  const [opening, setOpening] = useState(false)
 
   const counts: Record<SheetTab, number | undefined> = {
     transcript: undefined,
@@ -140,10 +144,27 @@ export function SideSheet({ client, personas, tab, onTab, answer, onAnswer, onCl
           <Transcript exchanges={channel.exchanges} personas={personas} onOpenAnswer={onAnswer} />
         )
       ) : tab === 'threads' ? (
-        opened && threads.threads.some((thread) => thread.id === opened) ? (
+        opening ? (
+          <ProjectForm
+            client={client}
+            onBack={() => setOpening(false)}
+            onOpened={(thread) => {
+              setOpening(false)
+              setOpened(thread)
+            }}
+          />
+        ) : opened && threads.threads.some((thread) => thread.id === opened) ? (
           <ThreadView key={opened} client={client} thread={opened} personas={personas} onBack={() => setOpened(undefined)} />
         ) : (
-          <ThreadList threads={threads} onOpen={setOpened} onStop={(thread) => void client.threads.stop(thread).catch(() => undefined)} />
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="flex items-center justify-between gap-3 px-5 pt-3">
+              <span className="text-text-faint text-xs">Work in a folder of yours</span>
+              <Button kind="secondary" size="sm" onClick={() => setOpening(true)}>
+                Open a project
+              </Button>
+            </div>
+            <ThreadList threads={threads} onOpen={setOpened} onStop={(thread) => void client.threads.stop(thread).catch(() => undefined)} />
+          </div>
         )
       ) : (
         <Inspector events={events} />

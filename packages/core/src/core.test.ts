@@ -554,6 +554,24 @@ describe('files between the person and the assistant', () => {
     expect(harness.sessions[0]?.sent[0]).toContain('The folder /home/ada/Projects: yours to read from now on, read only.')
   })
 
+  it('opens a project from the interface: the folder chosen is granted to change, and its thread answers at once', async () => {
+    const { core, harness } = withFolder()
+    const refused = await core.execute({ type: 'command', id: 'c1', name: 'project.open', input: { folder: '/home/ada/code', request: 'Look around.' } })
+    expect(refused).toMatchObject({ ok: false, error: { code: 'failed' } })
+
+    core.serveToolsAt('http://127.0.0.1:5000/mcp')
+    const opened = await run(core, 'project.open', { folder: '/home/ada/code', request: 'Look around and tell me what it is.' })
+    await settled()
+    const { settings } = await run(core, 'settings.read', {})
+    expect(settings.access.places).toEqual([{ path: '/home/ada/code', kind: 'folder', write: true }])
+    expect((await run(core, 'threads.read', {})).threads).toMatchObject([{ id: opened.thread, title: 'code', folder: '/home/ada/code', state: 'working' }])
+    expect(harness.sessions[0]?.request).toMatchObject({ role: 'thread', folder: '/home/ada/code' })
+    expect(harness.sessions[0]?.sent[0]).toContain('Look around and tell me what it is.')
+
+    const never = await core.execute({ type: 'command', id: 'c2', name: 'project.open', input: { folder: '/home/ada/.ssh', request: 'Look.' } })
+    expect(never).toMatchObject({ ok: false, error: { code: 'invalid-input', message: expect.stringContaining('never reached') } })
+  })
+
   it('never grants a folder handed over inside a place never reached', async () => {
     const { core } = withFolder()
     await run(core, 'utterance.send', { text: 'Look at these', folders: ['/home/ada/.ssh/keys', '/home/ada/Projects'] })

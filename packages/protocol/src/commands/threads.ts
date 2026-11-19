@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { exchangeSchema, stepSchema } from '../conversation.ts'
+import { exchangeSchema, stepSchema, turnIdSchema, UTTERANCE_MAX_LENGTH } from '../conversation.ts'
 import { threadIdSchema, threadSchema, threadsSchema } from '../threads.ts'
 import { viewSchema } from '../views.ts'
 
@@ -40,5 +40,20 @@ export const threadCommands = {
   'thread.focus': {
     input: z.object({ thread: threadIdSchema }),
     output: z.object({})
+  },
+
+  /**
+   * Open a project from the interface (docs/SPEC.md, section 7.11): work in a folder on the core's computer, as the
+   * person asks. Choosing the folder there is their consent to its being read and changed, as in Settings, Access;
+   * each use is still decided by their approval level. The request takes the stage, answered by the thread working
+   * in that folder when it is free, else by a new one. A file, a place that is not there and a place never reached
+   * are refused.
+   */
+  'project.open': {
+    input: z.object({
+      folder: z.string().trim().min(1).max(4096),
+      request: z.string().trim().min(1).max(UTTERANCE_MAX_LENGTH)
+    }),
+    output: z.object({ thread: threadIdSchema, turn: turnIdSchema })
   }
 }

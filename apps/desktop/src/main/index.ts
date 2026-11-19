@@ -320,13 +320,19 @@ function start(): void {
     const page = releasesPage()
     if (page) await shell.openExternal(page)
   })
-  // Folders and files for the assistant are picked by the user in the system's own picker, never typed by the window.
-  ipcMain.handle(APP_CHANNELS.filesPick, async (_event, kind: 'folder' | 'file') => {
-    const picked = await dialog.showOpenDialog(window, {
-      title: kind === 'folder' ? 'Give access to folders' : 'Give access to files',
-      buttonLabel: 'Give access',
-      properties: [kind === 'folder' ? 'openDirectory' : 'openFile', 'multiSelections']
-    })
+  // Folders and files for the assistant are picked by the user in the system's own picker, never typed by the window:
+  // several to give access to, or the one folder a project works in.
+  ipcMain.handle(APP_CHANNELS.filesPick, async (_event, kind: 'folder' | 'file', purpose?: 'access' | 'project') => {
+    const picked = await dialog.showOpenDialog(
+      window,
+      purpose === 'project'
+        ? { title: 'Open a project', buttonLabel: 'Open', properties: ['openDirectory'] }
+        : {
+            title: kind === 'folder' ? 'Give access to folders' : 'Give access to files',
+            buttonLabel: 'Give access',
+            properties: [kind === 'folder' ? 'openDirectory' : 'openFile', 'multiSelections']
+          }
+    )
     return picked.canceled ? [] : picked.filePaths
   })
   // Shown in its folder, never opened: opening a file could run it.
