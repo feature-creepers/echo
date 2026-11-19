@@ -3,14 +3,14 @@
  * PowerPoint's (.docx, .xlsx, .pptx) and OpenDocument's (.odt, .ods, .odp). Each is a ZIP archive of XML parts,
  * unpacked with the window's own decompression and read for what a preview shows. A document becomes Markdown, shown
  * as the Prose block shows it; a workbook, its sheets as tables; a presentation, the text of each slide. Their look,
- * pictures and charts are left to their app. The older binary formats (.doc, .xls, .ppt) are not read.
+ * pictures and charts are left to their app. The older binary formats (.doc, .xls, .ppt) are compound files, read by
+ * `binary-office.ts`.
  */
 
-/** What a preview of an Office file shows. */
-export type OfficePreview =
-  | { kind: 'document'; markdown: string; cut: boolean }
-  | { kind: 'workbook'; sheets: { name: string; rows: string[][]; cut: boolean }[] }
-  | { kind: 'presentation'; slides: { title: string; lines: string[] }[]; cut: boolean }
+import { readExcel97, readPowerPoint97, readWord97 } from './binary-office.ts'
+import { BLOCK_LIMIT, COLUMN_LIMIT, markdownTable, type OfficePreview, plain, ROW_LIMIT, SHEET_LIMIT, SLIDE_LIMIT } from './office-text.ts'
+
+export type { OfficePreview } from './office-text.ts'
 
 /** The extensions read, and what each is. */
 export const OFFICE_KINDS = {
@@ -19,19 +19,14 @@ export const OFFICE_KINDS = {
   pptx: 'presentation',
   odt: 'document',
   ods: 'workbook',
-  odp: 'presentation'
+  odp: 'presentation',
+  doc: 'document',
+  xls: 'workbook',
+  ppt: 'presentation'
 } as const
 
 /** The most a part of an archive is unpacked to: a preview never needs more, and a crafted archive stops there. */
 const PART_LIMIT = 32 * 1024 * 1024
-/** How much of a document is shown, in paragraphs and table rows. */
-const BLOCK_LIMIT = 5_000
-/** How many rows and columns of a sheet are shown, and how many sheets. */
-const ROW_LIMIT = 500
-const COLUMN_LIMIT = 50
-const SHEET_LIMIT = 20
-/** How many slides are shown. */
-const SLIDE_LIMIT = 300
 
 /** The parts of a ZIP archive by name, each unpacked when asked for. */
 export type Archive = Map<string, () => Promise<Uint8Array>>
@@ -192,14 +187,6 @@ function resolvePart(folder: string, target: string): string {
   return resolved.join('/')
 }
 
-/** Text written so Markdown shows it as it is: its marks escaped, a line not taken for a heading or a list. */
-function plain(text: string): string {
-  return text
-    .replace(/[\\`*_[\]<>|#]/g, '\\$&')
-    .replace(/^(\s*)(\d+)\. /, '$1$2\\. ')
-    .replace(/^(\s*)([-+]) /, '$1\\$2 ')
-}
-
 /** The heading level of each paragraph style a document defines, by the style's name: "heading 1", "Title". */
 async function headingStyles(archive: Archive): Promise<Map<string, number>> {
   const levels = new Map<string, number>()
@@ -265,14 +252,6 @@ export async function readDocument(archive: Archive): Promise<OfficePreview> {
     } else if (event.name === 'w:tbl' && --depth === 0 && table.length > 0) blocks.push(markdownTable(table))
   }
   return { kind: 'document', markdown: blocks.join('\n\n'), cut: blocks.length >= BLOCK_LIMIT }
-}
-
-/** A document's table as a Markdown table: its first row the head, every row as wide as the widest. */
-function markdownTable(table: string[][]): string {
-  const width = Math.max(...table.map((one) => one.length))
-  const line = (cells: string[]) => `| ${Array.from({ length: width }, (_, column) => plain(cells[column] ?? '').replace(/\n/g, ' ')).join(' | ')} |`
-  const [head = [], ...body] = table
-  return [line(head), `|${' --- |'.repeat(width)}`, ...body.map(line)].join('\n')
 }
 
 /** A cell's column from its reference: "A1" is 0, "AB7" is 27. */
@@ -689,6 +668,10 @@ export async function readOpenPresentation(archive: Archive): Promise<OfficePrev
 
 /** An Office file read for its preview, by its extension. */
 export async function readOffice(extension: string, bytes: Uint8Array): Promise<OfficePreview> {
+  // The older formats are compound files, not archives.
+  if (extension === 'doc') return readWord97(bytes)
+  if (extension === 'xls') return readExcel97(bytes)
+  if (extension === 'ppt') return readPowerPoint97(bytes)
   const archive = openArchive(bytes)
   switch (extension) {
     case 'docx':

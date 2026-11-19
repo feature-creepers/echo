@@ -12,7 +12,7 @@ describe('what a file is', () => {
     ['table.tsv', 'TSV table', 'csv'],
     ['budget.xlsx', 'Excel spreadsheet', 'office'],
     ['plan.docx', 'Word document', 'office'],
-    ['old.doc', 'Word document', 'none'],
+    ['old.doc', 'Word document', 'office'],
     ['notes.odt', 'OpenDocument text', 'office'],
     ['slides.odp', 'OpenDocument presentation', 'office'],
     ['archive.weird', 'WEIRD file', 'none'],
