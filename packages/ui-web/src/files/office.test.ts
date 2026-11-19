@@ -12,7 +12,7 @@ function textual(preview: OfficePreview): OfficePreview {
     return {
       ...preview,
       sheets: preview.sheets.map(({ look, ...sheet }) => {
-        expect(look?.rows.length).toBe(sheet.rows.length)
+        if (sheet.rows.length > 0) expect(look?.rows.length).toBe(sheet.rows.length)
         return sheet
       })
     }
@@ -531,7 +531,7 @@ describe('an OpenDocument file previewed', () => {
       `<table:table-row table:number-rows-repeated="1048570">${empty(1024)}</table:table-row></table:table>` +
       `<table:table table:name="Empty"><table:table-row>${empty(5)}</table:table-row></table:table>`
     const file = await zip({ 'content.xml': odf('', `<office:spreadsheet>${sheet}</office:spreadsheet>`) })
-    expect(await readOffice('ods', file)).toEqual({
+    expect(textual(await readOffice('ods', file))).toEqual({
       kind: 'workbook',
       sheets: [
         {
@@ -641,7 +641,7 @@ describe('an OpenDocument file previewed', () => {
       'Pictures/1.png': PNG
     })
     const logo = { kind: 'picture', type: 'image/png', bytes: PNG, alt: 'A logo', width: 96, height: 96 }
-    expect(await readOffice('ods', spreadsheet)).toEqual({
+    expect(textual(await readOffice('ods', spreadsheet))).toEqual({
       kind: 'workbook',
       sheets: [
         { name: 'One', rows: [['x']], cut: false, figures: [logo] },

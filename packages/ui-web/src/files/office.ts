@@ -34,7 +34,9 @@ import {
   SLIDE_LIMIT
 } from './office-text.ts'
 import { readOpenLook } from './open-look.ts'
+import { dataStyles, readOpenSheetLook, readSheetViews } from './open-sheet-look.ts'
 import { drawOpenPage, type OpenDeck, openDeck } from './open-slide-drawing.ts'
+import { fontFaces, StyleBook } from './open-styles.ts'
 import {
   type CellKind,
   paletteColor,
@@ -1150,7 +1152,7 @@ export async function readOpenSpreadsheet(archive: Archive): Promise<OfficePrevi
   const { events } = openDocumentBody(content, PASSED_OVER)
   const figures = new Figures(archive)
   const placed = await openFrames(content, 'table:table', figures)
-  const sheets: { name: string; rows: string[][]; cut: boolean; figures: OfficeFigure[] }[] = []
+  const sheets: Extract<OfficePreview, { kind: 'workbook' }>['sheets'] = []
   let sheet: { name: string; rows: string[][]; cut: boolean; emptyRows: number } | undefined
   let row: { cells: string[]; repeated: number; emptyCells: number } | undefined
   let cell: { paragraphs: string[]; stored: string; repeated: number } | undefined
@@ -1210,6 +1212,30 @@ export async function readOpenSpreadsheet(archive: Archive): Promise<OfficePrevi
       sheet = undefined
     }
   }
+  // Each sheet's look, from its table and the spreadsheet's styles and settings; a sheet whose look cannot be read shows as a table.
+  const document = childAt(xmlTree(content), 'office:document-content')
+  const stylesRoot = childAt(xmlTree((await textOf(archive, 'styles.xml')) ?? ''), 'office:document-styles')
+  const book = new StyleBook(childAt(document, 'office:automatic-styles'), childAt(stylesRoot, 'office:automatic-styles'), childAt(stylesRoot, 'office:styles'))
+  const fonts = fontFaces([stylesRoot, document])
+  const views = readSheetViews(await textOf(archive, 'settings.xml'))
+  const numbers = dataStyles([document, stylesRoot])
+  const tables = childrenNamed(childAt(document, 'office:body', 'office:spreadsheet'), 'table:table')
+  sheets.forEach((read, index) => {
+    const table = tables[index]
+    if (!table || read.rows.length === 0) return
+    try {
+      read.look = readOpenSheetLook(
+        table,
+        { rows: read.rows.length, columns: Math.max(0, ...read.rows.map((row) => row.length)) },
+        book,
+        fonts,
+        views(read.name),
+        numbers
+      )
+    } catch {
+      read.look = undefined
+    }
+  })
   return { kind: 'workbook', sheets }
 }
 

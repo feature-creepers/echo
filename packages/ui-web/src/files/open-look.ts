@@ -31,7 +31,7 @@ import { listMark, symbolCharacter } from './word-look.ts'
 import { childAt, childrenNamed, type XmlNode, xmlTree } from './xml.ts'
 
 /** A length as OpenDocument writes it, in points. */
-const points = (value: string | undefined) => {
+export const points = (value: string | undefined) => {
   const pixels = length(value)
   return pixels === undefined ? undefined : (pixels * 3) / 4
 }
@@ -52,7 +52,8 @@ const UNDERLINES: Record<string, TextLook['underline']> = {
 /** A run's look while it is read: what the look keeps, and whether it is hidden. */
 type RunRead = TextLook & { hidden?: boolean | undefined }
 
-function textLook(properties: Properties, fonts: ReadonlyMap<string, string>): RunRead {
+/** A run's look from the text properties of its style. */
+export function textLook(properties: Properties, fonts: ReadonlyMap<string, string>): RunRead {
   const underline = properties['style:text-underline-style']
   const through = properties['style:text-line-through-style']
   const position = properties['style:text-position'] ?? ''
@@ -91,7 +92,8 @@ function borderOf(value: string | undefined): BorderLook | undefined {
   return { width: Math.max(width, 0.25), style: kind === 'double' ? 'double' : kind === 'dotted' ? 'dotted' : kind === 'dashed' ? 'dashed' : 'solid', color }
 }
 
-function bordersOf(properties: Properties): Sides<BorderLook> {
+/** The borders the properties of a paragraph, a cell or a frame give, each side over all four. */
+export function bordersOf(properties: Properties): Sides<BorderLook> {
   const all = properties['fo:border']
   return {
     top: borderOf(properties['fo:border-top'] ?? all),
