@@ -74,7 +74,7 @@ describe('the conditional formats of a workbook of Excel 97 to 2003', () => {
   it('reads Excel 2007’s data bars, icon sets, scales and filters over the cells of their block', () => {
     const records = [
       block(4),
-      rule(4, [0, 0, 0, 0x02, 10, 90, ...rgb(0x63, 0x8e, 0xc6), ...threshold(2), ...threshold(3)], { priority: 3 }),
+      rule(4, [0, 0, 0, 0, 10, 90, ...rgb(0x63, 0x8e, 0xc6), ...threshold(2), ...threshold(3)], { priority: 3 }),
       rule(6, [0, 0, 0, 3, 0, 0x05, ...threshold(4, 0), 1, ...zeros(4), ...threshold(4, 33), 1, ...zeros(4), ...threshold(4, 67), 0, ...zeros(4)], {
         priority: 4
       }),
@@ -84,6 +84,9 @@ describe('the conditional formats of a workbook of Excel 97 to 2003', () => {
       rule(5, [...u16(4), 0, 0x02, ...u16(10)], { priority: 6, stop: true })
     ]
     const [bar, icons, scale, filter] = readOlderConditions(records, COLORS)
+    // A bar's second flag hides its value, as Excel writes it.
+    const hidden = rule(4, [0, 0, 0, 0x02, 0, 100, ...rgb(0, 0, 0), ...threshold(2), ...threshold(3)])
+    expect(readOlderConditions([block(1), hidden], COLORS)[0]?.rule).toMatchObject({ kind: 'bar', shown: false, least: 0, most: 100 })
     expect(bar).toMatchObject({
       blocks: [{ row: 1, column: 1, rows: 8, columns: 1 }],
       anchor: { row: 1, column: 1 },

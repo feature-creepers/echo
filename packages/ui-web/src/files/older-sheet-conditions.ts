@@ -239,7 +239,8 @@ function ruleOf(
       color,
       axis: false,
       gradient: true,
-      shown: (record.u8(own + 3) & 0x02) !== 0,
+      // Its second flag hides the value, as Excel writes it, though Microsoft's description calls it the one that shows it.
+      shown: (record.u8(own + 3) & 0x02) === 0,
       least: Math.min(record.u8(own + 4), 100),
       most: Math.min(record.u8(own + 5), 100)
     }
