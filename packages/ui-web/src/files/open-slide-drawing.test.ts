@@ -123,6 +123,14 @@ describe('a page of an OpenDocument presentation drawn', () => {
     expect(written).toContain('<path d="M0 0L96 96" fill="none" stroke="none"/>')
   })
 
+  it('draws a 3D scene in its box, its objects in their own styles', async () => {
+    const scene = `<dr3d:scene svg:x="1in" svg:y="2in" svg:width="1in" svg:height="1in" dr3d:vrp="(0 0 10000)" dr3d:projection="parallel">
+        <dr3d:cube draw:style-name="Band" dr3d:min-edge="(0 0 0)" dr3d:max-edge="(1000 1000 1000)"/></dr3d:scene>`
+    const written = (await drawn(scene))?.written ?? ''
+    expect(written).toContain('<g transform="translate(96 192)"><path d="M')
+    expect(written.match(/<path d="M[^"]*" fill="#[0-9a-f]{6}"/g)?.length).toBeGreaterThanOrEqual(6)
+  })
+
   it('draws a frame’s picture cropped as its style says, and leaves out a placeholder left empty', async () => {
     const written = (
       await drawn(

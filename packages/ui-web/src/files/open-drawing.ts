@@ -5,8 +5,8 @@
  * line with its dashes and the arrows at its ends, and its text. A style takes what it leaves out from the style it
  * comes from, then from its family's default, then from what LibreOffice gives a shape whose styles say nothing: its
  * own blue fill and line, or the colours of the app that wrote the file when that is an older one (`shapeColours`). A placeholder's text takes the style of its master's outline at its level. Lists are bulleted or
- * numbered as their list style says. A Fontwork's text is laid along its path in place of its outline (`fontwork.ts`), and
- * an extruded shape is drawn as its solid (`extrusion.ts`).
+ * numbered as their list style says. A Fontwork's text is laid along its path in place of its outline (`fontwork.ts`), an
+ * extruded shape is drawn as its solid (`extrusion.ts`), and a 3D scene as LibreOffice shows it (`open-scene.ts`).
  *
  * What cannot be read is left out of the drawing rather than failing it: a shape whose parts are missing, a picture
  * of a format the window does not show.
@@ -21,6 +21,7 @@ import { drawMetafile } from './metafile.ts'
 import { pictureType, readOpenChart } from './office-figures.ts'
 import { objectFormula } from './office-math.ts'
 import type { OfficeChart } from './office-text.ts'
+import { sceneElement } from './open-scene.ts'
 import { length, merged, type Properties, type StyleBook, share } from './open-styles.ts'
 import {
   base64,
@@ -1182,7 +1183,8 @@ const SHAPES = new Set([
   'draw:custom-shape',
   'draw:connector',
   'draw:caption',
-  'draw:g'
+  'draw:g',
+  'dr3d:scene'
 ])
 
 /** The kinds of shape a text draws as pictures of their own: all but frames, which it lays out as its own. */
@@ -1400,6 +1402,18 @@ async function drawShape(node: XmlNode, context: DrawingContext, inMaster: boole
             `<g transform="${scale}"><path d="${escaped(data)}" ${fillAttributes} ${strokeAttributes(outline)} vector-effect="non-scaling-stroke"/></g>`
           )
       }
+      break
+    }
+    case 'dr3d:scene': {
+      // A 3D scene draws its objects, each in its own style, and holds no text.
+      textHolder = undefined
+      content.push(
+        sceneElement(
+          node,
+          { width, height },
+          { style: (object) => graphicOf(object, source, inMaster), fill: source.colours.fill, polygons: (data) => flattened(pathData(data)) }
+        )
+      )
       break
     }
     case 'draw:custom-shape': {
