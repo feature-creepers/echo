@@ -838,8 +838,9 @@ async function readWord(file: Compound | undefined, bytes: Uint8Array, one: bool
       else {
         const found = pictures?.inline(place, { object: field?.object, chart: /^\s*EMBED\s+\S*Chart/i.test(field?.code ?? ''), program })
         figure(found)
-        // A document held as an object is shown by its text, once read, after the paragraph that holds it.
-        if (found !== undefined && pictures && /^Word\.Document\b/i.test(program ?? '')) quotes.set(found, pictures.read(field?.object, program))
+        // A document or a presentation held as an object is shown by its text, once read, after the paragraph that
+        // holds it; what another object holds is no text, and leaves its figure in place.
+        if (found !== undefined && pictures && program !== undefined) quotes.set(found, pictures.read(field?.object, program))
       }
     } else if (code === 0x08) figure(pictures?.floating(character))
     else if (code === 0x09 || (code >= 0x20 && char !== FIGURE_START && char !== FIGURE_END)) paragraph += char
@@ -2335,7 +2336,7 @@ function presentationObjects(raw: Uint8Array, container: PowerPointRecord): Map<
 export function storageProgram(storage: Compound): string {
   try {
     const kept = storage.stream('\x01CompObj')
-    return (kept && /\b(?:Word\.Document|Excel\.Sheet|Excel\.Chart|Equation)(?:\.\w+)?/.exec(latin1(kept))?.[0]) ?? ''
+    return (kept && /\b(?:Word\.Document|Excel\.Sheet|Excel\.Chart|PowerPoint\.(?:Show|Slide)|Equation)(?:\.\w+)?/.exec(latin1(kept))?.[0]) ?? ''
   } catch {
     return ''
   }
@@ -2364,7 +2365,18 @@ export async function readOlderPowerPoint(bytes: Uint8Array, read?: ObjectReader
   // PowerPoint 3 and older wrote a presentation as the file itself; PowerPoint 4 keeps the same in a compound file.
   const bare = olderPresentationHead(bytes)
   if (bare) return readOlderPresentation(bytes, bare, undefined)
-  const file = openCompound(bytes)
+  return readPowerPointFile(openCompound(bytes), read, true)
+}
+
+/**
+ * A presentation of PowerPoint held as an object, from its storage, as `readOlderPowerPoint` reads one, for its slides'
+ * text: its slides not drawn, nor its pictures shown, and its own objects left to their pictures.
+ */
+export function readOlderPowerPointStorage(storage: Compound): Promise<OfficePreview> {
+  return readPowerPointFile(storage, undefined, false)
+}
+
+async function readPowerPointFile(file: Compound, read: ObjectReader | undefined, drawn: boolean): Promise<OfficePreview> {
   const four = file.stream('PP40')
   if (four) {
     const head = olderPresentationHead(four)
@@ -2428,7 +2440,7 @@ export async function readOlderPowerPoint(bytes: Uint8Array, read?: ObjectReader
 
   let deck: OlderDeck | undefined
   try {
-    deck = olderDeck(raw, places, container, stored, objectChart)
+    deck = drawn ? olderDeck(raw, places, container, stored, objectChart) : undefined
   } catch {
     deck = undefined
   }
@@ -2475,7 +2487,7 @@ export async function readOlderPowerPoint(bytes: Uint8Array, read?: ObjectReader
       continue
     }
     const placed: number[] = []
-    for (const shape of shapes ? artShapes(raw, shapes) : []) {
+    for (const shape of shapes && drawn ? artShapes(raw, shapes) : []) {
       if (shape.picture === undefined) continue
       const picture = stored(shape.picture)
       const shown = picture?.bytes !== undefined && pictureType(picture.bytes) !== undefined

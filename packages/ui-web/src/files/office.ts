@@ -13,6 +13,7 @@ import {
   olderWorkbookView,
   readOlderExcel,
   readOlderPowerPoint,
+  readOlderPowerPointStorage,
   readOlderSheets,
   readOlderWord,
   readOlderWordStorage,
@@ -659,7 +660,7 @@ export function embeddedCells(archive: Archive, options: NumberFormatOptions = {
 /**
  * What objects of other apps hold, shown in place of their pictures: a worksheet of Excel, newer or older, held as it
  * is or in a compound file's `Package` stream, as the block of cells of its active sheet its object shows; a document
- * of Word, newer or older, by its text. A document's own objects are not read again: they keep their pictures.
+ * of Word and a presentation of PowerPoint, newer or older, by their text.
  */
 export function embeddedObjects(options: NumberFormatOptions = {}): ObjectReader {
   return async (program, source) => {
@@ -669,15 +670,17 @@ export function embeddedObjects(options: NumberFormatOptions = {}): ObjectReader
       return bytes && embeddedSheet(bytes, options)
     }
     if (kind === 'document') return embeddedText(source, options)
+    if (kind === 'presentation') return embeddedSlides(source, 0)
     return undefined
   }
 }
 
 /** What an object of another app holds that is read here, by its program. */
-type HeldKind = 'sheet' | 'document'
+type HeldKind = 'sheet' | 'document' | 'presentation'
 const HELD_PROGRAMS: [RegExp, HeldKind][] = [
   [/^Excel\.Sheet\b/i, 'sheet'],
-  [/^Word\.Document\b/i, 'document']
+  [/^Word\.Document\b/i, 'document'],
+  [/^PowerPoint\.(?:Show|Slide)\b/i, 'presentation']
 ]
 const programKind = (program: string): HeldKind | undefined => HELD_PROGRAMS.find(([pattern]) => pattern.test(program.trim()))?.[1]
 
@@ -697,6 +700,7 @@ function fileKind(source: Uint8Array | Compound, depth: number): HeldKind | unde
       if (source[0] === 0x50 && source[1] === 0x4b) {
         const archive = openArchive(source)
         if (partOf(archive, 'xl/workbook.xml')) return 'sheet'
+        if (partOf(archive, 'ppt/presentation.xml')) return 'presentation'
         return partOf(archive, 'word/document.xml') ? 'document' : undefined
       }
       return source[0] === 0xd0 && source[1] === 0xcf ? fileKind(openCompound(source), depth + 1) : undefined
@@ -707,6 +711,7 @@ function fileKind(source: Uint8Array | Compound, depth: number): HeldKind | unde
     const held = source.stream('Package')
     if (held) return fileKind(held, depth + 1)
     if (source.stream('Workbook') || source.stream('Book')) return 'sheet'
+    if (source.stream('PowerPoint Document')) return 'presentation'
     return source.stream('WordDocument') ? 'document' : undefined
   } catch {
     return undefined
@@ -746,6 +751,65 @@ async function embeddedText(source: Uint8Array | Compound, options: NumberFormat
     )
     .filter((line) => line !== '' && !/^[-| ]+$/.test(line))
   return { kind: 'text', markdown: markdown.replace(/^/gm, '> ').replace(/^> $/gm, '>'), lines }
+}
+
+/**
+ * A presentation of PowerPoint held as an object, by the text of its slides: newer, held as it is or in a compound
+ * file's `Package` stream, or of 97 to 2003, its storage a presentation of its own. A PowerPoint slide held as an
+ * object is a presentation of the one slide.
+ */
+async function embeddedSlides(source: Uint8Array | Compound, depth: number): Promise<ObjectRead | undefined> {
+  if (depth > 2) return undefined
+  if (source instanceof Uint8Array) {
+    if (source[0] === 0x50 && source[1] === 0x4b) return slidesText(await presentationText(openArchive(source)))
+    return source[0] === 0xd0 && source[1] === 0xcf ? embeddedSlides(openCompound(source), depth + 1) : undefined
+  }
+  const held = source.stream('Package')
+  if (held) return embeddedSlides(held, depth + 1)
+  const preview = await readOlderPowerPointStorage(source)
+  return preview.kind === 'presentation' ? slidesText(preview.slides) : undefined
+}
+
+/** The title and lines of each slide of a newer presentation, in order, its objects and drawings left out. */
+async function presentationText(archive: Archive): Promise<{ title: string; lines: string[] }[]> {
+  const presentation = await textOf(archive, 'ppt/presentation.xml')
+  if (presentation === undefined) return []
+  const targets = await relationships(archive, 'ppt/presentation.xml')
+  const slides: { title: string; lines: string[] }[] = []
+  for (const event of xmlEvents(presentation)) {
+    if (slides.length >= SLIDE_LIMIT) break
+    if (event.type !== 'open' || event.name !== 'p:sldId') continue
+    const target = targets.get(event.attributes['r:id'] ?? '')
+    const xml = target === undefined ? undefined : await textOf(archive, target)
+    if (xml !== undefined) slides.push(slideText(xml))
+  }
+  return slides
+}
+
+/**
+ * Slides held as an object, as the text a document quotes: each slide's title strong, then its lines, one under the
+ * other, a slide apart from the next, and as many slides as fit the most of a held document's text shown; and the same
+ * as plain lines, a title on a line of its own.
+ */
+function slidesText(slides: readonly { title: string; lines: readonly string[] }[]): ObjectRead | undefined {
+  const blocks: string[] = []
+  const lines: string[] = []
+  let length = 0
+  for (const slide of slides) {
+    const title = slide.title.replace(/\s+/g, ' ').trim()
+    const own = slide.lines.map((line) => line.replace(/\s+/g, ' ').trim()).filter((line) => line !== '')
+    if (title === '' && own.length === 0) continue
+    const block = [...(title === '' ? [] : [`**${plain(title)}**`]), ...own.map(plain)].join('  \n')
+    if (blocks.length > 0 && length + block.length > HELD_TEXT_LIMIT) {
+      blocks.push('…')
+      break
+    }
+    blocks.push(block)
+    length += block.length
+    lines.push(...(title === '' ? [] : [title]), ...own)
+  }
+  if (blocks.length === 0) return undefined
+  return { kind: 'text', markdown: blocks.join('\n\n').replace(/^/gm, '> ').replace(/^> $/gm, '>'), lines }
 }
 
 async function embeddedSheet(bytes: Uint8Array, options: NumberFormatOptions, depth = 0): Promise<OfficeFigure | undefined> {

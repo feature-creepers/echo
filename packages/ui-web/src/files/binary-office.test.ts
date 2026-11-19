@@ -664,6 +664,90 @@ describe('an object of another app in a document or a presentation', () => {
     expect(read.kind === 'presentation' ? read.slides[1]?.lines : undefined).toEqual(['Minutes', 'All agreed.'])
   })
 
+  it('quotes a presentation held in a document after its paragraph, each slide’s title strong, its text its picture’s words', async () => {
+    const slide = (title: string, ...lines: string[]) =>
+      `<p:sld><p:cSld><p:spTree><p:sp><p:nvSpPr><p:nvPr><p:ph type="title"/></p:nvPr></p:nvSpPr><p:txBody><a:p><a:r><a:t>${title}</a:t></a:r></a:p></p:txBody></p:sp><p:sp><p:txBody>${lines.map((line) => `<a:p><a:r><a:t>${line}</a:t></a:r></a:p>`).join('')}</p:txBody></p:sp></p:spTree></p:cSld></p:sld>`
+    const deck = storedZip({
+      'ppt/presentation.xml': '<p:presentation><p:sldIdLst><p:sldId id="256" r:id="rId2"/><p:sldId id="257" r:id="rId3"/></p:sldIdLst></p:presentation>',
+      'ppt/_rels/presentation.xml.rels':
+        '<Relationships><Relationship Id="rId2" Target="slides/slide1.xml"/><Relationship Id="rId3" Target="slides/slide2.xml"/></Relationships>',
+      'ppt/slides/slide1.xml': slide('Quarterly review', 'Sales *up*'),
+      'ppt/slides/slide2.xml': slide('Next steps', 'Hire two people', 'Open on Sundays')
+    })
+    const body =
+      '<w:p><w:r><w:t xml:space="preserve">We showed: </w:t></w:r><w:r><w:object><v:shape style="width:120pt;height:90pt"><v:imagedata r:id="rId1" o:title=""/></v:shape>' +
+      '<o:OLEObject Type="Embed" ProgID="PowerPoint.Show.12" r:id="rId2"/></w:object></w:r></w:p><w:p><w:r><w:t>After</w:t></w:r></w:p>'
+    const file = storedZip({
+      'word/document.xml': `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}</w:body></w:document>`,
+      'word/_rels/document.xml.rels':
+        '<Relationships><Relationship Id="rId1" Target="media/image1.png"/><Relationship Id="rId2" Target="embeddings/Microsoft_PowerPoint_Presentation.pptx"/></Relationships>',
+      'word/media/image1.png': new Uint8Array(PNG),
+      'word/embeddings/Microsoft_PowerPoint_Presentation.pptx': deck
+    })
+    const preview = await readOffice('docx', file)
+    expect(preview).toMatchObject({
+      markdown: 'We showed:\n\n> **Quarterly review**  \n> Sales \\*up\\*\n>\n> **Next steps**  \n> Hire two people  \n> Open on Sundays\n\nAfter'
+    })
+    const opening = preview.kind === 'document' ? preview.look?.pages[0]?.bands[0]?.blocks[0] : undefined
+    expect(opening).toMatchObject({
+      spans: [{ text: 'We showed: ' }, { placed: { alt: 'Quarterly review Sales *up* Next steps Hire two people Open on Sundays' } }]
+    })
+  })
+
+  it('quotes a presentation of PowerPoint 97 held in a Word 97 document, and gives a slide holding one its lines', async () => {
+    const inner = openCompound(presentation())
+    const storage = {
+      'PowerPoint Document': inner.stream('PowerPoint Document') as Uint8Array,
+      'Current User': inner.stream('Current User') as Uint8Array,
+      '\x01CompObj': new Bytes().zeros(28).u32(18).narrow('PowerPoint.Show.8').u8(0).done()
+    }
+    const text = 'Notes \x13 EMBED PowerPoint.Show.8 \x14\x01\x15\r'
+    const separator = 1024 + text.indexOf('\x14') * 2
+    const shape = artShape(1026, 0x0a00, 1)
+    const entry = storeEntry(blipOf(0xf01e, 0x6e0, PNG))
+    const data = new Bytes()
+      .u32(68 + shape.length + entry.length)
+      .u16(68)
+      .u16(0x64)
+      .padTo(68)
+      .raw(shape)
+      .raw(entry)
+      .done()
+    const object = new Bytes().u16(0x080a).u8(1).u16(0x0855).u8(1).u16(0x6a03).u32(81).done()
+    const picture = new Bytes().u16(0x6a03).u32(0).u16(0x0855).u8(1).done()
+    const file = wordDocument(
+      [
+        { text, format: formatting(0) },
+        { text: 'End\r', format: formatting(0) }
+      ],
+      false,
+      {
+        runs: [
+          { start: 1024, end: separator, properties: new Uint8Array() },
+          { start: separator, end: separator + 2, properties: object },
+          { start: separator + 2, end: separator + 4, properties: picture }
+        ],
+        data,
+        anchors: [],
+        drawings: new Uint8Array(),
+        blip: new Uint8Array(),
+        objects: { _81: storage }
+      }
+    )
+    expect(await readOffice('doc', file)).toMatchObject({
+      markdown: 'Notes\n\n> **Plan**  \n> Train at 9  \n> Museum then dinner  \n> A note of its own\n>\n> **Welcome**\n\nEnd'
+    })
+    // A slide holding a presentation, its program named in its storage, gains the lines of its slides.
+    const read = await readOffice('ppt', presentation(false, false, await packedObject(compound(storage))))
+    expect(read.kind === 'presentation' ? read.slides[1]?.lines : undefined).toEqual([
+      'Plan',
+      'Train at 9',
+      'Museum then dinner',
+      'A note of its own',
+      'Welcome'
+    ])
+  })
+
   it('writes a slide’s as a line of its text, a document’s text as lines, and leaves another object to its picture', async () => {
     const frame = (id: string, program: string) =>
       `<p:graphicFrame><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/presentationml/2006/ole"><p:oleObj name="Object" r:id="${id}" progId="${program}"><p:embed/></p:oleObj></a:graphicData></a:graphic></p:graphicFrame>`
