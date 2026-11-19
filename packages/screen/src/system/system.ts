@@ -15,11 +15,10 @@ export interface ScreenSystem {
   /** A combination as this system's helper presses it. */
   keys(combination: Combination): unknown
   /**
-   * The keys of the whole system a widget's button presses, as this system's helper presses them, and whether its
-   * helper opens a link with its app (docs/SPEC.md, section 9.5). Left out where its helper does neither yet:
-   * buttons that act on the computer are Windows' only, for now.
+   * The keys of the whole system a widget's button presses, as this system's helper presses them (docs/SPEC.md,
+   * section 9.5): `null` for a key this system does not have, such as stop on a Mac.
    */
-  acts?: { systemKeys: Readonly<Record<SystemKey, unknown>> } | undefined
+  systemKeys: Readonly<Record<SystemKey, unknown>>
 }
 
 /** The helper that reads and acts, on one system. */

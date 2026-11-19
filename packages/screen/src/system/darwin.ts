@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import type { SystemKey } from '@repo/core'
 import type { Combination, Modifier } from '../keys.ts'
 import { onceHelper } from './helpers.ts'
 import type { ScreenSystem } from './system.ts'
@@ -47,9 +48,25 @@ export function macKeys({ modifiers, key }: Combination): { code: number | null;
   return { code: code ?? null, character: code === undefined ? key : '', using: modifiers.map((modifier) => USING[modifier]) }
 }
 
+/**
+ * The keys of the whole system a widget's button presses, by the codes of the Mac's special keys (`NX_KEYTYPE_…`):
+ * the system hands the media keys to the app that plays, as the keyboard's own do. A Mac has no stop key.
+ */
+export const MAC_SYSTEM_KEYS: Readonly<Record<SystemKey, number | null>> = {
+  VolumeUp: 0,
+  VolumeDown: 1,
+  VolumeMute: 7,
+  MediaPlayPause: 16,
+  MediaNext: 17,
+  MediaPrevious: 18,
+  MediaStop: null
+}
+
 /** The helper, in JavaScript for Automation. It reads one question on its input and writes one line. */
 const HELPER = String.raw`
 ObjC.import('Foundation')
+ObjC.import('AppKit')
+ObjC.import('CoreGraphics')
 const input = $.NSString.alloc.initWithDataEncoding($.NSFileHandle.fileHandleWithStandardInput.readDataToEndOfFile, $.NSUTF8StringEncoding).js
 const events = Application('System Events')
 const reply = (value) => JSON.stringify(value)
@@ -134,6 +151,26 @@ function press(keys) {
   else events.keystroke(keys.character, { using: keys.using })
 }
 
+// A special key, down then up, as the keyboard sends it: a system-defined event of subtype 8, its code and state in data1.
+function systemKey(code, times) {
+  for (let time = 0; time < times; time++) {
+    if (time > 0) delay(0.03)
+    for (const state of [0xa, 0xb]) {
+      const event = $.NSEvent.otherEventWithTypeLocationModifierFlagsTimestampWindowNumberContextSubtypeData1Data2(
+        14, { x: 0, y: 0 }, state << 8, 0, 0, null, 8, (code << 16) | (state << 8), -1)
+      $.CGEventPost(0, event.CGEvent)
+    }
+  }
+}
+
+// Opened by the app the system gives the link's scheme. The core checked the link first.
+function open(link) {
+  const url = $.NSURL.URLWithString(link)
+  const scheme = link.split(':')[0]
+  if (url.isNil() || $.NSWorkspace.sharedWorkspace.URLForApplicationToOpenURL(url).isNil()) throw new Error('No app on this computer opens ' + scheme + ': links.')
+  if (!$.NSWorkspace.sharedWorkspace.openURL(url)) throw new Error('The ' + scheme + ': link could not be opened.')
+}
+
 function answer(question) {
   const input = question.input || {}
   switch (question.name) {
@@ -191,6 +228,8 @@ function answer(question) {
       for (let time = 0; time < Math.max(1, Math.round(input.screens)); time++) events.keyCode(input.direction === 'down' ? 121 : 116)
       return null
     }
+    case 'systemKey': systemKey(input.key, input.times); return null
+    case 'open': open(input.link); return null
     default: throw new Error('The helper does not know ' + question.name + '.')
   }
 }
@@ -256,5 +295,6 @@ export const darwin: ScreenSystem = {
     },
     close: async () => undefined
   }),
-  keys: macKeys
+  keys: macKeys,
+  systemKeys: MAC_SYSTEM_KEYS
 }

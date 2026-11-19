@@ -1,13 +1,18 @@
-import type { Desktop, DesktopElement, WindowFacts } from '@repo/core'
+import type { Desktop, DesktopElement, SystemKey, WindowFacts } from '@repo/core'
 import { readKey } from './keys.ts'
 import { outlineOf, seekIn } from './outline.ts'
 import { system as thisSystem } from './system/index.ts'
 import type { Helper, RawWindow, ScreenSystem } from './system/system.ts'
 
-/** What a system's helper does for a widget's buttons, or why not, in words for the person who pressed one. */
-const actsOf = (system: ScreenSystem) => {
-  if (!system.acts) throw new Error('Buttons that act on the computer work on Windows only, for now.')
-  return system.acts
+/** A key of the whole system as the person names it, to say that a computer has none. */
+const KEY_WORDS: Record<SystemKey, string> = {
+  MediaPlayPause: 'play and pause',
+  MediaNext: 'next',
+  MediaPrevious: 'previous',
+  MediaStop: 'stop',
+  VolumeUp: 'volume up',
+  VolumeDown: 'volume down',
+  VolumeMute: 'mute'
 }
 
 /** How many elements of a window are read at most: a large app's tree has thousands, most of them never used. */
@@ -135,11 +140,12 @@ export function createDesktop({ folder, own = [], system = thisSystem }: Desktop
     },
 
     async systemKey(key, times) {
-      await acted(ask('systemKey', { key: actsOf(system).systemKeys[key], times }))
+      const pressed = system.systemKeys[key]
+      if (pressed === null) throw new Error(`This computer has no ${KEY_WORDS[key]} key.`)
+      await acted(ask('systemKey', { key: pressed, times }))
     },
 
     async open(link) {
-      actsOf(system)
       await ask('open', { link })
     },
 

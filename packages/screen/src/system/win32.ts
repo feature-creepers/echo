@@ -521,5 +521,5 @@ export const win32: ScreenSystem = {
     })
   },
   keys: windowsKeys,
-  acts: { systemKeys: WINDOWS_SYSTEM_KEYS }
+  systemKeys: WINDOWS_SYSTEM_KEYS
 }
