@@ -333,6 +333,44 @@ describe('an Office file previewed', () => {
     })
   })
 
+  it('draws a chart that kept no values, as some programs write them, from the cells of the sheets it names', async () => {
+    const formula = (kind: string, reference: string) => `<c:${kind}Ref><c:f>${reference}</c:f></c:${kind}Ref>`
+    const file = await zip({
+      'xl/workbook.xml': '<workbook><sheets><sheet name="Chart" r:id="rId1"/><sheet name="Visits by month" r:id="rId2"/></sheets></workbook>',
+      'xl/_rels/workbook.xml.rels':
+        '<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Target="worksheets/sheet2.xml"/></Relationships>',
+      'xl/worksheets/sheet1.xml': '<worksheet><sheetData/><drawing r:id="rId1"/></worksheet>',
+      'xl/worksheets/_rels/sheet1.xml.rels': '<Relationships><Relationship Id="rId1" Target="../drawings/drawing1.xml"/></Relationships>',
+      'xl/worksheets/sheet2.xml':
+        '<worksheet><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Month</t></is></c><c r="B1" t="inlineStr"><is><t>Visits</t></is></c></row>' +
+        '<row r="2"><c r="A2" t="inlineStr"><is><t>May</t></is></c><c r="B2"><v>1200</v></c></row>' +
+        '<row r="3"><c r="A3" t="inlineStr"><is><t>June</t></is></c><c r="B3"><v>1500</v></c></row></sheetData></worksheet>',
+      'xl/drawings/drawing1.xml':
+        '<xdr:wsDr><xdr:twoCellAnchor><xdr:graphicFrame><a:graphic><a:graphicData><c:chart r:id="rId1"/></a:graphicData></a:graphic></xdr:graphicFrame></xdr:twoCellAnchor></xdr:wsDr>',
+      'xl/drawings/_rels/drawing1.xml.rels': '<Relationships><Relationship Id="rId1" Target="../charts/chart1.xml"/></Relationships>',
+      'xl/charts/chart1.xml':
+        `<c:chartSpace><c:chart><c:plotArea><c:barChart><c:ser><c:tx>${formula('str', "'Visits by month'!$B$1")}</c:tx>` +
+        `<c:cat>${formula('str', "'Visits by month'!$A$2:$A$3")}</c:cat><c:val>${formula('num', "'Visits by month'!$B$2:$B$3")}</c:val></c:ser></c:barChart></c:plotArea></c:chart></c:chartSpace>`
+    })
+    const read = await readOffice('xlsx', file)
+    expect(read.kind === 'workbook' ? read.sheets[0]?.figures : undefined).toEqual([
+      {
+        kind: 'chart',
+        title: '',
+        chart: 'bar',
+        series: [
+          {
+            name: 'Visits',
+            points: [
+              { x: 'May', y: 1200 },
+              { x: 'June', y: 1500 }
+            ]
+          }
+        ]
+      }
+    ])
+  })
+
   it('says when a file is not what its name says', async () => {
     await expect(readOffice('docx', await zip({ 'other.xml': '<a/>' }))).rejects.toThrow('not a Word document')
     await expect(readOffice('xlsx', await zip({ 'other.xml': '<a/>' }))).rejects.toThrow('not an Excel workbook')

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { emuPixels, lengthPixels, pictureType, readChart, readOpenChart } from './office-figures.ts'
+import { type CellValue, cellRange, emuPixels, lengthPixels, pictureType, readChart, readOpenChart } from './office-figures.ts'
 import { type InlinePart, inlineLines, joinBlocks } from './office-text.ts'
 
 const bytes = (...values: number[]) => new Uint8Array(values)
@@ -137,6 +137,62 @@ describe('a chart of Word, Excel or PowerPoint', () => {
       '<c:numRef><c:numCache><c:formatCode>mmm yyyy</c:formatCode><c:pt idx="0"><c:v>45231</c:v></c:pt><c:pt idx="1"><c:v>45261</c:v></c:pt></c:numCache></c:numRef>'
     const chart = await readChart(chartSpace('lineChart', '', series('A', dates, cached('num', '1', '2'))), { locale: 'en-US' })
     expect(chart?.series[0]?.points.map((point) => point.x)).toEqual(['Nov 2023', 'Dec 2023'])
+  })
+
+  it('reads a series that kept no values from the cells its formulas name', async () => {
+    const sheet = new Map<string, CellValue>([
+      ['0,1', { text: 'Visitors' }],
+      ['1,0', { text: 'May' }],
+      ['1,1', { text: '1,200', number: 1200 }],
+      ['2,0', { text: 'June' }],
+      ['2,1', { text: '1,500', number: 1500 }]
+    ])
+    const cells = cellRange(new Map([['My sheet', sheet]]))
+    const named = (formula: string) => `<c:strRef><c:f>${formula}</c:f></c:strRef>`
+    const xml = chartSpace(
+      'barChart',
+      '',
+      `<c:ser><c:tx>${named("'My sheet'!$B$1")}</c:tx><c:cat>${named("'my SHEET'!$A$2:$A$3")}</c:cat><c:val><c:numRef><c:f>'My sheet'!$B$2:$B$3</c:f></c:numRef></c:val></c:ser>`
+    )
+    expect(await readChart(xml, {}, cells)).toEqual({
+      title: '',
+      chart: 'bar',
+      series: [
+        {
+          name: 'Visitors',
+          points: [
+            { x: 'May', y: 1200 },
+            { x: 'June', y: 1500 }
+          ]
+        }
+      ]
+    })
+    expect(await readChart(xml)).toBeUndefined()
+  })
+
+  it.each<[string, string[] | undefined]>([
+    ['Data!$A$1', ['a']],
+    ['Data!A1:B2', ['a', 'b', 'c', '']],
+    ['(Data!$B$1:$A$1)', ['a', 'b']],
+    ["'It''s'!$A$1", ['quoted']],
+    ['Missing!$A$1', undefined],
+    ['Data!$A:$A', undefined],
+    ['Data!$A$1,Data!$B$1', undefined]
+  ])('reads the cells %j names', (formula, texts) => {
+    const cells = cellRange(
+      new Map([
+        [
+          'Data',
+          new Map<string, CellValue>([
+            ['0,0', { text: 'a' }],
+            ['0,1', { text: 'b' }],
+            ['1,0', { text: 'c' }]
+          ])
+        ],
+        ["It's", new Map<string, CellValue>([['0,0', { text: 'quoted' }]])]
+      ])
+    )
+    expect(cells(formula)?.map((cell) => cell.text)).toEqual(texts)
   })
 
   it('has nothing to draw when no series kept a value', async () => {

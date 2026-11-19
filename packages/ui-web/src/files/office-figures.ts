@@ -12,6 +12,45 @@ import { xmlEvents } from './xml.ts'
 /** The most figures a file shows, and the most bytes its pictures hold together: a preview, not the file. */
 export const FIGURE_LIMIT = 200
 export const PICTURE_BYTES_LIMIT = 64 * 1024 * 1024
+/** A cell's value as a chart reads it: what the sheet shows, and its number when it holds one. */
+export interface CellValue {
+  text: string
+  number?: number | undefined
+}
+
+/** The values of the cells a formula names, `Sheet1!$B$2:$B$5`, in order; none for a formula naming no cells read. */
+export type CellRange = (formula: string) => CellValue[] | undefined
+
+/** The most cells a chart's formula is read for. */
+const RANGE_LIMIT = 1000
+
+/** A column's number from its letters: "A" is 0, "AB" is 27. */
+const columnNumber = (letters: string) => [...letters.toUpperCase()].reduce((column, letter) => column * 26 + letter.charCodeAt(0) - 64, 0) - 1
+
+/**
+ * The cells of a workbook's sheets, by sheet name, as a range a chart's formula names reads them: a cell or a block of
+ * them, `'Sheet 1'!$A$2:$B$9`, its sheet's name in quotes when it has to be, row by row.
+ */
+export function cellRange(sheets: ReadonlyMap<string, ReadonlyMap<string, CellValue>>): CellRange {
+  const folded = new Map([...sheets].map(([name, cells]) => [name.toLowerCase(), cells]))
+  return (formula) => {
+    const match = /^\(?(?:'((?:[^']|'')+)'|([^!'(),]+))!\$?([A-Z]{1,3})\$?(\d{1,7})(?::\$?([A-Z]{1,3})\$?(\d{1,7}))?\)?$/i.exec(formula.trim())
+    if (!match) return undefined
+    const name = match[1]?.replace(/''/g, "'") ?? match[2] ?? ''
+    const cells = sheets.get(name) ?? folded.get(name.toLowerCase())
+    if (!cells) return undefined
+    const [fromColumn, fromRow] = [columnNumber(match[3] as string), Number(match[4]) - 1]
+    const [toColumn, toRow] = match[5] === undefined ? [fromColumn, fromRow] : [columnNumber(match[5]), Number(match[6]) - 1]
+    const values: CellValue[] = []
+    for (let row = Math.min(fromRow, toRow); row <= Math.max(fromRow, toRow); row++)
+      for (let column = Math.min(fromColumn, toColumn); column <= Math.max(fromColumn, toColumn); column++) {
+        if (values.length >= RANGE_LIMIT) return values
+        values.push(cells.get(`${row},${column}`) ?? { text: '' })
+      }
+    return values
+  }
+}
+
 /** The most series and points a chart draws. */
 const SERIES_LIMIT = 6
 const POINT_LIMIT = 200
@@ -56,10 +95,13 @@ export class Figures {
   private readonly found = new Map<string, number>()
   private readonly archive: Archive
   private readonly options: NumberFormatOptions
+  private readonly cells: CellRange | undefined
 
-  constructor(archive: Archive, options: NumberFormatOptions = {}) {
+  /** The figures of a file, its numbers written as `options` says, its charts' formulas read from `cells` when given. */
+  constructor(archive: Archive, options: NumberFormatOptions = {}, cells?: CellRange) {
     this.archive = archive
     this.options = options
+    this.cells = cells
   }
 
   /** The picture in a part of the archive, by its place in the list; none when there is no such part or no room. */
@@ -80,13 +122,13 @@ export class Figures {
   async chart(
     part: string | undefined,
     alt: string,
-    read: (xml: string, options: NumberFormatOptions) => Promise<OfficeChart | undefined>
+    read: (xml: string, options: NumberFormatOptions, cells?: CellRange) => Promise<OfficeChart | undefined>
   ): Promise<number | undefined> {
     return this.add(JSON.stringify(['chart', part, alt]), async () => {
       const xml = part === undefined ? undefined : await textOf(this.archive, part).catch(() => undefined)
       // An object that is no chart, an equation or a document within the document, shows nothing here.
       if (xml === undefined || part === undefined || !/<(c:chartSpace|chart:chart)\b/.test(xml)) return undefined
-      const chart = await read(xml, this.options)
+      const chart = await read(xml, this.options, this.cells)
       return chart ? { kind: 'chart', ...chart } : { kind: 'unshown', alt, what: 'chart' }
     })
   }
@@ -111,11 +153,27 @@ function chartKind(name: string): OfficeChart['chart'] {
   return 'bar'
 }
 
-/** A series as it is read: its name and its values and labels by their place. */
+/** A series as it is read: its name and its values and labels by their place, and the formulas naming their cells. */
 interface SeriesRead {
   name: string
   labels: Map<number, string>
   values: Map<number, number>
+  formulas?: { name?: string; labels?: string; values?: string }
+}
+
+/** A series' name, labels and values that its chart kept none of, read from the cells its formulas name. */
+function fromCells(series: SeriesRead, cells: CellRange | undefined): void {
+  const { formulas } = series
+  if (!cells || !formulas) return
+  if (series.values.size === 0 && formulas.values)
+    cells(formulas.values)?.forEach((cell, at) => {
+      if (cell.number !== undefined) series.values.set(at, cell.number)
+    })
+  if (series.labels.size === 0 && formulas.labels)
+    cells(formulas.labels)?.forEach((cell, at) => {
+      series.labels.set(at, cell.text)
+    })
+  if (series.name === '' && formulas.name) series.name = cells(formulas.name)?.[0]?.text ?? ''
 }
 
 /** The series read as the Chart block draws them: the points with a value, labelled by their category, or their place. */
@@ -134,9 +192,10 @@ function chartSeries(read: readonly SeriesRead[]): OfficeChart['series'] {
 
 /**
  * A chart of Word, Excel or PowerPoint (DrawingML, `c:chartSpace`), from the values each series kept: its title, the
- * kind of its first plot, and each series' name, categories and values, as cached when the file was saved.
+ * kind of its first plot, and each series' name, categories and values, as cached when the file was saved. A series
+ * that kept none, as some programs write them, is read from the cells its formulas name, when `cells` reads them.
  */
-export async function readChart(xml: string, options: NumberFormatOptions = {}): Promise<OfficeChart | undefined> {
+export async function readChart(xml: string, options: NumberFormatOptions = {}, cells?: CellRange): Promise<OfficeChart | undefined> {
   let title = ''
   let inTitle = false
   let titleText = false
@@ -150,6 +209,7 @@ export async function readChart(xml: string, options: NumberFormatOptions = {}):
   let value: string | undefined
   // Categories kept as numbers are labelled as their format shows them: dates, most often.
   let format: string | undefined
+  let formula: string | undefined
   for (const event of xmlEvents(xml)) {
     if (event.type === 'open') {
       const name = event.name
@@ -168,15 +228,20 @@ export async function readChart(xml: string, options: NumberFormatOptions = {}):
       else if (name === 'c:lvl') levels++
       else if (name === 'c:pt') point = Number(event.attributes.idx ?? 0)
       else if ((name === 'c:v' || name === 'c:formatCode') && reading) value = ''
+      else if (name === 'c:f' && reading) formula = ''
     } else if (event.type === 'text') {
       if (value !== undefined) value += event.text
+      else if (formula !== undefined) formula += event.text
       else if (titleText) title += event.text
     } else {
       const name = event.name
       if (name === 'c:title') inTitle = false
       else if ((name === 'a:t' || name === 'c:v') && titleText) titleText = false
       else if (name === 'a:p' && inTitle) title += ' '
-      else if (name === 'c:formatCode' && value !== undefined) {
+      else if (name === 'c:f' && formula !== undefined) {
+        if (current && reading) current.formulas = { ...current.formulas, [reading]: formula }
+        formula = undefined
+      } else if (name === 'c:formatCode' && value !== undefined) {
         if (reading === 'labels') format = value
         value = undefined
       } else if (name === 'c:v' && value !== undefined && current && reading) {
@@ -192,6 +257,7 @@ export async function readChart(xml: string, options: NumberFormatOptions = {}):
         value = undefined
       } else if (name === 'c:tx' || name === 'c:cat' || name === 'c:xVal' || name === 'c:val' || name === 'c:yVal') reading = undefined
       else if (name === 'c:ser' && current) {
+        fromCells(current, cells)
         series.push(current)
         current = undefined
       }

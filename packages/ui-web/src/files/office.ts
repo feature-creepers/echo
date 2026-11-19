@@ -12,7 +12,7 @@ import { type Archive, openArchive, relationships, resolvePart, textOf } from '.
 import { readOlderExcel, readOlderPowerPoint, readOlderWord } from './binary-office.ts'
 import { openCompound } from './compound.ts'
 import { builtInFormat, formatNumber, generalNumber, type NumberFormatOptions } from './number-format.ts'
-import { emuPixels, Figures, lengthPixels, readChart, readOpenChart } from './office-figures.ts'
+import { type CellValue, cellRange, emuPixels, Figures, lengthPixels, readChart, readOpenChart } from './office-figures.ts'
 import {
   BLOCK_LIMIT,
   COLUMN_LIMIT,
@@ -449,7 +449,6 @@ export async function readWorkbook(archive: Archive, options: NumberFormatOption
   // A workbook may count its dates from 1904.
   const date1904 = /<workbookPr\b[^>]*\bdate1904="(1|true)"/.test(workbook)
   const shown: NumberFormatOptions = { ...options, date1904 }
-  const figures = new Figures(archive, shown)
   const stylesPart = [...targets.values()].find((target) => /styles\.xml$/i.test(target)) ?? 'xl/styles.xml'
   const formats = await workbookFormats(archive, stylesPart)
 
@@ -470,28 +469,41 @@ export async function readWorkbook(archive: Archive, options: NumberFormatOption
     } else if (event.type === 'text' && inText && shared !== undefined) shared += event.text
   }
 
-  const sheets: { name: string; rows: string[][]; cut: boolean; placed: number[] }[] = []
+  const sheets: { name: string; rows: string[][]; cut: boolean; cells: Map<string, CellValue>; xml: string; target: string }[] = []
   for (const event of xmlEvents(workbook)) {
     if (sheets.length >= SHEET_LIMIT) break
     if (event.type !== 'open' || event.name !== 'sheet') continue
     const target = targets.get(event.attributes['r:id'] ?? '')
     const xml = target === undefined ? undefined : await textOf(archive, target)
     if (xml === undefined || target === undefined) continue
+    sheets.push({ name: event.attributes.name ?? `Sheet ${sheets.length + 1}`, ...sheetRows(xml, strings, formats, shown), xml, target })
+  }
+  // The sheets are read before their charts, which may name their cells rather than keep their values.
+  const figures = new Figures(archive, shown, cellRange(new Map(sheets.map((sheet) => [sheet.name, sheet.cells]))))
+  const read: { name: string; rows: string[][]; cut: boolean; figures: OfficeFigure[] }[] = []
+  for (const { name, rows, cut, xml, target } of sheets) {
     // A sheet's pictures and charts are in its drawing, a part of their own.
     const drawing = (await relationships(archive, target)).get(/<drawing\b[^>]*\br:id="([^"]*)"/.exec(xml)?.[1] ?? '')
     const drawn = drawing === undefined ? undefined : await textOf(archive, drawing)
     const placed = drawn === undefined || drawing === undefined ? [] : await drawnFigures(drawn, await relationships(archive, drawing), figures)
-    sheets.push({ name: event.attributes.name ?? `Sheet ${sheets.length + 1}`, ...sheetRows(xml, strings, formats, shown), placed })
+    read.push({ name, rows, cut, figures: figuresAt(figures, placed) })
   }
-  return { kind: 'workbook', sheets: sheets.map(({ placed, ...sheet }) => ({ ...sheet, figures: figuresAt(figures, placed) })) }
+  return { kind: 'workbook', sheets: read }
 }
 
 /** The figures found at these places of a file's list. */
 const figuresAt = (figures: Figures, places: readonly number[]) => places.flatMap((place) => figures.list[place] ?? [])
 
 /** The rows of a sheet, its cells in their columns, empty ones kept so the columns line up. */
-function sheetRows(xml: string, strings: readonly string[], formats: readonly string[], options: NumberFormatOptions): { rows: string[][]; cut: boolean } {
+function sheetRows(
+  xml: string,
+  strings: readonly string[],
+  formats: readonly string[],
+  options: NumberFormatOptions
+): { rows: string[][]; cut: boolean; cells: Map<string, CellValue> } {
   const rows: string[][] = []
+  // Each cell shown, by its row and column, with its number, for the charts that name it.
+  const cells = new Map<string, CellValue>()
   let cut = false
   let row: string[] | undefined
   let cell: { column: number; type: string; value: string; format: string } | undefined
@@ -522,7 +534,10 @@ function sheetRows(xml: string, strings: readonly string[], formats: readonly st
       else if (event.name === 'c' && cell && row) {
         if (cell.column < COLUMN_LIMIT) {
           while (row.length < cell.column) row.push('')
-          row[cell.column] = cellText(cell, strings, options)
+          const text = cellText(cell, strings, options)
+          row[cell.column] = text
+          const number = cell.type === 'n' && cell.value.trim() !== '' ? Number(cell.value) : undefined
+          cells.set(`${rows.length},${cell.column}`, { text, number: number !== undefined && Number.isFinite(number) ? number : undefined })
         } else cut = true
         cell = undefined
       } else if (event.name === 'row' && row) {
@@ -532,7 +547,7 @@ function sheetRows(xml: string, strings: readonly string[], formats: readonly st
     }
   }
   while (rows.length > 0 && (rows.at(-1)?.every((value) => value === '') ?? false)) rows.pop()
-  return { rows, cut }
+  return { rows, cut, cells }
 }
 
 /** A cell's value as the sheet shows it: a number as its format shows it, text as it is. */
