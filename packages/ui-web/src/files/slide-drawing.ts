@@ -15,17 +15,46 @@ import { type Archive, partOf, relationships, textOf } from './archive.ts'
 import { drawMetafile } from './metafile.ts'
 import { pictureType } from './office-figures.ts'
 import type { OfficeChart } from './office-text.ts'
+import {
+  type Box,
+  base64,
+  bulletCharacter,
+  Canvas,
+  chartElements,
+  css,
+  type DrawnSlide,
+  type Fill,
+  fillAttribute,
+  fromHex,
+  fromLightness,
+  GROUP_DEPTH_LIMIT,
+  listNumber,
+  number,
+  type Outline,
+  type Paint,
+  PICTURE_LIMIT,
+  pictureElement,
+  placed,
+  presetPath,
+  type RunStyle,
+  rectanglePath,
+  SHAPE_LIMIT,
+  type ShapePath,
+  shapeElement,
+  slideSvg,
+  strokeAttributes,
+  type TextBullet,
+  type TextFrame,
+  type TextParagraph,
+  type TextPiece,
+  textDiv,
+  textHtml,
+  toLightness
+} from './slide-svg.ts'
 import { childAt, childrenNamed, textIn, type XmlNode, xmlTree } from './xml.ts'
 
 /** English Metric Units to a pixel at 96 to the inch. */
 const EMU_PER_PIXEL = 9525
-
-/** The most shapes a slide draws, groups and their insides counted, and how deep groups go. */
-const SHAPE_LIMIT = 2000
-const GROUP_DEPTH_LIMIT = 16
-
-/** The most bytes of pictures written into one slide's drawing. */
-const PICTURE_LIMIT = 32 * 1024 * 1024
 
 /** A length of DrawingML, in English Metric Units, in pixels; a value that is no number is the fallback. */
 const pixels = (value: string | undefined, fallback = 0) => {
@@ -33,53 +62,7 @@ const pixels = (value: string | undefined, fallback = 0) => {
   return value !== undefined && Number.isFinite(found) ? found / EMU_PER_PIXEL : fallback
 }
 
-/** A number as SVG and CSS take it: two decimals at most. */
-const number = (value: number) => (Number.isFinite(value) ? String(Math.round(value * 100) / 100) : '0')
-
-const MARKS: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }
-
-/** Text written into XML: its marks escaped, and the characters XML does not take left out. */
-const escaped = (text: string) => {
-  let written = ''
-  for (const character of text) {
-    const code = character.codePointAt(0) ?? 0
-    if ((code < 0x20 && code !== 0x09 && code !== 0x0a) || code === 0xfffe || code === 0xffff) continue
-    written += MARKS[character] ?? character
-  }
-  return written
-}
-
-/** Bytes as base64, a piece at a time. */
-function base64(bytes: Uint8Array): string {
-  let binary = ''
-  for (let at = 0; at < bytes.length; at += 0x8000) binary += String.fromCharCode(...bytes.subarray(at, at + 0x8000))
-  return btoa(binary)
-}
-
 // Colours
-
-/** A colour as a slide paints it: its red, green and blue, and how opaque it is. */
-interface Paint {
-  red: number
-  green: number
-  blue: number
-  opacity: number
-}
-
-const css = (paint: Paint) =>
-  `#${[paint.red, paint.green, paint.blue]
-    .map((part) =>
-      Math.round(Math.min(255, Math.max(0, part)))
-        .toString(16)
-        .padStart(2, '0')
-    )
-    .join('')}`
-
-const fromHex = (hex: string | undefined): Paint | undefined => {
-  if (!hex || !/^[0-9a-f]{6}$/i.test(hex)) return undefined
-  const value = Number.parseInt(hex, 16)
-  return { red: value >> 16, green: (value >> 8) & 0xff, blue: value & 0xff, opacity: 1 }
-}
 
 const PRESET_COLOURS: Record<string, string> = {
   black: '000000',
@@ -94,35 +77,6 @@ const PRESET_COLOURS: Record<string, string> = {
   purple: '800080',
   ltGray: 'D3D3D3',
   dkGray: 'A9A9A9'
-}
-
-/** A colour's hue, saturation and lightness, each from 0 to 1, and back. */
-function toLightness({ red, green, blue }: Paint): [number, number, number] {
-  const [r, g, b] = [red / 255, green / 255, blue / 255]
-  const highest = Math.max(r, g, b)
-  const lowest = Math.min(r, g, b)
-  const lightness = (highest + lowest) / 2
-  if (highest === lowest) return [0, 0, lightness]
-  const spread = highest - lowest
-  const saturation = lightness > 0.5 ? spread / (2 - highest - lowest) : spread / (highest + lowest)
-  const hue = highest === r ? ((g - b) / spread + (g < b ? 6 : 0)) / 6 : highest === g ? ((b - r) / spread + 2) / 6 : ((r - g) / spread + 4) / 6
-  return [hue, saturation, lightness]
-}
-
-function fromLightness(hue: number, saturation: number, lightness: number, opacity: number): Paint {
-  if (saturation === 0) return { red: lightness * 255, green: lightness * 255, blue: lightness * 255, opacity }
-  const upper = lightness < 0.5 ? lightness * (1 + saturation) : lightness + saturation - lightness * saturation
-  const lower = 2 * lightness - upper
-  const channel = (offset: number) => {
-    let turn = hue + offset
-    if (turn < 0) turn += 1
-    if (turn > 1) turn -= 1
-    if (turn < 1 / 6) return lower + (upper - lower) * 6 * turn
-    if (turn < 1 / 2) return upper
-    if (turn < 2 / 3) return lower + (upper - lower) * (2 / 3 - turn) * 6
-    return lower
-  }
-  return { red: channel(1 / 3) * 255, green: channel(0) * 255, blue: channel(-1 / 3) * 255, opacity }
 }
 
 /** A colour changed as its element's children say: lighter or darker, tinted, shaded, less opaque. */
@@ -235,20 +189,6 @@ function paintOf(node: XmlNode | undefined, deck: Deck, placeholder?: Paint): Pa
 
 // Fills and lines
 
-type Fill =
-  | { kind: 'none' }
-  | { kind: 'paint'; paint: Paint }
-  | { kind: 'gradient'; stops: { offset: number; paint: Paint }[]; angle: number; radial: boolean }
-  | { kind: 'picture'; href: string; crop: Crop | undefined }
-
-/** How much of a picture is cut away on each side, from 0 to 1. */
-interface Crop {
-  left: number
-  top: number
-  right: number
-  bottom: number
-}
-
 const FILLS = new Set(['a:noFill', 'a:solidFill', 'a:gradFill', 'a:blipFill', 'a:pattFill'])
 
 /** The fill an element of properties gives, when it gives one. */
@@ -301,13 +241,6 @@ async function pictureAddress(id: string | undefined, deck: Deck, part: Part): P
   return `data:image/svg+xml;base64,${base64(drawn.svg)}`
 }
 
-/** An outline: its paint, none for no line, its width in pixels and its dashes. */
-interface Outline {
-  paint: Paint | undefined
-  width: number
-  dashes: string | undefined
-}
-
 const DASHES: Record<string, number[]> = {
   dash: [4, 3],
   sysDash: [3, 1],
@@ -333,17 +266,6 @@ function outlineOf(line: XmlNode | undefined, deck: Deck, base: Outline | undefi
 }
 
 // Text
-
-interface RunStyle {
-  size?: number | undefined
-  bold?: boolean | undefined
-  italic?: boolean | undefined
-  underline?: boolean | undefined
-  strike?: boolean | undefined
-  caps?: boolean | undefined
-  paint?: Paint | undefined
-  font?: string | undefined
-}
 
 type Bullet =
   | { kind: 'none' }
@@ -396,7 +318,7 @@ function paragraphStyle(properties: XmlNode | undefined, deck: Deck): ParagraphS
   if (childAt(properties, 'a:buNone')) bullet = { kind: 'none' }
   else if (childAt(properties, 'a:buChar')) {
     const character = childAt(properties, 'a:buChar')?.attributes.char ?? '•'
-    bullet = { kind: 'character', character: SYMBOL_BULLETS[character] ?? character, paint: bulletPaint }
+    bullet = { kind: 'character', character: bulletCharacter(character), paint: bulletPaint }
   } else if (childAt(properties, 'a:buAutoNum')) {
     const numbering = childAt(properties, 'a:buAutoNum')?.attributes ?? {}
     bullet = { kind: 'number', scheme: numbering.type ?? 'arabicPeriod', start: Number(numbering.startAt) || 1, paint: bulletPaint }
@@ -429,72 +351,25 @@ const mergeParagraph = (under: ParagraphStyle, over: ParagraphStyle): ParagraphS
   run: { ...under.run, ...defined(over.run) }
 })
 
-/** The characters symbol fonts keep their usual bullets at, as the characters they look like. */
-const SYMBOL_BULLETS: Record<string, string> = { '§': '▪', Ø: '➢', ü: '✓', q: '❑', v: '❖', n: '■', l: '●', o: '○', Ÿ: '•', '': '•' }
-
-/** A number in a list, as its scheme writes it. */
-function listNumber(scheme: string, value: number): string {
-  const roman = (count: number) => {
-    const numerals: [number, string][] = [
-      [1000, 'm'],
-      [900, 'cm'],
-      [500, 'd'],
-      [400, 'cd'],
-      [100, 'c'],
-      [90, 'xc'],
-      [50, 'l'],
-      [40, 'xl'],
-      [10, 'x'],
-      [9, 'ix'],
-      [5, 'v'],
-      [4, 'iv'],
-      [1, 'i']
-    ]
-    let left = count
-    let written = ''
-    for (const [amount, numeral] of numerals)
-      while (left >= amount) {
-        written += numeral
-        left -= amount
-      }
-    return written
-  }
-  const letters = (count: number) => {
-    let left = count
-    let written = ''
-    while (left > 0) {
-      written = String.fromCharCode(97 + ((left - 1) % 26)) + written
-      left = Math.floor((left - 1) / 26)
-    }
-    return written
-  }
-  const body = /^roman/.test(scheme) ? roman(value) : /^alpha/.test(scheme) ? letters(value) : String(value)
-  const shown = /Uc/.test(scheme) ? body.toUpperCase() : body
-  return /ParenBoth$/.test(scheme) ? `(${shown})` : /ParenR$/.test(scheme) ? `${shown})` : /Period$/.test(scheme) ? `${shown}.` : shown
-}
-
 /**
- * The text of a shape (`p:txBody`) as XHTML in its box: its paragraphs with their styles over those the levels give
- * (`levels`, from the master's down to its placeholder's), each bullet or number, each run in its font, size and
- * colour. The colour its style gives (`defaults.over`) comes over the levels' and under the shape's own.
+ * The text of a shape (`p:txBody`) as a frame: its paragraphs with their styles over those the levels give (`levels`,
+ * from the master's down to its placeholder's), each bullet or number, each run in its font, size and colour. The
+ * colour its style gives (`defaults.over`) comes over the levels' and under the shape's own.
  */
-function textHtml(
+function textFrame(
   body: XmlNode,
   levels: readonly (XmlNode | undefined)[],
-  box: { width: number; height: number },
   deck: Deck,
   defaults: { paint: Paint | undefined; font: string; over?: Paint | undefined },
   inherited: Record<string, string>
-): string {
+): TextFrame {
   const bodyProperties = { ...inherited, ...(childAt(body, 'a:bodyPr')?.attributes ?? {}) }
   const autofit = childAt(body, 'a:bodyPr', 'a:normAutofit')?.attributes
   const scale = (Number(autofit?.fontScale) || 100_000) / 100_000
   const reduction = (Number(autofit?.lnSpcReduction) || 0) / 100_000
   const inset = (name: string, fallback: number) => pixels(bodyProperties[name], fallback)
-  const anchor = bodyProperties.anchor === 'ctr' ? 'center' : bodyProperties.anchor === 'b' ? 'flex-end' : 'flex-start'
-  const wraps = bodyProperties.wrap !== 'none'
   const counters = new Map<number, number>()
-  const paragraphs: string[] = []
+  const paragraphs: TextParagraph[] = []
   for (const paragraph of childrenNamed(body, 'a:p')) {
     const own = childAt(paragraph, 'a:pPr')
     const level = Math.min(Math.max(Number(own?.attributes.lvl) || 0, 0), 8)
@@ -503,99 +378,59 @@ function textHtml(
     if (defaults.over) style = { ...style, run: { ...style.run, paint: defaults.over } }
     style = mergeParagraph(style, paragraphStyle(childAt(childAt(body, 'a:lstStyle'), `a:lvl${level + 1}pPr`), deck))
     style = mergeParagraph(style, paragraphStyle(own, deck))
-    const runs: string[] = []
+    const pieces: TextPiece[] = []
     let firstSize: number | undefined
     for (const part of paragraph.children) {
-      if (part.name === 'a:br') runs.push('<br/>')
+      if (part.name === 'a:br') pieces.push('break')
       if (part.name !== 'a:r' && part.name !== 'a:fld') continue
       const run: RunStyle = { ...style.run, ...defined(runStyle(childAt(part, 'a:rPr'), deck)) }
       const text = textIn(childAt(part, 'a:t') ?? { name: '', attributes: {}, children: [], text: '' })
       if (text === '') continue
       firstSize ??= run.size
-      runs.push(`<span style="${runCss(run, deck, scale)}">${escaped(text)}</span>`)
+      pieces.push({ text, style: runLook(run, deck, scale) })
     }
     const size = (firstSize ?? style.run.size ?? runStyle(childAt(paragraph, 'a:endParaRPr'), deck).size ?? 18) * scale
-    const spacing =
-      style.lineHeight !== undefined ? `${number((style.lineHeight * 4) / 3)}px` : number(1.2 * Math.max(0.5, (style.lineSpacing ?? 1) - reduction))
-    const paragraphCss = [
-      'margin:0',
-      `text-align:${style.align === 'ctr' ? 'center' : style.align === 'r' ? 'right' : style.align === 'just' || style.align === 'dist' ? 'justify' : 'left'}`,
-      `font-size:${number((size * 4) / 3)}px`,
-      `line-height:${spacing}`,
-      style.marginLeft ? `padding-left:${number(style.marginLeft)}px` : '',
-      style.indent ? `text-indent:${number(style.indent)}px` : '',
-      style.spaceBefore ? `margin-top:${number((style.spaceBefore * 4) / 3)}px` : '',
-      style.spaceAfter ? `margin-bottom:${number((style.spaceAfter * 4) / 3)}px` : ''
-    ]
-      .filter(Boolean)
-      .join(';')
-    let bullet = ''
-    const bulleted = runs.length > 0 && style.bullet && style.bullet.kind !== 'none'
-    if (bulleted && style.bullet && style.bullet.kind !== 'none') {
+    let bullet: TextBullet | undefined
+    if (pieces.length > 0 && style.bullet && style.bullet.kind !== 'none') {
       const count = (counters.get(level) ?? (style.bullet.kind === 'number' ? style.bullet.start : 1) - 1) + 1
       counters.set(level, count)
       for (const deeper of [...counters.keys()]) if (deeper > level) counters.delete(deeper)
-      const mark = style.bullet.kind === 'character' ? style.bullet.character : listNumber(style.bullet.scheme, count)
-      const paint = style.bullet.paint ?? style.run.paint ?? defaults.paint
-      const width = style.indent !== undefined && style.indent < 0 ? -style.indent : undefined
-      bullet = `<span style="display:inline-block;text-indent:0;${width ? `min-width:${number(width)}px;` : 'margin-right:0.4em;'}${paint ? `color:${css(paint)}` : ''}">${escaped(mark)}</span>`
+      bullet = {
+        mark: style.bullet.kind === 'character' ? style.bullet.character : listNumber(style.bullet.scheme, count),
+        paint: style.bullet.paint ?? style.run.paint ?? defaults.paint,
+        width: style.indent !== undefined && style.indent < 0 ? -style.indent : undefined
+      }
     } else counters.delete(level)
-    paragraphs.push(`<p style="${paragraphCss}">${bullet}${runs.length > 0 ? runs.join('') : '&#8203;'}</p>`)
+    paragraphs.push({
+      align: style.align === 'ctr' ? 'center' : style.align === 'r' ? 'right' : style.align === 'just' || style.align === 'dist' ? 'justify' : 'left',
+      size,
+      lineHeight: style.lineHeight,
+      lineSpacing: style.lineHeight !== undefined ? undefined : Math.max(0.5, (style.lineSpacing ?? 1) - reduction),
+      marginLeft: style.marginLeft,
+      indent: style.indent,
+      spaceBefore: style.spaceBefore,
+      spaceAfter: style.spaceAfter,
+      bullet,
+      pieces
+    })
   }
-  const frame = [
-    'width:100%',
-    'height:100%',
-    'box-sizing:border-box',
-    `padding:${number(inset('tIns', 4.8))}px ${number(inset('rIns', 9.6))}px ${number(inset('bIns', 4.8))}px ${number(inset('lIns', 9.6))}px`,
-    'display:flex',
-    'flex-direction:column',
-    `justify-content:${anchor}`,
-    `white-space:${wraps ? 'pre-wrap' : 'pre'}`,
-    'overflow-wrap:break-word',
-    `font-family:${fontStack(defaults.font)}`,
-    defaults.paint ? `color:${css(defaults.paint)}` : 'color:#000000'
-  ].join(';')
-  return `<foreignObject x="0" y="0" width="${number(box.width)}" height="${number(box.height)}" overflow="visible"><div xmlns="http://www.w3.org/1999/xhtml" style="${frame}">${paragraphs.join('')}</div></foreignObject>`
+  return {
+    paragraphs,
+    insets: { top: inset('tIns', 4.8), right: inset('rIns', 9.6), bottom: inset('bIns', 4.8), left: inset('lIns', 9.6) },
+    anchor: bodyProperties.anchor === 'ctr' ? 'middle' : bodyProperties.anchor === 'b' ? 'bottom' : 'top',
+    wraps: bodyProperties.wrap !== 'none',
+    font: defaults.font,
+    paint: defaults.paint
+  }
 }
 
-/** A font's name, then the kind of font to fall back on. */
-const fontStack = (font: string) => {
-  const fallback = /mono|courier|consol/i.test(font)
-    ? 'monospace'
-    : /times|georgia|garamond|cambria|serif/i.test(font) && !/sans/i.test(font)
-      ? 'serif'
-      : 'sans-serif'
-  return font ? `'${font.replace(/['"\\<>&]/g, '')}', ${fallback}` : fallback
-}
-
-function runCss(run: RunStyle, deck: Deck, scale: number): string {
+/** A run's style as it is drawn: its size scaled to fit its box, its font the theme's when it names one. */
+function runLook(run: RunStyle, deck: Deck, scale: number): RunStyle {
   const font = run.font === '+mj-lt' ? deck.theme.major : run.font === '+mn-lt' ? deck.theme.minor : run.font
-  const lines = [run.underline ? 'underline' : '', run.strike ? 'line-through' : ''].filter(Boolean).join(' ')
-  return [
-    run.size !== undefined ? `font-size:${number((run.size * scale * 4) / 3)}px` : '',
-    run.bold ? 'font-weight:bold' : '',
-    run.italic ? 'font-style:italic' : '',
-    lines ? `text-decoration:${lines}` : '',
-    run.caps ? 'text-transform:uppercase' : '',
-    run.paint ? `color:${css(run.paint)}${run.paint.opacity < 1 ? `;opacity:${number(run.paint.opacity)}` : ''}` : '',
-    font && !font.startsWith('+') ? `font-family:${fontStack(font)}` : ''
-  ]
-    .filter(Boolean)
-    .join(';')
+  return { ...run, size: run.size === undefined ? undefined : run.size * scale, font: font && !font.startsWith('+') ? font : undefined }
 }
 
 // Geometry
-
-/** A shape's box on the slide, in pixels, turned and turned over as the slide says. */
-interface Box {
-  x: number
-  y: number
-  width: number
-  height: number
-  rotation: number
-  flipH: boolean
-  flipV: boolean
-}
 
 function boxOf(transform: XmlNode | undefined): Box | undefined {
   const offset = childAt(transform, 'a:off')?.attributes
@@ -612,17 +447,6 @@ function boxOf(transform: XmlNode | undefined): Box | undefined {
   }
 }
 
-/** The SVG transform that puts a shape's own box, from 0, at its place, turned and turned over. */
-function placed(box: Box): string {
-  const centreX = box.width / 2
-  const centreY = box.height / 2
-  const parts = [`translate(${number(box.x)} ${number(box.y)})`]
-  if (box.rotation) parts.push(`rotate(${number(box.rotation)} ${number(centreX)} ${number(centreY)})`)
-  if (box.flipH || box.flipV)
-    parts.push(`translate(${number(box.flipH ? box.width : 0)} ${number(box.flipV ? box.height : 0)}) scale(${box.flipH ? -1 : 1} ${box.flipV ? -1 : 1})`)
-  return parts.join(' ')
-}
-
 /** An adjustment of a preset shape, from 0 to 1 of its reference, or the fallback. */
 const adjustment = (geometry: XmlNode | undefined, name: string, fallback: number) => {
   const guide = childrenNamed(childAt(geometry, 'a:avLst'), 'a:gd').find((one) => one.attributes.name === name)
@@ -630,260 +454,16 @@ const adjustment = (geometry: XmlNode | undefined, name: string, fallback: numbe
   return (Number.isFinite(value) ? value : fallback) / 100_000
 }
 
-const polygon = (points: readonly [number, number][]) => `M${points.map(([x, y]) => `${number(x)} ${number(y)}`).join('L')}Z`
-
-/** Points around an ellipse in a box, the first at its top. */
-const around = (width: number, height: number, count: number, radius = 1, turn = 0): [number, number][] =>
-  Array.from({ length: count }, (_, index) => {
-    const angle = -Math.PI / 2 + turn + (index * 2 * Math.PI) / count
-    return [width / 2 + (width / 2) * radius * Math.cos(angle), height / 2 + (height / 2) * radius * Math.sin(angle)]
-  })
-
-/** A star of points around its box, its inner points at a share of its radius. */
-const star = (width: number, height: number, points: number, inner: number) => {
-  const outer = around(width, height, points)
-  const within = around(width, height, points, inner, Math.PI / points)
-  return polygon(outer.flatMap((point, index) => [point, within[index] as [number, number]]))
-}
-
-/** A shape's outline as SVG path data in its own box, and whether it is closed, to be filled. */
-function geometryPath(properties: XmlNode | undefined, width: number, height: number): { data: string; closed: boolean } {
-  const preset = childAt(properties, 'a:prstGeom')
+/** A shape's outline as SVG path data in its own box: its own paths, or one of the common kinds with its adjustments. */
+function geometryPath(properties: XmlNode | undefined, width: number, height: number): ShapePath {
   const custom = childAt(properties, 'a:custGeom')
   if (custom) return customPath(custom, width, height)
-  const shortest = Math.min(width, height)
-  const kind = preset?.attributes.prst ?? 'rect'
-  const rectangle = {
-    data: polygon([
-      [0, 0],
-      [width, 0],
-      [width, height],
-      [0, height]
-    ]),
-    closed: true
-  }
-  const rounded = (radius: number) => {
-    const r = Math.min(radius, width / 2, height / 2)
-    return {
-      data: `M${number(r)} 0H${number(width - r)}A${number(r)} ${number(r)} 0 0 1 ${number(width)} ${number(r)}V${number(height - r)}A${number(r)} ${number(r)} 0 0 1 ${number(width - r)} ${number(height)}H${number(r)}A${number(r)} ${number(r)} 0 0 1 0 ${number(height - r)}V${number(r)}A${number(r)} ${number(r)} 0 0 1 ${number(r)} 0Z`,
-      closed: true
-    }
-  }
-  const ellipse = {
-    data: `M0 ${number(height / 2)}A${number(width / 2)} ${number(height / 2)} 0 1 1 ${number(width)} ${number(height / 2)}A${number(width / 2)} ${number(height / 2)} 0 1 1 0 ${number(height / 2)}Z`,
-    closed: true
-  }
-  const arrow = (head: number, shaft: number) => {
-    const end = width - head
-    return polygon([
-      [0, height / 2 - shaft],
-      [end, height / 2 - shaft],
-      [end, 0],
-      [width, height / 2],
-      [end, height],
-      [end, height / 2 + shaft],
-      [0, height / 2 + shaft]
-    ])
-  }
-  switch (kind) {
-    case 'rect':
-    case 'flowChartProcess':
-    case 'flowChartPredefinedProcess':
-    case 'flowChartInternalStorage':
-    case 'wedgeRectCallout':
-      return rectangle
-    case 'roundRect':
-    case 'flowChartAlternateProcess':
-    case 'wedgeRoundRectCallout':
-      return rounded(shortest * adjustment(preset, 'adj', 16_667))
-    case 'flowChartTerminator':
-      return rounded(height / 2)
-    case 'ellipse':
-    case 'flowChartConnector':
-    case 'wedgeEllipseCallout':
-    case 'cloud':
-    case 'cloudCallout':
-      return ellipse
-    case 'triangle':
-    case 'flowChartExtract': {
-      const apex = width * adjustment(preset, 'adj', 50_000)
-      return {
-        data: polygon([
-          [apex, 0],
-          [width, height],
-          [0, height]
-        ]),
-        closed: true
-      }
-    }
-    case 'rtTriangle':
-      return {
-        data: polygon([
-          [0, 0],
-          [width, height],
-          [0, height]
-        ]),
-        closed: true
-      }
-    case 'diamond':
-    case 'flowChartDecision':
-      return {
-        data: polygon([
-          [width / 2, 0],
-          [width, height / 2],
-          [width / 2, height],
-          [0, height / 2]
-        ]),
-        closed: true
-      }
-    case 'parallelogram':
-    case 'flowChartInputOutput': {
-      const offset = shortest * adjustment(preset, 'adj', 25_000)
-      return {
-        data: polygon([
-          [offset, 0],
-          [width, 0],
-          [width - offset, height],
-          [0, height]
-        ]),
-        closed: true
-      }
-    }
-    case 'trapezoid': {
-      const offset = shortest * adjustment(preset, 'adj', 25_000)
-      return {
-        data: polygon([
-          [0, height],
-          [offset, 0],
-          [width - offset, 0],
-          [width, height]
-        ]),
-        closed: true
-      }
-    }
-    case 'pentagon':
-      return { data: polygon(around(width, height, 5)), closed: true }
-    case 'hexagon': {
-      const offset = shortest * adjustment(preset, 'adj', 25_000)
-      return {
-        data: polygon([
-          [offset, 0],
-          [width - offset, 0],
-          [width, height / 2],
-          [width - offset, height],
-          [offset, height],
-          [0, height / 2]
-        ]),
-        closed: true
-      }
-    }
-    case 'octagon': {
-      const offset = shortest * adjustment(preset, 'adj', 29_289)
-      return {
-        data: polygon([
-          [offset, 0],
-          [width - offset, 0],
-          [width, offset],
-          [width, height - offset],
-          [width - offset, height],
-          [offset, height],
-          [0, height - offset],
-          [0, offset]
-        ]),
-        closed: true
-      }
-    }
-    case 'star4':
-      return { data: star(width, height, 4, 0.25), closed: true }
-    case 'star5':
-      return { data: star(width, height, 5, 0.382), closed: true }
-    case 'star6':
-      return { data: star(width, height, 6, 0.5), closed: true }
-    case 'star8':
-      return { data: star(width, height, 8, 0.6), closed: true }
-    case 'plus':
-    case 'flowChartOr': {
-      const offset = shortest * adjustment(preset, 'adj', 25_000)
-      return {
-        data: polygon([
-          [offset, 0],
-          [width - offset, 0],
-          [width - offset, offset],
-          [width, offset],
-          [width, height - offset],
-          [width - offset, height - offset],
-          [width - offset, height],
-          [offset, height],
-          [offset, height - offset],
-          [0, height - offset],
-          [0, offset],
-          [offset, offset]
-        ]),
-        closed: true
-      }
-    }
-    case 'chevron': {
-      const offset = shortest * adjustment(preset, 'adj', 50_000)
-      return {
-        data: polygon([
-          [0, 0],
-          [width - offset, 0],
-          [width, height / 2],
-          [width - offset, height],
-          [0, height],
-          [offset, height / 2]
-        ]),
-        closed: true
-      }
-    }
-    case 'homePlate': {
-      const offset = shortest * adjustment(preset, 'adj', 50_000)
-      return {
-        data: polygon([
-          [0, 0],
-          [width - offset, 0],
-          [width, height / 2],
-          [width - offset, height],
-          [0, height]
-        ]),
-        closed: true
-      }
-    }
-    case 'rightArrow':
-      return { data: arrow(shortest * adjustment(preset, 'adj2', 50_000), (height * adjustment(preset, 'adj1', 50_000)) / 2), closed: true }
-    case 'leftArrow':
-      return {
-        data: `M${arrow(shortest * adjustment(preset, 'adj2', 50_000), (height * adjustment(preset, 'adj1', 50_000)) / 2)
-          .slice(1)
-          .split('L')
-          .map((pair) => {
-            const [x, y] = pair.replace('Z', '').split(' ').map(Number)
-            return `${number(width - (x ?? 0))} ${number(y ?? 0)}`
-          })
-          .join('L')}Z`,
-        closed: true
-      }
-    case 'donut': {
-      const ring = shortest * adjustment(preset, 'adj', 25_000)
-      const inner = { width: width - 2 * ring, height: height - 2 * ring }
-      return {
-        data: `${ellipse.data}M${number(ring)} ${number(height / 2)}A${number(inner.width / 2)} ${number(inner.height / 2)} 0 1 0 ${number(width - ring)} ${number(height / 2)}A${number(inner.width / 2)} ${number(inner.height / 2)} 0 1 0 ${number(ring)} ${number(height / 2)}Z`,
-        closed: true
-      }
-    }
-    case 'line':
-    case 'straightConnector1':
-    case 'bentConnector2':
-    case 'bentConnector3':
-    case 'curvedConnector3':
-      return { data: `M0 0L${number(width)} ${number(height)}`, closed: false }
-    default:
-      return rectangle
-  }
+  const preset = childAt(properties, 'a:prstGeom')
+  return presetPath(preset?.attributes.prst ?? 'rect', width, height, (name, fallback) => adjustment(preset, name, fallback * 100_000))
 }
 
 /** A shape drawn by its own paths (`a:custGeom`), each in a box of its own scaled to the shape's. */
-function customPath(geometry: XmlNode, width: number, height: number): { data: string; closed: boolean } {
+function customPath(geometry: XmlNode, width: number, height: number): ShapePath {
   let data = ''
   let closed = false
   for (const path of childrenNamed(childAt(geometry, 'a:pathLst'), 'a:path')) {
@@ -922,77 +502,10 @@ function customPath(geometry: XmlNode, width: number, height: number): { data: s
     }
     if (path.attributes.fill !== 'none') closed = closed || data.includes('Z')
   }
-  return {
-    data:
-      data ||
-      polygon([
-        [0, 0],
-        [width, 0],
-        [width, height],
-        [0, height]
-      ]),
-    closed
-  }
+  return data ? { data, closed } : { ...rectanglePath(width, height), closed }
 }
 
 // Drawing
-
-/** The SVG of a slide as it is written: its definitions and its elements, and the identifiers given. */
-class Canvas {
-  readonly definitions: string[] = []
-  readonly parts: string[] = []
-  private ids = 0
-  id(prefix: string) {
-    this.ids += 1
-    return `${prefix}${this.ids}`
-  }
-}
-
-/** A fill as SVG paints it, defining a gradient or a picture when it needs one. */
-function fillAttribute(fill: Fill | undefined, canvas: Canvas, box: { width: number; height: number }): string {
-  if (!fill || fill.kind === 'none') return 'fill="none"'
-  if (fill.kind === 'paint') return `fill="${css(fill.paint)}"${fill.paint.opacity < 1 ? ` fill-opacity="${number(fill.paint.opacity)}"` : ''}`
-  if (fill.kind === 'gradient') {
-    const id = canvas.id('g')
-    const stops = fill.stops
-      .map(
-        ({ offset, paint }) =>
-          `<stop offset="${number(offset)}" stop-color="${css(paint)}"${paint.opacity < 1 ? ` stop-opacity="${number(paint.opacity)}"` : ''}/>`
-      )
-      .join('')
-    if (fill.radial) canvas.definitions.push(`<radialGradient id="${id}">${stops}</radialGradient>`)
-    else {
-      const angle = (fill.angle * Math.PI) / 180
-      const [x, y] = [Math.cos(angle) / 2, Math.sin(angle) / 2]
-      canvas.definitions.push(
-        `<linearGradient id="${id}" x1="${number(0.5 - x)}" y1="${number(0.5 - y)}" x2="${number(0.5 + x)}" y2="${number(0.5 + y)}">${stops}</linearGradient>`
-      )
-    }
-    return `fill="url(#${id})"`
-  }
-  const id = canvas.id('p')
-  canvas.definitions.push(
-    `<pattern id="${id}" patternUnits="userSpaceOnUse" width="${number(box.width)}" height="${number(box.height)}">${pictureElement(fill.href, fill.crop, box)}</pattern>`
-  )
-  return `fill="url(#${id})"`
-}
-
-/** A picture in a box, the parts its crop cuts away left out. */
-function pictureElement(href: string, crop: Crop | undefined, box: { width: number; height: number }): string {
-  const left = crop?.left ?? 0
-  const top = crop?.top ?? 0
-  const width = Math.max(0.0001, 1 - left - (crop?.right ?? 0))
-  const height = Math.max(0.0001, 1 - top - (crop?.bottom ?? 0))
-  return (
-    `<svg width="${number(box.width)}" height="${number(box.height)}" viewBox="${number(left * 100)} ${number(top * 100)} ${number(width * 100)} ${number(height * 100)}" preserveAspectRatio="none">` +
-    `<image width="100" height="100" preserveAspectRatio="none" href="${href}"/></svg>`
-  )
-}
-
-function strokeAttributes(outline: Outline | undefined): string {
-  if (!outline?.paint) return 'stroke="none"'
-  return `stroke="${css(outline.paint)}" stroke-width="${number(outline.width)}"${outline.paint.opacity < 1 ? ` stroke-opacity="${number(outline.paint.opacity)}"` : ''}${outline.dashes ? ` stroke-dasharray="${outline.dashes}"` : ''}`
-}
 
 /** Where a placeholder sits on a slide: its kind and its number, as a layout and a master know it. */
 interface Placeholder {
@@ -1076,58 +589,6 @@ async function styled(shape: XmlNode, deck: Deck, part: Part): Promise<{ fill: F
   return { fill, outline, font: paintOf(reference('a:fontRef'), deck) }
 }
 
-/** A chart drawn simply in its frame: bars for amounts, lines for a course, its categories under it. */
-function chartElements(chart: OfficeChart, box: { width: number; height: number }, deck: Deck): string {
-  const series = chart.series.slice(0, 6)
-  const categories = series[0]?.points.map((point) => point.x) ?? []
-  const values = series.flatMap((one) => one.points.map((point) => point.y)).filter(Number.isFinite)
-  if (categories.length === 0 || values.length === 0) return ''
-  const highest = Math.max(0, ...values)
-  const lowest = Math.min(0, ...values)
-  const range = highest - lowest || 1
-  const title = chart.title ? 28 : 8
-  const left = 8
-  const bottom = 22
-  const plot = { x: left, y: title, width: Math.max(1, box.width - left - 8), height: Math.max(1, box.height - title - bottom) }
-  const at = (value: number) => plot.y + plot.height - ((value - lowest) / range) * plot.height
-  const tones = ['accent1', 'accent2', 'accent3', 'accent4', 'accent5', 'accent6'].map((name) =>
-    css(deck.theme.colours[name] ?? { red: 68, green: 114, blue: 196, opacity: 1 })
-  )
-  const slot = plot.width / categories.length
-  const parts: string[] = []
-  if (chart.title)
-    parts.push(
-      `<text x="${number(box.width / 2)}" y="20" text-anchor="middle" font-family="${fontStack(deck.theme.minor)}" font-size="14" fill="#404040">${escaped(chart.title)}</text>`
-    )
-  parts.push(`<path d="M${number(plot.x)} ${number(at(0))}H${number(plot.x + plot.width)}" stroke="#bfbfbf" stroke-width="1"/>`)
-  series.forEach((one, index) => {
-    const tone = tones[index % tones.length] as string
-    if (chart.chart === 'bar') {
-      const width = (slot * 0.7) / series.length
-      one.points.forEach((point, place) => {
-        const x = plot.x + place * slot + slot * 0.15 + index * width
-        const top = Math.min(at(point.y), at(0))
-        parts.push(`<rect x="${number(x)}" y="${number(top)}" width="${number(width)}" height="${number(Math.abs(at(point.y) - at(0)))}" fill="${tone}"/>`)
-      })
-    } else {
-      const line = one.points.map((point, place) => `${number(plot.x + place * slot + slot / 2)} ${number(at(point.y))}`).join('L')
-      if (chart.chart === 'area')
-        parts.push(
-          `<path d="M${number(plot.x + slot / 2)} ${number(at(0))}L${line}L${number(plot.x + (one.points.length - 0.5) * slot)} ${number(at(0))}Z" fill="${tone}" fill-opacity="0.6"/>`
-        )
-      else parts.push(`<path d="M${line}" fill="none" stroke="${tone}" stroke-width="2.25"/>`)
-    }
-  })
-  const every = Math.max(1, Math.ceil(categories.length / Math.max(1, Math.floor(plot.width / 60))))
-  categories.forEach((category, place) => {
-    if (place % every === 0)
-      parts.push(
-        `<text x="${number(plot.x + place * slot + slot / 2)}" y="${number(box.height - 6)}" text-anchor="middle" font-family="${fontStack(deck.theme.minor)}" font-size="11" fill="#595959">${escaped(category)}</text>`
-      )
-  })
-  return parts.join('')
-}
-
 /**
  * A table of a slide (`a:tbl`) as XHTML in its frame: its columns at their widths, its rows at their heights, merged
  * cells as one, each cell's fill and text; a table of the default style gets its first row and its banded rows.
@@ -1158,16 +619,15 @@ function tableHtml(table: XmlNode, box: { width: number; height: number }, deck:
                   : modified(accent, [{ name: 'a:tint', attributes: { val: '20000' }, children: [], text: '' }])))
         const body = childAt(cell, 'a:txBody')
         const text = body
-          ? textHtml(
-              body,
-              levels,
-              { width: 0, height: 0 },
-              deck,
-              { paint: undefined, font: deck.theme.minor, over: header ? { red: 255, green: 255, blue: 255, opacity: 1 } : undefined },
-              {}
+          ? textDiv(
+              textFrame(
+                body,
+                levels,
+                deck,
+                { paint: undefined, font: deck.theme.minor, over: header ? { red: 255, green: 255, blue: 255, opacity: 1 } : undefined },
+                {}
+              )
             )
-              .replace(/^<foreignObject[^>]*>/, '')
-              .replace(/<\/foreignObject>$/, '')
           : ''
         const span = Number(cell.attributes.gridSpan) > 1 ? ` colspan="${Number(cell.attributes.gridSpan)}"` : ''
         const rowSpan = Number(cell.attributes.rowSpan) > 1 ? ` rowspan="${Number(cell.attributes.rowSpan)}"` : ''
@@ -1242,7 +702,15 @@ async function drawShape(shape: XmlNode, placeholder: Placeholder | undefined, d
     const chartPart = chartId === undefined ? undefined : part.targets.get(chartId)
     if (chartPart) {
       const chart = await deck.chart(chartPart)
-      if (chart) content.push(chartElements(chart, size, deck))
+      if (chart)
+        content.push(
+          chartElements(chart, size, {
+            tones: ['accent1', 'accent2', 'accent3', 'accent4', 'accent5', 'accent6'].map((name) =>
+              css(deck.theme.colours[name] ?? { red: 68, green: 114, blue: 196, opacity: 1 })
+            ),
+            font: deck.theme.minor
+          })
+        )
     }
     const model = childAt(data, 'dgm:relIds')?.attributes['r:dm']
     if (model) content.push(await smartArt(model, deck, part, drawing, depth))
@@ -1270,9 +738,8 @@ async function drawShape(shape: XmlNode, placeholder: Placeholder | undefined, d
       size.width,
       size.height
     )
-    const filled = geometry.closed && fill && fill.kind !== 'none'
-    if (filled || outline?.paint)
-      content.push(`<path d="${geometry.data}" ${geometry.closed ? fillAttribute(fill, canvas, size) : 'fill="none"'} ${strokeAttributes(outline)}/>`)
+    const drawnShape = shapeElement(geometry, fill, outline, canvas, size)
+    if (drawnShape) content.push(drawnShape)
     const body = childAt(shape, 'p:txBody')
     if (body && childrenNamed(body, 'a:p').some((paragraph) => paragraph.children.some((child) => child.name === 'a:r' || child.name === 'a:fld'))) {
       const levels = [
@@ -1288,12 +755,8 @@ async function drawShape(shape: XmlNode, placeholder: Placeholder | undefined, d
       const font = placeholder && masterKind(placeholder.type) === 'title' ? deck.theme.major : deck.theme.minor
       const textBox = boxOf(childAt(shape, 'p:txXfrm'))
       const text = textHtml(
-        body,
-        levels,
-        textBox ? { width: textBox.width, height: textBox.height } : size,
-        deck,
-        { paint: style.font ?? deck.theme.colours[deck.colourMap.tx1 ?? 'dk1'], font, over: style.font },
-        bodyProperties
+        textFrame(body, levels, deck, { paint: style.font ?? deck.theme.colours[deck.colourMap.tx1 ?? 'dk1'], font, over: style.font }, bodyProperties),
+        textBox ? { width: textBox.width, height: textBox.height } : size
       )
       content.push(textBox ? `<g transform="translate(${number(textBox.x - box.x)} ${number(textBox.y - box.y)})">${text}</g>` : text)
     }
@@ -1350,13 +813,6 @@ async function background(deck: Deck): Promise<Fill | undefined> {
   return undefined
 }
 
-/** A slide drawn: its SVG and its size in pixels. */
-export interface DrawnSlide {
-  svg: Uint8Array
-  width: number
-  height: number
-}
-
 /**
  * A slide of a presentation drawn as SVG, at the size of the presentation's slides (in English Metric Units), its
  * charts read by `chart`; none when its parts cannot be found.
@@ -1410,9 +866,5 @@ export async function drawSlide(
   if (showsMaster(slide) && showsMaster(layout)) await drawShapes(treeOf(master), deck, master, drawing, 0)
   if (showsMaster(slide) && layout) await drawShapes(treeOf(layout), deck, layout, drawing, 0)
   await drawShapes(treeOf(slide), deck, slide, drawing, 0)
-  const { definitions, parts } = drawing.canvas
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${number(width)}" height="${number(height)}" viewBox="0 0 ${number(width)} ${number(height)}" overflow="hidden">` +
-    `${definitions.length > 0 ? `<defs>${definitions.join('')}</defs>` : ''}${parts.join('')}</svg>`
-  return { svg: new TextEncoder().encode(svg), width, height }
+  return slideSvg(width, height, drawing.canvas)
 }

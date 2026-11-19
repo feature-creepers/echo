@@ -34,6 +34,7 @@ import {
   SLIDE_LIMIT
 } from './office-text.ts'
 import { drawSlide } from './slide-drawing.ts'
+import { DRAWINGS_LIMIT } from './slide-svg.ts'
 import { childAt, type XmlEvent, xmlEvents, xmlTree } from './xml.ts'
 
 export { type Archive, openArchive } from './archive.ts'
@@ -631,9 +632,6 @@ function cellText(cell: { type: string; value: string; format: string }, strings
       return value
   }
 }
-
-/** The most bytes of slides drawn in one presentation: past them, a slide shows its text, pictures and charts. */
-const DRAWINGS_LIMIT = 96 * 1024 * 1024
 
 /**
  * A PowerPoint presentation's slides, in order: each one's title and the lines of its other text, and the slide drawn

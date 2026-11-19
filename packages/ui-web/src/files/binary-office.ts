@@ -14,19 +14,7 @@ import { unpack } from './archive.ts'
 import { type ChartContext, type ChartRecord, readGraphChart, readOlderChart } from './binary-chart.ts'
 import { type Compound, openCompound } from './compound.ts'
 import { builtInFormat, formatNumber, generalNumber, type NumberFormatOptions } from './number-format.ts'
-import {
-  ART,
-  ArtFigures,
-  type ArtRecord,
-  type ArtShape,
-  artRecords,
-  artShape,
-  artShapes,
-  childOf,
-  type StoredPicture,
-  storedPictures,
-  twipPixels
-} from './office-art.ts'
+import { ART, ArtFigures, type ArtRecord, artRecords, artShape, artShapes, childOf, type StoredPicture, storedPictures, twipPixels } from './office-art.ts'
 import { type CellValue, cellRange, pictureType } from './office-figures.ts'
 import {
   BLOCK_LIMIT,
@@ -37,12 +25,15 @@ import {
   type OfficeChart,
   type OfficeFigure,
   type OfficePreview,
+  type PictureFigure,
   PROTECTED,
   plain,
   ROW_LIMIT,
   SHEET_LIMIT,
   SLIDE_LIMIT
 } from './office-text.ts'
+import { drawOlderSlide, type OlderDeck, olderDeck } from './older-slide-drawing.ts'
+import { DRAWINGS_LIMIT } from './slide-svg.ts'
 
 /** The most characters of a document read: past them, a preview shows the start. */
 const CHARACTER_LIMIT = 4_000_000
@@ -1495,9 +1486,9 @@ async function objectStorage(raw: Uint8Array, record: PowerPointRecord | undefin
 }
 
 /**
- * A PowerPoint 97 to 2003 presentation's slides, in order: each one's title, the lines of its other text, and its
- * pictures. An object of another app is shown by its picture; a chart's is drawn from its storage instead when the
- * window does not show that picture.
+ * A PowerPoint 97 to 2003 presentation's slides, in order: each one's title, the lines of its other text, and the
+ * slide drawn as it looks (`older-slide-drawing.ts`). A slide that cannot be drawn shows its pictures instead: an
+ * object of another app by its picture, a chart's drawn from its storage when the window does not show that picture.
  */
 export async function readOlderPowerPoint(bytes: Uint8Array): Promise<OfficePreview> {
   const file = openCompound(bytes)
@@ -1536,8 +1527,8 @@ export async function readOlderPowerPoint(bytes: Uint8Array): Promise<OfficePrev
   const stored = storedPictures(raw, group && childOf(raw, group, ART.store), file.stream('Pictures'))
   const objects = presentationObjects(raw, container)
   // The chart an object's shape shows, from its storage, when its picture is not one the window shows.
-  const objectChart = async (shape: ArtShape): Promise<OfficeChart | undefined> => {
-    const reference = shape.client && childOf(raw, shape.client, 0x0bc1)
+  const objectChart = async (client: ArtRecord | undefined): Promise<OfficeChart | undefined> => {
+    const reference = client && childOf(raw, client, 0x0bc1)
     const persisted = reference && reference.size >= 4 ? objects.get(readU32(raw, reference.at)) : undefined
     const at = persisted === undefined ? undefined : places.get(persisted)
     if (at === undefined) return undefined
@@ -1549,17 +1540,41 @@ export async function readOlderPowerPoint(bytes: Uint8Array): Promise<OfficePrev
     }
   }
 
-  const slides: { title: string; lines: string[]; figures: OfficeFigure[] }[] = []
+  let deck: OlderDeck | undefined
+  try {
+    deck = olderDeck(raw, places, container, stored, objectChart)
+  } catch {
+    deck = undefined
+  }
+  let drawnBytes = 0
+  const slides: { title: string; lines: string[]; figures: OfficeFigure[]; drawing?: PictureFigure }[] = []
   const placedBySlide: number[][] = []
-  for (const { texts, persisted } of found) {
+  for (const [index, { texts, persisted }] of found.entries()) {
     // Text boxes of its own, beyond its placeholders, are in the slide's drawing, and so are its pictures.
     const at = places.get(persisted)
     const drawn = at === undefined ? undefined : recordAt(stream, at)
     const all = drawn?.type === 0x03ee ? [...texts, ...drawingTexts(stream, drawn)] : texts
-    const slide = { title: '', lines: [] as string[], figures: [] as OfficeFigure[] }
+    const slide: { title: string; lines: string[]; figures: OfficeFigure[]; drawing?: PictureFigure } = { title: '', lines: [], figures: [] }
     for (const text of all) {
       if (text.title && slide.title === '') slide.title = text.lines.join(' ')
       else slide.lines.push(...text.lines.filter((line) => !slide.lines.includes(line)))
+    }
+    const drawnSlide =
+      deck && drawn?.type === 0x03ee && drawnBytes < DRAWINGS_LIMIT ? await drawOlderSlide(deck, drawn, persisted, index + 1).catch(() => undefined) : undefined
+    if (drawnSlide) {
+      drawnBytes += drawnSlide.svg.length
+      const alt = [slide.title, ...slide.lines].filter(Boolean).join('. ')
+      slide.drawing = {
+        kind: 'picture',
+        type: 'image/svg+xml',
+        bytes: drawnSlide.svg,
+        alt,
+        width: Math.round(drawnSlide.width),
+        height: Math.round(drawnSlide.height)
+      }
+      placedBySlide.push([])
+      slides.push(slide)
+      continue
     }
     const drawing = drawn?.type === 0x03ee ? childOf(raw, drawn, 0x040c) : undefined
     const shapes = drawing && childOf(raw, drawing, ART.drawing)
@@ -1568,7 +1583,7 @@ export async function readOlderPowerPoint(bytes: Uint8Array): Promise<OfficePrev
       if (shape.picture === undefined) continue
       const picture = stored(shape.picture)
       const shown = picture?.bytes !== undefined && pictureType(picture.bytes) !== undefined
-      const chart = shown ? undefined : await objectChart(shape)
+      const chart = shown ? undefined : await objectChart(shape.client)
       const figure = chart ? figures.chart(chart) : figures.picture(`store:${shape.picture}`, picture, shape.alt, slideAnchorSize(raw, shape.anchor))
       if (figure !== undefined) placed.push(figure)
     }

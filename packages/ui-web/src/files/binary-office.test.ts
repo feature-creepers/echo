@@ -1309,6 +1309,7 @@ function presentation(encrypted = false, pictured = false, object?: Uint8Array):
   const objectShape = container(0xf004, [
     atom(0xf00a, new Bytes().u32(2051).u32(0x0a10), 75),
     atom(0xf00b, new Bytes().u16(0x4104).u32(2), 1),
+    atom(0xf010, anchor),
     container(0xf011, [atom(0x0bc1, new Bytes().u32(5))])
   ])
   const slideOne = container(0x03ee, [
@@ -1397,31 +1398,41 @@ async function packedObject(storage: Uint8Array): Promise<Uint8Array> {
 }
 
 describe('a PowerPoint 97 presentation', () => {
-  it('reads each slide in the order of its list: its title, its placeholders’ lines, then its own text boxes', async () => {
-    expect(await readOlderPowerPoint(presentation())).toEqual({
-      kind: 'presentation',
-      slides: [
-        { title: 'Plan', lines: ['Train at 9', 'Museum then dinner', 'A note of its own'], figures: [] },
-        { title: 'Welcome', lines: [], figures: [] }
-      ],
-      cut: false
-    })
-  })
-
-  it('shows the pictures each slide’s drawing places, from the presentation’s store, at their size', async () => {
-    const read = await readOlderPowerPoint(presentation(false, true))
-    expect(read.kind === 'presentation' ? read.slides.map((slide) => slide.figures) : undefined).toEqual([
-      [],
-      [{ kind: 'picture', type: 'image/png', bytes: new Uint8Array(PNG), alt: 'Map', width: 96, height: 48 }]
+  it('reads each slide in the order of its list: its title, its placeholders’ lines, then its own text boxes, and draws it', async () => {
+    const read = await readOlderPowerPoint(presentation())
+    expect(
+      read.kind === 'presentation'
+        ? read.slides.map(({ drawing, ...slide }) => ({ ...slide, drawn: drawing && [drawing.alt, drawing.width, drawing.height] }))
+        : undefined
+    ).toEqual([
+      {
+        title: 'Plan',
+        lines: ['Train at 9', 'Museum then dinner', 'A note of its own'],
+        figures: [],
+        drawn: ['Plan. Train at 9. Museum then dinner. A note of its own', 960, 720]
+      },
+      { title: 'Welcome', lines: [], figures: [], drawn: ['Welcome', 960, 720] }
     ])
   })
 
+  /** The SVG each slide is drawn as. */
+  const drawings = (read: Awaited<ReturnType<typeof readOlderPowerPoint>>) =>
+    read.kind === 'presentation' ? read.slides.map((slide) => new TextDecoder().decode(slide.drawing?.bytes)) : []
+
+  it('draws the pictures each slide’s drawing places, from the presentation’s store, at their anchor', async () => {
+    const [, drawn] = drawings(await readOlderPowerPoint(presentation(false, true)))
+    expect(drawn).toContain(
+      `<g transform="translate(3.33 1.67)"><svg width="96" height="48" viewBox="0 0 100 100" preserveAspectRatio="none"><image width="100" height="100" preserveAspectRatio="none" href="data:image/png;base64,${btoa(String.fromCharCode(...PNG))}"/></svg></g>`
+    )
+  })
+
   it('draws an object’s chart from its storage when its picture is a metafile the window does not show', async () => {
-    const read = await readOlderPowerPoint(presentation(false, false, await packedObject(compound({ Workbook: graphStream() }))))
-    expect(read.kind === 'presentation' ? read.slides.map((slide) => slide.figures) : undefined).toEqual([[], [GRAPH_CHART]])
-    // An object that holds no chart shows its picture, or says its app shows it.
-    const other = await readOlderPowerPoint(presentation(false, false, await packedObject(compound({ Other: new Uint8Array([1]) }))))
-    expect(other.kind === 'presentation' ? other.slides[1]?.figures : undefined).toEqual([{ kind: 'unshown', alt: '', what: 'picture' }])
+    const [, drawn] = drawings(await readOlderPowerPoint(presentation(false, false, await packedObject(compound({ Workbook: graphStream() })))))
+    expect(drawn).toContain('<g transform="translate(3.33 1.67)"><path d="M8 ')
+    expect(drawn).toContain('>Q1</text>')
+    // An object that holds no chart shows nothing of it.
+    const [, other] = drawings(await readOlderPowerPoint(presentation(false, false, await packedObject(compound({ Other: new Uint8Array([1]) })))))
+    expect(other).not.toContain('<g transform="translate(3.33 1.67)">')
   })
 
   it('says when it is protected with a password, or is not one', async () => {
