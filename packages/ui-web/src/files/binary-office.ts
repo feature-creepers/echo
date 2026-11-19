@@ -54,7 +54,7 @@ import {
 import { readOlderConditions } from './older-sheet-conditions.ts'
 import { type OlderBookRecords, type OlderSheetRecords, readOlderBookStyles, readOlderPalette, readOlderSheetLook } from './older-sheet-look.ts'
 import { drawOlderSlide, type OlderDeck, olderDeck } from './older-slide-drawing.ts'
-import { type FloatingAnchor, readOlderWordLook, type TextPiece, type WordPart, type WordPlace } from './older-word-look.ts'
+import { type FloatingAnchor, type FloatingBox, readOlderWordLook, type TextPiece, type WordPart, type WordPlace } from './older-word-look.ts'
 import { characterRun, type FormattedRun, formattedRuns, type Properties, paragraphRun, runAt, type WordVersion } from './older-word-properties.ts'
 import { type CellKind, type LaidRun, paletteColor, type SheetLayout, type SheetLook, type WorkbookStyles } from './sheet-look.ts'
 import { DRAWINGS_LIMIT } from './slide-svg.ts'
@@ -220,7 +220,7 @@ function wordPictures(
   main: Uint8Array,
   characters: (place: number) => Properties | undefined,
   streams: { data: Uint8Array | undefined; objects: Compound | undefined; read?: ObjectReader | undefined },
-  floats?: { table: Reader; tableBytes: Uint8Array; anchors: WordPlace; drawings: WordPlace }
+  floats?: { table: Reader; tableBytes: Uint8Array; anchors: WordPlace; headerAnchors: WordPlace; headerStart: number; drawings: WordPlace }
 ) {
   const { data, objects } = streams
   const figures = new ArtFigures()
@@ -300,26 +300,33 @@ function wordPictures(
   let stored: (place: number) => StoredPicture | undefined = () => undefined
   try {
     if (!floats) throw new Error('Only Word 97 floats its pictures over the text.')
-    const { table, tableBytes, anchors: placed, drawings } = floats
-    const count = placed.size >= 4 ? Math.floor((placed.size - 4) / 30) : 0
-    for (let index = 0; index < count; index++) {
-      const spa = placed.at + (count + 1) * 4 + index * 26
-      const span = (from: number, to: number) => twipPixels((table.u32(spa + to) | 0) - (table.u32(spa + from) | 0))
-      // Where it is, from what, and how text wraps around it (`FSPA`).
-      const flags = table.u16(spa + 20)
-      const left = table.u32(spa + 4) | 0
-      const top = table.u32(spa + 8) | 0
-      const place: FloatingAnchor = {
-        left: left / 20,
-        top: top / 20,
-        width: Math.max(0, (table.u32(spa + 12) | 0) - left) / 20,
-        height: Math.max(0, (table.u32(spa + 16) | 0) - top) / 20,
-        across: (['margin', 'page', 'column'] as const)[(flags >> 1) & 3] ?? 'column',
-        down: (['margin', 'page', 'paragraph'] as const)[(flags >> 3) & 3] ?? 'paragraph',
-        wrap: (flags >> 5) & 0xf
+    const { table, tableBytes, drawings } = floats
+    // The main text's anchors by their place in it, the headers' by their place in the headers' text, after the notes'.
+    const readAnchors = (placed: WordPlace, start: number) => {
+      const count = placed.size >= 4 ? Math.min(Math.floor((placed.size - 4) / 30), 10_000) : 0
+      for (let index = 0; index < count; index++) {
+        const spa = placed.at + (count + 1) * 4 + index * 26
+        const span = (from: number, to: number) => twipPixels((table.u32(spa + to) | 0) - (table.u32(spa + from) | 0))
+        // Where it is, from what, and how text wraps around it (`FSPA`).
+        const flags = table.u16(spa + 20)
+        const left = table.u32(spa + 4) | 0
+        const top = table.u32(spa + 8) | 0
+        const id = table.u32(spa)
+        const place: FloatingAnchor = {
+          left: left / 20,
+          top: top / 20,
+          width: Math.max(0, (table.u32(spa + 12) | 0) - left) / 20,
+          height: Math.max(0, (table.u32(spa + 16) | 0) - top) / 20,
+          across: (['margin', 'page', 'column'] as const)[(flags >> 1) & 3] ?? 'column',
+          down: (['margin', 'page', 'paragraph'] as const)[(flags >> 3) & 3] ?? 'paragraph',
+          wrap: (flags >> 5) & 0xf,
+          shape: id
+        }
+        anchors.set(start + table.u32(placed.at + index * 4), { id, width: span(4, 12), height: span(8, 16), place })
       }
-      anchors.set(table.u32(placed.at + index * 4), { id: table.u32(spa), width: span(4, 12), height: span(8, 16), place })
     }
+    readAnchors(floats.anchors, 0)
+    readAnchors(floats.headerAnchors, floats.headerStart)
     const end = Math.min(drawings.at + drawings.size, tableBytes.length)
     const [group] = drawings.size > 0 ? artRecords(tableBytes, drawings.at, end) : []
     if (group?.type === ART.drawingGroup) {
@@ -439,6 +446,29 @@ function wordPictures(
     anchor(character: number): FloatingAnchor | undefined {
       return anchors.get(character)?.place
     },
+    /**
+     * The boxes of text a shape anchored at a character is or holds: the shape itself, or the shapes of a group it is,
+     * each at its place within the group's, in points from the anchor's corner, with its fill, line and insets.
+     */
+    boxes(character: number): FloatingBox[] {
+      const anchor = anchors.get(character)
+      if (!anchor) return []
+      const { place } = anchor
+      const own = shapes.get(anchor.id)
+      if (own?.box) return [{ shape: own.id, left: 0, top: 0, width: place.width, height: place.height, ...own.box }]
+      const found: FloatingBox[] = []
+      for (const shape of shapes.values())
+        if (shape.box && shape.within?.group === anchor.id && found.length < 256)
+          found.push({
+            shape: shape.id,
+            left: shape.within.left * place.width,
+            top: shape.within.top * place.height,
+            width: shape.within.width * place.width,
+            height: shape.within.height * place.height,
+            ...shape.box
+          })
+      return found
+    },
     size(figure: number) {
       return sizes.get(figure)
     }
@@ -451,6 +481,7 @@ const NO_FIGURES = {
   object: () => undefined,
   floating: () => undefined,
   anchor: () => undefined,
+  boxes: () => [],
   rule: () => undefined,
   size: () => undefined
 }
@@ -478,7 +509,9 @@ const OLDER_PARTS: Record<6 | 2, Record<WordPart | 'characters' | 'paragraphs' |
     endnoteReferences: 0x1d2,
     endnoteTexts: 0x1da,
     lists: undefined,
-    listOverrides: undefined
+    listOverrides: undefined,
+    textBoxes: undefined,
+    headerTextBoxes: undefined
   },
   2: {
     styles: 0x5e,
@@ -494,12 +527,14 @@ const OLDER_PARTS: Record<6 | 2, Record<WordPart | 'characters' | 'paragraphs' |
     endnoteReferences: undefined,
     endnoteTexts: undefined,
     lists: undefined,
-    listOverrides: undefined
+    listOverrides: undefined,
+    textBoxes: undefined,
+    headerTextBoxes: undefined
   }
 }
 
 /** Where Word 97 keeps the parts of a document, by their place in its header's list of where and how long (`FibRgFcLcb97`). */
-const PARTS_97: Record<WordPart | 'characters' | 'paragraphs' | 'complex' | 'anchors' | 'drawings', number> = {
+const PARTS_97: Record<WordPart | 'characters' | 'paragraphs' | 'complex' | 'anchors' | 'headerAnchors' | 'drawings', number> = {
   styles: 1,
   footnoteReferences: 2,
   footnoteTexts: 3,
@@ -511,9 +546,12 @@ const PARTS_97: Record<WordPart | 'characters' | 'paragraphs' | 'complex' | 'anc
   settings: 31,
   complex: 33,
   anchors: 40,
+  headerAnchors: 41,
   endnoteReferences: 46,
   endnoteTexts: 47,
   drawings: 50,
+  textBoxes: 56,
+  headerTextBoxes: 58,
   lists: 73,
   listOverrides: 74
 }
@@ -561,7 +599,7 @@ async function readWord(file: Compound | undefined, bytes: Uint8Array, one: bool
   // quick save's pieces at a place of its own.
   let textLength: number
   let lengths: number[]
-  let part: (name: WordPart | 'characters' | 'paragraphs' | 'complex' | 'anchors' | 'drawings') => WordPlace
+  let part: (name: WordPart | 'characters' | 'paragraphs' | 'complex' | 'anchors' | 'headerAnchors' | 'drawings') => WordPlace
   const none = { at: 0, size: 0 }
   if (version === 97) {
     const shorts = word.u16(32)
@@ -697,7 +735,16 @@ async function readWord(file: Compound | undefined, bytes: Uint8Array, one: bool
           stream,
           characterProperties,
           { data: version === 97 ? file.stream('Data') : stream, objects: file.storage('ObjectPool'), read: objects },
-          version === 97 ? { table, tableBytes: tableStream as Uint8Array, anchors: part('anchors'), drawings: part('drawings') } : undefined
+          version === 97
+            ? {
+                table,
+                tableBytes: tableStream as Uint8Array,
+                anchors: part('anchors'),
+                headerAnchors: part('headerAnchors'),
+                headerStart: (lengths[0] ?? 0) + (lengths[1] ?? 0),
+                drawings: part('drawings')
+              }
+            : undefined
         )
       : undefined
   const styles = part('styles')

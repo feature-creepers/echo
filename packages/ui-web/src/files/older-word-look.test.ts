@@ -62,6 +62,8 @@ interface WordOptions {
   endnotes?: { references: number[]; texts: number[] }
   settings?: number[]
   figures?: Partial<WordFigures>
+  /** Where each box's text is in the boxes' story (`PlcftxbxTxt`). */
+  textBoxes?: number[]
 }
 
 /** Pages of runs (`FKP`) of 512 bytes: where each run starts and ends, and its properties, from the end of the page down. */
@@ -164,6 +166,7 @@ function wordFile(options: WordOptions): OlderWordFile {
   notes('footnoteReferences', 'footnoteTexts', options.footnotes)
   notes('endnoteReferences', 'endnoteTexts', options.endnotes)
   if (options.settings) add('settings', options.settings)
+  if (options.textBoxes) add('textBoxes', options.textBoxes)
 
   return {
     version: 97,
@@ -183,6 +186,7 @@ function wordFile(options: WordOptions): OlderWordFile {
       object: () => undefined,
       floating: () => undefined,
       anchor: () => undefined,
+      boxes: () => [],
       rule: () => undefined,
       size: () => undefined,
       ...options.figures
@@ -620,6 +624,87 @@ describe('the look of a Word 97 document', () => {
     ])
   })
 
+  it('draws a box of text where its shape is, and a group’s boxes each at its place in the group, from their stories', () => {
+    const main = 'Before\x08after\x08\r'
+    const stories = ['In box\r', 'One\r', 'Two\r', '\r']
+    // Each box's range in the boxes' story, then what says which shape it begins in (`FTXBXS`), the last a spare.
+    const ranges = [0, 7, 11, 15, 16]
+    const box = (shape: number, spare = false) => [...u32(1), ...u32(0), ...u16(spare ? 1 : 0), ...u32(0), ...u32(shape), ...u32(0)]
+    const look = { fill: '#ffff00', line: { color: '#000000', width: 1 }, insets: { top: 3.6, right: 7.2, bottom: 3.6, left: 7.2 } }
+    const anchor = { left: 36, top: 12, width: 100, height: 50, across: 'column' as const, down: 'paragraph' as const, wrap: 3 }
+    const blocks = blocksOf(
+      wordFile({
+        paragraphs: [...[main, ...stories].map((text) => ({ text }))],
+        lengths: [main.length, 0, 0, 0, 0, 0, stories.join('').length],
+        textBoxes: [...ranges.flatMap(u32), ...box(7), ...box(8), ...box(9), ...box(0, true)],
+        figures: {
+          anchor: (character) => (character === 6 || character === 12 ? anchor : undefined),
+          boxes: (character) =>
+            character === 6
+              ? [{ shape: 7, left: 0, top: 0, width: 100, height: 50, ...look }]
+              : character === 12
+                ? [
+                    { shape: 8, left: 0, top: 0, width: 50, height: 25, ...look },
+                    { shape: 9, left: 50, top: 25, width: 50, height: 25, ...look }
+                  ]
+                : []
+        }
+      })
+    )
+    const plain = { size: 10 }
+    const text = (words: string) => [{ kind: 'paragraph', look: { before: 0, after: 0 }, spans: [{ text: words, look: plain }], mark: plain }]
+    const line = { width: 1, style: 'solid', color: '#000000' }
+    expect(paragraphAt(blocks, 0).spans).toEqual([
+      { text: 'Before', look: plain },
+      { box: { width: 100, height: 50, fill: '#ffff00', line, insets: look.insets, blocks: text('In box'), at: { x: 36, y: 12, from: 'paragraph' } } },
+      { text: 'after', look: plain },
+      { box: { width: 50, height: 25, fill: '#ffff00', line, insets: look.insets, blocks: text('One'), at: { x: 36, y: 12, from: 'paragraph' } } },
+      { box: { width: 50, height: 25, fill: '#ffff00', line, insets: look.insets, blocks: text('Two'), at: { x: 86, y: 37, from: 'paragraph' } } }
+    ])
+  })
+
+  it('draws a frame’s paragraphs as a box with the paragraph after it: at its side, centred in the line, or at its place', () => {
+    // Where a frame is placed from: across from the margin and down from its paragraph, or both from the page.
+    const atParagraph = property(0x261b, (1 << 6) | (2 << 4))
+    const fromPage = property(0x261b, (2 << 6) | (1 << 4))
+    const blocks = blocksOf(
+      wordFile({
+        paragraphs: [
+          { text: 'Page 1\r', paragraph: [...atParagraph, ...property(0x8418, ...u16(-8)), ...property(0x8419, ...u16(1)), ...property(0x2423, 2)] },
+          { text: 'Body\r' },
+          { text: 'Centred\r', paragraph: [...atParagraph, ...property(0x8418, ...u16(-4)), ...property(0x8419, ...u16(1))] },
+          {
+            text: 'Placed\r',
+            paragraph: [
+              ...fromPage,
+              ...property(0x8418, ...u16(1441)),
+              ...property(0x8419, ...u16(721)),
+              ...property(0x841a, ...u16(2880)),
+              ...property(0x2423, 3)
+            ]
+          },
+          { text: 'End\r' }
+        ]
+      })
+    )
+    const plain = { size: 10 }
+    const paragraph = (words: string, look: object = {}) => ({
+      kind: 'paragraph',
+      look: { before: 0, after: 0, ...look },
+      spans: [{ text: words, look: plain }],
+      mark: plain
+    })
+    const none = { top: 0, right: 0, bottom: 0, left: 0 }
+    expect(blocks).toEqual([
+      { ...paragraph('Body'), spans: [{ box: { insets: none, blocks: [paragraph('Page 1')], float: 'right' } }, { text: 'Body', look: plain }] },
+      paragraph('Centred', { align: 'center' }),
+      {
+        ...paragraph('End'),
+        spans: [{ box: { width: 144, insets: none, blocks: [paragraph('Placed')], at: { x: 72, y: 36, from: 'page' } } }, { text: 'End', look: plain }]
+      }
+    ])
+  })
+
   it('says a document whose parts run past their stream is damaged', () => {
     const file = wordFile({ paragraphs: [{ text: 'Text\r' }] })
     expect(() => readOlderWordLook({ ...file, part: (name) => (name === 'styles' ? { at: 10_000, size: 40 } : file.part(name)) })).toThrow('damaged')
@@ -753,6 +838,7 @@ function olderFile(version: 6 | 2, options: OlderOptions): OlderWordFile {
       object: () => undefined,
       floating: () => undefined,
       anchor: () => undefined,
+      boxes: () => [],
       rule: () => undefined,
       size: () => undefined
     },

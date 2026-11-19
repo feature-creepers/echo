@@ -4,10 +4,12 @@
  * ones it comes from, then its own properties (`sprm`s, an older version's written as Word 97's by
  * `older-word-properties.ts`) and those of the piece of text it is in; lists numbered and bulleted as their list and
  * its overrides say at each level, or as Word 6's automatic numbers say; tables with their columns, merged cells, row
- * heights, borders, padding and shading; pictures and charts in their line or floating; sections with their pages'
- * size, margins and columns, their headers and footers (first, odd and even pages) with the page's number and the count
- * of pages; footnotes at their page's foot and endnotes at the end. Word keeps no trace in these files of where it last
- * broke their pages, so they break where the text breaks them and between sections.
+ * heights, borders, padding and shading; pictures and charts in their line or floating; boxes of text where their
+ * shapes are, alone or in a group, their paragraphs read from the boxes' own story; frames, paragraphs placed by their
+ * own properties, as boxes the paragraph after them holds; sections with their pages' size, margins and columns,
+ * their headers and footers (first, odd and even pages) with the page's number and the count of pages; footnotes at
+ * their page's foot and endnotes at the end. Word keeps no trace in these files of where it last broke their pages, so
+ * they break where the text breaks them and between sections.
  */
 
 import { codePageDecoder, leadsTwoBytes, type Reader, reader, type WordProperty, wordProperties } from './binary-records.ts'
@@ -25,6 +27,7 @@ import type {
   Sides,
   TableCell,
   TabStop,
+  TextBox,
   TextLook
 } from './document-look.ts'
 import { BLOCK_LIMIT } from './office-text.ts'
@@ -71,6 +74,23 @@ export interface FloatingAnchor {
   down: 'margin' | 'page' | 'paragraph'
   /** Word's wrapping: 1 above and below it, 3 none (over or behind the text), the rest around it. */
   wrap: number
+  /** The shape's identifier in the document's drawing. */
+  shape?: number | undefined
+}
+
+/**
+ * A box of text a floating shape is or holds: the shape it is, its place and size in points from the anchor's corner,
+ * its fill, its line and the space inside its edges.
+ */
+export interface FloatingBox {
+  shape: number
+  left: number
+  top: number
+  width: number
+  height: number
+  fill: string | undefined
+  line: { color: string; width: number } | undefined
+  insets: { top: number; right: number; bottom: number; left: number }
 }
 
 /** The figures of the document, as `binary-office.ts` reads them: in the text by the place of their character, floating by their anchor. */
@@ -79,6 +99,8 @@ export interface WordFigures {
   object(place: number): number | undefined
   floating(character: number): number | undefined
   anchor(character: number): FloatingAnchor | undefined
+  /** The boxes of text a shape anchored at a character is or holds. */
+  boxes(character: number): FloatingBox[]
   /** The rule across the text a special character is, once its figure was asked for: its share of the width in thousandths, its height in points, its colour. */
   rule(place: number): { share: number; height: number; color: string | undefined } | undefined
   /** A figure's size in the text, in points. */
@@ -89,7 +111,8 @@ export interface WordFigures {
 
 /**
  * The parts of a document its look reads, each where its header says: its styles, the references and texts of its
- * footnotes and endnotes, its sections, headers and footers, fonts, settings (`DOP`), and Word 97's lists.
+ * footnotes and endnotes, its sections, headers and footers, fonts, settings (`DOP`), and Word 97's lists and the
+ * stories of its boxes of text, the main text's and the headers' (`PlcftxbxTxt`).
  */
 export type WordPart =
   | 'styles'
@@ -103,6 +126,8 @@ export type WordPart =
   | 'endnoteTexts'
   | 'lists'
   | 'listOverrides'
+  | 'textBoxes'
+  | 'headerTextBoxes'
 
 /** A document's streams and the parts its header names, as `binary-office.ts` found them. */
 export interface OlderWordFile {
@@ -416,7 +441,27 @@ interface ParagraphProperties {
   /** Word 6's automatic number: its level (`nLvlAnm`, 0 for none), and its look (`ANLD`) as Word 97 keeps it. */
   numbering: number
   anld: { bytes: Reader; at: number } | undefined
+  frame: FrameProperties
 }
+
+/**
+ * Where a paragraph in a frame is placed: from what (`pc`: its high two bits across, the column, the margin or the page;
+ * the two below them down, the margin, the page or the paragraph; three for neither), across and down, each kept one
+ * more than its distance in twentieths of a point, or a place by name (`XAS_plusOne`, `YAS_plusOne`), its width and
+ * height (the high bit saying it is at least that), how text wraps around it, and its drop cap's lines.
+ */
+interface FrameProperties {
+  position: number | undefined
+  x: number
+  y: number
+  width: number
+  height: number
+  wrap: number
+}
+
+/** Whether a paragraph is in a frame: placed from something, at a place, or of a width of its own. */
+const framed = (frame: FrameProperties) =>
+  (frame.position !== undefined && (frame.position & 0xf0) !== 0xf0) || frame.x !== 0 || frame.y !== 0 || frame.width !== 0
 
 const plainParagraph = (style: number): ParagraphProperties => ({
   style,
@@ -444,14 +489,16 @@ const plainParagraph = (style: number): ParagraphProperties => ({
   contextual: false,
   table: undefined,
   numbering: 0,
-  anld: undefined
+  anld: undefined,
+  frame: { position: undefined, x: 0, y: 0, width: 0, height: 0, wrap: 0 }
 })
 
 const copyParagraph = (found: ParagraphProperties): ParagraphProperties => ({
   ...found,
   borders: [...found.borders],
   tabs: [...found.tabs],
-  table: found.table && copyTable(found.table)
+  table: found.table && copyTable(found.table),
+  frame: { ...found.frame }
 })
 
 const plainCell = (): CellProperties => ({ flags: 0, vertical: 0, borders: [], padding: {} })
@@ -716,6 +763,24 @@ function applyParagraph(found: ParagraphProperties, bytes: Reader, property: Wor
     case 0xc650:
     case 0xc651:
       found.borders[code - 0xc64e] = border(bytes, at + 1)
+      break
+    case 0x261b:
+      found.frame.position = bytes.u8(at)
+      break
+    case 0x8418:
+      found.frame.x = bytes.i16(at)
+      break
+    case 0x8419:
+      found.frame.y = bytes.i16(at)
+      break
+    case 0x841a:
+      found.frame.width = bytes.u16(at)
+      break
+    case 0x442b:
+      found.frame.height = bytes.u16(at)
+      break
+    case 0x2423:
+      found.frame.wrap = bytes.u8(at)
       break
     case 0x246d:
       found.contextual = bytes.u8(at) !== 0
@@ -1304,6 +1369,10 @@ class OlderWordReader {
     const [, , , , , end = 0] = file.lengths
     this.readNotes(this.footnotes, 'footnoteReferences', 'footnoteTexts', { start: text, length: foot })
     this.readNotes(this.endnotes, 'endnoteReferences', 'endnoteTexts', { start: text + foot + header + macro + comment, length: end })
+    const [, , , , , , boxes = 0, headerBoxes = 0] = file.lengths
+    const boxesStart = text + foot + header + macro + comment + end
+    this.readTextBoxes('textBoxes', { start: boxesStart, length: boxes })
+    this.readTextBoxes('headerTextBoxes', { start: boxesStart + boxes, length: headerBoxes })
     this.budget = file.limit * 2
     this.sections = this.readSections(text)
     // The settings keep each kind of note's first number, and their formats in the bits Word 6 put them in.
@@ -1660,8 +1729,7 @@ class OlderWordReader {
         const placed = this.inlineFigure(character.at, field)
         if (placed) add(placed)
       } else if (code === 0x08) {
-        const placed = this.floatingFigure(character.place)
-        if (placed) add(placed)
+        for (const placed of this.floatingFigure(character.place)) add(placed)
       } else if (code === 0x02 && found.special) {
         const note = this.noteAt(character.place, story)
         if (note) add({ note: note.mark, look, label: note.label })
@@ -1821,20 +1889,88 @@ class OlderWordReader {
   }
 
   /** A shape anchored at a character, placed as Word places it: at a side of the text it wraps, or at its place over it. */
-  private floatingFigure(character: number): DocumentSpan | undefined {
-    const figure = this.file.figures.floating(character)
+  private floatingFigure(character: number): DocumentSpan[] {
     const anchor = this.file.figures.anchor(character)
-    if (figure === undefined || !anchor) return undefined
-    const placed: PlacedFigure = { figure, alt: '', width: anchor.width, height: anchor.height }
+    if (!anchor) return []
+    const figure = this.file.figures.floating(character)
+    if (figure !== undefined) return [{ placed: { figure, alt: '', width: anchor.width, height: anchor.height, ...this.floatingPlace(anchor) } }]
+    // A box of text, or a group's boxes, each at its place within the group's, over the text.
+    return this.file.figures.boxes(character).map((box): DocumentSpan => {
+      const alone = box.left === 0 && box.top === 0 && box.width === anchor.width && box.height === anchor.height
+      const at = this.floatingAt(anchor)
+      return {
+        box: {
+          width: box.width,
+          height: box.height,
+          fill: box.fill,
+          line: box.line && { width: box.line.width, style: 'solid', color: box.line.color },
+          insets: box.insets,
+          blocks: this.boxBlocks(box.shape),
+          ...(alone ? this.floatingPlace(anchor) : { at: { ...at, x: at.x + box.left, y: at.y + box.top } })
+        }
+      }
+    })
+  }
+
+  /**
+   * Where a floating shape goes as Word places it: in the line when text wraps above and below it, at the side of the
+   * text it is nearer when text wraps around it, at its place over the text when text does not wrap.
+   */
+  private floatingPlace(anchor: FloatingAnchor): Pick<PlacedFigure, 'float' | 'at'> {
     const section = this.current
-    const { margins } = section
-    // Across, from the page's left edge.
+    if (anchor.wrap === 1) return {}
+    if (anchor.wrap === 3) return { at: this.floatingAt(anchor) }
+    const x = anchor.left + (anchor.across === 'page' ? 0 : section.margins.left)
+    return { float: x + anchor.width / 2 > section.width / 2 ? 'right' : 'left' }
+  }
+
+  /** A floating shape's place: across from the page's edge or the text's, down from the page's top or its paragraph's. */
+  private floatingAt(anchor: FloatingAnchor): NonNullable<PlacedFigure['at']> {
+    const { margins } = this.current
     const x = anchor.left + (anchor.across === 'page' ? 0 : margins.left)
-    if (anchor.wrap === 1) return { placed }
-    if (anchor.wrap !== 3) placed.float = x + anchor.width / 2 > section.width / 2 ? 'right' : 'left'
-    else if (anchor.down === 'paragraph') placed.at = { x: x - margins.left, y: anchor.top, from: 'paragraph' }
-    else placed.at = { x, y: anchor.top + (anchor.down === 'page' ? 0 : margins.top), from: 'page' }
-    return { placed }
+    if (anchor.down === 'paragraph') return { x: x - margins.left, y: anchor.top, from: 'paragraph' }
+    return { x, y: anchor.top + (anchor.down === 'page' ? 0 : margins.top), from: 'page' }
+  }
+
+  /** The text boxes' stories, by the shape each begins in. */
+  private readonly textBoxes = new Map<number, { from: number; to: number }>()
+  /** Each box's paragraphs once read, and whether one is being read: a box holds no other, though a damaged file may say so. */
+  private readonly boxesRead = new Map<number, DocumentBlock[]>()
+  private readingBox = false
+
+  /**
+   * Where each box's text is in its story (`PlcftxbxTxt`): a range of it for each box, named by the shape it begins in
+   * (`lid`), its paragraphs' last mark ending it; a spare, kept for boxes to come, names none, as the last always is.
+   */
+  private readTextBoxes(part: WordPart, story: { start: number; length: number }): void {
+    const { table } = this.file
+    const place = this.file.part(part)
+    const count = place.size >= 4 ? Math.min(Math.floor((place.size - 4) / 26), 10_000) : 0
+    for (let index = 0; index < count - 1; index++) {
+      const descriptor = place.at + (count + 1) * 4 + index * 22
+      if (table.u16(descriptor + 8) !== 0) continue
+      const shape = table.u32(descriptor + 14)
+      const from = Math.min(table.u32(place.at + index * 4), story.length)
+      const to = Math.min(table.u32(place.at + (index + 1) * 4), story.length)
+      if (to > from && !this.textBoxes.has(shape)) this.textBoxes.set(shape, { from: story.start + from, to: story.start + to })
+    }
+  }
+
+  /** A box's paragraphs, read from its story once; none for a box of no text, or within another box. */
+  private boxBlocks(shape: number): DocumentBlock[] {
+    const range = this.textBoxes.get(shape)
+    if (!range || this.readingBox) return []
+    let blocks = this.boxesRead.get(shape)
+    if (!blocks) {
+      this.readingBox = true
+      try {
+        blocks = this.readBlocks(range.from, range.to, { fields: [], body: false })
+      } finally {
+        this.readingBox = false
+      }
+      this.boxesRead.set(shape, blocks)
+    }
+    return blocks
   }
 
   /** The mark of a note whose reference is at a place of the body, its text read and kept for its page or the end; in a note, its own mark. */
@@ -2002,6 +2138,22 @@ class OlderWordReader {
       if (story.body) this.place(block)
       else blocks.push(block)
     }
+    // A frame's paragraphs, one after another while their frame is the same; then the frames waiting for the paragraph
+    // after them, which holds them, as Word anchors a frame to the paragraph after it.
+    let frame: { key: string; properties: FrameProperties; blocks: DocumentBlock[] } | undefined
+    let waiting: DocumentSpan[] = []
+    const closeFrame = () => {
+      if (!frame) return
+      const placed = this.frameBox(frame.properties, frame.blocks)
+      if ('kind' in placed) for (const block of placed.blocks) out(block)
+      else waiting.push(placed)
+      frame = undefined
+    }
+    const anchorWaiting = (mark: TextLook) => {
+      if (waiting.length === 0) return
+      out({ kind: 'paragraph', look: {}, spans: waiting, mark })
+      waiting = []
+    }
     // The tables open, the outermost first: one nested in a cell goes into that cell once it ends.
     const open: { rows: RowRead[]; row: RowRead }[] = []
     const closeTables = (depth: number) => {
@@ -2019,6 +2171,10 @@ class OlderWordReader {
       const { properties } = read
       const depth = Math.min(properties.depth, 16)
       if (depth >= 1) {
+        if (open.length === 0) {
+          closeFrame()
+          anchorWaiting(read.paragraph.mark)
+        }
         closeTables(depth)
         while (open.length < depth) open.push({ rows: [], row: { cells: [[]], table: undefined } })
         const table = open[depth - 1] as (typeof open)[number]
@@ -2038,16 +2194,74 @@ class OlderWordReader {
       closeTables(0)
       // A paragraph that only ends its section, empty, makes no line.
       if (read.hidden || (read.sectionEnd && read.pieces.length === 0)) continue
+      if (framed(properties.frame)) {
+        const key = JSON.stringify(properties.frame)
+        if (frame?.key !== key) closeFrame()
+        frame ??= { key, properties: properties.frame, blocks: [] }
+        frame.blocks.push(...this.split(read).filter((part) => part !== undefined))
+        continue
+      }
+      closeFrame()
       if (story.body && properties.pageBreakBefore) this.breakPage()
       const parts = this.split(read)
       parts.forEach((part, index) => {
         if (index > 0 && story.body) this.breakPage()
-        if (part) out(part)
+        if (!part) return
+        if (waiting.length > 0) {
+          part.spans.unshift(...waiting)
+          waiting = []
+        }
+        out(part)
       })
     }
     closeTables(0)
+    closeFrame()
+    anchorWaiting(this.normal)
     this.spaceContextually(blocks)
     return blocks
+  }
+
+  /**
+   * A frame's paragraphs as Word places them: at the side of the text it names, the text wrapping around it, when it
+   * is down at its paragraph's place; centred in the text's width there, its paragraphs in the line; at its place over
+   * the text otherwise, across from the page's edge or the text's, down from the page's top, the margin's or its
+   * paragraph's. Its width and height are its own, or its content's.
+   */
+  private frameBox(frame: FrameProperties, blocks: DocumentBlock[]): DocumentSpan | { kind: 'blocks'; blocks: DocumentBlock[] } {
+    const section = this.current
+    const { margins } = section
+    const box: TextBox = { insets: { top: 0, right: 0, bottom: 0, left: 0 }, blocks }
+    if (frame.width > 0) box.width = frame.width / 20
+    // The high bit of its height says it is at least that tall.
+    if ((frame.height & 0x7fff) > 0) box.height = (frame.height & 0x7fff) / 20
+    const across = frame.position === undefined ? 0 : (frame.position >> 6) & 3
+    const down = frame.position === undefined ? 2 : (frame.position >> 4) & 3
+    // A place by name: left 0, centre -4, right -8, inside -12, outside -16; down, at the text's place 0, top -4,
+    // centre -8, bottom -12, inside -16, outside -20.
+    const named = [0, -4, -8, -12, -16].includes(frame.x)
+    const atParagraph = down >= 2 && (frame.y === 0 || frame.y === 1)
+    if (frame.wrap !== 3 && atParagraph && named) {
+      if (frame.x === -4)
+        return { kind: 'blocks', blocks: blocks.map((block) => (block.kind === 'paragraph' ? { ...block, look: { ...block.look, align: 'center' } } : block)) }
+      box.float = frame.x === -8 || frame.x === -16 ? 'right' : 'left'
+      return { box }
+    }
+    const width = box.width ?? 0
+    const height = box.height ?? 0
+    const left = across === 2 ? 0 : margins.left
+    const right = across === 2 ? section.width : section.width - margins.right
+    const x = frame.x === -4 ? (left + right - width) / 2 : frame.x === -8 || frame.x === -16 ? right - width : named ? left : left + (frame.x - 1) / 20
+    if (down >= 2) {
+      const y = frame.y === 0 || frame.y <= -4 ? 0 : (frame.y - 1) / 20
+      box.at = { x: x - margins.left, y, from: 'paragraph' }
+      return { box }
+    }
+    const top = down === 1 ? 0 : margins.top
+    const bottom = down === 1 ? section.height : section.height - margins.bottom
+    const y =
+      frame.y === -8 ? (top + bottom - height) / 2 : frame.y === -12 || frame.y === -20 ? bottom - height : frame.y <= 0 ? top : top + (frame.y - 1) / 20
+    box.at = { x, y, from: 'page' }
+    return { box }
   }
 
   /** The body, its blocks placed on pages, breaking where it says and between its sections. */

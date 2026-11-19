@@ -223,8 +223,8 @@ function Paragraph({
       ) : (
         spans
       )}
-      {/* An empty paragraph still makes a line, as tall as its mark's font, even when figures are placed from it. */}
-      {flowing.length === 0 && <span style={textStyle(mark)}>{'​'}</span>}
+      {/* An empty paragraph still makes a line, as tall as its mark's font, as one holding only what floats or is placed from it does. */}
+      {flowing.every(offLine) && <span style={textStyle(mark)}>{'​'}</span>}
     </div>
   )
 }
@@ -418,12 +418,19 @@ function Placed({ placed }: { placed: PlacedFigure }) {
   )
 }
 
+/** Whether a piece of a paragraph is off its line: a figure or a box floating at a side or placed over the text. */
+const offLine = (span: DocumentSpan) =>
+  ('placed' in span && (span.placed.at !== undefined || span.placed.float !== undefined)) ||
+  ('box' in span && (span.box.at !== undefined || span.box.float !== undefined))
+
 function Box({ box }: { box: TextBox }) {
   return (
     <>
       <Drop item={box} />
       <span
         style={{
+          // What covers a tab's leader in the box is the box's fill.
+          ...(box.fill ? ({ '--paper': box.fill } as CSSProperties) : {}),
           ...placement(box),
           width: box.width ? pt(box.width) : undefined,
           minHeight: box.height ? pt(box.height) : undefined,

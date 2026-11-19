@@ -209,6 +209,30 @@ describe('a document shown as it looks', () => {
     expect(html).toContain('<header style="padding-left:72pt;padding-right:72pt;box-sizing:border-box;min-height:20pt">')
   })
 
+  it('keeps the line of a paragraph holding only what floats, and covers a tab in a box with the box’s fill', () => {
+    const box = { insets: { top: 0, right: 0, bottom: 0, left: 0 }, fill: '#000000', blocks: [paragraph([{ text: 'In', look: {} }])] }
+    const html = shown({
+      pages: [
+        page({
+          bands: [
+            {
+              columns: 1,
+              gap: 36,
+              blocks: [paragraph([{ box: { ...box, at: { x: 10, y: 4, from: 'paragraph' } } }], { mark: { size: 18 } }), paragraph([{ box }])]
+            }
+          ]
+        })
+      ],
+      endNotes: [],
+      text: {},
+      tab: 36
+    })
+    // The first paragraph's line, as tall as its mark; none for the second, whose box is in its line.
+    expect(html.match(/font-size:18pt[^>]*>​<\/span>/g)).toHaveLength(1)
+    expect(html.match(/​/g)).toHaveLength(1)
+    expect(html).toContain('--paper:#000000;position:absolute;left:10pt;margin-top:4pt')
+  })
+
   it('draws tables with their merged cells, borders and shading, and pictures at their size', () => {
     const figure: OfficeFigure = { kind: 'picture', type: 'image/png', bytes: new Uint8Array(), alt: 'A square' }
     const html = shown(

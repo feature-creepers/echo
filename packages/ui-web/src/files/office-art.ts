@@ -37,7 +37,9 @@ export const ART = {
   secondProperties: 0xf121,
   thirdProperties: 0xf122,
   clientAnchor: 0xf010,
-  clientData: 0xf011
+  clientData: 0xf011,
+  groupFrame: 0xf009,
+  childAnchor: 0xf00f
 } as const
 
 const view = (bytes: Uint8Array) => new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
@@ -189,9 +191,26 @@ export function storedPictures(bytes: Uint8Array, store: ArtRecord | undefined, 
   }
 }
 
+/** A rectangle as a drawing keeps one: its left, top, right and bottom, in its group's units or its app's. */
+export interface ArtRectangle {
+  left: number
+  top: number
+  right: number
+  bottom: number
+}
+
+/** A box of text's look: its fill, its line (its colour and width in points), and the space inside its edges, in points. */
+export interface ArtBox {
+  fill: string | undefined
+  line: { color: string; width: number } | undefined
+  insets: { top: number; right: number; bottom: number; left: number }
+}
+
 /**
  * A shape of a drawing, as a preview needs it: its identifier, the picture it shows, its words, its anchor, and what
- * its app keeps of it (its client data: in PowerPoint, the object of another app it shows).
+ * its app keeps of it (its client data: in PowerPoint, the object of another app it shows); a box of text's look; and,
+ * in a group, its place in its group's units (`child`), a group's own units (`frame`), and its place in the outermost
+ * group it is in, as shares of that group's width and height (`within`).
  */
 export interface ArtShape {
   id: number
@@ -201,6 +220,10 @@ export interface ArtShape {
   rule?: { share: number; height: number; color: string | undefined } | undefined
   anchor?: ArtRecord | undefined
   client?: ArtRecord | undefined
+  box?: ArtBox | undefined
+  child?: ArtRectangle | undefined
+  frame?: ArtRectangle | undefined
+  within?: { group: number; left: number; top: number; width: number; height: number } | undefined
 }
 
 /**
@@ -213,6 +236,18 @@ const FILL_COLOR = 0x0181
 const RULE_SHARE = 0x0393
 const RULE_HEIGHT = 0x0395
 const GROUP_FLAGS = 0x03bf
+/** A box of text's: the text it holds (`lTxid`), the space inside its edges, its fill's and line's flags, its line's colour and width. */
+const TEXT = 0x0080
+const TEXT_LEFT = 0x0081
+const TEXT_TOP = 0x0082
+const TEXT_RIGHT = 0x0083
+const TEXT_BOTTOM = 0x0084
+const FILL_FLAGS = 0x01bf
+const LINE_COLOR = 0x01c0
+const LINE_WIDTH = 0x01cb
+const LINE_FLAGS = 0x01ff
+/** A length in English Metric Units, 12,700 to the point. */
+const EMU_POINTS = 12_700
 /** A rule across the text (`fHorizRule`), and the bit that says the flag is set at all. */
 const HORIZONTAL_RULE = 1 << 11
 const HORIZONTAL_RULE_SET = 1 << 27
@@ -244,13 +279,26 @@ function shapeProperties(bytes: Uint8Array, record: ArtRecord): Map<number, numb
 export function artShape(bytes: Uint8Array, container: ArtRecord): ArtShape | undefined {
   const data = view(bytes)
   const shape: ArtShape = { id: 0, alt: '' }
+  const all = new Map<number, number | string>()
+  const rectangle = (record: ArtRecord): ArtRectangle | undefined =>
+    record.size >= 16
+      ? {
+          left: data.getInt32(record.at, true),
+          top: data.getInt32(record.at + 4, true),
+          right: data.getInt32(record.at + 8, true),
+          bottom: data.getInt32(record.at + 12, true)
+        }
+      : undefined
   for (const record of artRecords(bytes, container.at, container.at + container.size)) {
     if (record.type === ART.shapeHeader && record.size >= 8) {
       shape.id = data.getUint32(record.at, true)
       // A slide's background and a deleted shape show nothing here.
       if (data.getUint32(record.at + 4, true) & 0x0408) return undefined
-    } else if (record.type === ART.properties || record.type === ART.secondProperties || record.type === ART.thirdProperties) {
+    } else if (record.type === ART.groupFrame) shape.frame = rectangle(record)
+    else if (record.type === ART.childAnchor) shape.child = rectangle(record)
+    else if (record.type === ART.properties || record.type === ART.secondProperties || record.type === ART.thirdProperties) {
       const properties = shapeProperties(bytes, record)
+      for (const [property, value] of properties) if (!all.has(property)) all.set(property, value)
       const picture = properties.get(PICTURE)
       if (typeof picture === 'number' && picture > 0) shape.picture = picture
       const words = properties.get(DESCRIPTION)
@@ -274,17 +322,82 @@ export function artShape(bytes: Uint8Array, container: ArtRecord): ArtShape | un
     } else if (record.type === ART.clientAnchor) shape.anchor = record
     else if (record.type === ART.clientData) shape.client = record
   }
+  if (all.has(TEXT)) shape.box = boxOf(all)
   return shape
 }
 
-/** The shapes of a drawing (a `DgContainer`) or of a group within it, in order, a group's own shapes in its place. */
-export function artShapes(bytes: Uint8Array, container: ArtRecord, depth = 0): ArtShape[] {
+/**
+ * A box of text's look from its shape's properties, each as the drawing's defaults have it when the shape does not say:
+ * filled in white, lined in black three quarters of a point wide, 7.2 points inside its sides and 3.6 inside its top
+ * and bottom. A colour is red, green and blue from the low byte up; one with a high byte set names a scheme's or the
+ * system's, and the default stands for it.
+ */
+function boxOf(properties: Map<number, number | string>): ArtBox {
+  const number = (property: number, otherwise: number) => {
+    const value = properties.get(property)
+    return typeof value === 'number' ? value : otherwise
+  }
+  const color = (property: number, otherwise: string) => {
+    const value = properties.get(property)
+    return typeof value === 'number' && value >>> 24 === 0
+      ? `#${[0, 8, 16].map((shift) => ((value >> shift) & 0xff).toString(16).padStart(2, '0')).join('')}`
+      : otherwise
+  }
+  // A flag counts when the bit 16 places above it says it is set at all.
+  const flag = (property: number, bit: number, otherwise: boolean) => {
+    const value = number(property, 0)
+    return value & (1 << (bit + 16)) ? (value & (1 << bit)) !== 0 : otherwise
+  }
+  const points = (property: number, otherwise: number) => Math.min(Math.max(number(property, otherwise), 0) / EMU_POINTS, 144)
+  return {
+    fill: flag(FILL_FLAGS, 4, true) ? color(FILL_COLOR, '#ffffff') : undefined,
+    line: flag(LINE_FLAGS, 3, true) ? { color: color(LINE_COLOR, '#000000'), width: Math.min(number(LINE_WIDTH, 9525) / EMU_POINTS, 24) } : undefined,
+    insets: { top: points(TEXT_TOP, 45_720), right: points(TEXT_RIGHT, 91_440), bottom: points(TEXT_BOTTOM, 45_720), left: points(TEXT_LEFT, 91_440) }
+  }
+}
+
+/**
+ * The shapes of a drawing (a `DgContainer`) or of a group within it, in order, a group's own shapes in its place. A
+ * group's first shape is the group itself, whose frame gives the units its shapes are placed in: each shape of a group
+ * is placed in the outermost group it is in, as shares of that group's size.
+ */
+export function artShapes(bytes: Uint8Array, container: ArtRecord, depth = 0, within?: (rectangle: ArtRectangle) => ArtShape['within']): ArtShape[] {
   const shapes: ArtShape[] = []
   for (const record of artRecords(bytes, container.at, container.at + container.size)) {
     if (record.type === ART.shape) {
       const shape = artShape(bytes, record)
-      if (shape) shapes.push(shape)
-    } else if (record.type === ART.group && depth < 16) shapes.push(...artShapes(bytes, record, depth + 1))
+      if (!shape) continue
+      if (within && shape.child) shape.within = within(shape.child)
+      shapes.push(shape)
+    } else if (record.type === ART.group && depth < 16) {
+      const first = childOf(bytes, record, ART.shape)
+      const own = first && artShape(bytes, first)
+      const frame = own?.frame
+      let inner = within
+      if (own && frame && frame.right !== frame.left && frame.bottom !== frame.top) {
+        const width = frame.right - frame.left
+        const height = frame.bottom - frame.top
+        // A group within a group is placed in its own group's units, and its shapes in its own.
+        const outer = own.child && within ? within(own.child) : undefined
+        if (outer)
+          inner = (rectangle) => ({
+            group: outer.group,
+            left: outer.left + ((rectangle.left - frame.left) / width) * outer.width,
+            top: outer.top + ((rectangle.top - frame.top) / height) * outer.height,
+            width: ((rectangle.right - rectangle.left) / width) * outer.width,
+            height: ((rectangle.bottom - rectangle.top) / height) * outer.height
+          })
+        else if (!own.child)
+          inner = (rectangle) => ({
+            group: own.id,
+            left: (rectangle.left - frame.left) / width,
+            top: (rectangle.top - frame.top) / height,
+            width: (rectangle.right - rectangle.left) / width,
+            height: (rectangle.bottom - rectangle.top) / height
+          })
+      }
+      shapes.push(...artShapes(bytes, record, depth + 1, inner))
+    }
   }
   return shapes
 }

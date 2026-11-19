@@ -147,6 +147,66 @@ describe('OfficeArt records', () => {
     ])
   })
 
+  it('reads a box of text’s fill, line and insets, each the default where the shape says nothing, and places a group’s shapes in it', () => {
+    // A shape's properties: each its number and value, simple ones only.
+    const box = (id: number, properties: [number, number][], placed: number[] = []) =>
+      container(ART.shape, [
+        atom(ART.shapeHeader, [...u32(id), ...u32(0x0a00)], 202),
+        atom(
+          ART.properties,
+          properties.flatMap(([property, value]) => [...u16(property), ...u32(value)]),
+          properties.length
+        ),
+        ...(placed.length === 4 ? [atom(ART.childAnchor, placed.flatMap(u32))] : [])
+      ])
+    const group = (id: number, frame: number[], placed: number[], children: number[][]) =>
+      container(ART.group, [
+        container(ART.shape, [
+          atom(ART.groupFrame, frame.flatMap(u32)),
+          atom(ART.shapeHeader, [...u32(id), ...u32(0x0201)], 0),
+          ...(placed.length === 4 ? [atom(ART.childAnchor, placed.flatMap(u32))] : [])
+        ]),
+        ...children
+      ])
+    const { whole, first } = read(
+      container(ART.drawing, [
+        container(ART.group, [
+          shape(1024, 0x05),
+          box(1025, [
+            [0x0080, 0x10000],
+            [0x0181, 0x00ff00],
+            [0x01c0, 0x0000ff],
+            [0x01cb, 25_400],
+            [0x0081, 0]
+          ]),
+          // Not filled, said so by the flag and the bit that says it is set; its line's colour a scheme's.
+          box(1026, [
+            [0x0080, 0x20000],
+            [0x01bf, 0x100000],
+            [0x01c0, 0x08000001]
+          ]),
+          group(
+            1027,
+            [0, 0, 1000, 500],
+            [],
+            [
+              box(1028, [[0x0080, 0x30000]], [500, 0, 1000, 250]),
+              group(1029, [0, 0, 100, 100], [0, 250, 500, 500], [box(1030, [[0x0080, 0x40000]], [50, 0, 100, 100])])
+            ]
+          )
+        ])
+      ])
+    )
+    const shapes = artShapes(whole, first)
+    const found = (id: number) => shapes.find((one) => one.id === id)
+    expect(found(1024)?.box).toBeUndefined()
+    expect(found(1025)?.box).toEqual({ fill: '#00ff00', line: { color: '#ff0000', width: 2 }, insets: { top: 3.6, right: 7.2, bottom: 3.6, left: 0 } })
+    expect(found(1026)?.box).toEqual({ fill: undefined, line: { color: '#000000', width: 0.75 }, insets: { top: 3.6, right: 7.2, bottom: 3.6, left: 7.2 } })
+    expect(found(1028)?.within).toEqual({ group: 1027, left: 0.5, top: 0, width: 0.5, height: 0.5 })
+    // A group within a group: its shapes placed in the outermost one.
+    expect(found(1030)?.within).toEqual({ group: 1027, left: 0.25, top: 0.5, width: 0.25, height: 0.5 })
+  })
+
   it('keeps each picture once, says one its app shows, and stops at the limit', () => {
     const figures = new ArtFigures()
     const png = { bytes: new Uint8Array(PNG) }
