@@ -205,6 +205,22 @@ function appServer(): void {
       await message(id, [accepted ? 'Written.' : 'Not written.'])
       return complete(id)
     }
+    if (text.includes('run commands')) {
+      // Each command is announced, put to the client, then run in its shell, or not.
+      const run = async (itemId: string, line: string, ran: { aggregatedOutput: string; exitCode: number }) => {
+        const command = `/bin/bash -lc '${line}'`
+        const item = { type: 'commandExecution', id: itemId, command, status: 'inProgress', aggregatedOutput: null, exitCode: null }
+        notify('item/started', { threadId: 'thread-1', turnId: id, item })
+        const reply = await ask('item/commandExecution/requestApproval', { threadId: 'thread-1', itemId, command })
+        const accepted = (reply.result as Message).decision === 'accept'
+        const done = accepted ? { ...ran, status: ran.exitCode === 0 ? 'completed' : 'failed' } : { status: 'declined' }
+        notify('item/completed', { threadId: 'thread-1', turnId: id, item: { ...item, ...done } })
+      }
+      await run('item-r1', 'ls | wc -l', { aggregatedOutput: '3\n', exitCode: 0 })
+      await run('item-r2', 'pnpm test', { aggregatedOutput: '1 failed\n', exitCode: 1 })
+      await message(id, ['Ran them.'])
+      return complete(id)
+    }
     if (text.includes('command')) {
       const command = await ask('item/commandExecution/requestApproval', {
         threadId: 'thread-1',

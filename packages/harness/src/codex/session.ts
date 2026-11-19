@@ -12,6 +12,7 @@ import { readJsonLines, writeJsonLine } from '../process/json-lines.ts'
 import { KEPT_OUTPUT, lastLines, saysSignedOut } from '../process/output.ts'
 import { platform } from '../process/platform/index.ts'
 import { start } from '../process/run.ts'
+import { commandLine, shownCommand } from './command.ts'
 import { appServerArguments, type Holding, heldAsAsked, shellAllowed, TOOL_SERVER, threadSettings, userToolServers, workingFolder } from './isolation.ts'
 import { codexHome, codexModels } from './models.ts'
 import { SIGNED_OUT } from './status.ts'
@@ -47,12 +48,8 @@ const input = (value: string, attachments: readonly Attachment[]) => [
 
 /** The name the core reports a change of files under. */
 const WRITE_TOOL = 'computer_write'
-
-/** A word written back into a POSIX line, quoted so it reads as the one word it was. */
-const quoted = (word: string) => (/^[\w./~:=@%+-]+$/.test(word) ? word : `'${word.replace(/'/g, `'\\''`)}'`)
-
-/** A command as Codex gives it, a line or its words, as one line to show the person and to read. */
-const commandLine = (value: unknown) => (Array.isArray(value) ? value.map((word) => quoted(String(word))).join(' ') : typeof value === 'string' ? value : '')
+/** The name the core reports a command under, as it does Claude Code's. */
+const RUN_TOOL = 'computer_run'
 
 /**
  * A live session with Codex, run as a server: requests and notifications go both ways as JSON lines, in
@@ -407,7 +404,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
         if (ours !== undefined) events.emit({ type: 'tool', name: ours, phase: 'started', ...callOf(item) })
         else if (item.type === 'fileChange') {
           events.emit({ type: 'tool', name: WRITE_TOOL, phase: 'started', ...changeOf(item, filesBase()).call })
-        }
+        } else if (item.type === 'commandExecution') events.emit({ type: 'tool', name: RUN_TOOL, phase: 'started', ...runOf(item) })
         return
       case 'item/completed': {
         const use = reportUse(item)
@@ -425,6 +422,8 @@ export function openSession(request: SessionRequest, context: SessionContext): S
             ...(kept.length > 0 && done ? { wrote: kept } : {}),
             ...(use === undefined ? {} : { use })
           })
+        } else if (item.type === 'commandExecution') {
+          events.emit({ type: 'tool', name: RUN_TOOL, phase: 'ended', ...runOf(item), ...ranOf(item), ...(use === undefined ? {} : { use }) })
         } else if (item.type === 'agentMessage' && !streamed.has(asString(item.id) ?? '')) {
           paragraphDue = wrote
           say(asString(item.text) ?? '')
@@ -478,6 +477,24 @@ function outcomeOf(item: JsonObject): { output?: string; failed?: boolean } {
     .map((part) => (part?.type === 'text' ? (asString(part.text) ?? '') : ''))
     .filter((part) => part !== '')
   return parts.length > 0 ? { output: parts.join('\n\n') } : {}
+}
+
+/** A command as a call: which it is, and the line it ran, without the shell Codex wraps it in. */
+function runOf(item: JsonObject): { call?: string; input: { command: string } } {
+  const id = asString(item.id)
+  return { ...(id === undefined ? {} : { call: id }), input: { command: shownCommand(commandLine(item.command)) } }
+}
+
+/** How a command went: what it printed, and whether it failed, ended with a code other than 0 or was not allowed. */
+function ranOf(item: JsonObject): { output?: string; failed?: boolean } {
+  const printed = asString(item.aggregatedOutput) ?? ''
+  const exit = typeof item.exitCode === 'number' ? item.exitCode : undefined
+  if (item.status === 'declined') return { output: 'It was not allowed.', failed: true }
+  if (item.status === 'failed' || (exit !== undefined && exit !== 0)) {
+    const said = exit === undefined || exit === 0 ? printed : [`Exit code ${exit}`, printed].filter((part) => part !== '').join('\n')
+    return { ...(said === '' ? {} : { output: said }), failed: true }
+  }
+  return printed === '' ? {} : { output: printed }
 }
 
 /** A change of files as a call (which it is, and the files it touches), and the files it makes or keeps, absolute. */

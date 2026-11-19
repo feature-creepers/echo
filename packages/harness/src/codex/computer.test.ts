@@ -58,6 +58,23 @@ describe('Codex and files', () => {
     ])
   })
 
+  it('reports each command as a call, by the line its shell was given, with what it printed and the use the core allowed', async () => {
+    const { session } = onComputer()
+    const followed = follow(session)
+    session.send('run commands')
+    await followed.until('turn-end')
+    const tools = followed.events.filter((event) => event.type === 'tool')
+    const listed = { type: 'tool', name: 'computer_run', call: 'item-r1', input: { command: 'ls | wc -l' } }
+    const tested = { type: 'tool', name: 'computer_run', call: 'item-r2', input: { command: 'pnpm test' } }
+    expect(tools).toEqual([
+      { ...listed, phase: 'started' },
+      { ...listed, phase: 'ended', output: '3\n', use: 'use-1' },
+      { ...tested, phase: 'started' },
+      { ...tested, phase: 'ended', output: 'Exit code 1\n1 failed\n', failed: true, use: 'use-1' }
+    ])
+    expect(followed.text()).toBe('Ran them.')
+  })
+
   it('shows Codex the pictures handed over, by where they are, after the words', async () => {
     const { session } = onComputer()
     const followed = follow(session)
