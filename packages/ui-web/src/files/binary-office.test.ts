@@ -1691,7 +1691,105 @@ describe('a PowerPoint 97 presentation', () => {
   })
 })
 
+/** A record of PowerPoint 95: its type, its instance, its length and a fourth word, in four bytes each, then its body. */
+const ninetyFiveAtom = (type: number, body: Bytes) => new Bytes().u32(type).u32(0).u32(body.length).u32(0).raw(body.done()).done()
+/** A container of PowerPoint 95, its instance 0xffff, holding the records given. */
+const ninetyFiveContainer = (type: number, children: Uint8Array[]) => {
+  const inside = new Bytes()
+  for (const child of children) inside.raw(child)
+  return new Bytes().u32(type).u32(0xffff).u32(inside.length).u32(0).raw(inside.done()).done()
+}
+
+/** A shape of PowerPoint 95, a placeholder or a free one, holding a text of a kind (0 a title, 1 a body, 6 a title slide's). */
+const ninetyFiveShape = (placeholder: boolean, kind: number, text: number[]) =>
+  ninetyFiveContainer(placeholder ? 0x0bc2 : 0x0bc0, [
+    ninetyFiveAtom(0x0bc1, new Bytes().zeros(40)),
+    ninetyFiveContainer(0x0fa1, [
+      ninetyFiveAtom(0x0fa0, new Bytes().zeros(16)),
+      ninetyFiveContainer(0x0fa2, [
+        ninetyFiveAtom(0x0fa3, new Bytes().u32(kind).zeros(32)),
+        ninetyFiveContainer(0x0fe0, [
+          ninetyFiveAtom(0x07ee, new Bytes().raw(text)),
+          ninetyFiveContainer(0x07ec, [ninetyFiveAtom(0x07ed, new Bytes().raw(ascii('Run')))])
+        ])
+      ])
+    ])
+  ])
+
+/** A summary naming the code page its text is in, as its only property. */
+const codePageSummary = (codePage: number) =>
+  new Bytes().u16(0xfffe).u16(0).u32(0).zeros(16).u32(1).zeros(16).u32(48).u32(24).u32(1).u32(1).u32(16).u16(2).u16(0).u16(codePage).u16(0).done()
+
+/**
+ * A presentation of PowerPoint 95 of two slides, the first with its notes, a placeholder of each kind and a free shape
+ * whose text keeps a title's kind, the second with a group, then its masters in a list of their own; and the text it
+ * keeps for searching.
+ */
+function ninetyFiveDeck(searched: string, options: { title?: number[]; codePage?: number } = {}): Uint8Array {
+  const shapes = (...children: Uint8Array[]) => ninetyFiveContainer(0x0bb8, children)
+  const slide = (...children: Uint8Array[]) => ninetyFiveContainer(0x03ee, [ninetyFiveAtom(0x03ef, new Bytes().zeros(8)), ...children])
+  const notes = ninetyFiveContainer(0x03f0, [shapes(ninetyFiveShape(true, 2, ascii('Speaker notes')))])
+  const slides = ninetyFiveContainer(0x07d0, [
+    slide(
+      notes,
+      shapes(
+        ninetyFiveShape(true, 0, options.title ?? ascii('Plans')),
+        ninetyFiveShape(true, 1, ascii('Train at 9\rMuseum\vthen dinner')),
+        ninetyFiveShape(false, 0, ascii('Seen from the train'))
+      )
+    ),
+    // A group keeps its shapes in a list of its own, after a record of its own.
+    slide(
+      shapes(
+        ninetyFiveContainer(0x0bb9, [ninetyFiveAtom(0x0bba, new Bytes().zeros(8)), ninetyFiveContainer(0x07d0, [ninetyFiveShape(true, 6, ascii('Welcome'))])])
+      )
+    )
+  ])
+  const masters = ninetyFiveContainer(0x07d0, [slide(shapes(ninetyFiveShape(true, 0, ascii('Click to edit the title'))))])
+  const document = ninetyFiveContainer(0x0003, [ninetyFiveContainer(0x03e8, [ninetyFiveAtom(0x03e9, new Bytes().zeros(8)), slides, masters])])
+  return compound({
+    'PowerPoint Document': document,
+    'Current User': new Bytes().u32(4).narrow('Anne').done(),
+    Text_Content: new Bytes().raw([...searched].map((letter) => letter.charCodeAt(0))).done(),
+    ...(options.codePage === undefined ? {} : { '\u0005SummaryInformation': codePageSummary(options.codePage) })
+  })
+}
+
 describe('a PowerPoint 95 presentation', () => {
+  const searched = 'Plans\r\rTrain at 9\rMuseum\vthen dinner\r\rSeen from the train\r\rWelcome\r\r'
+
+  it.each([
+    {
+      name: 'its slides in the order of their list, each with its placeholder’s title, notes and masters left out',
+      deck: ninetyFiveDeck(searched),
+      slides: [
+        { title: 'Plans', lines: ['Train at 9', 'Museum then dinner', 'Seen from the train'], figures: [] },
+        { title: 'Welcome', lines: [], figures: [] }
+      ]
+    },
+    {
+      name: 'its text in the code page its summary names',
+      deck: ninetyFiveDeck(`${String.fromCharCode(...HELLO)}${searched.slice(5)}`, { title: HELLO, codePage: 1251 }),
+      slides: [
+        { title: 'Привет', lines: ['Train at 9', 'Museum then dinner', 'Seen from the train'], figures: [] },
+        { title: 'Welcome', lines: [], figures: [] }
+      ]
+    }
+  ])('reads $name', async ({ deck, slides }) => {
+    expect(await readOlderPowerPoint(deck)).toEqual({ kind: 'presentation', slides, cut: false })
+  })
+
+  it.each([
+    {
+      name: 'in another order',
+      text: 'Welcome\r\rPlans\r\rTrain at 9\rMuseum\vthen dinner\r\rSeen from the train\r\r',
+      markdown: 'Welcome\n\nPlans\n\nTrain at 9  \nMuseum then dinner\n\nSeen from the train'
+    },
+    { name: 'with text the records do not hold', text: 'Plans\r\rTrain at 10\r\r', markdown: 'Plans\n\nTrain at 10' }
+  ])('shows the text it keeps for searching when its records’ text is not that text: $name', async ({ text, markdown }) => {
+    expect(await readOlderPowerPoint(ninetyFiveDeck(text))).toEqual({ kind: 'document', markdown, figures: [], cut: false })
+  })
+
   it('shows the text it keeps for searching, each shape’s paragraphs apart, a line broken within one', async () => {
     const text = 'Plans for 1996\r\rPlans\r\rFirst \x93idea\x94\rSecond\vline\r\r'
     const file = compound({

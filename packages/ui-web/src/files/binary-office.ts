@@ -1711,13 +1711,175 @@ function drawingTexts(stream: Reader, record: PowerPointRecord, depth = 0): { ti
   return found
 }
 
+// PowerPoint 95
+
 /**
- * A presentation of PowerPoint 95, as the text it keeps for searching (`Text_Content`): in Western European, each of its
- * shapes' paragraphs apart, its slides one after the other with nothing to tell where one ends, its records' own
- * layout being no format 97 shares.
+ * A record of PowerPoint 95, whose records share no layout with 97's: its type, its instance, its length and a fourth
+ * word, in four bytes each, then its body; a container's instance is 0xffff.
  */
-function ninetyFiveText(bytes: Uint8Array): OfficePreview {
-  const text = codePageDecoder(1252).decode(bytes.subarray(0, Math.min(bytes.length, CHARACTER_LIMIT)))
+interface NinetyFiveRecord {
+  type: number
+  container: boolean
+  at: number
+  size: number
+}
+
+/** The records directly inside a stretch of a PowerPoint 95 presentation's stream. */
+function* ninetyFiveChildren(stream: Reader, from: number, end: number): Generator<NinetyFiveRecord> {
+  for (let at = from; at + 16 <= end; ) {
+    const size = stream.u32(at + 8)
+    if (size > end - at - 16) return
+    yield { type: stream.u32(at), container: stream.u32(at + 4) === 0xffff, at: at + 16, size }
+    at += 16 + size
+  }
+}
+
+/** The first record of a type directly inside a container of PowerPoint 95. */
+function ninetyFiveChild(stream: Reader, record: NinetyFiveRecord | undefined, type: number): NinetyFiveRecord | undefined {
+  if (!record?.container) return undefined
+  for (const child of ninetyFiveChildren(stream, record.at, record.at + record.size)) if (child.type === type) return child
+  return undefined
+}
+
+/** Whether a presentation's stream is PowerPoint 95's: it opens with a container of type 3, where 97's opens with two bytes of version and instance. */
+const ninetyFiveStream = (raw: Uint8Array) => raw.length >= 16 && readU32(raw, 0) === 3 && readU32(raw, 4) === 0xffff
+
+const NINETY_FIVE = {
+  document: 0x03e8,
+  list: 0x07d0,
+  slide: 0x03ee,
+  notes: 0x03f0,
+  shape: 0x0bc0,
+  placeholder: 0x0bc2,
+  runs: 0x07ec,
+  holder: 0x0fa2,
+  kind: 0x0fa3,
+  box: 0x0fe0,
+  text: 0x07ee
+}
+
+/**
+ * The texts of a slide of PowerPoint 95, in the order of its shapes, groups included, each with whether it is a title:
+ * every holder of text, its kind first, numbered as 97 numbers a text's (0 a title, 6 a title slide's), then its text
+ * box, whose first record is its text. Only a placeholder's text is a title: a free shape's keeps the kind of the text
+ * it was copied from, and PowerPoint lists a slide whose only title is one as untitled. Its page of notes is left out,
+ * as a slide of 97's notes are.
+ */
+function ninetyFiveTexts(
+  stream: Reader,
+  record: NinetyFiveRecord,
+  decoder: TextDecoder,
+  depth = 0,
+  placeholder = false
+): { title: boolean; lines: string[] }[] {
+  const found: { title: boolean; lines: string[] }[] = []
+  for (const child of ninetyFiveChildren(stream, record.at, record.at + record.size)) {
+    if (child.type === NINETY_FIVE.holder && child.container) {
+      const kind = ninetyFiveChild(stream, child, NINETY_FIVE.kind)
+      const text = ninetyFiveChild(stream, ninetyFiveChild(stream, child, NINETY_FIVE.box), NINETY_FIVE.text)
+      if (!text) continue
+      const lines = decoder
+        .decode(stream.bytes(text.at, text.size))
+        .split('\r')
+        .map((line) => line.replaceAll('\v', ' ').trim())
+        .filter(Boolean)
+      if (lines.length > 0) found.push({ title: placeholder && kind !== undefined && kind.size >= 4 && TITLE_TYPES.has(stream.u32(kind.at)), lines })
+    } else if (child.container && depth < 16 && child.type !== NINETY_FIVE.notes && child.type !== NINETY_FIVE.runs) {
+      const inside = child.type === NINETY_FIVE.placeholder || (child.type !== NINETY_FIVE.shape && placeholder)
+      found.push(...ninetyFiveTexts(stream, child, decoder, depth + 1, inside))
+    }
+  }
+  return found
+}
+
+/**
+ * The slides of a PowerPoint 95 presentation, in the order of its first list, the one of its slides, before its
+ * masters'; and whether their text, in the order of its shapes, is the text it keeps for searching (`Text_Content`),
+ * slide after slide and shape after shape, as PowerPoint 95 writes it there: what tells that its records were read as
+ * they were meant.
+ */
+function ninetyFiveSlides(
+  raw: Uint8Array,
+  decoder: TextDecoder,
+  searched: string | undefined
+): { slides: { title: string; lines: string[] }[]; cut: boolean; searched: boolean } {
+  const stream = reader(raw)
+  const [top] = ninetyFiveChildren(stream, 0, stream.length)
+  const list = ninetyFiveChild(stream, ninetyFiveChild(stream, top, NINETY_FIVE.document), NINETY_FIVE.list)
+  const slides: { title: string; lines: string[] }[] = []
+  const kept = searched === undefined ? undefined : spacedOnce(searched)
+  let from = 0
+  for (const record of list ? ninetyFiveChildren(stream, list.at, list.at + list.size) : []) {
+    if (record.type !== NINETY_FIVE.slide || !record.container) continue
+    if (slides.length >= SLIDE_LIMIT) return { slides, cut: true, searched: from >= 0 }
+    const slide = { title: '', lines: [] as string[] }
+    for (const text of ninetyFiveTexts(stream, record, decoder)) {
+      if (text.title && slide.title === '') slide.title = text.lines.join(' ')
+      else slide.lines.push(...text.lines)
+      if (kept !== undefined && from >= 0) {
+        const shape = spacedOnce(text.lines.join(' '))
+        const found = kept.indexOf(shape, from)
+        from = found < 0 ? -1 : found + shape.length
+      }
+    }
+    slides.push(slide)
+  }
+  return { slides, cut: false, searched: from >= 0 }
+}
+
+/** Text with its runs of spaces, line breaks and paragraph ends as one space, to compare two copies of it. */
+const spacedOnce = (text: string) => text.replace(/\s+/g, ' ').trim()
+
+/**
+ * The code page a compound file's summary names for its text (its first property, `PID_CODEPAGE`), when it names one
+ * of eight bits: PowerPoint 95 and 4 write their text in it.
+ */
+function summaryCodePage(file: Compound): number | undefined {
+  const summary = file.stream('\u0005SummaryInformation')
+  if (!summary || summary.length < 48) return undefined
+  try {
+    const properties = reader(summary)
+    const section = properties.u32(44)
+    const count = Math.min(properties.u32(section + 4), 1024)
+    for (let index = 0; index < count; index++) {
+      if (properties.u32(section + 8 + index * 8) !== 1) continue
+      const at = section + properties.u32(section + 12 + index * 8)
+      const codePage = properties.u16(at) === 2 ? properties.u16(at + 4) : undefined
+      return codePage === 1200 ? undefined : codePage
+    }
+  } catch {
+    return undefined
+  }
+  return undefined
+}
+
+/**
+ * A presentation of PowerPoint 95, slide by slide in the order of its list, each with its title and the lines of its
+ * other text, from its records; when they cannot be read, or their text is not the one it keeps for searching, that
+ * text instead. Its slides are not drawn: no public description of its records says how they look, and no app of
+ * today opens them to compare.
+ */
+function readNinetyFive(file: Compound, raw: Uint8Array): OfficePreview {
+  const decoder = codePageDecoder(summaryCodePage(file) ?? 1252)
+  const searched = file.stream('Text_Content')
+  const text = searched && decoder.decode(searched.subarray(0, Math.min(searched.length, CHARACTER_LIMIT)))
+  let read: ReturnType<typeof ninetyFiveSlides> | undefined
+  try {
+    read = ninetyFiveSlides(raw, decoder, text)
+  } catch {
+    read = undefined
+  }
+  if (read && read.slides.length > 0 && read.searched)
+    return { kind: 'presentation', slides: read.slides.map((slide) => ({ ...slide, figures: [] })), cut: read.cut }
+  if (text === undefined) throw new Error('The file is damaged: its text could not be read.')
+  return ninetyFiveText(text, searched !== undefined && searched.length > CHARACTER_LIMIT)
+}
+
+/**
+ * A presentation of PowerPoint 95, as the text it keeps for searching (`Text_Content`): each of its shapes'
+ * paragraphs apart, its slides one after the other with nothing to tell where one ends.
+ */
+function ninetyFiveText(text: string, longer: boolean): OfficePreview {
   // Paragraphs end with a carriage return, a shape's last with two; a line breaks within one at a vertical tab.
   const blocks = text
     .split(/\r\r+/)
@@ -1733,7 +1895,7 @@ function ninetyFiveText(bytes: Uint8Array): OfficePreview {
     kind: 'document',
     markdown: joinBlocks(blocks.slice(0, BLOCK_LIMIT)),
     figures: [],
-    cut: blocks.length > BLOCK_LIMIT || bytes.length > CHARACTER_LIMIT
+    cut: blocks.length > BLOCK_LIMIT || longer
   }
 }
 
@@ -1825,8 +1987,7 @@ export async function readOlderPowerPoint(bytes: Uint8Array): Promise<OfficePrev
   if (file.stream('EncryptedSummary')) throw new Error(PROTECTED)
   // PowerPoint 95 names its user without a record of 97's (`CurrentUserAtom`), and keeps its text for searching apart.
   const user = file.stream('Current User')
-  const searched = file.stream('Text_Content')
-  if (user && searched && readU16(user, 2) !== 0x0ff6) return ninetyFiveText(searched)
+  if (ninetyFiveStream(raw) || (user && file.stream('Text_Content') && readU16(user, 2) !== 0x0ff6)) return readNinetyFive(file, raw)
   const stream = reader(raw)
   const { places, document } = persistedObjects(file, stream)
   const documentAt = document === undefined ? undefined : places.get(document)
