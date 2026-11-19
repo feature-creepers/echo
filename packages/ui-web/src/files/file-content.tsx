@@ -3,9 +3,10 @@ import { ATTACHMENT_MAX_BYTES } from '@repo/protocol'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
+import { Chart } from '../view/blocks/data.tsx'
 import { Markdown } from '../view/blocks/markdown.tsx'
 import { badgeOf, extensionOf, kindOf, previewTypeOf } from './kinds.ts'
-import { type OfficePreview, readOffice } from './office.ts'
+import { type OfficeFigure, type OfficePreview, readOffice } from './office.ts'
 import { sizeWords, tableRows } from './words.ts'
 
 /** How much of a text is read to show it: enough for any document a person reads in a pane. */
@@ -110,7 +111,8 @@ type OfficeReading = { is: 'reading' } | { is: 'failed'; why: string } | { is: '
 
 /**
  * An Office file, Word, Excel, PowerPoint or OpenDocument, read in the window: a document as the Prose block shows
- * it, each sheet as a table, each slide's title and text. What it looks like is left to its app, and the preview says so.
+ * it, each sheet as a table, each slide's title and text, each with its pictures and charts. The rest of its look is
+ * left to its app, and the preview says so.
  */
 function Office({ name, bytes, className }: { name: string; bytes: Uint8Array; className?: string | undefined }) {
   const [reading, setReading] = useState<OfficeReading>({ is: 'reading' })
@@ -128,20 +130,48 @@ function Office({ name, bytes, className }: { name: string; bytes: Uint8Array; c
 
   if (reading.is === 'reading') return <Opening className={className} />
   if (reading.is === 'failed') return <NoPreview name={name} size={bytes.length} className={className} note={reading.why} />
-  const { preview } = reading
+  return <OfficeShown preview={reading.preview} className={className} />
+}
+
+function OfficeShown({ preview, className }: { preview: OfficePreview; className?: string | undefined }) {
+  const all = useMemo(
+    () =>
+      preview.kind === 'document'
+        ? preview.figures
+        : preview.kind === 'workbook'
+          ? preview.sheets.flatMap((sheet) => sheet.figures)
+          : preview.slides.flatMap((slide) => slide.figures),
+    [preview]
+  )
+  const urls = useFigureUrls(all)
+  const shown = all.some((figure) => figure.kind !== 'unshown')
   const note = (cut: boolean) => (
-    <p className="mt-6 text-text-faint text-xs">{cut ? 'Showing the start of it. ' : ''}Its text only: open it with its app for how it looks.</p>
+    <p className="mt-6 text-text-faint text-xs">
+      {cut ? 'Showing the start of it. ' : ''}
+      {shown ? 'Its text, pictures and charts' : 'Its text only'}: open it with its app for how it looks.
+    </p>
   )
   switch (preview.kind) {
-    case 'document':
+    case 'document': {
+      // A document names its figures by their place: `![words](figure:2)`.
+      const figure = (address: string, alt: string, block: boolean) => {
+        const found = /^figure:(\d+)$/.exec(address)
+        const shownFigure = found ? preview.figures[Number(found[1])] : undefined
+        return shownFigure ? <Figure figure={shownFigure} url={urls.get(shownFigure)} alt={alt} block={block} /> : alt
+      }
       return (
         <Scroll className={className}>
           <div className="mx-auto max-w-[44rem] text-[0.875rem]">
-            {preview.markdown === '' ? <p className="text-sm text-text-faint">This document has no text.</p> : <Markdown text={preview.markdown} />}
+            {preview.markdown === '' ? (
+              <p className="text-sm text-text-faint">This document has no text.</p>
+            ) : (
+              <Markdown text={preview.markdown} figure={figure} />
+            )}
           </div>
           {note(preview.cut)}
         </Scroll>
       )
+    }
     case 'workbook':
       return (
         <Scroll className={className}>
@@ -150,7 +180,8 @@ function Office({ name, bytes, className }: { name: string; bytes: Uint8Array; c
             {preview.sheets.map((sheet, index) => (
               <section key={`${index}-${sheet.name}`} className="grid gap-2">
                 {preview.sheets.length > 1 && <Eyebrow>{sheet.name}</Eyebrow>}
-                <Table rows={sheet.rows} />
+                {(sheet.rows.length > 0 || sheet.figures.length === 0) && <Table rows={sheet.rows} />}
+                {sheet.figures.length > 0 && <Figures figures={sheet.figures} urls={urls} />}
               </section>
             ))}
           </div>
@@ -171,6 +202,7 @@ function Office({ name, bytes, className }: { name: string; bytes: Uint8Array; c
                     {line}
                   </span>
                 ))}
+                {slide.figures.length > 0 && <Figures figures={slide.figures} urls={urls} className="mt-1.5" />}
               </li>
             ))}
           </ol>
@@ -178,6 +210,72 @@ function Office({ name, bytes, className }: { name: string; bytes: Uint8Array; c
         </Scroll>
       )
   }
+}
+
+/** The tones a chart's series are drawn in, in order, as the Chart block colours them. */
+const SERIES_TONES = ['normal', 'soft', 'ok', 'warn', 'danger', 'faint'] as const
+
+/** Figures one beside the other, as many as fit across. */
+function Figures({ figures, urls, className }: { figures: OfficeFigure[]; urls: ReadonlyMap<OfficeFigure, string>; className?: string }) {
+  return (
+    <div className={cn('flex min-w-0 flex-wrap items-start gap-3', className)}>
+      {figures.map((figure, index) => (
+        <Figure key={index} figure={figure} url={urls.get(figure)} alt={figure.kind === 'chart' ? figure.title : figure.alt} block />
+      ))}
+    </div>
+  )
+}
+
+/**
+ * A figure of an Office file: a picture at the size its file gives it, never wider than where it is shown; a chart,
+ * as the Chart block draws one, under its title; or, for what the window cannot show, a frame saying what it is.
+ */
+function Figure({ figure, url, alt, block }: { figure: OfficeFigure; url: string | undefined; alt: string; block: boolean }) {
+  if (figure.kind === 'picture')
+    return url ? (
+      <img
+        src={url}
+        alt={alt}
+        width={figure.width}
+        height={figure.height}
+        className={cn('h-auto max-w-full rounded-xs', block ? 'block' : 'inline-block align-middle')}
+      />
+    ) : null
+  if (figure.kind === 'chart')
+    return (
+      <span className="grid w-full min-w-0 gap-1.5 rounded-md border border-line px-3 py-2.5">
+        {figure.title !== '' && <span className="font-medium text-[0.8125rem]">{figure.title}</span>}
+        <Chart
+          props={{
+            kind: figure.chart,
+            height: 'normal',
+            series: figure.series.map((series, index) => ({ ...series, tone: SERIES_TONES[index % SERIES_TONES.length] ?? 'normal' }))
+          }}
+        />
+      </span>
+    )
+  return (
+    <span className="inline-flex max-w-full items-center gap-2 rounded-md border border-line border-dashed px-3 py-2 text-text-faint text-xs">
+      {figure.what === 'chart' ? 'A chart its app draws' : 'A picture its app shows'}
+      {alt.trim() !== '' && <span className="text-text-soft">· {alt}</span>}
+    </span>
+  )
+}
+
+/** Addresses for the pictures of a file the window can show, made while they are shown and let go of after. */
+function useFigureUrls(figures: readonly OfficeFigure[]): ReadonlyMap<OfficeFigure, string> {
+  const [urls, setUrls] = useState<ReadonlyMap<OfficeFigure, string>>(new Map())
+  useEffect(() => {
+    const made = new Map<OfficeFigure, string>()
+    for (const figure of figures)
+      if (figure.kind === 'picture' && !made.has(figure))
+        made.set(figure, URL.createObjectURL(new Blob([figure.bytes as Uint8Array<ArrayBuffer>], { type: figure.type })))
+    setUrls(made)
+    return () => {
+      for (const url of made.values()) URL.revokeObjectURL(url)
+    }
+  }, [figures])
+  return urls
 }
 
 /** JSON laid out to be read, when it is whole; anything else as it is. */

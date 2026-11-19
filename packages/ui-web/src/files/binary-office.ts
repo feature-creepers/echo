@@ -9,9 +9,19 @@
  */
 
 import { openCompound } from './compound.ts'
-import { BLOCK_LIMIT, COLUMN_LIMIT, markdownTable, type OfficePreview, plain, ROW_LIMIT, SHEET_LIMIT, SLIDE_LIMIT } from './office-text.ts'
+import {
+  BLOCK_LIMIT,
+  COLUMN_LIMIT,
+  joinBlocks,
+  markdownTable,
+  type OfficePreview,
+  PROTECTED,
+  plain,
+  ROW_LIMIT,
+  SHEET_LIMIT,
+  SLIDE_LIMIT
+} from './office-text.ts'
 
-const PROTECTED = 'It is protected with a password, so its text cannot be read here.'
 /** The most characters of a document read: past them, a preview shows the start. */
 const CHARACTER_LIMIT = 4_000_000
 
@@ -298,7 +308,7 @@ export function readWord97(bytes: Uint8Array): OfficePreview {
   }
   if (paragraph.trim() !== '') endParagraph('\r', undefined)
   flushTable()
-  return { kind: 'document', markdown: blocks.join('\n\n'), cut: blocks.length >= BLOCK_LIMIT || read >= CHARACTER_LIMIT }
+  return { kind: 'document', markdown: joinBlocks(blocks), figures: [], cut: blocks.length >= BLOCK_LIMIT || read >= CHARACTER_LIMIT }
 }
 
 // Excel
@@ -437,7 +447,7 @@ export function readExcel97(bytes: Uint8Array): OfficePreview {
 
   return {
     kind: 'workbook',
-    sheets: sheets.slice(0, SHEET_LIMIT).map(({ name, at }) => ({ name, ...sheetRows(book, at, strings) }))
+    sheets: sheets.slice(0, SHEET_LIMIT).map(({ name, at }) => ({ name, ...sheetRows(book, at, strings), figures: [] }))
   }
 }
 
@@ -611,7 +621,7 @@ export function readPowerPoint97(bytes: Uint8Array): OfficePreview {
     const at = places.get(persisted)
     const drawn = at === undefined ? undefined : recordAt(stream, at)
     const all = drawn?.type === 0x03ee ? [...texts, ...drawingTexts(stream, drawn)] : texts
-    const slide = { title: '', lines: [] as string[] }
+    const slide = { title: '', lines: [] as string[], figures: [] }
     for (const text of all) {
       if (text.title && slide.title === '') slide.title = text.lines.join(' ')
       else slide.lines.push(...text.lines.filter((line) => !slide.lines.includes(line)))

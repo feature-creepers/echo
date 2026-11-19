@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { type InlineStep, inlineSteps, picturesOnly, tableCells } from './markdown-inline.ts'
+import { LIST_LINE, type MarkdownList, markdownLists } from './markdown-list.ts'
 
 /** What shows a picture a text names, `![words](address)`, alone on its line (`block`) or within a line. */
 export type MarkdownFigure = (address: string, alt: string, block: boolean) => ReactNode
@@ -51,38 +52,10 @@ export function Markdown({ text, figure }: { text: string; figure?: MarkdownFigu
       index++
       continue
     }
-    if (/^\s*([-*+]|\d+[.)])\s+/.test(line)) {
-      const ordered = /^\s*\d+[.)]/.test(line)
+    if (LIST_LINE.test(line)) {
       const items: string[] = []
-      while (index < lines.length && /^\s*([-*+]|\d+[.)])\s+/.test(lines[index] ?? '')) items.push((lines[index++] ?? '').replace(/^\s*([-*+]|\d+[.)])\s+/, ''))
-      const List = ordered ? 'ol' : 'ul'
-      blocks.push(
-        <List
-          key={key()}
-          className={`grid grid-cols-1 gap-1 pl-5 [overflow-wrap:anywhere] ${ordered ? 'list-decimal marker:font-mono marker:text-text-faint marker:text-xs' : 'list-disc marker:text-text-faint'}`}
-        >
-          {items.map((item, at) => {
-            // A task of a checklist ("- [ ] passport", "- [x] tickets") shows its box in place of the bullet.
-            const task = /^\[([ xX])\]\s+/.exec(item)
-            if (!task)
-              return (
-                <li key={at} className="pl-1 leading-relaxed">
-                  {inline(item)}
-                </li>
-              )
-            const done = task[1] !== ' '
-            return (
-              <li key={at} className="-ml-5 flex list-none items-baseline gap-2.5 leading-relaxed">
-                <span
-                  aria-hidden="true"
-                  className={`relative top-[0.1875rem] size-3 shrink-0 rounded-xs border ${done ? 'border-accent bg-accent/80' : 'border-line-strong'}`}
-                />
-                <span className={done ? 'text-text-faint line-through decoration-text-faint/60' : undefined}>{inline(item.slice(task[0].length))}</span>
-              </li>
-            )
-          })}
-        </List>
-      )
+      while (index < lines.length && LIST_LINE.test(lines[index] ?? '')) items.push(lines[index++] ?? '')
+      for (const list of markdownLists(items)) blocks.push(<ListBlock key={key()} list={list} inline={inline} />)
       continue
     }
     // A table: a row of cells between pipes, then the line of dashes under its header.
@@ -164,6 +137,52 @@ export function Markdown({ text, figure }: { text: string; figure?: MarkdownFigu
   // One column that is never wider than where it is drawn: a long word, an address or a path in the prose breaks
   // anywhere rather than widening it, code wraps in its box, and a table wider than the column scrolls in its own.
   return <div className="grid min-w-0 max-w-[68ch] grid-cols-1 gap-3 text-sm">{blocks}</div>
+}
+
+/**
+ * A list, numbered or bulleted, its items' own lists within them. A task of a checklist ("- [ ] passport",
+ * "- [x] tickets") shows its box in place of the bullet.
+ */
+function ListBlock({ list, inline }: { list: MarkdownList; inline: (line: string) => ReactNode[] }) {
+  const List = list.ordered ? 'ol' : 'ul'
+  return (
+    <List
+      start={list.ordered && list.start !== 1 ? list.start : undefined}
+      className={`grid grid-cols-1 gap-1 pl-5 [overflow-wrap:anywhere] ${list.ordered ? 'list-decimal marker:font-mono marker:text-text-faint marker:text-xs' : 'list-disc marker:text-text-faint'}`}
+    >
+      {list.items.map((item, at) => {
+        const within =
+          item.lists.length > 0 ? (
+            <div className="mt-1 grid grid-cols-1 gap-1">
+              {item.lists.map((inner, index) => (
+                <ListBlock key={index} list={inner} inline={inline} />
+              ))}
+            </div>
+          ) : null
+        const task = /^\[([ xX])\]\s+/.exec(item.text)
+        if (!task)
+          return (
+            <li key={at} className="pl-1 leading-relaxed">
+              {inline(item.text)}
+              {within}
+            </li>
+          )
+        const done = task[1] !== ' '
+        return (
+          <li key={at} className="-ml-5 list-none leading-relaxed">
+            <span className="flex items-baseline gap-2.5">
+              <span
+                aria-hidden="true"
+                className={`relative top-[0.1875rem] size-3 shrink-0 rounded-xs border ${done ? 'border-accent bg-accent/80' : 'border-line-strong'}`}
+              />
+              <span className={done ? 'text-text-faint line-through decoration-text-faint/60' : undefined}>{inline(item.text.slice(task[0].length))}</span>
+            </span>
+            {within && <div className="pl-5">{within}</div>}
+          </li>
+        )
+      })}
+    </List>
+  )
 }
 
 /** A line of a table: it starts and ends with a pipe. */

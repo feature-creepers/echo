@@ -297,6 +297,7 @@ describe('a Word 97 document', () => {
         '| Day | Plan |\n| --- | --- |\n| Friday |  |',
         'The end, été “here”.'
       ].join('\n\n'),
+      figures: [],
       cut: false
     })
   })
@@ -305,6 +306,12 @@ describe('a Word 97 document', () => {
     expect(() => readWord97(wordDocument([{ text: 'Secret\r', format: formatting(0) }], true))).toThrow('protected with a password')
     expect(() => readWord97(compound({ Other: new Uint8Array(8) }))).toThrow('not a Word document')
     await expect(readOffice('doc', new Uint8Array(10))).rejects.toThrow('not a file of the older Office formats')
+  })
+
+  it('says a newer Word, Excel or PowerPoint file is protected, as one is kept encrypted in a compound file', async () => {
+    const encrypted = compound({ EncryptionInfo: new Uint8Array(8), EncryptedPackage: new Uint8Array(16) })
+    for (const extension of ['docx', 'xlsx', 'pptx']) await expect(readOffice(extension, encrypted)).rejects.toThrow('protected with a password')
+    await expect(readOffice('docx', compound({ Other: new Uint8Array(8) }))).rejects.toThrow('not a ZIP archive')
   })
 })
 
@@ -373,7 +380,8 @@ describe('an Excel 97 workbook', () => {
         {
           name: 'Budget',
           rows: [['Item', '', 'Paid'], ['Hôtel', '42.5', 'TRUE'], [], ['1.2', '7', '-3'], [], ['ok', '162.5', '#DIV/0!']],
-          cut: false
+          cut: false,
+          figures: []
         }
       ]
     })
@@ -481,8 +489,8 @@ describe('a PowerPoint 97 presentation', () => {
     expect(readPowerPoint97(presentation())).toEqual({
       kind: 'presentation',
       slides: [
-        { title: 'Plan', lines: ['Train at 9', 'Museum then dinner', 'A note of its own'] },
-        { title: 'Welcome', lines: [] }
+        { title: 'Plan', lines: ['Train at 9', 'Museum then dinner', 'A note of its own'], figures: [] },
+        { title: 'Welcome', lines: [], figures: [] }
       ],
       cut: false
     })
