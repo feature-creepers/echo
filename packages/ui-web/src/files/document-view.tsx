@@ -401,14 +401,17 @@ function Page({ page, look, scale, last }: { page: DocumentPage; look: DocumentL
         <header style={{ ...sides, boxSizing: 'border-box', minHeight: pt(margins.top), paddingTop: pt(margins.header), paddingBottom: '6pt' }}>
           <Blocks blocks={page.header} />
         </header>
-        <div style={{ ...sides, flex: 1 }}>
+        <div style={{ ...sides, flex: 1, display: 'flex', flexDirection: 'column' }}>
           {page.bands.map((band, index) => (
             <div key={index} style={band.columns > 1 ? { columnCount: band.columns, columnGap: pt(band.gap) } : { display: 'flow-root' }}>
               <Blocks blocks={band.blocks} />
             </div>
           ))}
-          <Notes notes={page.notes} />
           {last && <Notes notes={look.endNotes} />}
+          {/* Footnotes sit at the foot of the page's text. */}
+          <div style={{ marginTop: 'auto' }}>
+            <Notes notes={page.notes} />
+          </div>
         </div>
         <footer
           style={{

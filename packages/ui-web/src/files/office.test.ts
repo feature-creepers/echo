@@ -3,7 +3,8 @@ import { textOf } from './archive.ts'
 import { columnOf, decodeEntities, type OfficePreview, openArchive, readOffice, xmlEvents } from './office.ts'
 
 /**
- * A preview without the look of its document or its sheets, which `word-look.test.ts` and `sheet-look.test.ts` check,
+ * A preview without the look of its document or its sheets, which `word-look.test.ts`, `open-look.test.ts` and
+ * `sheet-look.test.ts` check,
  * once each is known to have one.
  */
 function textual(preview: OfficePreview): OfficePreview {
@@ -502,7 +503,7 @@ describe('an OpenDocument file previewed', () => {
       mimetype: 'application/vnd.oasis.opendocument.text',
       'content.xml': odf('<style:style style:name="P1" style:family="paragraph" style:parent-style-name="Title"/>', `<office:text>${body}</office:text>`)
     })
-    expect(await readOffice('odt', file)).toEqual({
+    expect(textual(await readOffice('odt', file))).toEqual({
       kind: 'document',
       markdown: [
         '# Trip to Rome',
@@ -608,7 +609,7 @@ describe('an OpenDocument file previewed', () => {
         '</table:table></chart:chart></office:chart></office:body></office:document-content>',
       'Object 2/content.xml': '<office:document-content><office:body><office:formula><math/></office:formula></office:body></office:document-content>'
     })
-    expect(await readOffice('odt', file)).toEqual({
+    expect(textual(await readOffice('odt', file))).toEqual({
       kind: 'document',
       markdown: [
         'A **bold** and _slanted_ word, ~~gone~~.',

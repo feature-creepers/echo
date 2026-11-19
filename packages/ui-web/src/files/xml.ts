@@ -57,6 +57,17 @@ export function childAt(node: XmlNode | undefined, ...names: string[]): XmlNode 
 /** The elements of a name directly inside another. */
 export const childrenNamed = (node: XmlNode | undefined, name: string): XmlNode[] => node?.children.filter((child) => child.name === name) ?? []
 
+/** An element and those in it as the steps a reader of XML takes, for what reads steps (equations, frames). */
+export function* nodeEvents(node: XmlNode): Generator<XmlEvent> {
+  if (node.name === '#text') {
+    yield { type: 'text', text: node.text }
+    return
+  }
+  yield { type: 'open', name: node.name, attributes: node.attributes }
+  for (const child of node.children) yield* nodeEvents(child)
+  yield { type: 'close', name: node.name }
+}
+
 /** The text of an element and those in it. */
 export const textIn = (node: XmlNode): string => (node.name === '#text' ? node.text : node.children.map(textIn).join(''))
 

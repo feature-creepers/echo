@@ -32,7 +32,7 @@ import { emuPixels, type Figures, lengthPixels, readChart } from './office-figur
 import { mathText } from './office-math.ts'
 import { BLOCK_LIMIT } from './office-text.ts'
 import { bulletCharacter, css, fromHex, fromLightness, toLightness } from './slide-svg.ts'
-import { childAt, childrenNamed, type XmlEvent, type XmlNode, xmlTree } from './xml.ts'
+import { childAt, childrenNamed, nodeEvents, type XmlNode, xmlTree } from './xml.ts'
 
 // Lengths
 
@@ -168,7 +168,7 @@ const UNDERLINES: Record<string, TextLook['underline']> = {
 const SYMBOL_FONTS = /^(symbol|wingdings( 2| 3)?|webdings|zapf ?dingbats|marlett|mt extra)$/i
 
 /** A character of a font of symbols as the one it looks like: Symbol keeps its bullet where other fonts keep a middle dot. */
-function symbolCharacter(font: string, character: string): string {
+export function symbolCharacter(font: string, character: string): string {
   const code = character.codePointAt(0) ?? 0
   if (/^symbol$/i.test(font) && (code === 0xb7 || code === 0xf0b7)) return '•'
   return bulletCharacter(character)
@@ -717,17 +717,6 @@ function* unwrapped(node: XmlNode): Generator<XmlNode> {
       if (choice) yield* unwrapped(choice)
     } else yield child
   }
-}
-
-/** An element and those in it as the steps an XML reader takes, for what reads steps (equations). */
-function* nodeEvents(node: XmlNode): Generator<XmlEvent> {
-  if (node.name === '#text') {
-    yield { type: 'text', text: node.text }
-    return
-  }
-  yield { type: 'open', name: node.name, attributes: node.attributes }
-  for (const child of node.children) yield* nodeEvents(child)
-  yield { type: 'close', name: node.name }
 }
 
 /** A field open as a story is read: its instruction, whether its result is being read, and what it stands for. */

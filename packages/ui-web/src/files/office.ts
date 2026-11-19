@@ -33,6 +33,7 @@ import {
   SHEET_LIMIT,
   SLIDE_LIMIT
 } from './office-text.ts'
+import { readOpenLook } from './open-look.ts'
 import { drawOpenPage, type OpenDeck, openDeck } from './open-slide-drawing.ts'
 import {
   type CellKind,
@@ -47,7 +48,7 @@ import {
 import { drawSlide } from './slide-drawing.ts'
 import { DRAWINGS_LIMIT } from './slide-svg.ts'
 import { readWordLook } from './word-look.ts'
-import { childAt, childrenNamed, type XmlEvent, xmlEvents, xmlTree } from './xml.ts'
+import { childAt, childrenNamed, nodeEvents, type XmlEvent, type XmlNode, xmlEvents, xmlTree } from './xml.ts'
 
 export { type Archive, openArchive } from './archive.ts'
 export type { OfficeFigure, OfficePreview } from './office-text.ts'
@@ -1017,6 +1018,20 @@ interface OpenParagraph {
  */
 export async function readOpenText(archive: Archive): Promise<OfficePreview> {
   const content = await openDocumentContent(archive, 'text')
+  const preview = await readOpenTextMarkdown(archive, content)
+  // Its look is read after its text, with the same figures; a text whose look cannot be read shows its Markdown.
+  const figureOf = async (node: XmlNode) => {
+    const frame = openFrame(node.attributes)
+    const describing = { now: false }
+    for (const event of nodeEvents(node)) if (event.type !== 'open' || event.name !== 'draw:frame') readFrameStep(frame, event, describing)
+    return frameFigure(frame, preview.figuresRead)
+  }
+  const look = await readOpenLook(archive, content, figureOf).catch(() => undefined)
+  return { kind: 'document', markdown: preview.markdown, figures: preview.figuresRead.list, cut: preview.cut || (look?.cut ?? false), look: look?.look }
+}
+
+/** An OpenDocument text's Markdown, and its figures as they were read, for its look to find them among. */
+async function readOpenTextMarkdown(archive: Archive, content: string): Promise<{ markdown: string; cut: boolean; figuresRead: Figures }> {
   const named: OpenStyles = { parents: new Map(), formats: new Map(), numbered: new Map() }
   readOpenStyles((await textOf(archive, 'styles.xml')) ?? '', named)
   const { events, styles: automatic } = openDocumentBody(content, TEXT_PASSED_OVER)
@@ -1105,7 +1120,7 @@ export async function readOpenText(archive: Archive): Promise<OfficePreview> {
       row = undefined
     } else if (event.name === 'table:table' && --depth === 0 && table.length > 0) blocks.push(markdownTable(table, (written) => written))
   }
-  return { kind: 'document', markdown: joinBlocks(blocks), figures: figures.list, cut: blocks.length >= BLOCK_LIMIT }
+  return { markdown: joinBlocks(blocks), cut: blocks.length >= BLOCK_LIMIT, figuresRead: figures }
 }
 
 /** What the spans open say of a format, the innermost over the outer ones: only what they say. */
