@@ -45,12 +45,8 @@ export function keptSince(now: Date, days: number): string {
   return new Date(now.getTime() - days * DAY_MS).toISOString()
 }
 
-/**
- * The records written before `since` that carry the conversation's words. A view still on the screen is kept,
- * however old: only a view the person closed since leaves with its words. A record already erased is not named again.
- */
-export function expiredRecords(records: readonly StoredRecord[], since: string): Expired {
-  // The views whose latest record closes them: those are no longer on the screen.
+/** The views whose latest record closes them: those are no longer on the screen. */
+function closedViews(records: readonly StoredRecord[]): Set<string> {
   const closed = new Map<string, boolean>()
   for (const record of records) {
     if (record.payload === null) continue
@@ -62,21 +58,55 @@ export function expiredRecords(records: readonly StoredRecord[], since: string):
       if (typeof view === 'string') closed.set(view, false)
     }
   }
+  return new Set([...closed].flatMap(([view, gone]) => (gone ? [view] : [])))
+}
 
-  const expired: Expired = { records: [], turns: new Set() }
+/**
+ * The records among `records` that carry the conversation's words and that `chosen` picks, but for a view still on
+ * the screen, which stays however it was chosen, and the closing of a view, which says nothing. A record already
+ * erased is not named again.
+ */
+function wordsAmong(records: readonly StoredRecord[], chosen: (record: StoredRecord) => boolean): Expired {
+  const closed = closedViews(records)
+  const words: Expired = { records: [], turns: new Set() }
   for (const record of records) {
-    if (record.payload === null || record.at >= since || record.type === VIEW_CLEARED) continue
+    if (record.payload === null || record.type === VIEW_CLEARED || !chosen(record)) continue
     if (record.type === VIEW_SHOWN) {
       const view = (record.payload as { id?: unknown }).id
-      if (typeof view !== 'string' || closed.get(view) !== true) continue
+      if (typeof view !== 'string' || !closed.has(view)) continue
     }
     if (record.type === EXCHANGE) {
       const line = exchangeSchema.safeParse(record.payload)
-      if (line.success) expired.turns.add(line.data.turn)
+      if (line.success) words.turns.add(line.data.turn)
     }
-    expired.records.push(record.id)
+    words.records.push(record.id)
   }
-  return expired
+  return words
+}
+
+/** The records written before `since` that carry the conversation's words. A view still on the screen is kept, however old. */
+export function expiredRecords(records: readonly StoredRecord[], since: string): Expired {
+  return wordsAmong(records, (record) => record.at < since)
+}
+
+/**
+ * The words of these turns (docs/SPEC.md, section 10.7): their lines, their tool calls with what went in and out,
+ * the requests recorded to take them up after a restart, and the views they showed that the person has since closed.
+ * What forgetting a fact erases of the conversation it was learned in.
+ */
+export function wordsOfTurns(records: readonly StoredRecord[], turns: ReadonlySet<string>): Expired {
+  if (turns.size === 0) return { records: [], turns: new Set() }
+  return wordsAmong(records, (record) => {
+    const turn = turnOf(record)
+    return turn !== undefined && turns.has(turn)
+  })
+}
+
+/** The turn a record of the conversation belongs to, when it says. */
+function turnOf(record: StoredRecord): string | undefined {
+  const payload = record.payload as { turn?: unknown; exchange?: { turn?: unknown } } | null
+  const turn = record.type === WORK ? payload?.exchange?.turn : payload?.turn
+  return typeof turn === 'string' ? turn : undefined
 }
 
 /** The records a pass erases now, from the records as they are. Nothing when the conversation is kept for good. */

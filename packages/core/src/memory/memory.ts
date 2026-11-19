@@ -26,7 +26,7 @@ import { createFactBook, FACT, type FactRecord, type KnownFact } from './facts.t
 import { basisOf, PROFILE, profileFor, readProfileRecord, writeProfile } from './profile.ts'
 import { recallBlock, recallFor } from './recall.ts'
 import { type Decision, reconcile } from './reconcile.ts'
-import { expiredNow, RETENTION_PASS_MS, RETENTION_SET, readRetention } from './retention.ts'
+import { CONVERSATION_RECORDS, expiredNow, RETENTION_PASS_MS, RETENTION_SET, readRetention, wordsOfTurns } from './retention.ts'
 import { foldWord } from './searchable.ts'
 import { createSleepSchedule, DEFAULT_SLEEP, readSleepSettings, SLEEP_SET } from './sleep.ts'
 import { readSummaryRecord, type SummaryRecord, summariesDue, THREAD_SUMMARY, writeSummary } from './summary.ts'
@@ -74,8 +74,8 @@ export interface MemoryOptions {
   /** A thread's title, for its summary. */
   titleOf?: (thread: string) => string | undefined
   /**
-   * Lines of the log the retention period erased while the app was open, for whoever keeps them in memory. Not
-   * called for what is erased as the memory is made: nothing has read the log yet.
+   * Lines of the log erased while the app was open, by the retention period or with a fact forgotten, for whoever
+   * keeps them in memory. Not called for what is erased as the memory is made: nothing has read the log yet.
    */
   erased?: (turns: ReadonlySet<string>) => void
 }
@@ -271,12 +271,22 @@ export function createMemory(options: MemoryOptions): Memory {
 
   const forget = (id: string): boolean => {
     if (!book.get(id)) return false
+    // The words it was learned from leave the log too, so that it cannot be recalled from them: the lines of those
+    // turns, their tool calls and the views they showed that are no longer on the screen.
+    const words = wordsOfTurns(records.read(CONVERSATION_RECORDS), new Set(book.turnsToForget(id)))
     // The profile and the summaries may say what is forgotten: they go too, and are written again at the next sleep.
-    const erased = [...book.recordsToForget(id), ...profiles.map((profile) => profile.record), ...[...summaries.values()].map((summary) => summary.record)]
+    const erased = [
+      ...book.recordsToForget(id),
+      ...words.records,
+      ...profiles.map((profile) => profile.record),
+      ...[...summaries.values()].map((summary) => summary.record)
+    ]
     records.append([{ type: ERASURE, payload: { records: erased } }])
     book.drop(id)
     profiles = []
     summaries.clear()
+    for (const turn of words.turns) said.delete(turn)
+    if (words.turns.size > 0) options.erased?.(words.turns)
     changed()
     return true
   }

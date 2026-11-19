@@ -1,6 +1,6 @@
 import type { Event, Exchange } from '@repo/protocol'
 import { describe, expect, it, vi } from 'vitest'
-import { EXCHANGE } from '../channel/channel.ts'
+import { EXCHANGE, STEP, WORK } from '../channel/channel.ts'
 import type { Harness, OneShot } from '../ports/harness.ts'
 import { ERASURE, type Records } from '../ports/records.ts'
 import { memoryRecords } from '../records/memory.ts'
@@ -29,7 +29,12 @@ function model(answers: { extract?: (input: string) => object; reconcile?: (inpu
   }
 }
 
-function setup({ records = memoryRecords({ now: () => NOW }), harness = scriptedHarness() as Harness, turn = () => undefined as string | undefined } = {}) {
+function setup({
+  records = memoryRecords({ now: () => NOW }),
+  harness = scriptedHarness() as Harness,
+  turn = () => undefined as string | undefined,
+  erased = (_turns: ReadonlySet<string>) => undefined as void
+} = {}) {
   let ids = 0
   const timers = manualTimers()
   const log = { error: vi.fn<(message: string) => void>() }
@@ -41,7 +46,8 @@ function setup({ records = memoryRecords({ now: () => NOW }), harness = scripted
     now: () => NOW,
     newId: () => `fact-${++ids}`,
     timers,
-    turn
+    turn,
+    erased
   })
   const events: Event[] = []
   memory.onEvent((event) => events.push(event))
@@ -291,6 +297,64 @@ describe('remembering, correcting and forgetting', () => {
     expect(memory.profile()).toBeUndefined()
     expect(memory.recall('where do I park')).toBeUndefined()
     expect(setup({ records }).memory.facts()).toEqual([])
+  })
+})
+
+describe('forgetting the words a fact came from', () => {
+  it('erases the lines it was learned from, their calls and the views closed since, and leaves the others', () => {
+    const records = memoryRecords({ now: () => NOW })
+    const kept = say(records, 'What is the weather?', 'Sunny.')
+    const learned = say(records, 'My locker code is 4521.', 'Noted.', 'gym')
+    records.append([
+      { type: STEP, payload: { call: 'c1', turn: learned.turn, tool: 'memory_remember', at: NOW.toISOString(), input: { text: 'locker 4521' } } },
+      { type: WORK, payload: { thread: 'gym', request: 'My locker code is 4521.', exchange: learned } },
+      { type: VIEW_SHOWN, payload: { id: 'view-closed', turn: learned.turn, title: 'Locker' } },
+      { type: VIEW_CLEARED, payload: { view: 'view-closed' } },
+      { type: VIEW_SHOWN, payload: { id: 'view-open', turn: learned.turn, title: 'Locker' } }
+    ])
+    const told: string[][] = []
+    const { memory } = setup({ records, turn: () => learned.turn, erased: (turns) => void told.push([...turns]) })
+    const fact = memory.remember('The user’s locker code is 4521.')
+    expect(memory.read().groups[0]?.facts[0]?.sources).toEqual([{ turn: learned.turn, at: NOW.toISOString(), said: 'My locker code is 4521.' }])
+
+    memory.forget(fact.fact)
+    const payloads = (type: string) => records.read([type]).map((record) => record.payload)
+    expect(payloads(EXCHANGE)).toEqual([kept, null])
+    expect(payloads(STEP)).toEqual([null])
+    expect(payloads(WORK)).toEqual([null])
+    expect(payloads(VIEW_SHOWN)).toEqual([null, { id: 'view-open', turn: learned.turn, title: 'Locker' }])
+    expect(payloads(VIEW_CLEARED)).toEqual([{ view: 'view-closed' }])
+    expect(told).toEqual([[learned.turn]])
+    expect(memory.recall('locker code')).toBeUndefined()
+    expect(memorySearch(records).search({ text: 'weather', types: [EXCHANGE], limit: 5 })).toHaveLength(1)
+    expect(memorySearch(records).search({ text: 'locker', types: [EXCHANGE], limit: 5 })).toEqual([])
+  })
+
+  it('erases the lines of every version, and of the facts it replaced', () => {
+    const records = memoryRecords({ now: () => NOW })
+    const first = say(records, 'I park on level 3.')
+    const second = say(records, 'Actually I park on level 4 now.')
+    let turn = first.turn
+    const { memory } = setup({ records, turn: () => turn })
+    const fact = memory.remember('The user parks on level 3.')
+    turn = second.turn
+    records.append([
+      {
+        type: FACT,
+        payload: {
+          fact: 'fact-new',
+          text: 'The user parks on level 4.',
+          kind: 'other',
+          origin: 'conversation',
+          sources: [second.turn],
+          since: NOW.toISOString(),
+          replaces: fact.fact
+        }
+      }
+    ])
+    const again = setup({ records })
+    again.memory.forget('fact-new')
+    expect(records.read([EXCHANGE]).map((record) => record.payload)).toEqual([null, null])
   })
 })
 
