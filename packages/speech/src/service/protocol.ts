@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { MAX_WORD_LENGTH, MAX_WORDS } from '../recognizers/words.ts'
 
 /**
  * What the speech service and its client say to each other. The service runs in a process of its own, so
@@ -57,7 +58,10 @@ export const CALLS = {
   install: { input: nothing, output: z.void() },
   /** Load the recogniser and the voice now, so that the first sentence does not wait for them. */
   'warm-up': { input: nothing, output: z.void() },
-  transcribe: { input: z.object({ sound }), output: z.object({ text: z.string(), language: z.string().exactOptional() }) },
+  transcribe: {
+    input: z.object({ sound, words: z.array(z.string().max(MAX_WORD_LENGTH)).max(MAX_WORDS).exactOptional() }),
+    output: z.object({ text: z.string(), language: z.string().exactOptional() })
+  },
   speak: {
     input: z.object({ text: z.string(), how: z.object({ style: z.string(), language: z.string(), speed: z.number().exactOptional() }) }),
     output: sound

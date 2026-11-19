@@ -24,7 +24,8 @@ interface NativeStream {
 }
 
 export interface NativeRecognizer {
-  createStream(): NativeStream
+  /** A stream for one utterance, favouring the words given, written as the library takes them (`recognizers/words.ts`). */
+  createStream(hotwords?: string): NativeStream
   /** Decodes off the main thread. */
   decodeAsync(stream: NativeStream): Promise<{ text: string }>
 }
@@ -38,7 +39,13 @@ interface RecognizerConfig {
     numThreads: number
     provider: 'cpu'
     debug: boolean
+    /** How the words to favour are cut into the model's pieces: as BPE pieces, from this vocabulary file. */
+    modelingUnit?: 'bpe'
+    bpeVocab?: string
   }
+  /** `modified_beam_search` weighs several ways of hearing at once, which favouring words needs. */
+  decodingMethod: 'greedy_search' | 'modified_beam_search'
+  maxActivePaths: number
 }
 
 export interface NativeVoice {

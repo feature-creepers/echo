@@ -17,9 +17,15 @@ export interface Heard {
   language?: string
 }
 
+/** How to hear one utterance. */
+export interface Hearing {
+  /** The person's own words, favoured when they are heard: names and terms the recogniser would not know. */
+  words?: readonly string[] | undefined
+}
+
 export interface Recognizer {
   /** Turn one utterance, whole, into text. Any sample rate is accepted. */
-  transcribe(sound: Sound): Promise<Heard>
+  transcribe(sound: Sound, how?: Hearing): Promise<Heard>
   /** Let go of the model. */
   close(): void
 }

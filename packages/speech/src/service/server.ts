@@ -115,10 +115,10 @@ export function serveSpeech(port: DuplexPort, options: ServeOptions): SpeechServ
     'warm-up': async () => {
       await Promise.all([hearing.run(theRecognizer), speaking.run(theVoice)])
     },
-    transcribe: ({ sound }, request) =>
+    transcribe: ({ sound, words }, request) =>
       hearing.run(async () => {
         unlessCancelled(request)
-        return (await theRecognizer()).transcribe(sound)
+        return (await theRecognizer()).transcribe(sound, words === undefined ? {} : { words })
       }),
     speak: ({ text, how }, request) =>
       speaking.run(async () => {

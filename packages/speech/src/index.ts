@@ -1,7 +1,7 @@
 export { HEARING_RATE } from './audio/resample.ts'
 export { type DetectorOptions, openSpeechDetector } from './detection/silero.ts'
 export type { EngineOptions } from './model-files.ts'
-export type { Heard, Listening, Recognizer, Sound, Speaking, SpeechDetector, SpeechEvent, Voice, VoiceStyle } from './ports.ts'
+export type { Heard, Hearing, Listening, Recognizer, Sound, Speaking, SpeechDetector, SpeechEvent, Voice, VoiceStyle } from './ports.ts'
 export { openRecognizer } from './recognizers/parakeet.ts'
 export { connectSpeech, type SpeechService, type Waiting } from './service/client.ts'
 export { localEngines, type SpeechEngines } from './service/engines.ts'

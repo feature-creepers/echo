@@ -39,7 +39,7 @@ const speech: SpeechEngine = {
     return { ready: status.ready, models: status.sets.map((set) => ({ id: set.id, name: set.name, bytes: set.bytes, installed: set.installed })) }
   },
   install: (onProgress) => window.desktop.speech.install((progress) => onProgress({ received: progress.received, total: progress.total })),
-  transcribe: (sound) => window.desktop.speech.transcribe(sound),
+  transcribe: (sound, words) => window.desktop.speech.transcribe(sound, words),
   speak: (text, how) => window.desktop.speech.speak(text, how),
   styles: () => window.desktop.speech.styles()
 }

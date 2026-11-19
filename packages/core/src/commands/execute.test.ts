@@ -14,6 +14,7 @@ const settings: Settings = {
   engines: { models: {}, efforts: {} },
   access: DEFAULT_ACCESS,
   languages: DEFAULT_LANGUAGES,
+  vocabulary: [],
   interruptions: DEFAULT_INTERRUPTIONS
 }
 
@@ -51,6 +52,7 @@ function setup(overrides: Partial<Handlers> = {}) {
     'everything.stop': () => ({ ok: true, output: {} }),
     'languages.set': () => ({ ok: true, output: { settings } }),
     'interruptions.set': () => ({ ok: true, output: { settings } }),
+    'vocabulary.set': () => ({ ok: true, output: { settings } }),
     'browser.read': () => ({ ok: true, output: { browser: { found: false, problem: 'none', running: false } } }),
     'browser.show': () => ({ ok: false, error: { code: 'invalid-input', message: 'none' } }),
     'desktop.read': () => ({ ok: true, output: { desktop: { available: false, problem: 'none', open: [] } } }),

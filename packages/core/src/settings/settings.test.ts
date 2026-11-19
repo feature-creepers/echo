@@ -17,6 +17,7 @@ describe('the settings of a new user', () => {
       engines: { models: {}, efforts: {} },
       access: DEFAULT_ACCESS,
       languages: DEFAULT_LANGUAGES,
+      vocabulary: [],
       interruptions: DEFAULT_INTERRUPTIONS
     })
   })
@@ -37,6 +38,7 @@ describe('setPersonas', () => {
         engines: { models: {}, efforts: {} },
         access: DEFAULT_ACCESS,
         languages: DEFAULT_LANGUAGES,
+        vocabulary: [],
         interruptions: DEFAULT_INTERRUPTIONS
       }
     })
@@ -56,6 +58,7 @@ describe('setPersonas', () => {
       engines: { models: {}, efforts: {} },
       access: DEFAULT_ACCESS,
       languages: DEFAULT_LANGUAGES,
+      vocabulary: [],
       interruptions: DEFAULT_INTERRUPTIONS
     }
     expect(settings.read()).toEqual(expected)
@@ -140,6 +143,7 @@ describe('settings read back from the records', () => {
       engines: { models: {}, efforts: {} },
       access: DEFAULT_ACCESS,
       languages: DEFAULT_LANGUAGES,
+      vocabulary: [],
       interruptions: DEFAULT_INTERRUPTIONS
     })
   })
@@ -276,5 +280,27 @@ describe('when the assistant speaks up by itself', () => {
     expect(settings.read().interruptions).toEqual({ results: 'chip', perHour: null })
     expect(heard).toHaveBeenCalledTimes(3)
     expect(createUserSettings(records, defaults).read()).toEqual(settings.read())
+  })
+})
+
+describe('the person’s own words for the recogniser', () => {
+  it('has none at first', () => {
+    expect(createUserSettings(memoryRecords(), defaults).read().vocabulary).toEqual([])
+  })
+
+  it('keeps each once whatever its capitals, spaces made single and none empty, writes nothing when unchanged, and reads back the same', () => {
+    const records = memoryRecords()
+    const settings = createUserSettings(records, defaults)
+    const heard = vi.fn()
+    settings.onChange(heard)
+
+    settings.setVocabulary(['  Barbanneau ', 'json-render', '', 'barbanneau', 'Maëlys   Kerjean'])
+    expect(settings.read().vocabulary).toEqual(['Barbanneau', 'json-render', 'Maëlys Kerjean'])
+    settings.setVocabulary(['Barbanneau', 'json-render', 'Maëlys Kerjean'])
+    expect(heard).toHaveBeenCalledTimes(1)
+    expect(createUserSettings(records, defaults).read()).toEqual(settings.read())
+
+    settings.setVocabulary([])
+    expect(createUserSettings(records, defaults).read().vocabulary).toEqual([])
   })
 })

@@ -173,8 +173,12 @@ function serveSpeech(speech: SpeechProcess): void {
   const { service } = speech
   ipcMain.handle(SPEECH_CHANNELS.status, () => service.status())
   ipcMain.handle(SPEECH_CHANNELS.install, (event) => service.install((progress) => event.sender.send(SPEECH_CHANNELS.progress, progress)))
-  ipcMain.handle(SPEECH_CHANNELS.transcribe, (_event, sound: BridgeSound) =>
-    service.transcribe({ sampleRate: sound.sampleRate, samples: new Float32Array(sound.samples) })
+  ipcMain.handle(SPEECH_CHANNELS.transcribe, (_event, sound: BridgeSound, words: unknown) =>
+    service.transcribe(
+      { sampleRate: sound.sampleRate, samples: new Float32Array(sound.samples) },
+      // The person's own words, as their settings keep them: anything else the window sends is not taken.
+      { words: Array.isArray(words) ? words.filter((word): word is string => typeof word === 'string') : [] }
+    )
   )
   ipcMain.handle(SPEECH_CHANNELS.speak, (_event, text: string, how: { style: string; language: string; speed?: number }) => service.speak(text, how))
   ipcMain.handle(SPEECH_CHANNELS.styles, () => service.styles())

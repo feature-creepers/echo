@@ -4,6 +4,7 @@ import { BACKGROUND_RESULTS, MAX_INTERRUPTIONS_PER_HOUR } from '../interruptions
 import { answerLanguageSchema, spokenLanguageSchema } from '../languages.ts'
 import { personaIdSchema } from '../personas.ts'
 import { settingsSchema } from '../settings.ts'
+import { MAX_WORD_LENGTH, MAX_WORDS } from '../vocabulary.ts'
 
 const settingsOutput = z.object({ settings: settingsSchema })
 
@@ -74,6 +75,15 @@ export const settingsCommands = {
    */
   'languages.set': {
     input: z.object({ spoken: spokenLanguageSchema.optional(), answers: answerLanguageSchema.optional() }),
+    output: settingsOutput
+  },
+
+  /**
+   * The person's own words, for the recogniser, all of them: what is given replaces what was kept. Each is kept once,
+   * whatever its capitals, spaces made single, empty ones left out. Takes effect from the next thing said.
+   */
+  'vocabulary.set': {
+    input: z.object({ words: z.array(z.string().max(MAX_WORD_LENGTH * 2)).max(MAX_WORDS * 2) }),
     output: settingsOutput
   },
 

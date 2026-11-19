@@ -3,6 +3,7 @@ import {
   accessSchema,
   type CommandError,
   type CommandInput,
+  cleanVocabulary,
   DEFAULT_INTERRUPTIONS,
   DEFAULT_LANGUAGES,
   type Interruptions,
@@ -10,7 +11,9 @@ import {
   type Languages,
   languagesSchema,
   type Persona,
-  type Settings
+  type Settings,
+  type Vocabulary,
+  vocabularySchema
 } from '@repo/protocol'
 import { z } from 'zod'
 import { applyChoice, checkChoice, PERSONAS_SET, type PersonaChoice, readChoice } from '../personas/choice.ts'
@@ -39,6 +42,8 @@ const ACCESS_LEVELS = 3
 export const LANGUAGES_SET = 'languages.set'
 /** The type of the record written when the user sets when the assistant speaks up by itself. It carries all of it. */
 export const INTERRUPTIONS_SET = 'interruptions.set'
+/** The type of the record written when the user sets their own words for the recogniser. It carries all of them. */
+export const VOCABULARY_SET = 'vocabulary.set'
 
 const preferredSchema = z.object({ harness: z.string().min(1).nullable() })
 const modelSchema = z.object({ harness: z.string().min(1), model: z.string().min(1).nullable() })
@@ -61,6 +66,8 @@ export interface UserSettings {
   setLanguages(change: { [Name in keyof Languages]?: Languages[Name] | undefined }): Settings
   /** When the assistant speaks up by itself. What is left out keeps its value. */
   setInterruptions(change: { [Name in keyof Interruptions]?: Interruptions[Name] | undefined }): Settings
+  /** The person's own words for the recogniser, all of them, kept clean: each once, none empty. */
+  setVocabulary(words: readonly string[]): Settings
   /** Be told each time the settings change. Returns a function that stops the telling. */
   onChange(listener: (settings: Settings) => void): () => void
 }
@@ -84,13 +91,26 @@ export function createUserSettings(
     engines: { models: {}, efforts: {} },
     access: accessSchema.parse(folder === undefined ? {} : { folder }),
     languages: DEFAULT_LANGUAGES,
+    vocabulary: [],
     interruptions: DEFAULT_INTERRUPTIONS
   }
   const listeners = new Set<(settings: Settings) => void>()
 
   // A record this version cannot read is skipped, so one written by another version never breaks this one.
-  for (const record of records.read([PERSONAS_SET, ENGINES_PREFERRED, ENGINES_MODEL, ENGINES_EFFORT, ACCESS_SET, LANGUAGES_SET, INTERRUPTIONS_SET])) {
-    if (record.type === INTERRUPTIONS_SET) {
+  for (const record of records.read([
+    PERSONAS_SET,
+    ENGINES_PREFERRED,
+    ENGINES_MODEL,
+    ENGINES_EFFORT,
+    ACCESS_SET,
+    LANGUAGES_SET,
+    INTERRUPTIONS_SET,
+    VOCABULARY_SET
+  ])) {
+    if (record.type === VOCABULARY_SET) {
+      const read = vocabularySchema.safeParse(record.payload)
+      if (read.success) settings = { ...settings, revision: settings.revision + 1, vocabulary: read.data }
+    } else if (record.type === INTERRUPTIONS_SET) {
       const read = interruptionsSchema.safeParse(record.payload)
       if (read.success) settings = { ...settings, revision: settings.revision + 1, interruptions: read.data }
     } else if (record.type === LANGUAGES_SET) {
@@ -167,6 +187,12 @@ export function createUserSettings(
       }
       if (next.results === settings.interruptions.results && next.perHour === settings.interruptions.perHour) return settings
       return change({ ...settings, revision: settings.revision + 1, interruptions: next }, { type: INTERRUPTIONS_SET, payload: next })
+    },
+
+    setVocabulary(words) {
+      const next: Vocabulary = cleanVocabulary(words)
+      if (JSON.stringify(next) === JSON.stringify(settings.vocabulary)) return settings
+      return change({ ...settings, revision: settings.revision + 1, vocabulary: next }, { type: VOCABULARY_SET, payload: next })
     },
 
     onChange(listener) {

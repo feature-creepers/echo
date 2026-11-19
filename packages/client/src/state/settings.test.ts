@@ -10,6 +10,7 @@ function at(revision: number): Settings {
     engines: { models: {}, efforts: {} },
     access: DEFAULT_ACCESS,
     languages: DEFAULT_LANGUAGES,
+    vocabulary: [],
     interruptions: DEFAULT_INTERRUPTIONS
   }
 }

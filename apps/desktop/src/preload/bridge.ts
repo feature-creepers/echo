@@ -188,7 +188,8 @@ export interface SpeechBridge {
   status(): Promise<SpeechStatus>
   /** Download the models that are missing, telling progress as it goes. */
   install(onProgress: (progress: InstallProgress) => void): Promise<void>
-  transcribe(sound: BridgeSound): Promise<{ text: string; language?: string }>
+  /** Hear one utterance, favouring the person's own words when given. */
+  transcribe(sound: BridgeSound, words?: readonly string[]): Promise<{ text: string; language?: string }>
   /** `speed` is the pace, 1 being the voice's natural one. */
   speak(text: string, how: { style: string; language: string; speed?: number }): Promise<BridgeSound>
   /** The voice's styles, to pick from. */

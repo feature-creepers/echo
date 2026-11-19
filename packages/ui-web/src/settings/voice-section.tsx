@@ -1,6 +1,17 @@
 import { type Client, SPEEDS } from '@repo/client'
-import { type BackgroundResult, type CommandInput, type Interruptions, LANGUAGES, type Languages, type Persona } from '@repo/protocol'
-import { useState } from 'react'
+import {
+  type BackgroundResult,
+  type CommandInput,
+  cleanVocabulary,
+  type Interruptions,
+  LANGUAGES,
+  type Languages,
+  MAX_WORD_LENGTH,
+  MAX_WORDS,
+  type Persona,
+  type Vocabulary
+} from '@repo/protocol'
+import { useEffect, useState } from 'react'
 import { playCue } from '../audio/cues.ts'
 import { findDevice } from '../audio/devices.ts'
 import { useAudioDevices } from '../audio/use-devices.ts'
@@ -51,16 +62,70 @@ interface VoiceSectionProps {
   languages: Languages
   /** When the assistant speaks up by itself: the user's, not this computer's. */
   interruptions: Interruptions
+  /** The person's own words for the recogniser: the user's, not this computer's. */
+  vocabulary: Vocabulary
   speech: DeviceSpeech | undefined
   personas: readonly Persona[]
   active: Persona | undefined
+}
+
+/** What the person typed, as words: one a line, or a comma between them. */
+const wordsIn = (text: string) => text.split(/[\n,]/)
+
+/**
+ * The person's own words, one a line, kept when they leave the field: the recogniser favours them from the next
+ * thing said. Words changed on another device show here, unless the person is typing.
+ */
+function WordsRow({ client, words }: { client: Client; words: Vocabulary }) {
+  const kept = words.join('\n')
+  const [text, setText] = useState(kept)
+  const [typing, setTyping] = useState(false)
+  const [problem, setProblem] = useState<string>()
+  useEffect(() => {
+    if (!typing) setText(kept)
+  }, [kept, typing])
+  const typed = wordsIn(text)
+  const count = cleanVocabulary(typed).length
+  const keep = () => {
+    setTyping(false)
+    const next = cleanVocabulary(wordsIn(text))
+    if (next.join('\n') === kept) return setText(kept)
+    setProblem(undefined)
+    client.session.run('vocabulary.set', { words: next }).catch((error: unknown) => {
+      setProblem(error instanceof Error ? error.message : 'The words could not be saved.')
+    })
+  }
+  return (
+    <SettingRow
+      title="Your words"
+      detail="Names, places and terms it would not know, one a line, written as you want them written: it listens for them. With some, hearing you takes a little longer."
+      problem={problem ?? (typed.filter((word) => word.trim() !== '').length > MAX_WORDS ? `Only the first ${MAX_WORDS} are kept.` : undefined)}
+      stacked
+    >
+      <div className="grid gap-1.5">
+        <textarea
+          aria-label="Your words"
+          value={text}
+          rows={5}
+          maxLength={MAX_WORDS * (MAX_WORD_LENGTH + 1)}
+          spellCheck={false}
+          placeholder={'Kerjean\nGrafana\njson-render'}
+          onFocus={() => setTyping(true)}
+          onChange={(event) => setText(event.target.value)}
+          onBlur={keep}
+          className="w-full resize-none rounded-md border border-line-strong bg-black/25 px-3 py-2 text-[0.8125rem] text-text leading-relaxed shadow-[inset_0_1px_1px_rgb(0_0_0/0.25)] transition duration-(--duration-quick) ease-soft placeholder:text-text-faint"
+        />
+        <span className="text-text-faint text-xs tabular-nums">{count === 0 ? 'None yet' : `${count} of ${MAX_WORDS}`}</span>
+      </div>
+    </SettingRow>
+  )
 }
 
 /**
  * The voice of this computer: the models it needs to hear and speak, each personality's voice, the languages
  * spoken and answered in, and how the answers are heard: aloud or not, at what pace, on which speakers.
  */
-export function VoiceSection({ client, languages, interruptions, speech, personas, active }: VoiceSectionProps) {
+export function VoiceSection({ client, languages, interruptions, vocabulary, speech, personas, active }: VoiceSectionProps) {
   const { settings, change } = useDevice()
   const [problem, setProblem] = useState<string>()
   const setLanguages = (asked: CommandInput<'languages.set'>) => {
@@ -116,6 +181,7 @@ export function VoiceSection({ client, languages, interruptions, speech, persona
             onChange={(answers) => setLanguages({ answers: answers as Languages['answers'] })}
           />
         </SettingRow>
+        <WordsRow client={client} words={vocabulary} />
       </SettingGroup>
 
       <SettingGroup title="Answers">

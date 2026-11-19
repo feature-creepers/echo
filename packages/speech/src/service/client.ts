@@ -1,4 +1,4 @@
-import type { Heard, Listening, Sound, Speaking, SpeechDetector, VoiceStyle } from '../ports.ts'
+import type { Heard, Hearing, Listening, Sound, Speaking, SpeechDetector, VoiceStyle } from '../ports.ts'
 import { SpeechError } from '../speech-error.ts'
 import { type DuplexPort, openChannel } from './port.ts'
 import { CALLS, type CallName, type Input, type InstallProgress, type Output, replySchema, type SpeechStatus } from './protocol.ts'
@@ -20,8 +20,8 @@ export interface SpeechService {
   install(onProgress?: (progress: InstallProgress) => void, waiting?: Waiting): Promise<void>
   /** Load the recogniser and the voice now, so that the first sentence does not wait for them. */
   warmUp(): Promise<void>
-  /** Turn one utterance into text. The sound given is left as it is. */
-  transcribe(sound: Sound, waiting?: Waiting): Promise<Heard>
+  /** Turn one utterance into text, favouring the person's own words when given. The sound given is left as it is. */
+  transcribe(sound: Sound, how?: Hearing, waiting?: Waiting): Promise<Heard>
   /** Speak one sentence and resolve with its sound. */
   speak(text: string, how: Speaking, waiting?: Waiting): Promise<Sound>
   /** The styles the voice can speak in. Known before anything is downloaded. */
@@ -142,9 +142,10 @@ export function connectSpeech(port: DuplexPort): SpeechService {
     warmUp: async () => {
       await call('warm-up', {})
     },
-    transcribe: (sound, waiting) => {
+    transcribe: (sound, how = {}, waiting) => {
       const { sound: sent, sounds } = outgoing(sound)
-      return call('transcribe', { sound: sent }, { sounds, signal: waiting?.signal })
+      const words = how.words === undefined || how.words.length === 0 ? {} : { words: [...how.words] }
+      return call('transcribe', { sound: sent, ...words }, { sounds, signal: waiting?.signal })
     },
     speak: (text, how, waiting) => call('speak', { text, how }, { signal: waiting?.signal }),
     styles: () => call('styles', {}),

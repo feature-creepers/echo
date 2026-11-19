@@ -1,11 +1,11 @@
 import type { Client } from '@repo/client'
 import { useFollowed } from '@repo/client/react'
 import type { Persona } from '@repo/protocol'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { silentVoice } from '../conversation/silent-voice.ts'
 import { useDevice } from '../device/device.tsx'
 import { findDevice } from './devices.ts'
-import type { InstallProgress, SpeechEngine, SpeechReadiness } from './engine.ts'
+import { favouring, type InstallProgress, type SpeechEngine, type SpeechReadiness } from './engine.ts'
 import { namesAsWords } from './names.ts'
 import { engineVoice, type SpeakingVoice } from './voice.ts'
 
@@ -84,6 +84,9 @@ export function useDeviceSpeech(engine: SpeechEngine | undefined, client: Client
   const names = useRef<readonly string[]>([])
   names.current = snapshot.state === 'ready' ? snapshot.settings.personas.available.map((one) => one.name) : []
   const spoken = useCallback((text: string) => namesAsWords(text, names.current), [])
+  // The person's own words, read for each utterance: the recogniser favours them.
+  const words = useRef<readonly string[]>([])
+  words.current = snapshot.state === 'ready' ? snapshot.settings.vocabulary : []
   // How the voice speaks and where it plays are settings of this device, read for each sentence.
   const { settings } = useDevice()
   const manner = useRef({ speed: settings.voice.speed, sink: undefined as string | undefined })
@@ -116,7 +119,8 @@ export function useDeviceSpeech(engine: SpeechEngine | undefined, client: Client
       .catch(() => undefined)
   }, [engine])
 
-  const ready = engine && readiness?.ready ? engine : undefined
+  const installed = engine && readiness?.ready ? engine : undefined
+  const ready = useMemo(() => installed && favouring(installed, () => words.current), [installed])
 
   useEffect(() => {
     ready

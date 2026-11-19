@@ -147,6 +147,28 @@ describe.runIf(MODELS)('the engines, with their real models', { timeout: 120_000
     expectHeard(heard.text, ENGLISH_WORDS)
   })
 
+  it('hears the person’s own words as they write them once given, and the rest as before', async () => {
+    const words = ['Rodolphe Barbanneau', 'Supertonic', 'Kerjean']
+    // The voice says it a little differently each time: the name is heard in most of three, and never without the words.
+    let plain = 0
+    let favoured = 0
+    for (let time = 0; time < 3; time++) {
+      const names = await voice.speak('Ask Rodolphe Barbanneau about the Supertonic voice.', { style: 'm3', language: 'en' })
+      if ((await recognizer.transcribe(names)).text.includes('Barbanneau')) plain++
+      const heard = await timed(
+        'hearing with words of the person’s own',
+        () => recognizer.transcribe(names, { words }),
+        () => seconds(names)
+      )
+      if (heard.text.includes('Barbanneau')) favoured++
+    }
+    expect(plain).toBe(0)
+    expect(favoured).toBeGreaterThanOrEqual(2)
+    // Words that were not said are not heard instead of others, and once none are given, hearing is as before.
+    expectHeard((await recognizer.transcribe(english, { words })).text, ENGLISH_WORDS)
+    expectHeard((await recognizer.transcribe(english)).text, ENGLISH_WORDS)
+  })
+
   it('hears nothing in silence, nor in no sound at all', async () => {
     expect(await recognizer.transcribe(silence(2, 16_000))).toEqual({ text: '' })
     expect(await recognizer.transcribe(silence(0, 48_000))).toEqual({ text: '' })

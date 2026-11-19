@@ -3,6 +3,7 @@ import { accessSchema, DEFAULT_ACCESS } from './access.ts'
 import { DEFAULT_INTERRUPTIONS, interruptionsSchema } from './interruptions.ts'
 import { DEFAULT_LANGUAGES, languagesSchema } from './languages.ts'
 import { personaIdSchema, personaSchema } from './personas.ts'
+import { vocabularySchema } from './vocabulary.ts'
 
 /**
  * The user's settings: what follows the user from one device to the next. The core keeps them.
@@ -37,6 +38,8 @@ export const settingsSchema = z.object({
   access: accessSchema.default(DEFAULT_ACCESS),
   /** The language the person speaks, and the one the assistant answers in. */
   languages: languagesSchema.default(DEFAULT_LANGUAGES),
+  /** The person's own words, for the recogniser: names, places and terms it would not know, heard as they are written. */
+  vocabulary: vocabularySchema.default([]),
   /** When the assistant speaks up by itself: what it does when an answer finishes out of sight. */
   interruptions: interruptionsSchema.default(DEFAULT_INTERRUPTIONS)
 })

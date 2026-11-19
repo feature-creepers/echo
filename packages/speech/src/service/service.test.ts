@@ -41,6 +41,7 @@ function fakeEngines() {
   const installed = new Set<string>(['small'])
   const log: string[] = []
   const heard: Sound[] = []
+  const favoured: string[][] = []
   const spoken: Sound[] = []
   const said: Array<{ text: string; how: Speaking }> = []
   const listenings: Listening[] = []
@@ -80,7 +81,8 @@ function fakeEngines() {
         throw fault
       }
       return {
-        async transcribe(sound) {
+        async transcribe(sound, how) {
+          if (how?.words !== undefined) favoured.push([...how.words])
           working++
           mostAtOnce = Math.max(mostAtOnce, working)
           heard.push(sound)
@@ -130,7 +132,7 @@ function fakeEngines() {
     },
     describeVoice: () => ({ styles: [{ id: 'plain', name: 'Plain' }], languages: ['en', 'fr'] })
   }
-  return { engines, installed, log, heard, spoken, said, listenings, state, mostAtOnce: () => mostAtOnce }
+  return { engines, installed, log, heard, favoured, spoken, said, listenings, state, mostAtOnce: () => mostAtOnce }
 }
 
 const sound = (length: number, sampleRate = 16_000): Sound => ({ sampleRate, samples: Float32Array.from({ length }, (_, index) => index / length) })
@@ -218,6 +220,14 @@ describe('the speech service', () => {
   })
 
   describe('sound', () => {
+    it('reaches the recogniser with the person’s own words, when there are some', async () => {
+      const { speech, favoured } = connected()
+      await speech.transcribe(sound(4), { words: ['Barbanneau', 'json-render'] })
+      await speech.transcribe(sound(4), { words: [] })
+      await speech.transcribe(sound(4))
+      expect(favoured).toEqual([['Barbanneau', 'json-render']])
+    })
+
     it('reaches the recogniser as it was sent, and stays with the caller', async () => {
       const { speech, heard } = connected()
       const mine = sound(1000, 48_000)
@@ -317,7 +327,7 @@ describe('the speech service', () => {
       const stop = new AbortController()
 
       const first = speech.transcribe(sound(1))
-      const second = speech.transcribe(sound(2), { signal: stop.signal })
+      const second = speech.transcribe(sound(2), {}, { signal: stop.signal })
       const third = speech.transcribe(sound(3))
       await settled()
       stop.abort()

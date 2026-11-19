@@ -690,6 +690,7 @@ export function createCore(options: CoreOptions): Core {
       },
       'languages.set': (input) => ({ ok: true, output: { settings: settings.setLanguages(input) } }),
       'interruptions.set': (input) => ({ ok: true, output: { settings: settings.setInterruptions(input) } }),
+      'vocabulary.set': (input) => ({ ok: true, output: { settings: settings.setVocabulary(input.words) } }),
       'browser.read': async () => ({ ok: true, output: { browser: await browser.state() } }),
       'desktop.read': async () => ({ ok: true, output: { desktop: await desktop.state() } }),
       'browser.show': async () => {

@@ -86,7 +86,7 @@ const bridge: DesktopBridge = {
         ipcRenderer.removeListener(SPEECH_CHANNELS.progress, handler)
       }
     },
-    transcribe: (sound) => ipcRenderer.invoke(SPEECH_CHANNELS.transcribe, sound),
+    transcribe: (sound, words) => ipcRenderer.invoke(SPEECH_CHANNELS.transcribe, sound, words === undefined ? [] : [...words]),
     speak: (text, how) => ipcRenderer.invoke(SPEECH_CHANNELS.speak, text, how),
     styles: () => ipcRenderer.invoke(SPEECH_CHANNELS.styles)
   }
