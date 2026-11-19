@@ -11,6 +11,7 @@
 
 import { openCompound } from './compound.ts'
 import { builtInFormat, formatNumber, generalNumber, type NumberFormatOptions } from './number-format.ts'
+import type { CellValue } from './office-figures.ts'
 import {
   BLOCK_LIMIT,
   COLUMN_LIMIT,
@@ -597,11 +598,24 @@ const flag = (value: number, error: boolean) => (error ? (ERRORS[value] ?? '#N/A
 /** What a workbook of Excel 4 or older says: a file of records of its own, not a compound file. */
 const EXCEL_4 = 'It is a workbook of Excel 4 or older, which is not read here.'
 
+/** A sheet of an older workbook as it is read: its rows as shown, and each cell with its number, for the charts that name it. */
+export interface OlderSheet {
+  name: string
+  rows: string[][]
+  cut: boolean
+  cells: Map<string, CellValue>
+}
+
 /**
  * A workbook of Excel 97 to 2003, or of Excel 5 and 95, its sheets each as rows of its cells' values as their formats
  * show them. Excel 5 and 95 write their text in 8-bit characters of the workbook's code page, with no table of strings.
  */
 export function readOlderExcel(bytes: Uint8Array, options: NumberFormatOptions = {}): OfficePreview {
+  return { kind: 'workbook', sheets: readOlderSheets(bytes, options).map(({ name, rows, cut }) => ({ name, rows, cut, figures: [] })) }
+}
+
+/** The sheets of a workbook of Excel 97 to 2003, or of Excel 5 and 95, read as `readOlderExcel` shows them. */
+export function readOlderSheets(bytes: Uint8Array, options: NumberFormatOptions = {}): OlderSheet[] {
   // Excel 2, 3 and 4 wrote their records straight into the file.
   if (bytes.length >= 4 && [0x0009, 0x0209, 0x0409, 0x0809].includes(readU16(bytes, 0)) && readU16(bytes, 2) < 32) throw new Error(EXCEL_4)
   const file = openCompound(bytes)
@@ -670,10 +684,7 @@ export function readOlderExcel(bytes: Uint8Array, options: NumberFormatOptions =
   }
   const shown: NumberFormatOptions = { ...options, date1904 }
 
-  return {
-    kind: 'workbook',
-    sheets: sheets.slice(0, SHEET_LIMIT).map(({ name, at }) => ({ name, ...sheetRows(book, at, { strings, five, eight }, shownBy, shown), figures: [] }))
-  }
+  return sheets.slice(0, SHEET_LIMIT).map(({ name, at }) => ({ name, ...sheetRows(book, at, { strings, five, eight }, shownBy, shown) }))
 }
 
 /** The rows of a sheet, from its records: its cells in their columns, empty ones kept so the columns line up. */
@@ -683,24 +694,27 @@ function sheetRows(
   text: { strings: readonly string[]; five: boolean; eight: (bytes: Uint8Array) => string },
   formatOf: (style: number) => string,
   options: NumberFormatOptions
-): { rows: string[][]; cut: boolean } {
+): { rows: string[][]; cut: boolean; cells: Map<string, CellValue> } {
   const { strings, five, eight } = text
   const rows: string[][] = []
+  // Each cell shown, by its row and column, with its number when it holds one.
+  const cells = new Map<string, CellValue>()
   let cut = false
-  // A number as the format of its cell's style shows it.
-  const number = (value: number, style: number) => {
-    const code = formatOf(style)
-    return /^general$/i.test(code) ? generalNumber(value) : formatNumber(value, code, options)
-  }
-  const put = (row: number, column: number, value: string) => {
+  const put = (row: number, column: number, value: string, held?: number) => {
     if (row >= ROW_LIMIT || column >= COLUMN_LIMIT) {
       cut = true
       return
     }
     while (rows.length <= row) rows.push([])
-    const cells = rows[row] as string[]
-    while (cells.length < column) cells.push('')
-    cells[column] = value
+    const line = rows[row] as string[]
+    while (line.length < column) line.push('')
+    line[column] = value
+    cells.set(`${row},${column}`, { text: value, number: held !== undefined && Number.isFinite(held) ? held : undefined })
+  }
+  // A number as the format of its cell's style shows it.
+  const number = (row: number, column: number, value: number, style: number) => {
+    const code = formatOf(style)
+    put(row, column, /^general$/i.test(code) ? generalNumber(value) : formatNumber(value, code, options), value)
   }
   let depth = 0
   // A formula's text result follows it in a record of its own.
@@ -713,12 +727,12 @@ function sheetRows(
     const row = () => book.u16(at)
     const column = () => book.u16(at + 2)
     if (type === 0x00fd) put(row(), column(), strings[book.u32(at + 6)] ?? '')
-    else if (type === 0x0203) put(row(), column(), number(book.f64(at + 6), book.u16(at + 4)))
-    else if (type === 0x027e) put(row(), column(), number(rkNumber(book.u32(at + 6)), book.u16(at + 4)))
+    else if (type === 0x0203) number(row(), column(), book.f64(at + 6), book.u16(at + 4))
+    else if (type === 0x027e) number(row(), column(), rkNumber(book.u32(at + 6)), book.u16(at + 4))
     else if (type === 0x00bd) {
       const first = column()
       for (let index = 0; index < Math.floor((size - 6) / 6); index++)
-        put(row(), first + index, number(rkNumber(book.u32(at + 6 + index * 6)), book.u16(at + 4 + index * 6)))
+        number(row(), first + index, rkNumber(book.u32(at + 6 + index * 6)), book.u16(at + 4 + index * 6))
     } else if (type === 0x0205) put(row(), column(), flag(book.u8(at + 6), book.u8(at + 7) !== 0))
     else if (type === 0x0204 || type === 0x0207 || type === 0x00d6) {
       // Text in a cell, plain or with runs of format after it (Excel 5 and 95), or a formula's text result.
@@ -732,7 +746,7 @@ function sheetRows(
     } else if (type === 0x0006) {
       waiting = undefined
       // A formula's last result: a number, or marked by its last two bytes as text, a boolean, an error or nothing.
-      if (book.u16(at + 12) !== 0xffff) put(row(), column(), number(book.f64(at + 6), book.u16(at + 4)))
+      if (book.u16(at + 12) !== 0xffff) number(row(), column(), book.f64(at + 6), book.u16(at + 4))
       else {
         const kind = book.u8(at + 6)
         if (kind === 0) waiting = { row: row(), column: column() }
@@ -741,7 +755,7 @@ function sheetRows(
     }
   }
   while (rows.length > 0 && (rows.at(-1)?.every((value) => value === '') ?? false)) rows.pop()
-  return { rows, cut }
+  return { rows, cut, cells }
 }
 
 // PowerPoint

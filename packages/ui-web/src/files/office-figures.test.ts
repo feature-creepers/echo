@@ -154,7 +154,7 @@ describe('a chart of Word, Excel or PowerPoint', () => {
       '',
       `<c:ser><c:tx>${named("'My sheet'!$B$1")}</c:tx><c:cat>${named("'my SHEET'!$A$2:$A$3")}</c:cat><c:val><c:numRef><c:f>'My sheet'!$B$2:$B$3</c:f></c:numRef></c:val></c:ser>`
     )
-    expect(await readChart(xml, {}, cells)).toEqual({
+    expect(await readChart(xml, {}, async () => cells)).toEqual({
       title: '',
       chart: 'bar',
       series: [
@@ -168,6 +168,18 @@ describe('a chart of Word, Excel or PowerPoint', () => {
       ]
     })
     expect(await readChart(xml)).toBeUndefined()
+    expect(await readChart(xml, {}, async () => undefined)).toBeUndefined()
+  })
+
+  it('reads no cells for a chart whose series kept what they draw', async () => {
+    let asked = 0
+    const cells = async () => {
+      asked++
+      return cellRange(new Map())
+    }
+    const kept = chartSpace('barChart', 'Kept', series('A', cached('str', 'x'), cached('num', '1')))
+    expect((await readChart(kept, {}, cells))?.series).toEqual([{ name: 'A', points: [{ x: 'x', y: 1 }] }])
+    expect(asked).toBe(0)
   })
 
   it.each<[string, string[] | undefined]>([

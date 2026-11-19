@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readOlderExcel, readOlderPowerPoint, readOlderWord, rkNumber } from './binary-office.ts'
+import { readOlderExcel, readOlderPowerPoint, readOlderSheets, readOlderWord, rkNumber } from './binary-office.ts'
 import { openCompound } from './compound.ts'
 import { readOffice } from './office.ts'
 
@@ -493,6 +493,17 @@ describe('an Excel 97 workbook', () => {
         }
       ]
     })
+  })
+
+  it('keeps each cell with its number, for a chart that names it', () => {
+    const [sheet] = readOlderSheets(workbook())
+    expect(sheet?.name).toBe('Budget')
+    expect(sheet?.cells.get('1,0')).toEqual({ text: 'Hôtel', number: undefined })
+    expect(sheet?.cells.get('1,1')).toEqual({ text: '42.5', number: 42.5 })
+    expect(sheet?.cells.get('3,1')).toEqual({ text: '7', number: 7 })
+    expect(sheet?.cells.get('5,1')).toEqual({ text: '162.5', number: 162.5 })
+    expect(sheet?.cells.get('5,0')).toEqual({ text: 'ok', number: undefined })
+    expect(sheet?.cells.has('2,0')).toBe(false)
   })
 
   it('reads the numbers Excel packs in four bytes', () => {

@@ -21,6 +21,12 @@ export interface CellValue {
 /** The values of the cells a formula names, `Sheet1!$B$2:$B$5`, in order; none for a formula naming no cells read. */
 export type CellRange = (formula: string) => CellValue[] | undefined
 
+/**
+ * The cells a chart's formulas name, found from its part and its XML, read only when a series kept no values: a
+ * workbook's own sheets, or the workbook a document or a presentation keeps inside itself for a chart.
+ */
+export type CellSource = (chart: { part: string; xml: string }) => Promise<CellRange | undefined>
+
 /** The most cells a chart's formula is read for. */
 const RANGE_LIMIT = 1000
 
@@ -95,10 +101,10 @@ export class Figures {
   private readonly found = new Map<string, number>()
   private readonly archive: Archive
   private readonly options: NumberFormatOptions
-  private readonly cells: CellRange | undefined
+  private readonly cells: CellSource | undefined
 
   /** The figures of a file, its numbers written as `options` says, its charts' formulas read from `cells` when given. */
-  constructor(archive: Archive, options: NumberFormatOptions = {}, cells?: CellRange) {
+  constructor(archive: Archive, options: NumberFormatOptions = {}, cells?: CellSource) {
     this.archive = archive
     this.options = options
     this.cells = cells
@@ -122,13 +128,16 @@ export class Figures {
   async chart(
     part: string | undefined,
     alt: string,
-    read: (xml: string, options: NumberFormatOptions, cells?: CellRange) => Promise<OfficeChart | undefined>
+    read: (xml: string, options: NumberFormatOptions, cells?: () => Promise<CellRange | undefined>) => Promise<OfficeChart | undefined>
   ): Promise<number | undefined> {
     return this.add(JSON.stringify(['chart', part, alt]), async () => {
       const xml = part === undefined ? undefined : await textOf(this.archive, part).catch(() => undefined)
       // An object that is no chart, an equation or a document within the document, shows nothing here.
       if (xml === undefined || part === undefined || !/<(c:chartSpace|chart:chart)\b/.test(xml)) return undefined
-      const chart = await read(xml, this.options, this.cells)
+      const source = this.cells
+      // The cells are read only when a series asks for them, and a workbook that cannot be read names none.
+      const cells = source && (() => source({ part, xml }).catch(() => undefined))
+      const chart = await read(xml, this.options, cells)
       return chart ? { kind: 'chart', ...chart } : { kind: 'unshown', alt, what: 'chart' }
     })
   }
@@ -160,6 +169,11 @@ interface SeriesRead {
   values: Map<number, number>
   formulas?: { name?: string; labels?: string; values?: string }
 }
+
+/** Whether a series kept none of what its formulas name: its values, its labels or its name. */
+const wantsCells = ({ formulas, values, labels, name }: SeriesRead): boolean =>
+  formulas !== undefined &&
+  ((values.size === 0 && formulas.values !== undefined) || (labels.size === 0 && formulas.labels !== undefined) || (name === '' && formulas.name !== undefined))
 
 /** A series' name, labels and values that its chart kept none of, read from the cells its formulas name. */
 function fromCells(series: SeriesRead, cells: CellRange | undefined): void {
@@ -193,9 +207,13 @@ function chartSeries(read: readonly SeriesRead[]): OfficeChart['series'] {
 /**
  * A chart of Word, Excel or PowerPoint (DrawingML, `c:chartSpace`), from the values each series kept: its title, the
  * kind of its first plot, and each series' name, categories and values, as cached when the file was saved. A series
- * that kept none, as some programs write them, is read from the cells its formulas name, when `cells` reads them.
+ * that kept none, as some programs write them, is read from the cells its formulas name, when `cells` gives them.
  */
-export async function readChart(xml: string, options: NumberFormatOptions = {}, cells?: CellRange): Promise<OfficeChart | undefined> {
+export async function readChart(
+  xml: string,
+  options: NumberFormatOptions = {},
+  cells?: () => Promise<CellRange | undefined>
+): Promise<OfficeChart | undefined> {
   let title = ''
   let inTitle = false
   let titleText = false
@@ -257,11 +275,14 @@ export async function readChart(xml: string, options: NumberFormatOptions = {}, 
         value = undefined
       } else if (name === 'c:tx' || name === 'c:cat' || name === 'c:xVal' || name === 'c:val' || name === 'c:yVal') reading = undefined
       else if (name === 'c:ser' && current) {
-        fromCells(current, cells)
         series.push(current)
         current = undefined
       }
     }
+  }
+  if (cells && series.some(wantsCells)) {
+    const range = await cells()
+    for (const one of series) fromCells(one, range)
   }
   const drawn = chartSeries(series)
   if (drawn.length === 0) return undefined

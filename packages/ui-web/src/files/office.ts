@@ -8,11 +8,11 @@
  * .xls, .ppt) are compound files, read by `binary-office.ts`.
  */
 
-import { type Archive, openArchive, relationships, resolvePart, textOf } from './archive.ts'
-import { readOlderExcel, readOlderPowerPoint, readOlderWord } from './binary-office.ts'
+import { type Archive, openArchive, partOf, relationships, resolvePart, textOf } from './archive.ts'
+import { readOlderExcel, readOlderPowerPoint, readOlderSheets, readOlderWord } from './binary-office.ts'
 import { openCompound } from './compound.ts'
 import { builtInFormat, formatNumber, generalNumber, type NumberFormatOptions } from './number-format.ts'
-import { type CellValue, cellRange, emuPixels, Figures, lengthPixels, readChart, readOpenChart } from './office-figures.ts'
+import { type CellRange, type CellSource, type CellValue, cellRange, emuPixels, Figures, lengthPixels, readChart, readOpenChart } from './office-figures.ts'
 import {
   BLOCK_LIMIT,
   COLUMN_LIMIT,
@@ -214,7 +214,7 @@ export async function readDocument(archive: Archive, options: NumberFormatOption
   const { headings, formats } = await wordStyles(archive)
   const numbered = await wordNumbering(archive)
   const targets = await relationships(archive, 'word/document.xml')
-  const figures = new Figures(archive, options)
+  const figures = new Figures(archive, options, embeddedCells(archive, options))
   const blocks: string[] = []
   // The paragraphs open, a text box's within the one that holds it, and the runs open, likewise.
   const paragraphs: WordParagraph[] = []
@@ -438,11 +438,42 @@ async function workbookFormats(archive: Archive, part: string): Promise<string[]
   return formats
 }
 
+/** A sheet of a workbook as it is read: its rows as shown, its cells with their numbers, and its own part. */
+interface SheetRead {
+  name: string
+  rows: string[][]
+  cut: boolean
+  cells: Map<string, CellValue>
+  xml: string
+  target: string
+}
+
+/** The cells of a workbook's sheets as a chart's formulas name them. */
+const sheetCells = (sheets: readonly { name: string; cells: Map<string, CellValue> }[]): CellRange =>
+  cellRange(new Map(sheets.map((sheet) => [sheet.name, sheet.cells])))
+
 /**
- * An Excel workbook's sheets, each as rows of its cells' values as their formats show them, then the pictures and
- * charts its drawing places.
+ * The cells of the workbook a document's or a presentation's chart keeps inside the file, for a chart that kept no
+ * values: the part its `c:externalData` names, a workbook of Excel 2007 or later, or of 97 to 2003, held as it is or
+ * in a compound file's `Package` stream. A workbook outside the file is not reached.
  */
-export async function readWorkbook(archive: Archive, options: NumberFormatOptions = {}): Promise<OfficePreview> {
+export function embeddedCells(archive: Archive, options: NumberFormatOptions = {}): CellSource {
+  return async ({ part, xml }) => {
+    const data = /<c:externalData\b[^>]*\br:id="([^"]*)"/.exec(xml)?.[1]
+    const target = data === undefined ? undefined : (await relationships(archive, part)).get(data)
+    const read = target === undefined ? undefined : partOf(archive, target)
+    const bytes = read && (await read())
+    if (!bytes) return undefined
+    if (bytes[0] === 0x50 && bytes[1] === 0x4b) return sheetCells((await workbookSheets(openArchive(bytes), options)).sheets)
+    // Office keeps a workbook of 2007 or later inside a compound file as its `Package` stream, one of 97 to 2003 as it is.
+    const held = openCompound(bytes).stream('Package')
+    if (held) return sheetCells((await workbookSheets(openArchive(held), options)).sheets)
+    return sheetCells(readOlderSheets(bytes, options))
+  }
+}
+
+/** An Excel workbook's sheets as they are read, with the options its numbers are shown by. */
+async function workbookSheets(archive: Archive, options: NumberFormatOptions): Promise<{ sheets: SheetRead[]; shown: NumberFormatOptions }> {
   const workbook = await textOf(archive, 'xl/workbook.xml')
   if (workbook === undefined) throw new Error('This is not an Excel workbook.')
   const targets = await relationships(archive, 'xl/workbook.xml')
@@ -469,7 +500,7 @@ export async function readWorkbook(archive: Archive, options: NumberFormatOption
     } else if (event.type === 'text' && inText && shared !== undefined) shared += event.text
   }
 
-  const sheets: { name: string; rows: string[][]; cut: boolean; cells: Map<string, CellValue>; xml: string; target: string }[] = []
+  const sheets: SheetRead[] = []
   for (const event of xmlEvents(workbook)) {
     if (sheets.length >= SHEET_LIMIT) break
     if (event.type !== 'open' || event.name !== 'sheet') continue
@@ -478,8 +509,18 @@ export async function readWorkbook(archive: Archive, options: NumberFormatOption
     if (xml === undefined || target === undefined) continue
     sheets.push({ name: event.attributes.name ?? `Sheet ${sheets.length + 1}`, ...sheetRows(xml, strings, formats, shown), xml, target })
   }
+  return { sheets, shown }
+}
+
+/**
+ * An Excel workbook's sheets, each as rows of its cells' values as their formats show them, then the pictures and
+ * charts its drawing places.
+ */
+export async function readWorkbook(archive: Archive, options: NumberFormatOptions = {}): Promise<OfficePreview> {
+  const { sheets, shown } = await workbookSheets(archive, options)
   // The sheets are read before their charts, which may name their cells rather than keep their values.
-  const figures = new Figures(archive, shown, cellRange(new Map(sheets.map((sheet) => [sheet.name, sheet.cells]))))
+  const cells = sheetCells(sheets)
+  const figures = new Figures(archive, shown, async () => cells)
   const read: { name: string; rows: string[][]; cut: boolean; figures: OfficeFigure[] }[] = []
   for (const { name, rows, cut, xml, target } of sheets) {
     // A sheet's pictures and charts are in its drawing, a part of their own.
@@ -573,7 +614,7 @@ export async function readPresentation(archive: Archive, options: NumberFormatOp
   const presentation = await textOf(archive, 'ppt/presentation.xml')
   if (presentation === undefined) throw new Error('This is not a PowerPoint presentation.')
   const targets = await relationships(archive, 'ppt/presentation.xml')
-  const figures = new Figures(archive, options)
+  const figures = new Figures(archive, options, embeddedCells(archive, options))
   const slides: { title: string; lines: string[]; placed: number[] }[] = []
   let cut = false
   for (const event of xmlEvents(presentation)) {

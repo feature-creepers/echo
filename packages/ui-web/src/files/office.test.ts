@@ -371,6 +371,68 @@ describe('an Office file previewed', () => {
     ])
   })
 
+  it('draws a document’s or a presentation’s chart that kept no values from the workbook the file keeps for it', async () => {
+    const formula = (kind: string, reference: string) => `<c:${kind}Ref><c:f>${reference}</c:f></c:${kind}Ref>`
+    const embedded = await zip({
+      'xl/workbook.xml': '<workbook><sheets><sheet name="Sheet1" r:id="rId1"/></sheets></workbook>',
+      'xl/_rels/workbook.xml.rels': '<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>',
+      'xl/worksheets/sheet1.xml':
+        '<worksheet><sheetData><row r="1"><c r="B1" t="inlineStr"><is><t>Sales</t></is></c></row>' +
+        '<row r="2"><c r="A2" t="inlineStr"><is><t>North</t></is></c><c r="B2"><v>30</v></c></row>' +
+        '<row r="3"><c r="A3" t="inlineStr"><is><t>South</t></is></c><c r="B3"><v>12.5</v></c></row></sheetData></worksheet>'
+    })
+    const chart = (data: string) =>
+      `<c:chartSpace><c:chart><c:plotArea><c:barChart><c:ser><c:tx>${formula('str', 'Sheet1!$B$1')}</c:tx>` +
+      `<c:cat>${formula('str', 'Sheet1!$A$2:$A$3')}</c:cat><c:val>${formula('num', 'Sheet1!$B$2:$B$3')}</c:val></c:ser></c:barChart></c:plotArea></c:chart>` +
+      `<c:externalData r:id="${data}"><c:autoUpdate val="0"/></c:externalData></c:chartSpace>`
+    const drawn = {
+      kind: 'chart',
+      title: '',
+      chart: 'bar',
+      series: [
+        {
+          name: 'Sales',
+          points: [
+            { x: 'North', y: 30 },
+            { x: 'South', y: 12.5 }
+          ]
+        }
+      ]
+    }
+    const document = await zip({
+      'word/document.xml':
+        `<w:document ${W}><w:body><w:p><w:r><w:drawing><wp:inline><wp:docPr id="1" name="Chart 1" descr="Sales"/><a:graphic><a:graphicData>` +
+        '<c:chart r:id="rId5"/></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>' +
+        '<w:p><w:r><w:drawing><wp:inline><wp:docPr id="2" name="Chart 2" descr="Elsewhere"/><a:graphic><a:graphicData>' +
+        '<c:chart r:id="rId6"/></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p></w:body></w:document>',
+      'word/_rels/document.xml.rels':
+        '<Relationships><Relationship Id="rId5" Target="charts/chart1.xml"/><Relationship Id="rId6" Target="charts/chart2.xml"/></Relationships>',
+      'word/charts/chart1.xml': chart('rId1'),
+      'word/charts/_rels/chart1.xml.rels': '<Relationships><Relationship Id="rId1" Target="../embeddings/Microsoft_Excel_Worksheet.xlsx"/></Relationships>',
+      'word/embeddings/Microsoft_Excel_Worksheet.xlsx': embedded,
+      // A workbook outside the file is not reached: the chart says it is there.
+      'word/charts/chart2.xml': chart('rId1'),
+      'word/charts/_rels/chart2.xml.rels':
+        '<Relationships><Relationship Id="rId1" Target="file:///C:/Reports/sales.xlsx" TargetMode="External"/></Relationships>'
+    })
+    const read = await readOffice('docx', document)
+    expect(read.kind === 'document' ? read.figures : undefined).toEqual([drawn, { kind: 'unshown', alt: 'Elsewhere', what: 'chart' }])
+
+    const presentation = await zip({
+      'ppt/presentation.xml': '<p:presentation><p:sldIdLst><p:sldId id="256" r:id="rId2"/></p:sldIdLst></p:presentation>',
+      'ppt/_rels/presentation.xml.rels': '<Relationships><Relationship Id="rId2" Target="slides/slide1.xml"/></Relationships>',
+      'ppt/slides/slide1.xml':
+        '<p:sld><p:cSld><p:spTree><p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="5" name="Chart 4"/></p:nvGraphicFramePr>' +
+        '<a:graphic><a:graphicData><c:chart r:id="rId5"/></a:graphicData></a:graphic></p:graphicFrame></p:spTree></p:cSld></p:sld>',
+      'ppt/slides/_rels/slide1.xml.rels': '<Relationships><Relationship Id="rId5" Target="../charts/chart3.xml"/></Relationships>',
+      'ppt/charts/chart3.xml': chart('rId2'),
+      'ppt/charts/_rels/chart3.xml.rels': '<Relationships><Relationship Id="rId2" Target="../embeddings/Microsoft_Excel_Worksheet1.xlsx"/></Relationships>',
+      'ppt/embeddings/Microsoft_Excel_Worksheet1.xlsx': embedded
+    })
+    const slides = await readOffice('pptx', presentation)
+    expect(slides.kind === 'presentation' ? slides.slides[0]?.figures : undefined).toEqual([drawn])
+  })
+
   it('says when a file is not what its name says', async () => {
     await expect(readOffice('docx', await zip({ 'other.xml': '<a/>' }))).rejects.toThrow('not a Word document')
     await expect(readOffice('xlsx', await zip({ 'other.xml': '<a/>' }))).rejects.toThrow('not an Excel workbook')
