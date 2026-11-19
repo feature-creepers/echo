@@ -398,7 +398,7 @@ An aside is a question that does not change the topic: "By the way, what time is
 - **Trigger.** A spoken marker ("by the way", "quick question", their French equivalents), the orchestrator's own judgement when a short unrelated question arrives mid-task, or an optional modifier on the talk shortcut.
 - **On screen.** A card with the answer, marked "By the way", goes on top of the stream of views in the centre column, like any view; the view of the topic stays in the stream under it. Nothing moves aside: the core and the stream stay centred.
 - **Its topic.** An aside records the topic on the stage when it was asked, its parent. The side sheet lists it under that topic; opened there, it shows its work like any thread, and "Show the card" brings its card back on top of the stream.
-- **After.** The card is dismissed with its close button, or saved to the library and pinned like any view (section 9.8). It can be promoted to a full thread ("tell me more about that"). Leaving by itself after a while, on "thanks" or on Esc, is not built yet.
+- **After.** The card is dismissed with its close button, or saved to the library and pinned like any view (section 9.8). It can be promoted to a full thread ("tell me more about that"). It also leaves by itself: three minutes after it was shown (brought back, it stays its full time again; one still there after a restart leaves when its time is up); when the person says thanks and nothing more ("thanks", "merci Ada", "ok, thank you so much", in the seven languages the core knows the words of, `channel/thanks.ts`), which is still answered; and on Escape, which stops the answer under way too (`turn.stop`). Each card is only put away: its aside opened again from the side sheet brings it back. Tested through the scripted harness.
 - **Behind.** The orchestrator answers it directly, or opens a short-lived thread that is archived at once.
 - **Nothing to sit beside.** With nothing on the stage, a side question is a topic of its own: the core opens it as one, whatever the orchestrator asked. An aside keeps one card in the stream, its latest.
 
@@ -1377,6 +1377,7 @@ packages/core/src/
 ├── channel/                the single conversation
 │   ├── channel.ts          intake and ordering of turns
 │   ├── ready.ts            the sentence that says answers finished out of sight are ready
+│   ├── thanks.ts           whether what was said is a thank you and nothing more
 │   ├── turn.ts
 │   ├── context.ts          what is attached to a turn: time, place, focus, memories
 │   └── local-intents/      commands handled with no model, one grammar per language

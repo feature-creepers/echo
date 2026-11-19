@@ -41,7 +41,7 @@ export const conversationCommands = {
     output: z.object({ turn: turnIdSchema.optional() })
   },
 
-  /** Stop the answer under way, if there is one. */
+  /** Stop the answer under way, if there is one, and put the side questions' cards away: what Escape does. */
   'turn.stop': {
     input: z.object({}),
     output: z.object({})

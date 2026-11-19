@@ -286,6 +286,55 @@ describe('threads', () => {
     })
   })
 
+  describe('an aside card', () => {
+    /** A topic on the stage, and a side question answered beside it in a card. */
+    async function asideBesideTopic() {
+      const context = setup()
+      const { channel, harness, call } = context
+      channel.say('Plan my trip')
+      await settled()
+      await call(0, 'thread_open', { title: 'Trip' })
+      harness.sessions[0]?.emit({ type: 'turn-end' })
+      await settled()
+      harness.sessions[1]?.emit({ type: 'text', text: 'Here is a plan. ' })
+      await call(1, 'ui_render', { title: 'Itinerary', view: EXAMPLE_VIEW })
+      harness.sessions[1]?.emit({ type: 'turn-end' })
+      channel.say('By the way, what time is it in Montreal?')
+      await settled()
+      await call(0, 'thread_open', { title: 'Time in Montreal', kind: 'aside' })
+      harness.sessions[0]?.emit({ type: 'turn-end' })
+      await settled()
+      harness.sessions[2]?.emit({ type: 'text', text: 'It is two in the morning there. ' })
+      await call(2, 'ui_render', { title: 'Montreal', view: EXAMPLE_VIEW })
+      harness.sessions[2]?.emit({ type: 'turn-end' })
+      expect(context.screen.margin().map((view) => view.title)).toEqual(['Montreal'])
+      return context
+    }
+
+    it.each(['Thanks', 'Merci Ada !', 'ok thank you so much'])('leaves on %j, which is still answered', async (said) => {
+      const { channel, harness, screen, spoken } = await asideBesideTopic()
+      channel.say(said)
+      expect(screen.margin()).toEqual([])
+      expect(screen.current()?.title).toBe('Itinerary')
+      await settled()
+      harness.sessions[0]?.reply('You are welcome.')
+      expect(spoken().at(-1)).toBe('You are welcome.')
+    })
+
+    it('stays when thanks comes with more', async () => {
+      const { channel, screen } = await asideBesideTopic()
+      channel.say('Thanks, and what about Tokyo?')
+      expect(screen.margin().map((view) => view.title)).toEqual(['Montreal'])
+    })
+
+    it('leaves on Escape, with the answer under way, and the topic stays', async () => {
+      const { channel, screen } = await asideBesideTopic()
+      channel.stop()
+      expect(screen.margin()).toEqual([])
+      expect(screen.current()?.title).toBe('Itinerary')
+    })
+  })
+
   it('never says twice what the orchestrator said before passing a turn on', async () => {
     const { channel, harness, call, spoken, ended } = setup()
     channel.greet()

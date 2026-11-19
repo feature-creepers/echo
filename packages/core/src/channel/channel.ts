@@ -29,6 +29,7 @@ import type { Grant, Tool } from '../tools/tools.ts'
 import type { Checked, Screen, Showing } from '../views/screen.ts'
 import { instructionsFor, orchestratorInstructions, SPEAK_FIRST, threadInstructions, WORK_FIRST } from './instructions.ts'
 import { readySentence } from './ready.ts'
+import { isThanks } from './thanks.ts'
 
 /** The type of the record written when a turn is over: one line of the channel log, word for word. */
 export const EXCHANGE = 'channel.exchange'
@@ -207,8 +208,9 @@ export interface Channel {
    */
   busy(): boolean
   /**
-   * Stop the answer on the stage, if there is one. A project's thread at work is left to work: stopping a long piece
-   * of work is done on purpose, with `stopThread` or `stopAll`, never by quieting the voice.
+   * Stop the answer on the stage, if there is one, and put the side questions' cards away. A project's thread at work
+   * is left to work: stopping a long piece of work is done on purpose, with `stopThread` or `stopAll`, never by
+   * quieting the voice.
    */
   stop(): void
   /** Stop one thread: the request it is answering and those waiting for it. False when it has nothing to stop. */
@@ -619,6 +621,14 @@ export function createChannel(options: ChannelOptions): Channel {
     // After a restart nothing is known of what was heard: the answer is said whole.
     const cutter = createSentenceCutter()
     return { turn: answer.turn, sentences: missed ?? [...cutter.push(answer.replied), ...cutter.flush()] }
+  }
+
+  /**
+   * The side questions' cards leave the stream (docs/SPEC.md, section 7.5): the person said thanks, or pressed Escape.
+   * Each is only put away: it comes back when its aside is opened again.
+   */
+  const putAsidesAway = () => {
+    for (const card of screen.margin()) screen.clear(card.id)
   }
 
   /** Tell the person, in a notification, that an answer is there: once per turn, and only for an answer with words. */
@@ -1276,6 +1286,14 @@ export function createChannel(options: ChannelOptions): Channel {
       // Files handed over are something new to look at, never an answer.
       if (!handedAny(handed) && abilities?.hear?.(text, aloud)) return current?.exchange.turn ?? newId()
       memory?.wake()
+      // A thank you and nothing more: the side questions are answered, and their cards leave. It is still answered.
+      if (
+        isThanks(
+          text,
+          settings.read().personas.available.map((one) => one.name)
+        )
+      )
+        putAsidesAway()
       const persona = activePersona()
       const attached = attachedOf(handed)
       const exchange: Exchange = {
@@ -1395,8 +1413,10 @@ export function createChannel(options: ChannelOptions): Channel {
     busy,
 
     stop() {
-      // Quieting the voice quiets what was still to be told by itself too; the chips stay.
+      // Quieting the voice quiets what was still to be told by itself too; the chips stay. The side questions' cards
+      // leave with it: Escape puts away what was passing.
       toTell.clear()
+      putAsidesAway()
       if (current && !current.working) halt(current)
     },
 
