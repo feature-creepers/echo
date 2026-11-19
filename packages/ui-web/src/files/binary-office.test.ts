@@ -1484,3 +1484,20 @@ describe('a PowerPoint 97 presentation', () => {
     expect((await readOffice('ppt', presentation())).kind).toBe('presentation')
   })
 })
+
+describe('a PowerPoint 95 presentation', () => {
+  it('shows the text it keeps for searching, each shape’s paragraphs apart, a line broken within one', async () => {
+    const text = 'Plans for 1996\r\rPlans\r\rFirst \x93idea\x94\rSecond\vline\r\r'
+    const file = compound({
+      'PowerPoint Document': new Bytes().u32(3).u32(0xffff).u32(0).u32(0).done(),
+      'Current User': new Bytes().u32(4).narrow('Anne').done(),
+      Text_Content: new Bytes().raw([...text].map((letter) => letter.charCodeAt(0))).done()
+    })
+    expect(await readOlderPowerPoint(file)).toEqual({
+      kind: 'document',
+      markdown: 'Plans for 1996\n\nPlans\n\nFirst “idea”  \nSecond line',
+      figures: [],
+      cut: false
+    })
+  })
+})

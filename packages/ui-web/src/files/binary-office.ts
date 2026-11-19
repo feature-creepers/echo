@@ -1557,6 +1557,32 @@ function drawingTexts(stream: Reader, record: PowerPointRecord, depth = 0): { ti
   return found
 }
 
+/**
+ * A presentation of PowerPoint 95, as the text it keeps for searching (`Text_Content`): in Western European, each of its
+ * shapes' paragraphs apart, its slides one after the other with nothing to tell where one ends, its records' own
+ * layout being no format 97 shares.
+ */
+function ninetyFiveText(bytes: Uint8Array): OfficePreview {
+  const text = codePageDecoder(1252).decode(bytes.subarray(0, Math.min(bytes.length, CHARACTER_LIMIT)))
+  // Paragraphs end with a carriage return, a shape's last with two; a line breaks within one at a vertical tab.
+  const blocks = text
+    .split(/\r\r+/)
+    .map((shape) =>
+      shape
+        .split('\r')
+        .map((line) => plain(line.replace(/\v/g, ' ').trim()))
+        .filter((line) => line !== '')
+        .join('  \n')
+    )
+    .filter((block) => block !== '')
+  return {
+    kind: 'document',
+    markdown: joinBlocks(blocks.slice(0, BLOCK_LIMIT)),
+    figures: [],
+    cut: blocks.length > BLOCK_LIMIT || bytes.length > CHARACTER_LIMIT
+  }
+}
+
 /** Where each object of a presentation is, by its number, from its latest save back to its first. */
 function persistedObjects(file: ReturnType<typeof openCompound>, stream: Reader): { places: Map<number, number>; document?: number } {
   const places = new Map<number, number>()
@@ -1643,6 +1669,10 @@ export async function readOlderPowerPoint(bytes: Uint8Array): Promise<OfficePrev
   const raw = file.stream('PowerPoint Document')
   if (!raw) throw new Error('This is not a PowerPoint presentation.')
   if (file.stream('EncryptedSummary')) throw new Error(PROTECTED)
+  // PowerPoint 95 names its user without a record of 97's (`CurrentUserAtom`), and keeps its text for searching apart.
+  const user = file.stream('Current User')
+  const searched = file.stream('Text_Content')
+  if (user && searched && readU16(user, 2) !== 0x0ff6) return ninetyFiveText(searched)
   const stream = reader(raw)
   const { places, document } = persistedObjects(file, stream)
   const documentAt = document === undefined ? undefined : places.get(document)
