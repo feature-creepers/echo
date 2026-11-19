@@ -21,8 +21,8 @@ export const SLIDE_LIMIT = 300
 /** Text written so Markdown shows it as it is: its marks escaped, a line not taken for a heading or a list. */
 export function plain(text: string): string {
   return text
-    .replace(/[\\`*_[\]<>|#]/g, '\\$&')
-    .replace(/^(\s*)(\d+)\. /, '$1$2\\. ')
+    .replace(/[\\`*_[\]<>|#~]/g, '\\$&')
+    .replace(/^(\s*)(\d+)([.)]) /, '$1$2\\$3 ')
     .replace(/^(\s*)([-+]) /, '$1\\$2 ')
 }
 

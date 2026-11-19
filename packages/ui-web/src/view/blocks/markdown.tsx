@@ -1,11 +1,17 @@
 import type { ReactNode } from 'react'
+import { type InlineStep, inlineSteps, picturesOnly, tableCells } from './markdown-inline.ts'
+
+/** What shows a picture a text names, `![words](address)`, alone on its line (`block`) or within a line. */
+export type MarkdownFigure = (address: string, alt: string, block: boolean) => ReactNode
 
 /**
  * A small Markdown reader for what a model writes in Prose and in its full answers: headings, paragraphs,
- * lists, tables, quotes, code, emphasis and links shown as text. It builds React elements, never HTML, so
- * nothing written can run.
+ * lists, tables, quotes, code, emphasis, struck text and links shown as text. It builds React elements, never
+ * HTML, so nothing written can run. A picture is shown only by the `figure` given, which knows what its address
+ * names; without one, its words show.
  */
-export function Markdown({ text }: { text: string }) {
+export function Markdown({ text, figure }: { text: string; figure?: MarkdownFigure | undefined }) {
+  const inline = (line: string) => drawn(inlineSteps(line), figure)
   const blocks: ReactNode[] = []
   const lines = text.replace(/\r\n?/g, '\n').split('\n')
   let index = 0
@@ -81,10 +87,10 @@ export function Markdown({ text }: { text: string }) {
     }
     // A table: a row of cells between pipes, then the line of dashes under its header.
     if (isRow(line) && /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/.test(lines[index + 1] ?? '')) {
-      const head = cells(line)
+      const head = tableCells(line)
       index += 2
       const rows: string[][] = []
-      while (index < lines.length && isRow(lines[index] ?? '')) rows.push(cells(lines[index++] ?? ''))
+      while (index < lines.length && isRow(lines[index] ?? '')) rows.push(tableCells(lines[index++] ?? ''))
       blocks.push(
         <div key={key()} className="scroll-quiet overflow-x-auto rounded-md border border-line">
           <table className="w-full border-collapse text-left text-[0.875rem]">
@@ -131,10 +137,26 @@ export function Markdown({ text }: { text: string }) {
       !isRow(lines[index] ?? '')
     )
       paragraph.push(lines[index++] ?? '')
+    // Lines of pictures alone are figures, each as wide as the column lets it be.
+    const steps = paragraph.map(inlineSteps)
+    if (figure && steps.every(picturesOnly)) {
+      blocks.push(
+        <div key={key()} className="flex min-w-0 flex-wrap items-start gap-3">
+          {steps.flat().map((step, at) =>
+            step.type === 'picture' ? (
+              <span key={at} className="contents">
+                {figure(step.address, step.alt, true)}
+              </span>
+            ) : null
+          )}
+        </div>
+      )
+      continue
+    }
     // A line break inside a paragraph is kept, as in a letter's address block or a poem.
     blocks.push(
       <p key={key()} className="text-pretty leading-relaxed [overflow-wrap:anywhere]">
-        {paragraph.flatMap((line, at) => (at === 0 ? inline(line) : [<br key={`br-${at}`} />, ...inline(line)]))}
+        {steps.flatMap((line, at) => (at === 0 ? drawn(line, figure) : [<br key={`br-${at}`} />, ...drawn(line, figure)]))}
       </p>
     )
   }
@@ -147,45 +169,46 @@ export function Markdown({ text }: { text: string }) {
 /** A line of a table: it starts and ends with a pipe. */
 const isRow = (line: string) => /^\s*\|.*\|\s*$/.test(line)
 
-/** The cells of a table's line, trimmed. */
-const cells = (line: string) =>
-  line
-    .trim()
-    .replace(/^\||\|$/g, '')
-    .split('|')
-    .map((cell) => cell.trim())
-
-/** Emphasis, strong text, code and links inside a line. A link shows its words; the address is not followed. */
-function inline(text: string): ReactNode[] {
-  const parts: ReactNode[] = []
-  const pattern = /(\*\*[^*]+\*\*|__[^_]+__|\*[^*\s][^*]*\*|_[^_\s][^_]*_|`[^`]+`|\[[^\]]+\]\([^)]+\))/g
-  let last = 0
-  for (const match of text.matchAll(pattern)) {
-    const at = match.index ?? 0
-    if (at > last) parts.push(text.slice(last, at))
-    const token = match[0]
-    const key = parts.length
-    if (token.startsWith('**') || token.startsWith('__'))
-      parts.push(
-        <strong key={key} className="font-semibold">
-          {token.slice(2, -2)}
-        </strong>
-      )
-    else if (token.startsWith('`'))
-      parts.push(
-        <code key={key} className="rounded-xs bg-white/[0.06] px-1 py-px font-mono text-[0.85em]">
-          {token.slice(1, -1)}
-        </code>
-      )
-    else if (token.startsWith('['))
-      parts.push(
-        <span key={key} className="text-accent">
-          {token.slice(1, token.indexOf(']'))}
-        </span>
-      )
-    else parts.push(<em key={key}>{token.slice(1, -1)}</em>)
-    last = at + token.length
-  }
-  if (last < text.length) parts.push(text.slice(last))
-  return parts
+/** The steps of a line as elements: a link shows its words, and its address is not followed. */
+function drawn(steps: readonly InlineStep[], figure: MarkdownFigure | undefined): ReactNode[] {
+  return steps.map((step, key) => {
+    switch (step.type) {
+      case 'text':
+        return step.text
+      case 'strong':
+        return (
+          <strong key={key} className="font-semibold">
+            {drawn(step.steps, figure)}
+          </strong>
+        )
+      case 'emphasis':
+        return <em key={key}>{drawn(step.steps, figure)}</em>
+      case 'struck':
+        return (
+          <s key={key} className="decoration-text-faint">
+            {drawn(step.steps, figure)}
+          </s>
+        )
+      case 'code':
+        return (
+          <code key={key} className="rounded-xs bg-white/[0.06] px-1 py-px font-mono text-[0.85em]">
+            {step.text}
+          </code>
+        )
+      case 'link':
+        return (
+          <span key={key} className="text-accent">
+            {drawn(step.steps, figure)}
+          </span>
+        )
+    }
+    // A picture: shown by the figure given, else its words.
+    return figure ? (
+      <span key={key} className="contents">
+        {figure(step.address, step.alt, false)}
+      </span>
+    ) : (
+      step.alt
+    )
+  })
 }
