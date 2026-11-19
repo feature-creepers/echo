@@ -33,6 +33,8 @@ export interface DrawnLine {
   after?: number
   /** The line has no line break after it: the last of its version. */
   unended?: boolean
+  /** The words changed in it, against the line it replaced or was replaced by: where each starts and ends. */
+  marks?: readonly (readonly [start: number, end: number])[]
 }
 
 /** The lines of a hunk, numbered in each version from where the hunk starts. */

@@ -1,6 +1,7 @@
 import type { FileChange, FileDiff } from '@repo/protocol'
 import { memo, type ReactNode, useMemo, useState } from 'react'
 import { cn } from '../primitives/cn.ts'
+import { FILE_CELLS, markChanges } from './inline.ts'
 import { type DrawnLine, drawnLines, linesInWords, minus, numberWidth, plus, STATUS_WORDS, splitPath, unchangedAround } from './words.ts'
 
 /** A path as the person reads it, relative to the folder the work is in. */
@@ -133,14 +134,18 @@ function FileBody({ file }: { file: FileDiff }) {
 
 type Row = { kind: 'gap'; count: number } | { kind: 'line'; line: DrawnLine }
 
-/** The rows of a file's diff: its lines, and between its hunks the unchanged lines they leave out, as one row each. */
+/**
+ * The rows of a file's diff: its lines, with the words changed within them marked, and between its hunks the
+ * unchanged lines they leave out, as one row each.
+ */
 function rowsOf(file: FileDiff): Row[] {
   const gaps = unchangedAround(file)
   const rows: Row[] = []
+  const budget = { cells: FILE_CELLS }
   file.hunks.forEach((hunk, index) => {
     const gap = gaps.before[index] ?? 0
     if (gap > 0) rows.push({ kind: 'gap', count: gap })
-    for (const line of drawnLines(hunk)) rows.push({ kind: 'line', line })
+    for (const line of markChanges(drawnLines(hunk), budget)) rows.push({ kind: 'line', line })
   })
   if (gaps.after > 0 && !file.cut) rows.push({ kind: 'gap', count: gaps.after })
   return rows
@@ -150,6 +155,26 @@ const TINT = { added: 'bg-ok/[0.07]', removed: 'bg-danger/[0.07]', context: '' }
 const GUTTER_TINT = { added: 'bg-ok/[0.11]', removed: 'bg-danger/[0.11]', context: '' } as const
 const SIGN = { added: '+', removed: '−', context: '' } as const
 const SIGN_COLOUR = { added: 'text-ok/80', removed: 'text-danger/80', context: '' } as const
+const MARK_TINT = { added: 'bg-ok/[0.24]', removed: 'bg-danger/[0.24]', context: '' } as const
+
+/** A line's text, with the words changed in it tinted more strongly than the line. */
+function LineText({ line }: { line: DrawnLine }) {
+  if (line.text === '') return ' '
+  if (!line.marks || line.marks.length === 0) return line.text
+  const parts: ReactNode[] = []
+  let at = 0
+  for (const [start, end] of line.marks) {
+    if (start > at) parts.push(line.text.slice(at, start))
+    parts.push(
+      <mark key={start} className={cn('rounded-xs text-inherit', MARK_TINT[line.kind])}>
+        {line.text.slice(start, end)}
+      </mark>
+    )
+    at = end
+  }
+  if (at < line.text.length) parts.push(line.text.slice(at))
+  return parts
+}
 
 /**
  * The lines, in two columns that share their rows: the numbers and signs, which stay put, and the text, which
@@ -195,7 +220,7 @@ const Lines = memo(function Lines({ file }: { file: FileDiff }) {
                   key={index}
                   className={cn('h-5 whitespace-pre pr-6 pl-1 [tab-size:2]', TINT[row.line.kind], row.line.kind === 'context' ? 'text-text-soft' : 'text-text')}
                 >
-                  {row.line.text === '' ? ' ' : row.line.text}
+                  <LineText line={row.line} />
                   {row.line.unended && <span className="ml-3 font-sans text-[0.625rem] text-text-faint">no line break at the end</span>}
                 </div>
               )
