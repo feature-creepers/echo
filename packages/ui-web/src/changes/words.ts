@@ -1,4 +1,5 @@
 import type { AccessUse, FileChange, FileDiff, Hunk } from '@repo/protocol'
+import type { Painted } from './syntax.ts'
 
 /** A path as the person reads it: within the first of the folders that holds it, by its place there; else whole. */
 export function relativePath(path: string, folders: readonly (string | undefined)[]): string {
@@ -35,6 +36,8 @@ export interface DrawnLine {
   unended?: boolean
   /** The words changed in it, against the line it replaced or was replaced by: where each starts and ends. */
   marks?: readonly (readonly [start: number, end: number])[]
+  /** Its runs coloured by what they are to the file's language, when it has one. */
+  paint?: readonly Painted[]
 }
 
 /** The lines of a hunk, numbered in each version from where the hunk starts. */

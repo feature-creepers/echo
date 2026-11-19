@@ -37,3 +37,20 @@ export const color = {
 } as const
 
 export type ColorName = keyof typeof color
+
+/**
+ * The colours of code in a diff, by what each word is to its language. Quiet hues of their own, used nowhere
+ * else: none is the ok or danger of the lines added and removed, nor an accent, so code reads over either tint
+ * and never takes a state's meaning. Comments are the faint text.
+ */
+export const code = {
+  keyword: '#c8a2f8',
+  string: '#a5d6ff',
+  /** Numbers and constants: `42`, `true`, `null`, `MAX_SIZE`. */
+  number: '#f4b183',
+  /** Types and classes, and the names that give a text its structure: keys, attributes, variables. */
+  type: '#7ed6c8',
+  function: '#e0d9a6'
+} as const
+
+export type CodeColorName = keyof typeof code

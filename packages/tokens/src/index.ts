@@ -1,5 +1,5 @@
 export { type AccentName, accents, neutralAccent } from './accent.ts'
-export { type ColorName, color } from './color.ts'
+export { type CodeColorName, type ColorName, code, color } from './color.ts'
 export { frame } from './frame.ts'
 export { motion } from './motion.ts'
 export { type RadiusName, radius } from './radius.ts'

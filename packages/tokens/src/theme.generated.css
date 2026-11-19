@@ -17,6 +17,11 @@
   --color-warn: #f0c05a;
   --color-white: #ffffff;
   --color-black: #000000;
+  --color-code-keyword: #c8a2f8;
+  --color-code-string: #a5d6ff;
+  --color-code-number: #f4b183;
+  --color-code-type: #7ed6c8;
+  --color-code-function: #e0d9a6;
 
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", "Geist Variable", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Geist Mono Variable", Menlo, Consolas, monospace;

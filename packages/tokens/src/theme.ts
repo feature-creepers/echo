@@ -1,5 +1,5 @@
 import { neutralAccent } from './accent.ts'
-import { color } from './color.ts'
+import { code, color } from './color.ts'
 import { frame } from './frame.ts'
 import { motion } from './motion.ts'
 import { radius } from './radius.ts'
@@ -28,6 +28,7 @@ export function renderTheme(): string {
     '@theme {',
     '  --color-*: initial;',
     ...declarations('color', color),
+    ...declarations('color-code', code),
     '',
     ...declarations('font', font),
     '',

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { accents, neutralAccent } from './accent.ts'
-import { color } from './color.ts'
+import { code, color } from './color.ts'
 // The generated file is read as text, the way a bundler would hand over any file asked for with ?raw.
 import written from './theme.generated.css?raw'
 import { renderTheme } from './theme.ts'
@@ -16,6 +16,15 @@ function contrast(one: string, other: string): number {
   }
   const [light, dark] = [luminance(one), luminance(other)].sort((a, b) => b - a) as [number, number]
   return (light + 0.05) / (dark + 0.05)
+}
+
+/** A colour laid at an opacity over another, both written as #rrggbb, as the page composes a tint. */
+function mix(top: string, under: string, opacity: number): string {
+  const channel = (hex: string, at: number) => Number.parseInt(hex.slice(at, at + 2), 16)
+  return `#${[1, 3, 5]
+    .map((at) => Math.round(channel(top, at) * opacity + channel(under, at) * (1 - opacity)))
+    .map((value) => value.toString(16).padStart(2, '0'))
+    .join('')}`
 }
 
 describe('the theme', () => {
@@ -44,6 +53,17 @@ describe('the colours', () => {
 
   it.each(['text', 'textSoft', 'textFaint', 'danger', 'ok', 'warn'] as const)('%s reads on every layer', (name) => {
     for (const layer of layers) expect(contrast(color[name], layer)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  // Code is drawn over the faint tints of lines added and removed too, so each of its colours reads on those.
+  it.each(Object.entries(code))('code’s %s colour reads on every layer, and over the tints of a diff', (_name, value) => {
+    const tinted = layers.flatMap((layer) => [
+      mix(color.ok, layer, 0.07),
+      mix(color.danger, layer, 0.07),
+      mix(color.ok, layer, 0.24),
+      mix(color.danger, layer, 0.24)
+    ])
+    for (const layer of [...layers, ...tinted]) expect(contrast(value, layer)).toBeGreaterThanOrEqual(4.5)
   })
 
   it.each(Object.entries({ ...accents, neutral: neutralAccent }))('the %s accent reads on every layer, and its ink reads on it', (_name, accent) => {

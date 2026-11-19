@@ -1,7 +1,9 @@
 import type { FileChange, FileDiff } from '@repo/protocol'
-import { memo, type ReactNode, useMemo, useState } from 'react'
+import { Fragment, memo, type ReactNode, useMemo, useState } from 'react'
 import { cn } from '../primitives/cn.ts'
 import { FILE_CELLS, markChanges } from './inline.ts'
+import { languageOf } from './languages.ts'
+import { paintHunk, type Role, textRuns } from './syntax.ts'
 import { type DrawnLine, drawnLines, linesInWords, minus, numberWidth, plus, STATUS_WORDS, splitPath, unchangedAround } from './words.ts'
 
 /** A path as the person reads it, relative to the folder the work is in. */
@@ -135,17 +137,23 @@ function FileBody({ file }: { file: FileDiff }) {
 type Row = { kind: 'gap'; count: number } | { kind: 'line'; line: DrawnLine }
 
 /**
- * The rows of a file's diff: its lines, with the words changed within them marked, and between its hunks the
- * unchanged lines they leave out, as one row each.
+ * The rows of a file's diff: its lines, with the words changed within them marked and their code coloured by the
+ * file's language, and between its hunks the unchanged lines they leave out, as one row each.
  */
 function rowsOf(file: FileDiff): Row[] {
   const gaps = unchangedAround(file)
   const rows: Row[] = []
   const budget = { cells: FILE_CELLS }
+  const language = languageOf(file.path)
   file.hunks.forEach((hunk, index) => {
     const gap = gaps.before[index] ?? 0
     if (gap > 0) rows.push({ kind: 'gap', count: gap })
-    for (const line of markChanges(drawnLines(hunk), budget)) rows.push({ kind: 'line', line })
+    const lines = markChanges(drawnLines(hunk), budget)
+    const painted = language ? paintHunk(lines, language) : []
+    lines.forEach((line, at) => {
+      const paint = painted[at]
+      rows.push({ kind: 'line', line: paint && paint.length > 0 ? { ...line, paint } : line })
+    })
   })
   if (gaps.after > 0 && !file.cut) rows.push({ kind: 'gap', count: gaps.after })
   return rows
@@ -157,23 +165,39 @@ const SIGN = { added: '+', removed: '−', context: '' } as const
 const SIGN_COLOUR = { added: 'text-ok/80', removed: 'text-danger/80', context: '' } as const
 const MARK_TINT = { added: 'bg-ok/[0.24]', removed: 'bg-danger/[0.24]', context: '' } as const
 
-/** A line's text, with the words changed in it tinted more strongly than the line. */
+/** The colour of each role code takes; comments are the faint text. */
+const ROLE_COLOUR: Record<Role, string> = {
+  comment: 'text-text-faint',
+  keyword: 'text-code-keyword',
+  string: 'text-code-string',
+  number: 'text-code-number',
+  type: 'text-code-type',
+  function: 'text-code-function'
+}
+
+/** A line's text, its code coloured by its language and the words changed in it tinted more strongly than the line. */
 function LineText({ line }: { line: DrawnLine }) {
   if (line.text === '') return ' '
-  if (!line.marks || line.marks.length === 0) return line.text
-  const parts: ReactNode[] = []
-  let at = 0
-  for (const [start, end] of line.marks) {
-    if (start > at) parts.push(line.text.slice(at, start))
-    parts.push(
-      <mark key={start} className={cn('rounded-xs text-inherit', MARK_TINT[line.kind])}>
-        {line.text.slice(start, end)}
-      </mark>
+  if ((!line.marks || line.marks.length === 0) && (!line.paint || line.paint.length === 0)) return line.text
+  return textRuns(line.text.length, line.paint ?? [], line.marks ?? []).map((run) => {
+    const pieces = run.pieces.map((piece) =>
+      piece.role ? (
+        <span key={piece.start} className={ROLE_COLOUR[piece.role]}>
+          {line.text.slice(piece.start, piece.end)}
+        </span>
+      ) : (
+        <Fragment key={piece.start}>{line.text.slice(piece.start, piece.end)}</Fragment>
+      )
     )
-    at = end
-  }
-  if (at < line.text.length) parts.push(line.text.slice(at))
-  return parts
+    const start = run.pieces[0]?.start ?? 0
+    return run.marked ? (
+      <mark key={start} className={cn('rounded-xs text-inherit', MARK_TINT[line.kind])}>
+        {pieces}
+      </mark>
+    ) : (
+      <Fragment key={start}>{pieces}</Fragment>
+    )
+  })
 }
 
 /**
