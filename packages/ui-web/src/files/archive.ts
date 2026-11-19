@@ -46,20 +46,31 @@ export function openArchive(bytes: Uint8Array): Archive {
       if (method === 0) return stored
       if (method !== 8) throw new Error('The archive is packed in a way that is not read here.')
       if (size > PART_LIMIT) throw new Error('A part of the file is too large to show.')
-      return inflate(stored)
+      return unpack(stored)
     })
   }
   return parts
 }
 
-/** Unpack deflated bytes with the window's own decompression, stopping past the limit. */
-async function inflate(packed: Uint8Array): Promise<Uint8Array> {
-  const stream = new Blob([packed as Uint8Array<ArrayBuffer>]).stream().pipeThrough(new DecompressionStream('deflate-raw'))
+/**
+ * Unpack deflated bytes with the window's own decompression, stopping past the limit: bare, as an archive keeps them,
+ * or behind zlib's header, as PowerPoint keeps an object. PowerPoint may leave out the end of its stream: when the
+ * size unpacked is known, a stream that stops once it is reached is whole.
+ */
+export async function unpack(packed: Uint8Array, format: 'deflate-raw' | 'deflate' = 'deflate-raw', size?: number): Promise<Uint8Array> {
+  const stream = new Blob([packed as Uint8Array<ArrayBuffer>]).stream().pipeThrough(new DecompressionStream(format))
   const reader = stream.getReader()
   const chunks: Uint8Array[] = []
   let total = 0
   for (;;) {
-    const { done, value } = await reader.read()
+    let read: ReadableStreamReadResult<Uint8Array<ArrayBuffer>>
+    try {
+      read = await reader.read()
+    } catch (error) {
+      if (size === undefined || total < size) throw error
+      break
+    }
+    const { done, value } = read
     if (done) break
     total += value.byteLength
     if (total > PART_LIMIT) {

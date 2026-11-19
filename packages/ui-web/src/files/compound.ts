@@ -1,8 +1,9 @@
 /**
  * A compound file, the container of the older Office formats (.doc, .xls, .ppt): a small file system inside one file,
- * its sectors chained by a table, its streams named in a directory. Read in the window, with no library, for the
- * streams at its top that a preview needs. Every chain is followed at most once round, and every size is held to
- * the file's own, so a damaged or crafted file fails with a sentence rather than looping or reading past its end.
+ * its sectors chained by a table, its streams and storages (its folders) named in a directory. Read in the window,
+ * with no library, for the streams a preview needs: those at its top, and those of the storages that hold another
+ * app's objects. Every chain is followed at most once round, and every size is held to the file's own, so a damaged
+ * or crafted file fails with a sentence rather than looping or reading past its end.
  */
 
 const SIGNATURE = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]
@@ -15,8 +16,10 @@ const ENTRY_SIZE = 128
 const ENTRY_LIMIT = 65_536
 
 export interface Compound {
-  /** A stream at the top of the file, by its name whatever its capitals; nothing when there is none. */
+  /** A stream at the top of the file, or of the storage, by its name whatever its capitals; nothing when there is none. */
   stream(name: string): Uint8Array | undefined
+  /** A storage at the top of the file, or of the storage, by its name whatever its capitals; nothing when there is none. */
+  storage(name: string): Compound | undefined
 }
 
 const fail = (): never => {
@@ -123,24 +126,40 @@ export function openCompound(bytes: Uint8Array): Compound {
     return out
   }
 
-  // The streams at the top: the root's children, a tree walked through its siblings.
-  const top = new Map<string, { start: number; size: number }>()
-  const waiting = [root.child]
-  const seen = new Set<number>()
-  while (waiting.length > 0) {
-    const index = waiting.pop() as number
-    if (index === NO_ENTRY || index >= entries || seen.has(index)) continue
-    seen.add(index)
-    const found = entry(index)
-    if (found.type === 2) top.set(found.name.toLowerCase(), { start: found.start, size: found.size })
-    waiting.push(found.left, found.right)
+  /** The streams and storages directly in a storage, from its first child: a tree walked through its siblings. */
+  const listed = (child: number) => {
+    const streams = new Map<string, { start: number; size: number }>()
+    const storages = new Map<string, number>()
+    const waiting = [child]
+    const seen = new Set<number>()
+    while (waiting.length > 0) {
+      const index = waiting.pop() as number
+      if (index === NO_ENTRY || index >= entries || seen.has(index)) continue
+      seen.add(index)
+      const found = entry(index)
+      if (found.type === 2) streams.set(found.name.toLowerCase(), { start: found.start, size: found.size })
+      else if (found.type === 1) storages.set(found.name.toLowerCase(), found.child)
+      waiting.push(found.left, found.right)
+    }
+    return { streams, storages }
   }
 
-  return {
-    stream(name) {
-      const found = top.get(name.toLowerCase())
-      if (!found) return undefined
-      return found.size < cutoff ? readMini(found.start, found.size) : read(found.start, found.size)
+  /** A storage's streams and storages, listed when first asked for. */
+  const open = (child: number): Compound => {
+    let inside: ReturnType<typeof listed> | undefined
+    return {
+      stream(name) {
+        inside ??= listed(child)
+        const found = inside.streams.get(name.toLowerCase())
+        if (!found) return undefined
+        return found.size < cutoff ? readMini(found.start, found.size) : read(found.start, found.size)
+      },
+      storage(name) {
+        inside ??= listed(child)
+        const found = inside.storages.get(name.toLowerCase())
+        return found === undefined ? undefined : open(found)
+      }
     }
   }
+  return open(root.child)
 }

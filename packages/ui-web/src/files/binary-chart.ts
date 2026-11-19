@@ -6,6 +6,7 @@
  * draws, as the newer formats' charts are.
  */
 
+import { generalNumber } from './number-format.ts'
 import { type CellRange, chartKind, drawnChart, type SeriesRead } from './office-figures.ts'
 import type { OfficeChart } from './office-text.ts'
 
@@ -94,6 +95,12 @@ function labelText(body: Uint8Array, context: ChartContext): string {
  * categories (`AI`), then the values each kept, by series and point, after an index saying what they are (`SIINDEX`).
  */
 export function readOlderChart(records: readonly ChartRecord[], context: ChartContext): OfficeChart | undefined {
+  const { title, kind, series } = chartParts(records, context)
+  return drawnChart(title, kind, series, context.cells)
+}
+
+/** What a chart's records say: its title, the kind of its first plot, and its series as they were read. */
+function chartParts(records: readonly ChartRecord[], context: ChartContext): { title: string; kind: OfficeChart['chart']; series: SeriesRead[] } {
   let kind: OfficeChart['chart'] | undefined
   let title = ''
   const series: SeriesRead[] = []
@@ -138,5 +145,60 @@ export function readOlderChart(records: readonly ChartRecord[], context: ChartCo
       else if (kept === 2) target.labels.set(point, number === undefined ? labelText(body, context) : context.number(number, style))
     }
   }
-  return drawnChart(title, kind ?? 'bar', series, context.cells)
+  return { title, kind: kind ?? 'bar', series }
+}
+
+/** The most rows and columns of a sheet of data read for a chart of Microsoft Graph. */
+const GRAPH_LIMIT = 1000
+
+/**
+ * A chart of Microsoft Graph, the app Word and PowerPoint 97 to 2003 embed charts of (`MSGraph.Chart.8`). Its
+ * `Workbook` stream holds the chart's records, as Excel's do, and a sheet of data of its own in records of the
+ * oldest kind (Excel 2's `NUMBER` and `LABEL`): the categories along its first row and each series along a row after
+ * it, named in its first column; or the same by columns, as the series' names say.
+ */
+export function readGraphChart(stream: Uint8Array): OfficeChart | undefined {
+  const data = view(stream)
+  const decoder = new TextDecoder('windows-1252')
+  const records: ChartRecord[] = []
+  const sheet = new Map<string, { text: string; number?: number }>()
+  let rows = 0
+  let columns = 0
+  for (let at = 0; at + 4 <= stream.length; ) {
+    const type = data.getUint16(at, true)
+    const size = data.getUint16(at + 2, true)
+    if (at + 4 + size > stream.length) break
+    const body = stream.subarray(at + 4, at + 4 + size)
+    if ((type === 0x0003 && size >= 15) || (type === 0x0004 && size >= 9)) {
+      const [row, column] = [data.getUint16(at + 4, true), data.getUint16(at + 6, true)]
+      if (row < GRAPH_LIMIT && column < GRAPH_LIMIT) {
+        const number = type === 0x0003 ? data.getFloat64(at + 11, true) : undefined
+        // Text is its length, then whether it is in UTF-16 or 8-bit characters, then its characters.
+        const count = body[7] as number
+        const wide = ((body[8] ?? 0) & 0x01) !== 0
+        const words = () => (wide ? new TextDecoder('utf-16le').decode(body.subarray(9, 9 + count * 2)) : decoder.decode(body.subarray(9, 9 + count)))
+        const text = number === undefined ? words() : generalNumber(number)
+        sheet.set(`${row},${column}`, number === undefined || !Number.isFinite(number) ? { text } : { text, number })
+        rows = Math.max(rows, row + 1)
+        columns = Math.max(columns, column + 1)
+      }
+    } else records.push({ type, body })
+    at += 4 + size
+  }
+  const { title, kind, series } = chartParts(records, { five: false, eight: (bytes) => decoder.decode(bytes), number: generalNumber })
+  // The series run along the sheet's rows unless their names head its columns.
+  const named = (index: number, along: boolean) => (along ? sheet.get(`0,${index + 1}`) : sheet.get(`${index + 1},0`))?.text
+  const byColumns =
+    series.length > 0 && series.every((one, index) => one.name === named(index, true)) && !series.every((one, index) => one.name === named(index, false))
+  series.forEach((one, index) => {
+    one.name ||= named(index, byColumns) ?? ''
+    if (one.values.size > 0) return
+    for (let point = 0; point < (byColumns ? rows : columns) - 1; point++) {
+      const value = byColumns ? sheet.get(`${point + 1},${index + 1}`) : sheet.get(`${index + 1},${point + 1}`)
+      const label = byColumns ? sheet.get(`${point + 1},0`) : sheet.get(`0,${point + 1}`)
+      if (value?.number !== undefined) one.values.set(point, value.number)
+      if (label) one.labels.set(point, label.text)
+    }
+  })
+  return drawnChart(title, kind, series)
 }

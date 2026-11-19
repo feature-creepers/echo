@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { type ChartContext, type ChartRecord, chartFormula, readOlderChart } from './binary-chart.ts'
+import { type ChartContext, type ChartRecord, chartFormula, readGraphChart, readOlderChart } from './binary-chart.ts'
 import { type CellValue, cellRange } from './office-figures.ts'
 
 const u16 = (value: number) => [value & 0xff, (value >> 8) & 0xff]
@@ -145,5 +145,45 @@ describe('a chart of Excel 97 to 2003', () => {
   it('has nothing to draw with no series, or with records cut short', () => {
     expect(readOlderChart([record(0x1017), kept(1), number(0, 0, 1)], context())).toBeUndefined()
     expect(readOlderChart([record(0x1003), kept(1), record(0x0203, [0, 0, 0, 0]), record(0x1051, [1, 2]), record(0x100d, [0])], context())).toBeUndefined()
+  })
+})
+
+describe('a chart of Microsoft Graph', () => {
+  /** Records as a stream holds them: each one's type, its size, then what it holds. */
+  const streamOf = (records: readonly ChartRecord[]) => new Uint8Array(records.flatMap(({ type, body }) => [...u16(type), ...u16(body.length), ...body]))
+  /** A cell of Graph's sheet of data, in Excel 2's records: its row, its column, three bytes of format, then its value. */
+  const text = (row: number, column: number, value: string) => record(0x0004, [...u16(row), ...u16(column), 0, 0, 0, value.length, 0, ...narrow(value)])
+  const value = (row: number, column: number, number: number) => record(0x0003, [...u16(row), ...u16(column), 0, 0, 0, ...f64(number)])
+  const named = (name: string) => [record(0x1003), BEGIN, seriesText(name), END]
+
+  it('reads each series along a row of its sheet of data, the categories along its first', () => {
+    const stream = streamOf([text(0, 1, 'Q1'), text(0, 2, 'Q2'), text(1, 0, 'East'), value(1, 1, 20.4), value(1, 2, 27.4), record(0x1018), ...named('East')])
+    expect(readGraphChart(stream)).toEqual({
+      title: '',
+      chart: 'line',
+      series: [
+        {
+          name: 'East',
+          points: [
+            { x: 'Q1', y: 20.4 },
+            { x: 'Q2', y: 27.4 }
+          ]
+        }
+      ]
+    })
+  })
+
+  it('reads each series down a column when the series’ names head its columns', () => {
+    const stream = streamOf([text(0, 1, 'North'), text(0, 2, 'South'), text(1, 0, 'May'), value(1, 1, 3), value(1, 2, 4), ...named('North'), ...named('South')])
+    expect(readGraphChart(stream)?.series).toEqual([
+      { name: 'North', points: [{ x: 'May', y: 3 }] },
+      { name: 'South', points: [{ x: 'May', y: 4 }] }
+    ])
+  })
+
+  it('names a series from its sheet when its records do not, and stops at a record cut short', () => {
+    const stream = streamOf([text(1, 0, 'East'), value(1, 1, 5), record(0x1003), BEGIN, END])
+    expect(readGraphChart(stream)?.series).toEqual([{ name: 'East', points: [{ x: '1', y: 5 }] }])
+    expect(readGraphChart(stream.subarray(0, 12))).toBeUndefined()
   })
 })

@@ -55,11 +55,16 @@ class Bytes {
 const END = 0xfffffffe
 const FREE = 0xffffffff
 
+/** The streams of a compound file, and its storages, each holding streams and storages of its own. */
+interface Tree {
+  [name: string]: Uint8Array | Tree
+}
+
 /**
- * A compound file of 512-byte sectors holding the streams given at its top: those under 4,096 bytes in the mini
+ * A compound file of 512-byte sectors holding the streams and storages given: streams under 4,096 bytes in the mini
  * stream, as Office writes them, the others in sectors of their own. Enough of the format for a reader.
  */
-function compound(streams: Record<string, Uint8Array>): Uint8Array {
+function compound(streams: Tree): Uint8Array {
   const sectors: Uint8Array[] = []
   const fat: number[] = []
   const chain = (data: Uint8Array): number => {
@@ -76,14 +81,28 @@ function compound(streams: Record<string, Uint8Array>): Uint8Array {
   }
   const mini = new Bytes()
   const miniFat: number[] = []
-  const entries = Object.entries(streams).map(([name, data]) => {
-    if (data.length >= 4096) return { name, start: chain(data), size: data.length }
+  const store = (data: Uint8Array) => {
+    if (data.length >= 4096) return { start: chain(data), size: data.length }
     const first = miniFat.length
     const count = Math.ceil(data.length / 64)
     for (let index = 0; index < count; index++) miniFat.push(index < count - 1 ? first + index + 1 : END)
     mini.raw(data).padTo(miniFat.length * 64)
-    return { name, start: count === 0 ? END : first, size: data.length }
-  })
+    return { start: count === 0 ? END : first, size: data.length }
+  }
+  // Each level's entries are siblings to the right of one another, a storage's own after them; the root is entry 0.
+  const entries: { name: string; type: number; right: number; child: number; start: number; size: number }[] = []
+  const place = (tree: Tree): number => {
+    const named = Object.entries(tree)
+    const first = entries.length + 1
+    for (const [name] of named) entries.push({ name, type: 2, right: FREE, child: FREE, start: END, size: 0 })
+    named.forEach(([name, value], index) => {
+      const right = index + 1 < named.length ? first + index + 1 : FREE
+      entries[first + index - 1] =
+        value instanceof Uint8Array ? { name, type: 2, right, child: FREE, ...store(value) } : { name, type: 1, right, child: place(value), start: 0, size: 0 }
+    })
+    return named.length > 0 ? first : FREE
+  }
+  const top = place(streams)
   const miniData = mini.done()
   const rootStart = chain(miniData)
   const miniFatBytes = new Bytes()
@@ -108,10 +127,8 @@ function compound(streams: Record<string, Uint8Array>): Uint8Array {
       .u32(size)
       .u32(0)
   }
-  entry('Root Entry', 5, FREE, entries.length > 0 ? 1 : FREE, rootStart, miniData.length)
-  entries.forEach(({ name, start, size }, index) => {
-    entry(name, 2, index + 2 <= entries.length ? index + 2 : FREE, FREE, start, size)
-  })
+  entry('Root Entry', 5, FREE, top, rootStart, miniData.length)
+  for (const { name, type, right, child, start, size } of entries) entry(name, type, right, child, start, size)
   const directoryStart = chain(directory.padTo(Math.ceil(directory.length / 512) * 512).done())
   // The table of sectors covers itself too.
   let fatSectors = 1
@@ -159,6 +176,18 @@ describe('a compound file', () => {
     expect(file.stream('Missing')).toBeUndefined()
   })
 
+  it('gives the streams of its storages, and the storages within them', () => {
+    const large = new Uint8Array(5000).map((_, index) => index % 13)
+    const file = openCompound(compound({ Top: new Uint8Array([9]), ObjectPool: { _12: { Workbook: large, Small: new Uint8Array([4]) }, Empty: {} } }))
+    expect(file.storage('objectpool')?.storage('_12')?.stream('WORKBOOK')).toEqual(large)
+    expect(file.storage('ObjectPool')?.storage('_12')?.stream('Small')).toEqual(new Uint8Array([4]))
+    expect(file.storage('ObjectPool')?.storage('Empty')?.stream('Small')).toBeUndefined()
+    expect(file.storage('ObjectPool')?.stream('_12')).toBeUndefined()
+    expect(file.storage('Top')).toBeUndefined()
+    expect(file.storage('Missing')).toBeUndefined()
+    expect(file.stream('Top')).toEqual(new Uint8Array([9]))
+  })
+
   it('says a file is not one, or is damaged, in a sentence', () => {
     expect(() => openCompound(new Uint8Array(1024))).toThrow('not a file of the older Office formats')
     const file = compound({ Small: new Uint8Array([1, 2, 3]) })
@@ -187,6 +216,7 @@ interface WordPictures {
   anchors: { character: number; shape: number; corners: [number, number, number, number] }[]
   drawings: Uint8Array
   blip: Uint8Array
+  objects?: Tree
 }
 
 /**
@@ -321,7 +351,65 @@ function wordDocument(paragraphs: { text: string; format: number[] }[], encrypte
   pair(12, chpx, 12)
   pair(40, spa, drawingsAt - spa)
   pair(50, drawingsAt, pictures.drawings.length)
-  return compound({ WordDocument: document, '1Table': table.done(), Data: pictures.data })
+  return compound({ WordDocument: document, '1Table': table.done(), Data: pictures.data, ...(pictures.objects ? { ObjectPool: pictures.objects } : {}) })
+}
+
+/**
+ * The stream of a chart of Microsoft Graph: its sheet of data in Excel 2's records, the categories along its first
+ * row and each series along a row after it, then the chart's records, a bar chart of two series named in text.
+ */
+function graphStream(): Uint8Array {
+  const label = (row: number, column: number, text: string) => record(0x0004, new Bytes().u16(row).u16(column).zeros(3).u8(text.length).u8(0).narrow(text))
+  const number = (row: number, column: number, value: number) => record(0x0003, new Bytes().u16(row).u16(column).zeros(3).f64(value))
+  const series = (name: string) => [
+    record(0x1003, new Bytes().zeros(12)),
+    record(0x1033, new Uint8Array()),
+    record(0x100d, new Bytes().u16(0).u8(name.length).u8(0).narrow(name)),
+    record(0x1034, new Uint8Array())
+  ]
+  const parts = [
+    record(0x0809, new Bytes().u16(0x0680).u16(0x0005).zeros(12)),
+    record(0x000a, new Uint8Array()),
+    record(0x0809, new Bytes().u16(0x0680).u16(0x8000).zeros(12)),
+    label(0, 1, 'Q1'),
+    label(0, 2, 'Q2'),
+    label(1, 0, 'East'),
+    number(1, 1, 20.4),
+    number(1, 2, 27.4),
+    label(2, 0, 'West'),
+    number(2, 1, 30.6),
+    number(2, 2, 38.6),
+    record(0x1017, new Bytes().zeros(6)),
+    ...series('East'),
+    ...series('West'),
+    record(0x000a, new Uint8Array())
+  ]
+  const all = new Bytes()
+  for (const part of parts) all.raw(part)
+  return all.done()
+}
+
+/** The chart `graphStream` draws. */
+const GRAPH_CHART = {
+  kind: 'chart',
+  title: '',
+  chart: 'bar',
+  series: [
+    {
+      name: 'East',
+      points: [
+        { x: 'Q1', y: 20.4 },
+        { x: 'Q2', y: 27.4 }
+      ]
+    },
+    {
+      name: 'West',
+      points: [
+        { x: 'Q1', y: 30.6 },
+        { x: 'Q2', y: 38.6 }
+      ]
+    }
+  ]
 }
 
 /** A picture of the store, as OfficeArt keeps one: an identifier, a tag, then its bytes. */
@@ -439,6 +527,43 @@ describe('a Word 97 document', () => {
       ],
       cut: false
     })
+  })
+
+  it('draws an embedded chart from its object’s storage when its picture is a metafile the window does not show', () => {
+    const text = '\x13 EMBED MSGraph.Chart.8 \x14\x01\x15\r'
+    const separator = 1024 + text.indexOf('\x14') * 2
+    const shape = artShape(1026, 0x0a00, 1)
+    const entry = storeEntry(atom(0xf01a, new Bytes().zeros(60), 0x3d4))
+    const data = new Bytes()
+      .u32(68 + shape.length + entry.length)
+      .u16(68)
+      .u16(0x64)
+      .padTo(68)
+      .raw(shape)
+      .raw(entry)
+      .done()
+    const object = new Bytes().u16(0x080a).u8(1).u16(0x0855).u8(1).u16(0x6a03).u32(77).done()
+    const picture = new Bytes().u16(0x6a03).u32(0).u16(0x0855).u8(1).done()
+    const file = wordDocument(
+      [
+        { text, format: formatting(0) },
+        { text: 'End\r', format: formatting(0) }
+      ],
+      false,
+      {
+        runs: [
+          { start: 1024, end: separator, properties: new Uint8Array() },
+          { start: separator, end: separator + 2, properties: object },
+          { start: separator + 2, end: separator + 4, properties: picture }
+        ],
+        data,
+        anchors: [],
+        drawings: new Uint8Array(),
+        blip: new Uint8Array(),
+        objects: { _77: { Workbook: graphStream() } }
+      }
+    )
+    expect(readOlderWord(file)).toEqual({ kind: 'document', markdown: '![](figure:0)\n\nEnd', figures: [GRAPH_CHART], cut: false })
   })
 
   it('says when it is protected with a password, or is not one', async () => {
@@ -949,12 +1074,19 @@ const bytes8 = (text: string) => atom(0x0fa8, new Bytes().narrow(text))
  * A presentation of two slides whose order in the list is not the order they were written in, one with a text box
  * of its own, and notes left out; found through the edit and the directory of where each object is.
  */
-function presentation(encrypted = false, pictured = false): Uint8Array {
+function presentation(encrypted = false, pictured = false, object?: Uint8Array): Uint8Array {
   // A picture of 576 by 288 master units, a slide's eighth of an inch at 576 to the inch: 96 by 48 pixels.
   const anchor = new Bytes().u16(10).u16(20).u16(596).u16(298)
+  // An object's shape shows a metafile, the second picture of the store, and names the object by its number.
+  const objectShape = container(0xf004, [
+    atom(0xf00a, new Bytes().u32(2051).u32(0x0a10), 75),
+    atom(0xf00b, new Bytes().u16(0x4104).u32(2), 1),
+    container(0xf011, [atom(0x0bc1, new Bytes().u32(5))])
+  ])
   const slideOne = container(0x03ee, [
     atom(0x03ef, new Bytes().zeros(24)),
-    ...(pictured ? [container(0x040c, [artDrawing(artShape(2049, 0x0a00, 1, 'Map', anchor), artShape(2050, 0x0e00, 1))])] : [])
+    ...(pictured ? [container(0x040c, [artDrawing(artShape(2049, 0x0a00, 1, 'Map', anchor), artShape(2050, 0x0e00, 1))])] : []),
+    ...(object ? [container(0x040c, [artDrawing(objectShape)])] : [])
   ])
   const slideTwo = container(0x03ee, [
     container(0x040c, [container(0xf002, [container(0xf003, [container(0xf004, [container(0xf00d, [header(4), chars('A note of its own')])])])])])
@@ -974,8 +1106,12 @@ function presentation(encrypted = false, pictured = false): Uint8Array {
     0
   )
   const notes = container(0x0ff0, [atom(0x03f3, new Bytes().u32(4).zeros(16)), header(2), chars('Speaker notes')], 2)
-  const group = container(0x040b, [container(0xf000, [atom(0xf006, new Bytes().zeros(16)), container(0xf001, [storeEntry(new Uint8Array(), 4)])])])
-  const document = container(0x03e8, [atom(0x03e9, new Bytes().zeros(40)), list, notes, ...(pictured ? [group] : [])])
+  const group = container(0x040b, [
+    container(0xf000, [atom(0xf006, new Bytes().zeros(16)), container(0xf001, [storeEntry(new Uint8Array(), 4), storeEntry(new Uint8Array(), 0)])])
+  ])
+  // An object of another app: its entry in the list of objects names its storage, kept as object 4.
+  const objects = container(0x0409, [container(0x0fcc, [atom(0x0fc3, new Bytes().u32(1).u32(0).u32(5).u32(14).u32(4).u32(0))])])
+  const document = container(0x03e8, [atom(0x03e9, new Bytes().zeros(40)), list, notes, ...(pictured || object ? [group] : []), ...(object ? [objects] : [])])
   const stream = new Bytes()
   const at = { document: stream.length }
   stream.raw(document)
@@ -983,15 +1119,18 @@ function presentation(encrypted = false, pictured = false): Uint8Array {
   stream.raw(slideOne)
   const two = stream.length
   stream.raw(slideTwo)
+  const storage = stream.length
+  if (object) stream.raw(atom(0x1011, object, 1))
   const directory = stream.length
   stream.raw(
     atom(
       0x1772,
       new Bytes()
-        .u32((3 << 20) | 1)
+        .u32((4 << 20) | 1)
         .u32(one)
         .u32(two)
         .u32(at.document)
+        .u32(storage)
     )
   )
   const edit = stream.length
@@ -1011,13 +1150,27 @@ function presentation(encrypted = false, pictured = false): Uint8Array {
   const pictures = new Bytes()
     .zeros(4)
     .raw(blipOf(0xf01e, 0x6e0, PNG))
+    .raw(atom(0xf01a, new Bytes().zeros(60), 0x3d4))
     .done()
-  return compound({ 'PowerPoint Document': stream.done(), 'Current User': user, ...(pictured ? { Pictures: pictures } : {}) })
+  return compound({ 'PowerPoint Document': stream.done(), 'Current User': user, ...(pictured || object ? { Pictures: pictures } : {}) })
+}
+
+/**
+ * An object's storage as PowerPoint keeps it: its size, then the compound file packed by zlib, the stream's last
+ * four bytes, which check it, left out as PowerPoint may leave them.
+ */
+async function packedObject(storage: Uint8Array): Promise<Uint8Array> {
+  const stream = new Blob([storage as Uint8Array<ArrayBuffer>]).stream().pipeThrough(new CompressionStream('deflate'))
+  const packed = new Uint8Array(await new Response(stream).arrayBuffer())
+  return new Bytes()
+    .u32(storage.length)
+    .raw(packed.subarray(0, packed.length - 4))
+    .done()
 }
 
 describe('a PowerPoint 97 presentation', () => {
-  it('reads each slide in the order of its list: its title, its placeholders’ lines, then its own text boxes', () => {
-    expect(readOlderPowerPoint(presentation())).toEqual({
+  it('reads each slide in the order of its list: its title, its placeholders’ lines, then its own text boxes', async () => {
+    expect(await readOlderPowerPoint(presentation())).toEqual({
       kind: 'presentation',
       slides: [
         { title: 'Plan', lines: ['Train at 9', 'Museum then dinner', 'A note of its own'], figures: [] },
@@ -1027,17 +1180,25 @@ describe('a PowerPoint 97 presentation', () => {
     })
   })
 
-  it('shows the pictures each slide’s drawing places, from the presentation’s store, at their size', () => {
-    const read = readOlderPowerPoint(presentation(false, true))
+  it('shows the pictures each slide’s drawing places, from the presentation’s store, at their size', async () => {
+    const read = await readOlderPowerPoint(presentation(false, true))
     expect(read.kind === 'presentation' ? read.slides.map((slide) => slide.figures) : undefined).toEqual([
       [],
       [{ kind: 'picture', type: 'image/png', bytes: new Uint8Array(PNG), alt: 'Map', width: 96, height: 48 }]
     ])
   })
 
+  it('draws an object’s chart from its storage when its picture is a metafile the window does not show', async () => {
+    const read = await readOlderPowerPoint(presentation(false, false, await packedObject(compound({ Workbook: graphStream() }))))
+    expect(read.kind === 'presentation' ? read.slides.map((slide) => slide.figures) : undefined).toEqual([[], [GRAPH_CHART]])
+    // An object that holds no chart shows its picture, or says its app shows it.
+    const other = await readOlderPowerPoint(presentation(false, false, await packedObject(compound({ Other: new Uint8Array([1]) }))))
+    expect(other.kind === 'presentation' ? other.slides[1]?.figures : undefined).toEqual([{ kind: 'unshown', alt: '', what: 'picture' }])
+  })
+
   it('says when it is protected with a password, or is not one', async () => {
-    expect(() => readOlderPowerPoint(presentation(true))).toThrow('protected with a password')
-    expect(() => readOlderPowerPoint(compound({ Other: new Uint8Array(8) }))).toThrow('not a PowerPoint presentation')
+    await expect(readOlderPowerPoint(presentation(true))).rejects.toThrow('protected with a password')
+    await expect(readOlderPowerPoint(compound({ Other: new Uint8Array(8) }))).rejects.toThrow('not a PowerPoint presentation')
     expect((await readOffice('ppt', presentation())).kind).toBe('presentation')
   })
 })

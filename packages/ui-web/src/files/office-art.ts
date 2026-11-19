@@ -33,7 +33,8 @@ export const ART = {
   properties: 0xf00b,
   secondProperties: 0xf121,
   thirdProperties: 0xf122,
-  clientAnchor: 0xf010
+  clientAnchor: 0xf010,
+  clientData: 0xf011
 } as const
 
 const view = (bytes: Uint8Array) => new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
@@ -135,12 +136,16 @@ export function storedPictures(bytes: Uint8Array, store: ArtRecord | undefined, 
   }
 }
 
-/** A shape of a drawing, as a preview needs it: its identifier, the picture it shows, its words, and its anchor. */
+/**
+ * A shape of a drawing, as a preview needs it: its identifier, the picture it shows, its words, its anchor, and what
+ * its app keeps of it (its client data: in PowerPoint, the object of another app it shows).
+ */
 export interface ArtShape {
   id: number
   picture?: number | undefined
   alt: string
   anchor?: ArtRecord | undefined
+  client?: ArtRecord | undefined
 }
 
 /** The properties read of a shape: the picture it shows (`pib`), and its description, its words for those who cannot see it. */
@@ -186,6 +191,7 @@ export function artShape(bytes: Uint8Array, container: ArtRecord): ArtShape | un
       const words = properties.get(DESCRIPTION)
       if (typeof words === 'string') shape.alt ||= words.trim()
     } else if (record.type === ART.clientAnchor) shape.anchor = record
+    else if (record.type === ART.clientData) shape.client = record
   }
   return shape
 }

@@ -9,17 +9,31 @@
  * its end. A file protected with a password says so.
  */
 
-import { type ChartContext, type ChartRecord, readOlderChart } from './binary-chart.ts'
-import { openCompound } from './compound.ts'
+import { unpack } from './archive.ts'
+import { type ChartContext, type ChartRecord, readGraphChart, readOlderChart } from './binary-chart.ts'
+import { type Compound, openCompound } from './compound.ts'
 import { builtInFormat, formatNumber, generalNumber, type NumberFormatOptions } from './number-format.ts'
-import { ART, ArtFigures, type ArtRecord, artRecords, artShape, artShapes, childOf, type StoredPicture, storedPictures, twipPixels } from './office-art.ts'
-import { type CellValue, cellRange } from './office-figures.ts'
+import {
+  ART,
+  ArtFigures,
+  type ArtRecord,
+  type ArtShape,
+  artRecords,
+  artShape,
+  artShapes,
+  childOf,
+  type StoredPicture,
+  storedPictures,
+  twipPixels
+} from './office-art.ts'
+import { type CellValue, cellRange, pictureType } from './office-figures.ts'
 import {
   BLOCK_LIMIT,
   COLUMN_LIMIT,
   figureMark,
   joinBlocks,
   markdownTable,
+  type OfficeChart,
   type OfficeFigure,
   type OfficePreview,
   PROTECTED,
@@ -304,20 +318,47 @@ function characterPicture(word: Reader, at: number, size: number): { location?: 
 }
 
 /**
+ * The chart an object of another app holds, in its own storage of the file: Microsoft Graph's, known by the version
+ * its records start with, or the first of an Excel workbook's. None for any other object, or one that cannot be read.
+ */
+export function embeddedChart(storage: Compound): OfficeChart | undefined {
+  try {
+    const stream = storage.stream('Workbook') ?? storage.stream('Book')
+    if (!stream || stream.length < 8 || readU16(stream, 0) !== 0x0809) return undefined
+    if (readU16(stream, 4) === GRAPH_VERSION) return readGraphChart(stream)
+    for (const sheet of sheetsOf(storage))
+      for (const figure of sheet.figures) if (figure.kind === 'chart') return { title: figure.title, chart: figure.chart, series: figure.series }
+  } catch {
+    // An object that cannot be read is one its app shows.
+  }
+  return undefined
+}
+
+/** The version Microsoft Graph writes at the start of its records, which no Excel writes. */
+const GRAPH_VERSION = 0x0680
+
+/**
  * The pictures of a Word 97 document. One in its text is a character whose run names where it is in the `Data`
  * stream: a header (`PICF`) with its size, then its shape and the entry of the store that holds it. One floating over
  * the text is anchored at a character, and drawn from the document's OfficeArt, in its table stream, its picture kept
- * in the main stream. A picture that cannot be read is left out: the text is still worth showing.
+ * in the main stream. An object of another app (a field `EMBED`) is in a storage of its own under `ObjectPool`, named
+ * by its field's separator; a chart's is drawn from it when its picture is not one the window shows. A picture that
+ * cannot be read is left out: the text is still worth showing.
  */
 function wordPictures(
   word: Reader,
   main: Uint8Array,
   table: Reader,
   tableBytes: Uint8Array,
-  data: Uint8Array | undefined,
+  streams: { data: Uint8Array | undefined; objects: Compound | undefined },
   places: { characters: WordPlace; anchors: WordPlace; drawings: WordPlace }
 ) {
+  const { data, objects } = streams
   const figures = new ArtFigures()
+  const objectChart = (id: number | undefined) => {
+    const storage = id === undefined ? undefined : objects?.storage(`_${id}`)
+    return storage && embeddedChart(storage)
+  }
   let runs: ReturnType<typeof characterRuns> | undefined
   const runAt = (place: number) => {
     runs ??= characterRuns(word, table, places.characters)
@@ -333,9 +374,14 @@ function wordPictures(
     return undefined
   }
 
-  // A picture in the text: its header gives its size, in twentieths of a point scaled by thousandths.
-  const inline = (location: number): number | undefined => {
-    if (!data) return figures.unshown('', 'picture')
+  // A picture in the text: its header gives its size, in twentieths of a point scaled by thousandths. An object's
+  // picture the window does not show gives way to the chart the object holds, when it holds one.
+  const inline = (location: number, object?: number): number | undefined => {
+    const instead = () => {
+      const chart = object === undefined ? undefined : objectChart(object)
+      return chart && figures.chart(chart)
+    }
+    if (!data) return instead() ?? figures.unshown('', 'picture')
     const picture = reader(data)
     const length = picture.u32(location)
     const header = picture.u16(location + 4)
@@ -343,7 +389,7 @@ function wordPictures(
     const scaled = (goal: number, scale: number) => twipPixels((picture.i16(location + goal) * (picture.u16(location + scale) || 1000)) / 1000)
     const size = { width: scaled(0x1c, 0x20), height: scaled(0x1e, 0x22) }
     // A picture of Word 6's kind, a metafile of its own, is one its app shows.
-    if (mode !== 0x64 && mode !== 0x66) return figures.picture(`data:${location}`, undefined, '', size)
+    if (mode !== 0x64 && mode !== 0x66) return instead() ?? figures.picture(`data:${location}`, undefined, '', size)
     let at = location + header
     if (mode === 0x66) at += 1 + picture.u8(at)
     const end = Math.min(location + length, data.length)
@@ -357,8 +403,9 @@ function wordPictures(
       }
     }
     // The shape names its picture by its place in the document's store; the entry after it holds that picture itself.
-    const stored = storedPictures(data, { type: ART.store, instance: 0, container: true, at: entries, size: end - entries })
-    return figures.picture(`data:${location}`, stored(1), shape?.alt ?? '', size)
+    const stored = storedPictures(data, { type: ART.store, instance: 0, container: true, at: entries, size: end - entries })(1)
+    const shown = stored?.bytes !== undefined && pictureType(stored.bytes) !== undefined
+    return (shown ? undefined : instead()) ?? figures.picture(`data:${location}`, stored, shape?.alt ?? '', size)
   }
 
   // Pictures floating over the text: their anchors by character, their shapes by identifier, their pictures in the store.
@@ -396,14 +443,30 @@ function wordPictures(
 
   return {
     figures,
-    /** The figure of a special character in the text, at its place in the main stream; `chart` when its field says so. */
-    inline(place: number, chart: boolean): number | undefined {
+    /**
+     * The figure of a special character in the text, at its place in the main stream, within the result of a field
+     * that names an object (its storage's number) and says whether it is a chart.
+     */
+    inline(place: number, field: { object?: number | undefined; chart: boolean }): number | undefined {
       try {
         const run = runAt(place)
         if (!run) return undefined
         const found = characterPicture(word, run.at, run.size)
-        if (found.object) return figures.unshown('', chart ? 'chart' : 'picture')
-        return found.data || found.location === undefined ? undefined : inline(found.location)
+        if (found.object) {
+          const chart = objectChart(found.location)
+          return chart ? figures.chart(chart) : figures.unshown('', field.chart ? 'chart' : 'picture')
+        }
+        return found.data || found.location === undefined ? undefined : inline(found.location, field.object)
+      } catch {
+        return undefined
+      }
+    },
+    /** The object a field's separator names, by the number of its storage; none for a field of no object. */
+    object(place: number): number | undefined {
+      try {
+        const run = runAt(place)
+        const found = run && characterPicture(word, run.at, run.size)
+        return found?.object ? found.location : undefined
       } catch {
         return undefined
       }
@@ -473,11 +536,18 @@ export function readOlderWord(bytes: Uint8Array): OfficePreview {
     formats = pair(13)
     complex = pair(33)
     const none = { at: 0, size: 0 }
-    pictures = wordPictures(word, stream, table, tableStream as Uint8Array, file.stream('Data'), {
-      characters: pair(12),
-      anchors: pair(40),
-      drawings: pairCount > 50 ? pair(50) : none
-    })
+    pictures = wordPictures(
+      word,
+      stream,
+      table,
+      tableStream as Uint8Array,
+      { data: file.stream('Data'), objects: file.storage('ObjectPool') },
+      {
+        characters: pair(12),
+        anchors: pair(40),
+        drawings: pairCount > 50 ? pair(50) : none
+      }
+    )
   }
 
   // The text is in pieces, each where the file keeps it: in 8-bit characters, or in UTF-16. A Word 6 file saved
@@ -617,7 +687,7 @@ export function readOlderWord(bytes: Uint8Array): OfficePreview {
   }
 
   // Fields hold their code, then what they show: only what they show is text. An object's code names its kind.
-  const fields: { code: string; coding: boolean }[] = []
+  const fields: { code: string; coding: boolean; object?: number | undefined }[] = []
   const figure = (found: number | undefined) => {
     if (found !== undefined) paragraph += `${FIGURE_START}${found}${FIGURE_END}`
   }
@@ -625,7 +695,10 @@ export function readOlderWord(bytes: Uint8Array): OfficePreview {
     const field = fields.at(-1)
     if (code === 0x13) fields.push({ code: '', coding: true })
     else if (code === 0x14) {
-      if (field) field.coding = false
+      if (field) {
+        field.coding = false
+        if (place >= 0) field.object = pictures?.object(place)
+      }
     } else if (code === 0x15) fields.pop()
     else if (fields.some((one) => one.coding)) {
       if (field?.coding) field.code += char
@@ -633,7 +706,7 @@ export function readOlderWord(bytes: Uint8Array): OfficePreview {
     else if (code === 0x07) endParagraph('\x07', place)
     else if (code === 0x0b) paragraph += '\n'
     else if (code === 0x1e) paragraph += '-'
-    else if (code === 0x01 && place >= 0) figure(pictures?.inline(place, /^\s*EMBED\s+\S*Chart/i.test(field?.code ?? '')))
+    else if (code === 0x01 && place >= 0) figure(pictures?.inline(place, { object: field?.object, chart: /^\s*EMBED\s+\S*Chart/i.test(field?.code ?? '') }))
     else if (code === 0x08) figure(pictures?.floating(character))
     else if (code === 0x09 || (code >= 0x20 && char !== FIGURE_START && char !== FIGURE_END)) paragraph += char
   }
@@ -685,6 +758,7 @@ export function readOlderWord(bytes: Uint8Array): OfficePreview {
 
 /** A 16-bit number at the start of a file, before it is known to be anything. */
 const readU16 = (bytes: Uint8Array, at: number) => (bytes[at] ?? 0) | ((bytes[at + 1] ?? 0) << 8)
+const readU32 = (bytes: Uint8Array, at: number) => (readU16(bytes, at) | (readU16(bytes, at + 2) << 16)) >>> 0
 
 // Excel
 
@@ -816,7 +890,11 @@ export function readOlderExcel(bytes: Uint8Array, options: NumberFormatOptions =
 export function readOlderSheets(bytes: Uint8Array, options: NumberFormatOptions = {}): OlderSheet[] {
   // Excel 2, 3 and 4 wrote their records straight into the file.
   if (bytes.length >= 4 && [0x0009, 0x0209, 0x0409, 0x0809].includes(readU16(bytes, 0)) && readU16(bytes, 2) < 32) throw new Error(EXCEL_4)
-  const file = openCompound(bytes)
+  return sheetsOf(openCompound(bytes), options)
+}
+
+/** The sheets of a workbook's stream, in a compound file or in an object's storage within one. */
+function sheetsOf(file: Compound, options: NumberFormatOptions = {}): OlderSheet[] {
   const stream = file.stream('Workbook') ?? file.stream('Book')
   if (!stream) throw new Error('This is not an Excel workbook.')
   const book = reader(stream)
@@ -1177,8 +1255,42 @@ function slideAnchorSize(bytes: Uint8Array, anchor: ArtRecord | undefined): { wi
   return { width: pixels(right - left), height: pixels(bottom - top) }
 }
 
-/** A PowerPoint 97 to 2003 presentation's slides, in order: each one's title, the lines of its other text, and its pictures. */
-export function readOlderPowerPoint(bytes: Uint8Array): OfficePreview {
+/** The most bytes an object of another app is unpacked to: a preview never needs more. */
+const OBJECT_LIMIT = 32 * 1024 * 1024
+
+/**
+ * The objects of other apps a presentation keeps (its `ExObjList`), by their number: where each one's storage is,
+ * as the directory of where each object is names it.
+ */
+function presentationObjects(raw: Uint8Array, container: PowerPointRecord): Map<number, number> {
+  const objects = new Map<number, number>()
+  const list = childOf(raw, container, 0x0409)
+  for (const embedded of list ? artRecords(raw, list.at, list.at + list.size) : []) {
+    const atom = embedded.type === 0x0fcc ? childOf(raw, embedded, 0x0fc3) : undefined
+    if (atom && atom.size >= 20) objects.set(readU32(raw, atom.at + 8), readU32(raw, atom.at + 16))
+  }
+  return objects
+}
+
+/**
+ * An object's storage as PowerPoint keeps it (`ExOleObjStg`): a compound file of its own, packed by zlib after its
+ * size when the record says so.
+ */
+async function objectStorage(raw: Uint8Array, record: PowerPointRecord | undefined): Promise<Compound | undefined> {
+  if (record?.type !== 0x1011 || record.size < 4) return undefined
+  const kept = raw.subarray(record.at, record.at + record.size)
+  if (record.instance !== 1) return openCompound(kept)
+  const size = readU32(kept, 0)
+  if (size > OBJECT_LIMIT) return undefined
+  return openCompound(await unpack(kept.subarray(4), 'deflate', size))
+}
+
+/**
+ * A PowerPoint 97 to 2003 presentation's slides, in order: each one's title, the lines of its other text, and its
+ * pictures. An object of another app is shown by its picture; a chart's is drawn from its storage instead when the
+ * window does not show that picture.
+ */
+export async function readOlderPowerPoint(bytes: Uint8Array): Promise<OfficePreview> {
   const file = openCompound(bytes)
   const raw = file.stream('PowerPoint Document')
   if (!raw) throw new Error('This is not a PowerPoint presentation.')
@@ -1213,8 +1325,23 @@ export function readOlderPowerPoint(bytes: Uint8Array): OfficePreview {
   const drawingGroup = childOf(raw, container, 0x040b)
   const group = drawingGroup && childOf(raw, drawingGroup, ART.drawingGroup)
   const stored = storedPictures(raw, group && childOf(raw, group, ART.store), file.stream('Pictures'))
+  const objects = presentationObjects(raw, container)
+  // The chart an object's shape shows, from its storage, when its picture is not one the window shows.
+  const objectChart = async (shape: ArtShape): Promise<OfficeChart | undefined> => {
+    const reference = shape.client && childOf(raw, shape.client, 0x0bc1)
+    const persisted = reference && reference.size >= 4 ? objects.get(readU32(raw, reference.at)) : undefined
+    const at = persisted === undefined ? undefined : places.get(persisted)
+    if (at === undefined) return undefined
+    try {
+      const storage = await objectStorage(raw, recordAt(stream, at))
+      return storage && embeddedChart(storage)
+    } catch {
+      return undefined
+    }
+  }
 
-  const slides = found.map(({ texts, persisted }) => {
+  const slides: { title: string; lines: string[]; figures: OfficeFigure[] }[] = []
+  for (const { texts, persisted } of found) {
     // Text boxes of its own, beyond its placeholders, are in the slide's drawing, and so are its pictures.
     const at = places.get(persisted)
     const drawn = at === undefined ? undefined : recordAt(stream, at)
@@ -1226,13 +1353,17 @@ export function readOlderPowerPoint(bytes: Uint8Array): OfficePreview {
     }
     const drawing = drawn?.type === 0x03ee ? childOf(raw, drawn, 0x040c) : undefined
     const shapes = drawing && childOf(raw, drawing, ART.drawing)
-    const placed = (shapes ? artShapes(raw, shapes) : []).flatMap((shape) => {
-      if (shape.picture === undefined) return []
-      const figure = figures.picture(`store:${shape.picture}`, stored(shape.picture), shape.alt, slideAnchorSize(raw, shape.anchor))
-      return figure === undefined ? [] : [figure]
-    })
+    const placed: number[] = []
+    for (const shape of shapes ? artShapes(raw, shapes) : []) {
+      if (shape.picture === undefined) continue
+      const picture = stored(shape.picture)
+      const shown = picture?.bytes !== undefined && pictureType(picture.bytes) !== undefined
+      const chart = shown ? undefined : await objectChart(shape)
+      const figure = chart ? figures.chart(chart) : figures.picture(`store:${shape.picture}`, picture, shape.alt, slideAnchorSize(raw, shape.anchor))
+      if (figure !== undefined) placed.push(figure)
+    }
     slide.figures = figures.at(placed)
-    return slide
-  })
+    slides.push(slide)
+  }
   return { kind: 'presentation', slides, cut }
 }
