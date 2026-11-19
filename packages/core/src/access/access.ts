@@ -402,9 +402,12 @@ export function createAccess({ settings, screen, computer, timers, records, vers
     const changes = use.action === 'create' || use.action === 'change' || use.action === 'delete'
     const versions = changes ? await activity.keep(use.paths) : { kept: [], created: [] }
     // A command that may change files: its folder is looked at first, with the places it names outside it, to find
-    // what it changed once it ended.
+    // what it changed once it ended; the places it may change are watched while it runs, for the files a program
+    // works out once it runs.
     const folder = use.action === 'run' && reason !== 'read-only' ? use.paths[0] : undefined
-    const snapshot = folder === undefined ? undefined : await computer?.snapshot?.(folder, use.named ?? []).catch(() => undefined)
+    const current = scope()
+    const changeable = { places: current.places.filter((place) => place.write).map((place) => place.path), everywhere: current.computer === 'write' }
+    const snapshot = folder === undefined ? undefined : await computer?.snapshot?.(folder, use.named ?? [], changeable).catch(() => undefined)
     const recorded = activity.record({
       ...by,
       tool: use.tool,
@@ -419,10 +422,11 @@ export function createAccess({ settings, screen, computer, timers, records, vers
     })
     if (snapshot) {
       snapshots.set(recorded.id, snapshot)
-      // A command whose end is never told gives way to newer ones.
-      for (const oldest of snapshots.keys()) {
+      // A command whose end is never told gives way to newer ones, and what it watched is let go.
+      for (const [oldest, given] of snapshots) {
         if (snapshots.size <= SNAPSHOTS_KEPT) break
         snapshots.delete(oldest)
+        given.release?.()
       }
     }
     return { allow: true, use: recorded.id }

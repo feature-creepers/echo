@@ -47,19 +47,35 @@ export interface Computer {
    * `named` are the places the command names outside that folder, looked at too: a file, or a path where nothing
    * is yet, alone; a folder from its work tree's top when it is in one, else its own files, and those of its
    * subfolders only when the command goes through it.
+   *
+   * `changeable` are the places the command may change, watched while it runs, so that a file a program works out
+   * once it runs, which its line does not name, is found too.
    */
-  snapshot?(folder: string, named?: readonly NamedPlace[]): Promise<FolderSnapshot | undefined>
+  snapshot?(folder: string, named?: readonly NamedPlace[], changeable?: Changeable): Promise<FolderSnapshot | undefined>
+}
+
+/** The places a command may change, as the scope says: those granted with changes, and the whole computer when it may be. */
+export interface Changeable {
+  /** Folders and files, absolute: the assistant's own folder, and the places granted that may be changed. */
+  places: readonly string[]
+  /** The whole computer may be changed: the person's own folder is watched too, past the folders apps keep their data in. */
+  everywhere: boolean
 }
 
 /** A folder as a command found it. */
 export interface FolderSnapshot {
   /** The files changed since, each with what it held before and holds now, at most a few hundred. */
   changes(): Promise<FoundChange[]>
+  /** Stop looking, when the command's end will never be told: what it watched is let go. */
+  release?(): void
 }
 
-/** A file a command changed: what it held before (no file, or not known) and what it holds now (no file, or too large to keep). */
+/**
+ * A file a command changed: what it held before (no file, too large to keep, or not known: not looked at before the
+ * command ran, or no longer held) and what it holds now (no file, or too large to keep).
+ */
 export interface FoundChange {
   path: string
-  before: Uint8Array | 'none' | 'unknown'
+  before: Uint8Array | 'none' | 'too-large' | 'unknown'
   after: Uint8Array | 'none' | 'too-large'
 }

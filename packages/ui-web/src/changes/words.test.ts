@@ -73,7 +73,7 @@ describe('what a use changed in all', () => {
     reason: 'level',
     ...(changes ? { changes } : {})
   })
-  it('adds up its files, and says when its one file is not text', () => {
+  it('adds up its files, and says when its one file is not text, or what it held before is not known', () => {
     expect(
       totalOf(
         use([
@@ -83,6 +83,7 @@ describe('what a use changed in all', () => {
       )
     ).toEqual({ added: 7, removed: 1 })
     expect(totalOf(use([{ path: '/a', status: 'changed', added: 0, removed: 0, binary: true }]))).toMatchObject({ binary: true })
+    expect(totalOf(use([{ path: '/a', status: 'changed', added: 0, removed: 0, unknown: true }]))).toMatchObject({ unknown: true })
     expect(totalOf(use(undefined))).toBeUndefined()
   })
 })

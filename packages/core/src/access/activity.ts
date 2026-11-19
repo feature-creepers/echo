@@ -40,13 +40,16 @@ const leftSchema = z.object({
   added: z.number().optional(),
   removed: z.number().optional(),
   binary: z.boolean().optional(),
-  large: z.boolean().optional()
+  large: z.boolean().optional(),
+  unknown: z.boolean().optional()
 })
 const useRecordSchema = accessUseSchema.omit({ outcome: true, undo: true, changes: true }).extend({
   /** The files' versions before the change. */
   kept: z.array(keptSchema).optional(),
   /** Files that did not exist before it: those it created. */
-  created: z.array(z.string()).optional()
+  created: z.array(z.string()).optional(),
+  /** Files a command was found to have changed whose content before is not known: not looked at first, or no longer held. */
+  unknown: z.array(z.string()).optional()
 })
 const outcomeRecordSchema = z.object({
   use: z.string(),
@@ -58,6 +61,7 @@ const outcomeRecordSchema = z.object({
    */
   kept: z.array(keptSchema).optional(),
   created: z.array(z.string()).optional(),
+  unknown: z.array(z.string()).optional(),
   /**
    * What each file held once the change was made, to tell later whether it changed since: its fingerprint, which is
    * the hash its version is kept under. Since changes are reviewed as diffs, also what the change did to it, with the
@@ -141,12 +145,16 @@ const TURNS_AT_HAND = 100
 /** The actions that change files, which have a diff. */
 const CHANGING = new Set<AccessUse['action']>(['create', 'change', 'delete'])
 
-/** A version of a file as far as it can be compared: its bytes, or why there are none. */
-type Side = Uint8Array | 'large' | 'missing'
+/**
+ * A version of a file as far as it can be compared: its bytes, or why there are none: too large, no longer kept, or
+ * never known, for a file a command was found to have changed where it was not looked at before it ran.
+ */
+type Side = Uint8Array | 'large' | 'missing' | 'unknown'
 
 /** What a change did to a file, counted: the lines added and removed, or why they are not. */
-function counted(before: Side, after: Side): Pick<Left, 'added' | 'removed' | 'binary' | 'large'> {
+function counted(before: Side, after: Side): Pick<Left, 'added' | 'removed' | 'binary' | 'large' | 'unknown'> {
   if (before === 'missing' || after === 'missing') return {}
+  if (before === 'unknown' || after === 'unknown') return { unknown: true }
   if (before === 'large' || after === 'large' || before.byteLength > COMPARED_LIMIT || after.byteLength > COMPARED_LIMIT) return { large: true }
   const [old, next] = [textOf(before), textOf(after)]
   if (old === undefined || next === undefined) return { binary: true }
@@ -200,7 +208,7 @@ export function createActivity({ records, versions, computer, now, newId }: Acti
   }
 
   const view = ({ use, outcome, undo }: Entry): AccessUse => {
-    const { kept, created, ...shown } = use
+    const { kept, created, unknown, ...shown } = use
     // What a command did beyond its files cannot be undone: its files' versions are put back one at a time.
     const undoable = use.decision !== 'refused' && outcome?.ok !== false && use.action !== 'run'
     const kind = !undoable ? undefined : (kept?.length ?? 0) > 0 ? 'restore' : (created?.length ?? 0) > 0 ? 'trash' : undefined
@@ -214,9 +222,13 @@ export function createActivity({ records, versions, computer, now, newId }: Acti
     }
   }
 
-  /** Where a use found a file before it changed it: nothing there (it created it), the version kept, or none kept. */
+  /**
+   * Where a use found a file before it changed it: nothing there (it created it), the version kept, not known, or none
+   * kept, as a file too large is not.
+   */
   const before = (use: UseRecord, path: string): Side => {
     if (use.created?.includes(path)) return NOTHING
+    if (use.unknown?.includes(path)) return 'unknown'
     const kept = use.kept?.find((one) => one.path === path)
     if (!kept) return 'large'
     return versions.get(kept.hash) ?? 'missing'
@@ -321,7 +333,8 @@ export function createActivity({ records, versions, computer, now, newId }: Acti
         one.before instanceof Uint8Array ? [{ path: one.path, hash: versions.put(one.before), size: one.before.byteLength }] : []
       )
       const created = (found ?? []).filter((one) => one.before === 'none').map((one) => one.path)
-      if (found) entry.use = withFound(entry.use, { kept, created })
+      const unknown = (found ?? []).filter((one) => one.before === 'unknown').map((one) => one.path)
+      if (found) entry.use = withFound(entry.use, { kept, created, unknown })
       // A change made keeps the version it left of each file, for its diff, and for undo to tell whether it changed since.
       const changed = ok && computer && CHANGING.has(entry.use.action)
       const after =
@@ -336,6 +349,7 @@ export function createActivity({ records, versions, computer, now, newId }: Acti
         ...(error === undefined || ok ? {} : { error: error.slice(0, ERROR_KEPT) }),
         ...(kept.length > 0 ? { kept } : {}),
         ...(created.length > 0 ? { created } : {}),
+        ...(unknown.length > 0 ? { unknown } : {}),
         ...(after ? { after } : {})
       }
       append({ type: ACCESS_OUTCOME, payload: outcome })
@@ -413,6 +427,7 @@ export function createActivity({ records, versions, computer, now, newId }: Acti
         const empty = { path, status, added: 0, removed: 0, hunks: [], lines: { before: 0, after: 0 } }
         const count = counted(old, next)
         if (old === 'missing' || next === 'missing') files.push({ ...empty, ...marks, missing: true })
+        else if (old === 'unknown' || next === 'unknown') files.push({ ...empty, ...marks, unknown: true })
         else if (count.binary) files.push({ ...empty, ...marks, binary: true })
         else if (count.large || old === 'large' || next === 'large') files.push({ ...empty, ...marks, large: true })
         else {
@@ -518,7 +533,8 @@ export function createActivity({ records, versions, computer, now, newId }: Acti
               added: count.added ?? 0,
               removed: count.removed ?? 0,
               ...(count.binary ? { binary: true } : {}),
-              ...(count.large ? { large: true } : {})
+              ...(count.large ? { large: true } : {}),
+              ...(count.unknown ? { unknown: true } : {})
             })
           }
           atHand.delete(turn)
@@ -607,20 +623,24 @@ const made = (entry: { use: UseRecord; outcome?: OutcomeRecord | undefined }) =>
 const filesOf = (entry: { use: UseRecord; outcome?: OutcomeRecord | undefined }) =>
   entry.use.action === 'run' ? (entry.outcome?.after ?? []).map((one) => one.path) : entry.use.paths
 
-/** A command's use with the files it was found to have changed: the versions before, and those it created. */
-const withFound = (use: UseRecord, found: { kept?: UseRecord['kept']; created?: string[] | undefined }): UseRecord =>
-  (found.kept?.length ?? 0) === 0 && (found.created?.length ?? 0) === 0
+/**
+ * A command's use with the files it was found to have changed: the versions before, those it created, and those
+ * whose content before is not known.
+ */
+const withFound = (use: UseRecord, found: { kept?: UseRecord['kept']; created?: string[] | undefined; unknown?: string[] | undefined }): UseRecord =>
+  (found.kept?.length ?? 0) === 0 && (found.created?.length ?? 0) === 0 && (found.unknown?.length ?? 0) === 0
     ? use
     : {
         ...use,
         kept: [...(use.kept ?? []), ...(found.kept ?? [])],
-        created: [...(use.created ?? []), ...(found.created ?? [])]
+        created: [...(use.created ?? []), ...(found.created ?? [])],
+        ...((found.unknown?.length ?? 0) > 0 ? { unknown: [...(use.unknown ?? []), ...(found.unknown ?? [])] } : {})
       }
 
 /** What a change did to a file, as the person is shown it: nothing for a record kept before changes were counted. */
 function changeOf(left: Left): FileChange[] {
   if (left.status === undefined) return []
-  if (left.added === undefined && !left.binary && !left.large) return []
+  if (left.added === undefined && !left.binary && !left.large && !left.unknown) return []
   return [
     {
       path: left.path,
@@ -628,7 +648,8 @@ function changeOf(left: Left): FileChange[] {
       added: left.added ?? 0,
       removed: left.removed ?? 0,
       ...(left.binary ? { binary: true } : {}),
-      ...(left.large ? { large: true } : {})
+      ...(left.large ? { large: true } : {}),
+      ...(left.unknown ? { unknown: true } : {})
     }
   ]
 }

@@ -48,11 +48,12 @@ const Chevron = ({ open }: { open: boolean }) => (
 
 /**
  * Lines added and removed, in the ok and danger colours, each left out when there are none; a file that is not
- * text, or too large, says so instead.
+ * text, too large, or whose content before is not known, says so instead.
  */
-export function Counts({ change, className }: { change: Pick<FileChange, 'added' | 'removed' | 'binary' | 'large'>; className?: string }) {
+export function Counts({ change, className }: { change: Pick<FileChange, 'added' | 'removed' | 'binary' | 'large' | 'unknown'>; className?: string }) {
   if (change.binary) return <span className={cn('shrink-0 text-text-faint', className)}>binary</span>
   if (change.large) return <span className={cn('shrink-0 text-text-faint', className)}>large</span>
+  if (change.unknown) return <span className={cn('shrink-0 text-text-faint', className)}>not compared</span>
   return (
     <span className={cn('inline-flex shrink-0 gap-1.5 font-mono tabular-nums', className)}>
       {change.added > 0 && <span className="text-ok">{plus(change.added)}</span>}
@@ -110,6 +111,7 @@ function FileBody({ file }: { file: FileDiff }) {
   if (file.missing) return <Note>Nothing was kept to compare this change with: its versions are gone.</Note>
   if (file.binary) return <Note>Not a text file, so there are no lines to compare.</Note>
   if (file.large) return <Note>Too large to compare here.</Note>
+  if (file.unknown) return <Note>What it held before the command ran is not known, so there is nothing to compare it with.</Note>
   if (file.hunks.length === 0) {
     return (
       <Note>

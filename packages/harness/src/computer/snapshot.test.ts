@@ -1,7 +1,8 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
+import type { FoundChange } from '@repo/core'
 import { afterAll, describe, expect, it } from 'vitest'
 import { CHANGES_LIMIT, createSnapshots, HELD_LIMIT, porcelainPaths } from './snapshot.ts'
 
@@ -28,6 +29,17 @@ const said = (found: { path: string; before: Uint8Array | string; after: Uint8Ar
     ])
     .sort()
 
+const git = (top: string, ...args: string[]) =>
+  execFileSync('git', ['-C', top, '-c', 'user.name=Ada', '-c', 'user.email=ada@example.com', '-c', 'core.autocrlf=false', ...args])
+const hasGit = (() => {
+  try {
+    execFileSync('git', ['--version'])
+    return true
+  } catch {
+    return false
+  }
+})()
+
 describe('what git status names', () => {
   it.each([
     [' M src/a.ts\0?? notes/new file.md\0', ['src/a.ts', 'notes/new file.md']],
@@ -39,7 +51,7 @@ describe('what git status names', () => {
 })
 
 describe('what a command changed in a folder', () => {
-  it('outside git: the files it changed, created and deleted, what a large one held unknown', async () => {
+  it('outside git: the files it changed, created and deleted, what a large one held too large to keep', async () => {
     const top = folder()
     writeFileSync(join(top, 'notes.md'), 'a\n')
     writeFileSync(join(top, 'old.md'), 'gone\n')
@@ -54,7 +66,7 @@ describe('what a command changed in a folder', () => {
     // What a program installs is not looked at.
     writeFileSync(join(top, 'node_modules', 'package.js'), 'x')
     const found = await snapshot?.changes()
-    expect(found?.find((one) => one.path.endsWith('large.bin'))?.before).toBe('unknown')
+    expect(found?.find((one) => one.path.endsWith('large.bin'))?.before).toBe('too-large')
     expect(
       said(
         (found ?? []).filter((one) => !one.path.endsWith('large.bin')),
@@ -136,17 +148,6 @@ describe('what a command changed in a folder', () => {
     expect(whole(await snapshot?.changes())).toEqual([[join(top, 'a.md'), 'a\n', 'b\n']])
   })
 
-  const git = (top: string, ...args: string[]) =>
-    execFileSync('git', ['-C', top, '-c', 'user.name=Ada', '-c', 'user.email=ada@example.com', '-c', 'core.autocrlf=false', ...args])
-  const hasGit = (() => {
-    try {
-      execFileSync('git', ['--version'])
-      return true
-    } catch {
-      return false
-    }
-  })()
-
   it.runIf(hasGit)('in a git work tree: from the commit for a file clean before, from the file for one changed before, from its top', async () => {
     const top = folder()
     git(top, 'init', '-q')
@@ -221,5 +222,89 @@ describe('what a command changed in a folder', () => {
       ['beside.md', 'none', 'beside\n'],
       ['docs/a.md', 'a\n', 'b\n']
     ])
+  })
+})
+
+describe('what a command changed where its line does not name', () => {
+  /** What a snapshot found in a folder, as text, by the file's name from it. */
+  const foundIn = (found: FoundChange[], base: string) =>
+    said(
+      found.filter((one) => one.path.startsWith(`${base}${sep}`)),
+      base
+    )
+  /** A file made after the command started, as far as the system tells when a file was made. */
+  const made = (path: string) => (statSync(path).birthtimeMs > 0 ? 'none' : 'unknown')
+
+  it.each([
+    ['all at once', true],
+    ['one folder at a time', false]
+  ])('in the places it may change, watched %s, past what programs install and the places never reached', async (_how, trees) => {
+    const top = folder()
+    const place = folder()
+    writeFileSync(join(place, 'kept.md'), 'a\n')
+    mkdirSync(join(place, 'deep', 'er'), { recursive: true })
+    mkdirSync(join(place, 'node_modules'))
+    const never = join(place, 'keys')
+    mkdirSync(never)
+    const snapshot = await createSnapshots({ trees, never: (path) => path.startsWith(never) }).snapshot(top, [], { places: [place], everywhere: false })
+    writeFileSync(join(place, 'kept.md'), 'b\n')
+    writeFileSync(join(place, 'deep', 'er', 'made.md'), 'new\n')
+    // A folder made while it runs, and filled at once.
+    mkdirSync(join(place, 'reports'))
+    writeFileSync(join(place, 'reports', 'week.txt'), 'r\n')
+    writeFileSync(join(place, 'node_modules', 'package.js'), 'x')
+    writeFileSync(join(never, 'id_rsa'), 'k')
+    // A file made and taken away again was never there.
+    writeFileSync(join(place, 'brief.tmp'), 't')
+    rmSync(join(place, 'brief.tmp'))
+    // What its own folder holds is found by looking at it, once.
+    writeFileSync(join(top, 'here.md'), 'h\n')
+    const found = (await snapshot?.changes()) ?? []
+    expect(foundIn(found, top)).toEqual([['here.md', 'none', 'h\n']])
+    expect(foundIn(found, place)).toEqual(
+      [
+        ['deep/er/made.md', made(join(place, 'deep', 'er', 'made.md')), 'new\n'],
+        ['kept.md', 'unknown', 'b\n'],
+        ['reports/week.txt', made(join(place, 'reports', 'week.txt')), 'r\n']
+      ].sort()
+    )
+  })
+
+  it.runIf(hasGit)('a file there before and deleted, when git tracks it, and none that git ignores', async () => {
+    const top = folder()
+    const place = folder()
+    git(place, 'init', '-q')
+    writeFileSync(join(place, 'tracked.md'), 'a\n')
+    writeFileSync(join(place, '.gitignore'), '*.log\n')
+    git(place, 'add', '.')
+    git(place, 'commit', '-q', '-m', 'start')
+    const snapshot = await createSnapshots().snapshot(top, [], { places: [place], everywhere: false })
+    rmSync(join(place, 'tracked.md'))
+    writeFileSync(join(place, 'debug.log'), 'noise\n')
+    expect(said((await snapshot?.changes()) ?? [], place)).toEqual([['tracked.md', 'unknown', 'none']])
+  })
+
+  it.each([
+    ['all at once', true],
+    ['one folder at a time', false]
+  ])('the home folder when the whole computer may be changed, past the folders apps keep their data in, watched %s', async (_how, trees) => {
+    const top = folder()
+    const home = folder()
+    for (const name of ['.config', 'AppData', 'Documents']) mkdirSync(join(home, name))
+    const snapshot = await createSnapshots({ home, appData: [join(home, 'AppData')], trees }).snapshot(top, [], { places: [], everywhere: true })
+    writeFileSync(join(home, '.config', 'app.json'), '{}')
+    writeFileSync(join(home, 'AppData', 'cache.db'), 'x')
+    writeFileSync(join(home, 'Documents', 'letter.md'), 'Dear Ada\n')
+    writeFileSync(join(home, '.bashrc'), 'export A=1\n')
+    expect(said((await snapshot?.changes()) ?? [], home).map(([path]) => path)).toEqual(['.bashrc', 'Documents/letter.md'])
+  })
+
+  it('watches nothing once let go', async () => {
+    const top = folder()
+    const place = folder()
+    const snapshot = await createSnapshots().snapshot(top, [], { places: [place], everywhere: false })
+    snapshot?.release?.()
+    writeFileSync(join(place, 'late.md'), 'late\n')
+    expect(await snapshot?.changes()).toEqual([])
   })
 })

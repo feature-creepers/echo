@@ -2,7 +2,7 @@ import { validateView } from '@repo/catalog'
 import { type Event, MAX_PLACES } from '@repo/protocol'
 import { describe, expect, it } from 'vitest'
 import type { Blobs } from '../ports/blobs.ts'
-import type { Computer } from '../ports/computer.ts'
+import type { Changeable, Computer } from '../ports/computer.ts'
 import type { ComputerUse, Reach, Signal } from '../ports/harness.ts'
 import { memoryRecords } from '../records/memory.ts'
 import { manualTimers } from '../replay/manual-timers.ts'
@@ -22,6 +22,7 @@ const print = (bytes: Uint8Array) => `#${read(bytes)}`
 function machine() {
   const files = new Map<string, Uint8Array>()
   const trashed: string[] = []
+  const watched: Changeable[] = []
   const computer: Computer = {
     workspace: WORKSPACE,
     async locate(path) {
@@ -55,23 +56,27 @@ function machine() {
       return `/data/trash/today/${path.split('/').at(-1)}`
     },
     // What a command changes is found by comparing the files of its folder, and of the places it names outside it,
-    // before it ran with them after.
-    async snapshot(folder, named = []) {
-      const places = [folder, ...named.map((place) => place.path)]
-      const looked = (path: string) => places.some((place) => path === place || path.startsWith(`${place}/`))
-      const before = new Map([...files].filter(([path]) => looked(path)))
+    // before it ran with them after; in the other places it may change, watched, what a file held is not known.
+    async snapshot(folder, named = [], changeable) {
+      if (changeable) watched.push(changeable)
+      const under = (places: readonly string[]) => (path: string) => places.some((place) => path === place || path.startsWith(`${place}/`))
+      const looked = under([folder, ...named.map((place) => place.path)])
+      const changing = under(changeable?.places ?? [])
+      const before = new Map([...files].filter(([path]) => looked(path) || changing(path)))
       return {
         async changes() {
-          const now = new Map([...files].filter(([path]) => looked(path)))
+          const now = new Map([...files].filter(([path]) => looked(path) || changing(path)))
           return [...new Set([...before.keys(), ...now.keys()])].flatMap((path) => {
             const [was, is] = [before.get(path), now.get(path)]
-            return was === is ? [] : [{ path, before: was ?? ('none' as const), after: is ?? ('none' as const) }]
+            if (was === is) return []
+            const old = was === undefined ? ('none' as const) : looked(path) ? was : ('unknown' as const)
+            return [{ path, before: old, after: is ?? ('none' as const) }]
           })
         }
       }
     }
   }
-  return { computer, files, trashed }
+  return { computer, files, trashed, watched }
 }
 
 /** Blobs keyed the way the computer prints fingerprints, so a kept version compares with a file's content. */
@@ -93,7 +98,7 @@ function setup({ withComputer = true, records = memoryRecords(), now = () => new
   const screen = createScreen({ records, newId: () => `v${++ids}` })
   const settings = createUserSettings(records, undefined, withComputer ? WORKSPACE : undefined)
   const timers = manualTimers()
-  const { computer, files, trashed } = machine()
+  const { computer, files, trashed, watched } = machine()
   const access = createAccess({
     settings,
     screen,
@@ -109,7 +114,7 @@ function setup({ withComputer = true, records = memoryRecords(), now = () => new
   const showing = () => ({ thread: 't', turn: 'turn', slot: 'stage' as const, focused: true })
   const reach = access.reach(showing) as Reach
   const [grant] = access.tools(showing)
-  return { access, reach, grant, settings, screen, records, timers, files, trashed, kept, events }
+  return { access, reach, grant, settings, screen, records, timers, files, trashed, kept, events, watched }
 }
 
 /** A signal of the kind a harness passes, here made by hand: the core runs where AbortController may not exist. */
@@ -612,6 +617,25 @@ describe('the activity', () => {
     reach.report?.(ran.use, { ok: true })
     await settle()
     expect(access.activity(1).uses[0]?.changes).toEqual([{ path: copied, status: 'created', added: 1, removed: 0 }])
+  })
+
+  it('finds what a command changed in the places it may change, though its line does not name them, what they held before not known', async () => {
+    const { reach, access, settings, files, watched } = setup()
+    settings.setAccess({ approvals: 'auto', places: [{ path: '/home/ada/Documents', kind: 'folder', write: true }] })
+    const plan = '/home/ada/Documents/plan.md'
+    files.set(plan, text('a\n'))
+    const ran = await reach.approve(command('python tidy.py'), signal())
+    if (!ran.allow || !ran.use) throw new Error('The command is expected to go ahead.')
+    expect(watched).toEqual([{ places: [WORKSPACE, '/home/ada/Documents'], everywhere: false }])
+    files.set(plan, text('b\n'))
+    files.set('/home/ada/Documents/new.md', text('n\n'))
+    reach.report?.(ran.use, { ok: true })
+    await settle()
+    expect(access.activity(1).uses[0]?.changes).toEqual([
+      { path: plan, status: 'changed', added: 0, removed: 0, unknown: true },
+      { path: '/home/ada/Documents/new.md', status: 'created', added: 1, removed: 0 }
+    ])
+    expect((await access.diff({ use: ran.use }))?.[0]).toMatchObject({ path: plan, unknown: true, hunks: [] })
   })
 
   it('looks at no folder for a command that only reads', async () => {

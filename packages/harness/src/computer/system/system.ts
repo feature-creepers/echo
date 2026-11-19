@@ -15,6 +15,17 @@ export interface ComputerSystem {
   /** Whether names are found whatever their capitals. */
   caseless: boolean
   /**
+   * Whether the system watches a folder with all its subfolders at once (Windows, macOS). Linux watches each folder
+   * on its own, so a large tree is watched only in part.
+   */
+  watchesTrees: boolean
+  /**
+   * Folders of the home folder where apps keep their own data, changing all the time of their own accord: passed
+   * over when what a command changes is watched there (`AppData`, `Library`). Folders whose name starts with a dot,
+   * on every system, are passed over too.
+   */
+  appData(where: Where): string[]
+  /**
    * Whether the system itself can hold a command to what was granted: Claude Code's sandbox, Seatbelt on macOS and
    * bubblewrap on Linux. It has none on Windows, where the paths a command names and the approval card are the check.
    */

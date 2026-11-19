@@ -33,6 +33,8 @@ export const win32: ComputerSystem = {
     return `${(drive[1] as string).toUpperCase()}:\\${(drive[2] ?? '').slice(1).replace(/\//g, '\\')}`
   },
   caseless: true,
+  watchesTrees: true,
+  appData: ({ home }) => [path.join(home, 'AppData')],
   // Claude Code has no sandbox on Windows itself, only inside WSL2.
   confines: false,
   // Where package managers keep what they download, for a command confined by another program's sandbox (Codex's).

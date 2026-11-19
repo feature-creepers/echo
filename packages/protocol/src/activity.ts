@@ -50,7 +50,12 @@ export const fileChangeSchema = z.object({
   /** It is not text: a NUL byte in its first 8 KB, or not UTF-8. */
   binary: z.boolean().optional(),
   /** It is too large to compare. */
-  large: z.boolean().optional()
+  large: z.boolean().optional(),
+  /**
+   * What it held before is not known, so there is nothing to compare it with: a command changed it where it was not
+   * looked at before it ran, a place its line does not name, or what it held was no longer at hand.
+   */
+  unknown: z.boolean().optional()
 })
 export type FileChange = z.infer<typeof fileChangeSchema>
 

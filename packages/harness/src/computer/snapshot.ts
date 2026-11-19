@@ -1,9 +1,10 @@
 import { execFile } from 'node:child_process'
 import { readdir, readFile, stat } from 'node:fs/promises'
-import { join, sep } from 'node:path'
-import type { FolderSnapshot, FoundChange, NamedPlace } from '@repo/core'
+import { dirname, join, relative, sep } from 'node:path'
+import type { Changeable, FolderSnapshot, FoundChange, NamedPlace } from '@repo/core'
 import { within } from './paths.ts'
 import { system } from './system/index.ts'
+import { type Noted, watchPlaces } from './watching.ts'
 
 /**
  * What a command changed in the folder it ran in (docs/SPEC.md, section 12.2), found by looking before it runs and
@@ -14,6 +15,9 @@ import { system } from './system/index.ts'
  *
  * The places a command names outside its folder are looked at the same way, so a copy to another folder or a file
  * written elsewhere is found too: a file alone, a folder from its work tree's top or by its own files.
+ *
+ * The places it may change are watched while it runs, for the files a program works out once it runs: what such a
+ * file held before is not known, since nobody looked at it first, unless the command made it.
  */
 
 /** Folders never looked into outside git: what a program installs or builds, and other tools' own. */
@@ -49,6 +53,16 @@ export const CHANGES_LIMIT = 200
 const DIRTY_LIMIT = 500
 /** The most places a command names outside its folder that are looked at too: past them, the rest are not. */
 export const NAMED_LIMIT = 16
+/** How long a command's places are watched at most, when its end is never told. */
+const WATCHED_MS = 60 * 60 * 1000
+/** How long the system is given, once a command ended, to tell the last of what it changed. */
+const SETTLE_MS = 150
+/** The slack on when a file was written, which some file systems keep to two seconds. */
+const WRITTEN_SLACK_MS = 2000
+/** The slack on when a file was made, the clock and the file system's times read apart. */
+const MADE_SLACK_MS = 10
+/** The most paths given to git at once, to keep within a command line's length. */
+const GIT_BATCH = 50
 
 /** Run git in a folder and give back what it printed, as bytes. Rejects when it fails or is not there. */
 export type Git = (folder: string, args: readonly string[]) => Promise<Uint8Array>
@@ -107,7 +121,20 @@ async function now(path: string): Promise<FoundChange['after']> {
 const placeIn = (top: string, path: string) => join(top, ...path.split('/'))
 
 export interface Snapshots {
-  snapshot(folder: string, named?: readonly NamedPlace[]): Promise<FolderSnapshot | undefined>
+  snapshot(folder: string, named?: readonly NamedPlace[], changeable?: Changeable): Promise<FolderSnapshot | undefined>
+}
+
+export interface SnapshotOptions {
+  /** How git is run. Left out, the git of the search path. */
+  git?: Git | undefined
+  /** Whether a path is in a place never reached: what changes there is not looked at. */
+  never?: ((path: string) => boolean) | undefined
+  /** The person's own folder, watched when the whole computer may be changed. */
+  home?: string | undefined
+  /** The folders of the home folder where apps keep their own data, passed over there. */
+  appData?: readonly string[] | undefined
+  /** Whether the system watches a folder with all its subfolders at once. Left out, as this system does. */
+  trees?: boolean | undefined
 }
 
 /** A place looked at, and what it covers: a place inside it, looked at already, is not looked at again. */
@@ -116,8 +143,14 @@ interface Part {
   snapshot: FolderSnapshot
 }
 
+/** Whether two paths are the same place. */
+const samePlace = (one: string, other: string) => within(one, other) && within(other, one)
+
+/** A path from a work tree's top, "/" between its parts, as git names it. */
+const fromTop = (top: string, path: string) => relative(top, path).split(sep).join('/')
+
 /** Snapshots of folders, holding small files across them so a folder looked at again reads only what changed. */
-export function createSnapshots(git: Git = runGit): Snapshots {
+export function createSnapshots({ git = runGit, never = () => false, home, appData = [], trees = system.watchesTrees }: SnapshotOptions = {}): Snapshots {
   // What is held of a file outside git, by where it is: its size and time when it was read, and its bytes.
   const held = new Map<string, { size: number; modified: number; bytes: Uint8Array }>()
   let heldBytes = 0
@@ -146,7 +179,7 @@ export function createSnapshots(git: Git = runGit): Snapshots {
     const before = new Map<string, FoundChange['before']>()
     for (const path of (await dirtyOf()).slice(0, DIRTY_LIMIT)) {
       const read = await now(placeIn(top, path))
-      before.set(path, read === 'too-large' ? 'unknown' : read)
+      before.set(path, read)
     }
     return {
       async changes() {
@@ -214,7 +247,13 @@ export function createSnapshots(git: Git = runGit): Snapshots {
           const is = later.get(path)
           if (was && is && was.size === is.size && was.modified === is.modified) continue
           const known = held.get(path)
-          const old: FoundChange['before'] = !was ? 'none' : known && known.size === was.size && known.modified === was.modified ? known.bytes : 'unknown'
+          const old: FoundChange['before'] = !was
+            ? 'none'
+            : known && known.size === was.size && known.modified === was.modified
+              ? known.bytes
+              : was.size > HELD_LIMIT
+                ? 'too-large'
+                : 'unknown'
           const current = is ? await now(path) : 'none'
           if (same(old, current)) continue
           found.push({ path, before: old, after: current })
@@ -234,7 +273,7 @@ export function createSnapshots(git: Git = runGit): Snapshots {
     const before: FoundChange['before'] = !was
       ? 'none'
       : was.size > HELD_LIMIT
-        ? 'unknown'
+        ? 'too-large'
         : await readFile(path).then(
             (bytes) => new Uint8Array(bytes),
             (): FoundChange['before'] => 'unknown'
@@ -272,18 +311,126 @@ export function createSnapshots(git: Git = runGit): Snapshots {
   const namedPart = async ({ path, below }: NamedPlace): Promise<Part> =>
     (await stat(path).catch(() => undefined))?.isDirectory() ? folderPart(path, below) : { covers: path, snapshot: await alone(path) }
 
+  /**
+   * The files of git work trees among paths: those git ignores, a build's and a tool's, as the folder a command runs
+   * in leaves them out; and those it tracks, which were there before the command.
+   */
+  const knownToGit = async (paths: readonly string[]) => {
+    const ignored = new Set<string>()
+    const tracked = new Set<string>()
+    const tops = new Map<string, string>()
+    const byTop = new Map<string, string[]>()
+    for (const path of paths) {
+      const folder = dirname(path)
+      let top = tops.get(folder)
+      if (top === undefined) {
+        // Git names the top with "/" on every system.
+        top = text(await git(folder, ['rev-parse', '--show-toplevel']).catch(() => new Uint8Array()))
+          .trim()
+          .split('/')
+          .join(sep)
+        tops.set(folder, top)
+      }
+      if (top !== '') byTop.set(top, [...(byTop.get(top) ?? []), path])
+    }
+    for (const [top, inside] of byTop) {
+      for (let at = 0; at < inside.length; at += GIT_BATCH) {
+        const named = new Map(inside.slice(at, at + GIT_BATCH).map((path) => [fromTop(top, path), path]))
+        // Git says nothing, and fails, when none of them is ignored or tracked.
+        // `check-ignore` writes a line each, `-z` being for what it reads: a name git quotes is not matched, and is kept.
+        const said = async (args: string[]) =>
+          text(await git(top, [...args, '--', ...named.keys()]).catch(() => new Uint8Array()))
+            .split(/[\0\n]/)
+            .flatMap((one) => named.get(one) ?? [])
+        for (const path of await said(['-c', 'core.quotePath=false', 'check-ignore'])) ignored.add(path)
+        for (const path of await said(['ls-files', '-z'])) tracked.add(path)
+      }
+    }
+    return { ignored, tracked }
+  }
+
+  /** What the paths the system told of while a command ran became: the files it changed, made and deleted. */
+  const judge = async (noted: readonly Noted[], started: number): Promise<FoundChange[]> => {
+    const seen: { path: string; first: Noted['first']; is: Noted['first'] }[] = []
+    for (const { path, first } of noted) {
+      if (first?.isDirectory()) continue
+      const is = await stat(path).catch(() => undefined)
+      if (!is?.isDirectory()) seen.push({ path, first, is })
+    }
+    const { ignored, tracked } = await knownToGit(seen.map((one) => one.path))
+    // A file was there before when it was first seen made before the command, held from a look before, or tracked.
+    const before = (one: (typeof seen)[number]) =>
+      (one.first?.isFile() === true && (one.first.birthtimeMs === 0 || one.first.birthtimeMs < started - MADE_SLACK_MS)) ||
+      held.has(one.path) ||
+      tracked.has(one.path)
+    const found: FoundChange[] = []
+    for (const one of seen) {
+      if (found.length >= CHANGES_LIMIT) break
+      if (ignored.has(one.path)) continue
+      if (!one.is) {
+        // Gone: a file there before was deleted; one the command made and took away again was never there.
+        if (before(one)) found.push({ path: one.path, before: 'unknown', after: 'none' })
+        continue
+      }
+      // Told of, but not written while the command ran: read, or only its times or rights changed.
+      if (!one.is.isFile() || Math.max(one.is.mtimeMs, one.is.ctimeMs) < started - WRITTEN_SLACK_MS) continue
+      const made = one.is.birthtimeMs > 0 && one.is.birthtimeMs >= started - MADE_SLACK_MS && !before(one)
+      found.push({ path: one.path, before: made ? 'none' : 'unknown', after: await now(one.path) })
+    }
+    return found
+  }
+
+  /**
+   * The places a command may change, watched while it runs: those granted, and the home folder when the whole
+   * computer may be changed, past what programs install and build and, there, the folders apps keep their data in.
+   * What the other parts look at, and the places never reached, are left to them or out.
+   */
+  const watchedPart = async (changeable: Changeable, parts: readonly Part[]): Promise<Part & { release(): void }> => {
+    const started = Date.now()
+    const places = [...changeable.places, ...(changeable.everywhere && home !== undefined ? [home] : [])]
+    const watching = await watchPlaces(places, {
+      trees,
+      passed: (folder, name) =>
+        SKIPPED.has(name) ||
+        (home !== undefined && samePlace(folder, home) && (name.startsWith('.') || appData.some((one) => samePlace(join(folder, name), one)))),
+      ignored: (path) => never(path) || parts.some((part) => part.covers !== undefined && within(path, part.covers))
+    })
+    // A command whose end is never told is watched no longer than this.
+    const timer = setTimeout(() => void watching.stop(), WATCHED_MS)
+    timer.unref?.()
+    const release = () => {
+      clearTimeout(timer)
+      void watching.stop()
+    }
+    return {
+      release,
+      snapshot: {
+        release,
+        async changes() {
+          await new Promise((resolve) => setTimeout(resolve, SETTLE_MS))
+          clearTimeout(timer)
+          return judge(await watching.stop(), started)
+        }
+      }
+    }
+  }
+
   return {
-    async snapshot(folder, named = []) {
+    async snapshot(folder, named = [], changeable) {
       try {
-        const parts = [await folderPart(folder, true)]
+        const parts: Part[] = [await folderPart(folder, true)]
         for (const place of named.slice(0, NAMED_LIMIT)) {
           if (parts.some((part) => part.covers !== undefined && within(place.path, part.covers))) continue
           const part = await namedPart(place).catch(() => undefined)
           if (part) parts.push(part)
         }
+        const watching = changeable !== undefined && (changeable.places.length > 0 || changeable.everywhere)
+        const watched = watching ? await watchedPart(changeable, parts).catch(() => undefined) : undefined
+        if (watched) parts.push(watched)
         const [only] = parts
         if (only && parts.length === 1) return only.snapshot
         return {
+          ...(watched ? { release: watched.release } : {}),
           async changes() {
             // A file two places hold, a work tree inside a folder gone through, is said once.
             const seen = new Set<string>()

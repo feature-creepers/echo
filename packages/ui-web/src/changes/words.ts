@@ -102,10 +102,10 @@ export const minus = (number: number) => `−${count.format(number)}`
 export const STATUS_WORDS: Record<FileChange['status'], string | undefined> = { created: 'New file', deleted: 'Deleted', changed: undefined }
 
 /** The lines a use added and removed in all its files; nothing for a use that changed none, or before they were counted. */
-export function totalOf(use: AccessUse): Pick<FileChange, 'added' | 'removed' | 'binary' | 'large'> | undefined {
+export function totalOf(use: AccessUse): Pick<FileChange, 'added' | 'removed' | 'binary' | 'large' | 'unknown'> | undefined {
   const changes = use.changes ?? []
   const [only] = changes
   if (!only) return undefined
-  if (changes.length === 1 && (only.binary || only.large)) return only
+  if (changes.length === 1 && (only.binary || only.large || only.unknown)) return only
   return { added: changes.reduce((sum, one) => sum + one.added, 0), removed: changes.reduce((sum, one) => sum + one.removed, 0) }
 }

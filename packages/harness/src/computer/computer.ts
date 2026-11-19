@@ -4,7 +4,7 @@ import { copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 
 import { homedir } from 'node:os'
 import { basename, dirname, extname, join } from 'node:path'
 import type { Computer, ProtectedPath } from '@repo/core'
-import { absolute, kindAt, real } from './paths.ts'
+import { absolute, kindAt, real, within } from './paths.ts'
 import { createSnapshots } from './snapshot.ts'
 import { everywhere, system, type Where } from './system/index.ts'
 
@@ -26,6 +26,16 @@ export function protectedPaths({ where, data, workspace }: { where: Where; data?
   ]
 }
 
+/** Whether a path is in a place never reached, as the places say it: inside one and none of its exceptions, or ending so. */
+export function neverAt(places: readonly ProtectedPath[]): (path: string) => boolean {
+  return (path) =>
+    places.some((place) =>
+      place.ending !== undefined
+        ? path.toLowerCase().endsWith(place.ending.toLowerCase())
+        : place.path !== undefined && within(path, place.path) && !(place.except ?? []).some((open) => within(path, open))
+    )
+}
+
 /** The day, as the trash's folders are named: 2026-11-18. */
 const day = (at: Date) => at.toISOString().slice(0, 10)
 
@@ -36,7 +46,9 @@ const day = (at: Date) => at.toISOString().slice(0, 10)
 export async function createComputer({ workspace, data, where = { home: homedir(), env: process.env } }: ComputerOptions): Promise<Computer> {
   await mkdir(workspace, { recursive: true })
   const trash = join(data ?? dirname(workspace), 'trash')
-  const snapshots = createSnapshots()
+  const never = protectedPaths({ where, data, workspace })
+  // What a command changes where its line does not name is watched for in the places it may change, past those never reached.
+  const snapshots = createSnapshots({ never: neverAt(never), home: where.home, appData: system.appData(where) })
   return {
     workspace,
     async locate(path) {
@@ -44,7 +56,7 @@ export async function createComputer({ workspace, data, where = { home: homedir(
       const kind = await kindAt(found)
       return kind === undefined ? undefined : { path: found, kind }
     },
-    protected: protectedPaths({ where, data, workspace }),
+    protected: never,
     async read(path, limit) {
       try {
         const found = await stat(path)
@@ -103,7 +115,7 @@ export async function createComputer({ workspace, data, where = { home: homedir(
         return undefined
       }
     },
-    snapshot: (folder, named) => snapshots.snapshot(folder, named),
+    snapshot: (folder, named, changeable) => snapshots.snapshot(folder, named, changeable),
     async list(folder) {
       try {
         return (await readdir(folder, { withFileTypes: true })).filter((entry) => entry.isFile()).map((entry) => entry.name)
