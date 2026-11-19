@@ -5,6 +5,7 @@
  */
 
 import { type Archive, partOf, textOf } from './archive.ts'
+import { formatNumber, type NumberFormatOptions } from './number-format.ts'
 import type { OfficeChart, OfficeFigure } from './office-text.ts'
 import { xmlEvents } from './xml.ts'
 
@@ -54,9 +55,11 @@ export class Figures {
   private bytes = 0
   private readonly found = new Map<string, number>()
   private readonly archive: Archive
+  private readonly options: NumberFormatOptions
 
-  constructor(archive: Archive) {
+  constructor(archive: Archive, options: NumberFormatOptions = {}) {
     this.archive = archive
+    this.options = options
   }
 
   /** The picture in a part of the archive, by its place in the list; none when there is no such part or no room. */
@@ -77,13 +80,13 @@ export class Figures {
   async chart(
     part: string | undefined,
     alt: string,
-    read: (xml: string, archive: Archive, part: string) => Promise<OfficeChart | undefined>
+    read: (xml: string, options: NumberFormatOptions) => Promise<OfficeChart | undefined>
   ): Promise<number | undefined> {
     return this.add(JSON.stringify(['chart', part, alt]), async () => {
       const xml = part === undefined ? undefined : await textOf(this.archive, part).catch(() => undefined)
       // An object that is no chart, an equation or a document within the document, shows nothing here.
       if (xml === undefined || part === undefined || !/<(c:chartSpace|chart:chart)\b/.test(xml)) return undefined
-      const chart = await read(xml, this.archive, part)
+      const chart = await read(xml, this.options)
       return chart ? { kind: 'chart', ...chart } : { kind: 'unshown', alt, what: 'chart' }
     })
   }
@@ -133,7 +136,7 @@ function chartSeries(read: readonly SeriesRead[]): OfficeChart['series'] {
  * A chart of Word, Excel or PowerPoint (DrawingML, `c:chartSpace`), from the values each series kept: its title, the
  * kind of its first plot, and each series' name, categories and values, as cached when the file was saved.
  */
-export async function readChart(xml: string): Promise<OfficeChart | undefined> {
+export async function readChart(xml: string, options: NumberFormatOptions = {}): Promise<OfficeChart | undefined> {
   let title = ''
   let inTitle = false
   let titleText = false
@@ -145,6 +148,8 @@ export async function readChart(xml: string): Promise<OfficeChart | undefined> {
   let point = 0
   let levels = 0
   let value: string | undefined
+  // Categories kept as numbers are labelled as their format shows them: dates, most often.
+  let format: string | undefined
   for (const event of xmlEvents(xml)) {
     if (event.type === 'open') {
       const name = event.name
@@ -158,10 +163,11 @@ export async function readChart(xml: string): Promise<OfficeChart | undefined> {
       else if (current && (name === 'c:cat' || name === 'c:xVal')) {
         reading = 'labels'
         levels = 0
+        format = undefined
       } else if (current && (name === 'c:val' || name === 'c:yVal')) reading = 'values'
       else if (name === 'c:lvl') levels++
       else if (name === 'c:pt') point = Number(event.attributes.idx ?? 0)
-      else if (name === 'c:v' && reading) value = ''
+      else if ((name === 'c:v' || name === 'c:formatCode') && reading) value = ''
     } else if (event.type === 'text') {
       if (value !== undefined) value += event.text
       else if (titleText) title += event.text
@@ -170,10 +176,17 @@ export async function readChart(xml: string): Promise<OfficeChart | undefined> {
       if (name === 'c:title') inTitle = false
       else if ((name === 'a:t' || name === 'c:v') && titleText) titleText = false
       else if (name === 'a:p' && inTitle) title += ' '
-      else if (name === 'c:v' && value !== undefined && current && reading) {
+      else if (name === 'c:formatCode' && value !== undefined) {
+        if (reading === 'labels') format = value
+        value = undefined
+      } else if (name === 'c:v' && value !== undefined && current && reading) {
         // A category of several levels is labelled by its first.
         if (reading === 'name') current.name ||= value
-        else if (reading === 'labels' && levels <= 1 && Number.isInteger(point) && point >= 0) current.labels.set(point, value)
+        else if (reading === 'labels' && levels <= 1 && Number.isInteger(point) && point >= 0)
+          current.labels.set(
+            point,
+            format !== undefined && value.trim() !== '' && Number.isFinite(Number(value)) ? formatNumber(Number(value), format, options) : value
+          )
         else if (reading === 'values' && Number.isInteger(point) && point >= 0 && value.trim() !== '' && Number.isFinite(Number(value)))
           current.values.set(point, Number(value))
         value = undefined

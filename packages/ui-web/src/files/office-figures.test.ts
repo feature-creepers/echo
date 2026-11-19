@@ -132,6 +132,13 @@ describe('a chart of Word, Excel or PowerPoint', () => {
     expect(chart?.series[0]?.points.map((point) => point.x)).toEqual(['Q1', 'Q2'])
   })
 
+  it('labels categories kept as numbers as their format shows them', async () => {
+    const dates =
+      '<c:numRef><c:numCache><c:formatCode>mmm yyyy</c:formatCode><c:pt idx="0"><c:v>45231</c:v></c:pt><c:pt idx="1"><c:v>45261</c:v></c:pt></c:numCache></c:numRef>'
+    const chart = await readChart(chartSpace('lineChart', '', series('A', dates, cached('num', '1', '2'))), { locale: 'en-US' })
+    expect(chart?.series[0]?.points.map((point) => point.x)).toEqual(['Nov 2023', 'Dec 2023'])
+  })
+
   it('has nothing to draw when no series kept a value', async () => {
     expect(await readChart(chartSpace('barChart', 'Empty', series('A', cached('str', 'x'), cached('num', undefined))))).toBeUndefined()
     expect(await readChart('<c:chartSpace><c:chart><c:plotArea/></c:chart></c:chartSpace>')).toBeUndefined()

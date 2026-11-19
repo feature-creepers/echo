@@ -186,6 +186,27 @@ describe('an Office file previewed', () => {
     })
   })
 
+  it('shows each number of a workbook as the format of its style shows it, and its dates as the workbook counts them', async () => {
+    const workbook = (properties: string) =>
+      zip({
+        'xl/workbook.xml': `<workbook>${properties}<sheets><sheet name="Numbers" r:id="rId1"/></sheets></workbook>`,
+        'xl/_rels/workbook.xml.rels':
+          '<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Target="styles.xml"/></Relationships>',
+        'xl/styles.xml':
+          '<styleSheet><numFmts count="1"><numFmt numFmtId="164" formatCode="dd/mm/yyyy"/></numFmts><cellStyleXfs count="1"><xf numFmtId="164"/></cellStyleXfs>' +
+          '<cellXfs count="4"><xf numFmtId="0"/><xf numFmtId="164"/><xf numFmtId="10"/><xf numFmtId="3"/></cellXfs></styleSheet>',
+        'xl/worksheets/sheet1.xml':
+          '<worksheet><sheetData><row r="1"><c r="A1" s="1"><v>45234</v></c><c r="B1" s="2"><v>0.256</v></c><c r="C1" s="3"><v>1234567</v></c>' +
+          '<c r="D1"><v>1589036664.030000</v></c><c r="E1" t="e"><v>#N/A</v></c><c r="F1" t="str" s="1"><v>text</v></c></row></sheetData></worksheet>'
+      })
+    const rows = async (properties: string) => {
+      const read = await readOffice('xlsx', await workbook(properties), { locale: 'en-US' })
+      return read.kind === 'workbook' ? read.sheets[0]?.rows : undefined
+    }
+    expect(await rows('')).toEqual([['04/11/2023', '25.60%', '1,234,567', '1589036664', '#N/A', 'text']])
+    expect((await rows('<workbookPr date1904="1"/>'))?.[0]?.[0]).toBe('05/11/2027')
+  })
+
   it('shows a PowerPoint presentation as its slides, in their order: each title, then its text', async () => {
     const slide = (title: string, ...lines: string[]) =>
       `<p:sld><p:cSld><p:spTree><p:sp><p:nvSpPr><p:nvPr><p:ph type="title"/></p:nvPr></p:nvSpPr><p:txBody><a:p><a:r><a:t>${title}</a:t></a:r></a:p></p:txBody></p:sp>` +

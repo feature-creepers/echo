@@ -394,6 +394,57 @@ describe('an Excel 97 workbook', () => {
     expect(rkNumber(0x3ff80000)).toBe(1.5)
   })
 
+  it('shows each number as the format of its style shows it, dates counted as the workbook counts them', () => {
+    const styled = (date1904: boolean) => {
+      const format = new Bytes().u16(164).u16(10).u8(0).narrow('dd/mm/yyyy')
+      // Styles 0 to 15 are Excel's own; 16 gives the format of its own, 17 a percentage, 18 thousands.
+      const styles = Array.from({ length: 19 }, (_, index) =>
+        record(
+          0x00e0,
+          new Bytes()
+            .u16(0)
+            .u16(index === 16 ? 164 : index === 17 ? 10 : index === 18 ? 3 : 0)
+            .zeros(16)
+        )
+      )
+      const sheet = [
+        bof(),
+        record(0x0203, new Bytes().u16(0).u16(0).u16(16).f64(45234)),
+        record(
+          0x027e,
+          new Bytes()
+            .u16(0)
+            .u16(1)
+            .u16(17)
+            .u32((25 << 2) | 0x03)
+        ),
+        record(0x0203, new Bytes().u16(0).u16(2).u16(18).f64(1234567)),
+        record(0x0203, new Bytes().u16(0).u16(3).u16(15).f64(8.200000000000001)),
+        record(0x0006, new Bytes().u16(0).u16(4).u16(16).f64(45235).zeros(6)),
+        EOF
+      ]
+      const sheetName = new Bytes().u8(5).u8(0).narrow('Dates')
+      const globals = (sheetAt: number) => [
+        bof(),
+        record(0x0022, new Bytes().u16(date1904 ? 1 : 0)),
+        record(0x041e, format),
+        ...styles,
+        record(0x0085, new Bytes().u32(sheetAt).u8(0).u8(0).raw(sheetName.done())),
+        EOF
+      ]
+      const length = globals(0).reduce((sum, one) => sum + one.length, 0)
+      const all = new Bytes()
+      for (const part of [...globals(length), ...sheet]) all.raw(part)
+      return compound({ Workbook: all.done() })
+    }
+    const rows = (date1904: boolean) => {
+      const read = readExcel97(styled(date1904), { locale: 'en-US' })
+      return read.kind === 'workbook' ? read.sheets[0]?.rows : undefined
+    }
+    expect(rows(false)).toEqual([['04/11/2023', '25.00%', '1,234,567', '8.2', '05/11/2023']])
+    expect(rows(true)?.[0]?.[0]).toBe('05/11/2027')
+  })
+
   it('says when it is protected with a password, or is older than Excel 97', () => {
     expect(() => readExcel97(workbook(true))).toThrow('protected with a password')
     expect(() => readExcel97(compound({ Book: new Uint8Array(8) }))).toThrow('Excel 95 or older')

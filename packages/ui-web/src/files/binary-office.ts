@@ -9,6 +9,7 @@
  */
 
 import { openCompound } from './compound.ts'
+import { builtInFormat, formatNumber, generalNumber, type NumberFormatOptions } from './number-format.ts'
 import {
   BLOCK_LIMIT,
   COLUMN_LIMIT,
@@ -401,11 +402,10 @@ export function rkNumber(value: number): number {
 }
 
 const ERRORS: Record<number, string> = { 0: '#NULL!', 7: '#DIV/0!', 15: '#VALUE!', 23: '#REF!', 29: '#NAME?', 36: '#NUM!', 42: '#N/A' }
-const number = (value: number) => String(value)
 const flag = (value: number, error: boolean) => (error ? (ERRORS[value] ?? '#N/A') : value ? 'TRUE' : 'FALSE')
 
-/** An Excel 97 to 2003 workbook's sheets, each as rows of its cells' values as stored. */
-export function readExcel97(bytes: Uint8Array): OfficePreview {
+/** An Excel 97 to 2003 workbook's sheets, each as rows of its cells' values as their formats show them. */
+export function readExcel97(bytes: Uint8Array, options: NumberFormatOptions = {}): OfficePreview {
   const file = openCompound(bytes)
   const stream = file.stream('Workbook')
   if (!stream) throw new Error(file.stream('Book') ? 'It is a workbook of Excel 95 or older, which is not read here.' : 'This is not an Excel workbook.')
@@ -414,6 +414,10 @@ export function readExcel97(bytes: Uint8Array): OfficePreview {
 
   const strings: string[] = []
   const sheets: { name: string; at: number }[] = []
+  // The formats of the workbook by their number, the format of each style by its place, and its date system.
+  const codes = new Map<number, string>()
+  const styles: number[] = []
+  let date1904 = false
   let shared: Uint8Array[] | undefined
   const readShared = () => {
     if (!shared) return
@@ -435,6 +439,12 @@ export function readExcel97(bytes: Uint8Array): OfficePreview {
     readShared()
     if (record.type === 0x002f) throw new Error(PROTECTED)
     if (record.type === 0x00fc) shared = [book.bytes(record.at, record.size)]
+    else if (record.type === 0x041e && record.size >= 5) {
+      const length = book.u16(record.at + 2)
+      const wide = (book.u8(record.at + 4) & 0x01) !== 0
+      codes.set(book.u16(record.at), wide ? utf16(book.bytes(record.at + 5, length * 2)) : latin1(book.bytes(record.at + 5, length)))
+    } else if (record.type === 0x00e0 && record.size >= 4) styles.push(book.u16(record.at + 2))
+    else if (record.type === 0x0022 && record.size >= 2) date1904 = book.u16(record.at) === 1
     else if (record.type === 0x0085 && book.u8(record.at + 5) === 0) {
       // A worksheet: where its records start, and its name. Charts and macros are left out.
       const length = book.u8(record.at + 6)
@@ -444,17 +454,33 @@ export function readExcel97(bytes: Uint8Array): OfficePreview {
     } else if (record.type === 0x000a) break
   }
   readShared()
+  const shownBy = (style: number) => {
+    const id = styles[style] ?? 0
+    return codes.get(id) ?? builtInFormat(id)
+  }
+  const shown: NumberFormatOptions = { ...options, date1904 }
 
   return {
     kind: 'workbook',
-    sheets: sheets.slice(0, SHEET_LIMIT).map(({ name, at }) => ({ name, ...sheetRows(book, at, strings), figures: [] }))
+    sheets: sheets.slice(0, SHEET_LIMIT).map(({ name, at }) => ({ name, ...sheetRows(book, at, strings, shownBy, shown), figures: [] }))
   }
 }
 
 /** The rows of a sheet, from its records: its cells in their columns, empty ones kept so the columns line up. */
-function sheetRows(book: Reader, from: number, strings: readonly string[]): { rows: string[][]; cut: boolean } {
+function sheetRows(
+  book: Reader,
+  from: number,
+  strings: readonly string[],
+  formatOf: (style: number) => string,
+  options: NumberFormatOptions
+): { rows: string[][]; cut: boolean } {
   const rows: string[][] = []
   let cut = false
+  // A number as the format of its cell's style shows it.
+  const number = (value: number, style: number) => {
+    const code = formatOf(style)
+    return /^general$/i.test(code) ? generalNumber(value) : formatNumber(value, code, options)
+  }
   const put = (row: number, column: number, value: string) => {
     if (row >= ROW_LIMIT || column >= COLUMN_LIMIT) {
       cut = true
@@ -476,11 +502,12 @@ function sheetRows(book: Reader, from: number, strings: readonly string[]): { ro
     const row = () => book.u16(at)
     const column = () => book.u16(at + 2)
     if (type === 0x00fd) put(row(), column(), strings[book.u32(at + 6)] ?? '')
-    else if (type === 0x0203) put(row(), column(), number(book.f64(at + 6)))
-    else if (type === 0x027e) put(row(), column(), number(rkNumber(book.u32(at + 6))))
+    else if (type === 0x0203) put(row(), column(), number(book.f64(at + 6), book.u16(at + 4)))
+    else if (type === 0x027e) put(row(), column(), number(rkNumber(book.u32(at + 6)), book.u16(at + 4)))
     else if (type === 0x00bd) {
       const first = column()
-      for (let index = 0; index < Math.floor((size - 6) / 6); index++) put(row(), first + index, number(rkNumber(book.u32(at + 6 + index * 6))))
+      for (let index = 0; index < Math.floor((size - 6) / 6); index++)
+        put(row(), first + index, number(rkNumber(book.u32(at + 6 + index * 6)), book.u16(at + 4 + index * 6)))
     } else if (type === 0x0205) put(row(), column(), flag(book.u8(at + 6), book.u8(at + 7) !== 0))
     else if (type === 0x0204 || type === 0x0207) {
       const start = type === 0x0204 ? at + 6 : at
@@ -493,7 +520,7 @@ function sheetRows(book: Reader, from: number, strings: readonly string[]): { ro
     } else if (type === 0x0006) {
       waiting = undefined
       // A formula's last result: a number, or marked by its last two bytes as text, a boolean, an error or nothing.
-      if (book.u16(at + 12) !== 0xffff) put(row(), column(), number(book.f64(at + 6)))
+      if (book.u16(at + 12) !== 0xffff) put(row(), column(), number(book.f64(at + 6), book.u16(at + 4)))
       else {
         const kind = book.u8(at + 6)
         if (kind === 0) waiting = { row: row(), column: column() }

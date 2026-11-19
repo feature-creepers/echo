@@ -11,6 +11,7 @@
 import { type Archive, openArchive, relationships, resolvePart, textOf } from './archive.ts'
 import { readExcel97, readPowerPoint97, readWord97 } from './binary-office.ts'
 import { openCompound } from './compound.ts'
+import { builtInFormat, formatNumber, generalNumber, type NumberFormatOptions } from './number-format.ts'
 import { emuPixels, Figures, lengthPixels, readChart, readOpenChart } from './office-figures.ts'
 import {
   BLOCK_LIMIT,
@@ -207,13 +208,13 @@ const runPart = (text: string, format: Format | undefined, link: string | undefi
  * its bulleted and numbered lists, its tables, and its pictures and charts where they are placed. A text box's
  * paragraphs come before the paragraph that holds it; what Word keeps for older apps (`mc:Fallback`) is passed over.
  */
-export async function readDocument(archive: Archive): Promise<OfficePreview> {
+export async function readDocument(archive: Archive, options: NumberFormatOptions = {}): Promise<OfficePreview> {
   const xml = await textOf(archive, 'word/document.xml')
   if (xml === undefined) throw new Error('This is not a Word document.')
   const { headings, formats } = await wordStyles(archive)
   const numbered = await wordNumbering(archive)
   const targets = await relationships(archive, 'word/document.xml')
-  const figures = new Figures(archive)
+  const figures = new Figures(archive, options)
   const blocks: string[] = []
   // The paragraphs open, a text box's within the one that holds it, and the runs open, likewise.
   const paragraphs: WordParagraph[] = []
@@ -417,12 +418,40 @@ export function columnOf(reference: string): number {
   return column - 1
 }
 
-/** An Excel workbook's sheets, each as rows of its cells' values as stored, then the pictures and charts its drawing places. */
-export async function readWorkbook(archive: Archive): Promise<OfficePreview> {
+/**
+ * The format each style of a workbook gives its numbers, by the style's place (`cellXfs`): its own format's code,
+ * or the code of one Excel numbers itself.
+ */
+async function workbookFormats(archive: Archive, part: string): Promise<string[]> {
+  const codes = new Map<number, string>()
+  const formats: string[] = []
+  let styles = false
+  for (const event of xmlEvents((await textOf(archive, part)) ?? '')) {
+    if (event.type === 'open' && event.name === 'numFmt') codes.set(Number(event.attributes.numFmtId), event.attributes.formatCode ?? 'General')
+    else if (event.type === 'open' && event.name === 'cellXfs') styles = true
+    else if (event.type === 'close' && event.name === 'cellXfs') styles = false
+    else if (event.type === 'open' && event.name === 'xf' && styles) {
+      const id = Number(event.attributes.numFmtId ?? 0)
+      formats.push(codes.get(id) ?? builtInFormat(id))
+    }
+  }
+  return formats
+}
+
+/**
+ * An Excel workbook's sheets, each as rows of its cells' values as their formats show them, then the pictures and
+ * charts its drawing places.
+ */
+export async function readWorkbook(archive: Archive, options: NumberFormatOptions = {}): Promise<OfficePreview> {
   const workbook = await textOf(archive, 'xl/workbook.xml')
   if (workbook === undefined) throw new Error('This is not an Excel workbook.')
   const targets = await relationships(archive, 'xl/workbook.xml')
-  const figures = new Figures(archive)
+  // A workbook may count its dates from 1904.
+  const date1904 = /<workbookPr\b[^>]*\bdate1904="(1|true)"/.test(workbook)
+  const shown: NumberFormatOptions = { ...options, date1904 }
+  const figures = new Figures(archive, shown)
+  const stylesPart = [...targets.values()].find((target) => /styles\.xml$/i.test(target)) ?? 'xl/styles.xml'
+  const formats = await workbookFormats(archive, stylesPart)
 
   const strings: string[] = []
   let shared: string | undefined
@@ -452,7 +481,7 @@ export async function readWorkbook(archive: Archive): Promise<OfficePreview> {
     const drawing = (await relationships(archive, target)).get(/<drawing\b[^>]*\br:id="([^"]*)"/.exec(xml)?.[1] ?? '')
     const drawn = drawing === undefined ? undefined : await textOf(archive, drawing)
     const placed = drawn === undefined || drawing === undefined ? [] : await drawnFigures(drawn, await relationships(archive, drawing), figures)
-    sheets.push({ name: event.attributes.name ?? `Sheet ${sheets.length + 1}`, ...sheetRows(xml, strings), placed })
+    sheets.push({ name: event.attributes.name ?? `Sheet ${sheets.length + 1}`, ...sheetRows(xml, strings, formats, shown), placed })
   }
   return { kind: 'workbook', sheets: sheets.map(({ placed, ...sheet }) => ({ ...sheet, figures: figuresAt(figures, placed) })) }
 }
@@ -461,11 +490,11 @@ export async function readWorkbook(archive: Archive): Promise<OfficePreview> {
 const figuresAt = (figures: Figures, places: readonly number[]) => places.flatMap((place) => figures.list[place] ?? [])
 
 /** The rows of a sheet, its cells in their columns, empty ones kept so the columns line up. */
-function sheetRows(xml: string, strings: readonly string[]): { rows: string[][]; cut: boolean } {
+function sheetRows(xml: string, strings: readonly string[], formats: readonly string[], options: NumberFormatOptions): { rows: string[][]; cut: boolean } {
   const rows: string[][] = []
   let cut = false
   let row: string[] | undefined
-  let cell: { column: number; type: string; value: string } | undefined
+  let cell: { column: number; type: string; value: string; format: string } | undefined
   let reading = false
   for (const event of xmlEvents(xml)) {
     if (event.type === 'open') {
@@ -479,7 +508,12 @@ function sheetRows(xml: string, strings: readonly string[]): { rows: string[][];
         while (rows.length < Math.min(number - 1, ROW_LIMIT)) rows.push([])
         row = []
       } else if (event.name === 'c' && row) {
-        cell = { column: columnOf(event.attributes.r ?? ''), type: event.attributes.t ?? 'n', value: '' }
+        cell = {
+          column: columnOf(event.attributes.r ?? ''),
+          type: event.attributes.t ?? 'n',
+          value: '',
+          format: formats[Number(event.attributes.s ?? 0)] ?? 'General'
+        }
         if (event.attributes.r === undefined) cell.column = row.length
       } else if ((event.name === 'v' || event.name === 't') && cell) reading = true
     } else if (event.type === 'text' && reading && cell) cell.value += event.text
@@ -488,7 +522,7 @@ function sheetRows(xml: string, strings: readonly string[]): { rows: string[][];
       else if (event.name === 'c' && cell && row) {
         if (cell.column < COLUMN_LIMIT) {
           while (row.length < cell.column) row.push('')
-          row[cell.column] = cellText(cell.type, cell.value, strings)
+          row[cell.column] = cellText(cell, strings, options)
         } else cut = true
         cell = undefined
       } else if (event.name === 'row' && row) {
@@ -501,24 +535,30 @@ function sheetRows(xml: string, strings: readonly string[]): { rows: string[][];
   return { rows, cut }
 }
 
-/** A cell's value as the sheet shows it, as far as it can be without its formats: a number stays as stored. */
-function cellText(type: string, value: string, strings: readonly string[]): string {
+/** A cell's value as the sheet shows it: a number as its format shows it, text as it is. */
+function cellText(cell: { type: string; value: string; format: string }, strings: readonly string[], options: NumberFormatOptions): string {
+  const { type, value } = cell
   switch (type) {
     case 's':
       return strings[Number(value)] ?? ''
     case 'b':
       return value === '1' ? 'TRUE' : 'FALSE'
+    case 'n': {
+      const number = Number(value)
+      if (value.trim() === '' || !Number.isFinite(number)) return value
+      return /^general$/i.test(cell.format) ? generalNumber(number) : formatNumber(number, cell.format, options)
+    }
     default:
       return value
   }
 }
 
 /** A PowerPoint presentation's slides, in order: each one's title, the lines of its other text, and its pictures and charts. */
-export async function readPresentation(archive: Archive): Promise<OfficePreview> {
+export async function readPresentation(archive: Archive, options: NumberFormatOptions = {}): Promise<OfficePreview> {
   const presentation = await textOf(archive, 'ppt/presentation.xml')
   if (presentation === undefined) throw new Error('This is not a PowerPoint presentation.')
   const targets = await relationships(archive, 'ppt/presentation.xml')
-  const figures = new Figures(archive)
+  const figures = new Figures(archive, options)
   const slides: { title: string; lines: string[]; placed: number[] }[] = []
   let cut = false
   for (const event of xmlEvents(presentation)) {
@@ -1055,22 +1095,22 @@ function protectedPackage(bytes: Uint8Array): boolean {
   }
 }
 
-/** An Office file read for its preview, by its extension. */
-export async function readOffice(extension: string, bytes: Uint8Array): Promise<OfficePreview> {
+/** An Office file read for its preview, by its extension; its numbers and dates written as `options` says. */
+export async function readOffice(extension: string, bytes: Uint8Array, options: NumberFormatOptions = {}): Promise<OfficePreview> {
   // The older formats are compound files, not archives.
   if (extension === 'doc') return readWord97(bytes)
-  if (extension === 'xls') return readExcel97(bytes)
+  if (extension === 'xls') return readExcel97(bytes, options)
   if (extension === 'ppt') return readPowerPoint97(bytes)
   // Word, Excel and PowerPoint keep a file protected with a password in a compound file, encrypted, not in an archive.
   if (protectedPackage(bytes)) throw new Error(PROTECTED)
   const archive = openArchive(bytes)
   switch (extension) {
     case 'docx':
-      return readDocument(archive)
+      return readDocument(archive, options)
     case 'xlsx':
-      return readWorkbook(archive)
+      return readWorkbook(archive, options)
     case 'pptx':
-      return readPresentation(archive)
+      return readPresentation(archive, options)
     case 'odt':
       return readOpenText(archive)
     case 'ods':
