@@ -4,7 +4,7 @@ node_modules/
 # build output and caches
 dist/
 out/
-release/
+release*/
 stage/
 coverage/
 .turbo/
