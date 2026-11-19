@@ -1,4 +1,4 @@
-import type { AssistantState, FactKind, MemoryView, SleepSettings } from '@repo/protocol'
+import type { AssistantState, FactKind, MemoryImport, MemoryView, SleepSettings } from '@repo/protocol'
 import type { Session } from '../session.ts'
 import { cell, type Followed } from './followed.ts'
 
@@ -17,6 +17,11 @@ export interface MemoryState extends Followed<MemoryView | undefined> {
   setRetention(days: number | null): Promise<void>
   /** Put the assistant to sleep now. Its progress arrives in `assistant`. */
   sleepNow(): Promise<void>
+  /**
+   * Bring in what the proof of concept knew, from its folder on the core's computer. Says how much was new; rejects
+   * with why not, in words for the person.
+   */
+  importEarlier(folder: string): Promise<MemoryImport>
   unfollow(): void
 }
 
@@ -64,6 +69,11 @@ export function followMemory(session: Session): MemoryState {
     asleep: { current: asleep.current, subscribe: asleep.subscribe },
     async edit(fact, text, kind) {
       accept((await session.run('memory.edit', kind === undefined ? { fact, text } : { fact, text, kind })).memory)
+    },
+    async importEarlier(folder) {
+      const done = await session.run('memory.import', { folder })
+      accept(done.memory)
+      return done.imported
     },
     async forget(fact) {
       accept((await session.run('memory.forget', { fact })).memory)

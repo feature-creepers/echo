@@ -33,6 +33,12 @@ export interface NewRecord {
   type: string
   /** The content, as plain JSON data. */
   payload: unknown
+  /**
+   * When what it records happened, when that is not now: words brought in from before the app, dated when they were
+   * said, so that the retention period, searches by period and recency read them as old. An ISO 8601 date in UTC.
+   * Left out, the moment it is written.
+   */
+  at?: string
 }
 
 /** A record as it is kept. */
@@ -43,7 +49,7 @@ export interface StoredRecord extends NewRecord {
   origin: string
   /** Its position among the records of that core, starting at 1. */
   sequence: number
-  /** When it was written: an ISO 8601 date in UTC. */
+  /** When it was written, or when what it records happened when it was brought in from elsewhere: an ISO 8601 date in UTC. */
   at: string
 }
 

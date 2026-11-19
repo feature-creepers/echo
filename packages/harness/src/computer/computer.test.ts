@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -42,5 +42,18 @@ describe('watching a folder on this computer', () => {
   it('throws for a folder that is not there, for the core to say so', async () => {
     const computer = await createComputer({ workspace: join(await folder(), 'workspace') })
     expect(() => computer.watch?.(join(tmpdir(), 'no-such-folder-for-a-watch'), () => undefined)).toThrow()
+  })
+})
+
+describe('looking into a folder on this computer', () => {
+  it('names the files directly in it, not its folders, and nothing where there is no folder', async () => {
+    const looked = await folder()
+    await writeFile(join(looked, '2026-03-01.jsonl'), '{}')
+    await mkdir(join(looked, 'inner'))
+    await writeFile(join(looked, 'inner', 'deeper.txt'), 'x')
+    const computer = await createComputer({ workspace: join(await folder(), 'workspace') })
+    expect(await computer.list?.(looked)).toEqual(['2026-03-01.jsonl'])
+    expect(await computer.list?.(join(looked, 'missing'))).toBeUndefined()
+    expect(await computer.list?.(join(looked, '2026-03-01.jsonl'))).toBeUndefined()
   })
 })

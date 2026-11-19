@@ -8,6 +8,7 @@ import { memorySearch } from '../records/memory-search.ts'
 import { manualTimers } from '../replay/manual-timers.ts'
 import { scriptedHarness } from '../replay/scripted-harness.ts'
 import { VIEW_CLEARED, VIEW_SHOWN } from '../views/screen.ts'
+import { EARLIER_LINE } from './earlier.ts'
 import { EXTRACT_INSTRUCTIONS } from './extract.ts'
 import { FACT } from './facts.ts'
 import { createMemory } from './memory.ts'
@@ -355,6 +356,59 @@ describe('forgetting the words a fact came from', () => {
     const again = setup({ records })
     again.memory.forget('fact-new')
     expect(records.read([EXCHANGE]).map((record) => record.payload)).toEqual([null, null])
+  })
+})
+
+describe('what the proof of concept knew', () => {
+  const found = {
+    from: '/Users/ada/Proof',
+    facts: [
+      { text: 'Sister Ana lives in Porto.', kind: 'person' as const },
+      { text: 'Prefers green tea.', kind: 'preference' as const },
+      { text: 'sister ana lives in porto.', kind: 'other' as const }
+    ],
+    lines: [
+      { at: '2026-03-01T09:15:00.000Z', said: 'The boat is moored in Brest.', replied: 'Noted.' },
+      { at: '2026-03-02T10:00:00.000Z', said: 'What is the weather?', replied: 'Sunny.' }
+    ]
+  }
+
+  it('keeps its facts and lines once, dated when they were said, and says so', () => {
+    const { memory, records, events } = setup()
+    memory.remember('Prefers green tea.')
+    const imported = memory.bringIn(found)
+    expect(imported).toEqual({ at: NOW.toISOString(), facts: 1, lines: 2 })
+    expect(memory.facts().map((fact) => [fact.text, fact.kind, fact.origin])).toEqual([
+      ['Sister Ana lives in Porto.', 'person', 'imported'],
+      ['Prefers green tea.', 'other', 'told']
+    ])
+    expect(records.read([EARLIER_LINE]).map((record) => record.at)).toEqual(['2026-03-01T09:15:00.000Z', '2026-03-02T10:00:00.000Z'])
+    expect(memory.read().imported).toEqual(imported)
+    expect(events.at(-1)).toMatchObject({ name: 'memory.changed', memory: { imported } })
+
+    // Brought in again: nothing new.
+    expect(memory.bringIn(found)).toMatchObject({ facts: 0, lines: 0 })
+    expect(records.read([EARLIER_LINE])).toHaveLength(2)
+    expect(setup({ records }).memory.read().imported).toEqual({ at: NOW.toISOString(), facts: 0, lines: 0 })
+  })
+
+  it('recalls its lines as the log is, by the date they were said, and never makes sense of them asleep', async () => {
+    const records = memoryRecords({ now: () => NOW })
+    const extracted: string[] = []
+    const harness = scriptedHarness({ complete: model({ extract: (input) => (extracted.push(input), { facts: [] }) }) })
+    const { memory } = setup({ records, harness })
+    memory.bringIn(found)
+    expect(memory.recall('where is the boat moored')).toContain('On 2026-03-01, in conversation: "The boat is moored in Brest.')
+    await sleep(memory)
+    expect(extracted).toEqual([])
+  })
+
+  it('erases its lines past the retention period, by the date they were said', () => {
+    const { memory, records } = setup()
+    memory.bringIn(found)
+    memory.setRetention(30)
+    expect(records.read([EARLIER_LINE]).map((record) => record.payload)).toEqual([null, null])
+    expect(memory.facts()).toHaveLength(2)
   })
 })
 

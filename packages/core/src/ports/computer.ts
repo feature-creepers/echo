@@ -34,4 +34,9 @@ export interface Computer {
   watch?(folder: string, changed: (paths: readonly string[]) => void): () => void
   /** What a file is now: its size in bytes. Nothing when there is no file there, or a folder. */
   fileAt?(path: string): Promise<{ size: number } | undefined>
+  /**
+   * The names of the files directly in a folder, not its subfolders, as the system names them. Nothing when there is
+   * no folder there. Left out, the core cannot look into a folder, and brings in nothing that needs it.
+   */
+  list?(folder: string): Promise<string[] | undefined>
 }

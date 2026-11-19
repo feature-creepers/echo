@@ -1,6 +1,7 @@
 import { exchangeSchema } from '@repo/protocol'
 import { EXCHANGE } from '../channel/channel.ts'
 import type { NewRecord } from '../ports/records.ts'
+import { EARLIER_LINE, earlierLineSchema } from './earlier.ts'
 import { FACT, readFactRecord } from './facts.ts'
 
 /**
@@ -9,7 +10,7 @@ import { FACT, readFactRecord } from './facts.ts'
  */
 
 /** The record types that have text to search. */
-export const SEARCHABLE_TYPES: readonly string[] = [EXCHANGE, FACT]
+export const SEARCHABLE_TYPES: readonly string[] = [EXCHANGE, FACT, EARLIER_LINE]
 
 /** The text of a record that a search should find it by. Nothing for a record that has none, or was erased. */
 export function searchableText(record: NewRecord): string | undefined {
@@ -20,6 +21,12 @@ export function searchableText(record: NewRecord): string | undefined {
     return text === '' ? undefined : text
   }
   if (record.type === FACT) return readFactRecord(record.payload)?.text
+  if (record.type === EARLIER_LINE) {
+    const line = earlierLineSchema.safeParse(record.payload)
+    if (!line.success) return undefined
+    const text = [line.data.said, line.data.replied].filter((part) => part.trim() !== '').join('\n')
+    return text === '' ? undefined : text
+  }
   return undefined
 }
 

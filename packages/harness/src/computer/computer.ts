@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { watch } from 'node:fs'
-import { copyFile, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, dirname, extname, join } from 'node:path'
 import type { Computer, ProtectedPath } from '@repo/core'
@@ -97,6 +97,13 @@ export async function createComputer({ workspace, data, where = { home: homedir(
       try {
         const found = await stat(path)
         return found.isFile() ? { size: found.size } : undefined
+      } catch {
+        return undefined
+      }
+    },
+    async list(folder) {
+      try {
+        return (await readdir(folder, { withFileTypes: true })).filter((entry) => entry.isFile()).map((entry) => entry.name)
       } catch {
         return undefined
       }

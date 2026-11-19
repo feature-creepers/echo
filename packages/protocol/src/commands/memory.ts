@@ -1,5 +1,14 @@
 import { z } from 'zod'
-import { assistantStateSchema, FACT_MAX_LENGTH, factIdSchema, factKindSchema, memoryViewSchema, retentionDaysSchema, sleepSettingsSchema } from '../memory.ts'
+import {
+  assistantStateSchema,
+  FACT_MAX_LENGTH,
+  factIdSchema,
+  factKindSchema,
+  importSchema,
+  memoryViewSchema,
+  retentionDaysSchema,
+  sleepSettingsSchema
+} from '../memory.ts'
 
 const memoryOutput = z.object({ memory: memoryViewSchema })
 
@@ -20,6 +29,17 @@ export const memoryCommands = {
   'memory.forget': {
     input: z.object({ fact: factIdSchema }),
     output: memoryOutput
+  },
+
+  /**
+   * Bring in, once, what the proof of concept knew, from its data folder on the core's computer (in the home
+   * folder, named after it): its notes and the person's context file as facts, its history as lines of earlier conversations,
+   * dated when they were said. Choosing the folder is the person's consent to its being read; nothing there is
+   * changed, and the folder is not granted to the assistant. What is already known is not brought in twice.
+   */
+  'memory.import': {
+    input: z.object({ folder: z.string().trim().min(1).max(4096) }),
+    output: z.object({ memory: memoryViewSchema, imported: importSchema })
   },
 
   /** Choose when the assistant sleeps. What is left out keeps its value. */

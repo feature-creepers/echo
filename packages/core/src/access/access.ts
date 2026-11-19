@@ -52,6 +52,8 @@ export interface AccessControl {
    * Read from its words: what the core reads itself, such as a project's instructions, it reads only from there.
    */
   reaches(path: string, write?: boolean): boolean
+  /** What a place is that is never reached whatever is granted, named for the person ("SSH keys"). Nothing when it is not one. */
+  neverReached(path: string): string | undefined
   /**
    * What a thread did on the computer, most recent last, in lines a session reads: what it changed and ran, how it
    * went, and what was refused and why. Paths inside `folder` are written from it. Nothing when it did nothing.
@@ -601,6 +603,8 @@ export function createAccess({ settings, screen, computer, timers, records, vers
         .places.filter((place) => place.kind === 'folder' && place.write)
         .map((place) => place.path)
     },
+
+    neverReached: (path) => neverReached(path)?.label,
 
     reaches(path, write = false) {
       if (!computer || neverReached(path)) return false

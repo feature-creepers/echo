@@ -1,6 +1,7 @@
 import { EXCHANGE } from '../channel/channel.ts'
 import type { Search, SearchHit } from '../ports/search.ts'
 import { shorten } from './answer.ts'
+import { EARLIER_LINE } from './earlier.ts'
 import { FACT, type FactBook, type KnownFact } from './facts.ts'
 
 /**
@@ -48,7 +49,8 @@ export function recallFor({ search, facts, now }: RecallSources, { said, knownSi
     .slice(0, RECALLED_FACTS)
   const exchanges = search.search({
     text: said,
-    types: [EXCHANGE],
+    // The lines of conversations held before this app, brought in with their dates, are recalled as the log is.
+    types: [EXCHANGE, EARLIER_LINE],
     limit: RECALLED_EXCHANGES,
     recency: { now: at, halfLifeDays: EXCHANGE_HALF_LIFE_DAYS },
     ...(knownSince === undefined ? {} : { before: knownSince })

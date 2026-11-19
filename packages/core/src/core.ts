@@ -17,6 +17,7 @@ import { createFiles } from './files/files.ts'
 import { createWrittenFiles } from './files/written.ts'
 import { createLibrary } from './library/library.ts'
 import { mediaControlOf } from './media/control.ts'
+import { contextOf, EARLIER_FILES, type EarlierFact, type EarlierLine, HISTORY_FILE, historyOf, notesOf } from './memory/earlier.ts'
 import { createMemory } from './memory/memory.ts'
 import { createObjections } from './personas/objection.ts'
 import type { Blobs } from './ports/blobs.ts'
@@ -34,6 +35,7 @@ import type { Search } from './ports/search.ts'
 import type { ToolHost } from './ports/tools.ts'
 import type { Web } from './ports/web.ts'
 import type { Workspace } from './ports/workspace.ts'
+import { inFolder } from './projects/folders.ts'
 import { guideText, readGuide } from './projects/guide.ts'
 import { memorySearch } from './records/memory-search.ts'
 import { createSchedule } from './schedule/schedule.ts'
@@ -44,6 +46,12 @@ import { createTools, type Tool } from './tools/tools.ts'
 import { createFeeds } from './views/feeds.ts'
 import { createMaps } from './views/maps.ts'
 import { createScreen, type Showing } from './views/screen.ts'
+
+/** The most of the proof of concept's notes or context file read, and of one day of its history, in bytes. */
+const EARLIER_TEXT_LIMIT = 1_000_000
+const EARLIER_DAY_LIMIT = 20_000_000
+/** The most lines of its history brought in: the latest. */
+const EARLIER_LINES_MAX = 200_000
 
 /** What a core is given by the program that hosts it. */
 export interface CoreOptions {
@@ -400,6 +408,43 @@ export function createCore(options: CoreOptions): Core {
     mayInterrupt: () => !schedule.quiet() && interruptions.take()
   })
   currentTurn = channel.turn
+
+  /**
+   * What the proof of concept kept in its folder, read for the import (docs/SPEC.md, section 10.7): only its own
+   * files, never a place never reached, and nothing changed there. The person chose the folder; it is not granted.
+   */
+  const readEarlier = async (
+    path: string
+  ): Promise<{ ok: true; folder: string; facts: EarlierFact[]; lines: EarlierLine[] } | { ok: false; code: 'failed' | 'invalid-input'; text: string }> => {
+    const computer = options.computer
+    if (!computer) return { ok: false, code: 'failed', text: 'There is no computer here to bring it in from.' }
+    const found = await computer.locate(path)
+    if (found?.kind !== 'folder') return { ok: false, code: 'invalid-input', text: `There is no folder at ${path}.` }
+    const never = access.neverReached(found.path)
+    if (never) return { ok: false, code: 'invalid-input', text: `${found.path} is among the places never reached (${never}).` }
+    const text = async (file: string, limit: number) => {
+      if (access.neverReached(file)) return undefined
+      const bytes = await computer.read(file, limit).catch(() => undefined)
+      return bytes instanceof Uint8Array ? new TextDecoder().decode(bytes).replace(/^﻿/, '') : undefined
+    }
+    const notes = await text(EARLIER_FILES.notes(found.path), EARLIER_TEXT_LIMIT)
+    const context = await text(EARLIER_FILES.context(found.path), EARLIER_TEXT_LIMIT)
+    const history = EARLIER_FILES.history(found.path)
+    const days = ((await computer.list?.(history).catch(() => undefined)) ?? []).filter((name) => HISTORY_FILE.test(name)).sort()
+    const lines: EarlierLine[] = []
+    for (const day of days) {
+      const read = await text(inFolder(history, day), EARLIER_DAY_LIMIT)
+      if (read !== undefined) lines.push(...historyOf(read))
+    }
+    if (notes === undefined && context === undefined && days.length === 0)
+      return {
+        ok: false,
+        code: 'invalid-input',
+        text: 'This is not where the proof of concept kept its data: it holds no notes, context file or history. That folder is in the home folder of the computer it ran on, named after it.'
+      }
+    const facts = [...(notes ? notesOf(notes) : []), ...(context ? contextOf(context) : [])]
+    return { ok: true, folder: found.path, facts, lines: lines.slice(-EARLIER_LINES_MAX) }
+  }
   /** Whether the work the last run left was taken up: once, with the first command of a client. */
   let resumed = false
   // Stop everything (docs/SPEC.md, section 12.2): every turn and thread of the conversation is interrupted, and the
@@ -491,6 +536,12 @@ export function createCore(options: CoreOptions): Core {
       'memory.forget': (input) => {
         const change = memory.forget(input.fact)
         return change.ok ? { ok: true, output: { memory: change.memory } } : change
+      },
+      'memory.import': async (input) => {
+        const found = await readEarlier(input.folder)
+        if (!found.ok) return { ok: false, error: { code: found.code, message: found.text } }
+        const imported = memory.bringIn({ from: found.folder, facts: found.facts, lines: found.lines })
+        return { ok: true, output: { memory: memory.read(), imported } }
       },
       'memory.sleep-settings.set': (input) => ({ ok: true, output: { memory: memory.setSleep(input) } }),
       'memory.retention.set': (input) => ({ ok: true, output: { memory: memory.setRetention(input.days) } }),

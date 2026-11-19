@@ -8,6 +8,7 @@ import {
   FACT_KINDS,
   type Fact,
   type FactKind,
+  type MemoryImport,
   type MemoryView,
   type SleepSettings
 } from '@repo/protocol'
@@ -21,6 +22,7 @@ import { ERASURE, type NewRecord, type Records, type StoredRecord } from '../por
 import type { Search } from '../ports/search.ts'
 import type { Tool } from '../tools/tools.ts'
 import { shorten, UnreadableAnswer } from './answer.ts'
+import { EARLIER_LINE, type EarlierFact, type EarlierLine, earlierLineSchema, IMPORTED, importedSchema } from './earlier.ts'
 import { type Candidate, extract } from './extract.ts'
 import { createFactBook, FACT, type FactRecord, type KnownFact } from './facts.ts'
 import { basisOf, PROFILE, profileFor, readProfileRecord, writeProfile } from './profile.ts'
@@ -109,6 +111,11 @@ export interface Memory {
   setSleep(input: CommandInput<'memory.sleep-settings.set'>): MemoryView
   /** Keep the conversation's words for so many days, or for good with null. What is older is erased at once. */
   setRetention(days: number | null): MemoryView
+  /**
+   * Keep what the proof of concept knew, found in its folder (`from`): facts not known yet, and lines of its history
+   * not brought in before. Says how much was new.
+   */
+  bringIn(found: { from: string; facts: readonly EarlierFact[]; lines: readonly EarlierLine[] }): MemoryImport
   /** Be told `memory.changed` and `assistant.state`. Returns a function that stops the telling. */
   onEvent(listener: (event: Event) => void): () => void
   /** Stop the timers. */
@@ -229,7 +236,7 @@ export function createMemory(options: MemoryOptions): Memory {
       return ofKind.length === 0 ? [] : [{ kind, facts: ofKind }]
     })
     const profile = profiles.at(-1)
-    return { revision, groups, ...(profile ? { profile: profile.text } : {}), sleep: settings, retentionDays }
+    return { revision, groups, ...(profile ? { profile: profile.text } : {}), sleep: settings, retentionDays, ...(imported ? { imported } : {}) }
   }
 
   const find = (query: string, after?: string, before?: string) => {
@@ -241,7 +248,7 @@ export function createMemory(options: MemoryOptions): Memory {
         return fact ? [{ fact, score: hit.score }] : []
       })
     )
-    const said = search.search({ text: query, types: [EXCHANGE], limit: 6, ...period, recency: { now: at, halfLifeDays: 90 } })
+    const said = search.search({ text: query, types: [EXCHANGE, EARLIER_LINE], limit: 6, ...period, recency: { now: at, halfLifeDays: 90 } })
     return { facts, said }
   }
 
@@ -289,6 +296,49 @@ export function createMemory(options: MemoryOptions): Memory {
     if (words.turns.size > 0) options.erased?.(words.turns)
     changed()
     return true
+  }
+
+  // —— What the proof of concept knew ——
+
+  /** The latest import, as the view shows it. */
+  let imported: MemoryImport | undefined = (() => {
+    const last = records.read([IMPORTED]).findLast((record) => importedSchema.safeParse(record.payload).success)
+    const read = last && importedSchema.safeParse(last.payload)
+    return last && read?.success ? { at: last.at, facts: read.data.facts, lines: read.data.lines } : undefined
+  })()
+
+  const bringIn = ({ from, facts, lines }: { from: string; facts: readonly EarlierFact[]; lines: readonly EarlierLine[] }): MemoryImport => {
+    // A fact already known, in whatever capitals and accents, is not kept twice; nor a line already brought in.
+    const known = new Set(book.current().map((fact) => foldWord(fact.text)))
+    const fresh = facts.filter((fact) => {
+      const key = foldWord(fact.text)
+      if (known.has(key)) return false
+      known.add(key)
+      return true
+    })
+    const lineKey = (at: string, said: string, replied: string) => JSON.stringify([at, said, replied])
+    const brought = new Set(
+      records.read([EARLIER_LINE]).flatMap((record) => {
+        const line = earlierLineSchema.safeParse(record.payload)
+        return line.success ? [lineKey(record.at, line.data.said, line.data.replied)] : []
+      })
+    )
+    const newLines = lines.filter((line) => {
+      const key = lineKey(line.at, line.said, line.replied)
+      if (brought.has(key)) return false
+      brought.add(key)
+      return true
+    })
+    const at = now().toISOString()
+    // Kept together: the facts, the lines dated when they were said, and the record of the import.
+    const written = write([
+      ...fresh.map((fact) => factRecord({ fact: newId(), text: fact.text, kind: fact.kind, origin: 'imported', sources: [], since: at })),
+      ...newLines.map((line) => ({ type: EARLIER_LINE, payload: { said: line.said, replied: line.replied }, at: line.at })),
+      { type: IMPORTED, payload: { from, facts: fresh.length, lines: newLines.length } }
+    ])
+    imported = { at: written.at(-1)?.at ?? at, facts: fresh.length, lines: newLines.length }
+    changed()
+    return imported
   }
 
   // —— Keeping the words for a period ——
@@ -573,6 +623,7 @@ export function createMemory(options: MemoryOptions): Memory {
       changed()
       return read()
     },
+    bringIn,
     onEvent(listener) {
       listeners.add(listener)
       return () => void listeners.delete(listener)

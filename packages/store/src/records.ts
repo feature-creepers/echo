@@ -23,7 +23,7 @@ export function createRecords(database: DatabaseSync, now: () => Date = () => ne
         return records.map((record): StoredRecord => {
           const payload: string | undefined = JSON.stringify(record.payload)
           if (payload === undefined) throw new Error(`A record of type "${record.type}" has a payload that is not JSON data.`)
-          const stored = { id: randomUUID(), origin, sequence: ++sequence, at: now().toISOString(), type: record.type }
+          const stored = { id: randomUUID(), origin, sequence: ++sequence, at: record.at ?? now().toISOString(), type: record.type }
           const { lastInsertRowid } = insert.run(stored.id, stored.origin, stored.sequence, stored.at, stored.type, payload)
           const written = { ...stored, payload: JSON.parse(payload) }
           for (const erased of erasedBy(written)) erase.run(erased)

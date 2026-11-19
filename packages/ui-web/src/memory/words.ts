@@ -1,4 +1,4 @@
-import { type AssistantState, type Fact, RETENTION_CHOICES, type SleepMode, type SleepSettings } from '@repo/protocol'
+import { type AssistantState, type Fact, type MemoryImport, RETENTION_CHOICES, type SleepMode, type SleepSettings } from '@repo/protocol'
 
 /** The choices of when the assistant sleeps, as the user reads them, each with what it means. */
 export const SLEEP_CHOICES: readonly { mode: SleepMode; label: string; description: string }[] = [
@@ -60,8 +60,26 @@ export function sleepStatus(state: AssistantState, sleep: SleepSettings, now: Da
 
 /** Where a fact comes from, in a few words. */
 export function learnedFrom(fact: Fact): string {
-  const how = fact.origin === 'told' ? 'You asked it to remember' : fact.origin === 'edited' ? 'Corrected by you' : 'Learned'
+  const how =
+    fact.origin === 'told'
+      ? 'You asked it to remember'
+      : fact.origin === 'edited'
+        ? 'Corrected by you'
+        : fact.origin === 'imported'
+          ? 'Brought in from the proof of concept'
+          : 'Learned'
   return `${how} · ${dayOf(fact.since)}`
+}
+
+/** What the latest import of the proof of concept brought in, in a sentence: "Brought in on 19 Nov 2026: 3 facts and 1,204 lines." */
+export function importDetail(imported: MemoryImport | undefined): string {
+  if (!imported) return 'Its notes, your context file and its history, from the folder it kept them in. Each is brought in once.'
+  const count = (n: number, one: string, many: string) => `${n.toLocaleString('en-GB')} ${n === 1 ? one : many}`
+  const what =
+    imported.facts === 0 && imported.lines === 0
+      ? 'nothing new'
+      : `${count(imported.facts, 'fact', 'facts')} and ${count(imported.lines, 'line of its history', 'lines of its history')}`
+  return `Brought in on ${dayOf(imported.at)}: ${what}.`
 }
 
 /** The periods offered for keeping what was said, as the person reads them. */

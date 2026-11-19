@@ -40,6 +40,15 @@ const fact = (text: string) => ({
 })
 
 describe('keyword search in the store', () => {
+  it('dates words brought in from elsewhere when they were said, and finds them by that date', () => {
+    const { records, search } = store(undefined, () => new Date('2026-11-17T08:00:00Z'))
+    const [old] = records.append([{ ...exchange('The boat is moored in Brest.'), at: '2025-03-01T10:00:00.000Z' }])
+    expect(old?.at).toBe('2025-03-01T10:00:00.000Z')
+    expect(records.read([EXCHANGE])[0]?.at).toBe('2025-03-01T10:00:00.000Z')
+    expect(search.search({ text: 'boat Brest', types: [EXCHANGE], limit: 5, before: '2026-01-01T00:00:00.000Z' })).toHaveLength(1)
+    expect(search.search({ text: 'boat Brest', types: [EXCHANGE], limit: 5, after: '2026-01-01T00:00:00.000Z' })).toEqual([])
+  })
+
   it('finds what was said and the facts at once, the best match first', () => {
     const { records, search } = store()
     const [garden, roses] = records.append([exchange('We talked about the garden', 'Yes, the garden.'), exchange('The roses in the garden need water')])

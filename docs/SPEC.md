@@ -815,11 +815,19 @@ An answer that cannot be read is asked for once more, then the batch is passed o
 
 ### 10.7 What the user sees
 
-A "what I know about you" view, grouped by people, preferences, projects and dates. Each fact shows where it was learned, and can be edited or forgotten. The whole memory exports to Markdown, keeping the best property of the proof of concept's notes file: the user can read and correct it. Memory is shared by every persona and survives any change of harness. A one-off import brings in the proof of concept's notes, context file and history from `~/JARVIS`.
+A "what I know about you" view, grouped by people, preferences, projects and dates. Each fact shows where it was learned, and can be edited or forgotten. The whole memory exports to Markdown, keeping the best property of the proof of concept's notes file: the user can read and correct it. Memory is shared by every persona and survives any change of harness. A one-off import brings in the proof of concept's notes, context file and history from `~/JARVIS`, its data folder.
 
 As built, it is the Memory section of settings. At the top, the assistant's state (awake, with when it last slept and when it will sleep next; or asleep, with the progress of its work), the choice of when it sleeps and a "Sleep now" button. Then the profile, then the facts by kind, each with how and when it was learned and the words it came from, with Edit and Forget (which asks once, since the words are erased). Export to Markdown downloads the same, built by the client (`memoryMarkdown`) so a phone can offer it too. Under it, how long what was said is kept. The protocol carries it as `memory.read`, `memory.edit`, `memory.forget`, `memory.sleep-settings.set`, `memory.retention.set` and `memory.sleep-now`, and the events `memory.changed` and `assistant.state`; a client follows both with `followMemory`, which also gives `asleep` for the main screen to dim the core.
 
-Not built yet: vectors (section 10.4) and the import from the proof of concept.
+**The import, as built.** Under how long what was said is kept, "What the proof of concept knew" offers "Import…": the system's own picker for the folder it kept its data in, read by the core through its computer port (`memory.import`, `memory/earlier.ts`). Choosing the folder is the consent to read it; nothing there changes, the folder is not granted to the assistant, and a place never reached is refused. It brings in:
+
+- **Its notes** (`workspace/memory.md`, short lines a model rewrote after each conversation): each item a fact.
+- **The context file** the person filled in (`workspace/CLAUDE.md`): each item they wrote a fact, of the kind its section says ("Who I am" about the person, "What I do" a project, "How I work" a preference, any other section other), and nothing the template held, an item left as its "(…)" placeholder, whole or after its label.
+- **Its history** (`history/2026-03-01.jsonl`, one file a day, a line of JSON for each thing said and answered): each line a record of its own (`memory.earlier-line`), dated when it was said, the 200,000 latest at most. A record may carry the date of what it records, when it is brought in from elsewhere (`at` on a new record; the store keeps it as the record's date), so that searches by period, recency and the retention period read these lines as old. They are found by search and recalled as the log is ("On 2026-03-01, in conversation: …"), erased past the retention period, and never shown in the transcript nor made sense of asleep: the notes hold what mattered.
+
+Facts brought in are marked so ("Brought in from the proof of concept"). A fact already known, in whatever capitals and accents, and a line already brought in are not brought in twice, so importing again brings only what is new. The facts, the lines and a `memory.imported` record saying how much came in are written together, and the panel then says it ("Brought in on 19 Nov 2026: 3 facts and 1,204 lines of its history."). A folder holding none of the three files is refused with where to find the right one. Tested by tables and through the core.
+
+Not built yet: vectors (section 10.4).
 
 ## 11. Personas
 

@@ -37,7 +37,9 @@ export const FACT_ORIGINS = [
   /** The user asked the assistant to remember it. */
   'told',
   /** The user corrected it by hand. */
-  'edited'
+  'edited',
+  /** Brought in from what the proof of concept knew: its notes, or the user's context file. */
+  'imported'
 ] as const
 
 /** A turn a fact was learned from: when, and what the user said, shortened. */
@@ -94,6 +96,14 @@ export const retentionDaysSchema = z.number().int().min(1).max(3650)
 /** The periods a client offers for keeping the conversation, in days, shortest first. Kept for good is offered besides. */
 export const RETENTION_CHOICES = [30, 90, 180, 365, 730] as const
 
+/** What an import of the proof of concept's files brought in: facts from its notes and context, lines of its history. */
+export const importSchema = z.object({
+  at: z.string(),
+  facts: z.number().int().nonnegative(),
+  lines: z.number().int().nonnegative()
+})
+export type MemoryImport = z.infer<typeof importSchema>
+
 /** Everything the assistant knows about the user, as a client shows it. */
 export const memoryViewSchema = z.object({
   /** Goes up with each change, so a client holding two copies keeps the later one. */
@@ -104,7 +114,9 @@ export const memoryViewSchema = z.object({
   profile: z.string().optional(),
   sleep: sleepSettingsSchema,
   /** How many days the conversation's words are kept, or null to keep them for good. */
-  retentionDays: retentionDaysSchema.nullable()
+  retentionDays: retentionDaysSchema.nullable(),
+  /** The latest import of what the proof of concept knew: when, and how much it brought in. Left out until one is done. */
+  imported: importSchema.optional()
 })
 export type MemoryView = z.infer<typeof memoryViewSchema>
 

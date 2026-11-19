@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { EXCHANGE, RESUME, RESUMED, STEP, WORK } from '../channel/channel.ts'
 import type { Records, StoredRecord } from '../ports/records.ts'
 import { VIEW_CLEARED, VIEW_SHOWN } from '../views/screen.ts'
+import { EARLIER_LINE } from './earlier.ts'
 
 /**
  * How long the conversation's words are kept (docs/SPEC.md, section 10.2). The log is kept for good unless the
@@ -28,11 +29,12 @@ export const RETENTION_PASS_MS = 12 * 60 * 60_000
 const DAY_MS = 24 * 60 * 60_000
 
 /**
- * The records that carry the conversation's words: each line, each tool call, each request taken up, each view shown.
+ * The records that carry the conversation's words: each line, each tool call, each request taken up, each view shown,
+ * and the lines of conversations held before this app, dated when they were said.
  * The closing of a view is read too, to know which views are no longer on the screen; it names a view and says
  * nothing, so it is kept.
  */
-export const CONVERSATION_RECORDS = [EXCHANGE, STEP, WORK, RESUME, RESUMED, VIEW_SHOWN, VIEW_CLEARED] as const
+export const CONVERSATION_RECORDS = [EXCHANGE, STEP, WORK, RESUME, RESUMED, VIEW_SHOWN, VIEW_CLEARED, EARLIER_LINE] as const
 
 /** What a pass erases: the records, and the turns whose lines go with them. */
 export interface Expired {

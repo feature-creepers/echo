@@ -16,7 +16,14 @@ export function memoryRecords({ origin = 'memory', now = () => new Date() }: Mem
     append(records) {
       const written = records.map((record, index): StoredRecord => {
         const sequence = stored.length + index + 1
-        return { id: `${origin}-${sequence}`, origin, sequence, at: now().toISOString(), type: record.type, payload: structuredCloneJson(record.payload) }
+        return {
+          id: `${origin}-${sequence}`,
+          origin,
+          sequence,
+          at: record.at ?? now().toISOString(),
+          type: record.type,
+          payload: structuredCloneJson(record.payload)
+        }
       })
       stored.push(...written)
       const erased = new Set(written.flatMap(erasedBy))

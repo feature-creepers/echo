@@ -173,6 +173,8 @@ export {
   factKindSchema,
   factSchema,
   factSourceSchema,
+  importSchema,
+  type MemoryImport,
   type MemoryView,
   memoryViewSchema,
   RETENTION_CHOICES,

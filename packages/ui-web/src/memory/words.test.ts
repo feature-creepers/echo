@@ -1,6 +1,18 @@
 import type { Fact, SleepSettings } from '@repo/protocol'
 import { describe, expect, it } from 'vitest'
-import { ago, dayOf, keptFor, learnedFrom, retentionChoices, retentionDetail, retentionOf, retentionWarning, sleepStatus, whenItSleeps } from './words.ts'
+import {
+  ago,
+  dayOf,
+  importDetail,
+  keptFor,
+  learnedFrom,
+  retentionChoices,
+  retentionDetail,
+  retentionOf,
+  retentionWarning,
+  sleepStatus,
+  whenItSleeps
+} from './words.ts'
 
 const now = new Date('2026-11-17T12:00:00Z')
 const sleep: SleepSettings = { when: 'quiet', quietMinutes: 10, time: '03:00' }
@@ -36,6 +48,15 @@ describe('the words of the memory section', () => {
     const fact: Fact = { id: 'f', text: 't', kind: 'other', origin: 'told', since: '2026-11-17T08:00:00Z', at: '2026-11-17T08:00:00Z', sources: [] }
     expect(learnedFrom(fact)).toBe(`You asked it to remember · ${dayOf(fact.since)}`)
     expect(learnedFrom({ ...fact, origin: 'conversation' })).toMatch(/^Learned · /)
+    expect(learnedFrom({ ...fact, origin: 'imported' })).toMatch(/^Brought in from the proof of concept · /)
+  })
+
+  it('say what the import brought in', () => {
+    const at = '2026-11-19T01:00:00Z'
+    expect(importDetail(undefined)).toContain('from the folder it kept them in')
+    expect(importDetail({ at, facts: 3, lines: 1204 })).toBe(`Brought in on ${dayOf(at)}: 3 facts and 1,204 lines of its history.`)
+    expect(importDetail({ at, facts: 1, lines: 1 })).toBe(`Brought in on ${dayOf(at)}: 1 fact and 1 line of its history.`)
+    expect(importDetail({ at, facts: 0, lines: 0 })).toBe(`Brought in on ${dayOf(at)}: nothing new.`)
   })
 
   it('say how long what was said is kept', () => {

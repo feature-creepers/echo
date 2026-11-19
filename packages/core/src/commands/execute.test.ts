@@ -61,6 +61,7 @@ function setup(overrides: Partial<Handlers> = {}) {
     'memory.read': () => ({ ok: true, output: { memory, state: { asleep: false } } }),
     'memory.edit': () => ({ ok: true, output: { memory } }),
     'memory.forget': () => ({ ok: true, output: { memory } }),
+    'memory.import': () => ({ ok: true, output: { memory, imported: { at: '2026-11-19T00:00:00.000Z', facts: 0, lines: 0 } } }),
     'memory.sleep-settings.set': () => ({ ok: true, output: { memory } }),
     'memory.retention.set': () => ({ ok: true, output: { memory } }),
     'memory.sleep-now': () => ({ ok: true, output: {} }),

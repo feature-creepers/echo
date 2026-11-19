@@ -588,3 +588,61 @@ describe('files between the person and the assistant', () => {
     })
   })
 })
+
+describe('what the proof of concept knew, through the core', () => {
+  /** A core on a computer that holds the proof of concept's folder, and a place never reached. */
+  function withEarlier(files: Record<string, string>) {
+    let ids = 0
+    const workspace = memoryWorkspace()
+    const encoder = new TextEncoder()
+    const folders = new Set(['/Users/ada/Proof', '/Users/ada/Proof/history', '/Users/ada/Empty', '/Users/ada/.ssh'])
+    const core = createCore({
+      version: '1',
+      acceptsCredential: () => true,
+      records: memoryRecords({ now: () => new Date('2026-11-17T08:00:00Z') }),
+      blobs: { put: () => 'hash', get: () => undefined },
+      log: { error: vi.fn() },
+      harnesses: [scriptedHarness()],
+      newId: () => `id-${++ids}`,
+      now: () => new Date('2026-11-17T08:00:00Z'),
+      workspace,
+      computer: {
+        workspace: workspace.location,
+        locate: async (path) => (folders.has(path) ? { path, kind: 'folder' } : path in files ? { path, kind: 'file' } : undefined),
+        protected: [{ label: 'SSH keys', path: '/Users/ada/.ssh' }],
+        read: async (path) => (path in files ? encoder.encode(files[path] ?? '') : undefined),
+        write: async () => undefined,
+        fingerprint: async () => undefined,
+        trash: async (path) => path,
+        list: async (folder) =>
+          folders.has(folder)
+            ? Object.keys(files)
+                .filter((path) => path.startsWith(`${folder}/`) && !path.slice(folder.length + 1).includes('/'))
+                .map((path) => path.slice(folder.length + 1))
+            : undefined
+      }
+    })
+    return { core }
+  }
+
+  it('brings in its notes, its context file and its history, and refuses a folder that is not its own', async () => {
+    const { core } = withEarlier({
+      '/Users/ada/Proof/workspace/memory.md': '- Sister Ana lives in Porto.\n- Prefers green tea.\n',
+      '/Users/ada/Proof/workspace/CLAUDE.md': '## Who I am\n- Name: Ada\n- Role: (what you do)\n',
+      '/Users/ada/Proof/history/2026-03-01.jsonl': `${JSON.stringify({ t: '2026-03-01T09:15:00Z', user: 'The boat is in Brest.', reply: 'Noted.' })}\n`,
+      '/Users/ada/Proof/history/notes.txt': 'not a day'
+    })
+    const done = await run(core, 'memory.import', { folder: '/Users/ada/Proof' })
+    expect(done.imported).toEqual({ at: '2026-11-17T08:00:00.000Z', facts: 3, lines: 1 })
+    expect(done.memory.groups.flatMap((group) => group.facts.map((fact) => [fact.text, fact.origin]))).toEqual([
+      ['Name: Ada', 'imported'],
+      ['Sister Ana lives in Porto.', 'imported'],
+      ['Prefers green tea.', 'imported']
+    ])
+
+    const empty = await core.execute({ type: 'command', id: 'c1', name: 'memory.import', input: { folder: '/Users/ada/Empty' } })
+    expect(empty).toMatchObject({ ok: false, error: { code: 'invalid-input', message: expect.stringContaining('holds no notes') } })
+    const never = await core.execute({ type: 'command', id: 'c2', name: 'memory.import', input: { folder: '/Users/ada/.ssh' } })
+    expect(never).toMatchObject({ ok: false, error: { message: expect.stringContaining('never reached') } })
+  })
+})
