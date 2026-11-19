@@ -13,6 +13,7 @@ import { readOlderExcel, readOlderPowerPoint, readOlderSheets, readOlderWord } f
 import { openCompound } from './compound.ts'
 import { cellValue, serialNow, withConditions } from './conditional-formats.ts'
 import type { TextLook } from './document-look.ts'
+import { isEquationProgram } from './equation-editor.ts'
 import { builtInFormat, formatNumber, generalNumber, type NumberFormatOptions, numberColor } from './number-format.ts'
 import { type CellRange, type CellSource, type CellValue, cellRange, emuPixels, Figures, lengthPixels, readChart, readOpenChart } from './office-figures.ts'
 import { mathMlText, mathText } from './office-math.ts'
@@ -255,6 +256,8 @@ export async function readDocument(archive: Archive, options: NumberFormatOption
   let cell: string[] | undefined
   let equation: XmlEvent[] | undefined
   let displayed = false
+  // The object of Equation Editor or MathType a drawing holds, by its relationship's identifier.
+  let equationObject: string | undefined
 
   const finish = (paragraph: WordParagraph) => {
     const text = partsText(paragraph.parts).replace(/\s+/g, ' ').trim()
@@ -378,7 +381,13 @@ export async function readDocument(archive: Archive, options: NumberFormatOption
         case 'w:drawing':
         case 'w:pict':
         case 'w:object':
-          if (drawings++ === 0) drawing = { alt: '' }
+          if (drawings++ === 0) {
+            drawing = { alt: '' }
+            equationObject = undefined
+          }
+          break
+        case 'o:OLEObject':
+          if (drawing && isEquationProgram(event.attributes.ProgID)) equationObject = event.attributes['r:id']
           break
         case 'wp:extent':
           if (drawing) {
@@ -427,6 +436,13 @@ export async function readDocument(archive: Archive, options: NumberFormatOption
         if (--drawings === 0 && drawing) {
           const placed: Drawn = drawing
           drawing = undefined
+          // An equation of Equation Editor or MathType is written as linear text in its place, as Word's own are.
+          const written = equationObject === undefined ? undefined : await figures.equation(targets.get(equationObject))
+          equationObject = undefined
+          if (written !== undefined) {
+            paragraph?.parts.push(runPart(written, {}, link))
+            break
+          }
           const figure = await drawnFigure(placed, targets, figures)
           if (figure !== undefined && paragraph) paragraph.parts.push({ figure, alt: placed.alt })
         }
@@ -799,7 +815,7 @@ export async function readPresentation(archive: Archive, options: NumberFormatOp
     const target = targets.get(event.attributes['r:id'] ?? '')
     const xml = target === undefined ? undefined : await textOf(archive, target)
     if (xml === undefined || target === undefined) continue
-    const text = slideText(xml)
+    const text = slideText(xml, await objectEquations(xml, await relationships(archive, target), figures))
     const drawing =
       drawn < DRAWINGS_LIMIT
         ? await drawSlide(archive, target, size, { chart, defaultText: childAt(root, 'p:defaultTextStyle') }).catch(() => undefined)
@@ -822,10 +838,27 @@ export async function readPresentation(archive: Archive, options: NumberFormatOp
 }
 
 /**
- * A slide's title, from its title placeholder, and the lines of its other shapes, in order: an equation (`a14:m`) as
- * linear text in its paragraph, the picture PowerPoint keeps of it for older apps (`mc:Fallback`) passed over.
+ * The equations of Equation Editor or MathType a part's objects hold (`p:oleObj`, `o:OLEObject`), as linear text, by
+ * their relationship's identifier.
  */
-function slideText(xml: string): { title: string; lines: string[] } {
+async function objectEquations(xml: string, targets: ReadonlyMap<string, string>, figures: Figures): Promise<Map<string, string>> {
+  const found = new Map<string, string>()
+  for (const event of xmlEvents(xml)) {
+    if (event.type !== 'open' || (event.name !== 'p:oleObj' && event.name !== 'o:OLEObject')) continue
+    const id = event.attributes['r:id']
+    if (id === undefined || found.has(id) || !isEquationProgram(event.attributes.progId ?? event.attributes.ProgID)) continue
+    const written = await figures.equation(targets.get(id))
+    if (written !== undefined) found.set(id, written)
+  }
+  return found
+}
+
+/**
+ * A slide's title, from its title placeholder, and the lines of its other shapes, in order: an equation (`a14:m`) as
+ * linear text in its paragraph, the picture PowerPoint keeps of it for older apps (`mc:Fallback`) passed over, and one
+ * of Equation Editor or MathType, an object, as a line of its own.
+ */
+function slideText(xml: string, equations: ReadonlyMap<string, string> = new Map()): { title: string; lines: string[] } {
   let title = ''
   const lines: string[] = []
   let shape: { title: boolean; paragraphs: string[] } | undefined
@@ -854,6 +887,10 @@ function slideText(xml: string): { title: string; lines: string[] } {
       else if (event.name === 'a:p') paragraph = ''
       else if (event.name === 'a:br' && paragraph !== undefined) paragraph += ' '
       else if (event.name === 'a:t') inText = true
+      else if (event.name === 'p:oleObj') {
+        const written = equations.get(event.attributes['r:id'] ?? '')
+        if (written !== undefined) lines.push(written)
+      }
     } else if (event.type === 'text') {
       if (inText && paragraph !== undefined) paragraph += event.text
     } else if (event.name === 'a:t') inText = false

@@ -15,6 +15,7 @@ import { type ChartContext, type ChartRecord, readGraphChart, readOlderChart } f
 import { damaged, operandSize, type Reader, reader } from './binary-records.ts'
 import { type Compound, openCompound } from './compound.ts'
 import { cellValue, serialNow, withConditions } from './conditional-formats.ts'
+import { objectEquation } from './equation-editor.ts'
 import { builtInFormat, formatNumber, generalNumber, type NumberFormatOptions, numberColor } from './number-format.ts'
 import {
   ART,
@@ -409,6 +410,19 @@ function wordPictures(
     const storage = id === undefined ? undefined : objects?.storage(`_${id}`)
     return storage && embeddedChart(storage)
   }
+  const equations = new Map<number, string | undefined>()
+  const objectEquationOf = (id: number) => {
+    if (!equations.has(id)) {
+      let storage: Compound | undefined
+      try {
+        storage = objects?.storage(`_${id}`)
+      } catch {
+        storage = undefined
+      }
+      equations.set(id, storage && objectEquation(storage))
+    }
+    return equations.get(id)
+  }
   let runs: ReturnType<typeof characterRuns> | undefined
   const runAt = (place: number) => {
     runs ??= characterRuns(word, table, places.characters)
@@ -549,6 +563,10 @@ function wordPictures(
      */
     inline(place: number, field: { object?: number | undefined; chart: boolean }): number | undefined {
       return once(`inline:${place}`, () => inlineAt(place, field))
+    },
+    /** The equation of Equation Editor or MathType an object holds, by the number of its storage, as linear text. */
+    equation(object: number | undefined): string | undefined {
+      return object === undefined ? undefined : objectEquationOf(object)
     },
     /** The object a field's separator names, by the number of its storage; none for a field of no object. */
     object(place: number): number | undefined {
@@ -838,8 +856,12 @@ export async function readOlderWord(bytes: Uint8Array): Promise<OfficePreview> {
     else if (code === 0x07) endParagraph('\x07', place)
     else if (code === 0x0b) paragraph += '\n'
     else if (code === 0x1e) paragraph += '-'
-    else if (code === 0x01 && place >= 0) figure(pictures?.inline(place, { object: field?.object, chart: /^\s*EMBED\s+\S*Chart/i.test(field?.code ?? '') }))
-    else if (code === 0x08) figure(pictures?.floating(character))
+    else if (code === 0x01 && place >= 0) {
+      // An equation of Equation Editor or MathType is written as linear text in its place, as Word's own are.
+      const equation = pictures?.equation(field?.object)
+      if (equation !== undefined) paragraph += equation
+      else figure(pictures?.inline(place, { object: field?.object, chart: /^\s*EMBED\s+\S*Chart/i.test(field?.code ?? '') }))
+    } else if (code === 0x08) figure(pictures?.floating(character))
     else if (code === 0x09 || (code >= 0x20 && char !== FIGURE_START && char !== FIGURE_END)) paragraph += char
   }
   let read = 0
@@ -2243,18 +2265,22 @@ export async function readOlderPowerPoint(bytes: Uint8Array): Promise<OfficePrev
   const group = drawingGroup && childOf(raw, drawingGroup, ART.drawingGroup)
   const stored = storedPictures(raw, group && childOf(raw, group, ART.store), file.stream('Pictures'))
   const objects = presentationObjects(raw, container)
-  // The chart an object's shape shows, from its storage, when its picture is not one the window shows.
-  const objectChart = async (client: ArtRecord | undefined): Promise<OfficeChart | undefined> => {
+  // The storage of the object a shape shows, through the list of objects, by its client data's reference.
+  const storageOf = async (client: ArtRecord | undefined): Promise<Compound | undefined> => {
     const reference = client && childOf(raw, client, 0x0bc1)
     const persisted = reference && reference.size >= 4 ? objects.get(readU32(raw, reference.at)) : undefined
     const at = persisted === undefined ? undefined : places.get(persisted)
     if (at === undefined) return undefined
     try {
-      const storage = await objectStorage(raw, recordAt(stream, at))
-      return storage && embeddedChart(storage)
+      return await objectStorage(raw, recordAt(stream, at))
     } catch {
       return undefined
     }
+  }
+  // The chart an object's shape shows, from its storage, when its picture is not one the window shows.
+  const objectChart = async (client: ArtRecord | undefined): Promise<OfficeChart | undefined> => {
+    const storage = await storageOf(client)
+    return storage && embeddedChart(storage)
   }
 
   let deck: OlderDeck | undefined
@@ -2276,6 +2302,14 @@ export async function readOlderPowerPoint(bytes: Uint8Array): Promise<OfficePrev
       if (text.title && slide.title === '') slide.title = text.lines.join(' ')
       else slide.lines.push(...text.lines.filter((line) => !slide.lines.includes(line)))
     }
+    // An equation of Equation Editor or MathType on the slide, an object, is a line of its text.
+    const drawing = drawn?.type === 0x03ee ? childOf(raw, drawn, 0x040c) : undefined
+    const shapes = drawing && childOf(raw, drawing, ART.drawing)
+    for (const shape of shapes ? artShapes(raw, shapes) : []) {
+      const storage = shape.client && (await storageOf(shape.client))
+      const equation = storage && objectEquation(storage)
+      if (equation !== undefined && !slide.lines.includes(equation)) slide.lines.push(equation)
+    }
     const drawnSlide =
       deck && drawn?.type === 0x03ee && drawnBytes < DRAWINGS_LIMIT ? await drawOlderSlide(deck, drawn, persisted, index + 1).catch(() => undefined) : undefined
     if (drawnSlide) {
@@ -2293,8 +2327,6 @@ export async function readOlderPowerPoint(bytes: Uint8Array): Promise<OfficePrev
       slides.push(slide)
       continue
     }
-    const drawing = drawn?.type === 0x03ee ? childOf(raw, drawn, 0x040c) : undefined
-    const shapes = drawing && childOf(raw, drawing, ART.drawing)
     const placed: number[] = []
     for (const shape of shapes ? artShapes(raw, shapes) : []) {
       if (shape.picture === undefined) continue

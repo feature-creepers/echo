@@ -6,6 +6,8 @@
  */
 
 import { type Archive, partOf, textOf } from './archive.ts'
+import { openCompound } from './compound.ts'
+import { objectEquation } from './equation-editor.ts'
 import { drawMetafile, shownSize } from './metafile.ts'
 import { formatNumber, type NumberFormatOptions } from './number-format.ts'
 import type { OfficeChart, OfficeFigure } from './office-text.ts'
@@ -101,6 +103,7 @@ export class Figures {
   readonly list: OfficeFigure[] = []
   private bytes = 0
   private readonly found = new Map<string, number>()
+  private readonly equations = new Map<string, Promise<string | undefined>>()
   private readonly archive: Archive
   private readonly options: NumberFormatOptions
   private readonly cells: CellSource | undefined
@@ -155,6 +158,32 @@ export class Figures {
       const chart = await read(xml, this.options, cells)
       return chart ? { kind: 'chart', ...chart } : { kind: 'unshown', alt, what: 'chart' }
     })
+  }
+
+  /**
+   * The equation an object of Equation Editor or MathType keeps in a part of the archive (`oleObject1.bin`, a compound
+   * file of its own), as linear text, read once; none for another object or one that cannot be read.
+   */
+  equation(part: string | undefined): Promise<string | undefined> {
+    if (part === undefined) return Promise.resolve(undefined)
+    let read = this.equations.get(part)
+    if (!read) {
+      const bytes = partOf(this.archive, part)
+      read = bytes
+        ? bytes().then(
+            (object) => {
+              try {
+                return objectEquation(openCompound(object))
+              } catch {
+                return undefined
+              }
+            },
+            () => undefined
+          )
+        : Promise.resolve(undefined)
+      this.equations.set(part, read)
+    }
+    return read
   }
 
   private async add(key: string, make: () => Promise<OfficeFigure | undefined>): Promise<number | undefined> {

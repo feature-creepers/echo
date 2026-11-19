@@ -69,6 +69,8 @@ export interface WordFigures {
   rule(place: number): { share: number; height: number; color: string | undefined } | undefined
   /** A figure's size in the text, in points. */
   size(figure: number): { width?: number | undefined; height?: number | undefined } | undefined
+  /** The equation of Equation Editor or MathType an object holds, by the number of its storage, as linear text. */
+  equation?(object: number | undefined): string | undefined
 }
 
 /** A Word 97 document's streams and the parts its header names, as `binary-office.ts` found them. */
@@ -1548,7 +1550,8 @@ class OlderWordReader {
       }
     if (figure === undefined) return undefined
     const size = this.file.figures.size(figure)
-    return { placed: { figure, alt: '', width: size?.width, height: size?.height } }
+    // An equation of Equation Editor or MathType is shown by its picture, its linear text the picture's words.
+    return { placed: { figure, alt: this.file.figures.equation?.(field?.object) ?? '', width: size?.width, height: size?.height } }
   }
 
   /** A shape anchored at a character, placed as Word places it: at a side of the text it wraps, or at its place over it. */

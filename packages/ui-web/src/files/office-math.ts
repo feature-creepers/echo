@@ -113,10 +113,10 @@ const switchedOn = (node: MathNode, properties: string, name: string) => {
  */
 const single = (text: string) => [...text].length <= 1 || /^\d+([.,]\d+)?$/.test(text) || /^\(.*\)$|^\[.*\]$|^\{.*\}$/u.test(text)
 
-const grouped = (text: string) => (single(text) ? text : `(${text})`)
+export const grouped = (text: string): string => (single(text) ? text : `(${text})`)
 
 /** A part raised or lowered: in superscript or subscript characters when Unicode has each, else after ^ or _. */
-function script(base: string, text: string, raised: boolean): string {
+export function script(base: string, text: string, raised: boolean): string {
   if (text === '') return base
   const characters = raised ? SUPERSCRIPTS : SUBSCRIPTS
   const letters = [...text]

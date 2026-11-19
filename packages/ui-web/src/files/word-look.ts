@@ -28,6 +28,7 @@ import {
   type TextBox,
   type TextLook
 } from './document-look.ts'
+import { isEquationProgram } from './equation-editor.ts'
 import { emuPixels, type Figures, lengthPixels, readChart } from './office-figures.ts'
 import { mathText } from './office-math.ts'
 import { BLOCK_LIMIT } from './office-text.ts'
@@ -1408,7 +1409,10 @@ class WordReader {
     const data = findNode(node, (one) => one.name === 'v:imagedata')
     const target = data?.attributes['r:id']
     if (target === undefined) return undefined
-    const alt = data?.attributes['o:title'] ?? ''
+    // An equation of Equation Editor or MathType is shown by its picture, its linear text the picture's words.
+    const object = findNode(node, (one) => one.name === 'o:OLEObject')
+    const equation = isEquationProgram(object?.attributes.ProgID) ? await this.figures.equation(story.targets.get(object?.attributes['r:id'] ?? '')) : undefined
+    const alt = equation ?? data?.attributes['o:title'] ?? ''
     const figure = await this.figures.picture(story.targets.get(target), alt, { width: lengthPixels(width), height: lengthPixels(height) })
     if (figure === undefined) return undefined
     return { placed: { figure, alt, width: points(width), height: points(height) } }

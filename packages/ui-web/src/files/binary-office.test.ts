@@ -447,6 +447,76 @@ function artShape(id: number, flags: number, picture?: number, description?: str
 /** A drawing of shapes, in their group, after the group's own shape. */
 const artDrawing = (...shapes: Uint8Array[]) => container(0xf002, [atom(0xf008, new Bytes().zeros(8)), container(0xf003, [artShape(1024, 0x05), ...shapes])])
 const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d]
+
+/**
+ * The `Equation Native` stream of an object of Equation Editor 3 holding x²: its header of 28 bytes, then MTEF 3's
+ * records, a line holding x and a template of a power after it.
+ */
+const EQUATION = (() => {
+  const mtef = [3, 1, 1, 3, 10, 10, 0x01, 0x02, 0x83, 0x78, 0, 0x03, 15, 0, 0, 0x11, 0x01, 0x02, 0x88, 0x32, 0, 0, 0, 0, 0]
+  return new Bytes().u16(28).u32(0x20000).u16(0).u32(mtef.length).zeros(16).raw(mtef).done()
+})()
+
+/** A ZIP archive of the parts given, stored as they are: enough of the format for a reader. */
+function storedZip(parts: Record<string, string | Uint8Array>): Uint8Array {
+  const local = new Bytes()
+  const central = new Bytes()
+  const named = Object.entries(parts)
+  for (const [name, content] of named) {
+    const data = typeof content === 'string' ? new TextEncoder().encode(content) : content
+    const offset = local.length
+    local.u32(0x04034b50).zeros(14).u32(data.length).u32(data.length).u16(name.length).u16(0).narrow(name).raw(data)
+    central.u32(0x02014b50).zeros(16).u32(data.length).u32(data.length).u16(name.length).zeros(12).u32(offset).narrow(name)
+  }
+  const directory = central.done()
+  return new Bytes()
+    .raw(local.done())
+    .raw(directory)
+    .u32(0x06054b50)
+    .zeros(4)
+    .u16(named.length)
+    .u16(named.length)
+    .u32(directory.length)
+    .u32(local.length)
+    .u16(0)
+    .done()
+}
+
+describe('an object of Equation Editor or MathType in a file of Word or PowerPoint 2007 and later', () => {
+  const object = compound({ 'Equation Native': EQUATION })
+
+  it('writes a document’s as linear text in its place, and as its picture’s words in its look', async () => {
+    const body =
+      '<w:p><w:r><w:t xml:space="preserve">Area: </w:t></w:r><w:r><w:object><v:shape style="width:20pt;height:12pt"><v:imagedata r:id="rId1" o:title=""/></v:shape>' +
+      '<o:OLEObject Type="Embed" ProgID="Equation.3" r:id="rId2"/></w:object></w:r><w:r><w:t xml:space="preserve"> here</w:t></w:r></w:p>'
+    const file = storedZip({
+      'word/document.xml': `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}</w:body></w:document>`,
+      'word/_rels/document.xml.rels':
+        '<Relationships><Relationship Id="rId1" Target="media/image1.png"/><Relationship Id="rId2" Target="embeddings/oleObject1.bin"/></Relationships>',
+      'word/media/image1.png': new Uint8Array(PNG),
+      'word/embeddings/oleObject1.bin': object
+    })
+    const preview = await readOffice('docx', file)
+    expect(preview).toMatchObject({ markdown: 'Area: x² here' })
+    const spans = preview.kind === 'document' ? preview.look?.pages[0]?.bands[0]?.blocks[0] : undefined
+    expect(spans).toMatchObject({ spans: [{ text: 'Area: ' }, { placed: { alt: 'x²' } }, { text: ' here' }] })
+  })
+
+  it('writes a slide’s as a line of its text, and leaves another object to its picture', async () => {
+    const frame = (id: string, program: string) =>
+      `<p:graphicFrame><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/presentationml/2006/ole"><p:oleObj name="Object" r:id="${id}" progId="${program}"><p:embed/></p:oleObj></a:graphicData></a:graphic></p:graphicFrame>`
+    const file = storedZip({
+      'ppt/presentation.xml': '<p:presentation><p:sldIdLst><p:sldId id="256" r:id="rId2"/></p:sldIdLst></p:presentation>',
+      'ppt/_rels/presentation.xml.rels': '<Relationships><Relationship Id="rId2" Target="slides/slide1.xml"/></Relationships>',
+      'ppt/slides/slide1.xml': `<p:sld><p:cSld><p:spTree>${frame('rId2', 'Equation.DSMT4')}${frame('rId3', 'Excel.Sheet.8')}</p:spTree></p:cSld></p:sld>`,
+      'ppt/slides/_rels/slide1.xml.rels':
+        '<Relationships><Relationship Id="rId2" Target="../embeddings/oleObject1.bin"/><Relationship Id="rId3" Target="../embeddings/oleObject2.bin"/></Relationships>',
+      'ppt/embeddings/oleObject1.bin': object,
+      'ppt/embeddings/oleObject2.bin': object
+    })
+    expect(await readOffice('pptx', file)).toMatchObject({ slides: [{ title: '', lines: ['x²'] }] })
+  })
+})
 const JPEG = [0xff, 0xd8, 0xff, 0xe0, 0, 0x10]
 
 describe('a Word 97 document', () => {
@@ -598,6 +668,46 @@ describe('a Word 97 document', () => {
       }
     )
     expect(textual(await readOlderWord(file))).toEqual({ kind: 'document', markdown: '![](figure:0)\n\nEnd', figures: [GRAPH_CHART], cut: false })
+  })
+
+  it('writes an equation of Equation Editor as linear text in its place, and as its picture’s words in its look', async () => {
+    const text = 'Area: \x13 EMBED Equation.3 \x14\x01\x15 here\r'
+    const separator = 1024 + text.indexOf('\x14') * 2
+    const shape = artShape(1026, 0x0a00, 1)
+    const entry = storeEntry(blipOf(0xf01e, 0x6e0, PNG))
+    const data = new Bytes()
+      .u32(68 + shape.length + entry.length)
+      .u16(68)
+      .u16(0x64)
+      .padTo(68)
+      .raw(shape)
+      .raw(entry)
+      .done()
+    const object = new Bytes().u16(0x080a).u8(1).u16(0x0855).u8(1).u16(0x6a03).u32(78).done()
+    const picture = new Bytes().u16(0x6a03).u32(0).u16(0x0855).u8(1).done()
+    const file = wordDocument(
+      [
+        { text, format: formatting(0) },
+        { text: 'End\r', format: formatting(0) }
+      ],
+      false,
+      {
+        runs: [
+          { start: 1024, end: separator, properties: new Uint8Array() },
+          { start: separator, end: separator + 2, properties: object },
+          { start: separator + 2, end: separator + 4, properties: picture }
+        ],
+        data,
+        anchors: [],
+        drawings: new Uint8Array(),
+        blip: new Uint8Array(),
+        objects: { _78: { 'Equation Native': EQUATION } }
+      }
+    )
+    const preview = await readOlderWord(file)
+    expect(textual(preview)).toMatchObject({ markdown: 'Area: x² here\n\nEnd' })
+    const opening = preview.kind === 'document' ? preview.look?.pages[0]?.bands[0]?.blocks[0] : undefined
+    expect(opening).toMatchObject({ spans: [{ text: 'Area: ' }, { placed: { figure: 0, alt: 'x²' } }, { text: ' here' }] })
   })
 
   it('says when it is protected with a password, or is not one', async () => {
@@ -1686,6 +1796,14 @@ describe('a PowerPoint 97 presentation', () => {
     // An object that holds no chart shows nothing of it.
     const [, other] = drawings(await readOlderPowerPoint(presentation(false, false, await packedObject(compound({ Other: new Uint8Array([1]) })))))
     expect(other).not.toContain('<g transform="translate(3.33 1.67)">')
+  })
+
+  it('writes an object’s equation of Equation Editor as a line of its slide', async () => {
+    const read = await readOlderPowerPoint(presentation(false, false, await packedObject(compound({ 'Equation Native': EQUATION }))))
+    expect(read.kind === 'presentation' ? read.slides.map((slide) => slide.lines) : undefined).toEqual([
+      ['Train at 9', 'Museum then dinner', 'A note of its own'],
+      ['x²']
+    ])
   })
 
   it('says when it is protected with a password, or is not one', async () => {
