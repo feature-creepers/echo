@@ -1,14 +1,12 @@
 import { type Client, readFile } from '@repo/client'
 import { ATTACHMENT_MAX_BYTES } from '@repo/protocol'
+import DOMPurify, { type Config } from 'dompurify'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { Markdown } from '../view/blocks/markdown.tsx'
-import { DocumentPages } from './document-view.tsx'
-import { Figure, Figures, useFigureUrls, withHeldPictures } from './figure-view.tsx'
 import { badgeOf, extensionOf, kindOf, previewTypeOf } from './kinds.ts'
 import { type OfficePreview, readOffice } from './office.ts'
-import { SheetView } from './sheet-view.tsx'
 import { sizeWords, tableRows } from './words.ts'
 
 /** How much of a text is read to show it: enough for any document a person reads in a pane. */
@@ -112,9 +110,8 @@ function Shown({ name, bytes, size, className }: { name: string; bytes: Uint8Arr
 type OfficeReading = { is: 'reading' } | { is: 'failed'; why: string } | { is: 'read'; preview: OfficePreview }
 
 /**
- * An Office file, Word, Excel, PowerPoint or OpenDocument, read in the window: a document as the Prose block shows
- * it, or its pages as they look where they could be read, each sheet as a table, each slide drawn or its title and
- * text, each with its pictures and charts. The preview says how much of its look it shows, and that its app shows the rest.
+ * An Office file read in the window: a document's text, tables and pictures, each sheet as a table, each slide's
+ * title and text. It says that its app shows how the file looks.
  */
 function Office({ name, bytes, className }: { name: string; bytes: Uint8Array; className?: string | undefined }) {
   const [reading, setReading] = useState<OfficeReading>({ is: 'reading' })
@@ -136,62 +133,20 @@ function Office({ name, bytes, className }: { name: string; bytes: Uint8Array; c
 }
 
 function OfficeShown({ preview, className }: { preview: OfficePreview; className?: string | undefined }) {
-  const all = useMemo(
-    () =>
-      withHeldPictures(
-        preview.kind === 'document'
-          ? preview.figures
-          : preview.kind === 'workbook'
-            ? preview.sheets.flatMap((sheet) => sheet.figures)
-            : preview.slides.flatMap((slide) => (slide.drawing ? [slide.drawing, ...slide.figures] : slide.figures))
-      ),
-    [preview]
-  )
-  const urls = useFigureUrls(all)
-  const shown = all.some((figure) => figure.kind !== 'unshown')
-  const drawn =
-    preview.kind === 'presentation'
-      ? preview.slides.some((slide) => slide.drawing) && 'Its slides'
-      : preview.kind === 'document'
-        ? preview.look && 'Its pages'
-        : preview.sheets.some((sheet) => sheet.look) && 'Its sheets'
   const note = (cut: boolean) => (
     <p className="mt-6 text-text-faint text-xs">
       {cut ? 'Showing the start of it. ' : ''}
-      {drawn
-        ? `${drawn} as drawn here: open it with its app for exactly how it looks.`
-        : `${shown ? 'Its text, pictures and charts' : 'Its text only'}: open it with its app for how it looks.`}
+      Its content only: open it with its app for how it looks.
     </p>
   )
   switch (preview.kind) {
-    case 'document': {
-      // A document names its figures by their place: `![words](figure:2)`.
-      const figure = (address: string, alt: string, block: boolean) => {
-        const found = /^figure:(\d+)$/.exec(address)
-        const shownFigure = found ? preview.figures[Number(found[1])] : undefined
-        return shownFigure ? <Figure figure={shownFigure} url={urls.get(shownFigure)} urls={urls} alt={alt} block={block} /> : alt
-      }
-      // A document drawn as it looks shows its pages; one that could not be shows its text.
-      if (preview.look)
-        return (
-          <Scroll className={className}>
-            <DocumentPages look={preview.look} figures={preview.figures} urls={urls} />
-            {note(preview.cut)}
-          </Scroll>
-        )
+    case 'document':
       return (
         <Scroll className={className}>
-          <div className="mx-auto max-w-[44rem] text-[0.875rem]">
-            {preview.markdown === '' ? (
-              <p className="text-sm text-text-faint">This document has no text.</p>
-            ) : (
-              <Markdown text={preview.markdown} figure={figure} />
-            )}
-          </div>
-          {note(preview.cut)}
+          <DocumentHtml html={preview.html} />
+          {note(false)}
         </Scroll>
       )
-    }
     case 'workbook':
       return (
         <Scroll className={className}>
@@ -200,13 +155,7 @@ function OfficeShown({ preview, className }: { preview: OfficePreview; className
             {preview.sheets.map((sheet, index) => (
               <section key={`${index}-${sheet.name}`} className="grid gap-2">
                 {preview.sheets.length > 1 && <Eyebrow>{sheet.name}</Eyebrow>}
-                {/* A sheet whose look was read shows as it looks; any other, as a table. */}
-                {sheet.look && sheet.rows.length > 0 ? (
-                  <SheetView look={sheet.look} rows={sheet.rows} />
-                ) : (
-                  (sheet.rows.length > 0 || sheet.figures.length === 0) && <Table rows={sheet.rows} />
-                )}
-                {sheet.figures.length > 0 && <Figures figures={sheet.figures} urls={urls} />}
+                <Table rows={sheet.rows} />
               </section>
             ))}
           </div>
@@ -221,27 +170,47 @@ function OfficeShown({ preview, className }: { preview: OfficePreview; className
             {preview.slides.map((slide, index) => (
               <li key={index} className="grid gap-1.5 rounded-md border border-line px-4 py-3">
                 <span className="text-[0.6875rem] text-text-faint">Slide {index + 1}</span>
-                {/* A slide drawn shows its text in the drawing, and says it in the drawing's description. */}
-                {slide.drawing ? (
-                  <Figure figure={slide.drawing} url={urls.get(slide.drawing)} alt={slide.drawing.alt} block />
-                ) : (
-                  <>
-                    {slide.title !== '' && <span className="font-medium text-[0.9375rem]">{slide.title}</span>}
-                    {slide.lines.map((line, at) => (
-                      <span key={at} className="text-[0.8125rem] text-text-soft">
-                        {line}
-                      </span>
-                    ))}
-                  </>
-                )}
-                {slide.figures.length > 0 && <Figures figures={slide.figures} urls={urls} className="mt-1.5" />}
+                {slide.title !== '' && <span className="font-medium text-[0.9375rem]">{slide.title}</span>}
+                {slide.lines.map((line, at) => (
+                  <span key={at} className="text-[0.8125rem] text-text-soft">
+                    {line}
+                  </span>
+                ))}
               </li>
             ))}
           </ol>
-          {note(preview.cut)}
+          {note(false)}
         </Scroll>
       )
   }
+}
+
+/**
+ * Only plain structure is kept from a document's HTML: no styles, no scripts, no links to follow, and pictures only
+ * from the document's own bytes, so showing it reaches nothing outside the file.
+ */
+const DOCUMENT_HTML: Config = {
+  FORBID_TAGS: ['style'],
+  FORBID_ATTR: ['style', 'href', 'class', 'id'],
+  ALLOWED_URI_REGEXP: /^data:image\/(png|jpe?g|gif|webp|bmp);base64,/i
+}
+
+/** A Word document's HTML, sanitised by DOMPurify, laid out as the Prose block lays out text. */
+function DocumentHtml({ html }: { html: string }) {
+  const clean = useMemo(() => DOMPurify.sanitize(html, DOCUMENT_HTML), [html])
+  if (clean.trim() === '') return <p className="text-sm text-text-faint">This document has no text.</p>
+  return (
+    <div
+      className={cn(
+        'mx-auto grid min-w-0 max-w-[44rem] grid-cols-1 gap-3 text-[0.875rem] leading-relaxed [overflow-wrap:anywhere]',
+        '[&_h1]:font-medium [&_h1]:text-lg [&_h2]:font-medium [&_h2]:text-base [&_h3]:font-medium [&_h4]:font-medium',
+        '[&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_li]:pl-1 [&_strong]:font-semibold',
+        '[&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-line [&_td]:px-3 [&_td]:py-1.5 [&_td]:align-top',
+        '[&_img]:max-w-full [&_img]:rounded-xs'
+      )}
+      dangerouslySetInnerHTML={{ __html: clean }}
+    />
+  )
 }
 
 /** JSON laid out to be read, when it is whole; anything else as it is. */

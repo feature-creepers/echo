@@ -5,7 +5,7 @@
 
 /**
  * How a file is previewed: rendered as the Prose block renders, as text, as a table, as a picture, as a document, as
- * the text of an Office file (Word, Excel, PowerPoint or OpenDocument), or not at all.
+ * the content of an Office file (Word, Excel, PowerPoint or an OpenDocument spreadsheet), or not at all.
  */
 export type PreviewMode = 'markdown' | 'text' | 'csv' | 'image' | 'pdf' | 'office' | 'none'
 
@@ -61,15 +61,15 @@ const KINDS: Record<string, FileKind> = {
   avif: { label: 'AVIF image', preview: 'image' },
   ico: { label: 'Icon', preview: 'image' },
   pdf: { label: 'PDF document', preview: 'pdf' },
-  doc: { label: 'Word document', preview: 'office' },
+  doc: { label: 'Word document', preview: 'none' },
   docx: { label: 'Word document', preview: 'office' },
   xls: { label: 'Excel spreadsheet', preview: 'office' },
   xlsx: { label: 'Excel spreadsheet', preview: 'office' },
-  ppt: { label: 'PowerPoint presentation', preview: 'office' },
+  ppt: { label: 'PowerPoint presentation', preview: 'none' },
   pptx: { label: 'PowerPoint presentation', preview: 'office' },
-  odt: { label: 'OpenDocument text', preview: 'office' },
+  odt: { label: 'OpenDocument text', preview: 'none' },
   ods: { label: 'OpenDocument spreadsheet', preview: 'office' },
-  odp: { label: 'OpenDocument presentation', preview: 'office' },
+  odp: { label: 'OpenDocument presentation', preview: 'none' },
   zip: { label: 'ZIP archive', preview: 'none' },
   gz: { label: 'Compressed file', preview: 'none' },
   tar: { label: 'Archive', preview: 'none' },
