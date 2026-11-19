@@ -485,6 +485,8 @@ describe('files between the person and the assistant', () => {
     let ids = 0
     const workspace = memoryWorkspace()
     const harness = scriptedHarness({ images: true })
+    // The folders the computer watches, and how to tell each that something changed in it.
+    const watching = new Map<string, (paths: readonly string[]) => void>()
     const core = createCore({
       version: '1',
       acceptsCredential: () => true,
@@ -502,12 +504,16 @@ describe('files between the person and the assistant', () => {
         read: async () => undefined,
         write: async () => undefined,
         fingerprint: async () => undefined,
-        trash: async (path) => path
+        trash: async (path) => path,
+        watch: (folder, changed) => {
+          watching.set(folder, changed)
+          return () => watching.delete(folder)
+        }
       }
     })
     const events: Event[] = []
     core.onEvent((event) => events.push(event))
-    return { core, harness, workspace, events }
+    return { core, harness, workspace, events, watching }
   }
 
   it('keeps a file handed over in pieces, sends it with what is said, and lets the person browse and read it', async () => {
@@ -578,6 +584,17 @@ describe('files between the person and the assistant', () => {
     await settled()
     const { settings } = await run(core, 'settings.read', {})
     expect(settings.access.places).toEqual([{ path: '/home/ada/Projects', kind: 'folder', write: false }])
+  })
+
+  it('tells what a command changed in a folder the person browses, and stops watching when it closes', async () => {
+    const { core, workspace, events, watching } = withFolder()
+    workspace.files.set('trips/rome.md', new Uint8Array([1]))
+    await run(core, 'workspace.list', { path: 'trips' })
+    expect([...watching.keys()]).toEqual(['/home/ada/workspace/trips'])
+    watching.get('/home/ada/workspace/trips')?.(['/home/ada/workspace/trips/naples.md'])
+    expect(events).toContainEqual({ type: 'event', name: 'workspace.changed', paths: ['trips/naples.md'] })
+    core.close()
+    expect(watching.size).toBe(0)
   })
 
   it('refuses something said with nothing in it', async () => {

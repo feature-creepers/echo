@@ -43,7 +43,14 @@ export function sorted(items: readonly WorkspaceItem[]): WorkspaceItem[] {
 
 const missing = (what: string): { ok: false; error: CommandError } => ({ ok: false, error: { code: 'invalid-input', message: `There is no ${what}.` } })
 
-export function createBrowsing({ workspace, settings }: { workspace: Workspace | undefined; settings: UserSettings }): Browsing {
+export interface BrowsingOptions {
+  workspace: Workspace | undefined
+  settings: UserSettings
+  /** A folder was listed for the person, by where it is on the computer: what changes in it is told from now. */
+  listed?: ((location: string) => void) | undefined
+}
+
+export function createBrowsing({ workspace, settings, listed }: BrowsingOptions): Browsing {
   /** Whether the assistant may read a place outside its folder, as the person granted. */
   const readable = (location: string) => {
     const { places, computer } = settings.read().access
@@ -57,6 +64,7 @@ export function createBrowsing({ workspace, settings }: { workspace: Workspace |
       if (path === undefined) return missing(`folder "${asked}" in the assistant's folder`)
       const [folder, items] = await Promise.all([workspace.stat(path), workspace.list(path)])
       if (folder?.kind !== 'folder' || !items) return missing(`folder "${asked}" in the assistant's folder`)
+      listed?.(folder.location)
       return { ok: true, output: { folder, entries: sorted(items.filter((item) => !SYSTEM_FILES.has(item.name.toLowerCase()))) } }
     },
 

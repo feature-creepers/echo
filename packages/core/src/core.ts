@@ -14,6 +14,7 @@ import { type Admission, admit } from './devices/admission.ts'
 import { createEngineRoom } from './engines/engines.ts'
 import { createBrowsing } from './files/browse.ts'
 import { createFiles } from './files/files.ts'
+import { createFolderWatch } from './files/watch.ts'
 import { createWrittenFiles } from './files/written.ts'
 import { createLibrary } from './library/library.ts'
 import { mediaControlOf } from './media/control.ts'
@@ -268,7 +269,14 @@ export function createCore(options: CoreOptions): Core {
     if (paths.length > 0) emit({ type: 'event', name: 'workspace.changed', paths })
   }
   const attachments = createAttachments({ workspace, now, newId: options.newId, onChange: (path) => workspaceChanged([path]) })
-  const browsing = createBrowsing({ workspace, settings })
+  // What changes in the folders the person browses is told whoever changed it, a command included, where the computer
+  // can watch a folder.
+  const watchFolder = options.computer?.watch?.bind(options.computer)
+  const folderWatch =
+    workspace && watchFolder
+      ? createFolderWatch({ watch: watchFolder, pathOf: (location) => workspace.pathOf(location), timers: options.timers, changed: workspaceChanged })
+      : undefined
+  const browsing = createBrowsing({ workspace, settings, listed: folderWatch?.follow })
   const written = workspace
     ? createWrittenFiles({
         screen,
@@ -729,6 +737,7 @@ export function createCore(options: CoreOptions): Core {
       toolServer = url
     },
     close() {
+      folderWatch?.close()
       schedule.close()
       channel.close()
       memory.close()
