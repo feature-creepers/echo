@@ -628,6 +628,18 @@ describe('an object of another app in a document or a presentation', () => {
     expect(preview).toMatchObject({ markdown: 'See:\n\n> Minutes\n>\n> All agreed.\n\nAfter' })
     const opening = preview.kind === 'document' ? preview.look?.pages[0]?.bands[0]?.blocks[0] : undefined
     expect(opening).toMatchObject({ spans: [{ text: 'See: ' }, { placed: { alt: 'Minutes All agreed.' } }] })
+    // The objects the held document holds itself keep their pictures: a document within it is not read.
+    const holding = (inner: Uint8Array) =>
+      storedZip({
+        'word/document.xml': `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}</w:body></w:document>`,
+        'word/_rels/document.xml.rels':
+          '<Relationships><Relationship Id="rId1" Target="media/image1.png"/><Relationship Id="rId2" Target="embeddings/Microsoft_Word_Document.docx"/></Relationships>',
+        'word/media/image1.png': new Uint8Array(PNG),
+        'word/embeddings/Microsoft_Word_Document.docx': inner
+      })
+    const deeper = storedZip({ 'word/document.xml': '<w:document><w:body><w:p><w:r><w:t>Deeper</w:t></w:r></w:p></w:body></w:document>' })
+    const nested = await readOffice('docx', holding(holding(deeper)))
+    expect(nested).toMatchObject({ markdown: 'See:\n\n> See: \n>\n> After\n\nAfter' })
   })
 
   it('shows a document of Word 97 held in a Word 97 document or a presentation by its text', async () => {

@@ -336,14 +336,16 @@ const runPart = (text: string, format: Format | undefined, link: string | undefi
  * A Word document as Markdown: its headings, paragraphs with their strong, slanted and struck text and their links,
  * its bulleted and numbered lists, its tables, and its pictures and charts where they are placed. A text box's
  * paragraphs come before the paragraph that holds it; what Word keeps for older apps (`mc:Fallback`) is passed over.
+ * What its objects of other apps hold is read by `objects`; a document held as an object is read without, so the
+ * objects it holds itself keep their pictures.
  */
-export async function readDocument(archive: Archive, options: NumberFormatOptions = {}): Promise<OfficePreview> {
+export async function readDocument(archive: Archive, options: NumberFormatOptions = {}, objects?: ObjectReader): Promise<OfficePreview> {
   const xml = await textOf(archive, 'word/document.xml')
   if (xml === undefined) throw new Error('This is not a Word document.')
   const { headings, formats } = await wordStyles(archive)
   const numbered = await wordNumbering(archive)
   const targets = await relationships(archive, 'word/document.xml')
-  const figures = new Figures(archive, options, embeddedCells(archive, options), embeddedObjects(options))
+  const figures = new Figures(archive, options, embeddedCells(archive, options), objects)
   const blocks: string[] = []
   // The paragraphs open, a text box's within the one that holds it, and the runs open, likewise.
   const paragraphs: WordParagraph[] = []
@@ -726,7 +728,8 @@ const HELD_TEXT_LIMIT = 4000
 
 /**
  * A document of Word held as an object, by its text: newer, held as it is or in a compound file's `Package` stream, or
- * of 97 to 2003, its storage a Word document of its own. Its pictures are left out, their words kept.
+ * of 97 to 2003, its storage a Word document of its own. Its pictures are left out, their words kept, and the objects
+ * it holds itself are not read: they keep their pictures.
  */
 async function embeddedText(source: Uint8Array | Compound, options: NumberFormatOptions): Promise<ObjectRead | undefined> {
   let preview: OfficePreview
@@ -1915,7 +1918,7 @@ export async function readOffice(extension: string, bytes: Uint8Array, options: 
   const archive = openArchive(bytes)
   switch (extension) {
     case 'docx':
-      return readDocument(archive, options)
+      return readDocument(archive, options, embeddedObjects(options))
     case 'xlsx':
       return readWorkbook(archive, options, embeddedObjects(options))
     case 'pptx':
