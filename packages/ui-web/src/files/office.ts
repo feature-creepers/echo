@@ -967,11 +967,14 @@ function readFrameStep(frame: OpenFrame, event: XmlEvent, describing: { now: boo
   } else if (event.name === 'svg:title' || event.name === 'svg:desc') describing.now = false
 }
 
-/** The figure a frame shows: its object's chart, else its picture. An object that is not a chart shows nothing. */
+/**
+ * The figure a frame shows: its object's chart, else its picture. An object that is not a chart shows the picture its
+ * app last drew of it (`ObjectReplacements/`), a StarView metafile among them, or nothing when it keeps none.
+ */
 async function frameFigure(frame: OpenFrame, figures: Figures): Promise<number | undefined> {
   const object = openPart(frame.object)
-  if (object !== undefined) return figures.chart(`${object}/content.xml`, frame.alt, readOpenChart)
-  return figures.picture(openPart(frame.image), frame.alt, frame)
+  const chart = object === undefined ? undefined : await figures.chart(`${object}/content.xml`, frame.alt, readOpenChart)
+  return chart ?? figures.picture(openPart(frame.image), frame.alt, frame)
 }
 
 /**
