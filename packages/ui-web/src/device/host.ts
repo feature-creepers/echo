@@ -24,6 +24,12 @@ export interface About {
  * What the interface needs from the app that hosts it to show and change the settings of this device. The
  * desktop app supplies it; the interface never knows how it keeps them.
  */
+/**
+ * What a folder or a file is picked for, which words the system's picker: giving access to several, the one folder a
+ * project works in, the proof of concept's folder to import, or a folder to hand over with what is said.
+ */
+export type PickPurpose = 'access' | 'project' | 'import' | 'attach'
+
 export interface DeviceHost {
   settings: {
     read(): Promise<DeviceSettings>
@@ -51,9 +57,10 @@ export interface DeviceHost {
   files?: {
     /**
      * The system's own picker: folders or files to give access to; for a project, the one folder it works in; to
-     * import, the proof of concept's folder. Nothing when the user cancels.
+     * import, the proof of concept's folder; to attach, one folder to hand over with what is said. Nothing when the
+     * user cancels.
      */
-    pick(kind: 'folder' | 'file', purpose?: 'access' | 'project' | 'import'): Promise<string[]>
+    pick(kind: 'folder' | 'file', purpose?: PickPurpose): Promise<string[]>
     /** Show a folder or a file in the system's file manager. */
     reveal(path: string): Promise<void>
     /**

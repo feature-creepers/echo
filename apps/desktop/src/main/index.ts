@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { basename, isAbsolute, join } from 'node:path'
 import { type DeviceSettingsChange, isShortcut, runsWhenOpened, shortcutClash } from '@repo/client'
 import { type AccentName, accents, color, frame } from '@repo/tokens'
-import { app, BrowserWindow, dialog, ipcMain, nativeImage, nativeTheme, session, shell, type WebContents } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, nativeTheme, type OpenDialogOptions, session, shell, type WebContents } from 'electron'
 import {
   type About,
   APP_CHANNELS,
@@ -49,6 +49,30 @@ const selfChecking = process.argv.includes('--self-check')
 const scratch = selfChecking ? mkdtempSync(join(tmpdir(), 'self-check-')) : undefined
 if (scratch) app.setPath('userData', scratch)
 else if (!app.isPackaged) app.setPath('userData', `${app.getPath('userData')} (development)`)
+
+/** What a folder or a file is picked for: the system's picker is worded for it. */
+type PickPurpose = 'access' | 'project' | 'import' | 'attach'
+
+/**
+ * The system's picker for each purpose: several folders or files to give access to, the one folder a project works
+ * in, the proof of concept's folder to import, or one folder to hand over with what is said.
+ */
+function pickerFor(kind: 'folder' | 'file', purpose: PickPurpose): OpenDialogOptions {
+  switch (purpose) {
+    case 'project':
+      return { title: 'Open a project', buttonLabel: 'Open', properties: ['openDirectory'] }
+    case 'import':
+      return { title: "Choose the proof of concept's folder", buttonLabel: 'Import', properties: ['openDirectory'] }
+    case 'attach':
+      return { title: 'Hand over a folder', buttonLabel: 'Attach', properties: ['openDirectory'] }
+    case 'access':
+      return {
+        title: kind === 'folder' ? 'Give access to folders' : 'Give access to files',
+        buttonLabel: 'Give access',
+        properties: [kind === 'folder' ? 'openDirectory' : 'openFile', 'multiSelections']
+      }
+  }
+}
 
 /** Started with this while running, the app starts listening: what a desktop shortcut runs where global shortcuts are refused. */
 const TALK_FLAG = '--talk'
@@ -320,21 +344,9 @@ function start(): void {
     const page = releasesPage()
     if (page) await shell.openExternal(page)
   })
-  // Folders and files for the assistant are picked by the user in the system's own picker, never typed by the window:
-  // several to give access to, the one folder a project works in, or the proof of concept's folder to import.
-  ipcMain.handle(APP_CHANNELS.filesPick, async (_event, kind: 'folder' | 'file', purpose?: 'access' | 'project' | 'import') => {
-    const picked = await dialog.showOpenDialog(
-      window,
-      purpose === 'project'
-        ? { title: 'Open a project', buttonLabel: 'Open', properties: ['openDirectory'] }
-        : purpose === 'import'
-          ? { title: "Choose the proof of concept's folder", buttonLabel: 'Import', properties: ['openDirectory'] }
-          : {
-              title: kind === 'folder' ? 'Give access to folders' : 'Give access to files',
-              buttonLabel: 'Give access',
-              properties: [kind === 'folder' ? 'openDirectory' : 'openFile', 'multiSelections']
-            }
-    )
+  // Folders and files for the assistant are picked by the user in the system's own picker, never typed by the window.
+  ipcMain.handle(APP_CHANNELS.filesPick, async (_event, kind: 'folder' | 'file', purpose?: PickPurpose) => {
+    const picked = await dialog.showOpenDialog(window, pickerFor(kind, purpose ?? 'access'))
     return picked.canceled ? [] : picked.filePaths
   })
   // Shown in its folder, never opened: opening a file could run it.

@@ -3,12 +3,14 @@ import type { Look } from '@repo/protocol'
 import { type ClipboardEvent, type FormEvent, type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { AttachmentChips } from '../attachments/attachment-chips.tsx'
 import type { Attachments } from '../attachments/use-attachments.ts'
+import { lastPart } from '../changes/words.ts'
 import { useDevice } from '../device/device.tsx'
 import { PaperclipGlyph } from '../files/glyphs.tsx'
 import { Eye } from '../presence/eye.tsx'
 import type { Mood } from '../presence/painter.ts'
 import { cn } from '../primitives/cn.ts'
 import { MicGlyph, PauseGlyph, PlayGlyph, SendGlyph } from '../primitives/icons.tsx'
+import { Menu } from '../primitives/menu.tsx'
 import { StopAllButton } from './stop-all-button.tsx'
 
 export interface InputLineProps {
@@ -48,7 +50,7 @@ export function InputLine({ name, stopAll, onSay, onStop, talk, persona, pause, 
   const picker = useRef<HTMLInputElement>(null)
   const waiting = attachments?.pending.length ?? 0
   // The keys shown in the hints are the ones set for this device.
-  const { settings, mac } = useDevice()
+  const { settings, mac, host } = useDevice()
   const talkKey = settings.shortcuts.talkInWindow && describeShortcut(settings.shortcuts.talkInWindow, mac)
   const anywhereKey = settings.shortcuts.talk && describeShortcut(settings.shortcuts.talk, mac)
   const pauses = settings.listening.pause !== 'never'
@@ -97,6 +99,22 @@ export function InputLine({ name, stopAll, onSay, onStop, talk, persona, pause, 
       attachments?.removeLast()
     }
   }
+
+  /** Files from the window's own picker. */
+  const pickFiles = () => picker.current?.click()
+  /**
+   * A folder from the system's own picker, where the device knows where folders are: given read only, as a folder
+   * dropped on the window is.
+   */
+  const pickFolder = host?.files
+    ? async () => {
+        const [path] = (await host.files?.pick('folder', 'attach').catch(() => [])) ?? []
+        if (path !== undefined) attachments?.add([], [{ name: lastPart(path), path }])
+        input.current?.focus()
+      }
+    : undefined
+  const clipClass =
+    'mb-0.5 flex size-8 items-center justify-center rounded-md text-text-faint transition-colors duration-(--duration-quick) ease-soft hover:bg-white/[0.05] hover:text-text'
 
   // Pictures and files pasted go with the message; text pasted is text, as always.
   const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
@@ -164,15 +182,25 @@ export function InputLine({ name, stopAll, onSay, onStop, talk, persona, pause, 
                 input.current?.focus()
               }}
             />
-            <button
-              type="button"
-              onClick={() => picker.current?.click()}
-              aria-label="Attach files"
-              title="Attach files"
-              className="mb-0.5 flex size-8 items-center justify-center rounded-md text-text-faint transition-colors duration-(--duration-quick) ease-soft hover:bg-white/[0.05] hover:text-text"
-            >
-              <PaperclipGlyph />
-            </button>
+            {pickFolder ? (
+              <Menu
+                side="top"
+                label="Attach"
+                items={[
+                  { label: 'Files…', onSelect: pickFiles },
+                  { label: 'A folder…', detail: 'Read only', onSelect: () => void pickFolder() }
+                ]}
+                trigger={(_open, toggle, trigger) => (
+                  <button type="button" onClick={toggle} {...trigger.props} aria-label="Attach files or a folder" title="Attach" className={clipClass}>
+                    <PaperclipGlyph />
+                  </button>
+                )}
+              />
+            ) : (
+              <button type="button" onClick={pickFiles} aria-label="Attach files" title="Attach files" className={clipClass}>
+                <PaperclipGlyph />
+              </button>
+            )}
           </>
         )}
         {talk && (

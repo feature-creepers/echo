@@ -43,9 +43,10 @@ export interface CameraBridge {
 export interface FilesBridge {
   /**
    * Ask the user to pick folders or files with the system's own picker: several to give access to, one folder to open
-   * a project in, or the proof of concept's folder to import. Nothing when they cancel.
+   * a project in, the proof of concept's folder to import, or a folder to hand over with what is said. Nothing when
+   * they cancel.
    */
-  pick(kind: 'folder' | 'file', purpose?: 'access' | 'project' | 'import'): Promise<string[]>
+  pick(kind: 'folder' | 'file', purpose?: 'access' | 'project' | 'import' | 'attach'): Promise<string[]>
   /** Show a folder or a file in the system's file manager. Nothing is opened or run. */
   reveal(path: string): Promise<void>
   /** Open a file with the app the system gives its kind, or a folder in the file manager. A file that would run a program is shown in its folder instead. */
