@@ -264,7 +264,7 @@ export function AccessSection({ client, settings, productName }: { client: Clien
         <ConfirmationRow access={access} busy={busy} change={change} />
         <SettingRow
           title="Stop everything"
-          detail={`Interrupts everything ${productName} is doing, withdraws its questions and forgets what you allowed for this session. Also in the tray's menu, or say “stop everything”.`}
+          detail={`Interrupts everything ${productName} is doing, withdraws its questions and forgets what you allowed for this session. Also in the tray's menu, on keys you can set in Shortcuts, or say “stop everything”.`}
         >
           <Button size="sm" disabled={stopping} onClick={() => void stopEverything()}>
             {stopping ? 'Stopping…' : 'Stop everything'}

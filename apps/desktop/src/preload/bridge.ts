@@ -1,4 +1,4 @@
-import type { CoreLink, DeviceSettings, DeviceSettingsChange, SessionLink, UpdateState } from '@repo/client'
+import type { CoreLink, DeviceSettings, DeviceSettingsChange, SessionLink, ShortcutName, UpdateState } from '@repo/client'
 import type { InstallProgress, SpeechStatus } from '@repo/speech'
 
 /**
@@ -72,7 +72,7 @@ export interface CopiedFiles {
   more: number
 }
 
-export type ShortcutName = keyof DeviceSettings['shortcuts']
+export type { ShortcutName }
 
 /** A shortcut given, or refused and why, in words for the user. */
 export type ShortcutChange = { ok: true; settings: DeviceSettings } | { ok: false; problem: string }
@@ -86,8 +86,8 @@ export interface DeviceBridge {
   setShortcut(name: ShortcutName, accelerator: string): Promise<ShortcutChange>
   /** Let go of the app's shortcuts while the user records a new one, so that pressing them records them. */
   suspendShortcuts(suspended: boolean): void
-  /** Why the shortcut to talk from any app does not work now, in words for the user. Nothing when it does. */
-  shortcutProblem(): Promise<string | undefined>
+  /** Why the shortcuts taken from any app that do not work now are refused, in words for the user, by action. */
+  shortcutProblems(): Promise<Partial<Record<ShortcutName, string>>>
 }
 
 export interface About {
@@ -139,7 +139,7 @@ export const APP_CHANNELS = {
   deviceChanged: 'device:changed',
   shortcutSet: 'device:shortcut-set',
   shortcutsSuspend: 'device:shortcuts-suspend',
-  shortcutProblem: 'device:shortcut-problem',
+  shortcutProblems: 'device:shortcut-problems',
   about: 'app:about',
   openDataFolder: 'app:open-data-folder',
   openReleases: 'app:open-releases',

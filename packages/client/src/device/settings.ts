@@ -37,6 +37,11 @@ export interface DeviceSettings {
     talkInWindow: string
     /** Show or hide the transcript. */
     transcript: string
+    /**
+     * Stop everything the assistant does, from any app: the same as the tray's "Stop everything". Taken from the
+     * whole system as talking is, and off until the user records keys for the same reason.
+     */
+    stopEverything: string
   }
   app: {
     /** Start when the user signs in to the computer, in the background. */
@@ -96,7 +101,7 @@ export const DEFAULT_DEVICE_SETTINGS: DeviceSettings = {
   speaker: { id: '', label: '' },
   listening: { pause: 'normal', sounds: true },
   voice: { aloud: true, speed: 1 },
-  shortcuts: { talk: '', talkInWindow: 'CommandOrControl+Space', transcript: 'CommandOrControl+T' },
+  shortcuts: { talk: '', talkInWindow: 'CommandOrControl+Space', transcript: 'CommandOrControl+T', stopEverything: '' },
   app: { launchAtLogin: false, startHidden: false, closeToTray: true },
   updates: { automatic: true },
   sheet: { width: SHEET_WIDTH.initial }
@@ -134,7 +139,7 @@ export function readDeviceSettings(raw: unknown): DeviceSettings {
   if (!Number.isFinite(read.voice.speed) || read.voice.speed < 0.5 || read.voice.speed > 2) read.voice.speed = fallback.voice.speed
   if (!Number.isFinite(read.sheet.width)) read.sheet.width = fallback.sheet.width
   read.sheet.width = Math.round(Math.min(SHEET_WIDTH.most, Math.max(SHEET_WIDTH.least, read.sheet.width)))
-  for (const name of Object.keys(read.shortcuts) as (keyof DeviceSettings['shortcuts'])[]) {
+  for (const name of Object.keys(read.shortcuts) as ShortcutName[]) {
     const shortcut = read.shortcuts[name]
     if (shortcut !== '' && !isShortcut(shortcut)) read.shortcuts[name] = fallback.shortcuts[name]
   }
@@ -150,24 +155,32 @@ export function changeDeviceSettings(settings: DeviceSettings, change: DeviceSet
   return readDeviceSettings(overlay(copy(settings), change))
 }
 
-const SHORTCUT_NAMES: Record<keyof DeviceSettings['shortcuts'], string> = {
+export type ShortcutName = keyof DeviceSettings['shortcuts']
+
+/**
+ * The shortcuts taken from the whole system, which work from any app: the system gives each to the first app
+ * that asks, so the app asks for these, and the others are keys watched inside the window.
+ */
+export const GLOBAL_SHORTCUTS = ['talk', 'stopEverything'] as const satisfies readonly ShortcutName[]
+export type GlobalShortcutName = (typeof GLOBAL_SHORTCUTS)[number]
+
+/** Whether a shortcut is one the app takes from the whole system. */
+export const isGlobalShortcut = (name: ShortcutName): name is GlobalShortcutName => (GLOBAL_SHORTCUTS as readonly ShortcutName[]).includes(name)
+
+const SHORTCUT_NAMES: Record<ShortcutName, string> = {
   talk: 'talking from any app',
   talkInWindow: 'talking in the window',
-  transcript: 'the transcript'
+  transcript: 'the transcript',
+  stopEverything: 'stopping everything'
 }
 
 /**
  * Why a shortcut cannot be given to one of the app's actions, in words for the user: another action of the
  * app has it. Nothing when it can. Whether another app or the system holds it is for the system to say.
  */
-export function shortcutClash(
-  shortcuts: DeviceSettings['shortcuts'],
-  name: keyof DeviceSettings['shortcuts'],
-  accelerator: string,
-  mac: boolean
-): string | undefined {
+export function shortcutClash(shortcuts: DeviceSettings['shortcuts'], name: ShortcutName, accelerator: string, mac: boolean): string | undefined {
   if (accelerator === '') return undefined
-  for (const other of Object.keys(shortcuts) as (keyof DeviceSettings['shortcuts'])[]) {
+  for (const other of Object.keys(shortcuts) as ShortcutName[]) {
     // Talking from any app and in the window may share their keys: both do the same thing.
     const sameAction = (other === 'talk' && name === 'talkInWindow') || (other === 'talkInWindow' && name === 'talk')
     if (other !== name && !sameAction && sameShortcut(shortcuts[other], accelerator, mac)) return `These keys are already used for ${SHORTCUT_NAMES[other]}.`

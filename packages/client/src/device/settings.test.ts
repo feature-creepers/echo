@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { changeDeviceSettings, DEFAULT_DEVICE_SETTINGS, pauseMs, readDeviceSettings, SHEET_WIDTH, shortcutClash } from './settings.ts'
+import {
+  changeDeviceSettings,
+  DEFAULT_DEVICE_SETTINGS,
+  GLOBAL_SHORTCUTS,
+  isGlobalShortcut,
+  pauseMs,
+  readDeviceSettings,
+  SHEET_WIDTH,
+  shortcutClash
+} from './settings.ts'
 
 describe('device settings read back', () => {
   it('are the defaults when there is nothing, or nothing usable', () => {
@@ -19,7 +28,7 @@ describe('device settings read back', () => {
     expect(read.microphone).toEqual({ id: 'usb-1', label: 'Desk microphone' })
     expect(read.listening).toEqual({ pause: 'normal', sounds: false })
     expect(read.voice).toEqual({ aloud: true, speed: 1 })
-    expect(read.shortcuts).toEqual({ talk: 'Alt+Space', talkInWindow: 'CommandOrControl+Space', transcript: '' })
+    expect(read.shortcuts).toEqual({ talk: 'Alt+Space', talkInWindow: 'CommandOrControl+Space', transcript: '', stopEverything: '' })
     expect(read).not.toHaveProperty('unknown')
   })
 
@@ -28,6 +37,12 @@ describe('device settings read back', () => {
     expect(readDeviceSettings({ shortcuts: { talk: 'Alt+Space' } }).shortcuts.talk).toBe('Alt+Space')
     expect(readDeviceSettings({ revision: 2, shortcuts: { talk: 'CommandOrControl+Shift+Space' } }).shortcuts.talk).toBe('CommandOrControl+Shift+Space')
     expect(DEFAULT_DEVICE_SETTINGS.shortcuts.talk).toBe('')
+  })
+
+  it('take no keys from other apps until the user records them', () => {
+    for (const name of GLOBAL_SHORTCUTS) expect(DEFAULT_DEVICE_SETTINGS.shortcuts[name]).toBe('')
+    expect(readDeviceSettings({ shortcuts: { stopEverything: 'Control+Alt+Pause' } }).shortcuts.stopEverything).toBe('')
+    expect(readDeviceSettings({ shortcuts: { stopEverything: 'Control+Alt+Shift+Escape' } }).shortcuts.stopEverything).toBe('Control+Alt+Shift+Escape')
   })
 
   it('keep the side sheet between its narrowest and widest, as a whole number of pixels', () => {
@@ -73,11 +88,26 @@ describe('a shortcut given to an action', () => {
   it('clashes with another action that has the same keys', () => {
     expect(shortcutClash(shortcuts, 'transcript', 'CommandOrControl+Space', false)).toBe('These keys are already used for talking in the window.')
     expect(shortcutClash(shortcuts, 'talk', 'Control+T', false)).toBe('These keys are already used for the transcript.')
+    expect(shortcutClash(shortcuts, 'stopEverything', 'CommandOrControl+Space', false)).toBe('These keys are already used for talking in the window.')
+    expect(shortcutClash({ ...shortcuts, stopEverything: 'Alt+Escape' }, 'talk', 'Alt+Escape', false)).toBe(
+      'These keys are already used for stopping everything.'
+    )
   })
 
   it('may be the same for talking from any app and in the window, and may be none', () => {
     expect(shortcutClash(shortcuts, 'talk', 'CommandOrControl+Space', false)).toBeUndefined()
     expect(shortcutClash(shortcuts, 'transcript', '', false)).toBeUndefined()
     expect(shortcutClash(shortcuts, 'transcript', 'Alt+T', false)).toBeUndefined()
+  })
+})
+
+describe('the shortcuts taken from the whole system', () => {
+  it.each([
+    ['talk', true],
+    ['stopEverything', true],
+    ['talkInWindow', false],
+    ['transcript', false]
+  ] as const)('%s: %s', (name, global) => {
+    expect(isGlobalShortcut(name)).toBe(global)
   })
 })

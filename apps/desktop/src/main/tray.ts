@@ -22,9 +22,15 @@ export interface TrayLook {
   state: 'awake' | 'listening' | 'asleep'
 }
 
+/** The keys that talk and stop from any app, shown beside their items. Empty when the user set none. */
+export interface TrayKeys {
+  talk: string
+  stopEverything: string
+}
+
 export interface TrayMenu {
-  /** Show the menu again with what changed: the talk shortcut, an update ready. */
-  refresh(talkShortcut: string, actions: TrayActions): void
+  /** Show the menu again with what changed: the shortcuts, an update ready. */
+  refresh(keys: TrayKeys, actions: TrayActions): void
   /** Show the assistant as it is now. */
   look(look: TrayLook): void
   destroy(): void
@@ -54,18 +60,19 @@ function icon({ accent, state }: TrayLook): Electron.NativeImage {
  * closed. A click shows the window; the menu talks, stops everything the assistant does, opens the settings,
  * restarts for an update, or quits.
  */
-export function createTray(talkShortcut: string, actions: TrayActions): TrayMenu {
+export function createTray(keys: TrayKeys, actions: TrayActions): TrayMenu {
   let shown: TrayLook = { accent: undefined, state: 'awake' }
   const tray = new Tray(icon(shown))
   tray.setToolTip(app.getName())
   const mac = process.platform === 'darwin'
   let current = actions
 
-  const menu = (shortcut: string, doing: TrayActions) => {
+  const withKeys = (label: string, shortcut: string) => (shortcut ? `${label}    ${describeShortcut(shortcut, mac)}` : label)
+  const menu = (shown: TrayKeys, doing: TrayActions) => {
     const items: MenuItemConstructorOptions[] = [
       { label: `Show ${app.getName()}`, click: () => doing.show() },
-      { label: shortcut ? `Talk    ${describeShortcut(shortcut, mac)}` : 'Talk', click: () => doing.talk() },
-      { label: 'Stop everything', click: () => doing.stopEverything() },
+      { label: withKeys('Talk', shown.talk), click: () => doing.talk() },
+      { label: withKeys('Stop everything', shown.stopEverything), click: () => doing.stopEverything() },
       { label: 'Settings…', click: () => doing.settings() },
       { type: 'separator' }
     ]
@@ -74,7 +81,7 @@ export function createTray(talkShortcut: string, actions: TrayActions): TrayMenu
     return Menu.buildFromTemplate(items)
   }
 
-  tray.setContextMenu(menu(talkShortcut, actions))
+  tray.setContextMenu(menu(keys, actions))
   // On Windows a click on the icon shows the window, and the menu is on the right button. On macOS and most
   // Linux desktops a click opens the menu.
   tray.on('click', () => {
@@ -82,9 +89,9 @@ export function createTray(talkShortcut: string, actions: TrayActions): TrayMenu
   })
 
   return {
-    refresh(shortcut, next) {
+    refresh(shown, next) {
       current = next
-      tray.setContextMenu(menu(shortcut, next))
+      tray.setContextMenu(menu(shown, next))
     },
     look(next) {
       if (next.accent === shown.accent && next.state === shown.state) return

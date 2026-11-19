@@ -6,11 +6,15 @@ export {
   DEFAULT_DEVICE_SETTINGS,
   type DeviceSettings,
   type DeviceSettingsChange,
+  GLOBAL_SHORTCUTS,
+  type GlobalShortcutName,
+  isGlobalShortcut,
   PAUSES,
   type Pause,
   pauseMs,
   readDeviceSettings,
   SHEET_WIDTH,
+  type ShortcutName,
   SPEEDS,
   shortcutClash
 } from './device/settings.ts'

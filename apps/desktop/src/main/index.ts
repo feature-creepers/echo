@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, isAbsolute, join } from 'node:path'
-import { type DeviceSettingsChange, isShortcut, runsWhenOpened, shortcutClash } from '@repo/client'
+import { type DeviceSettingsChange, GLOBAL_SHORTCUTS, type GlobalShortcutName, isGlobalShortcut, isShortcut, runsWhenOpened, shortcutClash } from '@repo/client'
 import { type AccentName, accents, color, frame } from '@repo/tokens'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, nativeTheme, type OpenDialogOptions, session, shell, type WebContents } from 'electron'
 import {
@@ -23,7 +23,7 @@ import { type CoreProcess, startCore } from './core-process.ts'
 import { serveDesktopMarker } from './desktop-marker.ts'
 import { deviceId } from './device.ts'
 import { openDeviceSettings } from './device-settings.ts'
-import { createGlobalShortcut } from './global-shortcut.ts'
+import { createGlobalShortcuts } from './global-shortcut.ts'
 import { followLoad } from './load/index.ts'
 import { appIcon } from './mark.ts'
 import { serveNotifications } from './notifications.ts'
@@ -36,6 +36,9 @@ import { createUpdater, releasesPage } from './updater.ts'
  * The desktop app: a client of the core, on this device.
  *
  *   --talk          when the app is already running: bring it forward and start listening.
+ *   --stop-everything
+ *                   when the app is already running: stop everything the assistant does, as the tray's menu does.
+ *                   Started with it and not running, the app has nothing to stop, and quits at once.
  *   --hidden        start out of sight, in the tray, ready for the shortcut: how the app starts at login.
  *   --self-check    start the core, connect to it, do what a first launch does, print the outcome as one line
  *                   and quit. Exit code 1 when something failed. No window is opened, and nothing of the
@@ -77,6 +80,8 @@ function pickerFor(kind: 'folder' | 'file', purpose: PickPurpose): OpenDialogOpt
 
 /** Started with this while running, the app starts listening: what a desktop shortcut runs where global shortcuts are refused. */
 const TALK_FLAG = '--talk'
+/** Started with this while running, the app stops everything: the same, for the shortcut that stops. */
+const STOP_FLAG = '--stop-everything'
 
 /**
  * The app's identity for Windows, the one its installer gives the shortcuts it makes (the `appId` of
@@ -255,18 +260,25 @@ function start(): void {
   const camera = serveCamera(core, window)
   cameraAllows = (contents) => contents !== null && camera.allows(contents)
 
-  // Talk from anywhere: the shortcut brings the window forward and starts listening, and pressed again, sends.
-  // Some Linux desktops (Wayland) do not let an app take a global shortcut: the one inside the window remains.
-  const shortcut = createGlobalShortcut(talk)
-  const taken = shortcut.take(settings.shortcuts.talk)
-  let shortcutProblem = taken.ok ? undefined : taken.problem
+  // Straight to the core, as any client asks it: it works with the window closed. Its result goes unread.
+  const stopEverything = () => core.send({ type: 'command', id: `stop-${Date.now()}`, name: 'everything.stop', input: {} })
+
+  // From anywhere: talking brings the window forward and starts listening, and pressed again, sends; stopping
+  // stops everything. Some Linux desktops (Wayland) do not let an app take a global shortcut: the key inside the
+  // window remains for talking, and the app's options for both.
+  const shortcuts = createGlobalShortcuts<GlobalShortcutName>({ talk, stopEverything })
+  const shortcutProblems: Partial<Record<GlobalShortcutName, string>> = {}
+  for (const name of GLOBAL_SHORTCUTS) {
+    const taken = shortcuts.take(name, settings.shortcuts[name])
+    if (!taken.ok) shortcutProblems[name] = taken.problem
+  }
+  const trayKeys = () => ({ talk: shortcuts.current('talk'), stopEverything: shortcuts.current('stopEverything') })
 
   const updater = createUpdater(settings.updates.automatic)
   const trayActions = (): TrayActions => ({
     show: bringForward,
     talk,
-    // Straight to the core, as any client asks it: it works with the window closed. Its result goes unread.
-    stopEverything: () => core.send({ type: 'command', id: `tray-stop-${Date.now()}`, name: 'everything.stop', input: {} }),
+    stopEverything,
     settings: () => {
       bringForward()
       toWindow(APP_CHANNELS.openSettings)
@@ -274,7 +286,7 @@ function start(): void {
     quit: () => app.quit(),
     restartToUpdate: updater.state().is === 'ready' ? () => updater.install() : undefined
   })
-  const tray = createTray(shortcut.current(), trayActions())
+  const tray = createTray(trayKeys(), trayActions())
 
   // Closing the window leaves the app in the tray, ready for its shortcut, unless the user wants it to quit.
   window.on('close', (event) => {
@@ -288,11 +300,11 @@ function start(): void {
     toWindow(APP_CHANNELS.deviceChanged, next)
     if (next.app.launchAtLogin !== before.app.launchAtLogin) setLaunchAtLogin(next.app.launchAtLogin)
     if (next.updates.automatic !== before.updates.automatic) updater.setAutomatic(next.updates.automatic)
-    tray.refresh(shortcut.current(), trayActions())
+    tray.refresh(trayKeys(), trayActions())
   })
   updater.onState((state) => {
     toWindow(APP_CHANNELS.updateChanged, state)
-    tray.refresh(shortcut.current(), trayActions())
+    tray.refresh(trayKeys(), trayActions())
   })
 
   ipcMain.handle(APP_CHANNELS.deviceRead, () => device.read())
@@ -303,10 +315,10 @@ function start(): void {
     if (accelerator !== '' && !isShortcut(accelerator)) return { ok: false, problem: 'These keys cannot be used as a shortcut.' }
     const clash = shortcutClash(device.read().shortcuts, name, accelerator, process.platform === 'darwin')
     if (clash) return { ok: false, problem: clash }
-    if (name === 'talk') {
-      const tried = shortcut.take(accelerator)
+    if (isGlobalShortcut(name)) {
+      const tried = shortcuts.take(name, accelerator)
       if (!tried.ok) return tried
-      shortcutProblem = undefined
+      delete shortcutProblems[name]
     }
     return { ok: true, settings: device.change({ shortcuts: { [name]: accelerator } }) }
   })
@@ -327,8 +339,8 @@ function start(): void {
   })
   window.webContents.on('render-process-gone', () => load.stop())
   app.on('will-quit', () => load.stop())
-  ipcMain.on(APP_CHANNELS.shortcutsSuspend, (_event, suspended: boolean) => shortcut.suspend(suspended === true))
-  ipcMain.handle(APP_CHANNELS.shortcutProblem, () => shortcutProblem)
+  ipcMain.on(APP_CHANNELS.shortcutsSuspend, (_event, suspended: boolean) => shortcuts.suspend(suspended === true))
+  ipcMain.handle(APP_CHANNELS.shortcutProblems, () => ({ ...shortcutProblems }))
   ipcMain.handle(
     APP_CHANNELS.about,
     (): About => ({
@@ -376,12 +388,17 @@ function start(): void {
   })
 
   app.on('will-quit', () => {
-    shortcut.release()
+    shortcuts.release()
     tray.destroy()
   })
-  // Launched again while running: the app already running comes forward, and with --talk, listens. A desktop
-  // shortcut bound to that command stands in for a global shortcut where the system refuses one (Wayland).
-  app.on('second-instance', (_event, argv) => (argv.includes(TALK_FLAG) ? talk() : bringForward()))
+  // Launched again while running: the app already running comes forward, and with --talk, listens; with
+  // --stop-everything, it stops everything and stays where it is. A desktop shortcut bound to one of these stands
+  // in for a global shortcut where the system refuses one (Wayland).
+  app.on('second-instance', (_event, argv) => {
+    if (argv.includes(STOP_FLAG)) stopEverything()
+    else if (argv.includes(TALK_FLAG)) talk()
+    else bringForward()
+  })
   // macOS: a click on the Dock icon brings the window back.
   app.on('activate', bringForward)
   app.on('window-all-closed', () => app.quit())
@@ -390,6 +407,9 @@ function start(): void {
 // One core per data folder: a second launch hands over to the app already running and quits.
 // A self-check has a folder of its own, so it runs beside the app without disturbing it.
 if (!selfChecking && !app.requestSingleInstanceLock()) {
+  app.quit()
+} else if (!selfChecking && process.argv.includes(STOP_FLAG)) {
+  // Nothing runs to be stopped: the shortcut that stops never starts the app.
   app.quit()
 } else {
   // Not awaited at the top level: Electron holds back its ready event until this module has finished

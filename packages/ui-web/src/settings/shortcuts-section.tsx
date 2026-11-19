@@ -14,20 +14,26 @@ const SHORTCUTS: { name: ShortcutName; title: string; detail: string }[] = [
       'Brings the assistant forward and starts listening, wherever you are. Press it again to send. Off until you record keys: other apps lose the keys you pick, so choose ones they do not use.'
   },
   { name: 'talkInWindow', title: 'Talk in the window', detail: 'Starts listening while the window is in front. Press it again to send.' },
-  { name: 'transcript', title: 'Show the transcript', detail: 'Opens and closes the conversation, written out.' }
+  { name: 'transcript', title: 'Show the transcript', detail: 'Opens and closes the conversation, written out.' },
+  {
+    name: 'stopEverything',
+    title: 'Stop everything',
+    detail:
+      'From any app, interrupts everything the assistant is doing, withdraws its questions and forgets what you allowed for this session. Off until you record keys.'
+  }
 ]
 
-/** The keys that talk to the assistant and open the transcript, each recorded by pressing them. */
+/** The keys that talk to the assistant, open the transcript and stop everything, each recorded by pressing them. */
 export function ShortcutsSection({ productName }: { productName: string }) {
   const { settings, change, mac, host } = useDevice()
   const [problems, setProblems] = useState<Partial<Record<ShortcutName, string>>>({})
   const linux = /linux/i.test(navigator.userAgent) && !/android/i.test(navigator.userAgent)
 
-  // The shortcut from any app may have been refused when the app started.
+  // The shortcuts from any app may have been refused when the app started.
   useEffect(() => {
     host?.settings
-      .shortcutProblem()
-      .then((problem) => problem && setProblems((before) => ({ ...before, talk: problem })))
+      .shortcutProblems()
+      .then((refused) => setProblems((before) => ({ ...before, ...refused })))
       .catch(() => undefined)
   }, [host])
 
@@ -78,11 +84,14 @@ export function ShortcutsSection({ productName }: { productName: string }) {
       {linux && (
         <p className="max-w-2xl border-line-strong border-l-2 pl-4 text-text-soft text-xs leading-relaxed">
           Some Linux desktops (Wayland) do not let an app take keys from other apps. If talking from any app does nothing, add a shortcut in your desktop’s
-          settings that starts {productName} with the option{' '}
-          <code className="rounded-sm bg-raised px-1.5 py-0.5 font-mono text-[0.6875rem] text-text">--talk</code>: it brings {productName} forward and starts
-          listening.
+          settings that starts {productName} with the option <Option>--talk</Option>: it brings {productName} forward and starts listening. With{' '}
+          <Option>--stop-everything</Option>, it stops everything.
         </p>
       )}
     </div>
   )
+}
+
+function Option({ children }: { children: string }) {
+  return <code className="rounded-sm bg-raised px-1.5 py-0.5 font-mono text-[0.6875rem] text-text">{children}</code>
 }

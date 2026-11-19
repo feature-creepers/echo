@@ -40,7 +40,7 @@ const bridge: DesktopBridge = {
     onChange: (listener) => listen(APP_CHANNELS.deviceChanged, listener),
     setShortcut: (name, accelerator) => ipcRenderer.invoke(APP_CHANNELS.shortcutSet, name, accelerator),
     suspendShortcuts: (suspended) => ipcRenderer.send(APP_CHANNELS.shortcutsSuspend, suspended),
-    shortcutProblem: () => ipcRenderer.invoke(APP_CHANNELS.shortcutProblem)
+    shortcutProblems: () => ipcRenderer.invoke(APP_CHANNELS.shortcutProblems)
   },
   app: {
     about: () => ipcRenderer.invoke(APP_CHANNELS.about),

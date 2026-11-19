@@ -49,8 +49,8 @@ export interface DeviceHost {
     setShortcut(name: ShortcutName, accelerator: string): Promise<ShortcutChange>
     /** Let go of the app's shortcuts while the user records a new one, so that pressing them records them. */
     suspendShortcuts(suspended: boolean): void
-    /** Why the shortcut to talk from any app does not work now. Nothing when it does. */
-    shortcutProblem(): Promise<string | undefined>
+    /** Why the shortcuts taken from any app that do not work now are refused, by action. */
+    shortcutProblems(): Promise<Partial<Record<ShortcutName, string>>>
   }
   about(): Promise<About>
   openDataFolder(): Promise<void>
