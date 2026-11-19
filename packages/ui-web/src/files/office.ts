@@ -13,6 +13,7 @@ import { readOlderExcel, readOlderPowerPoint, readOlderSheets, readOlderWord } f
 import { openCompound } from './compound.ts'
 import { builtInFormat, formatNumber, generalNumber, type NumberFormatOptions } from './number-format.ts'
 import { type CellRange, type CellSource, type CellValue, cellRange, emuPixels, Figures, lengthPixels, readChart, readOpenChart } from './office-figures.ts'
+import { mathText } from './office-math.ts'
 import {
   BLOCK_LIMIT,
   COLUMN_LIMIT,
@@ -228,6 +229,8 @@ export async function readDocument(archive: Archive, options: NumberFormatOption
   let table: string[][] = []
   let row: string[] | undefined
   let cell: string[] | undefined
+  let equation: XmlEvent[] | undefined
+  let displayed = false
 
   const finish = (paragraph: WordParagraph) => {
     const text = partsText(paragraph.parts).replace(/\s+/g, ' ').trim()
@@ -261,6 +264,24 @@ export async function readDocument(archive: Archive, options: NumberFormatOption
     }
     const paragraph = paragraphs.at(-1)
     const run = runs.at(-1)
+    // An equation is read whole once it ends, as linear text in its paragraph; one of a display, on a line of its own.
+    if (equation) {
+      equation.push(event)
+      if (event.type === 'close' && event.name === 'm:oMath') {
+        const text = mathText(equation)
+        equation = undefined
+        if (paragraph && text !== '') {
+          if (displayed && paragraph.parts.length > 0) paragraph.parts.push(runPart('\n', {}, link))
+          paragraph.parts.push(runPart(text, {}, link))
+        }
+      }
+      continue
+    }
+    if (event.type === 'open' && event.name === 'm:oMath') {
+      equation = [event]
+      continue
+    }
+    if (event.type !== 'text' && event.name === 'm:oMathPara') displayed = event.type === 'open'
     if (event.type === 'text') {
       if (inText && paragraph) paragraph.parts.push(runPart(event.text, run, link))
       continue

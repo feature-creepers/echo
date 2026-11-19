@@ -287,6 +287,16 @@ describe('an Office file previewed', () => {
     })
   })
 
+  it('reads a document’s equations as linear text, in their paragraph or each on a line of its own', async () => {
+    const math = (inside: string) => `<m:oMath>${inside}</m:oMath>`
+    const term = (text: string) => `<m:r><m:t>${text}</m:t></m:r>`
+    const body =
+      `<w:p><w:r><w:t xml:space="preserve">Energy: </w:t></w:r>${math(`${term('E=m')}<m:sSup><m:e>${term('c')}</m:e><m:sup>${term('2')}</m:sup></m:sSup>`)}</w:p>` +
+      `<w:p><m:oMathPara>${math(term('a_b'))}${math(`<m:f><m:num>${term('1')}</m:num><m:den>${term('2')}</m:den></m:f>`)}</m:oMathPara></w:p>`
+    const file = await zip({ 'word/document.xml': `<w:document ${W}><w:body>${body}</w:body></w:document>` })
+    expect(await readOffice('docx', file)).toEqual({ kind: 'document', markdown: 'Energy: E=mc²\n\na\\_b  \n1/2', figures: [], cut: false })
+  })
+
   it('shows the pictures and charts of a workbook’s sheets and of a presentation’s slides, in order, without a slide’s background', async () => {
     const workbook = await zip({
       'xl/workbook.xml': '<workbook><sheets><sheet name="Budget" r:id="rId1"/></sheets></workbook>',
