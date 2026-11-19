@@ -412,7 +412,7 @@ export class ArtFigures {
   private bytes = 0
   private readonly found = new Map<string, number>()
   private readonly packed: { place: number; metafile: KeptMetafile; alt: string; size: { width?: number | undefined; height?: number | undefined } }[] = []
-  private readonly held: { place: number; read: () => Promise<ObjectRead | undefined> }[] = []
+  private readonly held: { place: number; read: () => Promise<ObjectRead | undefined>; icon: boolean }[] = []
 
   /** A picture's figure, by its place in the list: shown from its bytes, drawn from its metafile, or said to be one its app shows. */
   picture(
@@ -456,10 +456,11 @@ export class ArtFigures {
 
   /**
    * A figure that gives way, once the file is read, to what `read` makes of the object it pictures (a worksheet as its
-   * sheet), when it makes something.
+   * sheet), when it makes something; a document's text becomes its words. An object shown as its program's icon keeps
+   * its icon, and only takes the words.
    */
-  later(place: number, read: () => Promise<ObjectRead | undefined>): void {
-    this.held.push({ place, read })
+  later(place: number, read: () => Promise<ObjectRead | undefined>, icon = false): void {
+    this.held.push({ place, read, icon })
   }
 
   /** The metafiles kept packed, unpacked and drawn in their figures' places, and the objects read in theirs. */
@@ -474,11 +475,14 @@ export class ArtFigures {
       }
     }
     // The objects are read last, as their pictures may be metafiles drawn just now.
-    for (const { place, read } of this.held.splice(0)) {
+    for (const { place, read, icon } of this.held.splice(0)) {
       const figure = await read().catch(() => undefined)
       const before = this.list[place]
-      if (figure && figure.kind !== 'text' && before)
-        this.list[place] = figure.kind === 'sheet' && figure.alt === '' && 'alt' in before ? { ...figure, alt: before.alt } : figure
+      if (!figure || !before) continue
+      if (figure.kind === 'text' || icon) {
+        const words = figure.kind === 'text' ? figure.lines.join(' ') : ''
+        if (words !== '' && (before.kind === 'picture' || before.kind === 'unshown')) this.list[place] = { ...before, alt: words }
+      } else this.list[place] = figure.kind === 'sheet' && figure.alt === '' && 'alt' in before ? { ...figure, alt: before.alt } : figure
     }
   }
 

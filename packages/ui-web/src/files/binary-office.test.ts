@@ -1547,6 +1547,166 @@ describe('an Excel 97 workbook', () => {
 })
 
 /** Joins records into the bytes of a file. */
+/** A document of Word holding two paragraphs, as a newer package. */
+const MINUTES = storedZip({
+  'word/document.xml': '<w:document><w:body><w:p><w:r><w:t>Minutes</w:t></w:r></w:p><w:p><w:r><w:t>All agreed.</w:t></w:r></w:p></w:body></w:document>'
+})
+
+/** A newer workbook of one sheet whose block of cells is A1:B2. */
+const COSTS = storedZip({
+  'xl/workbook.xml': '<workbook><sheets><sheet name="Costs" r:id="rId1"/></sheets><oleSize ref="A1:B2"/></workbook>',
+  'xl/_rels/workbook.xml.rels': '<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>',
+  'xl/worksheets/sheet1.xml':
+    '<worksheet><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Tea</t></is></c><c r="B1"><v>10</v></c></row><row r="2"><c r="A2" t="inlineStr"><is><t>Milk</t></is></c><c r="B2"><v>4</v></c></row></sheetData></worksheet>'
+})
+
+/**
+ * An object record of a sheet of Excel 97: its kind and, for an object of another app, its picture's formula naming
+ * its program and the storage that keeps it, and whether it shows as an icon.
+ */
+function objectRecordOf(kind: number, held?: { program: string; storage: number; icon?: boolean }): Uint8Array {
+  const body = new Bytes()
+    .u16(0x15)
+    .u16(0x12)
+    .u16(kind)
+    .u16(1)
+    .u16(0x6011)
+    .zeros(12)
+    .u16(0x08)
+    .u16(2)
+    .u16(held?.icon ? 0x09 : 0x01)
+  if (held) {
+    const named = new Bytes().u8(3).u8(held.program.length).u8(0).u8(0).narrow(held.program)
+    if ((11 + named.length) % 2 === 1) named.u8(0)
+    const formula = new Bytes().u16(5).u32(0).u8(0x02).zeros(4).raw(named.done()).done()
+    body
+      .u16(0x09)
+      .u16(2 + formula.length + 4)
+      .u16(formula.length)
+      .raw(formula)
+      .u32(held.storage)
+  }
+  return record(0x005d, body.u16(0).u16(0))
+}
+
+describe('an object of another app in a workbook', () => {
+  const equation = compound({ 'Equation Native': EQUATION })
+
+  it('shows a newer workbook’s objects where its drawing places them, what they hold as a document’s or a sheet’s', async () => {
+    // Excel names an object made from a file by its kind alone, lists it for newer and older apps, and places it in
+    // its drawing by the shape it draws it as for older apps.
+    const listed = (shape: number, program: string, id: string, picture?: string) =>
+      `<mc:AlternateContent><mc:Choice Requires="x14"><oleObject progId="${program}" shapeId="${shape}" r:id="${id}">${picture ? `<objectPr r:id="${picture}"/>` : ''}</oleObject></mc:Choice><mc:Fallback><oleObject progId="${program}" shapeId="${shape}" r:id="${id}"/></mc:Fallback></mc:AlternateContent>`
+    const placed = (shape: number) =>
+      `<mc:AlternateContent><mc:Choice Requires="a14"><xdr:twoCellAnchor><xdr:sp><xdr:nvSpPr><xdr:cNvPr id="${shape}" name="Object" hidden="1"><a:extLst><a:ext uri="{63B3BB69-23CF-44E3-9099-C40C66FF867C}"><a14:compatExt spid="_x0000_s${shape}"/></a:ext></a:extLst></xdr:cNvPr></xdr:nvSpPr></xdr:sp></xdr:twoCellAnchor></mc:Choice><mc:Fallback/></mc:AlternateContent>`
+    const vml = (shape: number, size: string) =>
+      `<v:shape id="_x0000_s${shape}" style="position:absolute;${size}"><v:imagedata o:relid="rId1" o:title=""/></v:shape>`
+    const file = storedZip({
+      'xl/workbook.xml': '<workbook><sheets><sheet name="Objects" r:id="rId1"/></sheets></workbook>',
+      'xl/_rels/workbook.xml.rels': '<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>',
+      'xl/worksheets/sheet1.xml': `<worksheet><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Held</t></is></c></row></sheetData><drawing r:id="rId1"/><legacyDrawing r:id="rId2"/><oleObjects>${listed(1025, 'Document', 'rId3', 'rId6')}${listed(1026, 'Worksheet', 'rId4', 'rId6')}${listed(1027, 'Equation.3', 'rId5')}</oleObjects></worksheet>`,
+      'xl/worksheets/_rels/sheet1.xml.rels':
+        '<Relationships><Relationship Id="rId1" Target="../drawings/drawing1.xml"/><Relationship Id="rId2" Target="../drawings/vmlDrawing1.vml"/><Relationship Id="rId3" Target="../embeddings/Document.docx"/><Relationship Id="rId4" Target="../embeddings/Worksheet.xlsx"/><Relationship Id="rId5" Target="../embeddings/oleObject1.bin"/><Relationship Id="rId6" Target="../media/image1.png"/></Relationships>',
+      'xl/drawings/drawing1.xml': `<xdr:wsDr><xdr:oneCellAnchor><xdr:ext cx="952500" cy="476250"/><xdr:pic><xdr:nvPicPr><xdr:cNvPr id="2" name="Picture" descr="Logo"/></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="rId1"/></xdr:blipFill></xdr:pic></xdr:oneCellAnchor>${placed(1026)}${placed(1025)}</xdr:wsDr>`,
+      'xl/drawings/_rels/drawing1.xml.rels': '<Relationships><Relationship Id="rId1" Target="../media/image1.png"/></Relationships>',
+      'xl/drawings/vmlDrawing1.vml': `<xml>${vml(1025, 'width:150pt;height:30pt')}${vml(1027, 'width:60pt;height:24pt')}</xml>`,
+      'xl/drawings/_rels/vmlDrawing1.vml.rels': '<Relationships><Relationship Id="rId1" Target="../media/image1.png"/></Relationships>',
+      'xl/media/image1.png': new Uint8Array(PNG),
+      'xl/embeddings/Document.docx': MINUTES,
+      'xl/embeddings/Worksheet.xlsx': COSTS,
+      'xl/embeddings/oleObject1.bin': equation
+    })
+    const preview = await readOffice('xlsx', file)
+    expect(preview).toMatchObject({
+      sheets: [
+        {
+          name: 'Objects',
+          figures: [
+            { kind: 'picture', alt: 'Logo', width: 100, height: 50 },
+            {
+              kind: 'sheet',
+              name: 'Costs',
+              rows: [
+                ['Tea', '10'],
+                ['Milk', '4']
+              ],
+              look: { headings: false }
+            },
+            { kind: 'picture', type: 'image/png', alt: 'Minutes All agreed.', width: 200, height: 40 },
+            { kind: 'picture', type: 'image/png', alt: 'x²', width: 80, height: 32 }
+          ]
+        }
+      ]
+    })
+  })
+
+  it('shows an Excel 97 workbook’s objects in the order of its records, what they hold read from their storages', async () => {
+    const store = container(0xf000, [
+      atom(0xf006, new Bytes().zeros(16)),
+      container(
+        0xf001,
+        [1, 2, 3, 4, 5].map(() => storeEntry(blipOf(0xf01e, 0x6e0, PNG)))
+      )
+    ])
+    const drawing = artDrawing(...[1, 2, 3, 4, 5].map((picture) => artShape(1024 + picture, 0x0a00, picture, picture === 1 ? 'Logo' : undefined)))
+    const minutes = openCompound(
+      wordDocument([
+        { text: 'Minutes\r', format: formatting(0) },
+        { text: 'All agreed.\r', format: formatting(0) }
+      ])
+    )
+    const sheet = [
+      bof(),
+      record(0x00ec, drawing),
+      objectRecordOf(0x08),
+      objectRecordOf(0x08, { program: 'Document', storage: 0x10 }),
+      objectRecordOf(0x08, { program: 'Worksheet', storage: 0x11 }),
+      objectRecordOf(0x08, { program: 'Equation.3', storage: 0x12 }),
+      objectRecordOf(0x08, { program: 'Worksheet', storage: 0x11, icon: true }),
+      EOF
+    ]
+    const sheetName = new Bytes().u8(7).u8(0).narrow('Objects')
+    const globals = (sheetAt: number) => [bof(), record(0x0085, new Bytes().u32(sheetAt).u8(0).u8(0).raw(sheetName.done())), record(0x00eb, store), EOF]
+    const length = globals(0).reduce((sum, one) => sum + one.length, 0)
+    const all = new Bytes()
+    for (const part of [...globals(length), ...sheet]) all.raw(part)
+    const file = compound({
+      Workbook: all.done(),
+      MBD00000010: {
+        WordDocument: minutes.stream('WordDocument') as Uint8Array,
+        '1Table': (minutes.stream('1Table') ?? minutes.stream('0Table')) as Uint8Array
+      },
+      MBD00000011: { Workbook: openCompound(workbook()).stream('Workbook') as Uint8Array },
+      MBD00000012: { 'Equation Native': EQUATION }
+    })
+    const preview = await readOffice('xls', file)
+    expect(preview).toMatchObject({
+      sheets: [
+        {
+          name: 'Objects',
+          figures: [
+            { kind: 'picture', alt: 'Logo' },
+            { kind: 'picture', alt: 'Minutes All agreed.' },
+            { kind: 'sheet', name: 'Budget' },
+            { kind: 'picture', alt: 'x²' },
+            // One shown as its program's icon keeps its icon.
+            { kind: 'picture', alt: '' }
+          ]
+        }
+      ]
+    })
+    // Read alone, as a workbook another file holds, its objects keep their pictures.
+    const alone = await readOlderExcel(file)
+    expect(alone.kind === 'workbook' ? alone.sheets[0]?.figures.map((figure) => figure.kind) : undefined).toEqual([
+      'picture',
+      'picture',
+      'picture',
+      'picture',
+      'picture'
+    ])
+  })
+})
+
 const fileOf = (...parts: Uint8Array[]) => new Bytes().raw(parts.flatMap((part) => [...part])).done()
 
 describe('a workbook of Excel 2, 3 or 4', () => {

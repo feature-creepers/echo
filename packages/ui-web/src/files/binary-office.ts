@@ -1081,10 +1081,11 @@ function joined(parts: readonly Uint8Array[]): Uint8Array {
 /**
  * A workbook of Excel 97 to 2003, of Excel 5 and 95, or of Excel 2 to 4, its sheets each as rows of its cells' values
  * as their formats show them. Excel 5 and 95 write their text in 8-bit characters of the workbook's code page, with no
- * table of strings, and so do Excel 2 to 4.
+ * table of strings, and so do Excel 2 to 4. What the objects of other apps of an Excel 97 workbook hold is read by
+ * `objects` when given.
  */
-export async function readOlderExcel(bytes: Uint8Array, options: NumberFormatOptions = {}): Promise<OfficePreview> {
-  const parts = workbookParts(bytes, options)
+export async function readOlderExcel(bytes: Uint8Array, options: NumberFormatOptions = {}, objects?: ObjectReader): Promise<OfficePreview> {
+  const parts = workbookParts(bytes, options, objects)
   await parts.figures.drawPacked()
   // Each sheet's look, from its records and the styles it uses, the workbook's or, in Excel 2 to 4, often its own, each
   // read once; a sheet whose look cannot be read shows as a table.
@@ -1153,14 +1154,22 @@ export function readOlderSheets(bytes: Uint8Array, options: NumberFormatOptions 
   return withFigures(workbookParts(bytes, options))
 }
 
-function workbookParts(bytes: Uint8Array, options: NumberFormatOptions): WorkbookParts {
+function workbookParts(bytes: Uint8Array, options: NumberFormatOptions, objects?: ObjectReader): WorkbookParts {
   // Excel 2, 3 and 4 wrote their records straight into the file, and some programs write Excel 5's and 97's so too.
   const first = BEGINNINGS.get(readU16(bytes, 0))
   if (bytes.length >= 4 && first !== undefined && readU16(bytes, 2) < 32) return first < 5 ? earliestSheets(bytes, options) : bookParts(bytes, options)
   const file = openCompound(bytes)
   const stream = file.stream('Workbook') ?? file.stream('Book')
   if (!stream) throw new Error('This is not an Excel workbook.')
-  return bookParts(stream, options)
+  // The objects of other apps are each kept in a storage of the file's own, named by the sheet's object record.
+  const storage = (name: string) => {
+    try {
+      return file.storage(name)
+    } catch {
+      return undefined
+    }
+  }
+  return bookParts(stream, options, { storage, read: objects })
 }
 
 /** The sheets of a workbook's stream in an object's storage. */
@@ -1296,8 +1305,14 @@ function earliestSheets(bytes: Uint8Array, options: NumberFormatOptions): Workbo
   return { sheets, figures: new ArtFigures() }
 }
 
-/** The sheets of a workbook's stream of Excel 5 to 2003. */
-function bookParts(stream: Uint8Array, options: NumberFormatOptions): WorkbookParts {
+/** Where the objects of other apps of a workbook are kept, by the name of their storage, and what reads them. */
+interface HeldObjects {
+  storage: (name: string) => Compound | undefined
+  read?: ObjectReader | undefined
+}
+
+/** The sheets of a workbook's stream of Excel 5 to 2003, the objects of other apps it holds found in `held`. */
+function bookParts(stream: Uint8Array, options: NumberFormatOptions, held?: HeldObjects): WorkbookParts {
   const book = reader(stream)
   if (book.u16(0) !== 0x0809) throw new Error('This is not an Excel workbook.')
   const version = book.u16(4)
@@ -1448,7 +1463,7 @@ function bookParts(stream: Uint8Array, options: NumberFormatOptions): WorkbookPa
   return {
     sheets: read.map(({ drawing, charts, objects, ...sheet }) => ({
       ...sheet,
-      places: sheetFigures({ drawing, charts, objects }, stored, figures, context),
+      places: sheetFigures({ drawing, charts, objects }, stored, figures, context, held),
       looks
     })),
     figures
@@ -1465,11 +1480,22 @@ function chartRecords(book: Reader, from: number): ChartRecord[] {
   return found
 }
 
-/** The objects a sheet places, as they are read: its drawing, the records of each chart, and the kind of each object in order. */
+/** The objects a sheet places, as they are read: its drawing, the records of each chart, and each object in order. */
 interface SheetObjects {
   drawing: Uint8Array
   charts: ChartRecord[][]
-  objects: number[]
+  objects: ObjectRecord[]
+}
+
+/**
+ * An object of a sheet as its record (`OBJ`) names it: its kind, and for an object of another app, the storage of the
+ * file that keeps it, its program's name, and whether it shows as its program's icon.
+ */
+interface ObjectRecord {
+  kind: number
+  storage?: string | undefined
+  program?: string | undefined
+  icon?: boolean | undefined
 }
 
 /** The kinds of object a sheet's object record names. */
@@ -1477,20 +1503,75 @@ const CHART_OBJECT = 0x05
 const PICTURE_OBJECT = 0x08
 
 /**
+ * An object record of Excel 97, its parts one after the other, each a type and a length: its kind (`ftCmo`), whether
+ * it shows as an icon (`ftPioGrbit`), and, for an object of another app, its picture's formula (`ftPictFmla`): the
+ * formula's length, its tokens after six bytes, the name of its program (`PictFmlaEmbedInfo`), then the number of the
+ * storage that keeps it, which is named `MBD` and that number in eight hexadecimal digits.
+ */
+function objectRecord(book: Reader, at: number, size: number): ObjectRecord {
+  const found: ObjectRecord = { kind: book.u16(at + 4) }
+  const end = at + size
+  for (let part = at; part + 4 <= end; ) {
+    const type = book.u16(part)
+    const length = book.u16(part + 2)
+    const body = part + 4
+    if (type === 0x0000 || body + length > end) break
+    if (type === 0x0008 && length >= 2) found.icon = (book.u16(body) & 0x0008) !== 0
+    else if (type === 0x0009 && length >= 2) {
+      const formula = book.u16(body)
+      const formulaEnd = body + 2 + formula
+      if (formula >= 6 && formulaEnd <= body + length) {
+        const named = body + 8 + (book.u16(body + 2) & 0x7fff)
+        if (named + 4 <= formulaEnd && book.u8(named) === 0x03) {
+          const characters = book.u8(named + 1)
+          const wide = (book.u8(named + 3) & 0x01) !== 0
+          if (named + 4 + characters * (wide ? 2 : 1) <= formulaEnd)
+            found.program = wide ? utf16(book.bytes(named + 4, characters * 2)) : latin1(book.bytes(named + 4, characters))
+        }
+        if (formulaEnd + 4 <= body + length) found.storage = `MBD${book.u32(formulaEnd).toString(16).toUpperCase().padStart(8, '0')}`
+      }
+    }
+    part = body + length
+  }
+  return found
+}
+
+/**
  * The pictures and charts a sheet places, by their places in the workbook's figures, in the order of its objects: a
  * picture from its drawing's next shape that shows one, a chart from the next chart's records. Those no object names
- * follow.
+ * follow. An object of another app shows the picture its app last drew of it, an equation's linear text its words, and
+ * gives way to what `held` reads of it once the file is read: a worksheet as its sheet, a document's text its words.
  */
-function sheetFigures(placed: SheetObjects, stored: (place: number) => StoredPicture | undefined, figures: ArtFigures, context: ChartContext): number[] {
+function sheetFigures(
+  placed: SheetObjects,
+  stored: (place: number) => StoredPicture | undefined,
+  figures: ArtFigures,
+  context: ChartContext,
+  held?: HeldObjects
+): number[] {
   const [container] = artRecords(placed.drawing)
   const shapes = container?.type === ART.drawing ? artShapes(placed.drawing, container).filter((shape) => shape.picture !== undefined) : []
   const found: number[] = []
   let picture = 0
   let chart = 0
-  const nextPicture = () => {
+  const nextPicture = (object?: ObjectRecord) => {
     const shape = shapes[picture++]
-    const figure = shape?.picture === undefined ? undefined : figures.picture(`store:${shape.picture}`, stored(shape.picture), shape.alt)
-    if (figure !== undefined) found.push(figure)
+    if (shape?.picture === undefined) return
+    const storage = object?.storage === undefined ? undefined : held?.storage(object.storage)
+    let equation: string | undefined
+    try {
+      equation = storage && objectEquation(storage)
+    } catch {
+      equation = undefined
+    }
+    const figure = figures.picture(`store:${shape.picture}`, stored(shape.picture), equation ?? shape.alt)
+    if (figure === undefined) return
+    found.push(figure)
+    const read = held?.read
+    if (storage && equation === undefined && read) {
+      const program = storageProgram(storage) || object?.program || ''
+      figures.later(figure, () => read(program, storage), object?.icon ?? false)
+    }
   }
   const nextChart = () => {
     const records = placed.charts[chart++]
@@ -1504,9 +1585,9 @@ function sheetFigures(placed: SheetObjects, stored: (place: number) => StoredPic
     const figure = figures.chart(read)
     if (figure !== undefined) found.push(figure)
   }
-  for (const kind of placed.objects) {
-    if (kind === PICTURE_OBJECT) nextPicture()
-    else if (kind === CHART_OBJECT) nextChart()
+  for (const object of placed.objects) {
+    if (object.kind === PICTURE_OBJECT) nextPicture(object)
+    else if (object.kind === CHART_OBJECT) nextChart()
   }
   while (picture < shapes.length) nextPicture()
   while (chart < placed.charts.length) nextChart()
@@ -1550,7 +1631,7 @@ function sheetRows(
   const drawing: Uint8Array[] = []
   let drawn = false
   const charts: ChartRecord[][] = []
-  const objects: number[] = []
+  const objects: ObjectRecord[] = []
   // Each cell shown, by its row and column, with its number when it holds one.
   const cells = new Map<string, CellValue>()
   let cut = false
@@ -1615,7 +1696,7 @@ function sheetRows(
     }
     drawn = false
     // An object's kind, after the header of its first part in Excel 97, after its count in Excel 5 and 95.
-    if (type === 0x005d && size >= 6 && (five || book.u16(at) === 0x15)) objects.push(book.u16(at + 4))
+    if (type === 0x005d && size >= 6 && (five || book.u16(at) === 0x15)) objects.push(five ? { kind: book.u16(at + 4) } : objectRecord(book, at, size))
     const row = () => book.u16(at)
     const column = () => book.u16(at + 2)
     if (version === 2) {
@@ -2216,7 +2297,7 @@ function presentationObjects(raw: Uint8Array, container: PowerPointRecord): Map<
 }
 
 /** The program an object's storage names in its `CompObj` stream (`Word.Document.8`); empty when it names none. */
-function storageProgram(storage: Compound): string {
+export function storageProgram(storage: Compound): string {
   try {
     const kept = storage.stream('\x01CompObj')
     return (kept && /\b(?:Word\.Document|Excel\.Sheet|Excel\.Chart|Equation)(?:\.[\w]+)?/.exec(latin1(kept))?.[0]) ?? ''

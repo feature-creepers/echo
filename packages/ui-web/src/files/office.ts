@@ -9,7 +9,15 @@
  */
 
 import { type Archive, openArchive, partOf, relationships, resolvePart, textOf } from './archive.ts'
-import { olderWorkbookView, readOlderExcel, readOlderPowerPoint, readOlderSheets, readOlderWord, readOlderWordStorage } from './binary-office.ts'
+import {
+  olderWorkbookView,
+  readOlderExcel,
+  readOlderPowerPoint,
+  readOlderSheets,
+  readOlderWord,
+  readOlderWordStorage,
+  storageProgram
+} from './binary-office.ts'
 import { type Compound, openCompound } from './compound.ts'
 import { cellValue, serialNow, withConditions } from './conditional-formats.ts'
 import type { TextLook } from './document-look.ts'
@@ -72,6 +80,7 @@ import {
 import { drawSlide } from './slide-drawing.ts'
 import { DRAWINGS_LIMIT } from './slide-svg.ts'
 import { readWordLook } from './word-look.ts'
+import { type SheetObject, shapeNumber, sheetObjects } from './workbook-objects.ts'
 import { childAt, childrenNamed, decodeEntities, nodeEvents, type XmlEvent, type XmlNode, xmlEvents, xmlTree } from './xml.ts'
 
 export { type Archive, openArchive } from './archive.ts'
@@ -111,11 +120,19 @@ async function drawnFigure(drawn: Drawn, targets: ReadonlyMap<string, string>, f
 
 /**
  * The pictures and charts a DrawingML drawing places, in order: a sheet's drawing part, a slide. A slide's background
- * and what is kept for older apps (`mc:Fallback`) are passed over.
+ * and what is kept for older apps (`mc:Fallback`) are passed over. An object of another app a sheet's drawing places,
+ * by the shape Excel draws it as for older apps (`a14:compatExt`), is the figure `objects` makes of it, in its place.
  */
-async function drawnFigures(xml: string, targets: ReadonlyMap<string, string>, figures: Figures): Promise<number[]> {
+async function drawnFigures(
+  xml: string,
+  targets: ReadonlyMap<string, string>,
+  figures: Figures,
+  objects?: (shape: number) => Promise<number | undefined>
+): Promise<number[]> {
   const found: number[] = []
   let drawn: Drawn | undefined
+  // The object of another app an anchor of a sheet's drawing places.
+  let object: number | undefined
   // A sheet's anchor may give the size of what it holds before it.
   let anchored: { width?: number | undefined; height?: number | undefined } = {}
   let passed = 0
@@ -133,6 +150,7 @@ async function drawnFigures(xml: string, targets: ReadonlyMap<string, string>, f
       else if (background) continue
       else if (isDrawn(name)) drawn ??= { alt: '', ...anchored }
       else if (name === 'xdr:ext' && !drawn) anchored = { width: emuPixels(attributes.cx), height: emuPixels(attributes.cy) }
+      else if (name === 'a14:compatExt' && objects) object = shapeNumber(attributes.spid)
       else if (!drawn) continue
       else if (name === 'xdr:cNvPr' || name === 'p:cNvPr') drawn.alt ||= attributes.descr || attributes.title || ''
       else if (name === 'a:blip') drawn.picture ??= attributes['r:embed']
@@ -143,8 +161,12 @@ async function drawnFigures(xml: string, targets: ReadonlyMap<string, string>, f
       }
     } else if (event.type === 'close') {
       if (event.name === 'p:bg') background = false
-      else if (event.name === 'xdr:oneCellAnchor' || event.name === 'xdr:absoluteAnchor') anchored = {}
-      else if (drawn && isDrawn(event.name)) {
+      else if (event.name === 'xdr:twoCellAnchor' || event.name === 'xdr:oneCellAnchor' || event.name === 'xdr:absoluteAnchor') {
+        anchored = {}
+        const placed = object === undefined || !objects ? undefined : await objects(object)
+        if (placed !== undefined) found.push(placed)
+        object = undefined
+      } else if (drawn && isDrawn(event.name)) {
         const figure = await drawnFigure(drawn, targets, figures)
         if (figure !== undefined) found.push(figure)
         drawn = undefined
@@ -580,12 +602,52 @@ export function embeddedCells(archive: Archive, options: NumberFormatOptions = {
  */
 export function embeddedObjects(options: NumberFormatOptions = {}): ObjectReader {
   return async (program, source) => {
-    const name = program.trim()
-    if (/^Excel\.Sheet\b/i.test(name)) {
+    const kind = heldKind(program, source)
+    if (kind === 'sheet') {
       const bytes = source instanceof Uint8Array ? source : (source.stream('Package') ?? source.stream('Workbook') ?? source.stream('Book'))
       return bytes && embeddedSheet(bytes, options)
     }
-    if (/^Word\.Document\b/i.test(name)) return embeddedText(source, options)
+    if (kind === 'document') return embeddedText(source, options)
+    return undefined
+  }
+}
+
+/** What an object of another app holds that is read here, by its program. */
+type HeldKind = 'sheet' | 'document'
+const HELD_PROGRAMS: [RegExp, HeldKind][] = [
+  [/^Excel\.Sheet\b/i, 'sheet'],
+  [/^Word\.Document\b/i, 'document']
+]
+const programKind = (program: string): HeldKind | undefined => HELD_PROGRAMS.find(([pattern]) => pattern.test(program.trim()))?.[1]
+
+/**
+ * What an object of another app holds, by its program, else by its file: Excel names an object made from a file by its
+ * kind alone ("Document", "Worksheet"), so a name that is no program's is told by the parts or streams it holds. A
+ * program named in full that is not read here is left alone.
+ */
+export function heldKind(program: string, source: Uint8Array | Compound): HeldKind | undefined {
+  return programKind(program) ?? (/\w\.\w/.test(program) ? undefined : fileKind(source, 0))
+}
+
+function fileKind(source: Uint8Array | Compound, depth: number): HeldKind | undefined {
+  if (depth > 2) return undefined
+  try {
+    if (source instanceof Uint8Array) {
+      if (source[0] === 0x50 && source[1] === 0x4b) {
+        const archive = openArchive(source)
+        if (partOf(archive, 'xl/workbook.xml')) return 'sheet'
+        return partOf(archive, 'word/document.xml') ? 'document' : undefined
+      }
+      return source[0] === 0xd0 && source[1] === 0xcf ? fileKind(openCompound(source), depth + 1) : undefined
+    }
+    // A storage names its program in its `CompObj` stream, else holds a package or an older file's streams.
+    const named = programKind(storageProgram(source))
+    if (named) return named
+    const held = source.stream('Package')
+    if (held) return fileKind(held, depth + 1)
+    if (source.stream('Workbook') || source.stream('Book')) return 'sheet'
+    return source.stream('WordDocument') ? 'document' : undefined
+  } catch {
     return undefined
   }
 }
@@ -718,19 +780,31 @@ async function workbookSheets(
 
 /**
  * An Excel workbook's sheets, each as rows of its cells' values as their formats show them, then the pictures and
- * charts its drawing places.
+ * charts its drawing places and the objects of other apps it holds, what these hold read by `objects` when given.
  */
-export async function readWorkbook(archive: Archive, options: NumberFormatOptions = {}): Promise<OfficePreview> {
+export async function readWorkbook(archive: Archive, options: NumberFormatOptions = {}, objects?: ObjectReader): Promise<OfficePreview> {
   const { sheets, shown, styles } = await workbookSheets(archive, options)
   // The sheets are read before their charts, which may name their cells rather than keep their values.
   const cells = sheetCells(sheets)
-  const figures = new Figures(archive, shown, async () => cells)
+  const figures = new Figures(archive, shown, async () => cells, objects)
   const read: Extract<OfficePreview, { kind: 'workbook' }>['sheets'] = []
   for (const { name, rows, cut, xml, target, layout, cells: values } of sheets) {
-    // A sheet's pictures and charts are in its drawing, a part of their own.
-    const drawing = (await relationships(archive, target)).get(/<drawing\b[^>]*\br:id="([^"]*)"/.exec(xml)?.[1] ?? '')
+    // A sheet's pictures and charts are in its drawing, a part of their own, and so are its objects of other apps,
+    // which it lists; one its drawing does not place follows the others.
+    const targets = await relationships(archive, target)
+    const held = new Map((await sheetObjects(archive, xml, targets).catch(() => [])).map((object) => [object.shape, object]))
+    const object = async (shape: number) => {
+      const found = held.get(shape)
+      held.delete(shape)
+      return found && objectFigure(found, figures)
+    }
+    const drawing = targets.get(/<drawing\b[^>]*\br:id="([^"]*)"/.exec(xml)?.[1] ?? '')
     const drawn = drawing === undefined ? undefined : await textOf(archive, drawing)
-    const placed = drawn === undefined || drawing === undefined ? [] : await drawnFigures(drawn, await relationships(archive, drawing), figures)
+    const placed = drawn === undefined || drawing === undefined ? [] : await drawnFigures(drawn, await relationships(archive, drawing), figures, object)
+    for (const shape of [...held.keys()]) {
+      const figure = await object(shape)
+      if (figure !== undefined) placed.push(figure)
+    }
     // Its look, read from its part with its cells' styles; a sheet whose look cannot be read shows as a table.
     let look: SheetLook | undefined
     try {
@@ -748,6 +822,20 @@ export async function readWorkbook(archive: Archive, options: NumberFormatOption
     read.push({ name, rows, cut, figures: figuresAt(figures, placed), look })
   }
   return { kind: 'workbook', sheets: read }
+}
+
+/**
+ * An object of another app a sheet holds, as its figure: the picture Excel last drew of it at its size, an equation's
+ * linear text its words, a worksheet as its sheet unless it shows as an icon, and a document's text its words.
+ */
+async function objectFigure(object: SheetObject, figures: Figures): Promise<number | undefined> {
+  const { part, program, picture } = object
+  const equation = await figures.equation(part)
+  if (equation !== undefined) return figures.picture(picture, equation, object)
+  const sheet = object.icon ? undefined : await figures.object(part, program, '')
+  if (sheet !== undefined) return sheet
+  const text = await figures.text(part, program)
+  return figures.picture(picture, text?.lines.join(' ') ?? '', object)
 }
 
 /** The figures found at these places of a file's list. */
@@ -1670,7 +1758,7 @@ function protectedPackage(bytes: Uint8Array): boolean {
 export async function readOffice(extension: string, bytes: Uint8Array, options: NumberFormatOptions = {}): Promise<OfficePreview> {
   // The older formats are compound files, not archives.
   if (extension === 'doc') return readOlderWord(bytes, embeddedObjects(options))
-  if (extension === 'xls') return readOlderExcel(bytes, options)
+  if (extension === 'xls') return readOlderExcel(bytes, options, embeddedObjects(options))
   if (extension === 'ppt') return readOlderPowerPoint(bytes, embeddedObjects(options))
   // Word, Excel and PowerPoint keep a file protected with a password in a compound file, encrypted, not in an archive.
   if (protectedPackage(bytes)) throw new Error(PROTECTED)
@@ -1679,7 +1767,7 @@ export async function readOffice(extension: string, bytes: Uint8Array, options: 
     case 'docx':
       return readDocument(archive, options)
     case 'xlsx':
-      return readWorkbook(archive, options)
+      return readWorkbook(archive, options, embeddedObjects(options))
     case 'pptx':
       return readPresentation(archive, options)
     case 'odt':
