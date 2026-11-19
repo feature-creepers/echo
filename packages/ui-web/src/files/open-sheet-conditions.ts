@@ -134,11 +134,20 @@ export function readOpenRule(value: string, look: ConditionLook, sheet: string):
 }
 
 /**
- * What a cell style named by a condition sets, the style and those it comes from, the spreadsheet's default style left
- * out: a condition's style changes what it sets, never the cell's own font.
+ * A style's name as OpenDocument keeps it from the name a person sees, which LibreOffice's conditions give: each
+ * character a name cannot hold, the underscore among them, written as its code between underscores (`Accent 1` is
+ * `Accent_20_1`).
+ */
+export const styleName = (shown: string): string => shown.replace(/[^A-Za-z0-9.-]/g, (character) => `_${character.charCodeAt(0).toString(16)}_`)
+
+/**
+ * What a cell style named by a condition sets, by its name or the name a person sees, the style and those it comes
+ * from, the spreadsheet's default style left out: a condition's style changes what it sets, never the cell's own font.
  */
 function styleLook(book: StyleBook, name: string | undefined, fonts: ReadonlyMap<string, string>): ConditionLook {
-  const layers = book.chain('table-cell', name, false).filter((style) => style.attributes['style:name'] !== 'Default')
+  const found = book.chain('table-cell', name, false)
+  const chain = found.length > 0 || name === undefined ? found : book.chain('table-cell', styleName(name), false)
+  const layers = chain.filter((style) => style.attributes['style:name'] !== 'Default')
   const of = (kind: string): Record<string, string> => Object.assign({}, ...layers.map((style) => childAt(style, `style:${kind}-properties`)?.attributes ?? {}))
   const cell = of('table-cell')
   const { hidden: _hidden, highlight: _highlight, ...text } = textLook(of('text'), fonts)

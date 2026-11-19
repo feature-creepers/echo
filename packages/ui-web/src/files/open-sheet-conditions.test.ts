@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ConditionRule } from './conditional-formats.ts'
-import { readOpenBlocks, readOpenRule } from './open-sheet-conditions.ts'
+import { readOpenBlocks, readOpenRule, styleName } from './open-sheet-conditions.ts'
 import { openSerial } from './open-sheet-look.ts'
 import { serialOf } from './sheet-formula.ts'
 
@@ -30,6 +30,15 @@ describe('an OpenDocument sheet’s conditional formats', () => {
     const read = readOpenRule(value, {}, 'Sheet1')
     if (rule === undefined) expect(read).toBeUndefined()
     else expect(read).toMatchObject(rule)
+  })
+
+  it.each([
+    ['Good', 'Good'],
+    ['Accent 1', 'Accent_20_1'],
+    ['ConditionalStyle_15', 'ConditionalStyle_5f_15'],
+    ['Note.2-b', 'Note.2-b']
+  ])('finds the style a person sees as %s by its name %s', (shown, name) => {
+    expect(styleName(shown)).toBe(name)
   })
 
   it('reads the cells a format applies to, its sheets named quoted or not', () => {

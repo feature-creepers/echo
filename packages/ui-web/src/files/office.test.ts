@@ -704,7 +704,9 @@ describe('an OpenDocument file previewed', () => {
     const named =
       '<office:document-styles><office:styles><style:style style:name="Default" style:family="table-cell"><style:text-properties style:font-name="Liberation Sans"/></style:style>' +
       '<style:style style:name="Good" style:family="table-cell" style:parent-style-name="Default"><style:table-cell-properties fo:background-color="#ccffcc"/>' +
-      '<style:text-properties fo:color="#006600" fo:font-weight="bold"/></style:style></office:styles></office:document-styles>'
+      '<style:text-properties fo:color="#006600" fo:font-weight="bold"/></style:style>' +
+      '<style:style style:name="Even_20_rows" style:display-name="Even rows" style:family="table-cell"><style:table-cell-properties fo:background-color="#00ff00"/></style:style>' +
+      '</office:styles></office:document-styles>'
     const number = (value: number) => `<table:table-cell office:value-type="float" office:value="${value}"><text:p>${value}</text:p></table:table-cell>`
     const words = (text: string) => `<table:table-cell office:value-type="string"><text:p>${text}</text:p></table:table-cell>`
     const rows = [
@@ -722,7 +724,7 @@ describe('an OpenDocument file previewed', () => {
       '<calcext:formatting-entry calcext:value="0" calcext:type="auto-maximum"/></calcext:data-bar></calcext:conditional-format>' +
       '<calcext:conditional-format calcext:target-range-address="Notes.B1:Notes.B4">' +
       '<calcext:condition calcext:apply-style-name="Good" calcext:value="contains-text(&quot;an&quot;)" calcext:base-cell-address="Notes.B1"/>' +
-      '<calcext:condition calcext:apply-style-name="Good" calcext:value="formula-is(MOD(ROW();2)=0)" calcext:base-cell-address="Notes.B1"/></calcext:conditional-format>' +
+      '<calcext:condition calcext:apply-style-name="Even rows" calcext:value="formula-is(MOD(ROW();2)=0)" calcext:base-cell-address="Notes.B1"/></calcext:conditional-format>' +
       '<calcext:conditional-format calcext:target-range-address="Notes.A1:Notes.A4"><calcext:icon-set calcext:icon-set-type="3Arrows">' +
       '<calcext:formatting-entry calcext:value="0" calcext:type="percent"/><calcext:formatting-entry calcext:value="33" calcext:type="percent"/>' +
       '<calcext:formatting-entry calcext:value="67" calcext:type="percent"/></calcext:icon-set></calcext:conditional-format></calcext:conditional-formats>'
@@ -742,7 +744,8 @@ describe('an OpenDocument file previewed', () => {
     const at = (row: number, column: number) => look?.looks[look.cells[row]?.[column] ?? -1]
     expect([0, 1, 2, 3].map((row) => at(row, 0)?.fill)).toEqual([undefined, '#ccffcc', '#ccffcc', '#ccffcc'])
     expect(at(1, 0)?.text).toMatchObject({ font: 'Liberation Sans', color: '#006600', bold: true })
-    expect([0, 1, 2, 3].map((row) => at(row, 1)?.fill)).toEqual([undefined, '#ccffcc', undefined, '#ccffcc'])
+    // A condition names its style as a person sees it, `Even rows` for the style `Even_20_rows`.
+    expect([0, 1, 2, 3].map((row) => at(row, 1)?.fill)).toEqual([undefined, '#ccffcc', undefined, '#00ff00'])
     expect(look?.marks?.[0]?.[0]?.bar?.end).toBeCloseTo(1 / 12)
     expect(look?.marks?.[3]?.[0]?.bar?.end).toBe(1)
     expect([0, 1, 2, 3].map((row) => look?.marks?.[row]?.[0]?.icon?.index)).toEqual([0, 1, 2, 2])
