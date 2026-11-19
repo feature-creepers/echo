@@ -84,7 +84,7 @@ describe('a reminder', () => {
     expect(said()).toEqual([])
     timers.advance(MINUTE)
     expect(said()).toEqual(["It's time to feed the cat."])
-    expect(notified()).toEqual([{ title: 'Feed the cat', body: "It's time to feed the cat.", silent: false, unlessFocused: false }])
+    expect(notified()).toEqual([{ title: 'Feed the cat', body: "It's time to feed the cat.", silent: false, unlessFocused: false, snooze: 'job-1' }])
     expect(done.find((one) => 'card' in one)).toMatchObject({ card: '14:15' })
     expect(schedule.read().jobs[0]).toMatchObject({ state: 'done', last: '2026-11-18T13:15:00.000Z' })
   })
@@ -117,7 +117,7 @@ describe('a reminder', () => {
     schedule.create(reminder({ kind: 'once', at: '2026-11-18T23:30' }))
     timers.advance(31 * MINUTE)
     expect(done).toEqual([
-      { notified: { title: 'Feed the cat', body: "It's time to feed the cat.", silent: true, unlessFocused: false } },
+      { notified: { title: 'Feed the cat', body: "It's time to feed the cat.", silent: true, unlessFocused: false, snooze: 'job-1' } },
       { said: "It's time to feed the cat.", silent: true, card: '23:30', language: 'en' }
     ])
   })
@@ -277,6 +277,65 @@ describe('changing jobs', () => {
     const first = setup()
     first.schedule.setQuiet({ from: '22:00', until: '06:00' })
     expect(setup({ records: first.records }).schedule.read().quiet).toEqual({ on: true, from: '22:00', until: '06:00' })
+  })
+})
+
+describe('snoozing a reminder', () => {
+  const cards = (done: Done[]) => done.flatMap((one) => ('said' in one ? [one.card] : []))
+
+  it('rings a one-time reminder once more, then it is done again', () => {
+    const { schedule, timers, said, done } = setup()
+    schedule.create(reminder({ kind: 'once', at: '2026-11-18T14:15' }))
+    timers.advance(2 * MINUTE)
+    const snoozed = schedule.snooze('job-1', 10)
+    expect(snoozed.ok && snoozed.job).toMatchObject({ state: 'active', next: '2026-11-18T13:25:00.000Z', snoozed: '2026-11-18T13:25:00.000Z' })
+
+    timers.advance(10 * MINUTE)
+    expect(said()).toEqual(["It's time to feed the cat.", "It's time to feed the cat."])
+    expect(cards(done)).toEqual(['14:15', '14:25 · snoozed'])
+    const job = schedule.get('job-1')
+    expect(job?.state).toBe('done')
+    expect(job?.snoozed).toBeUndefined()
+  })
+
+  it('rings a recurring reminder once more, and its own times go on', () => {
+    const { schedule, timers, said } = setup()
+    schedule.create(reminder({ kind: 'daily', time: '14:15' }))
+    timers.advance(2 * MINUTE)
+    schedule.snooze('job-1', 30)
+    timers.advance(30 * MINUTE)
+    expect(said()).toHaveLength(2)
+    expect(schedule.get('job-1')).toMatchObject({ state: 'active', next: '2026-11-19T13:15:00.000Z' })
+    expect(schedule.get('job-1')?.snoozed).toBeUndefined()
+  })
+
+  it('refuses a reminder that has not rung, a paused one, a task, and one on files', () => {
+    const { schedule } = setup()
+    schedule.create(reminder({ kind: 'once', at: '2026-11-18T15:00' }))
+    schedule.create({ kind: 'task', title: 'Weather', request: 'The weather', timing: { kind: 'daily', time: '08:00' } })
+    schedule.create(reminder({ kind: 'files', folder: '/home/ada/Downloads', repeat: true }))
+    for (const job of ['job-1', 'job-2', 'job-3', 'job-9']) expect(schedule.snooze(job, 10).ok).toBe(false)
+  })
+
+  it('rings late after a restart within twelve hours, and is let go past them', () => {
+    /** A reminder rang and was snoozed, and the app closed before its snooze. */
+    const snoozedThenClosed = () => {
+      const first = setup()
+      first.schedule.create(reminder({ kind: 'once', at: '2026-11-18T14:15' }))
+      first.timers.advance(2 * MINUTE)
+      first.schedule.snooze('job-1', 10)
+      first.schedule.close()
+      return first.records
+    }
+
+    const late = setup({ records: snoozedThenClosed(), at: START + 2 * HOUR })
+    expect(late.said()).toEqual(['You asked me to remind you at 14:25: Feed the cat.'])
+    expect(late.schedule.get('job-1')?.state).toBe('done')
+
+    const gone = setup({ records: snoozedThenClosed(), at: START + 13 * HOUR })
+    expect(gone.said()).toEqual([])
+    expect(gone.schedule.get('job-1')).toMatchObject({ state: 'done' })
+    expect(gone.schedule.get('job-1')?.snoozed).toBeUndefined()
   })
 })
 

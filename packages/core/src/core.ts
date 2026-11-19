@@ -521,6 +521,10 @@ export function createCore(options: CoreOptions): Core {
         const change = schedule.change(input.job, { paused: input.paused })
         return change.ok ? { ok: true, output: { schedule: schedule.read() } } : { ok: false, error: { code: 'invalid-input', message: change.problem } }
       },
+      'schedule.snooze': (input) => {
+        const snoozed = schedule.snooze(input.job, input.minutes)
+        return snoozed.ok ? { ok: true, output: { schedule: schedule.read() } } : { ok: false, error: { code: 'invalid-input', message: snoozed.problem } }
+      },
       'schedule.delete': (input) => {
         const change = schedule.remove(input.jobs)
         return change.ok ? { ok: true, output: { schedule: change.schedule } } : change

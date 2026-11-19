@@ -32,6 +32,8 @@ export interface ViewActions {
   autoplay?: string | undefined
   /** What can be done with a file on the computer, by its absolute path. Each is left out where it cannot be done here. */
   files?: FileActions | undefined
+  /** Ring a reminder once more in so many minutes, from its card. Left out, its card offers none. */
+  snooze?: ((job: string, minutes: number) => Promise<void>) | undefined
 }
 
 /** A file on the computer: opened with its app, shown in its folder, or looked at without leaving the app. */

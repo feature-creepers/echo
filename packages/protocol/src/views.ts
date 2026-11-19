@@ -24,6 +24,8 @@ export const viewSchema = z.object({
   slot: z.enum(['stage', 'margin']).default('stage'),
   /** The saved widget of the library this view shows again, when it is one. */
   widget: z.string().min(1).max(64).optional(),
+  /** The reminder this card is of, when it is one's: it can be snoozed from it. */
+  reminder: z.string().min(1).max(64).optional(),
   spec: viewSpecShape
 })
 export type ShownView = z.infer<typeof viewSchema>

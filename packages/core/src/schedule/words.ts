@@ -34,8 +34,11 @@ export function lateSentence(title: string, due: number, zone: string, language:
   return `${lead(spokenClock(due, zone))}: ${about}.`
 }
 
-/** The card a reminder shows in the stream: what it is about, large, and when it was due under it. */
-export function reminderCard(title: string, when: string): { title: string; spec: ViewSpec } {
+/**
+ * The card a reminder shows in the stream: what it is about, large, and when it was due under it. Given the job, the
+ * card can snooze it.
+ */
+export function reminderCard(title: string, when: string, job?: string): { title: string; spec: ViewSpec; reminder?: string } {
   const checked = validateView({
     root: 'card',
     elements: {
@@ -45,5 +48,5 @@ export function reminderCard(title: string, when: string): { title: string; spec
     }
   })
   if (!checked.ok) throw new Error(`The reminder's card is not a valid view: ${checked.problems.join(' ')}`)
-  return { title: 'Reminder', spec: checked.spec }
+  return { title: 'Reminder', spec: checked.spec, ...(job === undefined ? {} : { reminder: job }) }
 }

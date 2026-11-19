@@ -431,6 +431,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
       readShapes: (url: string) => client.session.run('shapes.read', { url }).then((read) => read.shapes),
       readFeed: (url: string) => client.session.run('feed.read', { url }).then((read) => read.document),
       act: (act: readonly Record<string, unknown>[]) => client.session.run('view.act', { act: [...act] }).then(() => undefined),
+      snooze: (job: string, minutes: number) => client.session.run('schedule.snooze', { job, minutes }).then(() => undefined),
       files
     }),
     [say, client, files]

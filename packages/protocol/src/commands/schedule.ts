@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { jobIdSchema, quietHoursSchema, scheduleViewSchema } from '../schedule.ts'
+import { jobIdSchema, MAX_SNOOZE_MINUTES, quietHoursSchema, scheduleViewSchema } from '../schedule.ts'
 
 const scheduleOutput = z.object({ schedule: scheduleViewSchema })
 
@@ -13,6 +13,15 @@ export const scheduleCommands = {
   /** Pause a job, or resume it: it rings again from its next time after now, never for the times it was paused. */
   'schedule.pause': {
     input: z.object({ job: jobIdSchema, paused: z.boolean() }),
+    output: scheduleOutput
+  },
+
+  /**
+   * Snooze a reminder that rang, from its card or its notification: it rings once more in so many minutes. Its own
+   * times go on. Refused for a reminder that has not rung, a paused one, a task, and one that rings on files.
+   */
+  'schedule.snooze': {
+    input: z.object({ job: jobIdSchema, minutes: z.number().int().min(1).max(MAX_SNOOZE_MINUTES) }),
     output: scheduleOutput
   },
 

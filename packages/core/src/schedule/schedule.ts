@@ -138,6 +138,8 @@ export interface Schedule {
   create(job: NewJob): { ok: true; job: Job } | { ok: false; problem: string }
   /** Change a job: its words, its timing, or pause and resume it. */
   change(job: string, change: JobChange): { ok: true; job: Job } | { ok: false; problem: string }
+  /** Ring a reminder that rang once more, in so many minutes. Its own times go on. */
+  snooze(job: string, minutes: number): { ok: true; job: Job } | { ok: false; problem: string }
   /** Delete jobs for good: their records are erased. */
   remove(jobs: readonly string[]): ScheduleChange
   setQuiet(quiet: { [Key in keyof QuietHours]?: QuietHours[Key] | undefined }): ScheduleView
@@ -197,8 +199,16 @@ export function createSchedule(options: ScheduleOptions): Schedule {
 
   // ---------------------------------------------------------------- reading
 
-  /** When a job rings next, if it is active: a recurring one never for a time before `from`, nor one it rang at. */
+  /** When a job rings next, by its own times or where it was snoozed to, whichever comes first, if it is active. */
   const nextOf = (entry: Kept, now: number): number | undefined => {
+    const own = ownNext(entry, now)
+    const snoozed = snoozedAt(entry.record)
+    if (snoozed === undefined) return own
+    return own === undefined || Number.isNaN(own) ? snoozed : Math.min(own, snoozed)
+  }
+
+  /** When a job rings next by its own times, if it is active: a recurring one never for a time before `from`, nor one it rang at. */
+  const ownNext = (entry: Kept, now: number): number | undefined => {
     const { record } = entry
     if (record.state !== 'active' || record.timing.kind === 'files') return undefined
     if (record.timing.kind === 'once') return entry.last === undefined ? onceAt(record.timing, options.zone()) : undefined
@@ -264,17 +274,23 @@ export function createSchedule(options: ScheduleOptions): Schedule {
     const late = now - due > ON_TIME_MS
     // In the quiet hours, or past the cap on how often it speaks up, it is shown, notified silently and not said.
     const silent = isQuiet(quiet, now, zone) || proactive.mayInterrupt?.() === false
+    const snoozed = snoozedAt(record) === due
     const [rang] = records.append([{ type: RANG, payload: { job: record.job, due: new Date(due).toISOString() } }])
     if (rang) take(rang)
-    if (record.timing.kind === 'once') write({ ...record, state: 'done' })
+    // Rung for its snooze, a reminder goes back to its own times; a one-time job is done.
+    if (record.timing.kind === 'once') write({ ...unsnoozed(record), state: 'done' })
+    else if (snoozed) write(unsnoozed(record))
 
     if (record.kind === 'reminder') {
       const sentence = late ? lateSentence(record.title, due, zone, record.language) : (record.sentence ?? record.title)
       const every = recurrenceWords(record.timing)
-      const when = late ? `Due at ${clockAt(due, zone)} · rang late, at ${clockAt(now, zone)}` : `${clockAt(due, zone)}${every ? ` · ${every}` : ''}`
-      // The notification goes at once, so a person away from the screen has it; the voice waits for a pause.
-      proactive.notify({ title: record.title, body: sentence, silent, unlessFocused: false })
-      waiting.push(() => proactive.remind({ sentence, language: record.language, card: reminderCard(record.title, when), silent }))
+      const when = late
+        ? `Due at ${clockAt(due, zone)} · rang late, at ${clockAt(now, zone)}`
+        : `${clockAt(due, zone)}${snoozed ? ' · snoozed' : every ? ` · ${every}` : ''}`
+      // The notification goes at once, so a person away from the screen has it, and can snooze it from there; the
+      // voice waits for a pause.
+      proactive.notify({ title: record.title, body: sentence, silent, unlessFocused: false, snooze: record.job })
+      waiting.push(() => proactive.remind({ sentence, language: record.language, card: reminderCard(record.title, when, record.job), silent }))
     } else {
       waiting.push(() => proactive.run({ title: record.title, request: record.request ?? record.title, language: record.language, silent }))
     }
@@ -342,7 +358,10 @@ export function createSchedule(options: ScheduleOptions): Schedule {
       if (entry.record.state !== 'active') continue
       const due = nextOf(entry, now)
       if (due === undefined || Number.isNaN(due) || due > now) continue
-      if (now - due <= ON_TIME_MS || (entry.record.timing.kind === 'once' && now - due < LATE_LIMIT_MS)) ring(entry, due, now)
+      const snoozed = snoozedAt(entry.record) === due
+      if (now - due <= ON_TIME_MS || ((entry.record.timing.kind === 'once' || snoozed) && now - due < LATE_LIMIT_MS)) ring(entry, due, now)
+      // A snooze too long past is let go: the reminder rang already.
+      else if (snoozed) write(unsnoozed(entry.record))
       else write({ ...entry.record, state: 'missed' })
       moved = true
     }
@@ -401,7 +420,8 @@ export function createSchedule(options: ScheduleOptions): Schedule {
     // Resumed, or given a new timing, a job counts its times from now: it does not ring for the ones it was paused through.
     const restarts = (state === 'active' && entry.record.state === 'paused') || asked.timing !== undefined
     write({
-      ...entry.record,
+      // A new timing leaves the snooze of the old one behind.
+      ...(asked.timing === undefined ? entry.record : withoutSnooze(entry.record)),
       ...(asked.title === undefined ? {} : { title: asked.title }),
       ...(asked.sentence === undefined || entry.record.kind !== 'reminder' ? {} : { sentence: asked.sentence }),
       ...(asked.request === undefined || entry.record.kind !== 'task' ? {} : { request: asked.request }),
@@ -411,6 +431,18 @@ export function createSchedule(options: ScheduleOptions): Schedule {
     })
     // A new timing is a new job as far as its times go: what it rang under the old one does not hold it back.
     if (asked.timing !== undefined) entry.last = undefined
+    changed()
+    return { ok: true, job: toJob(kept.get(id) as Kept, now) }
+  }
+
+  const snooze: Schedule['snooze'] = (id, minutes) => {
+    const entry = kept.get(id)
+    const record = entry?.record
+    // Only a reminder that rang, on a time rather than on files, and not paused: one that has not rung has its time still to come.
+    if (!entry || !record || record.kind !== 'reminder' || record.timing.kind === 'files' || entry.last === undefined || record.state === 'paused')
+      return { ok: false, problem: `There is no reminder "${id}" that rang, to snooze.` }
+    const now = clock()
+    write({ ...record, state: 'active', snoozed: new Date(now + minutes * 60_000).toISOString() })
     changed()
     return { ok: true, job: toJob(kept.get(id) as Kept, now) }
   }
@@ -438,6 +470,7 @@ export function createSchedule(options: ScheduleOptions): Schedule {
     },
     create,
     change,
+    snooze,
     remove,
     setQuiet(asked) {
       const next = { ...quiet, ...Object.fromEntries(Object.entries(asked).filter(([, value]) => value !== undefined)) }
@@ -471,6 +504,25 @@ export function createSchedule(options: ScheduleOptions): Schedule {
       fileWatch?.close()
     }
   }
+}
+
+/** When a job rings once more, snoozed, while it is active. */
+function snoozedAt(record: JobRecord): number | undefined {
+  if (record.state !== 'active' || record.snoozed === undefined) return undefined
+  const at = Date.parse(record.snoozed)
+  return Number.isNaN(at) ? undefined : at
+}
+
+/** A job without its snooze. */
+function withoutSnooze(record: JobRecord): JobRecord {
+  const { snoozed: _, ...rest } = record
+  return rest
+}
+
+/** A job that rang for its snooze, or let it go: back to its own times, and a one-time job done again. */
+function unsnoozed(record: JobRecord): JobRecord {
+  const rest = withoutSnooze(record)
+  return rest.timing.kind === 'once' ? { ...rest, state: 'done' } : rest
 }
 
 /** Whether a job is still to ring: active or paused. */

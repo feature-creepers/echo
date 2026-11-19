@@ -43,6 +43,8 @@ export interface Checked {
   spec: ViewSpec
   /** The saved widget of the library it shows again. */
   widget?: string
+  /** The reminder it is the card of: it can be snoozed from it. */
+  reminder?: string
 }
 
 /**
@@ -162,6 +164,7 @@ export function createScreen({ records, newId, timers, now = () => new Date() }:
       slot: showing.slot,
       spec: checked.spec,
       ...(checked.widget === undefined ? {} : { widget: checked.widget }),
+      ...(checked.reminder === undefined ? {} : { reminder: checked.reminder }),
       ...(showing.turn === undefined ? {} : { turn: showing.turn }),
       ...(showing.thread === undefined ? {} : { thread: showing.thread })
     }

@@ -3,6 +3,7 @@ import type { Event } from '@repo/protocol'
 import { describe, expect, it } from 'vitest'
 import { memoryRecords } from '../records/memory.ts'
 import { manualTimers } from '../replay/manual-timers.ts'
+import { reminderCard } from '../schedule/words.ts'
 import { ASIDE_STAYS_MS, createScreen, type Showing } from './screen.ts'
 
 function setup(records = memoryRecords()) {
@@ -146,5 +147,15 @@ describe('the screen', () => {
     expect(after.current()?.title).toBe('Kept')
     expect(after.margin().map((view) => view.title)).toEqual(['Card'])
     expect(after.stream().map((view) => view.title)).toEqual(['Card', 'Kept'])
+  })
+})
+
+describe("a reminder's card", () => {
+  it('names its reminder, so it can be snoozed from it, after a restart too', () => {
+    const { screen, records } = setup()
+    const card = reminderCard('Feed the cat', '14:15', 'job-1')
+    screen.present(card, { thread: undefined, turn: 't1', slot: 'stage', focused: true })
+    expect(screen.current()).toMatchObject({ title: 'Reminder', reminder: 'job-1' })
+    expect(setup(records).screen.stream()[0]?.reminder).toBe('job-1')
   })
 })

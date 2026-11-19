@@ -102,9 +102,20 @@ export const jobSchema = z.object({
   /** When it rings next, while it is active: an ISO 8601 date in UTC. */
   next: z.string().optional(),
   /** When it last rang: the time it was due, an ISO 8601 date in UTC. */
-  last: z.string().optional()
+  last: z.string().optional(),
+  /**
+   * A reminder that rang and was snoozed: when it rings once more, an ISO 8601 date in UTC. Its own times go on; a
+   * one-time reminder is done again once it has rung for it.
+   */
+  snoozed: z.string().optional()
 })
 export type Job = z.infer<typeof jobSchema>
+
+/** How long a reminder can be snoozed for, at most, in minutes. */
+export const MAX_SNOOZE_MINUTES = 24 * 60
+
+/** What a reminder's card and notification offer to snooze it by, in minutes. */
+export const SNOOZES = [10, 30, 60] as const
 
 /**
  * The hours the assistant keeps quiet, every night by default: a reminder only shows a silent notification, and a
@@ -141,7 +152,9 @@ export const notificationSchema = z.object({
   /** Shown with no sound: during the quiet hours. */
   silent: z.boolean(),
   /** Shown only when the app's window is not in front of the person, who would otherwise see it there. */
-  unlessFocused: z.boolean()
+  unlessFocused: z.boolean(),
+  /** A reminder's: it can be snoozed from the notification, on a system that shows buttons on one. */
+  snooze: jobIdSchema.optional()
 })
 export type Notification = z.infer<typeof notificationSchema>
 
