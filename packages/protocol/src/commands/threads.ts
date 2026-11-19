@@ -11,19 +11,28 @@ export const threadCommands = {
   },
 
   /**
-   * Read one thread whole, for the side sheet: every exchange it answered with its full written answer, every
-   * tool call it made with what went in and came out, and the views it showed. Asides included. A long thread is cut
-   * to fit one message: each step's long texts are cut, and its oldest requests left out, `earlier` saying how many.
+   * Read a thread for the side sheet, a page at a time: its latest requests, or with `before` those just before
+   * that request, as many as fit one message. Each comes with its full written answer, its tool calls as a
+   * preview (what each was about, the start of what it gave back: `thread.step` reads one whole), and the titles of
+   * the views it showed. Asides included. `earlier` says how many requests come before the page. A request too
+   * long to fit alone keeps its latest calls, `earlierSteps` saying how many of its first ones are left out.
    */
   'thread.read': {
-    input: z.object({ thread: threadIdSchema }),
+    input: z.object({ thread: threadIdSchema, before: turnIdSchema.optional() }),
     output: z.object({
       thread: threadSchema,
       exchanges: z.array(exchangeSchema),
       steps: z.array(stepSchema),
-      views: z.array(viewSchema),
-      earlier: z.number().int().nonnegative().default(0)
+      views: z.array(viewSchema.pick({ id: true, title: true, turn: true })),
+      earlier: z.number().int().nonnegative().default(0),
+      earlierSteps: z.number().int().nonnegative().default(0)
     })
+  },
+
+  /** Read one tool call of a thread whole, as the side sheet opens it: what it was given and what it gave back. */
+  'thread.step': {
+    input: z.object({ thread: threadIdSchema, call: stepSchema.shape.call }),
+    output: z.object({ step: stepSchema })
   },
 
   /**

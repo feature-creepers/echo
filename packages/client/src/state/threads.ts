@@ -1,8 +1,8 @@
-import type { CommandInput, CommandOutput, Threads } from '@repo/protocol'
+import type { CommandInput, CommandOutput, Step, Threads } from '@repo/protocol'
 import type { Session } from '../session.ts'
 import { cell, type Followed } from './followed.ts'
 
-/** One thread whole, as the side sheet shows it. */
+/** A page of one thread, as the side sheet reads it. */
 export type ThreadRead = CommandOutput<'thread.read'>
 
 /** The threads behind the conversation, kept current for as long as the session lasts. */
@@ -11,8 +11,13 @@ export interface ThreadsState extends Followed<Threads> {
   focus(thread: string): Promise<void>
   /** Stop one thread's work, or with none named, every thread's. */
   stop(thread?: string): Promise<void>
-  /** One thread whole: its exchanges with their full answers, its tool calls, its views. */
-  read(thread: string): Promise<ThreadRead>
+  /**
+   * A page of one thread: its latest requests, or those just before `before`, with their full answers, their tool
+   * calls previewed and the titles of their views.
+   */
+  read(thread: string, before?: string): Promise<ThreadRead>
+  /** One tool call of a thread whole: what it was given and what it gave back. */
+  step(thread: string, call: string): Promise<Step>
   /**
    * Open a project in a folder the person chose, with what to do there first: its thread answers at once, on the
    * stage. Rejects with why not, in words for the person.
@@ -44,7 +49,8 @@ export function followThreads(session: Session): ThreadsState {
     async stop(thread) {
       await session.run('threads.stop', thread === undefined ? {} : { thread })
     },
-    read: (thread) => session.run('thread.read', { thread }),
+    read: (thread, before) => session.run('thread.read', before === undefined ? { thread } : { thread, before }),
+    step: async (thread, call) => (await session.run('thread.step', { thread, call })).step,
     open: (project) => session.run('project.open', project),
     unfollow: stopEvents
   }

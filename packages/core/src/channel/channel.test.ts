@@ -424,7 +424,13 @@ describe('threads', () => {
     // The routing call is part of the thread's work too.
     expect(read?.steps.map((step) => step.tool)).toEqual(['thread_open', 'web_search'])
     expect(read?.steps[1]).toMatchObject({ input: { query: 'population Paris Lyon' }, output: 'Paris 2.1 M; Lyon 0.52 M', ended: expect.any(String) })
+    expect(read).toMatchObject({ earlier: 0, earlierSteps: 0 })
     expect(channel.thread('nope')).toBeUndefined()
+
+    // A call opened in the sheet is read whole; one the thread did not make is not.
+    expect(channel.step(id, 'c1')).toMatchObject({ tool: 'web_search', output: 'Paris 2.1 M; Lyon 0.52 M' })
+    expect(channel.step(id, 'elsewhere')).toBeUndefined()
+    expect(channel.step('nope', 'c1')).toBeUndefined()
   })
 
   it('brings back an earlier topic, with its view', async () => {

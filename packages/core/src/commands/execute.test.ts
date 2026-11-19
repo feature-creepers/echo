@@ -59,6 +59,7 @@ function setup(overrides: Partial<Handlers> = {}) {
     'project.open': () => ({ ok: true, output: { thread: 'thread-1', turn: 'turn-1' } }),
     'threads.stop': () => ({ ok: true, output: { stopped: false } }),
     'thread.read': () => ({ ok: false, error: { code: 'invalid-input', message: 'There is no such thread.' } }),
+    'thread.step': () => ({ ok: false, error: { code: 'invalid-input', message: 'There is no such call.' } }),
     'file.read': () => ({ ok: false, error: { code: 'invalid-input', message: 'none' } }),
     'memory.read': () => ({ ok: true, output: { memory, state: { asleep: false } } }),
     'memory.edit': () => ({ ok: true, output: { memory } }),

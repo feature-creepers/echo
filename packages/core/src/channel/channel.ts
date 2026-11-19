@@ -9,7 +9,6 @@ import {
   PLAN_STEP_MAX_LENGTH,
   PLAN_STEPS_MAX,
   type PlanStep,
-  type ShownView,
   type Step,
   stepSchema,
   type Thread,
@@ -27,7 +26,7 @@ import { folderName, partsFrom } from '../projects/folders.ts'
 import type { UserSettings } from '../settings/settings.ts'
 import { languageOf } from '../speech/language.ts'
 import { createSentenceCutter, type SentenceCutter, speakable } from '../speech/sentences.ts'
-import { fitThread } from '../threads/fit.ts'
+import { fitThread, stepWhole, type ThreadPage } from '../threads/fit.ts'
 import { createThreadRegistry } from '../threads/registry.ts'
 import type { Grant, Tool } from '../tools/tools.ts'
 import type { Checked, Screen, Showing } from '../views/screen.ts'
@@ -259,10 +258,12 @@ export interface Channel {
    */
   focus(thread: string): boolean
   /**
-   * One thread, for the side sheet: its requests with their steps, cut to fit one message. `earlier` says how many of
-   * its oldest requests were left out to fit.
+   * A page of one thread, for the side sheet: its latest requests, or those before `before`, as many as fit one
+   * message, with their steps previewed and their views named. Undefined when there is no such thread.
    */
-  thread(id: string): { thread: Thread; exchanges: Exchange[]; steps: Step[]; views: ShownView[]; earlier: number } | undefined
+  thread(id: string, before?: TurnId): ({ thread: Thread } & ThreadPage) | undefined
+  /** One step of a thread, whole, as the side sheet opens it. Undefined when the thread made no such call. */
+  step(thread: string, call: string): Step | undefined
   /** Be told each event of the conversation. Returns a function that stops the telling. */
   onEvent(listener: (event: Event) => void): () => void
   /** End every session. The next thing said opens new ones. */
@@ -1358,6 +1359,21 @@ export function createChannel(options: ChannelOptions): Channel {
     if (turn.next) halt(turn.next)
   }
 
+  /** A thread's requests, oldest first, and every call made for them: those recorded, and those still running. */
+  const workOf = (id: string): { exchanges: Exchange[]; steps: Step[] } => {
+    const exchanges = transcript.filter((line) => line.thread === id)
+    const turns = new Set(exchanges.map((line) => line.turn))
+    const steps: Step[] = []
+    for (const record of records.read([STEP])) {
+      const read = stepSchema.safeParse(record.payload)
+      if (read.success && (read.data.thread === id || turns.has(read.data.turn))) steps.push(read.data)
+    }
+    for (const turn of [current, deciding, ...[...runtimes.values()].map((runtime) => runtime.answering)]) {
+      if (turn && turns.has(turn.exchange.turn)) for (const open of turn.steps.values()) if (!steps.some((one) => one.call === open.call)) steps.push(open)
+    }
+    return { exchanges, steps }
+  }
+
   return {
     say(text, language, handed = NOTHING_HANDED, aloud = false) {
       // A yes or a no to a question on screen answers it: the turn that asked goes on, and no new one starts. What
@@ -1543,24 +1559,17 @@ export function createChannel(options: ChannelOptions): Channel {
       return true
     },
 
-    thread(id) {
+    thread(id, before) {
       const thread = registry.get(id)
       if (!thread) return undefined
-      const exchanges = transcript.filter((line) => line.thread === id)
-      const turns = new Set(exchanges.map((line) => line.turn))
-      const steps: Step[] = []
-      for (const record of records.read([STEP])) {
-        const read = stepSchema.safeParse(record.payload)
-        if (read.success && (read.data.thread === id || turns.has(read.data.turn))) steps.push(read.data)
-      }
-      // Calls still running belong too.
-      for (const turn of [current, deciding, ...[...runtimes.values()].map((runtime) => runtime.answering)]) {
-        if (turn && turns.has(turn.exchange.turn)) for (const open of turn.steps.values()) if (!steps.some((one) => one.call === open.call)) steps.push(open)
-      }
-      const fitted = fitThread(exchanges, steps)
-      const kept = new Set(fitted.exchanges.map((line) => line.turn))
-      const views = screen.history(id).filter((view) => fitted.earlier === 0 || view.turn === undefined || kept.has(view.turn))
-      return { thread, ...fitted, views }
+      const { exchanges, steps } = workOf(id)
+      return { thread, ...fitThread(exchanges, steps, screen.history(id), before) }
+    },
+
+    step(id, call) {
+      if (!registry.get(id)) return undefined
+      const found = workOf(id).steps.find((one) => one.call === call)
+      return found && stepWhole(found)
     },
 
     onEvent(listener) {

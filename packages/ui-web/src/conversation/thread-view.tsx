@@ -1,5 +1,5 @@
-import type { Client, ThreadRead } from '@repo/client'
-import type { AccessUse, Exchange, FileChange, Persona, Step } from '@repo/protocol'
+import type { Client } from '@repo/client'
+import type { AccessUse, FileChange, Persona, Step } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import { AttachedLine } from '../attachments/attached-line.tsx'
@@ -12,14 +12,17 @@ import { changedInWords, lastPart, relativePath, totalOf } from '../changes/word
 import { Button } from '../primitives/button.tsx'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
-import { BackGlyph } from '../primitives/icons.tsx'
+import { BackGlyph, ChevronGlyph } from '../primitives/icons.tsx'
 import { accentStyle } from '../styles/accent.ts'
 import { settle } from '../styles/motion.ts'
 import { Markdown } from '../view/blocks/markdown.tsx'
+import { useFollowLatest } from './follow-latest.ts'
 import { AnswerActions } from './full-answer.tsx'
 import { PlanList } from './plan-list.tsx'
 import { commandOf, stepSummary, stepTitle } from './steps.ts'
 import { StateDot } from './thread-list.tsx'
+import type { ThreadEntry } from './thread-pages.ts'
+import { type EarlierReading, useThreadPages } from './use-thread-pages.ts'
 import { whoAsked } from './who-asked.ts'
 
 const clock = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' })
@@ -33,49 +36,20 @@ export interface ThreadViewProps {
 }
 
 /**
- * One thread, whole, for those who want to see the work: each thing asked, every tool call with what went in
- * and came out (folded until opened), what was said aloud, and the full written answer. Kept current while
- * the thread works.
+ * One thread, for those who want to see the work: each thing asked, every tool call with what went in and came
+ * out (folded until opened, and read whole then), what was said aloud, and the full written answer. It opens at
+ * the latest request and follows the thread as it works; earlier requests are read as the person scrolls up.
  */
 export function ThreadView({ client, thread, personas, onBack }: ThreadViewProps) {
-  const [read, setRead] = useState<ThreadRead | { problem: string }>()
+  const { pages, problem, earlier, readEarlier } = useThreadPages(client, thread)
+  const scroll = useFollowLatest(pages?.entries[0]?.exchange.turn)
 
-  const load = useCallback(() => {
-    client.threads
-      .read(thread)
-      .then(setRead)
-      .catch((error: unknown) => setRead({ problem: error instanceof Error ? error.message : String(error) }))
-  }, [client, thread])
-
-  // Read again, a moment after anything that concerns this thread, so a working thread fills in as it goes.
-  useEffect(() => {
-    load()
-    let timer: number | undefined
-    const soon = () => {
-      window.clearTimeout(timer)
-      timer = window.setTimeout(load, 200)
-    }
-    const stop = client.session.onEvent((event) => {
-      const concerns =
-        (event.name === 'activity' && event.step?.thread === thread) ||
-        ((event.name === 'turn.started' || event.name === 'turn.ended' || event.name === 'answer.written' || event.name === 'turn.planned') &&
-          event.exchange.thread === thread) ||
-        (event.name === 'view.shown' && event.view.thread === thread) ||
-        event.name === 'threads.changed'
-      if (concerns) soon()
-    })
-    return () => {
-      stop()
-      window.clearTimeout(timer)
-    }
-  }, [client, thread, load])
-
-  const header = read && 'thread' in read ? read.thread : client.threads.current().threads.find((one) => one.id === thread)
+  const header = pages?.thread ?? client.threads.current().threads.find((one) => one.id === thread)
 
   // The turns that changed files, whose changes are read from the activity: each use, and the turn's files counted.
   const changing = useMemo(
-    () => (read && 'steps' in read ? [...new Set(read.steps.filter((step) => step.tool === 'computer_write').map((step) => step.turn))] : []),
-    [read]
+    () => (pages ? pages.entries.filter((entry) => entry.steps.some((step) => step.tool === 'computer_write')).map((entry) => entry.exchange.turn) : []),
+    [pages]
   )
   const changes = useThreadChanges(client, thread, changing)
   const assistantFolder = useAssistantFolder(client)
@@ -118,68 +92,119 @@ export function ThreadView({ client, thread, personas, onBack }: ThreadViewProps
           </div>
         )}
       </div>
-      <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4">
-        {read === undefined ? (
-          <p className="text-sm text-text-faint">Reading…</p>
-        ) : 'problem' in read ? (
-          <p className="text-danger text-sm [overflow-wrap:anywhere]">{read.problem}</p>
-        ) : read.exchanges.length === 0 ? (
-          <p className="text-sm text-text-faint">Nothing has been answered here yet.</p>
-        ) : (
-          <ol className="grid grid-cols-1 gap-6">
-            {read.earlier > 0 && (
-              <li className="text-label text-text-faint">
-                {read.earlier === 1 ? 'One earlier request is' : `${read.earlier} earlier requests are`} not shown: this thread is too long to show whole.
-              </li>
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div ref={scroll.ref} className="scroll-quiet min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4">
+          <div>
+            {pages === undefined ? (
+              problem === undefined ? (
+                <p className="text-sm text-text-faint">Reading…</p>
+              ) : (
+                <p className="text-danger text-sm [overflow-wrap:anywhere]">{problem}</p>
+              )
+            ) : pages.entries.length === 0 ? (
+              <p className="text-sm text-text-faint">Nothing has been answered here yet.</p>
+            ) : (
+              <ol className="grid grid-cols-1 gap-6">
+                {pages.earlier > 0 && <EarlierRequests count={pages.earlier} reading={earlier} read={readEarlier} area={scroll.area} />}
+                {pages.entries.map((entry) => (
+                  <ExchangeEntry
+                    key={entry.exchange.turn}
+                    entry={entry}
+                    persona={personas.find((candidate) => candidate.id === entry.exchange.persona)}
+                    about={header?.title}
+                    context={{ client, thread, relative, undo }}
+                    changes={changes}
+                  />
+                ))}
+              </ol>
             )}
-            {read.exchanges.map((exchange) => (
-              <ExchangeEntry
-                key={exchange.turn}
-                exchange={exchange}
-                steps={read.steps.filter((step) => step.turn === exchange.turn)}
-                views={read.views.filter((view) => view.turn === exchange.turn).map((view) => view.title)}
-                persona={personas.find((candidate) => candidate.id === exchange.persona)}
-                about={header?.title}
-                client={client}
-                changes={changes}
-                relative={relative}
-                undo={undo}
-              />
-            ))}
-          </ol>
-        )}
+          </div>
+        </div>
+        <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
+          <AnimatePresence>
+            {scroll.away && (
+              <motion.button
+                type="button"
+                onClick={scroll.toLatest}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 4 }}
+                transition={settle}
+                className="material shadow-float pointer-events-auto flex items-center gap-1 rounded-md py-1 pr-2.5 pl-2 text-label text-text-soft transition-colors hover:text-text"
+              >
+                <ChevronGlyph /> Latest
+              </motion.button>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
     </div>
   )
 }
 
+/**
+ * Where the earlier requests begin, above the first one read: they are read as it comes near, as the person
+ * scrolls up, a page at a time; pressed, it reads them at once, and says why when they could not be read.
+ */
+function EarlierRequests({ count, reading, read, area }: { count: number; reading: EarlierReading; read(): void; area: HTMLElement | null }) {
+  const [mark, setMark] = useState<HTMLLIElement | null>(null)
+
+  // Made again after each page, so a page too short to take the mark out of sight reads the next one.
+  useEffect(() => {
+    if (!mark || !area || reading.state !== 'idle') return
+    const observer = new IntersectionObserver((seen) => seen.some((one) => one.isIntersecting) && read(), { root: area, rootMargin: '600px 0px 0px 0px' })
+    observer.observe(mark)
+    return () => observer.disconnect()
+  }, [mark, area, reading, read])
+
+  const many = count === 1 ? 'One earlier request' : `${count} earlier requests`
+  return (
+    <li ref={setMark} className="flex min-h-6 items-center justify-center gap-2 text-label text-text-faint">
+      {reading.state === 'reading' ? (
+        <span>Reading earlier requests…</span>
+      ) : reading.state === 'failed' ? (
+        <>
+          <span className="min-w-0 truncate text-danger" title={reading.problem}>
+            Earlier requests could not be read.
+          </span>
+          <Button kind="quiet" size="sm" onClick={read}>
+            Try again
+          </Button>
+        </>
+      ) : (
+        <Button kind="quiet" size="sm" onClick={read}>
+          {many}
+        </Button>
+      )}
+    </li>
+  )
+}
+
 interface ExchangeEntryProps {
-  exchange: Exchange
-  steps: Step[]
-  views: string[]
+  entry: ThreadEntry
   persona: Persona | undefined
   /** What the thread is about, to name its full answer when it is saved. */
   about: string | undefined
-  client: Client
+  context: StepContext
   changes: ThreadChanges
-  relative: Relative
-  undo: Undo
 }
 
 /** What a step opened shows, and how to undo the change it made: what the rows of one exchange share. */
 interface StepContext {
   client: Client
+  /** The thread the steps are of, to read one whole. */
+  thread: string
   relative: Relative
   undo: Undo
 }
 
 // Every stack here is one column that is never wider than the sheet, whatever it holds: a long address, a path or
 // a command wraps, or scrolls in its own box, instead of widening the column and the sheet with it.
-function ExchangeEntry({ exchange, steps, views, persona, about, client, changes, relative, undo }: ExchangeEntryProps) {
+function ExchangeEntry({ entry, persona, about, context, changes }: ExchangeEntryProps) {
+  const { exchange, steps, views, earlierSteps } = entry
   // Views shown before calls were kept have no call to show them by.
   const shownByCalls = steps.some((step) => step.tool === 'ui_render')
   const files = changes.turns.get(exchange.turn)
-  const context: StepContext = { client, relative, undo }
   return (
     <li className="grid grid-cols-1 gap-3" style={accentStyle(persona?.accent)}>
       <div className="grid grid-cols-1 gap-1">
@@ -198,14 +223,19 @@ function ExchangeEntry({ exchange, steps, views, persona, about, client, changes
         <div className="grid grid-cols-1 gap-1">
           <Eyebrow>Work</Eyebrow>
           <ul className="grid grid-cols-1 overflow-hidden rounded-md border border-line">
+            {earlierSteps > 0 && (
+              <li className="px-3 py-2 text-text-faint text-xs">
+                {earlierSteps === 1 ? 'One earlier call is' : `${earlierSteps} earlier calls are`} not shown: this request made too many to show.
+              </li>
+            )}
             {steps.map((step) => (
               <StepRow key={step.call} step={step} use={step.use === undefined ? undefined : changes.uses.get(step.use)} context={context} />
             ))}
             {!shownByCalls &&
-              views.map((title) => (
-                <li key={title} className="flex items-baseline gap-2 border-line border-t px-3 py-2 text-xs first:border-t-0">
+              views.map((view) => (
+                <li key={view.id} className="flex items-baseline gap-2 border-line border-t px-3 py-2 text-xs first:border-t-0">
                   <span className="shrink-0 text-text-soft">Showed a view</span>
-                  <span className="min-w-0 truncate text-text-faint">{title}</span>
+                  <span className="min-w-0 truncate text-text-faint">{view.title}</span>
                 </li>
               ))}
           </ul>
@@ -310,6 +340,9 @@ function StepRow({ step, use, context }: { step: Step; use: AccessUse | undefine
   const commandChanged = use?.action === 'run' && (use.changes?.length ?? 0) > 0 ? use : undefined
   const total = changed ? totalOf(changed) : commandChanged ? totalOf(commandChanged) : undefined
   const command = commandOf(step)
+  // Opened, what it was given and gave back are read whole: the row came with their start only.
+  const whole = useWholeStep(context, step, open && !changed) ?? step
+  const wholeCommand = commandOf(whole)
   return (
     <li className="border-line border-t first:border-t-0">
       <button
@@ -343,12 +376,12 @@ function StepRow({ step, use, context }: { step: Step; use: AccessUse | undefine
             </>
           ) : (
             <>
-              {command !== undefined ? (
-                <Detail label="Command" text={command} />
+              {wholeCommand !== undefined ? (
+                <Detail label="Command" text={wholeCommand} />
               ) : (
-                <Detail label={`${step.tool} · input`} text={step.input === undefined ? '—' : JSON.stringify(step.input, null, 2)} />
+                <Detail label={`${step.tool} · input`} text={whole.input === undefined ? '—' : JSON.stringify(whole.input, null, 2)} />
               )}
-              <Detail label="Output" text={step.output ?? (running ? 'Still running.' : '—')} />
+              <Detail label="Output" text={whole.output ?? (running ? 'Still running.' : '—')} />
               {commandChanged && (
                 <Changes client={context.client} of={{ use: commandChanged.id }} relative={context.relative} version={versionOf(commandChanged)} />
               )}
@@ -358,6 +391,30 @@ function StepRow({ step, use, context }: { step: Step; use: AccessUse | undefine
       </Opening>
     </li>
   )
+}
+
+/**
+ * A step read whole once its row is opened, and again when it ends. Undefined until it arrives, or if it cannot be
+ * read: the row then shows what it came with.
+ */
+function useWholeStep(context: StepContext, step: Step, wanted: boolean): Step | undefined {
+  const [whole, setWhole] = useState<Step>()
+  const { client, thread } = context
+  const { call, ended } = step
+  useEffect(() => {
+    if (!wanted) return
+    let gone = false
+    client.threads.step(thread, call).then(
+      (read) => {
+        if (!gone) setWhole(read)
+      },
+      () => undefined
+    )
+    return () => {
+      gone = true
+    }
+  }, [client, thread, call, ended, wanted])
+  return whole?.ended === step.ended ? whole : undefined
 }
 
 function Detail({ label, text }: { label: string; text: string }) {

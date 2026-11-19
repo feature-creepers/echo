@@ -639,8 +639,14 @@ export function createCore(options: CoreOptions): Core {
         return { ok: true, output: channel.work({ folder: granted.path, request: input.request }) }
       },
       'thread.read': (input) => {
-        const read = channel.thread(input.thread)
+        const read = channel.thread(input.thread, input.before)
         return read ? { ok: true, output: read } : { ok: false, error: { code: 'invalid-input', message: `There is no thread "${input.thread}".` } }
+      },
+      'thread.step': (input) => {
+        const step = channel.step(input.thread, input.call)
+        return step
+          ? { ok: true, output: { step } }
+          : { ok: false, error: { code: 'invalid-input', message: `Thread "${input.thread}" made no call "${input.call}".` } }
       },
       'engines.prefer': async (input) => {
         if (input.harness !== null && !(await engines.read()).harnesses.some((harness) => harness.id === input.harness)) {
