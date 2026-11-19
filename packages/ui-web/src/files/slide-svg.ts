@@ -621,7 +621,7 @@ export function shapeElement(
 
 /** A shape's own path filled and outlined: one element when what is filled is what is stroked, else one for each. */
 export function customElement(
-  geometry: { fill: string; stroke: string },
+  geometry: { fill: string; stroke: string; pieces?: readonly string[] | undefined },
   fill: Fill | undefined,
   outline: Outline | undefined,
   canvas: Canvas,
@@ -629,10 +629,13 @@ export function customElement(
 ): string {
   const fills = geometry.fill !== '' && fill !== undefined && fill.kind !== 'none'
   const strokes = geometry.stroke !== '' && outline?.paint !== undefined
-  if (fills && strokes && geometry.fill === geometry.stroke)
-    return `<path d="${geometry.fill}" ${fillAttribute(fill, canvas, box)} ${strokeAttributes(outline)}/>`
+  // Each path is filled on its own, a subpath inside another of the same path a hole, as both apps fill a shape's own path.
+  const pieces = geometry.pieces && geometry.pieces.length > 1 ? geometry.pieces : [geometry.fill]
+  if (fills && strokes && pieces.length === 1 && geometry.fill === geometry.stroke)
+    return `<path d="${geometry.fill}" ${fillAttribute(fill, canvas, box)} fill-rule="evenodd" ${strokeAttributes(outline)}/>`
+  const painted = fills ? fillAttribute(fill, canvas, box) : ''
   return (
-    (fills ? `<path d="${geometry.fill}" ${fillAttribute(fill, canvas, box)} stroke="none"/>` : '') +
+    (fills ? pieces.map((piece) => `<path d="${piece}" ${painted} fill-rule="evenodd" stroke="none"/>`).join('') : '') +
     (strokes ? `<path d="${geometry.stroke}" fill="none" ${strokeAttributes(outline)}/>` : '')
   )
 }

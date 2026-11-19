@@ -57,9 +57,10 @@ export interface ParagraphLook {
 }
 
 /**
- * A figure of the file's list placed in a paragraph: in the line, or floating at a side of the text, or over or behind
- * it at a place, from the page's corner or, across, from the text's left edge and, down, from the paragraph's top. Its
- * size is the size the file gives it.
+ * A figure of the file's list placed in a paragraph: in the line, or floating at a side of the text (`drop` down from
+ * where it is anchored), or over or behind it at a place, from the page's corner or, across, from the text's left edge and, down, from the paragraph's top, the
+ * text going on under it when it keeps its `room`. Its size is the size the file gives it; a drawing's picture may
+ * reach past that box on each side (`bleed`), where its line, its arrows or its text do.
  */
 export interface PlacedFigure {
   figure: number
@@ -67,17 +68,23 @@ export interface PlacedFigure {
   width?: number | undefined
   height?: number | undefined
   float?: 'left' | 'right' | undefined
+  drop?: number | undefined
   at?: { x: number; y: number; from: 'page' | 'paragraph' } | undefined
+  room?: boolean | undefined
+  bleed?: Sides<number> | undefined
 }
 
-/** A box of text placed as a figure is: its size, fill, line and paragraphs. */
+/** A box of text placed as a figure is: its size, fill, line, the rounding of its corners, and its paragraphs. */
 export interface TextBox {
   width?: number | undefined
   height?: number | undefined
   float?: 'left' | 'right' | undefined
+  drop?: number | undefined
   at?: { x: number; y: number; from: 'page' | 'paragraph' } | undefined
+  room?: boolean | undefined
   fill?: string | undefined
   line?: BorderLook | undefined
+  radius?: number | undefined
   insets: { top: number; right: number; bottom: number; left: number }
   blocks: DocumentBlock[]
 }
@@ -164,6 +171,31 @@ export interface DocumentLook {
 /** A colour as the look keeps it, from six hexadecimal digits; none for anything else. */
 export const colorOf = (value: string | undefined): string | undefined =>
   value !== undefined && /^[0-9a-f]{6}$/i.test(value) ? `#${value.toLowerCase()}` : undefined
+
+/**
+ * The bands of height a paragraph's figures and boxes keep across its text, in order down from its top: each one placed
+ * from the paragraph that lets no text beside it (`room`), from its top to its bottom, its picture's reach included.
+ * Bands that meet are one. Text that would meet a band goes on under it, as the app that wrote the file lays it out.
+ */
+export function keptRooms(spans: readonly DocumentSpan[]): { top: number; height: number }[] {
+  const bands: { top: number; bottom: number }[] = []
+  for (const span of spans) {
+    const item = 'placed' in span ? span.placed : 'box' in span ? span.box : undefined
+    if (!item?.room || item.at?.from !== 'paragraph') continue
+    const bleed = 'bleed' in item ? item.bleed : undefined
+    const top = Math.max(0, item.at.y - (bleed?.top ?? 0))
+    const bottom = item.at.y + (item.height ?? 0) + (bleed?.bottom ?? 0)
+    if (Number.isFinite(top) && Number.isFinite(bottom) && bottom > top) bands.push({ top, bottom })
+  }
+  bands.sort((one, other) => one.top - other.top)
+  const kept: { top: number; bottom: number }[] = []
+  for (const band of bands) {
+    const last = kept.at(-1)
+    if (last && band.top <= last.bottom) last.bottom = Math.max(last.bottom, band.bottom)
+    else kept.push({ ...band })
+  }
+  return kept.map(({ top, bottom }) => ({ top, height: bottom - top }))
+}
 
 /** A paragraph's look over another, its borders side by side. */
 export function overParagraph(under: ParagraphLook, over: ParagraphLook): ParagraphLook {

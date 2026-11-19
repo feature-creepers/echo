@@ -1299,7 +1299,7 @@ export async function readOpenText(archive: Archive): Promise<OfficePreview> {
     if (formula) frame.alt = formula
     return (await frameFigure(frame, preview.figuresRead)) ?? formula
   }
-  const look = await readOpenLook(archive, content, figureOf).catch(() => undefined)
+  const look = await readOpenLook(archive, content, figureOf, (drawing) => preview.figuresRead.drawing(drawing)).catch(() => undefined)
   return { kind: 'document', markdown: preview.markdown, figures: preview.figuresRead.list, cut: preview.cut || (look?.cut ?? false), look: look?.look }
 }
 

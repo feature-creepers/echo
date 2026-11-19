@@ -10,7 +10,7 @@ import { openCompound } from './compound.ts'
 import { objectEquation } from './equation-editor.ts'
 import { drawMetafile, shownSize } from './metafile.ts'
 import { formatNumber, type NumberFormatOptions } from './number-format.ts'
-import type { ObjectRead, ObjectReader, OfficeChart, OfficeFigure } from './office-text.ts'
+import type { ObjectRead, ObjectReader, OfficeChart, OfficeFigure, PictureFigure } from './office-text.ts'
 import { xmlEvents } from './xml.ts'
 
 /** The most figures a file shows, and the most bytes its pictures hold together: a preview, not the file. */
@@ -224,6 +224,14 @@ export class Figures {
       this.equations.set(part, read)
     }
     return read
+  }
+
+  /** A picture drawn from the file's own shapes, by its place in the list; none past the limits. */
+  drawing(picture: PictureFigure): number | undefined {
+    if (this.list.length >= FIGURE_LIMIT || this.bytes + picture.bytes.length > PICTURE_BYTES_LIMIT) return undefined
+    this.bytes += picture.bytes.length
+    this.list.push(picture)
+    return this.list.length - 1
   }
 
   private async add(key: string, make: () => Promise<OfficeFigure | undefined>): Promise<number | undefined> {

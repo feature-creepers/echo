@@ -2,7 +2,8 @@
  * An OpenDocument text as it looks (docs/SPEC.md, section 9.7), read into `document-look.ts`: each paragraph and span
  * in its style over the ones it comes from and its family's default (`open-styles.ts`), lists numbered and bulleted as
  * their list style says at each level, tables with their columns, merged cells, borders, padding and backgrounds,
- * frames with their pictures, charts and text, sections in their columns, and the pages of its master pages, with
+ * frames with their pictures, charts and text, its drawings (lines, shapes, groups) as pictures drawn as a
+ * presentation's shapes are (`open-drawing.ts`), sections in their columns, and the pages of its master pages, with
  * their headers and footers, their numbers and footnotes. Pages break where the text breaks them and where the app that
  * saved it last broke them (`text:soft-page-break`), so a text LibreOffice saved shows its pages as it did.
  */
@@ -25,7 +26,8 @@ import type {
   TextLook
 } from './document-look.ts'
 import { colorOf } from './document-look.ts'
-import { BLOCK_LIMIT } from './office-text.ts'
+import { BLOCK_LIMIT, type PictureFigure } from './office-text.ts'
+import { DRAWINGS, type DrawingSource, drawingSource, drawLoneShape, plainText } from './open-drawing.ts'
 import { fontFaces, length, merged, type Properties, StyleBook, share } from './open-styles.ts'
 import { listMark, symbolCharacter } from './word-look.ts'
 import { childAt, childrenNamed, type XmlNode, xmlTree } from './xml.ts'
@@ -90,6 +92,14 @@ function borderOf(value: string | undefined): BorderLook | undefined {
   const kind = parts.find((part) => /^(solid|double|dotted|dashed|groove|ridge|inset|outset)$/.test(part)) ?? 'solid'
   const color = colorFrom(parts.find((part) => part.startsWith('#'))) ?? '#000000'
   return { width: Math.max(width, 0.25), style: kind === 'double' ? 'double' : kind === 'dotted' ? 'dotted' : kind === 'dashed' ? 'dashed' : 'solid', color }
+}
+
+/** A shape's line as a border (`draw:stroke`), solid or dashed, a hairline as thin as a border shows; none when it has none. */
+function strokeOf(properties: Properties): BorderLook | undefined {
+  const stroke = properties['draw:stroke']
+  if (stroke !== 'solid' && stroke !== 'dash') return undefined
+  const width = Math.max(points(properties['svg:stroke-width']) ?? 0, 0.75)
+  return { width, style: stroke === 'dash' ? 'dashed' : 'solid', color: colorFrom(properties['svg:stroke-color']) ?? '#000000' }
 }
 
 /** The borders the properties of a paragraph, a cell or a frame give, each side over all four. */
@@ -167,17 +177,25 @@ interface ListLevel {
 
 const NUMBER_FORMATS: Record<string, string> = { '1': 'decimal', a: 'lowerLetter', A: 'upperLetter', i: 'lowerRoman', I: 'upperRoman' }
 
-/** A place a frame or a box takes: in its line, floating at a side of the text, or at a place. */
+/** A place a frame or a drawing takes: in its line, floating at a side of the text, or at a place, the text going on under it or not. */
 interface Placement {
   float?: 'left' | 'right' | undefined
+  drop?: number | undefined
   at?: { x: number; y: number; from: 'page' | 'paragraph' } | undefined
+  room?: boolean | undefined
 }
+
+/** How a text's look finds its figures: a frame's among those its text found, and a drawing added to them. */
+type FrameFigure = (frame: XmlNode) => Promise<number | string | undefined>
+type DrawingFigure = (drawing: PictureFigure) => number | undefined
 
 class OpenReader {
   private readonly book: StyleBook
   private readonly fonts: Map<string, string>
   private readonly masters: Map<string, Master>
-  private readonly figureOf: (frame: XmlNode) => Promise<number | string | undefined>
+  private readonly figureOf: FrameFigure
+  private readonly drawingOf: DrawingFigure
+  private readonly drawings: DrawingSource
   private blocks = 0
   cut = false
   readonly pages: { master: Master; bands: PageBand[]; notes: DocumentPage['notes'] }[] = []
@@ -208,13 +226,15 @@ class OpenReader {
     fonts: Map<string, string>,
     masters: Map<string, Master>,
     first: Master,
-    figureOf: (frame: XmlNode) => Promise<number | string | undefined>
+    figures: { frame: FrameFigure; drawing: DrawingFigure; source: DrawingSource }
   ) {
     this.book = book
     this.fonts = fonts
     this.masters = masters
     this.master = first
-    this.figureOf = figureOf
+    this.figureOf = figures.frame
+    this.drawingOf = figures.drawing
+    this.drawings = figures.source
   }
 
   get full(): boolean {
@@ -437,19 +457,13 @@ class OpenReader {
         case 'text:soft-page-break':
           if (top) this.breakPage(true)
           break
-        case 'draw:frame':
-        case 'draw:a':
-        case 'draw:custom-shape':
-        case 'draw:rect':
-        case 'draw:ellipse': {
-          // A frame or a shape at the top of the body is anchored to a page by its number.
-          const frame = child.name === 'draw:a' ? childAt(child, 'draw:frame') : child
-          if (!frame || !top) break
-          const span = frame.name === 'draw:frame' ? await this.readFrame(frame, inMaster) : await this.readShape(frame, inMaster)
-          if (!span) break
-          const number = Number(frame.attributes['text:anchor-page-number']) || 1
+        default: {
+          // A frame or a drawing at the top of the body is anchored to a page by its number.
+          const placed = top ? linked(child) : undefined
+          const span = placed && (await this.readPlaced(placed, inMaster))
+          if (!placed || !span) break
+          const number = Number(placed.attributes['text:anchor-page-number']) || 1
           this.pageFrames.set(number, [...(this.pageFrames.get(number) ?? []), span])
-          break
         }
       }
     }
@@ -588,21 +602,6 @@ class OpenReader {
           line.start = false
           break
         }
-        case 'draw:frame':
-        case 'draw:a': {
-          const frame = child.name === 'draw:a' ? childAt(child, 'draw:frame') : child
-          const span = frame && (await this.readFrame(frame, inMaster))
-          if (span) add(span)
-          break
-        }
-        case 'draw:custom-shape':
-        case 'draw:rect':
-        case 'draw:ellipse':
-        case 'draw:circle': {
-          const span = await this.readShape(child, inMaster)
-          if (span) add(span)
-          break
-        }
         case 'office:annotation':
         case 'office:annotation-end':
         case 'svg:title':
@@ -615,11 +614,21 @@ class OpenReader {
         case 'text:reference-mark':
         case 'text:sequence-decls':
           break
-        default:
-          // Fields and the like show their text, in the paragraph's look; drawings other than frames and boxes are left out.
-          if (child.children.length > 0 && !child.name.startsWith('draw:')) await this.readInline(child, text, inMaster, pieces, link, line)
+        default: {
+          // A frame or a drawing, linked or not, is placed as it says; fields and the like show their text, in the paragraph's look.
+          const placed = linked(child)
+          if (placed) {
+            const span = await this.readPlaced(placed, inMaster)
+            if (span) add(span)
+          } else if (child.children.length > 0 && !child.name.startsWith('draw:')) await this.readInline(child, text, inMaster, pieces, link, line)
+        }
       }
     }
+  }
+
+  /** A frame or a drawing, placed as its anchor and style say. */
+  private readPlaced(node: XmlNode, inMaster: boolean): Promise<DocumentSpan | undefined> {
+    return node.name === 'draw:frame' ? this.readFrame(node, inMaster) : this.readDrawing(node, inMaster)
   }
 
   /** A frame: its picture or chart, or its box of text, placed as its anchor and style say. */
@@ -631,15 +640,34 @@ class OpenReader {
     if (box) {
       const graphic = this.book.properties('graphic', frame.attributes['draw:style-name'], 'graphic', inMaster)
       const blocks = await this.readBlocks(box, inMaster, false)
+      // Frames and drawings anchored to the frame itself sit in its box, placed from its first paragraph.
+      const held: DocumentSpan[] = []
+      for (const child of box.children) {
+        const placed = linked(child)
+        const span = placed && (await this.readPlaced(placed, inMaster))
+        if (span) held.push(span)
+      }
+      const first = blocks[0]
+      if (first?.kind === 'paragraph') first.spans.unshift(...held)
+      else if (held.length > 0) blocks.unshift({ kind: 'paragraph', look: {}, spans: held, mark: {} })
       const minimum = points(box.attributes['fo:min-height'])
-      const line = borderOf(graphic['fo:border'])
+      // A frame's border, or the line a text box drawn as a shape is given, and the rounding of its corners.
+      const line = borderOf(graphic['fo:border']) ?? strokeOf(graphic)
+      const radius = points(box.attributes['draw:corner-radius'])
       const insets = paddingOf(graphic)
       const shown: TextBox = {
         width,
         height: height ?? minimum,
         ...placement,
-        fill: graphic['draw:fill'] === 'none' ? undefined : colorFrom(graphic['fo:background-color'] ?? graphic['draw:fill-color']),
+        // A frame is filled only where its style says so: the shapes' fill colour of the default style is not its own.
+        fill:
+          graphic['draw:fill'] === 'solid'
+            ? colorFrom(graphic['draw:fill-color'] ?? graphic['fo:background-color'])
+            : graphic['draw:fill'] === undefined
+              ? colorFrom(graphic['fo:background-color'])
+              : undefined,
         line: line && line.width > 0 ? line : undefined,
+        ...(radius !== undefined && radius > 0 ? { radius } : {}),
         insets: { top: insets.top ?? 0, right: insets.right ?? 0, bottom: insets.bottom ?? 0, left: insets.left ?? 0 },
         blocks
       }
@@ -654,35 +682,44 @@ class OpenReader {
     return { placed: { figure, alt, width, height, ...placement } }
   }
 
-  /** A shape of a box (a rectangle, an ellipse, a custom shape) as a box of text with its fill and line, its text in it; one with neither text nor fill is left out. */
-  private async readShape(shape: XmlNode, inMaster: boolean): Promise<DocumentSpan | undefined> {
-    const width = points(shape.attributes['svg:width'])
-    const height = points(shape.attributes['svg:height'])
-    const graphic = this.book.properties('graphic', shape.attributes['draw:style-name'], 'graphic', inMaster)
-    const fill = graphic['draw:fill'] === 'none' ? undefined : colorFrom(graphic['draw:fill-color'])
-    const stroked = graphic['draw:stroke'] !== 'none'
-    const lineColor = stroked ? (colorFrom(graphic['svg:stroke-color']) ?? '#000000') : undefined
-    const blocks = await this.readBlocks(shape, inMaster, false)
-    if (blocks.length === 0 && fill === undefined) return undefined
-    const insets = paddingOf(graphic)
-    return {
-      box: {
-        width,
-        height,
-        ...this.placement(shape, inMaster, { width: width ?? 0, height: height ?? 0 }),
-        fill,
-        line: lineColor ? { width: Math.max(points(graphic['svg:stroke-width']) ?? 0.75, 0.75), style: 'solid', color: lineColor } : undefined,
-        insets: { top: insets.top ?? 3.6, right: insets.right ?? 7.2, bottom: insets.bottom ?? 3.6, left: insets.left ?? 7.2 },
-        blocks
-      }
-    }
+  /**
+   * A drawing (a line, a shape, a group of them) as a picture of its own, drawn as a presentation's shapes are, its
+   * fill, line, arrows and text as its style says; placed as its anchor and style say, by the box its shapes take, its
+   * picture reaching past that box where its line, its arrows or its text do.
+   */
+  private async readDrawing(node: XmlNode, inMaster: boolean): Promise<DocumentSpan | undefined> {
+    const drawing = await drawLoneShape(this.drawings, node, inMaster, Math.max(this.pages.length, 1)).catch(() => undefined)
+    if (!drawing) return undefined
+    const { box, reach } = drawing
+    const pointsOf = (pixels: number) => (pixels * 3) / 4
+    const alt = describedBy(node)
+    const figure = this.drawingOf({
+      kind: 'picture',
+      type: 'image/svg+xml',
+      bytes: drawing.svg,
+      alt,
+      width: Math.round(box.width + reach.left + reach.right),
+      height: Math.round(box.height + reach.top + reach.bottom)
+    })
+    if (figure === undefined) return undefined
+    const width = pointsOf(box.width)
+    const height = pointsOf(box.height)
+    const bleed = { top: pointsOf(reach.top), right: pointsOf(reach.right), bottom: pointsOf(reach.bottom), left: pointsOf(reach.left) }
+    return { placed: { figure, alt, width, height, bleed, ...this.placement(node, inMaster, { x: pointsOf(box.x), y: pointsOf(box.y), width, height }) } }
   }
 
-  /** Where a frame sits: in its line, floating by its wrapping and side, or at a place on the page or from its paragraph. */
-  private placement(frame: XmlNode, inMaster: boolean, size: { width: number; height: number }): Placement {
+  /**
+   * Where a frame or a drawing sits: in its line, floating by its wrapping and side, or at a place on the page or from
+   * its paragraph, the text going on under it when it lets none beside it. Its box is its size and where it is from its
+   * anchor, `svg:x` and `svg:y` unless given.
+   */
+  private placement(frame: XmlNode, inMaster: boolean, size: { x?: number; y?: number; width: number; height: number }): Placement {
     const anchor = frame.attributes['text:anchor-type'] ?? 'paragraph'
     if (anchor === 'as-char') return {}
-    const graphic = this.book.properties('graphic', frame.attributes['draw:style-name'], 'graphic', inMaster)
+    // A frame takes the frame styles it comes from; a drawing takes its own style alone.
+    const graphic = this.book.properties('graphic', frame.attributes['draw:style-name'], 'graphic', inMaster, true, frame.name === 'draw:frame')
+    const offsetX = size.x ?? points(frame.attributes['svg:x']) ?? 0
+    const offsetY = size.y ?? points(frame.attributes['svg:y']) ?? 0
     const master = this.master
     const textWidth = master.width - master.margins.left - master.margins.right
     const relative = graphic['style:horizontal-rel'] ?? 'paragraph'
@@ -695,16 +732,38 @@ class OpenReader {
           ? area.start + area.width - size.width
           : across === 'left' || across === 'inside'
             ? area.start
-            : area.start + (points(frame.attributes['svg:x']) ?? 0)
-    const wrap = graphic['style:wrap'] ?? 'none'
-    if (anchor === 'page') {
-      const down = graphic['style:vertical-rel'] ?? 'page'
-      const top = down === 'page-content' ? master.margins.top : 0
-      return { at: { x, y: top + (points(frame.attributes['svg:y']) ?? 0), from: 'page' } }
+            : area.start + offsetX
+    // A frame lets no text beside it unless its style says; Writer lets a drawing's text run through it.
+    const wrap = graphic['style:wrap'] ?? (frame.name === 'draw:frame' ? 'none' : 'run-through')
+    // Down from the page, its text's area or one of its margins (LibreOffice's own `loext:vertical-rel`), whatever it is anchored to.
+    const down = graphic['loext:vertical-rel'] ?? graphic['style:vertical-rel'] ?? (anchor === 'page' ? 'page' : 'paragraph')
+    if (anchor === 'page' || down === 'page' || down.startsWith('page-content')) {
+      const { top, bottom } = master.margins
+      const band =
+        down === 'page-content'
+          ? { start: top, height: master.height - top - bottom }
+          : down === 'page-content-top'
+            ? { start: 0, height: top }
+            : down === 'page-content-bottom'
+              ? { start: master.height - bottom, height: bottom }
+              : { start: 0, height: master.height }
+      const position = graphic['style:vertical-pos'] ?? 'from-top'
+      const y =
+        position === 'middle' || position === 'center'
+          ? band.start + (band.height - size.height) / 2
+          : position === 'bottom'
+            ? band.start + band.height - size.height
+            : position === 'top'
+              ? band.start
+              : band.start + offsetY
+      return { at: { x, y, from: 'page' } }
     }
     if (wrap === 'none' && size.width >= textWidth * 0.9) return {}
-    if (wrap === 'run-through' || wrap === 'none') return { at: { x: x - master.margins.left, y: points(frame.attributes['svg:y']) ?? 0, from: 'paragraph' } }
-    return { float: wrap === 'left' || (wrap !== 'right' && x + size.width / 2 > master.width / 2) ? 'right' : 'left' }
+    // A frame the text runs through sits over it; one with no text beside it keeps its room, the text going on under it.
+    if (wrap === 'run-through') return { at: { x: x - master.margins.left, y: offsetY, from: 'paragraph' } }
+    if (wrap === 'none') return { at: { x: x - master.margins.left, y: offsetY, from: 'paragraph' }, room: true }
+    const float = wrap === 'left' || (wrap !== 'right' && x + size.width / 2 > master.width / 2) ? 'right' : 'left'
+    return offsetY > 0 ? { float, drop: offsetY } : { float }
   }
 
   // Tables
@@ -811,6 +870,27 @@ interface ListPlace {
   item: XmlNode | undefined
 }
 
+/** The frame or drawing an element places: itself, or the one a link (`draw:a`) holds; none for anything else. */
+function linked(node: XmlNode): XmlNode | undefined {
+  if (node.name === 'draw:frame' || DRAWINGS.has(node.name)) return node
+  return node.name === 'draw:a' ? node.children.find((child) => child.name === 'draw:frame' || DRAWINGS.has(child.name)) : undefined
+}
+
+/** A drawing's words: its title or description, else the text written in its shapes. */
+function describedBy(node: XmlNode): string {
+  const title = childAt(node, 'svg:title') ?? childAt(node, 'svg:desc')
+  if (title) return plainText(title).trim()
+  const words: string[] = []
+  const gather = (from: XmlNode) => {
+    for (const child of from.children) {
+      if (child.name === 'text:p' || child.name === 'text:h') words.push(plainText(child).replace(/\s+/g, ' ').trim())
+      else if (DRAWINGS.has(child.name) || child.name === 'draw:frame' || child.name === 'draw:text-box') gather(child)
+    }
+  }
+  gather(node)
+  return words.filter(Boolean).join(' ').slice(0, 1000)
+}
+
 /** A run's look as the look keeps it. */
 function strip(look: RunRead): TextLook {
   const { hidden: _hidden, ...kept } = look
@@ -873,12 +953,13 @@ function masterOf(master: XmlNode, layouts: ReadonlyMap<string, XmlNode>): Maste
 /**
  * An OpenDocument text's look: its pages as its master pages lay them out and as it last broke them, each with its
  * header, footer and footnotes, and its endnotes at the end. Its frames' figures are found by `figureOf`, among those
- * of its text.
+ * of its text, and its drawings are added to them by `drawingOf`.
  */
 export async function readOpenLook(
   archive: Archive,
   contentXml: string,
-  figureOf: (frame: XmlNode) => Promise<number | string | undefined>
+  figureOf: FrameFigure,
+  drawingOf: DrawingFigure = () => undefined
 ): Promise<{ look: DocumentLook; cut: boolean } | undefined> {
   const document = childAt(xmlTree(contentXml), 'office:document-content')
   const body = childAt(document, 'office:body', 'office:text')
@@ -900,7 +981,12 @@ export async function readOpenLook(
     masters.get('Standard') ??
     [...masters.values()][0] ??
     masterOf({ name: '', attributes: {}, children: [], text: '' }, layouts)
-  const reader = new OpenReader(book, fonts, masters, first, figureOf)
+  const reader = new OpenReader(book, fonts, masters, first, {
+    frame: figureOf,
+    drawing: drawingOf,
+    // Writer draws a text's shapes in their own style alone, not the frame styles it may name.
+    source: await drawingSource(archive, book, fonts, stylesRoot, false)
+  })
   await reader.readBlocks(body, false, true)
   if (reader.pages.length === 0) reader.place({ kind: 'paragraph', look: {}, spans: [], mark: {} })
   for (const page of reader.pages) for (const band of page.bands) reader.spaceContextually(band.blocks)

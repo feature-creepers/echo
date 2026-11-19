@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Archive } from './archive.ts'
-import type { DocumentBlock, DocumentLook, DocumentParagraph, DocumentTable } from './document-look.ts'
+import { type DocumentBlock, type DocumentLook, type DocumentParagraph, type DocumentTable, keptRooms } from './document-look.ts'
+import type { PictureFigure } from './office-text.ts'
 import { readOpenLook } from './open-look.ts'
 import type { XmlNode } from './xml.ts'
 
@@ -35,11 +36,12 @@ const STYLES = `<office:document-styles ${NAMESPACES}>
 async function lookOf(
   automatic: string,
   body: string,
-  figureOf: (frame: XmlNode) => Promise<number | undefined> = async () => undefined
+  figureOf: (frame: XmlNode) => Promise<number | undefined> = async () => undefined,
+  drawingOf: (drawing: PictureFigure) => number | undefined = () => undefined
 ): Promise<DocumentLook> {
   const content = `<office:document-content ${NAMESPACES}><office:automatic-styles>${automatic}</office:automatic-styles><office:body><office:text>${body}</office:text></office:body></office:document-content>`
   const archive: Archive = new Map([['styles.xml', async () => new TextEncoder().encode(STYLES)]])
-  const read = await readOpenLook(archive, content, figureOf)
+  const read = await readOpenLook(archive, content, figureOf, drawingOf)
   if (!read) throw new Error('No look was read.')
   return read.look
 }
@@ -168,12 +170,14 @@ describe('an OpenDocument text as it looks', () => {
 
   it('places frames’ pictures in their line, on the page or floating, and shows boxes of text and shapes with their fill', async () => {
     const figureOf = async (frame: XmlNode) => (childAt(frame) ? 0 : undefined)
+    const drawings: PictureFigure[] = []
     const look = await lookOf(
       `<style:style style:name="fr1" style:family="graphic"><style:graphic-properties style:wrap="parallel" style:horizontal-pos="right" style:horizontal-rel="paragraph"/></style:style>
 <style:style style:name="gr1" style:family="graphic"><style:graphic-properties draw:fill="solid" draw:fill-color="#729fcf" svg:stroke-color="#3465a4"/></style:style>`,
       `<draw:frame text:anchor-type="page" text:anchor-page-number="1" svg:x="2cm" svg:y="3cm" svg:width="4cm" svg:height="2cm"><draw:image xlink:href="Pictures/a.png"/></draw:frame>
 <text:p>Text <draw:frame text:anchor-type="as-char" svg:width="1in" svg:height="0.5in"><draw:image xlink:href="Pictures/a.png"/><svg:title>A square</svg:title></draw:frame><draw:frame draw:style-name="fr1" text:anchor-type="paragraph" svg:width="2in" svg:height="1in"><draw:image xlink:href="Pictures/a.png"/></draw:frame><draw:frame text:anchor-type="as-char" svg:width="2in"><draw:text-box fo:min-height="1in"><text:p>In a box</text:p></draw:text-box></draw:frame><draw:custom-shape draw:style-name="gr1" text:anchor-type="as-char" svg:width="1in" svg:height="1in"><svg:title>Not text</svg:title><text:p>Shape</text:p><draw:enhanced-geometry draw:type="rectangle"/></draw:custom-shape></text:p>`,
-      figureOf
+      figureOf,
+      (drawing) => drawings.push(drawing) + 99
     )
     const [anchored, body] = paragraphsOf(look)
     expect(anchored?.spans[0]).toMatchObject({ placed: { figure: 0, at: { from: 'page' } } })
@@ -182,9 +186,175 @@ describe('an OpenDocument text as it looks', () => {
       { placed: { figure: 0, alt: 'A square', width: 72, height: 36 } },
       { placed: { figure: 0, float: 'right' } },
       { box: { width: 144, height: 72 } },
-      { box: { fill: '#729fcf', line: { color: '#3465a4' } } }
+      { placed: { figure: 100, alt: 'Not text', width: 72, height: 72 } }
     ])
-    expect(JSON.stringify(look)).not.toContain('Not text')
+    // A shape is drawn as a picture of its own, its fill, line and text in it; its title is its picture's words, not text.
+    const svg = new TextDecoder().decode(drawings[0]?.bytes)
+    expect(drawings[0]).toMatchObject({ kind: 'picture', type: 'image/svg+xml' })
+    for (const piece of ['fill="#729fcf"', 'stroke="#3465a4"', '>Shape<']) expect(svg).toContain(piece)
+    expect(body?.spans.map((span) => ('text' in span ? span.text : '')).join('')).not.toContain('Not text')
+  })
+
+  it.each([
+    {
+      name: 'a line in its line of text, as a character',
+      element: '<draw:line draw:style-name="gr2" text:anchor-type="as-char" svg:x1="0in" svg:y1="0in" svg:x2="1in" svg:y2="0.5in"/>',
+      placed: { width: 72, height: 36, at: undefined, room: undefined },
+      shows: ['<path d="M0 0L96 48"']
+    },
+    {
+      name: 'an ellipse over the text, from its paragraph, where the text runs through it',
+      element: '<draw:ellipse draw:style-name="gr3" text:anchor-type="paragraph" svg:x="1in" svg:y="0.5in" svg:width="1in" svg:height="1in"/>',
+      placed: { width: 72, height: 72, at: { x: expect.closeTo(72, 1), y: expect.closeTo(36, 1), from: 'paragraph' }, room: undefined },
+      shows: ['fill="#ff0000"']
+    },
+    {
+      name: 'a group with no text beside it, keeping its room in its paragraph',
+      element:
+        '<draw:g draw:style-name="gr4" text:anchor-type="paragraph"><draw:rect draw:style-name="gr3" svg:x="0.5in" svg:y="0.25in" svg:width="1in" svg:height="0.5in"/><draw:polygon draw:style-name="gr3" svg:x="2in" svg:y="0.25in" svg:width="1in" svg:height="1in" svg:viewBox="0 0 10 10" draw:points="0,0 10,0 5,10"/></draw:g>',
+      placed: { width: 180, height: 72, at: { x: expect.closeTo(36, 1), y: expect.closeTo(18, 1), from: 'paragraph' }, room: true },
+      shows: ['translate(48 24)', 'M0 0L96 0L48 96']
+    },
+    {
+      name: 'a custom shape on its page, centred on it',
+      element:
+        '<draw:custom-shape draw:style-name="gr5" text:anchor-type="page" text:anchor-page-number="1" svg:width="2in" svg:height="1in"><draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:type="diamond" draw:enhanced-path="M 10800 0 L 21600 10800 10800 21600 0 10800 Z N"/></draw:custom-shape>',
+      placed: { width: 144, height: 72, at: { x: expect.closeTo(225.64, 1), y: expect.closeTo(384.95, 1), from: 'page' }, room: undefined },
+      shows: ['M96 0L192 48L96 96L0 48Z']
+    }
+  ])('draws $name as a picture placed as it says', async ({ element, placed, shows }) => {
+    const drawings: PictureFigure[] = []
+    const look = await lookOf(
+      `<style:style style:name="gr2" style:family="graphic"><style:graphic-properties svg:stroke-color="#000000" svg:stroke-width="0in"/></style:style>
+<style:style style:name="gr3" style:family="graphic"><style:graphic-properties draw:fill="solid" draw:fill-color="#ff0000" draw:stroke="none" style:wrap="run-through"/></style:style>
+<style:style style:name="gr4" style:family="graphic"><style:graphic-properties style:wrap="none"/></style:style>
+<style:style style:name="gr5" style:family="graphic"><style:graphic-properties style:horizontal-pos="center" style:horizontal-rel="page" style:vertical-pos="middle" style:vertical-rel="page"/></style:style>`,
+      `<text:p>Before ${element}after</text:p>`,
+      undefined,
+      (drawing) => drawings.push(drawing) - 1
+    )
+    const spans = paragraphsOf(look).flatMap((paragraph) => paragraph.spans)
+    const found = spans.find((one) => 'placed' in one)
+    const shown = found && 'placed' in found ? found.placed : undefined
+    expect(shown && { figure: shown.figure, width: shown.width, height: shown.height, at: shown.at, room: shown.room }).toEqual({ figure: 0, ...placed })
+    const svg = new TextDecoder().decode(drawings[0]?.bytes)
+    for (const piece of shows) expect(svg).toContain(piece)
+    expect(svg).not.toMatch(/<script|href="(?!data:)/)
+  })
+
+  it.each([
+    { name: 'none for a figure the text runs beside', spans: [{ placed: { figure: 0, alt: '', at: { x: 0, y: 10, from: 'paragraph' as const } } }], rooms: [] },
+    {
+      name: 'a band from a figure’s top to its bottom, its reach included',
+      spans: [
+        {
+          placed: {
+            figure: 0,
+            alt: '',
+            height: 20,
+            room: true,
+            at: { x: 0, y: 10, from: 'paragraph' as const },
+            bleed: { top: 2, right: 0, bottom: 3, left: 0 }
+          }
+        }
+      ],
+      rooms: [{ top: 8, height: 25 }]
+    },
+    {
+      name: 'one band for figures that meet, another for one further down',
+      spans: [
+        { placed: { figure: 0, alt: '', height: 20, room: true, at: { x: 0, y: 0, from: 'paragraph' as const } } },
+        { box: { height: 10, room: true, at: { x: 0, y: 15, from: 'paragraph' as const }, insets: { top: 0, right: 0, bottom: 0, left: 0 }, blocks: [] } },
+        { placed: { figure: 1, alt: '', height: 5, room: true, at: { x: 0, y: 50, from: 'paragraph' as const } } }
+      ],
+      rooms: [
+        { top: 0, height: 25 },
+        { top: 50, height: 5 }
+      ]
+    },
+    {
+      name: 'none for a figure placed on its page',
+      spans: [{ placed: { figure: 0, alt: '', height: 20, room: true, at: { x: 0, y: 10, from: 'page' as const } } }],
+      rooms: []
+    }
+  ])('keeps $name', ({ spans, rooms }) => {
+    expect(keptRooms(spans)).toEqual(rooms)
+  })
+
+  const PLACING = `<style:default-style style:family="graphic"><style:graphic-properties draw:fill-color="#729fcf"/></style:default-style>
+<style:style style:name="Frame" style:family="graphic"><style:graphic-properties draw:fill="none" draw:stroke="none" style:wrap="parallel"/></style:style>
+<style:style style:name="framed" style:family="graphic" style:parent-style-name="Frame"/>
+<style:style style:name="filled" style:family="graphic"><style:graphic-properties draw:fill="solid" draw:fill-color="#00ff00"/></style:style>
+<style:style style:name="backed" style:family="graphic"><style:graphic-properties fo:background-color="#0000ff" draw:stroke="solid" svg:stroke-color="#ff0000"/></style:style>
+<style:style style:name="margin" style:family="graphic"><style:graphic-properties loext:vertical-rel="page-content-bottom"/></style:style>
+<style:style style:name="wrapped" style:family="graphic"><style:graphic-properties style:wrap="parallel" style:horizontal-pos="from-left"/></style:style>`
+  const placedIn = (look: DocumentLook) => paragraphsOf(look).flatMap((paragraph) => paragraph.spans)
+
+  it.each([
+    {
+      name: 'a frame of text with no fill of its own, not the shapes’ fill of the default style',
+      body: '<draw:frame text:anchor-type="as-char" svg:width="1in"><draw:text-box><text:p>Box</text:p></draw:text-box></draw:frame>',
+      check: (look: DocumentLook) => expect(placedIn(look)[0]).toMatchObject({ box: { fill: undefined, line: undefined } })
+    },
+    {
+      name: 'a frame of text filled as its style says, and lined and rounded as a shape is',
+      body: '<draw:frame draw:style-name="filled" text:anchor-type="as-char" svg:width="1in"><draw:text-box draw:corner-radius="0.25in"><text:p>Box</text:p></draw:text-box></draw:frame><draw:frame draw:style-name="backed" text:anchor-type="as-char" svg:width="1in"><draw:text-box><text:p>Box</text:p></draw:text-box></draw:frame>',
+      check: (look: DocumentLook) =>
+        expect(placedIn(look)).toMatchObject([
+          { box: { fill: '#00ff00', radius: 18 } },
+          { box: { fill: '#0000ff', line: { color: '#ff0000', style: 'solid' } } }
+        ])
+    },
+    {
+      name: 'a drawing from the page’s bottom margin, as LibreOffice’s own relation says',
+      body: '<draw:rect draw:style-name="margin" text:anchor-type="paragraph" svg:x="0cm" svg:y="-1cm" svg:width="1cm" svg:height="1cm"/>',
+      check: (look: DocumentLook) =>
+        expect(placedIn(look)[0]).toMatchObject({ placed: { at: { x: expect.closeTo(70.87, 1), y: expect.closeTo(756.85, 1), from: 'page' } } })
+    },
+    {
+      name: 'a frame the text wraps beside, floating down from its paragraph',
+      body: '<draw:frame draw:style-name="wrapped" text:anchor-type="paragraph" svg:y="1in" svg:width="1in" svg:height="1in"><draw:image xlink:href="Pictures/a.png"/></draw:frame>Beside',
+      check: (look: DocumentLook) => expect(placedIn(look)[0]).toMatchObject({ placed: { float: 'left', drop: 72 } })
+    },
+    {
+      name: 'a drawing whose style names no wrap, the text running through it',
+      body: '<draw:rect text:anchor-type="paragraph" svg:x="0in" svg:y="0in" svg:width="1in" svg:height="1in"/>',
+      check: (look: DocumentLook) => {
+        const [first] = placedIn(look)
+        expect(first && 'placed' in first ? first.placed.room : 'none').toBeUndefined()
+      }
+    },
+    {
+      name: 'a drawing in a frame, anchored to it, placed from its box',
+      body: '<draw:frame text:anchor-type="as-char" svg:width="3in" svg:height="2in"><draw:text-box><draw:rect text:anchor-type="frame" svg:x="0.5in" svg:y="0.25in" svg:width="1in" svg:height="1in"/><text:p>Boxed</text:p></draw:text-box></draw:frame>',
+      check: (look: DocumentLook) => {
+        const [frame] = placedIn(look)
+        const inner = frame && 'box' in frame ? frame.box.blocks[0] : undefined
+        expect(inner?.kind === 'paragraph' ? inner.spans[0] : undefined).toMatchObject({
+          placed: { at: { x: expect.closeTo(36, 1), y: expect.closeTo(18, 1), from: 'paragraph' } }
+        })
+      }
+    }
+  ])('places $name', async ({ body, check }) => {
+    check(
+      await lookOf(
+        PLACING,
+        `<text:p>${body}</text:p>`,
+        async (frame) => (childAt(frame) ? 0 : undefined),
+        () => 0
+      )
+    )
+  })
+
+  it('draws a drawing in its own style alone, not the frame style it names, as Writer does', async () => {
+    const drawings: PictureFigure[] = []
+    await lookOf(
+      PLACING,
+      '<text:p><draw:rect draw:style-name="framed" text:anchor-type="as-char" svg:width="1in" svg:height="1in"/></text:p>',
+      undefined,
+      (drawing) => drawings.push(drawing) - 1
+    )
+    expect(new TextDecoder().decode(drawings[0]?.bytes)).toContain('fill="#729fcf"')
   })
 })
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Archive } from './archive.ts'
-import { drawOpenPage, naturalSize, openDeck } from './open-slide-drawing.ts'
+import { naturalSize } from './open-drawing.ts'
+import { drawOpenPage, openDeck } from './open-slide-drawing.ts'
 import { childAt, childrenNamed, xmlTree } from './xml.ts'
 
 const NAMESPACES =
@@ -68,7 +69,7 @@ describe('a page of an OpenDocument presentation drawn', () => {
     const slide = await drawn('')
     expect(slide && [slide.width, slide.height]).toEqual([960, 720])
     expect(slide?.written).toContain('<rect width="960" height="720" fill="#eeeeee"/>')
-    expect(slide?.written).toContain('<g transform="translate(0 672)"><path d="M0 0L960 0L960 48L0 48Z" fill="#ff0000" stroke="none"/></g>')
+    expect(slide?.written).toContain('<g transform="translate(0 672)"><path d="M0 0L960 0L960 48L0 48Z" fill="#ff0000" fill-rule="evenodd" stroke="none"/></g>')
     expect(slide?.written).toContain('>Lyon, 2026</span>')
     expect(slide?.written).not.toContain('Master title')
     expect(slide?.written).not.toContain('Page 4')
@@ -111,12 +112,14 @@ describe('a page of an OpenDocument presentation drawn', () => {
       <draw:line draw:style-name="Band" svg:x1="0in" svg:y1="0in" svg:x2="1in" svg:y2="1in"/>`
     const written = (await drawn(shapes))?.written
     expect(written).toContain(
-      '<g transform="translate(96 288) rotate(-90)"><path d="M0 0L192 0L192 96L0 96Z" fill="url(#g1)" stroke="#000000" stroke-width="3.84" stroke-dasharray="11.52 3.84"/>'
+      '<g transform="translate(96 288) rotate(-90)"><path d="M0 0L192 0L192 96L0 96Z" fill="url(#g1)" fill-rule="evenodd" stroke="#000000" stroke-width="3.84" stroke-dasharray="11.52 3.84"/>'
     )
     expect(written).toContain(
       '<linearGradient id="g1" x1="0" y1="0.5" x2="1" y2="0.5"><stop offset="0" stop-color="#ff0000"/><stop offset="0" stop-color="#ff0000"/><stop offset="1" stop-color="#0000ff"/>'
     )
-    expect(written).toContain('<g transform="translate(480 480)"><path d="M96 48A48 48 0 0 0 0 48A48 48 0 0 0 96 48" fill="#ff0000" stroke="none"/></g>')
+    expect(written).toContain(
+      '<g transform="translate(480 480)"><path d="M96 48A48 48 0 0 0 0 48A48 48 0 0 0 96 48" fill="#ff0000" fill-rule="evenodd" stroke="none"/></g>'
+    )
     expect(written).toContain('<path d="M0 0L96 96" fill="none" stroke="none"/>')
   })
 

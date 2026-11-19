@@ -7,7 +7,8 @@ const context = {
   width: 2540,
   height: 1270,
   modifiers: [5400, 3],
-  equation: (name: string) => (name === 'f0' ? 100 : 0)
+  equation: (name: string) => (name === 'f0' ? 100 : 0),
+  stretch: { x: 1, y: 1 }
 }
 
 describe('a formula of a custom shape', () => {
@@ -22,7 +23,8 @@ describe('a formula of a custom shape', () => {
     ['max(3, min(10, 7)) + abs(-2)', 9],
     ['if(-1, 10, 20) + if(1, 1, 2)', 21],
     ['sqrt(16) + sin(0) + cos(0)', 5],
-    ['atan2(0, 1) * 2 / pi', 1],
+    ['atan2(1, 0) * 2 / pi', 1],
+    ['atan2(0, 1)', 0],
     ['4 / 0', 0],
     ['2 +', 2],
     ['unknown + 1', 1]
@@ -68,6 +70,34 @@ describe('a custom shape’s geometry', () => {
     )
     expect(drawn.geometry.stroke).toBe('M2 1L10 10')
     expect(drawn.flipH).toBe(true)
+  })
+
+  it('keeps the corners of a shape with a stretch point round, its far edge stretched to its longer side', () => {
+    const rounded = (size: { width: number; height: number }) =>
+      enhancedGeometry(
+        geometry(
+          'svg:viewBox="0 0 100 100" draw:path-stretchpoint-x="50" draw:path-stretchpoint-y="50" draw:modifiers="10" draw:enhanced-path="M ?f0 0 L ?f1 0 X 100 10 L 100 100 0 100 Z N" draw:text-areas="0 0 right bottom"',
+          '<draw:equation draw:name="f0" draw:formula="left+$0"/><draw:equation draw:name="f1" draw:formula="right-$0"/>'
+        ),
+        size
+      )
+    const wide = rounded({ width: 300, height: 100 })
+    expect(wide.geometry.stroke).toBe('M10 0L290 0A10 10 0 0 1 300 10L300 100L0 100Z')
+    expect(wide.text).toEqual({ x: 0, y: 0, width: 300, height: 100 })
+    expect(rounded({ width: 100, height: 200 }).geometry.stroke).toBe('M10 0L90 0A10 10 0 0 1 100 10L100 200L0 200Z')
+  })
+
+  it('draws the path with arcs LibreOffice writes for itself rather than the one without them', () => {
+    const drawn = enhancedGeometry(geometry('svg:viewBox="0 0 10 10" draw:enhanced-path="M 0 10 L 10 10 N" drawooo:enhanced-path="M 0 10 G 5 5 180 180 N"'), {
+      width: 10,
+      height: 10
+    })
+    expect(drawn.geometry.stroke).toMatch(/^M0 10A5 5 /)
+  })
+
+  it('reads a view box of no size as the shape’s own size in hundredths of a millimetre', () => {
+    const drawn = enhancedGeometry(geometry('svg:viewBox="0 0 0 0" draw:enhanced-path="M 0 0 L logwidth 0 logwidth logheight Z N"'), { width: 96, height: 48 })
+    expect(drawn.geometry.stroke).toBe('M0 0L96 0L96 48Z')
   })
 
   it('draws a kind it names when it gives no path', () => {

@@ -16,10 +16,14 @@ export interface PathCommand {
   values: number[]
 }
 
-/** A shape's own path as SVG path data: what is filled, and what is stroked. */
+/**
+ * A shape's own path as SVG path data: what is filled, and what is stroked; and each of its paths that is filled, on its
+ * own, since each is filled apart from the others, a subpath inside another of the same path being a hole.
+ */
 export interface CustomGeometry {
   fill: string
   stroke: string
+  pieces?: string[] | undefined
 }
 
 /** The view box a path's numbers are in. */
@@ -47,6 +51,7 @@ export function customGeometry(commands: readonly PathCommand[], view: ViewBox, 
   const scaleY = view.height ? size.height / view.height : 0
   const x = (value: number) => (value - view.left) * scaleX
   const y = (value: number) => (value - view.top) * scaleY
+  const pieces: string[] = []
   const fills: string[] = []
   const strokes: string[] = []
   // The path under way: its subpaths, and whether it is filled and stroked.
@@ -64,6 +69,7 @@ export function customGeometry(commands: readonly PathCommand[], view: ViewBox, 
   }
   const endPath = () => {
     endSubpath(false)
+    if (filled && subpaths.length > 0) pieces.push(subpaths.join(''))
     if (filled) fills.push(...subpaths)
     if (stroked) strokes.push(...subpaths)
     subpaths = []
@@ -210,5 +216,6 @@ export function customGeometry(commands: readonly PathCommand[], view: ViewBox, 
     }
   }
   endPath()
-  return { fill: fills.join(''), stroke: strokes.join('') }
+  // A shape of one path keeps no pieces: its fill is its one piece.
+  return { fill: fills.join(''), stroke: strokes.join(''), pieces: pieces.length > 1 ? pieces : undefined }
 }

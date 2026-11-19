@@ -99,14 +99,18 @@ export class StyleBook {
     return found
   }
 
-  /** The properties of a kind (`graphic`, `paragraph`, `text`…) a style gives, over its family's default when asked. */
-  properties(family: string, name: string | undefined, kind: string, inMaster: boolean, withDefault = true): Properties {
-    const key = `${family}/${name}/${kind}/${inMaster}/${withDefault}`
+  /**
+   * The properties of a kind (`graphic`, `paragraph`, `text`…) a style gives, over its family's default when asked, and
+   * over the styles it comes from unless told not to: a text's drawings take no style but their own.
+   */
+  properties(family: string, name: string | undefined, kind: string, inMaster: boolean, withDefault = true, withParents = true): Properties {
+    const key = `${family}/${name}/${kind}/${inMaster}/${withDefault}/${withParents}`
     const known = this.cache.get(key)
     if (known) return known
     const element = `style:${kind}-properties`
     const fallback = withDefault ? this.defaults.get(family === 'presentation' ? 'graphic' : family) : undefined
-    const layers = [fallback, ...this.chain(family, name, inMaster)].map((style) => childAt(style, element)?.attributes ?? {})
+    const styles = withParents ? this.chain(family, name, inMaster) : [this.find(family, name, inMaster)]
+    const layers = [fallback, ...styles].map((style) => childAt(style, element)?.attributes ?? {})
     const result = merged(layers)
     this.cache.set(key, result)
     return result

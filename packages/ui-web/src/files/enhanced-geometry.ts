@@ -41,13 +41,17 @@ const KINDS: Record<string, string> = {
   'flowchart-connector': 'ellipse'
 }
 
-/** The numbers a formula names beyond its own: the view box's edges and size, and the shape's size in hundredths of a millimetre. */
+/**
+ * The numbers a formula names beyond its own: the view box's edges and size, and the shape's size in hundredths of a
+ * millimetre; with how far a shape with a stretch point is stretched across and down, one when it is not.
+ */
 interface Context {
   view: ViewBox
   width: number
   height: number
   modifiers: number[]
   equation: (name: string) => number
+  stretch: { x: number; y: number }
 }
 
 /** A formula's tokens: numbers, names, `?` and `$` references, operators and brackets. */
@@ -66,9 +70,9 @@ function named(name: string, context: Context): number {
     case 'top':
       return view.top
     case 'right':
-      return view.left + view.width
+      return (view.left + view.width) * context.stretch.x
     case 'bottom':
-      return view.top + view.height
+      return (view.top + view.height) * context.stretch.y
     case 'width':
       return view.width
     case 'height':
@@ -100,7 +104,8 @@ const FUNCTIONS: Record<string, (...values: number[]) => number> = {
   cos: (value = 0) => Math.cos(value),
   tan: (value = 0) => Math.tan(value),
   atan: (value = 0) => Math.atan(value),
-  atan2: (x = 0, y = 0) => Math.atan2(y, x),
+  // As C's and LibreOffice's: the angle of the point `x`, `y`, its height first.
+  atan2: (y = 0, x = 0) => Math.atan2(y, x),
   min: (one = 0, other = 0) => Math.min(one, other),
   max: (one = 0, other = 0) => Math.max(one, other),
   if: (condition = 0, yes = 0, no = 0) => (condition > 0 ? yes : no)
@@ -157,12 +162,33 @@ export function evaluate(formula: string, context: Context): number {
 /** The letters of the path's commands. */
 const COMMANDS = new Set(['M', 'L', 'C', 'Z', 'N', 'F', 'S', 'T', 'U', 'A', 'B', 'V', 'W', 'X', 'Y', 'Q', 'G'])
 
-/** A path's commands with their numbers worked out; commands of other letters are passed over with their numbers. */
+/** The commands whose numbers are all points, and those whose first pair of each group of six is (an ellipse's centre). */
+const POINTS = new Set(['M', 'L', 'C', 'Q', 'X', 'Y', 'A', 'B', 'V', 'W'])
+const CENTRED = new Set(['T', 'U'])
+
+/**
+ * A path's commands with their numbers worked out; commands of other letters are passed over with their numbers. In a
+ * stretched shape, a point written as the view box's full width or height is stretched with its right or bottom edge,
+ * as LibreOffice stretches it.
+ */
 export function pathCommands(path: string, context: Context): PathCommand[] {
   const commands: PathCommand[] = []
+  const { view, stretch } = context
   for (const token of path.match(/[A-Za-z]\w*|\?\w+|\$\d+|-?\d*\.?\d+(?:[eE][-+]?\d+)?/g) ?? []) {
-    if (/^[A-Z]$/.test(token)) commands.push({ command: COMMANDS.has(token) ? token : '', values: [] })
-    else commands.at(-1)?.values.push(parameter(token, context))
+    if (/^[A-Z]$/.test(token)) {
+      commands.push({ command: COMMANDS.has(token) ? token : '', values: [] })
+      continue
+    }
+    const command = commands.at(-1)
+    if (!command) continue
+    let value = parameter(token, context)
+    const index = command.values.length
+    const point = POINTS.has(command.command) || (CENTRED.has(command.command) && index % 6 < 2)
+    if (point && /^-?[\d.]/.test(token)) {
+      if (index % 2 === 0 && value === view.width) value *= stretch.x
+      else if (index % 2 === 1 && value === view.height) value *= stretch.y
+    }
+    command.values.push(value)
   }
   return commands.filter((command) => command.command !== '')
 }
@@ -185,11 +211,13 @@ export function enhancedGeometry(node: XmlNode, size: { width: number; height: n
     .trim()
     .split(/[\s,]+/)
     .map(Number)
+  // A view box of no size, as a shape brought from Word has, is the shape's own size in hundredths of a millimetre.
+  const side = (value: number | undefined, logical: number) => (value === 0 ? logical : Number.isFinite(value) ? (value as number) : 21_600)
   const view: ViewBox = {
     left: box[0] || 0,
     top: box[1] || 0,
-    width: Number.isFinite(box[2]) ? (box[2] as number) : 21_600,
-    height: Number.isFinite(box[3]) ? (box[3] as number) : 21_600
+    width: side(box[2], size.width * LOGICAL_PER_PIXEL),
+    height: side(box[3], size.height * LOGICAL_PER_PIXEL)
   }
   const modifiers = (attributes['draw:modifiers'] ?? '')
     .trim()
@@ -201,8 +229,16 @@ export function enhancedGeometry(node: XmlNode, size: { width: number; height: n
     if (child.name === 'draw:equation' && child.attributes['draw:name']) formulas.set(child.attributes['draw:name'], child.attributes['draw:formula'] ?? '0')
   const known = new Map<string, number>()
   const working = new Set<string>()
+  // A shape with a stretch point keeps its view box's proportions across its shorter side, its far edge stretched to its longer one, so its corners stay round.
+  const stretchOf = (point: string | undefined, long: number, short: number) => (point !== undefined && short > 0 && long > short ? long / short : 1)
+  const stretch = {
+    x: stretchOf(attributes['draw:path-stretchpoint-x'], size.width, size.height),
+    y: stretchOf(attributes['draw:path-stretchpoint-y'], size.height, size.width)
+  }
+  const drawn: ViewBox = { ...view, width: view.width * stretch.x, height: view.height * stretch.y }
   const context: Context = {
     view,
+    stretch,
     width: size.width * LOGICAL_PER_PIXEL,
     height: size.height * LOGICAL_PER_PIXEL,
     modifiers,
@@ -219,11 +255,12 @@ export function enhancedGeometry(node: XmlNode, size: { width: number; height: n
       return value
     }
   }
-  const path = attributes['draw:enhanced-path']
+  // LibreOffice writes a path with arcs it alone reads (`drawooo:enhanced-path`) beside one without them for other apps.
+  const path = attributes['drawooo:enhanced-path'] ?? attributes['draw:enhanced-path']
   const flipH = attributes['draw:mirror-horizontal'] === 'true'
   const flipV = attributes['draw:mirror-vertical'] === 'true'
   let geometry: CustomGeometry
-  if (path) geometry = customGeometry(pathCommands(path, context), view, size)
+  if (path) geometry = customGeometry(pathCommands(path, context), drawn, size)
   else {
     const preset = presetPath(KINDS[attributes['draw:type'] ?? ''] ?? 'rect', size.width, size.height, (_, fallback) => fallback)
     geometry = { fill: preset.closed ? preset.data : '', stroke: preset.data }
@@ -234,8 +271,8 @@ export function enhancedGeometry(node: XmlNode, size: { width: number; height: n
   if (path && areas) {
     const values = pathCommands(`M ${areas}`, context)[0]?.values ?? []
     if (values.length >= 4) {
-      const scaleX = view.width ? size.width / view.width : 0
-      const scaleY = view.height ? size.height / view.height : 0
+      const scaleX = drawn.width ? size.width / drawn.width : 0
+      const scaleY = drawn.height ? size.height / drawn.height : 0
       const [left, top, right, bottom] = values as [number, number, number, number]
       text = {
         x: (Math.min(left, right) - view.left) * scaleX,

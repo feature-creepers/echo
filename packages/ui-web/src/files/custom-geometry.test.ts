@@ -7,7 +7,25 @@ const square = { left: 0, top: 0, width: 100, height: 100 }
 const drawn = (commands: PathCommand[]) => customGeometry(commands, square, { width: 200, height: 100 })
 
 describe('a shape drawn by its own path', () => {
-  it.each<[string, PathCommand[], { fill: string; stroke: string }]>([
+  it.each<[string, PathCommand[], { fill: string; stroke: string; pieces?: string[] }]>([
+    [
+      'two paths, each filled on its own, the second over the first and no hole in it',
+      [
+        { command: 'M', values: [0, 0] },
+        { command: 'L', values: [100, 0, 100, 100] },
+        { command: 'Z', values: [] },
+        { command: 'N', values: [] },
+        { command: 'M', values: [50, 0] },
+        { command: 'L', values: [100, 0, 100, 50] },
+        { command: 'Z', values: [] },
+        { command: 'N', values: [] }
+      ],
+      {
+        fill: 'M0 0L200 0L200 100ZM100 0L200 0L200 50Z',
+        stroke: 'M0 0L200 0L200 100ZM100 0L200 0L200 50Z',
+        pieces: ['M0 0L200 0L200 100Z', 'M100 0L200 0L200 50Z']
+      }
+    ],
     [
       'lines and curves, scaled from the view box to the box',
       [

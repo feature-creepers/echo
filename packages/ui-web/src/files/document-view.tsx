@@ -5,20 +5,21 @@
  * read, its fonts named and never fetched, its pictures from their own bytes: nothing in it runs or reaches out.
  */
 
-import { type CSSProperties, createContext, type ReactNode, useContext, useLayoutEffect, useRef, useState } from 'react'
-import type {
-  BorderLook,
-  DocumentBlock,
-  DocumentLook,
-  DocumentPage,
-  DocumentParagraph,
-  DocumentSpan,
-  DocumentTable,
-  PlacedFigure,
-  Sides,
-  TabStop,
-  TextBox,
-  TextLook
+import { type CSSProperties, createContext, Fragment, type ReactNode, useContext, useLayoutEffect, useRef, useState } from 'react'
+import {
+  type BorderLook,
+  type DocumentBlock,
+  type DocumentLook,
+  type DocumentPage,
+  type DocumentParagraph,
+  type DocumentSpan,
+  type DocumentTable,
+  keptRooms,
+  type PlacedFigure,
+  type Sides,
+  type TabStop,
+  type TextBox,
+  type TextLook
 } from './document-look.ts'
 import { Figure } from './figure-view.tsx'
 import type { OfficeFigure, SheetFigure } from './office-text.ts'
@@ -166,14 +167,55 @@ function Paragraph({ paragraph, above, below }: { paragraph: DocumentParagraph; 
       </span>
     ))
   const heading = paragraph.heading === undefined ? {} : { role: 'heading', 'aria-level': paragraph.heading }
+  const anchored = paragraph.spans.filter(fromParagraph)
+  const flowing = anchored.length > 0 ? paragraph.spans.filter((span) => !fromParagraph(span)) : paragraph.spans
   return (
     <div style={style} {...heading}>
+      {anchored.length > 0 && <Anchored spans={anchored} />}
       {markerShown}
-      {tabbed ? <TabbedSpans paragraph={paragraph} /> : paragraph.spans.map((span, index) => <Span key={index} span={span} />)}
-      {/* An empty paragraph still makes a line, as tall as its mark's font. */}
-      {paragraph.spans.length === 0 && <span style={textStyle(mark)}>{'​'}</span>}
+      {tabbed ? <TabbedSpans paragraph={{ ...paragraph, spans: flowing }} /> : flowing.map((span, index) => <Span key={index} span={span} />)}
+      {/* An empty paragraph still makes a line, as tall as its mark's font, even when figures are placed from it. */}
+      {flowing.length === 0 && <span style={textStyle(mark)}>{'​'}</span>}
     </div>
   )
+}
+
+/** Whether a span is a figure or a box placed at a place from its paragraph, rather than in its lines. */
+const fromParagraph = (span: DocumentSpan) => ('placed' in span && span.placed.at?.from === 'paragraph') || ('box' in span && span.box.at?.from === 'paragraph')
+
+/**
+ * The figures and boxes placed from a paragraph, measured from its first line: where an earlier figure's room pushes
+ * that line down, they go down with it, as the app that wrote the file moves the paragraph. A mark of almost no width
+ * starts the line, so even an empty one cannot sit beside a room as wide as the text, and the rooms and figures after
+ * it start no higher than it.
+ */
+function Anchored({ spans }: { spans: readonly DocumentSpan[] }) {
+  return (
+    <>
+      <span aria-hidden="true" style={{ display: 'inline-block', width: '0.1px', height: 0, verticalAlign: 'top' }} />
+      <Rooms spans={spans} />
+      {spans.map((span, index) => ('placed' in span ? <Placed key={index} placed={span.placed} /> : 'box' in span ? <Box key={index} box={span.box} /> : null))}
+    </>
+  )
+}
+
+/**
+ * The room a paragraph's figures keep across its text where they let none beside them: for each band, an empty float
+ * as high as the space above it, then one as wide as the text and as high as the band, under it. Lines that would meet
+ * a band go on under it, in this paragraph and those after it, while those above it stay where they are.
+ */
+function Rooms({ spans }: { spans: readonly DocumentSpan[] }) {
+  let reached = 0
+  return keptRooms(spans).map((room, index) => {
+    const above = room.top - reached
+    reached = room.top + room.height
+    return (
+      <Fragment key={index}>
+        <span aria-hidden="true" style={{ display: 'block', float: 'left', clear: index > 0 ? 'left' : undefined, width: 0, height: pt(above) }} />
+        <span aria-hidden="true" style={{ display: 'block', float: 'left', clear: 'left', width: '100%', height: pt(room.height) }} />
+      </Fragment>
+    )
+  })
 }
 
 /**
@@ -241,10 +283,28 @@ function Span({ span }: { span: DocumentSpan }) {
   return span.box.at?.from === 'page' ? null : <Box box={span.box} />
 }
 
-/** Where a figure or a box sits: in its line, floating at a side of the text, or over it at a place. */
-function placement(item: { float?: 'left' | 'right' | undefined; at?: { x: number; y: number } | undefined }): CSSProperties {
+/** How a figure or a box floats at a side of the text, and how far down from where it is anchored. */
+interface Floating {
+  float?: 'left' | 'right' | undefined
+  drop?: number | undefined
+}
+
+/**
+ * An empty float as high as a float's drop, at its side, before it: the lines above the float keep their width, and it
+ * floats from under the empty one.
+ */
+function Drop({ item }: { item: Floating }) {
+  return item.float && item.drop ? <span aria-hidden="true" style={{ display: 'block', float: item.float, width: 0, height: pt(item.drop) }} /> : null
+}
+
+/**
+ * Where a figure or a box sits: in its line, floating at a side of the text, or over it at a place: from the page's
+ * corner, or from its paragraph's first line, down from where that line starts.
+ */
+function placement(item: Floating & { at?: { x: number; y: number; from: 'page' | 'paragraph' } | undefined }): CSSProperties {
+  if (item.at?.from === 'paragraph') return { position: 'absolute', left: pt(item.at.x), marginTop: pt(item.at.y) }
   if (item.at) return { position: 'absolute', left: pt(item.at.x), top: pt(item.at.y) }
-  if (item.float) return { float: item.float, margin: item.float === 'left' ? '0 9pt 0 0' : '0 0 0 9pt' }
+  if (item.float) return { float: item.float, clear: item.drop ? item.float : undefined, margin: item.float === 'left' ? '0 9pt 0 0' : '0 0 0 9pt' }
   return { display: 'inline-block', verticalAlign: 'bottom' }
 }
 
@@ -267,40 +327,71 @@ function Placed({ placed }: { placed: PlacedFigure }) {
   if (!figure) return null
   const size: CSSProperties = { width: placed.width ? pt(placed.width) : undefined, height: placed.height ? pt(placed.height) : undefined }
   const url = urls.get(figure)
+  // A drawing's picture reaches past its box where its line, its arrows or its text do, the box alone taking room.
+  const { bleed } = placed
+  const across = (bleed?.left ?? 0) + (bleed?.right ?? 0)
+  const down = (bleed?.top ?? 0) + (bleed?.bottom ?? 0)
+  const picture: CSSProperties = bleed
+    ? {
+        position: 'absolute',
+        display: 'block',
+        left: pt(-(bleed.left ?? 0)),
+        top: pt(-(bleed.top ?? 0)),
+        width: `calc(100% + ${pt(across)})`,
+        height: `calc(100% + ${pt(down)})`,
+        maxWidth: 'none'
+      }
+    : { display: 'block', width: '100%', height: '100%' }
   return (
-    <span style={{ ...placement(placed), ...size, textIndent: 0, lineHeight: 'normal', whiteSpace: 'normal' }}>
-      {figure.kind === 'picture' ? (
-        url ? (
-          <img src={url} alt={placed.alt} style={{ display: 'block', width: '100%', height: '100%' }} />
-        ) : null
-      ) : (
-        <span className="block size-full overflow-hidden bg-white">
-          <Figure figure={figure.kind === 'sheet' ? fitted(figure, placed) : figure} url={url} alt={placed.alt} block />
-        </span>
-      )}
-    </span>
+    <>
+      <Drop item={placed} />
+      <span
+        style={{
+          ...(bleed ? { position: 'relative' } : {}),
+          ...placement(placed),
+          ...size,
+          textIndent: 0,
+          lineHeight: 'normal',
+          whiteSpace: 'normal'
+        }}
+      >
+        {figure.kind === 'picture' ? (
+          url ? (
+            <img src={url} alt={placed.alt} style={picture} />
+          ) : null
+        ) : (
+          <span className="block size-full overflow-hidden bg-white">
+            <Figure figure={figure.kind === 'sheet' ? fitted(figure, placed) : figure} url={url} alt={placed.alt} block />
+          </span>
+        )}
+      </span>
+    </>
   )
 }
 
 function Box({ box }: { box: TextBox }) {
   return (
-    <span
-      style={{
-        ...placement(box),
-        width: box.width ? pt(box.width) : undefined,
-        minHeight: box.height ? pt(box.height) : undefined,
-        boxSizing: 'border-box',
-        padding: `${pt(box.insets.top)} ${pt(box.insets.right)} ${pt(box.insets.bottom)} ${pt(box.insets.left)}`,
-        backgroundColor: box.fill,
-        border: borderCss(box.line),
-        textIndent: 0,
-        textAlign: 'left',
-        whiteSpace: 'normal',
-        verticalAlign: 'top'
-      }}
-    >
-      <Blocks blocks={box.blocks} />
-    </span>
+    <>
+      <Drop item={box} />
+      <span
+        style={{
+          ...placement(box),
+          width: box.width ? pt(box.width) : undefined,
+          minHeight: box.height ? pt(box.height) : undefined,
+          boxSizing: 'border-box',
+          padding: `${pt(box.insets.top)} ${pt(box.insets.right)} ${pt(box.insets.bottom)} ${pt(box.insets.left)}`,
+          backgroundColor: box.fill,
+          border: borderCss(box.line),
+          borderRadius: box.radius ? pt(box.radius) : undefined,
+          textIndent: 0,
+          textAlign: 'left',
+          whiteSpace: 'normal',
+          verticalAlign: 'top'
+        }}
+      >
+        <Blocks blocks={box.blocks} />
+      </span>
+    </>
   )
 }
 
