@@ -5,6 +5,7 @@ import { createAttachments } from './attachments/attachments.ts'
 import { giveFolders } from './attachments/folders.ts'
 import { createBrowserControl } from './browser/browser.ts'
 import { createChannel } from './channel/channel.ts'
+import { createInterruptionCap } from './channel/interruptions.ts'
 import { createClipboardControl } from './clipboard/tools.ts'
 import { createExecutor } from './commands/execute.ts'
 import { createDesktopControl } from './desktop/desktop.ts'
@@ -290,6 +291,9 @@ export function createCore(options: CoreOptions): Core {
   // Reminders and scheduled tasks (docs/SPEC.md, section 7.10): they ring as turns the assistant starts itself, through
   // the channel made below. Nothing rings before a client has sent a command, by which time the channel is there.
   // A job may also ring when files arrive in a folder the person granted (section 7.10), when the computer can watch one.
+  // How often the assistant speaks up by itself, whatever makes it (section 7.10): reminders, scheduled tasks, answers
+  // finished out of sight. Past the cap the person set, what it would say is shown and not said.
+  const interruptions = createInterruptionCap({ now: () => now().getTime(), perHour: () => settings.read().interruptions.perHour })
   const { computer } = options
   const watch = computer?.watch?.bind(computer)
   const fileAt = computer?.fileAt?.bind(computer)
@@ -301,6 +305,7 @@ export function createCore(options: CoreOptions): Core {
     newId: options.newId,
     proactive: {
       busy: () => channel.busy(),
+      mayInterrupt: () => interruptions.take(),
       remind: (reminder) => void channel.remind(reminder),
       run: (task) => void channel.task(task),
       notify: (notification) => emit({ type: 'event', name: 'device.notify', notification })
@@ -389,8 +394,9 @@ export function createCore(options: CoreOptions): Core {
     // A notification for what finished while the person may not be looking: only when the window is not in front of
     // them, and with no sound in the quiet hours.
     notify: (notice) => emit({ type: 'event', name: 'device.notify', notification: { ...notice, silent: schedule.quiet(), unlessFocused: true } }),
-    // In the quiet hours, an answer finished out of sight is left to its chip and its notification.
-    quiet: () => schedule.quiet()
+    // In the quiet hours, or past the cap on interruptions, an answer finished out of sight is left to its chip and
+    // its notification.
+    mayInterrupt: () => !schedule.quiet() && interruptions.take()
   })
   currentTurn = channel.turn
   /** Whether the work the last run left was taken up: once, with the first command of a client. */

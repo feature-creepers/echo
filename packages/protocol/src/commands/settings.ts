@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { APPROVALS, appSchema, COMPUTER_REACH, hostSchema, MAX_APPROVAL_WAIT, MAX_APPS, MAX_HOSTS, MAX_PLACES, placeSchema } from '../access.ts'
-import { BACKGROUND_RESULTS } from '../interruptions.ts'
+import { BACKGROUND_RESULTS, MAX_INTERRUPTIONS_PER_HOUR } from '../interruptions.ts'
 import { answerLanguageSchema, spokenLanguageSchema } from '../languages.ts'
 import { personaIdSchema } from '../personas.ts'
 import { settingsSchema } from '../settings.ts'
@@ -79,11 +79,14 @@ export const settingsCommands = {
 
   /**
    * When the assistant speaks up by itself: what it does when an answer finishes out of sight (`mention` at the next
-   * pause, only its `chip`, or `speak` the answer at the next pause). What is left out keeps its value. Takes effect
-   * from the next answer that finishes.
+   * pause, only its `chip`, or `speak` the answer at the next pause), and how many times an hour at most it speaks up
+   * by itself (`null`: no cap). What is left out keeps its value. Takes effect at once.
    */
   'interruptions.set': {
-    input: z.object({ results: z.enum(BACKGROUND_RESULTS).optional() }),
+    input: z.object({
+      results: z.enum(BACKGROUND_RESULTS).optional(),
+      perHour: z.number().int().min(1).max(MAX_INTERRUPTIONS_PER_HOUR).nullable().optional()
+    }),
     output: settingsOutput
   },
 

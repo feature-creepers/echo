@@ -19,7 +19,7 @@ interface Setup {
   more?: Partial<Abilities>
   /** What new identifiers start with: a core started again over the same records must not make the same ones. */
   run?: string
-  /** Whether it is the quiet hours. */
+  /** Whether the assistant may not speak up by itself now: the quiet hours, or past the cap on interruptions. */
   quiet?: boolean
 }
 
@@ -61,7 +61,7 @@ function setup({ harness = scriptedHarness(), records = memoryRecords(), server 
       ...more
     },
     notify: (notice) => notices.push(notice),
-    quiet: () => quiet
+    mayInterrupt: () => !quiet
   })
   const events: Event[] = []
   channel.onEvent((event) => events.push(event))
@@ -559,7 +559,7 @@ describe('an answer finished out of sight', () => {
 
   it.each([
     ['when the person chose the chip only', { results: 'chip' as const }, false],
-    ['during the quiet hours', {}, true]
+    ['during the quiet hours, or past the cap on interruptions', {}, true]
   ])('is left to its chip %s', async (_case, chosen, quiet) => {
     const { harness, settings, spoken, notices, state } = await finishedWhileAnswered({ quiet })
     settings.setInterruptions(chosen)

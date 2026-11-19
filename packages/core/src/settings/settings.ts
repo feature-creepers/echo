@@ -161,8 +161,11 @@ export function createUserSettings(
     },
 
     setInterruptions(asked) {
-      const next: Interruptions = { results: asked.results ?? settings.interruptions.results }
-      if (next.results === settings.interruptions.results) return settings
+      const next: Interruptions = {
+        results: asked.results ?? settings.interruptions.results,
+        perHour: asked.perHour === undefined ? settings.interruptions.perHour : asked.perHour
+      }
+      if (next.results === settings.interruptions.results && next.perHour === settings.interruptions.perHour) return settings
       return change({ ...settings, revision: settings.revision + 1, interruptions: next }, { type: INTERRUPTIONS_SET, payload: next })
     },
 

@@ -83,6 +83,11 @@ export interface Proactive {
   run(task: { title: string; request: string; language: string | undefined; silent: boolean }): void
   /** Show a notification on the devices that can. */
   notify(notification: Notification): void
+  /**
+   * Whether a job may be said aloud now, out of the quiet hours: not past the cap the person set on how often the
+   * assistant speaks up by itself. Asked only when it would be, so a yes counts as one. Left out, it always may.
+   */
+  mayInterrupt?(): boolean
 }
 
 export interface ScheduleOptions {
@@ -257,7 +262,8 @@ export function createSchedule(options: ScheduleOptions): Schedule {
     const { record } = entry
     const zone = options.zone()
     const late = now - due > ON_TIME_MS
-    const silent = isQuiet(quiet, now, zone)
+    // In the quiet hours, or past the cap on how often it speaks up, it is shown, notified silently and not said.
+    const silent = isQuiet(quiet, now, zone) || proactive.mayInterrupt?.() === false
     const [rang] = records.append([{ type: RANG, payload: { job: record.job, due: new Date(due).toISOString() } }])
     if (rang) take(rang)
     if (record.timing.kind === 'once') write({ ...record, state: 'done' })
@@ -281,7 +287,7 @@ export function createSchedule(options: ScheduleOptions): Schedule {
     const { record } = entry
     const timing = entry.record.timing
     const now = clock()
-    const silent = isQuiet(quiet, now, options.zone())
+    const silent = isQuiet(quiet, now, options.zone()) || proactive.mayInterrupt?.() === false
     const [rang] = records.append([{ type: RANG, payload: { job: record.job, due: new Date(now).toISOString() } }])
     if (rang) take(rang)
     if (!timing.repeat) write({ ...record, state: 'done' })

@@ -2,7 +2,7 @@ import { DEFAULT_ACCESS, DEFAULT_INTERRUPTIONS, DEFAULT_LANGUAGES, type Persona,
 import { describe, expect, it, vi } from 'vitest'
 import { PERSONAS_SET } from '../personas/choice.ts'
 import { memoryRecords } from '../records/memory.ts'
-import { createUserSettings, ENGINES_EFFORT, ENGINES_MODEL, ENGINES_PREFERRED } from './settings.ts'
+import { createUserSettings, ENGINES_EFFORT, ENGINES_MODEL, ENGINES_PREFERRED, INTERRUPTIONS_SET } from './settings.ts'
 
 const first: Persona = { id: 'first', name: 'ADA', stance: 'accommodating', accent: 'cyan', look: 'hud' }
 const second: Persona = { id: 'second', name: 'GRACE', stance: 'critical', accent: 'red', look: 'lens' }
@@ -251,8 +251,14 @@ describe('the languages the user set', () => {
 })
 
 describe('when the assistant speaks up by itself', () => {
-  it('mentions an answer finished out of sight at first', () => {
-    expect(createUserSettings(memoryRecords(), defaults).read().interruptions).toEqual({ results: 'mention' })
+  it('mentions an answer finished out of sight at first, and speaks up twelve times an hour at most', () => {
+    expect(createUserSettings(memoryRecords(), defaults).read().interruptions).toEqual({ results: 'mention', perHour: 12 })
+  })
+
+  it('reads a record written before the cap had a setting with its default', () => {
+    const records = memoryRecords()
+    records.append([{ type: INTERRUPTIONS_SET, payload: { results: 'chip' } }])
+    expect(createUserSettings(records, defaults).read().interruptions).toEqual({ results: 'chip', perHour: 12 })
   })
 
   it('keeps what was left out, writes nothing when unchanged, and reads back the same', () => {
@@ -264,9 +270,11 @@ describe('when the assistant speaks up by itself', () => {
     settings.setInterruptions({ results: 'speak' })
     settings.setInterruptions({ results: 'speak' })
     settings.setInterruptions({ results: undefined })
+    settings.setInterruptions({ perHour: null })
+    settings.setInterruptions({ results: 'chip', perHour: undefined })
 
-    expect(settings.read().interruptions).toEqual({ results: 'speak' })
-    expect(heard).toHaveBeenCalledTimes(1)
+    expect(settings.read().interruptions).toEqual({ results: 'chip', perHour: null })
+    expect(heard).toHaveBeenCalledTimes(3)
     expect(createUserSettings(records, defaults).read()).toEqual(settings.read())
   })
 })

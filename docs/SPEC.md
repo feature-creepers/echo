@@ -387,7 +387,7 @@ When a thread finishes while another is in focus, its result does not interrupt.
 - **The next pause** is when nobody is being answered: no turn on the stage or waiting for the orchestrator. A project's thread at work on the stage says nothing until it is done, so it leaves a pause, for reminders too (section 7.8). The core looks for it as each turn ends; the device's voice then says it after what it is still saying, never cutting it, as for a reminder.
 - **Asked for** ("what's ready?"), the orchestrator brings the topic back with `thread_focus`, which says the part of its answer not heard yet in that turn, as a press on the chip does.
 - **The setting** (`interruptions.results`, `interruptions.set`; on the Voice page, "Speaking up by itself", on every device): `mention` by default; `chip` leaves it to its chip and its notification; `speak` says the answer itself at the next pause, in a "Ready" turn, and brings its view back.
-- **Left to the chip:** during the quiet hours (section 7.10), and once the person pressed Escape or stopped everything; a topic brought back before the pause is not mentioned. Tested through the scripted harness.
+- **Left to the chip:** during the quiet hours and past the cap on how often the assistant speaks up by itself (section 7.10), and once the person pressed Escape or stopped everything; a topic brought back before the pause is not mentioned. Tested through the scripted harness.
 
 **A notification says it too**, for a person who is not looking (`device.notify`, section 12.1): when an answer finishes in the background, when a scheduled task is answered, and when an answer took more than twenty seconds, which is how "tell me when it's done" works once the person has turned to another app. Each carries the thread's title and the start of what was said, and is shown only while the app's window is hidden, minimised or not in front; pressed, it brings the window forward. Built and verified in the built app: a recipe finished while another question was answered, the window hidden, and its notification went out.
 
@@ -475,6 +475,8 @@ The person asks for something later, and it happens at its time: "remind me at 8
 
 **Quiet hours.** From 23:00 to 07:30 by default, kept by the core and changed on the Reminders page. During them a reminder only shows a silent notification and its card, and is not said; a task runs, and its answer is shown and not said; notifications are silent.
 
+**How often, at most.** Whatever makes the assistant speak up by itself counts together: a reminder said aloud, a scheduled task's answer, an answer finished out of sight (section 7.4). The person sets how many times an hour at most (`interruptions.perHour`, on the Voice page under "Speaking up by itself": 4, 12, 30 or no limit; 12 by default). Past it, what would be said is treated as in the quiet hours: shown, with a silent notification, and not said; a task still runs. The quiet hours are looked at first, so what they keep quiet is not counted. The count is of the last sixty minutes, kept in memory: after a restart it starts afresh (`channel/interruptions.ts`). A job on files that rings each minute is what it guards against most.
+
 **Pausing everything.** `schedule.hold` pauses every job at once and resumes them, and stays as it is after a restart. While held nothing rings; once resumed, a one-time job due less than twelve hours ago rings late and the others carry on from their next time. It is the scheduler's part of "stop everything"; the Reminders page shows it, with a button to resume.
 
 **The Reminders page.** In the settings: the jobs to come, the next first, each with its time and day, its title, its kind, how often in plain words, and what it says or does, a switch to pause it and a button to delete it; the past and missed ones folded under them; the quiet hours; and, for the desktop, the two settings that let reminders ring while the window is closed (keep running in the tray, open at login). It follows the core, so a reminder set by voice appears at once.
@@ -485,7 +487,7 @@ The person asks for something later, and it happens at its time: "remind me at 8
 
 **On files.** A job can also ring when files arrive or change in a folder, rather than at a time: "tell me when my download is done", "each time a scan lands in Scans, file it". Its timing is `files`, with the folder, an optional pattern of names (`*.pdf`, several separated by commas, case set aside) and whether it rings each time (`repeat`) or only the first, after which it is done. The tool finds the folder on the computer (`~` for the home folder) and refuses one that is not there, or that the person has not granted to read, since what arrives there is read; the job keeps the folder as the system names it. The computer watches the folder itself, not its subfolders (`Computer.watch`, Node's `fs.watch`), while a client is there, the job is active and nothing is held. A file being written is reported many times and a browser writes a download under another name first, so the core waits until the folder has been quiet three seconds, leaves out names of files under way or never the person's (`.crdownload`, `.part`, `.tmp`, `~$…`, hidden files, `desktop.ini`), and keeps only what is a file when it looks; a job rings at most once a minute, and what arrives meanwhile is named at the next ring (`schedule/files.ts`). A reminder says its sentence, with a card and a notification naming the files ("film.mkv · in Downloads"); a task is run with its request followed by the files that set it off, so its thread can read them. A folder no longer granted rings no more. On the Reminders page a job on files shows the folder it watches where a time would be, and "Watching"; how often reads "When a file arrives in Downloads". Files that arrive while the app is closed do not ring it.
 
-**Not built yet:** mail arriving as a trigger, a cap on how often the assistant may interrupt, snoozing a reminder from its card or its notification, and editing a job's words or timing on the page (they are changed by asking).
+**Not built yet:** mail arriving as a trigger, snoozing a reminder from its card or its notification, and editing a job's words or timing on the page (they are changed by asking).
 
 ### 7.11 Projects
 
@@ -1378,6 +1380,7 @@ packages/core/src/
 │   ├── channel.ts          intake and ordering of turns
 │   ├── ready.ts            the sentence that says answers finished out of sight are ready
 │   ├── thanks.ts           whether what was said is a thank you and nothing more
+│   ├── interruptions.ts    the cap on how often the assistant speaks up by itself
 │   ├── turn.ts
 │   ├── context.ts          what is attached to a turn: time, place, focus, memories
 │   └── local-intents/      commands handled with no model, one grammar per language

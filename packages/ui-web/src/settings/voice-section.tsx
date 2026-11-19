@@ -23,6 +23,14 @@ const RESULTS: readonly { value: BackgroundResult; label: string }[] = [
   { value: 'speak', label: 'Say it' }
 ]
 
+/** How many times an hour at most the assistant speaks up by itself; 0 stands for no cap. */
+const CAPS: readonly { value: number; label: string }[] = [
+  { value: 4, label: '4 an hour' },
+  { value: 12, label: '12 an hour' },
+  { value: 30, label: '30 an hour' },
+  { value: 0, label: 'No limit' }
+]
+
 /** The value of the list that stands for the system's own choice. */
 const SYSTEM = ''
 
@@ -161,7 +169,7 @@ export function VoiceSection({ client, languages, interruptions, speech, persona
       <SettingGroup title="Speaking up by itself" note="On every device">
         <SettingRow
           title="An answer finished in the background"
-          detail="Done while you were on another topic: a word at the next pause that it is ready, only its chip under the caption, or the answer itself at the next pause, with its view. In the quiet hours, only the chip."
+          detail="Done while you were on another topic: a word at the next pause that it is ready, only its chip under the caption, or the answer itself at the next pause, with its view. In the quiet hours, or past the most below, only the chip."
           problem={interruptionProblem}
           stacked
         >
@@ -170,6 +178,22 @@ export function VoiceSection({ client, languages, interruptions, speech, persona
             value={interruptions.results}
             options={RESULTS}
             onChange={(results) => setInterruptions({ results })}
+          />
+        </SettingRow>
+        <SettingRow
+          title="How often, at most"
+          detail="Reminders said aloud, scheduled tasks' answers and answers finished in the background, together. Past it, they are shown with a silent notification, and not said."
+          stacked
+        >
+          <Choice
+            label="How often, at most"
+            value={interruptions.perHour ?? 0}
+            options={
+              CAPS.some((cap) => cap.value === (interruptions.perHour ?? 0))
+                ? CAPS
+                : [...CAPS, { value: interruptions.perHour ?? 0, label: `${interruptions.perHour} an hour` }]
+            }
+            onChange={(cap) => setInterruptions({ perHour: cap === 0 ? null : cap })}
           />
         </SettingRow>
       </SettingGroup>

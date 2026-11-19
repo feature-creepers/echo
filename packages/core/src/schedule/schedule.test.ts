@@ -22,18 +22,22 @@ interface Setup {
   at?: number
   /** Whether a client is there from the start. */
   listening?: boolean
+  /** How many times the assistant may still speak up by itself, past which it may not. Left out, always. */
+  interruptions?: number
 }
 
-function setup({ records = memoryRecords(), at = START, listening = true }: Setup = {}) {
+function setup({ records = memoryRecords(), at = START, listening = true, interruptions }: Setup = {}) {
   const timers = manualTimers()
   let busy = false
+  let left = interruptions ?? 0
   const done: Done[] = []
   const proactive: Proactive = {
     busy: () => busy,
     remind: ({ sentence, silent, card, language }) =>
       done.push({ said: sentence, silent, card: (card.spec.elements.when?.props as { text?: string } | undefined)?.text, language }),
     run: ({ request, silent }) => done.push({ ran: request, silent }),
-    notify: (notification) => done.push({ notified: notification })
+    notify: (notification) => done.push({ notified: notification }),
+    ...(interruptions === undefined ? {} : { mayInterrupt: () => left-- > 0 })
   }
   let ids = 0
   const schedule = createSchedule({
@@ -116,6 +120,18 @@ describe('a reminder', () => {
       { notified: { title: 'Feed the cat', body: "It's time to feed the cat.", silent: true, unlessFocused: false } },
       { said: "It's time to feed the cat.", silent: true, card: '23:30', language: 'en' }
     ])
+  })
+
+  it('is silent past the cap on how often the assistant speaks up: shown, and notified without a sound', () => {
+    const { schedule, timers, done } = setup({ interruptions: 1 })
+    schedule.create(reminder({ kind: 'once', at: '2026-11-18T14:15' }, 'Feed the cat'))
+    schedule.create(reminder({ kind: 'once', at: '2026-11-18T14:16' }, 'Water the plants', 'Time to water the plants.'))
+    timers.advance(3 * MINUTE)
+    expect(done.flatMap((one) => ('said' in one ? [[one.said, one.silent]] : []))).toEqual([
+      ["It's time to feed the cat.", false],
+      ['Time to water the plants.', true]
+    ])
+    expect(done.flatMap((one) => ('notified' in one ? [one.notified.silent] : []))).toEqual([false, true])
   })
 
   it('is refused when its time has passed', () => {

@@ -145,10 +145,11 @@ export interface ChannelOptions {
    */
   notify?(notice: { title: string; body: string }): void
   /**
-   * Whether it is the quiet hours now: what the assistant would say by itself about an answer finished out of sight
-   * is then left to its chip and its notification. Left out, it is never the quiet hours.
+   * Whether the assistant may speak up by itself now: not in the quiet hours, nor past the cap the person set on how
+   * often (section 7.10). Asked only when it would, so a yes counts as one. When it may not, an answer finished out
+   * of sight is left to its chip and its notification. Left out, it always may.
    */
-  quiet?(): boolean
+  mayInterrupt?(): boolean
 }
 
 /** What the channel asks of the memory (docs/SPEC.md, section 10.5). */
@@ -543,8 +544,8 @@ export function createChannel(options: ChannelOptions): Channel {
 
   /**
    * At a pause, tell what finished out of sight, as the person set it (docs/SPEC.md, section 7.4): a sentence saying
-   * it is ready, the answer itself with its view, or nothing beyond its chip. During the quiet hours the chip and the
-   * notification say it, and nothing is said.
+   * it is ready, the answer itself with its view, or nothing beyond its chip. During the quiet hours, and past the cap
+   * on interruptions, the chip and the notification say it, and nothing is said.
    */
   const tellReady = () => {
     if (toTell.size === 0 || busy()) return
@@ -554,7 +555,7 @@ export function createChannel(options: ChannelOptions): Channel {
     })
     toTell.clear()
     const { results } = settings.read().interruptions
-    if (ready.length === 0 || results === 'chip' || options.quiet?.()) return
+    if (ready.length === 0 || results === 'chip' || options.mayInterrupt?.() === false) return
     if (results === 'mention') {
       const language = answerLanguage() ?? conversationLanguage
       byItself(
