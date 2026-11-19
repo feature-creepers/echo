@@ -3,7 +3,7 @@
  * the documents of Word 6 to 2003 (.doc), the workbooks of Excel 5 to 2003 (.xls) and the presentations of PowerPoint
  * 97 to 2003 (.ppt). Each is a compound file (`compound.ts`) whose streams hold the binary records each app wrote,
  * read for what a preview shows, as the newer formats are: a document as Markdown, a workbook's sheets as tables, the
- * text of each slide.
+ * text of each slide, and the pictures of each (`office-art.ts`).
  *
  * Every offset read is checked against its stream, so a damaged file fails with a sentence rather than reading past
  * its end. A file protected with a password says so.
@@ -11,12 +11,15 @@
 
 import { openCompound } from './compound.ts'
 import { builtInFormat, formatNumber, generalNumber, type NumberFormatOptions } from './number-format.ts'
+import { ART, ArtFigures, type ArtRecord, artRecords, artShape, artShapes, childOf, type StoredPicture, storedPictures, twipPixels } from './office-art.ts'
 import type { CellValue } from './office-figures.ts'
 import {
   BLOCK_LIMIT,
   COLUMN_LIMIT,
+  figureMark,
   joinBlocks,
   markdownTable,
+  type OfficeFigure,
   type OfficePreview,
   PROTECTED,
   plain,
@@ -261,10 +264,169 @@ export function codePageDecoder(codePage: number): TextDecoder {
   }
 }
 
+/** Where a part of a Word document is in its table stream, and how long it is. */
+interface WordPlace {
+  at: number
+  size: number
+}
+
+/** The runs of characters of a Word 97 document that have properties of their own, from their pages, in order. */
+function characterRuns(word: Reader, table: Reader, place: WordPlace): { start: number; end: number; at: number; size: number }[] {
+  const runs: { start: number; end: number; at: number; size: number }[] = []
+  const listed = place.size >= 4 ? Math.floor((place.size - 4) / 8) : 0
+  for (let index = 0; index < listed; index++) {
+    const page = (table.u32(place.at + (listed + 1) * 4 + index * 4) & 0x3fffff) * 512
+    if (page + 512 > word.length) continue
+    const count = Math.min(word.u8(page + 511), 101)
+    for (let run = 0; run < count; run++) {
+      const offset = word.u8(page + (count + 1) * 4 + run) * 2
+      if (offset > 0) runs.push({ start: word.u32(page + run * 4), end: word.u32(page + (run + 1) * 4), at: page + offset + 1, size: word.u8(page + offset) })
+    }
+  }
+  return runs.sort((one, other) => one.start - other.start)
+}
+
+/** What a run of characters says of the special character it holds: where its picture is, and whether it is an object. */
+function characterPicture(word: Reader, at: number, size: number): { location?: number; object: boolean; data: boolean } {
+  const found: { location?: number; object: boolean; data: boolean } = { object: false, data: false }
+  let place = at
+  while (place + 2 <= at + size) {
+    const property = word.u16(place)
+    place += 2
+    const operand = operandSize(property, word, place)
+    if (property === 0x6a03) found.location = word.u32(place)
+    else if (property === 0x080a) found.object = word.u8(place) !== 0
+    else if (property === 0x0806) found.data = word.u8(place) !== 0
+    place += operand
+  }
+  return found
+}
+
+/**
+ * The pictures of a Word 97 document. One in its text is a character whose run names where it is in the `Data`
+ * stream: a header (`PICF`) with its size, then its shape and the entry of the store that holds it. One floating over
+ * the text is anchored at a character, and drawn from the document's OfficeArt, in its table stream, its picture kept
+ * in the main stream. A picture that cannot be read is left out: the text is still worth showing.
+ */
+function wordPictures(
+  word: Reader,
+  main: Uint8Array,
+  table: Reader,
+  tableBytes: Uint8Array,
+  data: Uint8Array | undefined,
+  places: { characters: WordPlace; anchors: WordPlace; drawings: WordPlace }
+) {
+  const figures = new ArtFigures()
+  let runs: ReturnType<typeof characterRuns> | undefined
+  const runAt = (place: number) => {
+    runs ??= characterRuns(word, table, places.characters)
+    let low = 0
+    let high = runs.length - 1
+    while (low <= high) {
+      const middle = (low + high) >> 1
+      const run = runs[middle] as (typeof runs)[number]
+      if (place < run.start) high = middle - 1
+      else if (place >= run.end) low = middle + 1
+      else return run
+    }
+    return undefined
+  }
+
+  // A picture in the text: its header gives its size, in twentieths of a point scaled by thousandths.
+  const inline = (location: number): number | undefined => {
+    if (!data) return figures.unshown('', 'picture')
+    const picture = reader(data)
+    const length = picture.u32(location)
+    const header = picture.u16(location + 4)
+    const mode = picture.u16(location + 6)
+    const scaled = (goal: number, scale: number) => twipPixels((picture.i16(location + goal) * (picture.u16(location + scale) || 1000)) / 1000)
+    const size = { width: scaled(0x1c, 0x20), height: scaled(0x1e, 0x22) }
+    // A picture of Word 6's kind, a metafile of its own, is one its app shows.
+    if (mode !== 0x64 && mode !== 0x66) return figures.picture(`data:${location}`, undefined, '', size)
+    let at = location + header
+    if (mode === 0x66) at += 1 + picture.u8(at)
+    const end = Math.min(location + length, data.length)
+    let shape: ReturnType<typeof artShape>
+    let entries = end
+    for (const record of artRecords(data, at, end)) {
+      if (record.type === ART.shape) {
+        shape = artShape(data, record)
+        entries = record.at + record.size
+        break
+      }
+    }
+    // The shape names its picture by its place in the document's store; the entry after it holds that picture itself.
+    const stored = storedPictures(data, { type: ART.store, instance: 0, container: true, at: entries, size: end - entries })
+    return figures.picture(`data:${location}`, stored(1), shape?.alt ?? '', size)
+  }
+
+  // Pictures floating over the text: their anchors by character, their shapes by identifier, their pictures in the store.
+  const anchors = new Map<number, { id: number; width?: number | undefined; height?: number | undefined }>()
+  const shapes = new Map<number, ReturnType<typeof artShapes>[number]>()
+  let stored: (place: number) => StoredPicture | undefined = () => undefined
+  try {
+    const count = places.anchors.size >= 4 ? Math.floor((places.anchors.size - 4) / 30) : 0
+    for (let index = 0; index < count; index++) {
+      const spa = places.anchors.at + (count + 1) * 4 + index * 26
+      const span = (from: number, to: number) => twipPixels((table.u32(spa + to) | 0) - (table.u32(spa + from) | 0))
+      anchors.set(table.u32(places.anchors.at + index * 4), { id: table.u32(spa), width: span(4, 12), height: span(8, 16) })
+    }
+    const end = Math.min(places.drawings.at + places.drawings.size, tableBytes.length)
+    const [group] = places.drawings.size > 0 ? artRecords(tableBytes, places.drawings.at, end) : []
+    if (group?.type === ART.drawingGroup) {
+      stored = storedPictures(tableBytes, childOf(tableBytes, group, ART.store), main)
+      // After the group, each drawing follows a byte that says whether it is the main text's or its headers'.
+      for (let at = group.at + group.size; at + 9 <= end; ) {
+        const [drawing] = artRecords(tableBytes, at + 1, end)
+        if (drawing?.type !== ART.drawing) break
+        for (const shape of artShapes(tableBytes, drawing)) shapes.set(shape.id, shape)
+        at = drawing.at + drawing.size
+      }
+    }
+  } catch {
+    // Floating pictures that cannot be read are left out.
+  }
+  const floating = (character: number): number | undefined => {
+    const anchor = anchors.get(character)
+    const shape = anchor && shapes.get(anchor.id)
+    if (!anchor || shape?.picture === undefined) return undefined
+    return figures.picture(`store:${shape.picture}`, stored(shape.picture), shape.alt, anchor)
+  }
+
+  return {
+    figures,
+    /** The figure of a special character in the text, at its place in the main stream; `chart` when its field says so. */
+    inline(place: number, chart: boolean): number | undefined {
+      try {
+        const run = runAt(place)
+        if (!run) return undefined
+        const found = characterPicture(word, run.at, run.size)
+        if (found.object) return figures.unshown('', chart ? 'chart' : 'picture')
+        return found.data || found.location === undefined ? undefined : inline(found.location)
+      } catch {
+        return undefined
+      }
+    },
+    /** The figure of a shape anchored at a character, by the character's place in the text. */
+    floating(character: number): number | undefined {
+      try {
+        return floating(character)
+      } catch {
+        return undefined
+      }
+    }
+  }
+}
+
+/** Where a figure stands in a paragraph's text until the paragraph is written: characters no text of the file keeps. */
+const FIGURE_START = '\ue000'
+const FIGURE_END = '\ue001'
+
 /**
  * A Word document of 97 to 2003, or of Word 6 and 95, as Markdown: its headings, paragraphs, list items and tables,
- * in order. Word 6 and 95 keep everything in one stream, behind a header of their own, their text in the 8-bit code
- * page of the document's language and their properties in one-byte codes.
+ * in order, and the pictures of a Word 97 document where they are. Word 6 and 95 keep everything in one stream,
+ * behind a header of their own, their text in the 8-bit code page of the document's language and their properties in
+ * one-byte codes.
  */
 export function readOlderWord(bytes: Uint8Array): OfficePreview {
   if (bytes.length >= 2 && (readU16(bytes, 0) === 0xa59b || readU16(bytes, 0) === 0xa5db))
@@ -288,9 +450,10 @@ export function readOlderWord(bytes: Uint8Array): OfficePreview {
   // Where things are: in Word 97 a fixed part, then counts of 16-bit and 32-bit values, then pairs of where and how
   // long; in Word 6 and 95, at places of their own.
   let textLength: number
-  let styles: { at: number; size: number }
-  let formats: { at: number; size: number }
-  let complex: { at: number; size: number } | undefined
+  let styles: WordPlace
+  let formats: WordPlace
+  let complex: WordPlace | undefined
+  let pictures: ReturnType<typeof wordPictures> | undefined
   if (six) {
     textLength = Math.min(word.u32(0x34), CHARACTER_LIMIT)
     styles = { at: word.u32(0x60), size: word.u32(0x64) }
@@ -308,6 +471,12 @@ export function readOlderWord(bytes: Uint8Array): OfficePreview {
     styles = pair(1)
     formats = pair(13)
     complex = pair(33)
+    const none = { at: 0, size: 0 }
+    pictures = wordPictures(word, stream, table, tableStream as Uint8Array, file.stream('Data'), {
+      characters: pair(12),
+      anchors: pair(40),
+      drawings: pairCount > 50 ? pair(50) : none
+    })
   }
 
   // The text is in pieces, each where the file keeps it: in 8-bit characters, or in UTF-16. A Word 6 file saved
@@ -446,19 +615,26 @@ export function readOlderWord(bytes: Uint8Array): OfficePreview {
     else blocks.push(lines.join('  \n'))
   }
 
-  // Fields hold their code, then what they show: only what they show is text.
-  const fields: boolean[] = []
-  const take = (code: number, char: string, place: number) => {
-    if (code === 0x13) fields.push(true)
+  // Fields hold their code, then what they show: only what they show is text. An object's code names its kind.
+  const fields: { code: string; coding: boolean }[] = []
+  const figure = (found: number | undefined) => {
+    if (found !== undefined) paragraph += `${FIGURE_START}${found}${FIGURE_END}`
+  }
+  const take = (code: number, char: string, place: number, character: number) => {
+    const field = fields.at(-1)
+    if (code === 0x13) fields.push({ code: '', coding: true })
     else if (code === 0x14) {
-      if (fields.length > 0) fields[fields.length - 1] = false
+      if (field) field.coding = false
     } else if (code === 0x15) fields.pop()
-    else if (fields.includes(true)) return
-    else if (code === 0x0d || code === 0x0c) endParagraph('\r', place)
+    else if (fields.some((one) => one.coding)) {
+      if (field?.coding) field.code += char
+    } else if (code === 0x0d || code === 0x0c) endParagraph('\r', place)
     else if (code === 0x07) endParagraph('\x07', place)
     else if (code === 0x0b) paragraph += '\n'
     else if (code === 0x1e) paragraph += '-'
-    else if (code === 0x09 || code >= 0x20) paragraph += char
+    else if (code === 0x01 && place >= 0) figure(pictures?.inline(place, /^\s*EMBED\s+\S*Chart/i.test(field?.code ?? '')))
+    else if (code === 0x08) figure(pictures?.floating(character))
+    else if (code === 0x09 || (code >= 0x20 && char !== FIGURE_START && char !== FIGURE_END)) paragraph += char
   }
   let read = 0
   // Word 97 writes its 8-bit text in Western European; Word 6 and 95, in the code page of the document's language,
@@ -477,14 +653,14 @@ export function readOlderWord(bytes: Uint8Array): OfficePreview {
       const part = word.bytes(piece.at, count)
       let from = 0
       const flush = (to: number) => {
-        if (to > from) for (const char of narrow.decode(part.subarray(from, to))) take(char.codePointAt(0) ?? 0, char, -1)
+        if (to > from) for (const char of narrow.decode(part.subarray(from, to))) take(char.codePointAt(0) ?? 0, char, -1, -1)
       }
       for (let index = 0; index < part.length && blocks.length < BLOCK_LIMIT; index++) {
         const byte = part[index] as number
         if (byte >= 0x20) continue
         flush(index)
         from = index + 1
-        take(byte, String.fromCharCode(byte), piece.at + index)
+        take(byte, String.fromCharCode(byte), piece.at + index, piece.start + index)
       }
       flush(part.length)
       continue
@@ -492,12 +668,18 @@ export function readOlderWord(bytes: Uint8Array): OfficePreview {
     const text = utf16(word.bytes(piece.at, count * 2))
     for (let index = 0; index < text.length && blocks.length < BLOCK_LIMIT; index++) {
       const char = text[index] as string
-      take(char.charCodeAt(0), char, piece.at + index * 2)
+      take(char.charCodeAt(0), char, piece.at + index * 2, piece.start + index)
     }
   }
   if (paragraph.trim() !== '') endParagraph('\r', undefined)
   flushTable()
-  return { kind: 'document', markdown: joinBlocks(blocks), figures: [], cut: blocks.length >= BLOCK_LIMIT || read >= CHARACTER_LIMIT }
+  const figures = pictures?.figures.list ?? []
+  // Each figure's place in the text becomes its mark, once the text around it is written as Markdown.
+  const markdown = joinBlocks(blocks).replace(new RegExp(`${FIGURE_START}(\\d+)${FIGURE_END}`, 'g'), (_, place: string) => {
+    const found = figures[Number(place)]
+    return found ? figureMark(Number(place), found.kind === 'chart' ? found.title : found.alt) : ''
+  })
+  return { kind: 'document', markdown, figures, cut: blocks.length >= BLOCK_LIMIT || read >= CHARACTER_LIMIT }
 }
 
 /** A 16-bit number at the start of a file, before it is known to be anything. */
@@ -598,12 +780,27 @@ const flag = (value: number, error: boolean) => (error ? (ERRORS[value] ?? '#N/A
 /** What a workbook of Excel 4 or older says: a file of records of its own, not a compound file. */
 const EXCEL_4 = 'It is a workbook of Excel 4 or older, which is not read here.'
 
-/** A sheet of an older workbook as it is read: its rows as shown, and each cell with its number, for the charts that name it. */
+/**
+ * A sheet of an older workbook as it is read: its rows as shown, each cell with its number, for the charts that name
+ * it, and the pictures its drawing places.
+ */
 export interface OlderSheet {
   name: string
   rows: string[][]
   cut: boolean
   cells: Map<string, CellValue>
+  figures: OfficeFigure[]
+}
+
+/** Bytes kept in several records, one after the other. */
+function joined(parts: readonly Uint8Array[]): Uint8Array {
+  const whole = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0))
+  let at = 0
+  for (const part of parts) {
+    whole.set(part, at)
+    at += part.length
+  }
+  return whole
 }
 
 /**
@@ -611,7 +808,7 @@ export interface OlderSheet {
  * show them. Excel 5 and 95 write their text in 8-bit characters of the workbook's code page, with no table of strings.
  */
 export function readOlderExcel(bytes: Uint8Array, options: NumberFormatOptions = {}): OfficePreview {
-  return { kind: 'workbook', sheets: readOlderSheets(bytes, options).map(({ name, rows, cut }) => ({ name, rows, cut, figures: [] })) }
+  return { kind: 'workbook', sheets: readOlderSheets(bytes, options).map(({ name, rows, cut, figures }) => ({ name, rows, cut, figures })) }
 }
 
 /** The sheets of a workbook of Excel 97 to 2003, or of Excel 5 and 95, read as `readOlderExcel` shows them. */
@@ -632,6 +829,9 @@ export function readOlderSheets(bytes: Uint8Array, options: NumberFormatOptions 
 
   const strings: string[] = []
   const sheets: { name: string; at: number }[] = []
+  // The workbook's store of pictures, in a drawing group whose records continue one another.
+  const group: Uint8Array[] = []
+  let grouping = false
   // The formats of the workbook by their number, the format of each style by its place, and its date system.
   const codes = new Map<number, string>()
   const styles: number[] = []
@@ -650,6 +850,11 @@ export function readOlderSheets(bytes: Uint8Array, options: NumberFormatOptions 
     shared = undefined
   }
   for (const record of records(book, 0)) {
+    if (grouping && (record.type === 0x003c || record.type === 0x00eb)) {
+      group.push(book.bytes(record.at, record.size))
+      continue
+    }
+    grouping = false
     if (shared && record.type === 0x003c) {
       shared.push(book.bytes(record.at, record.size))
       continue
@@ -665,7 +870,10 @@ export function readOlderSheets(bytes: Uint8Array, options: NumberFormatOptions 
       codes.set(book.u16(record.at), wide ? utf16(book.bytes(record.at + 5, length * 2)) : latin1(book.bytes(record.at + 5, length)))
     } else if (record.type === 0x00e0 && record.size >= 4) styles.push(book.u16(record.at + 2))
     else if (record.type === 0x0022 && record.size >= 2) date1904 = book.u16(record.at) === 1
-    else if (record.type === 0x0085 && book.u8(record.at + 5) === 0) {
+    else if (record.type === 0x00eb) {
+      group.push(book.bytes(record.at, record.size))
+      grouping = true
+    } else if (record.type === 0x0085 && book.u8(record.at + 5) === 0) {
       // A worksheet: where its records start, and its name. Charts and macros are left out.
       const length = book.u8(record.at + 6)
       const wide = !five && (book.u8(record.at + 7) & 0x01) !== 0
@@ -683,8 +891,25 @@ export function readOlderSheets(bytes: Uint8Array, options: NumberFormatOptions 
     return codes.get(id) ?? builtInFormat(id)
   }
   const shown: NumberFormatOptions = { ...options, date1904 }
+  const figures = new ArtFigures()
+  const store = joined(group)
+  const [drawingGroup] = artRecords(store)
+  const stored = storedPictures(store, drawingGroup?.type === ART.drawingGroup ? childOf(store, drawingGroup, ART.store) : undefined)
 
-  return sheets.slice(0, SHEET_LIMIT).map(({ name, at }) => ({ name, ...sheetRows(book, at, { strings, five, eight }, shownBy, shown) }))
+  return sheets.slice(0, SHEET_LIMIT).map(({ name, at }) => {
+    const { drawing, ...read } = sheetRows(book, at, { strings, five, eight }, shownBy, shown)
+    return { name, ...read, figures: figures.at(sheetPictures(drawing, stored, figures)) }
+  })
+}
+
+/** The pictures a sheet's drawing places, in order, by their places in the workbook's figures. */
+function sheetPictures(drawing: Uint8Array, stored: (place: number) => StoredPicture | undefined, figures: ArtFigures): number[] {
+  const [container] = artRecords(drawing)
+  if (container?.type !== ART.drawing) return []
+  return artShapes(drawing, container).flatMap((shape) => {
+    const found = shape.picture === undefined ? undefined : figures.picture(`store:${shape.picture}`, stored(shape.picture), shape.alt)
+    return found === undefined ? [] : [found]
+  })
 }
 
 /** The rows of a sheet, from its records: its cells in their columns, empty ones kept so the columns line up. */
@@ -694,9 +919,12 @@ function sheetRows(
   text: { strings: readonly string[]; five: boolean; eight: (bytes: Uint8Array) => string },
   formatOf: (style: number) => string,
   options: NumberFormatOptions
-): { rows: string[][]; cut: boolean; cells: Map<string, CellValue> } {
+): { rows: string[][]; cut: boolean; cells: Map<string, CellValue>; drawing: Uint8Array } {
   const { strings, five, eight } = text
   const rows: string[][] = []
+  // The sheet's drawing, in records of its own and those that continue them, among the records of its objects.
+  const drawing: Uint8Array[] = []
+  let drawn = false
   // Each cell shown, by its row and column, with its number when it holds one.
   const cells = new Map<string, CellValue>()
   let cut = false
@@ -724,6 +952,12 @@ function sheetRows(
     else if (type === 0x000a && --depth <= 0) break
     // A chart inside a sheet has records of its own, between its own beginning and end.
     if (depth !== 1) continue
+    if (type === 0x00ec || (drawn && type === 0x003c)) {
+      drawing.push(book.bytes(at, size))
+      drawn = true
+      continue
+    }
+    drawn = false
     const row = () => book.u16(at)
     const column = () => book.u16(at + 2)
     if (type === 0x00fd) put(row(), column(), strings[book.u32(at + 6)] ?? '')
@@ -755,7 +989,7 @@ function sheetRows(
     }
   }
   while (rows.length > 0 && (rows.at(-1)?.every((value) => value === '') ?? false)) rows.pop()
-  return { rows, cut, cells }
+  return { rows, cut, cells, drawing: joined(drawing) }
 }
 
 // PowerPoint
@@ -838,7 +1072,24 @@ function persistedObjects(file: ReturnType<typeof openCompound>, stream: Reader)
   return document === undefined ? { places } : { places, document }
 }
 
-/** A PowerPoint 97 to 2003 presentation's slides, in order: each one's title and the lines of its other text. */
+/**
+ * The size a shape's anchor on a slide gives it, in the window's pixels: its corners in master units, 576 to the inch,
+ * in two bytes each, or in four.
+ */
+function slideAnchorSize(bytes: Uint8Array, anchor: ArtRecord | undefined): { width?: number | undefined; height?: number | undefined } {
+  if (!anchor || (anchor.size !== 8 && anchor.size !== 16)) return {}
+  const corners = reader(bytes.subarray(anchor.at, anchor.at + anchor.size))
+  const [top, left, right, bottom] = [0, 1, 2, 3].map((index) => (anchor.size === 8 ? corners.i16(index * 2) : corners.u32(index * 4) | 0)) as [
+    number,
+    number,
+    number,
+    number
+  ]
+  const pixels = (units: number) => (units > 0 ? Math.round(units / 6) : undefined)
+  return { width: pixels(right - left), height: pixels(bottom - top) }
+}
+
+/** A PowerPoint 97 to 2003 presentation's slides, in order: each one's title, the lines of its other text, and its pictures. */
 export function readOlderPowerPoint(bytes: Uint8Array): OfficePreview {
   const file = openCompound(bytes)
   const raw = file.stream('PowerPoint Document')
@@ -869,16 +1120,30 @@ export function readOlderPowerPoint(bytes: Uint8Array): OfficePreview {
       found.at(-1)?.texts.push({ title: type !== undefined && TITLE_TYPES.has(type), lines: textOf(stream, record) })
   }
 
+  // The pictures of the presentation are in its store, each entry saying where its picture is in the `Pictures` stream.
+  const figures = new ArtFigures()
+  const drawingGroup = childOf(raw, container, 0x040b)
+  const group = drawingGroup && childOf(raw, drawingGroup, ART.drawingGroup)
+  const stored = storedPictures(raw, group && childOf(raw, group, ART.store), file.stream('Pictures'))
+
   const slides = found.map(({ texts, persisted }) => {
-    // Text boxes of its own, beyond its placeholders, are in the slide's drawing.
+    // Text boxes of its own, beyond its placeholders, are in the slide's drawing, and so are its pictures.
     const at = places.get(persisted)
     const drawn = at === undefined ? undefined : recordAt(stream, at)
     const all = drawn?.type === 0x03ee ? [...texts, ...drawingTexts(stream, drawn)] : texts
-    const slide = { title: '', lines: [] as string[], figures: [] }
+    const slide = { title: '', lines: [] as string[], figures: [] as OfficeFigure[] }
     for (const text of all) {
       if (text.title && slide.title === '') slide.title = text.lines.join(' ')
       else slide.lines.push(...text.lines.filter((line) => !slide.lines.includes(line)))
     }
+    const drawing = drawn?.type === 0x03ee ? childOf(raw, drawn, 0x040c) : undefined
+    const shapes = drawing && childOf(raw, drawing, ART.drawing)
+    const placed = (shapes ? artShapes(raw, shapes) : []).flatMap((shape) => {
+      if (shape.picture === undefined) return []
+      const figure = figures.picture(`store:${shape.picture}`, stored(shape.picture), shape.alt, slideAnchorSize(raw, shape.anchor))
+      return figure === undefined ? [] : [figure]
+    })
+    slide.figures = figures.at(placed)
     return slide
   })
   return { kind: 'presentation', slides, cut }

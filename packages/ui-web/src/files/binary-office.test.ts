@@ -177,11 +177,24 @@ function formatting(style: number, properties: [code: number, operand: number[]]
 const IN_TABLE: [number, number[]] = [0x2416, [1]]
 const ROW_END: [number, number[]] = [0x2417, [1]]
 
+/** Where a picture floating over a Word document's text is kept in its main stream, past its pages. */
+const BLIP_AT = 5 * 512
+
+/** What a Word document holds for its pictures: its runs of characters, its `Data` stream, its floating shapes. */
+interface WordPictures {
+  runs: { start: number; end: number; properties: Uint8Array }[]
+  data: Uint8Array
+  anchors: { character: number; shape: number; corners: [number, number, number, number] }[]
+  drawings: Uint8Array
+  blip: Uint8Array
+}
+
 /**
  * A Word 97 document of paragraphs, each with its formatting: its text in a UTF-16 piece, but the last paragraph's,
- * which is in an 8-bit piece, as Word writes text it can. A style sheet names style 1 a heading.
+ * which is in an 8-bit piece, as Word writes text it can. A style sheet names style 1 a heading. Its pictures, when
+ * given, are in a page of character runs after the paragraphs', its `Data` stream and its table stream.
  */
-function wordDocument(paragraphs: { text: string; format: number[] }[], encrypted = false): Uint8Array {
+function wordDocument(paragraphs: { text: string; format: number[] }[], encrypted = false, pictures?: WordPictures): Uint8Array {
   const TEXT_AT = 1024
   const PAGE = 3
   const wideText = paragraphs
@@ -229,6 +242,28 @@ function wordDocument(paragraphs: { text: string; format: number[] }[], encrypte
   })
   page[511] = paragraphs.length
   word.raw(page)
+  if (pictures) {
+    // The page of character runs: where each starts, then the place of its properties, each a size and its codes.
+    const runs = new Uint8Array(512)
+    const runsView = new DataView(runs.buffer)
+    const { runs: given } = pictures
+    given.forEach((run, index) => {
+      runsView.setUint32(index * 4, run.start, true)
+    })
+    runsView.setUint32(given.length * 4, given.at(-1)?.end ?? TEXT_AT, true)
+    let end = 510
+    given.forEach((run, index) => {
+      if (run.properties.length === 0) return
+      end -= run.properties.length + 1
+      end -= end % 2
+      runs[end] = run.properties.length
+      runs.set(run.properties, end + 1)
+      runs[(given.length + 1) * 4 + index] = end / 2
+    })
+    runs[511] = given.length
+    word.raw(runs)
+    word.padTo(BLIP_AT).raw(pictures.blip)
+  }
 
   const table = new Bytes()
   const clx = table.length
@@ -255,6 +290,23 @@ function wordDocument(paragraphs: { text: string; format: number[] }[], encrypte
     .u32(bounds.at(-1)?.[1] ?? TEXT_AT)
     .u32(PAGE)
   const papxSize = table.length - papx
+  const chpx = table.length
+  const spa = table.length + 12
+  const drawingsAt = spa + 4 * ((pictures?.anchors.length ?? 0) + 1) + 26 * (pictures?.anchors.length ?? 0)
+  if (pictures) {
+    table
+      .u32(pictures.runs[0]?.start ?? TEXT_AT)
+      .u32(pictures.runs.at(-1)?.end ?? TEXT_AT)
+      .u32(PAGE + 1)
+    for (const anchor of pictures.anchors) table.u32(anchor.character)
+    table.u32(fc)
+    for (const { shape, corners } of pictures.anchors) {
+      table.u32(shape)
+      for (const corner of corners) table.u32(corner)
+      table.u16(0).u32(0)
+    }
+    table.raw(pictures.drawings)
+  }
 
   const document = word.done()
   const pair = (index: number, at: number, size: number) => {
@@ -265,8 +317,35 @@ function wordDocument(paragraphs: { text: string; format: number[] }[], encrypte
   pair(1, styles, stylesSize)
   pair(13, papx, papxSize)
   pair(33, clx, clxSize)
-  return compound({ WordDocument: document, '1Table': table.done() })
+  if (!pictures) return compound({ WordDocument: document, '1Table': table.done() })
+  pair(12, chpx, 12)
+  pair(40, spa, drawingsAt - spa)
+  pair(50, drawingsAt, pictures.drawings.length)
+  return compound({ WordDocument: document, '1Table': table.done(), Data: pictures.data })
 }
+
+/** A picture of the store, as OfficeArt keeps one: an identifier, a tag, then its bytes. */
+const blipOf = (type: number, instance: number, bytes: readonly number[]) => atom(type, new Bytes().zeros(16).u8(0xff).raw(bytes), instance)
+/** An entry of the store for a picture, which it keeps, or whose place it gives in another stream. */
+const storeEntry = (kept: Uint8Array, delay = 0) =>
+  atom(0xf007, new Bytes().u8(6).u8(6).zeros(16).u16(0).u32(kept.length).u32(1).u32(delay).zeros(4).raw(kept), 6)
+/** A shape of a drawing: its identifier and flags, then the picture it shows and its description, and its anchor. */
+function artShape(id: number, flags: number, picture?: number, description?: string, anchor?: Bytes): Uint8Array {
+  const properties = new Bytes()
+  const words = description === undefined ? undefined : new Bytes().wide(`${description}\0`).done()
+  if (picture !== undefined) properties.u16(0x4104).u32(picture)
+  if (words) properties.u16(0x8381).u32(words.length).raw(words)
+  const count = (picture === undefined ? 0 : 1) + (words ? 1 : 0)
+  return container(0xf004, [
+    atom(0xf00a, new Bytes().u32(id).u32(flags), 75),
+    ...(count > 0 ? [atom(0xf00b, properties, count)] : []),
+    ...(anchor ? [atom(0xf010, anchor)] : [])
+  ])
+}
+/** A drawing of shapes, in their group, after the group's own shape. */
+const artDrawing = (...shapes: Uint8Array[]) => container(0xf002, [atom(0xf008, new Bytes().zeros(8)), container(0xf003, [artShape(1024, 0x05), ...shapes])])
+const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d]
+const JPEG = [0xff, 0xd8, 0xff, 0xe0, 0, 0x10]
 
 describe('a Word 97 document', () => {
   it('reads its headings, paragraphs, fields, lists and tables, from both kinds of piece', () => {
@@ -298,6 +377,66 @@ describe('a Word 97 document', () => {
         'The end, été “here”.'
       ].join('\n\n'),
       figures: [],
+      cut: false
+    })
+  })
+
+  it('shows its pictures where they are: in the text, floating over it, and an embedded chart as one its app draws', () => {
+    const first = 'Our cat \x01 and a view \x08.\r'
+    const last = '\x13 EMBED MSGraph.Chart.8 \x14\x01\x15\r'
+    const inText = 1024 + first.indexOf('\x01') * 2
+    const narrowAt = 1024 + first.length * 2
+    const chart = narrowAt + last.indexOf('\x01')
+    // In the text: its header, of 1,440 by 720 twentieths of a point at 100% and 50%, then its shape and its entry.
+    const shape = artShape(1026, 0x0a00, 7, 'A cat')
+    const entry = storeEntry(blipOf(0xf01e, 0x6e0, PNG))
+    const data = new Bytes()
+      .u32(68 + shape.length + entry.length)
+      .u16(68)
+      .u16(0x64)
+      .padTo(0x1c)
+      .u16(1440)
+      .u16(720)
+      .u16(1000)
+      .u16(500)
+      .padTo(68)
+      .raw(shape)
+      .raw(entry)
+      .done()
+    const drawings = new Bytes()
+      .raw(container(0xf000, [atom(0xf006, new Bytes().zeros(16)), container(0xf001, [storeEntry(new Uint8Array(), BLIP_AT)])]))
+      .u8(0)
+      .raw(artDrawing(artShape(1025, 0x0a00, 1)))
+      .done()
+    const picture = new Bytes().u16(0x6a03).u32(0).u16(0x0855).u8(1).done()
+    const object = new Bytes().u16(0x080a).u8(1).u16(0x0855).u8(1).u16(0x6a03).u32(1234).done()
+    const file = wordDocument(
+      [
+        { text: first, format: formatting(0) },
+        { text: last, format: formatting(0) }
+      ],
+      false,
+      {
+        runs: [
+          { start: 1024, end: inText, properties: new Uint8Array() },
+          { start: inText, end: inText + 2, properties: picture },
+          { start: inText + 2, end: chart, properties: new Uint8Array() },
+          { start: chart, end: chart + 1, properties: object }
+        ],
+        data,
+        anchors: [{ character: first.indexOf('\x08'), shape: 1025, corners: [0, 0, 2880, 1440] }],
+        drawings,
+        blip: blipOf(0xf01d, 0x46a, JPEG)
+      }
+    )
+    expect(readOlderWord(file)).toEqual({
+      kind: 'document',
+      markdown: 'Our cat ![A cat](figure:0) and a view ![](figure:1).\n\n![](figure:2)',
+      figures: [
+        { kind: 'picture', type: 'image/png', bytes: new Uint8Array(PNG), alt: 'A cat', width: 96, height: 24 },
+        { kind: 'picture', type: 'image/jpeg', bytes: new Uint8Array(JPEG), alt: '', width: 192, height: 96 },
+        { kind: 'unshown', alt: '', what: 'chart' }
+      ],
       cut: false
     })
   })
@@ -480,7 +619,56 @@ function workbook(protectedWith = false): Uint8Array {
   return compound({ Workbook: all.done() })
 }
 
+/**
+ * A workbook of one sheet with two pictures: its store in a drawing group continued by a second record, the sheet's
+ * drawing split over its own records, an object's record between them, and one that continues them.
+ */
+function picturedWorkbook(): Uint8Array {
+  const store = container(0xf000, [
+    atom(0xf006, new Bytes().zeros(16)),
+    container(0xf001, [storeEntry(blipOf(0xf01e, 0x6e0, PNG)), storeEntry(atom(0xf01a, new Bytes().zeros(50), 0x3d4))])
+  ])
+  const drawing = artDrawing(artShape(1025, 0x0a00, 1, 'Logo'), artShape(1026, 0x0a00, 2))
+  const sheet = [
+    bof(),
+    record(0x00ec, drawing.subarray(0, 30)),
+    record(0x005d, new Bytes().zeros(22)),
+    record(0x00ec, drawing.subarray(30, 70)),
+    record(0x003c, drawing.subarray(70)),
+    EOF
+  ]
+  const sheetName = new Bytes().u8(4).u8(0).narrow('Logo')
+  const globals = (sheetAt: number) => [
+    bof(),
+    record(0x0085, new Bytes().u32(sheetAt).u8(0).u8(0).raw(sheetName.done())),
+    record(0x00eb, store.subarray(0, 40)),
+    record(0x003c, store.subarray(40)),
+    EOF
+  ]
+  const length = globals(0).reduce((sum, one) => sum + one.length, 0)
+  const all = new Bytes()
+  for (const part of [...globals(length), ...sheet]) all.raw(part)
+  return compound({ Workbook: all.done() })
+}
+
 describe('an Excel 97 workbook', () => {
+  it('shows the pictures each sheet’s drawing places, from the workbook’s store', () => {
+    expect(readOlderExcel(picturedWorkbook())).toEqual({
+      kind: 'workbook',
+      sheets: [
+        {
+          name: 'Logo',
+          rows: [],
+          cut: false,
+          figures: [
+            { kind: 'picture', type: 'image/png', bytes: new Uint8Array(PNG), alt: 'Logo', width: undefined, height: undefined },
+            { kind: 'unshown', alt: '', what: 'picture' }
+          ]
+        }
+      ]
+    })
+  })
+
   it('reads each worksheet as rows of its values as stored, its strings across the records that continue them', () => {
     expect(readOlderExcel(workbook())).toEqual({
       kind: 'workbook',
@@ -669,8 +857,13 @@ const bytes8 = (text: string) => atom(0x0fa8, new Bytes().narrow(text))
  * A presentation of two slides whose order in the list is not the order they were written in, one with a text box
  * of its own, and notes left out; found through the edit and the directory of where each object is.
  */
-function presentation(encrypted = false): Uint8Array {
-  const slideOne = container(0x03ee, [atom(0x03ef, new Bytes().zeros(24))])
+function presentation(encrypted = false, pictured = false): Uint8Array {
+  // A picture of 576 by 288 master units, a slide's eighth of an inch at 576 to the inch: 96 by 48 pixels.
+  const anchor = new Bytes().u16(10).u16(20).u16(596).u16(298)
+  const slideOne = container(0x03ee, [
+    atom(0x03ef, new Bytes().zeros(24)),
+    ...(pictured ? [container(0x040c, [artDrawing(artShape(2049, 0x0a00, 1, 'Map', anchor), artShape(2050, 0x0e00, 1))])] : [])
+  ])
   const slideTwo = container(0x03ee, [
     container(0x040c, [container(0xf002, [container(0xf003, [container(0xf004, [container(0xf00d, [header(4), chars('A note of its own')])])])])])
   ])
@@ -689,7 +882,8 @@ function presentation(encrypted = false): Uint8Array {
     0
   )
   const notes = container(0x0ff0, [atom(0x03f3, new Bytes().u32(4).zeros(16)), header(2), chars('Speaker notes')], 2)
-  const document = container(0x03e8, [atom(0x03e9, new Bytes().zeros(40)), list, notes])
+  const group = container(0x040b, [container(0xf000, [atom(0xf006, new Bytes().zeros(16)), container(0xf001, [storeEntry(new Uint8Array(), 4)])])])
+  const document = container(0x03e8, [atom(0x03e9, new Bytes().zeros(40)), list, notes, ...(pictured ? [group] : [])])
   const stream = new Bytes()
   const at = { document: stream.length }
   stream.raw(document)
@@ -722,7 +916,11 @@ function presentation(encrypted = false): Uint8Array {
       )
     )
     .done()
-  return compound({ 'PowerPoint Document': stream.done(), 'Current User': user })
+  const pictures = new Bytes()
+    .zeros(4)
+    .raw(blipOf(0xf01e, 0x6e0, PNG))
+    .done()
+  return compound({ 'PowerPoint Document': stream.done(), 'Current User': user, ...(pictured ? { Pictures: pictures } : {}) })
 }
 
 describe('a PowerPoint 97 presentation', () => {
@@ -735,6 +933,14 @@ describe('a PowerPoint 97 presentation', () => {
       ],
       cut: false
     })
+  })
+
+  it('shows the pictures each slide’s drawing places, from the presentation’s store, at their size', () => {
+    const read = readOlderPowerPoint(presentation(false, true))
+    expect(read.kind === 'presentation' ? read.slides.map((slide) => slide.figures) : undefined).toEqual([
+      [],
+      [{ kind: 'picture', type: 'image/png', bytes: new Uint8Array(PNG), alt: 'Map', width: 96, height: 48 }]
+    ])
   })
 
   it('says when it is protected with a password, or is not one', async () => {
