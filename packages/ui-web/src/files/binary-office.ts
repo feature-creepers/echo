@@ -511,7 +511,8 @@ const OLDER_PARTS: Record<6 | 2, Record<WordPart | 'characters' | 'paragraphs' |
     lists: undefined,
     listOverrides: undefined,
     textBoxes: undefined,
-    headerTextBoxes: undefined
+    headerTextBoxes: undefined,
+    pageBreaks: undefined
   },
   2: {
     styles: 0x5e,
@@ -529,12 +530,13 @@ const OLDER_PARTS: Record<6 | 2, Record<WordPart | 'characters' | 'paragraphs' |
     lists: undefined,
     listOverrides: undefined,
     textBoxes: undefined,
-    headerTextBoxes: undefined
+    headerTextBoxes: undefined,
+    pageBreaks: undefined
   }
 }
 
 /** Where Word 97 keeps the parts of a document, by their place in its header's list of where and how long (`FibRgFcLcb97`). */
-const PARTS_97: Record<WordPart | 'characters' | 'paragraphs' | 'complex' | 'anchors' | 'headerAnchors' | 'drawings', number> = {
+const PARTS_97: Record<Exclude<WordPart, 'pageBreaks'> | 'characters' | 'paragraphs' | 'complex' | 'anchors' | 'headerAnchors' | 'drawings', number> = {
   styles: 1,
   footnoteReferences: 2,
   footnoteTexts: 3,
@@ -610,9 +612,14 @@ async function readWord(file: Compound | undefined, bytes: Uint8Array, one: bool
     const pairCount = word.u16(pairsAt)
     if (pairCount < 34) damaged()
     lengths = Array.from({ length: 8 }, (_, index) => (index + 3 < longs ? word.u32(longsAt + 2 + (index + 3) * 4) : 0))
+    // The version that saved it, after the parts' places when it is newer than Word 97 (`nFibNew`), says which cache of
+    // its pages' breaks is its own: Word 97's, 2000's and 2002's, or 2003's; Word 2007 and later keep none.
+    const newer = pairsAt + 2 + pairCount * 8
+    const savedBy = newer + 4 <= word.length && word.u16(newer) > 0 ? word.u16(newer + 2) : number
+    const breaks = savedBy < 0xd9 ? 64 : savedBy < 0x10c ? 103 : savedBy === 0x10c ? 155 : undefined
     part = (name) => {
-      const index = PARTS_97[name]
-      return index < pairCount ? { at: word.u32(pairsAt + 2 + index * 8), size: word.u32(pairsAt + 6 + index * 8) } : none
+      const index = name === 'pageBreaks' ? breaks : PARTS_97[name]
+      return index !== undefined && index < pairCount ? { at: word.u32(pairsAt + 2 + index * 8), size: word.u32(pairsAt + 6 + index * 8) } : none
     }
   } else {
     textLength = Math.min(word.u32(0x34), CHARACTER_LIMIT)

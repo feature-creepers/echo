@@ -64,6 +64,8 @@ interface WordOptions {
   figures?: Partial<WordFigures>
   /** Where each box's text is in the boxes' story (`PlcftxbxTxt`). */
   textBoxes?: number[]
+  /** The cache of where Word last broke the pages (`BkdMother`). */
+  pageBreaks?: number[]
 }
 
 /** Pages of runs (`FKP`) of 512 bytes: where each run starts and ends, and its properties, from the end of the page down. */
@@ -167,6 +169,7 @@ function wordFile(options: WordOptions): OlderWordFile {
   notes('endnoteReferences', 'endnoteTexts', options.endnotes)
   if (options.settings) add('settings', options.settings)
   if (options.textBoxes) add('textBoxes', options.textBoxes)
+  if (options.pageBreaks) add('pageBreaks', options.pageBreaks)
 
   return {
     version: 97,
@@ -703,6 +706,44 @@ describe('the look of a Word 97 document', () => {
         spans: [{ box: { width: 144, insets: none, blocks: [paragraph('Placed')], at: { x: 72, y: 36, from: 'page' } } }, { text: 'End', look: plain }]
       }
     ])
+  })
+
+  it('breaks pages where the Word that saved it last broke them, in a paragraph or before a table’s row, its heading rows again', () => {
+    const inTable = property(0x2416, 1)
+    const rowEnd = [...inTable, ...property(0x2417, 1)]
+    const paragraphs = [
+      { text: 'One\r' },
+      { text: 'Two three\r' },
+      { text: 'Four\r' },
+      { text: 'Head\x07', paragraph: inTable },
+      { text: '\x07', paragraph: [...rowEnd, ...property(0x3404, 1)] },
+      { text: 'A\x07', paragraph: inTable },
+      { text: '\x07', paragraph: rowEnd },
+      { text: 'B\x07', paragraph: inTable },
+      { text: '\x07', paragraph: rowEnd },
+      { text: 'End\r' }
+    ]
+    // Where each page or column began, then the page each is on: a new page at "three" and at the row of B, a column at
+    // the table's start on the same page.
+    const cache = (places: number[], pages: number[]) => [...places.flatMap(u32), ...pages.flatMap((page) => [...u16(page), 0, 0, 0, 0])]
+    const shown = (pageBreaks: number[]) =>
+      readOlderWordLook(wordFile({ paragraphs, pageBreaks })).look.pages.map((page) =>
+        page.bands.flatMap((band) =>
+          band.blocks.map((block) =>
+            block.kind === 'paragraph'
+              ? textsOf([block])[0]
+              : block.rows.map((row) => row.cells.map((cell) => textsOf(cell.blocks).join('')).join('|')).join('/')
+          )
+        )
+      )
+    expect(shown(cache([0, 8, 19, 28, 35], [0, 1, 1, 2]))).toEqual([
+      ['One', 'Two '],
+      ['three', 'Four', 'Head/A'],
+      ['Head/B', 'End']
+    ])
+    // A cache out of order, or whose pages go backwards, is none.
+    expect(shown(cache([0, 19, 8, 35], [0, 1, 2]))).toHaveLength(1)
+    expect(shown(cache([0, 8, 19, 35], [0, 2, 1]))).toHaveLength(1)
   })
 
   it('says a document whose parts run past their stream is damaged', () => {

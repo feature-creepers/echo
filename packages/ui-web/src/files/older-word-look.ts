@@ -8,8 +8,8 @@
  * shapes are, alone or in a group, their paragraphs read from the boxes' own story; frames, paragraphs placed by their
  * own properties, as boxes the paragraph after them holds; sections with their pages' size, margins and columns,
  * their headers and footers (first, odd and even pages) with the page's number and the count of pages; footnotes at
- * their page's foot and endnotes at the end. Word keeps no trace in these files of where it last broke their pages, so
- * they break where the text breaks them and between sections.
+ * their page's foot and endnotes at the end. Pages break where the Word of 97 to 2003 that saved the document last
+ * broke them, when it left its cache of them; else where the text and its sections break them.
  */
 
 import { codePageDecoder, leadsTwoBytes, type Reader, reader, type WordProperty, wordProperties } from './binary-records.ts'
@@ -111,8 +111,9 @@ export interface WordFigures {
 
 /**
  * The parts of a document its look reads, each where its header says: its styles, the references and texts of its
- * footnotes and endnotes, its sections, headers and footers, fonts, settings (`DOP`), and Word 97's lists and the
- * stories of its boxes of text, the main text's and the headers' (`PlcftxbxTxt`).
+ * footnotes and endnotes, its sections, headers and footers, fonts, settings (`DOP`), and Word 97's lists, the
+ * stories of its boxes of text, the main text's and the headers' (`PlcftxbxTxt`), and the cache of where the Word that
+ * saved it last broke its pages.
  */
 export type WordPart =
   | 'styles'
@@ -128,6 +129,7 @@ export type WordPart =
   | 'listOverrides'
   | 'textBoxes'
   | 'headerTextBoxes'
+  | 'pageBreaks'
 
 /** A document's streams and the parts its header names, as `binary-office.ts` found them. */
 export interface OlderWordFile {
@@ -1311,12 +1313,16 @@ interface ParagraphRead {
   cellEnd: boolean
   sectionEnd: boolean
   hidden: boolean
+  /** The place of its first character in the text. */
+  start: number
 }
 
 /** A row being read: its cells' blocks, then its properties once its end is read. */
 interface RowRead {
   cells: DocumentBlock[][]
   table: TableProperties | undefined
+  /** Whether Word last started a page with it. */
+  newPage?: boolean | undefined
 }
 
 class OlderWordReader {
@@ -1375,6 +1381,7 @@ class OlderWordReader {
     this.readTextBoxes('headerTextBoxes', { start: boxesStart + boxes, length: headerBoxes })
     this.budget = file.limit * 2
     this.sections = this.readSections(text)
+    this.pageStarts = this.readPageStarts(text)
     // The settings keep each kind of note's first number, and their formats in the bits Word 6 put them in.
     const settings = file.part('settings')
     const formats = settings.size >= 0x38 ? table.u16(settings.at + 0x36) : 0
@@ -1411,6 +1418,34 @@ class OlderWordReader {
     }
     if (sections.length === 0) sections.push(readSection(this.file, 0xffffffff, text, this.narrow.decode))
     return sections
+  }
+
+  /** Where a new page of the body begins, by the place of its first character in the text, as Word last broke them. */
+  private readonly pageStarts: ReadonlySet<number>
+
+  /**
+   * Where the Word that saved the document last broke its pages, when it left its cache of them (`BkdMother`): a list of
+   * the places where each of its pages, or columns, began, each with the number of the page it is on, two bytes, then
+   * four more. A new page begins where that number changes. A cache that does not hold together with the text, its
+   * places out of order or its pages counted backwards, is none.
+   */
+  private readPageStarts(text: number): Set<number> {
+    const { table } = this.file
+    const place = this.file.part('pageBreaks')
+    const starts = new Set<number>()
+    if (place.size < 14 || (place.size - 4) % 10 !== 0) return starts
+    const count = Math.min((place.size - 4) / 10, 100_000)
+    let previous = 0
+    let page = -1
+    for (let index = 0; index < count; index++) {
+      const at = table.u32(place.at + index * 4)
+      const number = table.u16(place.at + (count + 1) * 4 + index * 6)
+      if ((index === 0 && at !== 0) || at < previous || number < page) return new Set()
+      if (index > 0 && number !== page && at < text) starts.add(at)
+      previous = at
+      page = number
+    }
+    return starts
   }
 
   get full(): boolean {
@@ -1695,8 +1730,12 @@ class OlderWordReader {
       return look
     }
     const content = ending ? characters.slice(0, -1) : characters
-    for (const character of content) {
+    // Where Word last started a page, in the body but for its tables, whose rows it starts pages with.
+    const breaks = story.body && !properties.inTable && this.pageStarts.size > 0
+    if (breaks && this.pageStarts.has((characters[0] as WordCharacter).place)) pieces.push('page')
+    for (const [index, character] of content.entries()) {
       const { code } = character
+      if (breaks && index > 0 && this.pageStarts.has(character.place)) pieces.push('page')
       const field = story.fields.at(-1)
       if (code === 0x13) {
         story.fields.push({ code: '', result: false, replaced: false })
@@ -1778,7 +1817,15 @@ class OlderWordReader {
       autoBefore: properties.beforeAuto,
       autoAfter: properties.afterAuto
     })
-    return { paragraph, pieces, properties, cellEnd: markCharacter.code === 0x07, sectionEnd: markCharacter.code === 0x0c && ending, hidden }
+    return {
+      paragraph,
+      pieces,
+      properties,
+      cellEnd: markCharacter.code === 0x07,
+      sectionEnd: markCharacter.code === 0x0c && ending,
+      hidden,
+      start: characters[0]?.place ?? markCharacter.place
+    }
   }
 
   /**
@@ -2161,10 +2208,24 @@ class OlderWordReader {
         const { rows, row } = open.pop() as (typeof open)[number]
         if (row.cells.some((cell) => cell.length > 0)) rows.push(row)
         if (rows.length === 0) continue
-        const table = this.table(rows)
         const parent = open.at(-1)
-        if (parent) parent.row.cells.at(-1)?.push(table)
-        else out(table)
+        if (parent) {
+          parent.row.cells.at(-1)?.push(this.table(rows))
+          continue
+        }
+        // Cut where Word last broke its pages, its heading rows written again at the top of each page.
+        const body = rows.findIndex((one) => !one.table?.header)
+        const heads = body > 0 ? rows.slice(0, body) : []
+        let part: RowRead[] = []
+        for (const [index, one] of rows.entries()) {
+          if (one.newPage && index > 0 && part.length > 0) {
+            out(this.table(part))
+            this.breakPage()
+            part = index > heads.length ? [...heads] : []
+          }
+          part.push(one)
+        }
+        out(this.table(part))
       }
     }
     for (const read of this.paragraphs(from, to, story, sectionEnds)) {
@@ -2179,6 +2240,9 @@ class OlderWordReader {
         while (open.length < depth) open.push({ rows: [], row: { cells: [[]], table: undefined } })
         const table = open[depth - 1] as (typeof open)[number]
         // A row of the outermost table ends with a mark of its own, a nested one's with a paragraph that says so.
+        // An outermost row Word last started a page with, which it does at its first character.
+        if (depth === 1 && story.body && table.row.cells.length === 1 && table.row.cells[0]?.length === 0 && this.pageStarts.has(read.start) && read.start > 0)
+          table.row.newPage = true
         if (depth === 1 ? properties.rowEnd : properties.innerRowEnd) {
           table.row.cells.pop()
           table.row.table = properties.table
@@ -2430,8 +2494,9 @@ function readFonts({ table, version, part }: OlderWordFile, decode: (bytes: Uint
 const PAGE_FORMATS = ['decimal', 'upperRoman', 'lowerRoman', 'upperLetter', 'lowerLetter']
 
 /**
- * A Word document's look, of Word 97 to 2003, 6 and 95, or 2: its pages as its sections lay them out, broken where its
- * text breaks them, each with its header, footer and footnotes, and its endnotes at the end.
+ * A Word document's look, of Word 97 to 2003, 6 and 95, or 2: its pages as its sections lay them out, broken where Word
+ * last broke them when it kept where, else where its text breaks them, each with its header, footer and footnotes, and
+ * its endnotes at the end.
  */
 export function readOlderWordLook(file: OlderWordFile): { look: DocumentLook; cut: boolean } {
   const wordReader = new OlderWordReader(file)
