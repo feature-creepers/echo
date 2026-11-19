@@ -15,10 +15,26 @@ export interface OfficeChart {
 }
 
 /**
- * A picture or a chart a file holds, where the file places it. A picture in a format the window cannot show (an
- * EMF, a TIFF) or a chart with no values kept is `unshown`, and says what it is.
+ * A picture or a chart a file holds, where the file places it, or a worksheet it holds as an object of another app. A
+ * picture in a format the window cannot show (an EMF, a TIFF) or a chart with no values kept is `unshown`, and says
+ * what it is.
  */
-export type OfficeFigure = PictureFigure | ({ kind: 'chart' } & OfficeChart) | { kind: 'unshown'; alt: string; what: 'picture' | 'chart' }
+export type OfficeFigure = PictureFigure | ({ kind: 'chart' } & OfficeChart) | SheetFigure | { kind: 'unshown'; alt: string; what: 'picture' | 'chart' }
+
+/** A worksheet a file holds as an object of Excel: the block of cells of its sheet the object shows, as the sheet looks. */
+export interface SheetFigure {
+  kind: 'sheet'
+  name: string
+  rows: string[][]
+  look: SheetLook
+  alt: string
+}
+
+/**
+ * What an object of another app holds, read from its bytes (a part of the file, or a stream of the object's storage)
+ * by the program that made it, to show in place of its picture: none for an object it does not read.
+ */
+export type ObjectReader = (program: string, bytes: Uint8Array) => Promise<OfficeFigure | undefined>
 
 /** A picture of a file, from its bytes, at the size the file gives it. */
 export type PictureFigure = { kind: 'picture'; type: string; bytes: Uint8Array; alt: string; width?: number | undefined; height?: number | undefined }

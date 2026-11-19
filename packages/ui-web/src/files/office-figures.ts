@@ -10,7 +10,7 @@ import { openCompound } from './compound.ts'
 import { objectEquation } from './equation-editor.ts'
 import { drawMetafile, shownSize } from './metafile.ts'
 import { formatNumber, type NumberFormatOptions } from './number-format.ts'
-import type { OfficeChart, OfficeFigure } from './office-text.ts'
+import type { ObjectReader, OfficeChart, OfficeFigure } from './office-text.ts'
 import { xmlEvents } from './xml.ts'
 
 /** The most figures a file shows, and the most bytes its pictures hold together: a preview, not the file. */
@@ -107,12 +107,32 @@ export class Figures {
   private readonly archive: Archive
   private readonly options: NumberFormatOptions
   private readonly cells: CellSource | undefined
+  private readonly objects: ObjectReader | undefined
 
-  /** The figures of a file, its numbers written as `options` says, its charts' formulas read from `cells` when given. */
-  constructor(archive: Archive, options: NumberFormatOptions = {}, cells?: CellSource) {
+  /**
+   * The figures of a file, its numbers written as `options` says, its charts' formulas read from `cells` when given,
+   * and what objects of other apps hold read by `objects`.
+   */
+  constructor(archive: Archive, options: NumberFormatOptions = {}, cells?: CellSource, objects?: ObjectReader) {
     this.archive = archive
     this.options = options
     this.cells = cells
+    this.objects = objects
+  }
+
+  /**
+   * What an object of another app holds, from its part, shown in place of its picture (a worksheet as its sheet), by its
+   * place in the list; none when it holds nothing read here, and its picture is shown instead.
+   */
+  async object(part: string | undefined, program: string, alt: string): Promise<number | undefined> {
+    const objects = this.objects
+    if (part === undefined || !objects) return undefined
+    return this.add(JSON.stringify(['object', part]), async () => {
+      const read = partOf(this.archive, part)
+      const bytes = read && (await read().catch(() => undefined))
+      const figure = bytes && (await objects(program, bytes).catch(() => undefined))
+      return figure && (figure.kind === 'sheet' ? { ...figure, alt: figure.alt || alt } : figure)
+    })
   }
 
   /** The picture in a part of the archive, by its place in the list; none when there is no such part or no room. */

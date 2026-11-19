@@ -190,4 +190,26 @@ describe('a document shown as it looks', () => {
     expect(html).toContain('width:40pt;height:20pt')
     expect(html).toContain('src="blob:picture" alt="A square"')
   })
+
+  it('shows a worksheet held as an object as its sheet, scaled to the place of its picture', () => {
+    const sheet: OfficeFigure = {
+      kind: 'sheet',
+      name: 'Costs',
+      rows: [['Tea', '10']],
+      look: { columns: [60, 40], rows: [20], cells: [[undefined, undefined]], looks: [], merges: [], grid: true, headings: false, zoom: 1, text: {} },
+      alt: ''
+    }
+    const html = shown(
+      {
+        pages: [page({ bands: [{ columns: 1, gap: 36, blocks: [paragraph([{ placed: { figure: 0, alt: '', width: 50, height: 20 } }])] }] })],
+        endNotes: [],
+        text: {},
+        tab: 36
+      },
+      [sheet]
+    )
+    expect(html).toContain('zoom:0.5')
+    expect(html).toContain('>Tea<')
+    expect(html).not.toContain('scope="col"')
+  })
 })

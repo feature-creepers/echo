@@ -482,7 +482,7 @@ function storedZip(parts: Record<string, string | Uint8Array>): Uint8Array {
     .done()
 }
 
-describe('an object of Equation Editor or MathType in a file of Word or PowerPoint 2007 and later', () => {
+describe('an object of another app in a document or a presentation', () => {
   const object = compound({ 'Equation Native': EQUATION })
 
   it('writes a document’s as linear text in its place, and as its picture’s words in its look', async () => {
@@ -500,6 +500,96 @@ describe('an object of Equation Editor or MathType in a file of Word or PowerPoi
     expect(preview).toMatchObject({ markdown: 'Area: x² here' })
     const spans = preview.kind === 'document' ? preview.look?.pages[0]?.bands[0]?.blocks[0] : undefined
     expect(spans).toMatchObject({ spans: [{ text: 'Area: ' }, { placed: { alt: 'x²' } }, { text: ' here' }] })
+  })
+
+  it('shows a worksheet of Excel held in a document as its sheet: the block its object shows, of the sheet it was left on', async () => {
+    const cellsOf = (...cells: [string, string][]) => cells.map(([at, text]) => `<c r="${at}" t="inlineStr"><is><t>${text}</t></is></c>`).join('')
+    const workbook = storedZip({
+      'xl/workbook.xml':
+        '<workbook><bookViews><workbookView activeTab="1"/></bookViews><sheets><sheet name="Notes" r:id="rId1"/><sheet name="Costs" r:id="rId2"/></sheets><oleSize ref="B1:C2"/></workbook>',
+      'xl/_rels/workbook.xml.rels':
+        '<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Target="worksheets/sheet2.xml"/></Relationships>',
+      'xl/worksheets/sheet1.xml': `<worksheet><sheetData><row r="1">${cellsOf(['A1', 'Draft'])}</row></sheetData></worksheet>`,
+      'xl/worksheets/sheet2.xml': `<worksheet><sheetData><row r="1">${cellsOf(['A1', 'Item'], ['B1', 'Q1'], ['C1', 'Q2'], ['D1', 'Note'])}</row><row r="2">${cellsOf(['A2', 'Tea'], ['B2', '10'], ['C2', '12'])}</row><row r="3">${cellsOf(['B3', 'Left out'])}</row></sheetData></worksheet>`
+    })
+    const body =
+      '<w:p><w:r><w:object><v:shape style="width:75pt;height:30pt"><v:imagedata r:id="rId1" o:title=""/></v:shape>' +
+      '<o:OLEObject Type="Embed" ProgID="Excel.Sheet.12" r:id="rId2"/></w:object></w:r></w:p>'
+    const file = storedZip({
+      'word/document.xml': `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}</w:body></w:document>`,
+      'word/_rels/document.xml.rels':
+        '<Relationships><Relationship Id="rId1" Target="media/image1.png"/><Relationship Id="rId2" Target="embeddings/Microsoft_Excel_Worksheet.xlsx"/></Relationships>',
+      'word/media/image1.png': new Uint8Array(PNG),
+      'word/embeddings/Microsoft_Excel_Worksheet.xlsx': workbook
+    })
+    const preview = await readOffice('docx', file)
+    expect(preview).toMatchObject({
+      markdown: '![](figure:0)',
+      figures: [
+        {
+          kind: 'sheet',
+          name: 'Costs',
+          rows: [
+            ['Q1', 'Q2'],
+            ['10', '12']
+          ],
+          look: { headings: false }
+        }
+      ]
+    })
+    // In its look, in the place of its picture, at the size its picture is given.
+    const opening = preview.kind === 'document' ? preview.look?.pages[0]?.bands[0]?.blocks[0] : undefined
+    expect(opening).toMatchObject({ spans: [{ placed: { figure: 0, width: 75, height: 30 } }] })
+  })
+
+  it('shows a worksheet of Excel 97 held in a Word 97 document as its sheet, and its picture when it holds pictures', async () => {
+    const text = '\x13 EMBED Excel.Sheet.8 \x14\x01\x15\r'
+    const separator = 1024 + text.indexOf('\x14') * 2
+    const shape = artShape(1026, 0x0a00, 1)
+    const entry = storeEntry(blipOf(0xf01e, 0x6e0, PNG))
+    const data = new Bytes()
+      .u32(68 + shape.length + entry.length)
+      .u16(68)
+      .u16(0x64)
+      .padTo(68)
+      .raw(shape)
+      .raw(entry)
+      .done()
+    const object = new Bytes().u16(0x080a).u8(1).u16(0x0855).u8(1).u16(0x6a03).u32(79).done()
+    const picture = new Bytes().u16(0x6a03).u32(0).u16(0x0855).u8(1).done()
+    const document = (book: Uint8Array) =>
+      wordDocument(
+        [
+          { text, format: formatting(0) },
+          { text: 'End\r', format: formatting(0) }
+        ],
+        false,
+        {
+          runs: [
+            { start: 1024, end: separator, properties: new Uint8Array() },
+            { start: separator, end: separator + 2, properties: object },
+            { start: separator + 2, end: separator + 4, properties: picture }
+          ],
+          data,
+          anchors: [],
+          drawings: new Uint8Array(),
+          blip: new Uint8Array(),
+          objects: { _79: { Workbook: openCompound(book).stream('Workbook') as Uint8Array } }
+        }
+      )
+    const read = await readOffice('doc', document(workbook()))
+    // Without a block named, the cells it uses.
+    const rows = [
+      ['Item', '', 'Paid'],
+      ['Hôtel', '42.5', 'TRUE'],
+      ['', '', ''],
+      ['1.2', '7', '-3'],
+      ['', '', ''],
+      ['ok', '162.5', '#DIV/0!']
+    ]
+    expect(read).toMatchObject({ markdown: '![](figure:0)\n\nEnd', figures: [{ kind: 'sheet', name: 'Budget', rows }] })
+    const pictured = await readOffice('doc', document(picturedWorkbook()))
+    expect(pictured).toMatchObject({ figures: [{ kind: 'picture', type: 'image/png' }] })
   })
 
   it('writes a slide’s as a line of its text, and leaves another object to its picture', async () => {

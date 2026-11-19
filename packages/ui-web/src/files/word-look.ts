@@ -1409,11 +1409,15 @@ class WordReader {
     const data = findNode(node, (one) => one.name === 'v:imagedata')
     const target = data?.attributes['r:id']
     if (target === undefined) return undefined
-    // An equation of Equation Editor or MathType is shown by its picture, its linear text the picture's words.
+    // An equation of Equation Editor or MathType is shown by its picture, its linear text the picture's words; what
+    // another object holds is shown in its place when it is read here, a worksheet as its sheet.
     const object = findNode(node, (one) => one.name === 'o:OLEObject')
-    const equation = isEquationProgram(object?.attributes.ProgID) ? await this.figures.equation(story.targets.get(object?.attributes['r:id'] ?? '')) : undefined
+    const program = object?.attributes.ProgID ?? ''
+    const part = story.targets.get(object?.attributes['r:id'] ?? '')
+    const equation = isEquationProgram(program) ? await this.figures.equation(part) : undefined
     const alt = equation ?? data?.attributes['o:title'] ?? ''
-    const figure = await this.figures.picture(story.targets.get(target), alt, { width: lengthPixels(width), height: lengthPixels(height) })
+    const held = object && equation === undefined ? await this.figures.object(part, program, alt) : undefined
+    const figure = held ?? (await this.figures.picture(story.targets.get(target), alt, { width: lengthPixels(width), height: lengthPixels(height) }))
     if (figure === undefined) return undefined
     return { placed: { figure, alt, width: points(width), height: points(height) } }
   }

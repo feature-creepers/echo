@@ -299,6 +299,7 @@ export class ArtFigures {
   private bytes = 0
   private readonly found = new Map<string, number>()
   private readonly packed: { place: number; metafile: KeptMetafile; alt: string; size: { width?: number | undefined; height?: number | undefined } }[] = []
+  private readonly held: { place: number; read: () => Promise<OfficeFigure | undefined> }[] = []
 
   /** A picture's figure, by its place in the list: shown from its bytes, drawn from its metafile, or said to be one its app shows. */
   picture(
@@ -340,7 +341,15 @@ export class ArtFigures {
     }
   }
 
-  /** The metafiles kept packed, unpacked and drawn in their figures' places. */
+  /**
+   * A figure that gives way, once the file is read, to what `read` makes of the object it pictures (a worksheet as its
+   * sheet), when it makes something.
+   */
+  later(place: number, read: () => Promise<OfficeFigure | undefined>): void {
+    this.held.push({ place, read })
+  }
+
+  /** The metafiles kept packed, unpacked and drawn in their figures' places, and the objects read in theirs. */
   async drawPacked(): Promise<void> {
     for (const { place, metafile, alt, size } of this.packed.splice(0)) {
       if (metafile.size > METAFILE_LIMIT) continue
@@ -350,6 +359,12 @@ export class ArtFigures {
       } catch {
         // A metafile that cannot be unpacked is a picture its app shows.
       }
+    }
+    // The objects are read last, as their pictures may be metafiles drawn just now.
+    for (const { place, read } of this.held.splice(0)) {
+      const figure = await read().catch(() => undefined)
+      const before = this.list[place]
+      if (figure && before) this.list[place] = figure.kind === 'sheet' && figure.alt === '' && 'alt' in before ? { ...figure, alt: before.alt } : figure
     }
   }
 

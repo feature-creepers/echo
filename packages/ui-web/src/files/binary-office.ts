@@ -15,6 +15,7 @@ import { type ChartContext, type ChartRecord, readGraphChart, readOlderChart } f
 import { damaged, operandSize, type Reader, reader } from './binary-records.ts'
 import { type Compound, openCompound } from './compound.ts'
 import { cellValue, serialNow, withConditions } from './conditional-formats.ts'
+import type { CellArea } from './embedded-sheet.ts'
 import { objectEquation } from './equation-editor.ts'
 import { builtInFormat, formatNumber, generalNumber, type NumberFormatOptions, numberColor } from './number-format.ts'
 import {
@@ -37,6 +38,7 @@ import {
   figureMark,
   joinBlocks,
   markdownTable,
+  type ObjectReader,
   type OfficeChart,
   type OfficeFigure,
   type OfficePreview,
@@ -398,7 +400,7 @@ function wordPictures(
   main: Uint8Array,
   table: Reader,
   tableBytes: Uint8Array,
-  streams: { data: Uint8Array | undefined; objects: Compound | undefined },
+  streams: { data: Uint8Array | undefined; objects: Compound | undefined; read?: ObjectReader | undefined },
   places: { characters: WordPlace; anchors: WordPlace; drawings: WordPlace }
 ) {
   const { data, objects } = streams
@@ -533,8 +535,25 @@ function wordPictures(
     return figures.picture(`store:${shape.picture}`, stored(shape.picture), shape.alt, anchor)
   }
 
+  // What an object holds, shown in place of its picture once read when it is read here: a worksheet as its sheet. The
+  // object's storage gives the reader the stream that holds it, a workbook of 2007 or later's package or 97's own.
+  const held = (figure: number | undefined, field: { object?: number | undefined; program?: string | undefined }) => {
+    const { read } = streams
+    if (figure === undefined || field.object === undefined || field.program === undefined || !read) return figure
+    const { program } = field
+    let storage: Compound | undefined
+    try {
+      storage = objects?.storage(`_${field.object}`)
+    } catch {
+      storage = undefined
+    }
+    const bytes = storage && (storage.stream('Package') ?? storage.stream('Workbook') ?? storage.stream('Book'))
+    if (bytes) figures.later(figure, () => read(program, bytes))
+    return figure
+  }
+
   // A special character's figure: an object's chart or what says it is one, or the picture its run names.
-  const inlineAt = (place: number, field: { object?: number | undefined; chart: boolean }): number | undefined => {
+  const inlineAt = (place: number, field: { object?: number | undefined; chart: boolean; program?: string | undefined }): number | undefined => {
     try {
       const run = runAt(place)
       if (!run) return undefined
@@ -543,7 +562,7 @@ function wordPictures(
         const chart = objectChart(found.location)
         return chart ? figures.chart(chart) : figures.unshown('', field.chart ? 'chart' : 'picture')
       }
-      return found.data || found.location === undefined ? undefined : inline(found.location, field.object)
+      return found.data || found.location === undefined ? undefined : held(inline(found.location, field.object), field)
     } catch {
       return undefined
     }
@@ -561,7 +580,7 @@ function wordPictures(
      * The figure of a special character in the text, at its place in the main stream, within the result of a field
      * that names an object (its storage's number) and says whether it is a chart.
      */
-    inline(place: number, field: { object?: number | undefined; chart: boolean }): number | undefined {
+    inline(place: number, field: { object?: number | undefined; chart: boolean; program?: string | undefined }): number | undefined {
       return once(`inline:${place}`, () => inlineAt(place, field))
     },
     /** The equation of Equation Editor or MathType an object holds, by the number of its storage, as linear text. */
@@ -618,7 +637,7 @@ const FIGURE_END = '\ue001'
  * behind a header of their own, their text in the 8-bit code page of the document's language and their properties in
  * one-byte codes; Word 2 wrote the same straight into the file, with places and codes of its own.
  */
-export async function readOlderWord(bytes: Uint8Array): Promise<OfficePreview> {
+export async function readOlderWord(bytes: Uint8Array, objects?: ObjectReader): Promise<OfficePreview> {
   // Word 1 wrote its documents as Word 2 did, a few of its places and properties its own.
   const one = readU16(bytes, 0) === 0xa59b
   const two = one || readU16(bytes, 0) === 0xa5db
@@ -678,7 +697,7 @@ export async function readOlderWord(bytes: Uint8Array): Promise<OfficePreview> {
       stream,
       table,
       tableStream as Uint8Array,
-      { data: file.stream('Data'), objects: file.storage('ObjectPool') },
+      { data: file.stream('Data'), objects: file.storage('ObjectPool'), read: objects },
       {
         characters: pair(12),
         anchors: pair(40),
@@ -860,7 +879,14 @@ export async function readOlderWord(bytes: Uint8Array): Promise<OfficePreview> {
       // An equation of Equation Editor or MathType is written as linear text in its place, as Word's own are.
       const equation = pictures?.equation(field?.object)
       if (equation !== undefined) paragraph += equation
-      else figure(pictures?.inline(place, { object: field?.object, chart: /^\s*EMBED\s+\S*Chart/i.test(field?.code ?? '') }))
+      else
+        figure(
+          pictures?.inline(place, {
+            object: field?.object,
+            chart: /^\s*EMBED\s+\S*Chart/i.test(field?.code ?? ''),
+            program: /^\s*EMBED\s+(\S+)/i.exec(field?.code ?? '')?.[1]
+          })
+        )
     } else if (code === 0x08) figure(pictures?.floating(character))
     else if (code === 0x09 || (code >= 0x20 && char !== FIGURE_START && char !== FIGURE_END)) paragraph += char
   }
@@ -935,6 +961,37 @@ const readU16 = (bytes: Uint8Array, at: number) => (bytes[at] ?? 0) | ((bytes[at
 const readU32 = (bytes: Uint8Array, at: number) => (readU16(bytes, at) | (readU16(bytes, at + 2) << 16)) >>> 0
 
 // Excel
+
+/**
+ * Which sheet of an Excel 5 to 2003 workbook's stream an object of it shows, and the block of cells: the sheet the
+ * workbook was left on (`WINDOW1`, counting every sheet it lists) and the block its object was sized to (`OLESIZE`).
+ */
+export function olderWorkbookView(stream: Uint8Array): { active?: string | undefined; area?: CellArea | undefined } {
+  const view: { active?: string | undefined; area?: CellArea | undefined } = {}
+  try {
+    const book = reader(stream)
+    if (book.u16(0) !== 0x0809) return view
+    const eight = book.u16(4) === 0x0500
+    let active = 0
+    const names: string[] = []
+    for (const record of records(book, 0)) {
+      if (record.type === 0x003d && record.size >= 12) active = book.u16(record.at + 10)
+      else if (record.type === 0x00de && record.size >= 8)
+        view.area = { top: book.u16(record.at + 2), bottom: book.u16(record.at + 4), left: book.u8(record.at + 6), right: book.u8(record.at + 7) }
+      else if (record.type === 0x0085 && record.size >= 8) {
+        const length = book.u8(record.at + 6)
+        const wide = !eight && (book.u8(record.at + 7) & 0x01) !== 0
+        names.push(
+          eight ? latin1(book.bytes(record.at + 7, length)) : wide ? utf16(book.bytes(record.at + 8, length * 2)) : latin1(book.bytes(record.at + 8, length))
+        )
+      } else if (record.type === 0x000a) break
+    }
+    view.active = names[active]
+  } catch {
+    // A workbook whose records cannot be read shows its first sheet, as far as it goes.
+  }
+  return view
+}
 
 /** A workbook's records in order, each with its type and where its content is. */
 function* records(book: Reader, from: number): Generator<{ type: number; at: number; size: number }> {

@@ -21,7 +21,7 @@ import type {
   TextLook
 } from './document-look.ts'
 import { Figure } from './figure-view.tsx'
-import type { OfficeFigure } from './office-text.ts'
+import type { OfficeFigure, SheetFigure } from './office-text.ts'
 import { fontStack } from './slide-svg.ts'
 
 /** A length in points, as CSS takes it. */
@@ -248,6 +248,19 @@ function placement(item: { float?: 'left' | 'right' | undefined; at?: { x: numbe
   return { display: 'inline-block', verticalAlign: 'bottom' }
 }
 
+/** A worksheet held as an object, scaled to the size its document gives its picture, as Word scales the picture. */
+function fitted(figure: SheetFigure, placed: PlacedFigure): SheetFigure {
+  const width = figure.look.columns.reduce((sum, one) => sum + one, 0)
+  const height = figure.look.rows.reduce((sum, one) => sum + one, 0)
+  const scales = [placed.width && width > 0 ? placed.width / width : undefined, placed.height && height > 0 ? placed.height / height : undefined].filter(
+    (scale): scale is number => scale !== undefined && Number.isFinite(scale) && scale > 0
+  )
+  if (scales.length === 0) return figure
+  // A little under, so rounding never leaves the sheet wider than its place.
+  const zoom = Math.floor(Math.min(...scales) * 1000) / 1000
+  return { ...figure, look: { ...figure.look, zoom } }
+}
+
 function Placed({ placed }: { placed: PlacedFigure }) {
   const { figures, urls } = useContext(ShownContext)
   const figure = figures[placed.figure]
@@ -262,7 +275,7 @@ function Placed({ placed }: { placed: PlacedFigure }) {
         ) : null
       ) : (
         <span className="block size-full overflow-hidden bg-white">
-          <Figure figure={figure} url={url} alt={placed.alt} block />
+          <Figure figure={figure.kind === 'sheet' ? fitted(figure, placed) : figure} url={url} alt={placed.alt} block />
         </span>
       )}
     </span>

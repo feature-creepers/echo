@@ -9,10 +9,11 @@
  */
 
 import { type Archive, openArchive, partOf, relationships, resolvePart, textOf } from './archive.ts'
-import { readOlderExcel, readOlderPowerPoint, readOlderSheets, readOlderWord } from './binary-office.ts'
+import { olderWorkbookView, readOlderExcel, readOlderPowerPoint, readOlderSheets, readOlderWord } from './binary-office.ts'
 import { openCompound } from './compound.ts'
 import { cellValue, serialNow, withConditions } from './conditional-formats.ts'
 import type { TextLook } from './document-look.ts'
+import { type CellArea, cellArea, sheetFigure } from './embedded-sheet.ts'
 import { isEquationProgram } from './equation-editor.ts'
 import { builtInFormat, formatNumber, generalNumber, type NumberFormatOptions, numberColor } from './number-format.ts'
 import { type CellRange, type CellSource, type CellValue, cellRange, emuPixels, Figures, lengthPixels, readChart, readOpenChart } from './office-figures.ts'
@@ -26,6 +27,7 @@ import {
   inlineLines,
   joinBlocks,
   markdownTable,
+  type ObjectReader,
   type OfficeFigure,
   type OfficePreview,
   type PictureFigure,
@@ -57,7 +59,7 @@ import {
 import { drawSlide } from './slide-drawing.ts'
 import { DRAWINGS_LIMIT } from './slide-svg.ts'
 import { readWordLook } from './word-look.ts'
-import { childAt, childrenNamed, nodeEvents, type XmlEvent, type XmlNode, xmlEvents, xmlTree } from './xml.ts'
+import { childAt, childrenNamed, decodeEntities, nodeEvents, type XmlEvent, type XmlNode, xmlEvents, xmlTree } from './xml.ts'
 
 export { type Archive, openArchive } from './archive.ts'
 export type { OfficeFigure, OfficePreview } from './office-text.ts'
@@ -240,7 +242,7 @@ export async function readDocument(archive: Archive, options: NumberFormatOption
   const { headings, formats } = await wordStyles(archive)
   const numbered = await wordNumbering(archive)
   const targets = await relationships(archive, 'word/document.xml')
-  const figures = new Figures(archive, options, embeddedCells(archive, options))
+  const figures = new Figures(archive, options, embeddedCells(archive, options), embeddedObjects(options))
   const blocks: string[] = []
   // The paragraphs open, a text box's within the one that holds it, and the runs open, likewise.
   const paragraphs: WordParagraph[] = []
@@ -256,8 +258,8 @@ export async function readDocument(archive: Archive, options: NumberFormatOption
   let cell: string[] | undefined
   let equation: XmlEvent[] | undefined
   let displayed = false
-  // The object of Equation Editor or MathType a drawing holds, by its relationship's identifier.
-  let equationObject: string | undefined
+  // The object of another app a drawing holds: its relationship's identifier and its program.
+  let object: { id: string; program: string } | undefined
 
   const finish = (paragraph: WordParagraph) => {
     const text = partsText(paragraph.parts).replace(/\s+/g, ' ').trim()
@@ -383,12 +385,14 @@ export async function readDocument(archive: Archive, options: NumberFormatOption
         case 'w:object':
           if (drawings++ === 0) {
             drawing = { alt: '' }
-            equationObject = undefined
+            object = undefined
           }
           break
-        case 'o:OLEObject':
-          if (drawing && isEquationProgram(event.attributes.ProgID)) equationObject = event.attributes['r:id']
+        case 'o:OLEObject': {
+          const id = event.attributes['r:id']
+          if (drawing && id !== undefined) object = { id, program: event.attributes.ProgID ?? '' }
           break
+        }
         case 'wp:extent':
           if (drawing) {
             drawing.width = emuPixels(event.attributes.cx)
@@ -436,14 +440,16 @@ export async function readDocument(archive: Archive, options: NumberFormatOption
         if (--drawings === 0 && drawing) {
           const placed: Drawn = drawing
           drawing = undefined
+          const held = object
+          object = undefined
           // An equation of Equation Editor or MathType is written as linear text in its place, as Word's own are.
-          const written = equationObject === undefined ? undefined : await figures.equation(targets.get(equationObject))
-          equationObject = undefined
+          const written = held && isEquationProgram(held.program) ? await figures.equation(targets.get(held.id)) : undefined
           if (written !== undefined) {
             paragraph?.parts.push(runPart(written, {}, link))
             break
           }
-          const figure = await drawnFigure(placed, targets, figures)
+          // What another object holds is shown in place of its picture when it is read here: a worksheet as its sheet.
+          const figure = (held && (await figures.object(targets.get(held.id), held.program, placed.alt))) ?? (await drawnFigure(placed, targets, figures))
           if (figure !== undefined && paragraph) paragraph.parts.push({ figure, alt: placed.alt })
         }
         break
@@ -534,6 +540,48 @@ export function embeddedCells(archive: Archive, options: NumberFormatOptions = {
     if (held) return sheetCells((await workbookSheets(openArchive(held), options)).sheets)
     return sheetCells(readOlderSheets(bytes, options))
   }
+}
+
+/**
+ * What objects of other apps hold, shown in place of their pictures: a worksheet of Excel, newer or older, held as it
+ * is or in a compound file's `Package` stream, as the block of cells of its active sheet its object shows.
+ */
+export function embeddedObjects(options: NumberFormatOptions = {}): ObjectReader {
+  return async (program, bytes) => (/^Excel\.Sheet\b/i.test(program.trim()) ? embeddedSheet(bytes, options) : undefined)
+}
+
+async function embeddedSheet(bytes: Uint8Array, options: NumberFormatOptions, depth = 0): Promise<OfficeFigure | undefined> {
+  let preview: OfficePreview
+  let active: string | undefined
+  let area: CellArea | undefined
+  if (bytes[0] === 0x50 && bytes[1] === 0x4b) {
+    const archive = openArchive(bytes)
+    const workbook = (await textOf(archive, 'xl/workbook.xml')) ?? ''
+    // The sheet the workbook was left on, and the block of cells its object was sized to.
+    const tab = Number(/<workbookView\b[^>]*\bactiveTab="(\d+)"/.exec(workbook)?.[1] ?? 0)
+    active = [...workbook.matchAll(/<sheet\b[^>]*\bname="([^"]*)"/g)][tab]?.[1]
+    active = active === undefined ? undefined : decodeEntities(active)
+    area = cellArea(/<oleSize\b[^>]*\bref="([^"]*)"/.exec(workbook)?.[1])
+    preview = await readWorkbook(archive, options)
+  } else if (bytes[0] === 0xd0 && bytes[1] === 0xcf) {
+    // A compound file: a workbook of 2007 or later in its `Package` stream, or one of 97 to 2003 in its own.
+    const file = openCompound(bytes)
+    const held = file.stream('Package')
+    if (held && depth === 0) return embeddedSheet(held, options, 1)
+    const stream = file.stream('Workbook') ?? file.stream('Book')
+    if (!stream) return undefined
+    return embeddedSheet(stream, options, 1)
+  } else {
+    const view = olderWorkbookView(bytes)
+    active = view.active
+    area = view.area
+    preview = await readOlderExcel(bytes, options)
+  }
+  if (preview.kind !== 'workbook') return undefined
+  const sheet = preview.sheets.find((one) => one.name === active) ?? preview.sheets[0]
+  const look = sheet?.look
+  // A sheet that holds pictures or charts, which its cells alone would leave out, is shown by its object's picture.
+  return sheet && look && sheet.figures.length === 0 ? sheetFigure({ name: sheet.name, rows: sheet.rows, look }, area) : undefined
 }
 
 /** An Excel workbook's sheets as they are read, with the options its numbers are shown by. */
@@ -1538,7 +1586,7 @@ function protectedPackage(bytes: Uint8Array): boolean {
 /** An Office file read for its preview, by its extension; its numbers and dates written as `options` says. */
 export async function readOffice(extension: string, bytes: Uint8Array, options: NumberFormatOptions = {}): Promise<OfficePreview> {
   // The older formats are compound files, not archives.
-  if (extension === 'doc') return readOlderWord(bytes)
+  if (extension === 'doc') return readOlderWord(bytes, embeddedObjects(options))
   if (extension === 'xls') return readOlderExcel(bytes, options)
   if (extension === 'ppt') return readOlderPowerPoint(bytes)
   // Word, Excel and PowerPoint keep a file protected with a password in a compound file, encrypted, not in an archive.
