@@ -39,4 +39,23 @@ export interface Computer {
    * no folder there. Left out, the core cannot look into a folder, and brings in nothing that needs it.
    */
   list?(folder: string): Promise<string[] | undefined>
+  /**
+   * What a folder holds now, to tell once a command run in it ended what it changed there (docs/SPEC.md, section
+   * 12.2): in a git work tree, the files git sees, from where the work tree starts; elsewhere, the folder's files,
+   * within limits. Nothing when it cannot be looked at. Left out, what a command changes is not known.
+   */
+  snapshot?(folder: string): Promise<FolderSnapshot | undefined>
+}
+
+/** A folder as a command found it. */
+export interface FolderSnapshot {
+  /** The files changed since, each with what it held before and holds now, at most a few hundred. */
+  changes(): Promise<FoundChange[]>
+}
+
+/** A file a command changed: what it held before (no file, or not known) and what it holds now (no file, or too large to keep). */
+export interface FoundChange {
+  path: string
+  before: Uint8Array | 'none' | 'unknown'
+  after: Uint8Array | 'none' | 'too-large'
 }

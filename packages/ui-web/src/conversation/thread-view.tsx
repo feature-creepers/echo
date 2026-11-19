@@ -306,7 +306,9 @@ function StepRow({ step, use, context }: { step: Step; use: AccessUse | undefine
   const running = step.ended === undefined
   const seconds = step.ended && step.at ? (new Date(step.ended).getTime() - new Date(step.at).getTime()) / 1000 : undefined
   const changed = changedFiles(use) ? use : undefined
-  const total = changed ? totalOf(changed) : undefined
+  // A command found to have changed files shows them under what it printed.
+  const commandChanged = use?.action === 'run' && (use.changes?.length ?? 0) > 0 ? use : undefined
+  const total = changed ? totalOf(changed) : commandChanged ? totalOf(commandChanged) : undefined
   const command = commandOf(step)
   return (
     <li className="border-line border-t first:border-t-0">
@@ -347,6 +349,9 @@ function StepRow({ step, use, context }: { step: Step; use: AccessUse | undefine
                 <Detail label={`${step.tool} · input`} text={step.input === undefined ? '—' : JSON.stringify(step.input, null, 2)} />
               )}
               <Detail label="Output" text={step.output ?? (running ? 'Still running.' : '—')} />
+              {commandChanged && (
+                <Changes client={context.client} of={{ use: commandChanged.id }} relative={context.relative} version={versionOf(commandChanged)} />
+              )}
             </>
           )}
         </div>

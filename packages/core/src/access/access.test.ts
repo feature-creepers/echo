@@ -53,6 +53,19 @@ function machine() {
       files.delete(path)
       trashed.push(path)
       return `/data/trash/today/${path.split('/').at(-1)}`
+    },
+    // What a command changes is found by comparing the folder's files before it ran with them after.
+    async snapshot(folder) {
+      const before = new Map([...files].filter(([path]) => path.startsWith(`${folder}/`)))
+      return {
+        async changes() {
+          const now = new Map([...files].filter(([path]) => path.startsWith(`${folder}/`)))
+          return [...new Set([...before.keys(), ...now.keys()])].flatMap((path) => {
+            const [was, is] = [before.get(path), now.get(path)]
+            return was === is ? [] : [{ path, before: was ?? ('none' as const), after: is ?? ('none' as const) }]
+          })
+        }
+      }
     }
   }
   return { computer, files, trashed }
@@ -543,6 +556,58 @@ describe('the activity', () => {
     expect(last).toMatchObject({ outcome: { ok: false, error: 'String not found in file.' } })
     expect(last?.undo).toBeUndefined()
     expect(first?.undo).toBeUndefined()
+  })
+
+  it('finds what a command changed, for its diff and the versions of each file, though it failed', async () => {
+    const { reach, access, settings, files, records } = setup()
+    settings.setAccess({ approvals: 'auto' })
+    const notes = `${WORKSPACE}/notes.md`
+    const old = `${WORKSPACE}/old.md`
+    files.set(notes, text('a\nb\n'))
+    files.set(old, text('gone\n'))
+    const ran = await reach.approve(command('pnpm run tidy'), signal())
+    if (!ran.allow || !ran.use) throw new Error('The command is expected to go ahead.')
+    files.set(notes, text('a\nB\n'))
+    files.delete(old)
+    files.set(`${WORKSPACE}/new.md`, text('x\n'))
+    reach.report?.(ran.use, { ok: false, error: 'exit code 1' })
+    await settle()
+
+    const [use] = access.activity(1).uses
+    expect(use?.changes).toEqual([
+      { path: notes, status: 'changed', added: 1, removed: 1 },
+      { path: old, status: 'deleted', added: 0, removed: 1 },
+      { path: `${WORKSPACE}/new.md`, status: 'created', added: 1, removed: 0 }
+    ])
+    // A command's other effects cannot be undone: its files are put back one at a time, from their versions.
+    expect(use?.undo).toBeUndefined()
+    expect((await access.diff({ use: ran.use }))?.[0]?.hunks[0]?.lines).toEqual([' a', '-b', '+B'])
+    expect(access.versions(notes).map((version) => [version.side, version.command])).toEqual([
+      ['after', 'pnpm run tidy'],
+      ['before', 'pnpm run tidy']
+    ])
+    expect(await access.restore(ran.use, notes, 'before')).toBe('done')
+    expect(new TextDecoder().decode(files.get(notes) ?? new Uint8Array())).toBe('a\nb\n')
+
+    // Read again from the records, as when the app opens again.
+    const again = createAccess({
+      settings: createUserSettings(records, undefined, WORKSPACE),
+      screen: createScreen({ records, newId: () => 'v' }),
+      records,
+      versions: undefined
+    })
+    expect(again.activity(5).uses.find((one) => one.id === ran.use)?.changes).toHaveLength(3)
+  })
+
+  it('looks at no folder for a command that only reads', async () => {
+    const { reach, access, settings, files } = setup()
+    settings.setAccess({ approvals: 'auto' })
+    const ran = await reach.approve(command('ls', 'read'), signal())
+    if (!ran.allow || !ran.use) throw new Error('The command is expected to go ahead.')
+    files.set(`${WORKSPACE}/meanwhile.md`, text('x\n'))
+    reach.report?.(ran.use, { ok: true })
+    await settle()
+    expect(access.activity(1).uses[0]?.changes).toBeUndefined()
   })
 
   it('keeps what a tool of the core reports, the same way', async () => {

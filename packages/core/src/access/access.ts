@@ -2,7 +2,7 @@ import { type AccessUse, type Allowance, type CommandInput, type Event, MAX_PLAC
 import { z } from 'zod'
 import type { Blobs } from '../ports/blobs.ts'
 import type { Timers } from '../ports/clock.ts'
-import type { Computer } from '../ports/computer.ts'
+import type { Computer, FolderSnapshot } from '../ports/computer.ts'
 import type { ComputerUse, HarnessComputer, Reach, Scope, Verdict } from '../ports/harness.ts'
 import type { Records } from '../ports/records.ts'
 import { fromFolder } from '../projects/folders.ts'
@@ -139,6 +139,9 @@ export interface GrantAsked {
   chosen?: boolean
 }
 
+/** How many commands' folders, looked at before they ran, wait at most for their end to be told. */
+const SNAPSHOTS_KEPT = 50
+
 /** How many of a thread's uses it is reminded of when a new session carries on its work. */
 const WORKED_LINES = 40
 
@@ -261,6 +264,8 @@ export function createAccess({ settings, screen, computer, timers, records, vers
   const nextId = newId ?? (() => `use-${++ids}`)
   const allowances = createAllowances({ newId: nextId, now, destroyingAsked: () => access().askDestroying })
   const activity: Activity = createActivity({ records: records ?? NO_RECORDS, versions: versions ?? NO_VERSIONS, computer, now, newId: nextId })
+  /** The folders of commands that may change files, looked at before they ran, by their use. */
+  const snapshots = new Map<string, FolderSnapshot>()
   const listeners = new Set<(event: Event) => void>()
   const stopping = new Set<() => void>()
   const emit = (event: Event) => {
@@ -396,6 +401,9 @@ export function createAccess({ settings, screen, computer, timers, records, vers
   ): Promise<Verdict> => {
     const changes = use.action === 'create' || use.action === 'change' || use.action === 'delete'
     const versions = changes ? await activity.keep(use.paths) : { kept: [], created: [] }
+    // A command that may change files: its folder is looked at first, to find what it changed once it ended.
+    const folder = use.action === 'run' && reason !== 'read-only' ? use.paths[0] : undefined
+    const snapshot = folder === undefined ? undefined : await computer?.snapshot?.(folder).catch(() => undefined)
     const recorded = activity.record({
       ...by,
       tool: use.tool,
@@ -408,7 +416,23 @@ export function createAccess({ settings, screen, computer, timers, records, vers
       ...(reading?.network ? { network: true } : {}),
       ...versions
     })
+    if (snapshot) {
+      snapshots.set(recorded.id, snapshot)
+      // A command whose end is never told gives way to newer ones.
+      for (const oldest of snapshots.keys()) {
+        if (snapshots.size <= SNAPSHOTS_KEPT) break
+        snapshots.delete(oldest)
+      }
+    }
     return { allow: true, use: recorded.id }
+  }
+
+  /** How a use went: for a command looked at before, what it changed is found first. */
+  const report = async (use: string, outcome: { ok: boolean; error?: string | undefined }) => {
+    const snapshot = snapshots.get(use)
+    snapshots.delete(use)
+    const found = snapshot ? await snapshot.changes().catch(() => undefined) : undefined
+    await activity.outcome(use, outcome, found)
   }
 
   const stopEverything = () => {
@@ -491,7 +515,7 @@ export function createAccess({ settings, screen, computer, timers, records, vers
           refusal(use, by, reading, { decision: 'refused', reason: REASON_OF[answer], detail: REFUSED[answer] })
           return { allow: false, reason: REFUSED[answer] }
         },
-        report: (use, outcome) => void activity.outcome(use, outcome)
+        report: (use, outcome) => void report(use, outcome)
       }
     },
 
@@ -672,7 +696,7 @@ export function createAccess({ settings, screen, computer, timers, records, vers
 
     record: (use) => activity.record(use).id,
 
-    report: (use, outcome) => void activity.outcome(use, outcome),
+    report: (use, outcome) => void report(use, outcome),
 
     activity: (limit, before) => activity.read(limit, before),
 

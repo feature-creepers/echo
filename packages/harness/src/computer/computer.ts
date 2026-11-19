@@ -5,6 +5,7 @@ import { homedir } from 'node:os'
 import { basename, dirname, extname, join } from 'node:path'
 import type { Computer, ProtectedPath } from '@repo/core'
 import { absolute, kindAt, real } from './paths.ts'
+import { createSnapshots } from './snapshot.ts'
 import { everywhere, system, type Where } from './system/index.ts'
 
 export interface ComputerOptions {
@@ -35,6 +36,7 @@ const day = (at: Date) => at.toISOString().slice(0, 10)
 export async function createComputer({ workspace, data, where = { home: homedir(), env: process.env } }: ComputerOptions): Promise<Computer> {
   await mkdir(workspace, { recursive: true })
   const trash = join(data ?? dirname(workspace), 'trash')
+  const snapshots = createSnapshots()
   return {
     workspace,
     async locate(path) {
@@ -101,6 +103,7 @@ export async function createComputer({ workspace, data, where = { home: homedir(
         return undefined
       }
     },
+    snapshot: (folder) => snapshots.snapshot(folder),
     async list(folder) {
       try {
         return (await readdir(folder, { withFileTypes: true })).filter((entry) => entry.isFile()).map((entry) => entry.name)

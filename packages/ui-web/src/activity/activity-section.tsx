@@ -242,7 +242,13 @@ function UseRow({ use, open, onToggle, undo, client, relative }: UseRowProps) {
               </div>
             )}
             {use.action === 'run' ? (
-              use.decision !== 'refused' && <p className="text-text-faint text-xs">A command cannot be undone.</p>
+              use.decision !== 'refused' && (
+                <p className="text-text-faint text-xs">
+                  {showsChanges(use)
+                    ? "A command cannot be undone: each file it changed can be put back from its versions, on the Files page or from the file's own."
+                    : 'A command cannot be undone.'}
+                </p>
+              )
             ) : (
               <UndoAction use={use} undo={undo} />
             )}
@@ -254,8 +260,11 @@ function UseRow({ use, open, onToggle, undo, client, relative }: UseRowProps) {
 }
 
 /** Whether a use made a change to files whose diff can be shown: allowed, done, and not a command. */
+/** Whether a use has a diff: a change made to files, or a command found to have changed some, though it failed. */
 const showsChanges = (use: AccessUse) =>
-  (use.action === 'create' || use.action === 'change' || use.action === 'delete') && use.decision !== 'refused' && use.outcome?.ok === true
+  use.action === 'run'
+    ? (use.changes?.length ?? 0) > 0
+    : (use.action === 'create' || use.action === 'change' || use.action === 'delete') && use.decision !== 'refused' && use.outcome?.ok === true
 
 function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (

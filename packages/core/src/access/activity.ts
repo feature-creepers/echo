@@ -1,7 +1,7 @@
 import { type AccessUse, type ActivityCheck, accessUseSchema, type FileChange, type FileDiff, type FileVersion, RESTORE_TOOL } from '@repo/protocol'
 import { z } from 'zod'
 import type { Blobs } from '../ports/blobs.ts'
-import type { Computer } from '../ports/computer.ts'
+import type { Computer, FoundChange } from '../ports/computer.ts'
 import { ERASURE, type NewRecord, type Records } from '../ports/records.ts'
 import { ACCESS_SEAL, checkChain, GENESIS, sealOf, sealSchema } from './chain.ts'
 import { COMPARED_LIMIT, countChanges, DIFF_LIMITS, diffText, textOf } from './diff.ts'
@@ -53,6 +53,12 @@ const outcomeRecordSchema = z.object({
   ok: z.boolean(),
   error: z.string().optional(),
   /**
+   * For a command, found once it ended: the versions before of the files it changed, and those it created. A tool's
+   * change keeps them with its use, since its files are known before it runs.
+   */
+  kept: z.array(keptSchema).optional(),
+  created: z.array(z.string()).optional(),
+  /**
    * What each file held once the change was made, to tell later whether it changed since: its fingerprint, which is
    * the hash its version is kept under. Since changes are reviewed as diffs, also what the change did to it, with the
    * lines it added and removed; records from before have only the fingerprint, and their version was not kept.
@@ -76,8 +82,11 @@ export interface Activity {
   keep(paths: readonly string[]): Promise<{ kept: UseRecord['kept']; created: string[] }>
   /** Keep a use as it was decided, and tell the listeners. */
   record(use: NewUse): AccessUse
-  /** How a use went, once the harness says. For a change made, what the files hold now is noted. */
-  outcome(id: string, outcome: { ok: boolean; error?: string | undefined }): Promise<void>
+  /**
+   * How a use went, once the harness says. For a change made, what the files hold now is noted; for a command, the
+   * files it was found to have change (`found`), before and after.
+   */
+  outcome(id: string, outcome: { ok: boolean; error?: string | undefined }, found?: readonly FoundChange[]): Promise<void>
   /** The uses, the latest first, from before `before` when given. */
   read(limit: number, before?: string): { uses: AccessUse[]; more: boolean }
   /** Put back the files' previous versions, or move the files it created to the trash. */
@@ -179,7 +188,10 @@ export function createActivity({ records, versions, computer, now, newId }: Acti
     } else if (record.type === ACCESS_OUTCOME) {
       const read = outcomeRecordSchema.safeParse(record.payload)
       const entry = read.success ? entries.get(read.data.use) : undefined
-      if (entry && read.success) entry.outcome = read.data
+      if (entry && read.success) {
+        entry.outcome = read.data
+        entry.use = withFound(entry.use, read.data)
+      }
     } else {
       const read = undoRecordSchema.safeParse(record.payload)
       const entry = read.success ? entries.get(read.data.use) : undefined
@@ -189,9 +201,11 @@ export function createActivity({ records, versions, computer, now, newId }: Acti
 
   const view = ({ use, outcome, undo }: Entry): AccessUse => {
     const { kept, created, ...shown } = use
-    const undoable = use.decision !== 'refused' && outcome?.ok !== false
+    // What a command did beyond its files cannot be undone: its files' versions are put back one at a time.
+    const undoable = use.decision !== 'refused' && outcome?.ok !== false && use.action !== 'run'
     const kind = !undoable ? undefined : (kept?.length ?? 0) > 0 ? 'restore' : (created?.length ?? 0) > 0 ? 'trash' : undefined
-    const changes = outcome?.ok ? (outcome.after ?? []).flatMap(changeOf) : []
+    // A command that failed may have changed files all the same.
+    const changes = outcome?.ok || use.action === 'run' ? (outcome?.after ?? []).flatMap(changeOf) : []
     return {
       ...shown,
       ...(outcome ? { outcome: { ok: outcome.ok, ...(outcome.error === undefined ? {} : { error: outcome.error }) } } : {}),
@@ -206,6 +220,14 @@ export function createActivity({ records, versions, computer, now, newId }: Acti
     const kept = use.kept?.find((one) => one.path === path)
     if (!kept) return 'large'
     return versions.get(kept.hash) ?? 'missing'
+  }
+
+  /** What a command left in a file it was found to have changed, as `left` says it of a tool's change. */
+  const leftFound = (use: UseRecord, one: FoundChange): Left => {
+    const status = use.created?.includes(one.path) ? 'created' : one.after === 'none' ? 'deleted' : 'changed'
+    if (one.after === 'too-large') return { path: one.path, status, large: true }
+    if (one.after === 'none') return { path: one.path, status, ...counted(before(use, one.path), NOTHING) }
+    return { path: one.path, fingerprint: versions.put(one.after), status, ...counted(before(use, one.path), one.after) }
   }
 
   /** What a change left in a file: its version, kept under its hash, and what it did, counted. */
@@ -250,7 +272,7 @@ export function createActivity({ records, versions, computer, now, newId }: Acti
   const touched = (list: readonly Entry[]) => {
     const files = new Map<string, { first: Entry; last: Entry; uses: number }>()
     for (const entry of list) {
-      for (const path of new Set(entry.use.paths)) {
+      for (const path of new Set(filesOf(entry))) {
         const known = files.get(path)
         if (known) {
           known.last = entry
@@ -291,16 +313,29 @@ export function createActivity({ records, versions, computer, now, newId }: Acti
       return tell(entry)
     },
 
-    async outcome(id, { ok, error }) {
+    async outcome(id, { ok, error }, found) {
       const entry = entries.get(id)
       if (!entry || entry.outcome) return
+      // What a command changed is known only now: the versions before are kept with how it went.
+      const kept = (found ?? []).flatMap((one) =>
+        one.before instanceof Uint8Array ? [{ path: one.path, hash: versions.put(one.before), size: one.before.byteLength }] : []
+      )
+      const created = (found ?? []).filter((one) => one.before === 'none').map((one) => one.path)
+      if (found) entry.use = withFound(entry.use, { kept, created })
       // A change made keeps the version it left of each file, for its diff, and for undo to tell whether it changed since.
       const changed = ok && computer && CHANGING.has(entry.use.action)
-      const after = changed ? await Promise.all([...new Set(entry.use.paths)].map((path) => left(entry.use, path))) : undefined
+      const after =
+        found && found.length > 0
+          ? found.map((one) => leftFound(entry.use, one))
+          : changed
+            ? await Promise.all([...new Set(entry.use.paths)].map((path) => left(entry.use, path)))
+            : undefined
       const outcome: OutcomeRecord = {
         use: id,
         ok,
         ...(error === undefined || ok ? {} : { error: error.slice(0, ERROR_KEPT) }),
+        ...(kept.length > 0 ? { kept } : {}),
+        ...(created.length > 0 ? { created } : {}),
         ...(after ? { after } : {})
       }
       append({ type: ACCESS_OUTCOME, payload: outcome })
@@ -404,12 +439,12 @@ export function createActivity({ records, versions, computer, now, newId }: Acti
       const found: FileVersion[] = []
       let first = true
       for (const { use, outcome } of entries.values()) {
-        if (use.decision === 'refused' || outcome?.ok === false) continue
+        if (!made({ use, outcome })) continue
         const before = use.kept?.find((one) => samePlace(one.path, path))
         const left = outcome?.after?.find((one) => samePlace(one.path, path))
         if (!before && !left && !use.created?.some((one) => samePlace(one, path))) continue
-        const made = { use: use.id, at: use.at, tool: use.tool, ...(use.command === undefined ? {} : { command: use.command }) }
-        if (first && before) found.push({ ...made, side: 'before', restorable: true })
+        const by = { use: use.id, at: use.at, tool: use.tool, ...(use.command === undefined ? {} : { command: use.command }) }
+        if (first && before) found.push({ ...by, side: 'before', restorable: true })
         first = false
         if (!left) continue
         const change =
@@ -423,7 +458,7 @@ export function createActivity({ records, versions, computer, now, newId }: Acti
                 ...(left.binary ? { binary: true } : {}),
                 ...(left.large ? { large: true } : {})
               }
-        found.push({ ...made, side: 'after', ...(change ? { change } : {}), restorable: left.fingerprint !== undefined && left.status !== 'deleted' })
+        found.push({ ...by, side: 'after', ...(change ? { change } : {}), restorable: left.fingerprint !== undefined && left.status !== 'deleted' })
       }
       return found.reverse()
     },
@@ -530,7 +565,10 @@ export function createActivity({ records, versions, computer, now, newId }: Acti
             record.type === ACCESS_USE
               ? (useRecordSchema.safeParse(record.payload).data?.kept ?? []).map((one) => one.hash)
               : record.type === ACCESS_OUTCOME
-                ? (outcomeRecordSchema.safeParse(record.payload).data?.after ?? []).flatMap((one) => (one.fingerprint === undefined ? [] : [one.fingerprint]))
+                ? [outcomeRecordSchema.safeParse(record.payload).data].flatMap((read) => [
+                    ...(read?.kept ?? []).map((one) => one.hash),
+                    ...(read?.after ?? []).flatMap((one) => (one.fingerprint === undefined ? [] : [one.fingerprint]))
+                  ])
                 : []
           )
         )
@@ -559,8 +597,25 @@ export function createActivity({ records, versions, computer, now, newId }: Acti
 const withFingerprint = (path: string, fingerprint: string | undefined) => (fingerprint === undefined ? { path } : { path, fingerprint })
 
 /** Whether a use made a change to files: allowed, and not reported failed. */
+/** Whether a use changed files: a tool's change made, or a command found to have changed some, though it failed. */
 const made = (entry: { use: UseRecord; outcome?: OutcomeRecord | undefined }) =>
-  CHANGING.has(entry.use.action) && entry.use.decision !== 'refused' && entry.outcome?.ok !== false
+  entry.use.action === 'run'
+    ? (entry.outcome?.after?.length ?? 0) > 0
+    : CHANGING.has(entry.use.action) && entry.use.decision !== 'refused' && entry.outcome?.ok !== false
+
+/** The files a use changed: those named before a tool's change, those a command was found to have changed. */
+const filesOf = (entry: { use: UseRecord; outcome?: OutcomeRecord | undefined }) =>
+  entry.use.action === 'run' ? (entry.outcome?.after ?? []).map((one) => one.path) : entry.use.paths
+
+/** A command's use with the files it was found to have changed: the versions before, and those it created. */
+const withFound = (use: UseRecord, found: { kept?: UseRecord['kept']; created?: string[] | undefined }): UseRecord =>
+  (found.kept?.length ?? 0) === 0 && (found.created?.length ?? 0) === 0
+    ? use
+    : {
+        ...use,
+        kept: [...(use.kept ?? []), ...(found.kept ?? [])],
+        created: [...(use.created ?? []), ...(found.created ?? [])]
+      }
 
 /** What a change did to a file, as the person is shown it: nothing for a record kept before changes were counted. */
 function changeOf(left: Left): FileChange[] {
