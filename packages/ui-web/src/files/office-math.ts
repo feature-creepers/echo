@@ -198,3 +198,79 @@ function render(node: MathNode): string {
 export function mathText(events: readonly XmlEvent[]): string {
   return render(tree(events)).replace(/\s+/g, ' ').trim()
 }
+
+// MathML
+
+/** An element's name without its prefix: `math:mfrac` and `mfrac` alike. */
+const local = (node: MathNode) => node.name.replace(/^[^:]*:/, '')
+
+/** The elements in an element, its text left out when it holds elements: MathML's layout is in its elements. */
+const parts = (node: MathNode) => node.children.filter((child) => child.name !== '#text')
+
+/** A space after a sum, a product or an integral with its limits, before what it applies to, as Word writes one. */
+const apart = (base: string) => (/^[∑∏∐∫∬∭∮⋃⋂⋁⋀]$/u.test(base) ? ' ' : '')
+
+/** An element of MathML, as Word's equations are written: a fraction as a/b, scripts raised and lowered, roots, limits, brackets and tables. */
+function renderMathMl(node: MathNode, depth = 0): string {
+  if (depth > DEPTH_LIMIT) return ''
+  const inner = (child: MathNode | undefined) => (child ? renderMathMl(child, depth + 1) : '')
+  const [first, second, third] = parts(node)
+  switch (local(node)) {
+    case '#text':
+      return node.text
+    case 'mi':
+    case 'mn':
+    case 'mo':
+    case 'mtext':
+    case 'ms':
+      return node.children.map((child) => (child.name === '#text' ? child.text : inner(child))).join('')
+    case 'annotation':
+    case 'annotation-xml':
+    case 'mphantom':
+    case 'mspace':
+    case 'none':
+      return ''
+    case 'semantics':
+      return inner(first)
+    case 'mfrac':
+      // A fraction of no line is a binomial coefficient.
+      if (node.attributes.linethickness === '0' || node.attributes['math:linethickness'] === '0') return `(${inner(first)} ¦ ${inner(second)})`
+      return `${grouped(inner(first))}/${grouped(inner(second))}`
+    case 'msup':
+      return script(grouped(inner(first)), inner(second), true)
+    case 'msub':
+      return script(grouped(inner(first)), inner(second), false)
+    case 'msubsup':
+      return script(script(grouped(inner(first)), inner(second), false), inner(third), true)
+    case 'msqrt':
+      return `√${grouped(parts(node).map(inner).join(''))}`
+    case 'mroot': {
+      const degree = inner(second)
+      const sign = degree === '' || degree === '2' ? '√' : degree === '3' ? '∛' : degree === '4' ? '∜' : `${script('', degree, true)}√`
+      return sign + grouped(inner(first))
+    }
+    case 'munder':
+      return `${inner(first)}_${grouped(inner(second))}${apart(inner(first))}`
+    case 'mover':
+      return `${inner(first)}^${grouped(inner(second))}${apart(inner(first))}`
+    case 'munderover':
+      return `${inner(first)}_${grouped(inner(second))}^${grouped(inner(third))}${apart(inner(first))}`
+    case 'mfenced': {
+      const attribute = (name: string, fallback: string) => node.attributes[name] ?? node.attributes[`math:${name}`] ?? fallback
+      return `${attribute('open', '(')}${parts(node)
+        .map(inner)
+        .join(attribute('separators', ',').trim().charAt(0) || ',')}${attribute('close', ')')}`
+    }
+    case 'mtable':
+      return `[${parts(node)
+        .map((row) => parts(row).map(inner).join(' '))
+        .join('; ')}]`
+    default:
+      return parts(node).map(inner).join('')
+  }
+}
+
+/** A MathML equation's events, from its `math` element to its end, as linear text. */
+export function mathMlText(events: readonly XmlEvent[]): string {
+  return renderMathMl(tree(events)).replace(/\s+/g, ' ').trim()
+}

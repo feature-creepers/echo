@@ -255,6 +255,43 @@ describe('an Office file previewed', () => {
     })
   })
 
+  it('writes a slide’s equation as linear text in its line, the picture PowerPoint keeps for older apps passed over', async () => {
+    const equation =
+      '<a14:m><m:oMathPara><m:oMath><m:sSup><m:e><m:r><m:t>x</m:t></m:r></m:e><m:sup><m:r><m:t>2</m:t></m:r></m:sup></m:sSup></m:oMath></m:oMathPara></a14:m>'
+    const shape = (inside: string) => `<p:sp><p:txBody><a:p>${inside}</a:p></p:txBody></p:sp>`
+    const file = await zip({
+      'ppt/presentation.xml': '<p:presentation><p:sldIdLst><p:sldId id="256" r:id="rId2"/></p:sldIdLst></p:presentation>',
+      'ppt/_rels/presentation.xml.rels': '<Relationships><Relationship Id="rId2" Target="slides/slide1.xml"/></Relationships>',
+      'ppt/slides/slide1.xml':
+        '<p:sld><p:cSld><p:spTree><mc:AlternateContent><mc:Choice Requires="a14">' +
+        shape(`<a:r><a:t>Area: </a:t></a:r>${equation}`) +
+        `</mc:Choice><mc:Fallback>${shape('<a:r><a:t>A picture of it</a:t></a:r>')}</mc:Fallback></mc:AlternateContent></p:spTree></p:cSld></p:sld>`
+    })
+    expect(await readOffice('pptx', file)).toMatchObject({ slides: [{ title: '', lines: ['Area: x²'] }] })
+  })
+
+  it('writes an OpenDocument equation as linear text where it keeps no picture, and as its picture’s words where it does', async () => {
+    const math =
+      '<math:math xmlns:math="http://www.w3.org/1998/Math/MathML"><math:semantics><math:msup><math:mi>x</math:mi><math:mn>2</math:mn></math:msup>' +
+      '<math:annotation encoding="StarMath 5.0">x^2</math:annotation></math:semantics></math:math>'
+    const frame = (inside: string) => `<draw:frame svg:width="2cm" svg:height="1cm"><draw:object xlink:href="./Object 1"/>${inside}</draw:frame>`
+    const file = await zip({
+      'styles.xml': '<office:document-styles/>',
+      'content.xml': odf(
+        '',
+        `<office:text><text:p>Area: ${frame('')}</text:p><text:p>${frame('<draw:image xlink:href="./ObjectReplacements/Object 1"/>')}</text:p></office:text>`
+      ),
+      'Object 1/content.xml': math,
+      'ObjectReplacements/Object 1': PNG
+    })
+    const preview = await readOffice('odt', file)
+    expect(textual(preview)).toMatchObject({ markdown: 'Area: x²\n\n![x²](figure:0)' })
+    const spans =
+      preview.kind === 'document' ? preview.look?.pages[0]?.bands[0]?.blocks.map((block) => (block.kind === 'paragraph' ? block.spans : [])) : undefined
+    expect(spans?.[0]).toContainEqual({ text: 'x²', look: {} })
+    expect(spans?.[1]).toContainEqual(expect.objectContaining({ placed: expect.objectContaining({ figure: 0 }) }))
+  })
+
   it('shows a Word document with its format, links, numbered lists, pictures and charts, and passes over what is kept for older apps', async () => {
     const run = (text: string, format = '') => `<w:r>${format === '' ? '' : `<w:rPr>${format}</w:rPr>`}<w:t xml:space="preserve">${text}</w:t></w:r>`
     const body = [

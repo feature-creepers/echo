@@ -13,7 +13,7 @@ import { readOlderExcel, readOlderPowerPoint, readOlderSheets, readOlderWord } f
 import { openCompound } from './compound.ts'
 import { builtInFormat, formatNumber, generalNumber, type NumberFormatOptions, numberColor } from './number-format.ts'
 import { type CellRange, type CellSource, type CellValue, cellRange, emuPixels, Figures, lengthPixels, readChart, readOpenChart } from './office-figures.ts'
-import { mathText } from './office-math.ts'
+import { mathMlText, mathText } from './office-math.ts'
 import {
   BLOCK_LIMIT,
   COLUMN_LIMIT,
@@ -740,14 +740,33 @@ export async function readPresentation(archive: Archive, options: NumberFormatOp
   }
 }
 
-/** A slide's title, from its title placeholder, and the lines of its other shapes, in order. */
+/**
+ * A slide's title, from its title placeholder, and the lines of its other shapes, in order: an equation (`a14:m`) as
+ * linear text in its paragraph, the picture PowerPoint keeps of it for older apps (`mc:Fallback`) passed over.
+ */
 function slideText(xml: string): { title: string; lines: string[] } {
   let title = ''
   const lines: string[] = []
   let shape: { title: boolean; paragraphs: string[] } | undefined
   let paragraph: string | undefined
   let inText = false
+  let passed = 0
+  let equation: XmlEvent[] | undefined
   for (const event of xmlEvents(xml)) {
+    if (passed > 0 || (event.type === 'open' && event.name === 'mc:Fallback')) {
+      if (event.type === 'open' && event.name === 'mc:Fallback') passed++
+      else if (event.type === 'close' && event.name === 'mc:Fallback') passed--
+      continue
+    }
+    if (equation || (event.type === 'open' && event.name === 'm:oMath')) {
+      equation ??= []
+      equation.push(event)
+      if (event.type === 'close' && event.name === 'm:oMath') {
+        if (paragraph !== undefined) paragraph += mathText(equation)
+        equation = undefined
+      }
+      continue
+    }
     if (event.type === 'open') {
       if (event.name === 'p:sp') shape = { title: false, paragraphs: [] }
       else if (event.name === 'p:ph' && shape) shape.title = event.attributes.type === 'title' || event.attributes.type === 'ctrTitle'
@@ -968,6 +987,20 @@ function readFrameStep(frame: OpenFrame, event: XmlEvent, describing: { now: boo
 }
 
 /**
+ * A frame's object as linear text when it is an equation (MathML), for the words of its picture, or in its place when
+ * it keeps none.
+ */
+async function frameFormula(frame: OpenFrame, archive: Archive): Promise<string | undefined> {
+  const object = openPart(frame.object)
+  if (object === undefined) return undefined
+  const xml = await textOf(archive, `${object}/content.xml`).catch(() => undefined)
+  if (!xml || !/<([\w-]+:)?math\b/.test(xml)) return undefined
+  const events = [...xmlEvents(xml)]
+  const start = events.findIndex((event) => event.type === 'open' && /^([\w-]+:)?math$/.test(event.name))
+  return (start < 0 ? '' : mathMlText(events.slice(start))) || undefined
+}
+
+/**
  * The figure a frame shows: its object's chart, else its picture. An object that is not a chart shows the picture its
  * app last drew of it (`ObjectReplacements/`), a StarView metafile among them, or nothing when it keeps none.
  */
@@ -1029,7 +1062,9 @@ export async function readOpenText(archive: Archive): Promise<OfficePreview> {
     const frame = openFrame(node.attributes)
     const describing = { now: false }
     for (const event of nodeEvents(node)) if (event.type !== 'open' || event.name !== 'draw:frame') readFrameStep(frame, event, describing)
-    return frameFigure(frame, preview.figuresRead)
+    const formula = frame.object && !frame.alt ? await frameFormula(frame, archive) : undefined
+    if (formula) frame.alt = formula
+    return (await frameFigure(frame, preview.figuresRead)) ?? formula
   }
   const look = await readOpenLook(archive, content, figureOf).catch(() => undefined)
   return { kind: 'document', markdown: preview.markdown, figures: preview.figuresRead.list, cut: preview.cut || (look?.cut ?? false), look: look?.look }
@@ -1074,8 +1109,12 @@ async function readOpenTextMarkdown(archive: Archive, content: string): Promise<
     }
     if (frames > 0) {
       if (event.type === 'close' && event.name === 'draw:frame' && --frames === 0 && frame) {
+        // An equation's linear text is its picture's words, or stands in its place when it has none.
+        const formula = frame.object && !frame.alt ? await frameFormula(frame, archive) : undefined
+        if (formula) frame.alt = formula
         const figure = await frameFigure(frame, figures)
         if (figure !== undefined && paragraph) paragraph.parts.push({ figure, alt: frame.alt })
+        else if (formula && paragraph) paragraph.parts.push({ text: formula, ...paragraph.format })
         frame = undefined
       } else if (frame && frames === 1) readFrameStep(frame, event, describing)
       continue

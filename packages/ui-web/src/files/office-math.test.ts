@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mathText } from './office-math.ts'
+import { mathMlText, mathText } from './office-math.ts'
 import { xmlEvents } from './xml.ts'
 
 const run = (text: string) => `<m:r><w:rPr><w:rFonts w:ascii="Cambria Math"/></w:rPr><m:t>${text}</m:t></m:r>`
@@ -57,5 +57,36 @@ describe('an equation of Word', () => {
     expect(mathText([...xmlEvents(`<m:oMath><m:f>${argument(run('a'), 'm:num')}`)])).toBe('a/')
     const deep = '<m:d><m:e>'.repeat(200) + run('x') + '</m:e></m:d>'.repeat(200)
     expect(read(deep)).toContain('(((')
+  })
+})
+
+const mathMl = (inside: string, prefix = 'math:') =>
+  mathMlText([...xmlEvents(`<${prefix}math>${inside.replaceAll('<', `<${prefix}`).replaceAll(`<${prefix}/`, `</${prefix}`)}</${prefix}math>`)])
+
+describe('an equation of MathML, as OpenDocument keeps one', () => {
+  it.each([
+    ['its symbols in order', '<mi>E</mi><mo>=</mo><mi>m</mi><msup><mi>c</mi><mn>2</mn></msup>', 'E=mc²'],
+    ['a fraction, its longer parts grouped', '<mfrac><mrow><mi>x</mi><mo>+</mo><mn>1</mn></mrow><mi>y</mi></mfrac>', '(x+1)/y'],
+    ['an index and a power', '<msubsup><mi>a</mi><mn>1</mn><mi>n</mi></msubsup>', 'a₁ⁿ'],
+    ['a power Unicode has no characters for', '<msup><mi>e</mi><mrow><mi>i</mi><mi>π</mi></mrow></msup>', 'e^(iπ)'],
+    ['a square root and a cube root', '<msqrt><mn>2</mn></msqrt><mroot><mi>x</mi><mn>3</mn></mroot>', '√2∛x'],
+    ['a sum with its limits', '<munderover><mo>∑</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>n</mi></munderover><mi>i</mi>', '∑_(i=1)^n i'],
+    ['brackets and their separators', '<mfenced open="[" close="]"><mi>a</mi><mi>b</mi></mfenced>', '[a,b]'],
+    [
+      'a table, row by row',
+      '<mtable><mtr><mtd><mn>1</mn></mtd><mtd><mn>0</mn></mtd></mtr><mtr><mtd><mn>0</mn></mtd><mtd><mn>1</mn></mtd></mtr></mtable>',
+      '[1 0; 0 1]'
+    ],
+    [
+      'its layout only, the source of the app that wrote it passed over',
+      '<semantics><mrow><mi>a</mi><mo>+</mo><mi>b</mi></mrow><annotation encoding="StarMath 5.0">a + b</annotation></semantics>',
+      'a+b'
+    ]
+  ])('reads %s', (_, inside, expected) => {
+    expect(mathMl(inside)).toBe(expected)
+  })
+
+  it('reads one with no prefix as well', () => {
+    expect(mathMl('<mfrac><mi>a</mi><mi>b</mi></mfrac>', '')).toBe('a/b')
   })
 })

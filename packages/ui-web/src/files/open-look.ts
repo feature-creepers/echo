@@ -177,7 +177,7 @@ class OpenReader {
   private readonly book: StyleBook
   private readonly fonts: Map<string, string>
   private readonly masters: Map<string, Master>
-  private readonly figureOf: (frame: XmlNode) => Promise<number | undefined>
+  private readonly figureOf: (frame: XmlNode) => Promise<number | string | undefined>
   private blocks = 0
   cut = false
   readonly pages: { master: Master; bands: PageBand[]; notes: DocumentPage['notes'] }[] = []
@@ -208,7 +208,7 @@ class OpenReader {
     fonts: Map<string, string>,
     masters: Map<string, Master>,
     first: Master,
-    figureOf: (frame: XmlNode) => Promise<number | undefined>
+    figureOf: (frame: XmlNode) => Promise<number | string | undefined>
   ) {
     this.book = book
     this.fonts = fonts
@@ -647,6 +647,8 @@ class OpenReader {
     }
     const figure = await this.figureOf(frame)
     if (figure === undefined) return undefined
+    // An equation with no picture, as its linear text.
+    if (typeof figure === 'string') return { text: figure, look: {} }
     const title = childAt(frame, 'svg:title') ?? childAt(frame, 'svg:desc')
     const alt = title?.children.map((one) => one.text).join('') ?? ''
     return { placed: { figure, alt, width, height, ...placement } }
@@ -876,7 +878,7 @@ function masterOf(master: XmlNode, layouts: ReadonlyMap<string, XmlNode>): Maste
 export async function readOpenLook(
   archive: Archive,
   contentXml: string,
-  figureOf: (frame: XmlNode) => Promise<number | undefined>
+  figureOf: (frame: XmlNode) => Promise<number | string | undefined>
 ): Promise<{ look: DocumentLook; cut: boolean } | undefined> {
   const document = childAt(xmlTree(contentXml), 'office:document-content')
   const body = childAt(document, 'office:body', 'office:text')
