@@ -49,7 +49,7 @@ export type CellKind = 'number' | 'text' | 'logical' | 'error' | 'empty'
 // Colours
 
 /** The 64 colours of Excel's palette, by their index, before a workbook changes them. */
-const PALETTE = [
+export const PALETTE = [
   '000000',
   'ffffff',
   'ff0000',
@@ -139,7 +139,7 @@ export function readWorkbookTheme(xml: string | undefined): Pick<WorkbookColors,
 }
 
 /** A colour lightened or darkened by a tint from -1 to 1, as Excel does, through its lightness. */
-function tinted(color: string, tint: number): string {
+export function tinted(color: string, tint: number): string {
   const paint = fromHex(color.slice(1))
   if (!paint || !Number.isFinite(tint) || tint === 0) return color
   const [hue, saturation, lightness] = toLightness(paint)
@@ -276,7 +276,7 @@ export function readWorkbookStyles(xml: string | undefined, theme: Pick<Workbook
 }
 
 /** The width of a font's widest digit in pixels, which Excel measures its columns by. */
-function digitWidth(text: TextLook): number {
+export function digitWidth(text: TextLook): number {
   const size = text.size ?? 11
   const ratio = /arial|helvetica|verdana|tahoma|segoe/i.test(text.font ?? '') ? 0.7 : 0.64
   return Math.max(4, Math.round(size * ratio))
@@ -339,7 +339,38 @@ export function readSheetLook(xml: string, layout: SheetLayout, styles: Workbook
     return height !== undefined && Number.isFinite(height) && height >= 0 ? Math.min(height, 409) : usual
   })
 
-  // Each cell's look, the same looks shared.
+  const merges: MergedCells[] = []
+  for (const merge of childrenNamed(childAt(root, 'mergeCells'), 'mergeCell')) {
+    const found = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/i.exec(merge.attributes.ref ?? '')
+    if (!found) continue
+    const [first, last] = [cellPlace(found[1] as string, found[2] as string), cellPlace(found[3] as string, found[4] as string)]
+    if (first.row >= size.rows || first.column >= size.columns || last.row < first.row || last.column < first.column) continue
+    merges.push({
+      row: first.row,
+      column: first.column,
+      rows: Math.min(last.row, size.rows - 1) - first.row + 1,
+      columns: Math.min(last.column, size.columns - 1) - first.column + 1
+    })
+  }
+  const zoom = Number(view.zoomScale)
+  return {
+    columns,
+    rows,
+    ...cellLooks(layout, styles, size),
+    merges,
+    grid: view.showGridLines !== '0' && view.showGridLines !== 'false',
+    headings: view.showRowColHeaders !== '0' && view.showRowColHeaders !== 'false',
+    zoom: Number.isFinite(zoom) && zoom >= 10 && zoom <= 400 ? zoom / 100 : 1,
+    text: styles.text
+  }
+}
+
+/**
+ * Each cell's look, from its style, where its content sits by what it holds when its style says nothing, and the
+ * colour its number format writes it in; the same looks shared.
+ */
+export function cellLooks(layout: SheetLayout, styles: WorkbookStyles, size: { rows: number; columns: number }): Pick<SheetLook, 'cells' | 'looks'> {
+  const digit = digitWidth(styles.text)
   const looks: CellLook[] = []
   const known = new Map<string, number>()
   const cells = Array.from({ length: size.rows }, (_, row) =>
@@ -368,32 +399,7 @@ export function readSheetLook(xml: string, layout: SheetLayout, styles: Workbook
       return index
     })
   )
-
-  const merges: MergedCells[] = []
-  for (const merge of childrenNamed(childAt(root, 'mergeCells'), 'mergeCell')) {
-    const found = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/i.exec(merge.attributes.ref ?? '')
-    if (!found) continue
-    const [first, last] = [cellPlace(found[1] as string, found[2] as string), cellPlace(found[3] as string, found[4] as string)]
-    if (first.row >= size.rows || first.column >= size.columns || last.row < first.row || last.column < first.column) continue
-    merges.push({
-      row: first.row,
-      column: first.column,
-      rows: Math.min(last.row, size.rows - 1) - first.row + 1,
-      columns: Math.min(last.column, size.columns - 1) - first.column + 1
-    })
-  }
-  const zoom = Number(view.zoomScale)
-  return {
-    columns,
-    rows,
-    cells,
-    looks,
-    merges,
-    grid: view.showGridLines !== '0' && view.showGridLines !== 'false',
-    headings: view.showRowColHeaders !== '0' && view.showRowColHeaders !== 'false',
-    zoom: Number.isFinite(zoom) && zoom >= 10 && zoom <= 400 ? zoom / 100 : 1,
-    text: styles.text
-  }
+  return { cells, looks }
 }
 
 /** A cell's row and column from its letters and number, from 0. */

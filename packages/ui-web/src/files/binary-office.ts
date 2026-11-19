@@ -14,7 +14,7 @@ import { unpack } from './archive.ts'
 import { type ChartContext, type ChartRecord, readGraphChart, readOlderChart } from './binary-chart.ts'
 import { damaged, operandSize, type Reader, reader } from './binary-records.ts'
 import { type Compound, openCompound } from './compound.ts'
-import { builtInFormat, formatNumber, generalNumber, type NumberFormatOptions } from './number-format.ts'
+import { builtInFormat, formatNumber, generalNumber, type NumberFormatOptions, numberColor } from './number-format.ts'
 import {
   ART,
   ArtFigures,
@@ -45,8 +45,10 @@ import {
   SHEET_LIMIT,
   SLIDE_LIMIT
 } from './office-text.ts'
+import { type OlderBookRecords, type OlderSheetRecords, readOlderBookStyles, readOlderPalette, readOlderSheetLook } from './older-sheet-look.ts'
 import { drawOlderSlide, type OlderDeck, olderDeck } from './older-slide-drawing.ts'
 import { type FloatingAnchor, readOlderWordLook, type TextPiece } from './older-word-look.ts'
+import { type CellKind, paletteColor, type SheetLayout, type SheetLook } from './sheet-look.ts'
 import { DRAWINGS_LIMIT } from './slide-svg.ts'
 
 /** The most characters of a document read: past them, a preview shows the start. */
@@ -1016,17 +1018,34 @@ function joined(parts: readonly Uint8Array[]): Uint8Array {
 export async function readOlderExcel(bytes: Uint8Array, options: NumberFormatOptions = {}): Promise<OfficePreview> {
   const parts = workbookParts(bytes, options)
   await parts.figures.drawPacked()
-  return { kind: 'workbook', sheets: withFigures(parts).map(({ name, rows, cut, figures }) => ({ name, rows, cut, figures })) }
+  // Each sheet's look, from its records and the workbook's styles; a sheet whose look cannot be read shows as a table.
+  const styles = parts.looks && (await readOlderBookStyles(parts.looks).catch(() => undefined))
+  return {
+    kind: 'workbook',
+    sheets: withFigures(parts).map(({ name, rows, cut, figures }, index) => {
+      const { layout, laid } = parts.sheets[index] ?? {}
+      let look: SheetLook | undefined
+      if (styles && layout && laid && rows.length > 0)
+        try {
+          look = readOlderSheetLook(laid, layout, styles, { rows: rows.length, columns: Math.max(0, ...rows.map((row) => row.length)) })
+        } catch {
+          look = undefined
+        }
+      return { name, rows, cut, figures, look }
+    })
+  }
 }
 
-/** A workbook's sheets as they are read, each with the places of its figures in the workbook's. */
+/** A workbook's sheets as they are read, each with the places of its figures in the workbook's and the records of its look. */
 interface WorkbookParts {
-  sheets: (Omit<OlderSheet, 'figures'> & { places: number[] })[]
+  sheets: (Omit<OlderSheet, 'figures'> & { places: number[]; layout?: SheetLayout | undefined; laid?: OlderSheetRecords | undefined })[]
   figures: ArtFigures
+  looks?: OlderBookRecords | undefined
 }
 
 /** The sheets of a workbook with their figures as they are now. */
-const withFigures = ({ sheets, figures }: WorkbookParts): OlderSheet[] => sheets.map(({ places, ...sheet }) => ({ ...sheet, figures: figures.at(places) }))
+const withFigures = ({ sheets, figures }: WorkbookParts): OlderSheet[] =>
+  sheets.map(({ name, rows, cut, cells, places }) => ({ name, rows, cut, cells, figures: figures.at(places) }))
 
 /** The beginnings of a part of a workbook (`BOF`), in Excel 2, 3, 4, and 5 and later. */
 const BEGINNINGS = new Map([
@@ -1152,6 +1171,10 @@ function bookParts(stream: Uint8Array, options: NumberFormatOptions): WorkbookPa
   const codes = new Map<number, string>()
   const styles: number[] = []
   let date1904 = false
+  // The records of its look: its fonts, its styles of cells in full, its palette, their colours in full and its theme.
+  const looks: OlderBookRecords = { five, fonts: [], styles: [], palette: undefined, extended: [], theme: undefined, eight }
+  const theme: Uint8Array[] = []
+  let theming = false
   let shared: Uint8Array[] | undefined
   const readShared = () => {
     if (!shared) return
@@ -1171,6 +1194,12 @@ function bookParts(stream: Uint8Array, options: NumberFormatOptions): WorkbookPa
       continue
     }
     grouping = false
+    // A theme's package continues past its record in records of their own (`CONTINUEFRT11`), after a header of four bytes.
+    if (theming && record.type === 0x0875 && record.size >= 4) {
+      theme.push(book.bytes(record.at + 4, record.size - 4))
+      continue
+    }
+    theming = false
     if (shared && record.type === 0x003c) {
       shared.push(book.bytes(record.at, record.size))
       continue
@@ -1184,8 +1213,16 @@ function bookParts(stream: Uint8Array, options: NumberFormatOptions): WorkbookPa
       const length = book.u16(record.at + 2)
       const wide = (book.u8(record.at + 4) & 0x01) !== 0
       codes.set(book.u16(record.at), wide ? utf16(book.bytes(record.at + 5, length * 2)) : latin1(book.bytes(record.at + 5, length)))
-    } else if (record.type === 0x00e0 && record.size >= 4) styles.push(book.u16(record.at + 2))
-    else if (record.type === 0x0022 && record.size >= 2) date1904 = book.u16(record.at) === 1
+    } else if (record.type === 0x00e0 && record.size >= 4) {
+      styles.push(book.u16(record.at + 2))
+      looks.styles.push(book.bytes(record.at, record.size))
+    } else if (record.type === 0x0031 && record.size >= 15) looks.fonts.push(book.bytes(record.at, record.size))
+    else if (record.type === 0x0092) looks.palette = book.bytes(record.at, record.size)
+    else if (record.type === 0x087d && record.size >= 20) looks.extended.push(book.bytes(record.at, record.size))
+    else if (record.type === 0x0896 && record.size > 16) {
+      theme.push(book.bytes(record.at + 16, record.size - 16))
+      theming = true
+    } else if (record.type === 0x0022 && record.size >= 2) date1904 = book.u16(record.at) === 1
     else if (record.type === 0x00eb) {
       group.push(book.bytes(record.at, record.size))
       grouping = true
@@ -1213,6 +1250,10 @@ function bookParts(stream: Uint8Array, options: NumberFormatOptions): WorkbookPa
     return codes.get(id) ?? builtInFormat(id)
   }
   const shown: NumberFormatOptions = { ...options, date1904 }
+  if (theme.length > 0) looks.theme = joined(theme)
+  // The palette a format names its colours from (`[Color10]`), the workbook's own over Excel's.
+  const colors = { palette: readOlderPalette(looks.palette) }
+  const palette = (index: number) => paletteColor(index, colors)
   const figures = new ArtFigures()
   const store = joined(group)
   const [drawingGroup] = artRecords(store)
@@ -1223,7 +1264,7 @@ function bookParts(stream: Uint8Array, options: NumberFormatOptions): WorkbookPa
     .map(({ name, at, chart }) =>
       chart
         ? { name, rows: [], cut: false, cells: new Map<string, CellValue>(), drawing: new Uint8Array(), charts: [chartRecords(book, at)], objects: [] }
-        : { name, ...sheetRows(book, at, { strings, version: five ? 5 : 8, eight }, shownBy, shown) }
+        : { name, ...sheetRows(book, at, { strings, version: five ? 5 : 8, eight }, shownBy, shown, palette) }
     )
   // The sheets are read before their charts, which may name their cells rather than keep their values.
   const context: ChartContext = {
@@ -1241,7 +1282,8 @@ function bookParts(stream: Uint8Array, options: NumberFormatOptions): WorkbookPa
   }
   return {
     sheets: read.map(({ drawing, charts, objects, ...sheet }) => ({ ...sheet, places: sheetFigures({ drawing, charts, objects }, stored, figures, context) })),
-    figures
+    figures,
+    looks
   }
 }
 
@@ -1315,11 +1357,24 @@ function sheetRows(
   from: number,
   text: { strings: readonly string[]; version: number; eight: (bytes: Uint8Array) => string },
   formatOf: (style: number) => string,
-  options: NumberFormatOptions
-): { rows: string[][]; cut: boolean; cells: Map<string, CellValue> } & SheetObjects {
+  options: NumberFormatOptions,
+  palette: (index: number) => string | undefined = () => undefined
+): { rows: string[][]; cut: boolean; cells: Map<string, CellValue>; layout: SheetLayout; laid: OlderSheetRecords } & SheetObjects {
   const { strings, version, eight } = text
   const five = version < 8
   const rows: string[][] = []
+  // Each cell's style, what it holds and the colour its format writes its number in, and the records of the sheet's layout, for its look.
+  const layout: SheetLayout = { styles: [], kinds: [], heights: [], numberColors: [] }
+  const laid: OlderSheetRecords = { columns: [], rows: [], merges: [] }
+  const styled = (row: number, column: number, style: number, kind: CellKind, value?: number) => {
+    if (row >= ROW_LIMIT || column >= COLUMN_LIMIT) return
+    layout.styles[row] ??= []
+    layout.kinds[row] ??= []
+    layout.numberColors[row] ??= []
+    layout.styles[row][column] = style
+    layout.kinds[row][column] = kind
+    if (value !== undefined) layout.numberColors[row][column] = numberColor(value, formatOf(style), palette)
+  }
   // The sheet's drawing, in records of its own and those that continue them, among the records of its objects, and
   // each chart's records, between its own beginning and end.
   const drawing: Uint8Array[] = []
@@ -1344,6 +1399,7 @@ function sheetRows(
   const number = (row: number, column: number, value: number, style: number) => {
     const code = formatOf(style)
     put(row, column, /^general$/i.test(code) ? generalNumber(value) : formatNumber(value, code, options), value)
+    styled(row, column, style, 'number', value)
   }
   let depth = 0
   // A formula's text result follows it in a record of its own.
@@ -1356,6 +1412,7 @@ function sheetRows(
       const kind = book.u8(result)
       if (kind === 0) waiting = { row, column }
       else if (kind === 1 || kind === 2) put(row, column, flag(book.u8(result + 2), kind === 2))
+      styled(row, column, style, kind === 0 ? 'text' : kind === 1 ? 'logical' : kind === 2 ? 'error' : 'empty')
     }
   }
   // A formula's text result, after the formula it is the result of.
@@ -1392,15 +1449,32 @@ function sheetRows(
       else if (type === 0x0007) result(eight(book.bytes(at + 1, book.u8(at))))
       continue
     }
-    if (type === 0x00fd) put(row(), column(), strings[book.u32(at + 6)] ?? '')
-    else if (type === 0x0203) number(row(), column(), book.f64(at + 6), book.u16(at + 4))
+    // The records of the sheet's layout, and the cells with a style but no value.
+    if (type === 0x007d) laid.columns.push(book.bytes(at, size))
+    else if (type === 0x0208) laid.rows.push(book.bytes(at, size))
+    else if (type === 0x00e5) laid.merges.push(book.bytes(at, size))
+    else if (type === 0x0055 && size >= 2) laid.defaultWidth = book.u16(at)
+    else if (type === 0x0099 && size >= 2) laid.standardWidth = book.u16(at)
+    else if (type === 0x0225 && size >= 4) laid.defaultHeight = book.u16(at + 2)
+    else if (type === 0x023e) laid.window = book.bytes(at, size)
+    else if (type === 0x00a0) laid.zoom = book.bytes(at, size)
+    else if (type === 0x0201 && size >= 6) styled(row(), column(), book.u16(at + 4), 'empty')
+    else if (type === 0x00be && size >= 6)
+      for (let index = 0; index < Math.min(Math.floor((size - 6) / 2), COLUMN_LIMIT); index++)
+        styled(row(), column() + index, book.u16(at + 4 + index * 2), 'empty')
+    if (type === 0x00fd) {
+      put(row(), column(), strings[book.u32(at + 6)] ?? '')
+      styled(row(), column(), book.u16(at + 4), 'text')
+    } else if (type === 0x0203) number(row(), column(), book.f64(at + 6), book.u16(at + 4))
     else if (type === 0x027e) number(row(), column(), rkNumber(book.u32(at + 6)), book.u16(at + 4))
     else if (type === 0x00bd) {
       const first = column()
       for (let index = 0; index < Math.floor((size - 6) / 6); index++)
         number(row(), first + index, rkNumber(book.u32(at + 6 + index * 6)), book.u16(at + 4 + index * 6))
-    } else if (type === 0x0205) put(row(), column(), flag(book.u8(at + 6), book.u8(at + 7) !== 0))
-    else if (type === 0x0204 || type === 0x0207 || type === 0x00d6) {
+    } else if (type === 0x0205) {
+      put(row(), column(), flag(book.u8(at + 6), book.u8(at + 7) !== 0))
+      styled(row(), column(), book.u16(at + 4), book.u8(at + 7) !== 0 ? 'error' : 'logical')
+    } else if (type === 0x0204 || type === 0x0207 || type === 0x00d6) {
       // Text in a cell, plain or with runs of format after it (Excel 5 and 95), or a formula's text result.
       const start = type === 0x0207 ? at : at + 6
       const length = book.u16(start)
@@ -1408,12 +1482,13 @@ function sheetRows(
       const text = five ? eight(book.bytes(start + 2, length)) : wide ? utf16(book.bytes(start + 3, length * 2)) : latin1(book.bytes(start + 3, length))
       if (type !== 0x0207) {
         put(row(), column(), text)
+        styled(row(), column(), book.u16(at + 4), 'text')
         waiting = undefined
       } else result(text)
     } else if (FORMULAS.has(type)) formula(row(), column(), at + 6, book.u16(at + 4))
   }
   while (rows.length > 0 && (rows.at(-1)?.every((value) => value === '') ?? false)) rows.pop()
-  return { rows, cut, cells, drawing: joined(drawing), charts, objects }
+  return { rows, cut, cells, drawing: joined(drawing), charts, objects, layout, laid }
 }
 
 // PowerPoint

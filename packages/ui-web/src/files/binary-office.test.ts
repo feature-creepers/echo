@@ -199,8 +199,9 @@ describe('a compound file', () => {
   })
 })
 
-/** A preview without the look of its document, which `older-word-look.test.ts` checks. */
+/** A preview without the look of its document or its sheets, which `older-word-look.test.ts` and `older-sheet-look.test.ts` check. */
 function textual(preview: OfficePreview): OfficePreview {
+  if (preview.kind === 'workbook') return { ...preview, sheets: preview.sheets.map(({ look: _look, ...sheet }) => sheet) }
   if (preview.kind !== 'document') return preview
   const { look: _look, ...rest } = preview
   return rest
@@ -1024,7 +1025,8 @@ describe('an Excel 97 workbook', () => {
   })
 
   it('reads each worksheet as rows of its values as stored, its strings across the records that continue them', async () => {
-    expect(await readOlderExcel(workbook())).toEqual({
+    const preview = await readOlderExcel(workbook())
+    expect(textual(preview)).toEqual({
       kind: 'workbook',
       sheets: [
         {
@@ -1035,6 +1037,9 @@ describe('an Excel 97 workbook', () => {
         }
       ]
     })
+    // Its look, of as many rows and columns, a workbook with no styles giving its cells none of their own.
+    const look = preview.kind === 'workbook' ? preview.sheets[0]?.look : undefined
+    expect([look?.rows.length, look?.columns.length, look?.looks]).toEqual([6, 3, []])
   })
 
   it('keeps each cell with its number, for a chart that names it', () => {
@@ -1159,7 +1164,7 @@ describe('an Excel 97 workbook', () => {
     const length = globals(0).reduce((sum, one) => sum + one.length, 0)
     const all = new Bytes()
     for (const part of [...globals(length), ...sheet]) all.raw(part)
-    expect(await readOlderExcel(compound({ Book: all.done() }))).toEqual({
+    expect(textual(await readOlderExcel(compound({ Book: all.done() })))).toEqual({
       kind: 'workbook',
       sheets: [
         {
