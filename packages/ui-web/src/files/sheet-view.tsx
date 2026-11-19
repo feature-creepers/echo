@@ -7,7 +7,7 @@
 
 import type { CSSProperties, ReactNode } from 'react'
 import type { BorderLook } from './document-look.ts'
-import type { SheetLook } from './sheet-look.ts'
+import type { Rotation, SheetLook } from './sheet-look.ts'
 import { fontStack } from './slide-svg.ts'
 
 const pt = (value: number) => `${Math.round(value * 100) / 100}pt`
@@ -120,8 +120,11 @@ export function SheetView({ look, rows }: { look: SheetLook; rows: readonly (rea
                     return width
                   }
                   const own = columns[column] ?? 0
-                  const before = !cell?.wrap && text !== '' && merged === undefined && cell?.align !== 'left' && cell?.align !== 'justify' ? free(-1) : 0
-                  const after = !cell?.wrap && text !== '' && merged === undefined && cell?.align !== 'right' ? free(1) : 0
+                  // Turned text stays in its cell's box, as it is drawn there.
+                  const turn = text === '' ? undefined : cell?.rotation
+                  const runs = !cell?.wrap && text !== '' && merged === undefined && turn === undefined
+                  const before = runs && cell?.align !== 'left' && cell?.align !== 'justify' ? free(-1) : 0
+                  const after = runs && cell?.align !== 'right' ? free(1) : 0
                   const reach =
                     cell?.align === 'right'
                       ? { start: before, end: 0 }
@@ -137,7 +140,8 @@ export function SheetView({ look, rows }: { look: SheetLook; rows: readonly (rea
                     borderTop: row === 0 ? borderCss(cell?.borders.top) : undefined,
                     borderLeft: column === 0 ? borderCss(cell?.borders.left) : undefined,
                     verticalAlign: cell?.vertical ?? 'bottom',
-                    overflow: spills ? 'visible' : 'hidden'
+                    overflow: spills || turn !== undefined ? 'visible' : 'hidden',
+                    ...(turn === undefined ? {} : { position: 'relative', textAlign: cell?.align ?? 'left' })
                   }
                   const content: CSSProperties = {
                     ...textCss(cell),
@@ -161,7 +165,8 @@ export function SheetView({ look, rows }: { look: SheetLook; rows: readonly (rea
                       rowSpan={merged && merged.rows > 1 ? look.rows.slice(row, row + merged.rows).filter((one) => one > 0).length : undefined}
                       style={style}
                     >
-                      {text !== '' && <div style={content}>{text}</div>}
+                      {text !== '' && turn === undefined && <div style={content}>{text}</div>}
+                      {turn !== undefined && <div style={turnedCss(cell, turn)}>{text}</div>}
                     </td>
                   )
                 })}
@@ -172,6 +177,38 @@ export function SheetView({ look, rows }: { look: SheetLook; rows: readonly (rea
       </table>
     </div>
   )
+}
+
+/**
+ * Turned text, drawn as Excel draws it: a quarter turn or letters stacked as a line running down, read from the
+ * bottom when it turns counterclockwise; any other angle as its line turned at the edge it sits on.
+ */
+function turnedCss(cell: SheetLook['looks'][number] | undefined, turn: Rotation): CSSProperties {
+  const text = { ...textCss(cell), whiteSpace: 'pre', lineHeight: 1.2 } as const
+  if (turn === 'stacked' || Math.abs(turn) === 90)
+    return {
+      ...text,
+      display: 'inline-block',
+      padding: `${pt(1.5)} 0`,
+      writingMode: 'vertical-rl',
+      textOrientation: turn === 'stacked' ? 'upright' : undefined,
+      transform: turn === 90 ? 'rotate(180deg)' : undefined
+    }
+  // Turned about its middle when centred either way, else about the corner that stays nearest the edge it sits on:
+  // the start of a line that rises from the bottom or falls from the top, the end of one that falls to the bottom or
+  // rises to the top.
+  if (cell?.align === 'center' || cell?.align === 'right' || cell?.vertical === 'middle')
+    return { ...text, position: 'absolute', left: '50%', top: '50%', transformOrigin: 'left top', transform: `rotate(${-turn}deg) translate(-50%, -50%)` }
+  const top = cell?.vertical === 'top'
+  return {
+    ...text,
+    position: 'absolute',
+    left: pt(1.5),
+    top: top ? 0 : undefined,
+    bottom: top ? undefined : 0,
+    transformOrigin: `${turn > 0 !== top ? 'left' : 'right'} ${top ? 'top' : 'bottom'}`,
+    transform: `rotate(${-turn}deg)`
+  }
 }
 
 function textCss(cell: SheetLook['looks'][number] | undefined): CSSProperties {

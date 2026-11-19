@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { type OlderBookRecords, readOlderBookStyles, readOlderPalette, readOlderSheetLook } from './older-sheet-look.ts'
-import type { SheetLayout } from './sheet-look.ts'
+import type { Rotation, SheetLayout } from './sheet-look.ts'
 
 /** Little-endian bytes written in order. */
 class Bytes {
@@ -150,6 +150,20 @@ describe('the styles of an Excel 97 workbook', () => {
       indent: 3
     })
     expect(readOlderPalette(palette).slice(7, 10)).toEqual(['00ffff', '123456', 'ffffff'])
+  })
+
+  it.each<[string, Partial<OlderBookRecords>, number, Rotation | undefined]>([
+    ['Excel 97 by any angle', {}, 45, 45],
+    ['Excel 97 down', {}, 150, -60],
+    ['Excel 97 stacked', {}, 255, 'stacked'],
+    ['Excel 5 a quarter counterclockwise', { version: 5 }, 2, 90],
+    ['Excel 5 a quarter clockwise', { version: 5 }, 3, -90],
+    ['Excel 5 stacked', { version: 5 }, 1, 'stacked']
+  ])('turns a cell’s text as %s', async (_, version, turn, expected) => {
+    const bytes = style({})
+    bytes[7] = turn
+    const styles = await readOlderBookStyles(records({ ...version, styles: [bytes] }))
+    expect(styles.cells[0]?.rotation).toBe(expected)
   })
 
   it('reads a style of Excel 5, its parts at places of their own', async () => {

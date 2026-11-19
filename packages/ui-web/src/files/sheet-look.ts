@@ -17,6 +17,21 @@ export interface CellLook {
   vertical: 'top' | 'middle' | 'bottom'
   wrap: boolean
   indent: number
+  /** How far its text is turned, in degrees counterclockwise, or its letters stacked one under another. */
+  rotation?: Rotation | undefined
+}
+
+/** A cell's text turned, in degrees counterclockwise from -180 to 180, or its letters stacked one under another. */
+export type Rotation = number | 'stacked'
+
+/**
+ * A rotation as Excel writes it (`textRotation`, a style's byte of rotation): 1 to 90 degrees counterclockwise, 91 to
+ * 180 for 1 to 90 clockwise, and 255 for letters stacked one under another; none for 0 or anything else.
+ */
+export function excelRotation(value: number): Rotation | undefined {
+  if (value === 255) return 'stacked'
+  if (value >= 1 && value <= 90) return value
+  return value > 90 && value <= 180 ? 90 - value : undefined
 }
 
 /** A block of cells merged into one, from its first. */
@@ -242,6 +257,7 @@ export interface WorkbookStyles {
     vertical?: string | undefined
     wrap: boolean
     indent: number
+    rotation?: Rotation | undefined
   }[]
   text: TextLook
 }
@@ -269,7 +285,8 @@ export function readWorkbookStyles(xml: string | undefined, theme: Pick<Workbook
       align: alignment.horizontal,
       vertical: alignment.vertical,
       wrap: alignment.wrapText === '1' || alignment.wrapText === 'true',
-      indent: Math.min(Math.max(Number(alignment.indent) || 0, 0), 250)
+      indent: Math.min(Math.max(Number(alignment.indent) || 0, 0), 250),
+      rotation: excelRotation(Number(alignment.textRotation ?? 0))
     }
   })
   return { colors, cells, text: fonts[0] ?? {} }
@@ -380,7 +397,7 @@ export function cellLooks(layout: SheetLayout, styles: WorkbookStyles, size: { r
       const numberColor = layout.numberColors[row]?.[column]
       const read = styles.cells[style ?? 0] ?? styles.cells[0]
       if (!read && numberColor === undefined) return undefined
-      const general = kind === 'number' ? 'right' : kind === 'logical' || kind === 'error' ? 'center' : 'left'
+      const general = generalAlign(kind, read?.rotation)
       const look: CellLook = {
         text: numberColor === undefined ? (read?.text ?? styles.text) : { ...(read?.text ?? styles.text), color: numberColor },
         fill: read?.fill,
@@ -390,6 +407,7 @@ export function cellLooks(layout: SheetLayout, styles: WorkbookStyles, size: { r
         wrap: read?.wrap ?? false,
         indent: ((read?.indent ?? 0) * 3 * digit * 3) / 4
       }
+      if (read?.rotation !== undefined) look.rotation = read.rotation
       const key = JSON.stringify(look)
       let index = known.get(key)
       if (index === undefined) {
@@ -400,6 +418,16 @@ export function cellLooks(layout: SheetLayout, styles: WorkbookStyles, size: { r
     })
   )
   return { cells, looks }
+}
+
+/**
+ * Where a cell's content sits when its style says nothing: numbers to the right, text to the left, the rest centred;
+ * turned text as Excel sets it, a quarter turn counterclockwise to the right, clockwise to the left, stacked centred.
+ */
+export function generalAlign(kind: CellKind, rotation: Rotation | undefined): CellLook['align'] {
+  if (rotation === 'stacked') return 'center'
+  if (rotation === 90 || rotation === -90) return rotation > 0 ? 'right' : 'left'
+  return kind === 'number' ? 'right' : kind === 'logical' || kind === 'error' ? 'center' : 'left'
 }
 
 /** A cell's row and column from its letters and number, from 0. */

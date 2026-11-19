@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { numberColor } from './number-format.ts'
-import { readSheetLook, readWorkbookStyles, readWorkbookTheme, type SheetLayout, workbookColor } from './sheet-look.ts'
+import { excelRotation, type Rotation, readSheetLook, readWorkbookStyles, readWorkbookTheme, type SheetLayout, workbookColor } from './sheet-look.ts'
 import { xmlTree } from './xml.ts'
 
 const THEME = `<a:theme xmlns:a="a"><a:themeElements><a:clrScheme name="Office">
@@ -30,12 +30,30 @@ const STYLES = `<styleSheet>
 <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
 <xf numFmtId="0" fontId="1" fillId="2" borderId="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
 <xf numFmtId="164" fontId="2" fillId="3" borderId="0"><alignment horizontal="left" indent="2" vertical="top"/></xf>
+<xf numFmtId="0" fontId="0" fillId="0" borderId="0"><alignment textRotation="135"/></xf>
 </cellXfs>
 </styleSheet>`
 
 const styles = () => readWorkbookStyles(STYLES, readWorkbookTheme(THEME))
 
 describe('a workbook as it looks', () => {
+  it.each<[number, Rotation | undefined]>([
+    [0, undefined],
+    [45, 45],
+    [90, 90],
+    [91, -1],
+    [135, -45],
+    [180, -90],
+    [255, 'stacked'],
+    [200, undefined]
+  ])('turns text written %i by %s', (value, expected) => {
+    expect(excelRotation(value)).toBe(expected)
+  })
+
+  it('reads how far a style turns its text', () => {
+    expect(styles().cells.map((cell) => cell.rotation)).toEqual([undefined, undefined, undefined, -45])
+  })
+
   it('reads its fonts, fills and borders in their colours: given, of the theme tinted, of the palette', () => {
     const read = styles()
     expect(read.text).toEqual({

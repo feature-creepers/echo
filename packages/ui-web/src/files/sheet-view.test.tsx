@@ -19,6 +19,24 @@ const sheet = (more: Partial<SheetLook>): SheetLook => ({
 })
 
 describe('a sheet shown as it looks', () => {
+  it('turns text in its cell: a quarter as a line running down, read from the bottom when it turns counterclockwise, stacked letters upright, any other angle about its start', () => {
+    const html = renderToStaticMarkup(
+      <SheetView
+        look={sheet({
+          columns: [48, 48, 48, 48],
+          rows: [40],
+          cells: [[0, 1, 2, 3]],
+          looks: [cell({ rotation: 90 }), cell({ rotation: -90 }), cell({ rotation: 'stacked' }), cell({ rotation: 45 })]
+        })}
+        rows={[['Up', 'Down', 'Ab', 'Rising', 'Spills']]}
+      />
+    )
+    expect(html).toContain('writing-mode:vertical-rl;transform:rotate(180deg)">Up<')
+    expect(html).toContain('writing-mode:vertical-rl">Down<')
+    expect(html).toContain('writing-mode:vertical-rl;text-orientation:upright">Ab<')
+    expect(html).toContain('bottom:0;transform-origin:left bottom;transform:rotate(-45deg)">Rising<')
+  })
+
   it.each<[number, string]>([
     [0, 'A'],
     [25, 'Z'],

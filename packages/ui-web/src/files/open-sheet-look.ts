@@ -8,7 +8,7 @@
 import { colorOf } from './document-look.ts'
 import { bordersOf, points, textLook } from './open-look.ts'
 import type { Properties, StyleBook } from './open-styles.ts'
-import type { CellKind, CellLook, MergedCells, SheetLook } from './sheet-look.ts'
+import { type CellKind, type CellLook, generalAlign, type MergedCells, type SheetLook } from './sheet-look.ts'
 import { childAt, childrenNamed, type XmlNode, xmlTree } from './xml.ts'
 
 /** How many alike a column, a row or a cell stands for, held to what is shown. */
@@ -218,7 +218,9 @@ function cellLook(cell: Properties, paragraph: Properties, text: Properties, kin
   const read = textLook(text, fonts)
   const { hidden: _hidden, ...shown } = read
   const fixed = cell['style:text-align-source'] === 'fix' || (cell['style:text-align-source'] === undefined && paragraph['fo:text-align'] !== undefined)
-  const general = kind === 'number' || kind === 'logical' ? 'right' : kind === 'error' ? 'center' : 'left'
+  const turn = turned(cell)
+  const general =
+    turn.rotation !== undefined ? generalAlign(kind, turn.rotation) : kind === 'number' || kind === 'logical' ? 'right' : kind === 'error' ? 'center' : 'left'
   const vertical = cell['style:vertical-align']
   return {
     text: shown,
@@ -227,6 +229,21 @@ function cellLook(cell: Properties, paragraph: Properties, text: Properties, kin
     align: fixed ? (ALIGNS[paragraph['fo:text-align'] ?? ''] ?? general) : general,
     vertical: vertical === 'top' ? 'top' : vertical === 'middle' ? 'middle' : 'bottom',
     wrap: cell['fo:wrap-option'] === 'wrap',
-    indent: points(paragraph['fo:margin-left']) ?? 0
+    indent: points(paragraph['fo:margin-left']) ?? 0,
+    ...turn
   }
+}
+
+/**
+ * How far a cell's text is turned: its letters stacked one under another (`style:direction`), else its angle
+ * counterclockwise (`style:rotation-angle`, in degrees unless it says radians or grads), from -180 to 180.
+ */
+function turned(cell: Properties): Pick<CellLook, 'rotation'> {
+  if (cell['style:direction'] === 'ttb') return { rotation: 'stacked' }
+  const found = /^\s*(-?[\d.]+)\s*(deg|rad|grad)?\s*$/.exec(cell['style:rotation-angle'] ?? '')
+  const value = Number(found?.[1])
+  if (!found || !Number.isFinite(value)) return {}
+  const degrees = found[2] === 'rad' ? (value * 180) / Math.PI : found[2] === 'grad' ? value * 0.9 : value
+  const angle = ((((degrees + 180) % 360) + 360) % 360) - 180
+  return angle === 0 ? {} : { rotation: Math.round(angle * 100) / 100 }
 }

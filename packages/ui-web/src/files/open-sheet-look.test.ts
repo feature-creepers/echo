@@ -17,6 +17,8 @@ const CONTENT = `<office:document-content><office:automatic-styles>
 <style:style style:name="head" style:family="table-cell" style:parent-style-name="Default"><style:table-cell-properties fo:background-color="#156082" fo:border="thin solid #000000" style:vertical-align="middle" fo:wrap-option="wrap" style:text-align-source="fix"/><style:paragraph-properties fo:text-align="center"/><style:text-properties fo:font-weight="bold" fo:color="#ffffff"/></style:style>
 <style:style style:name="pct" style:family="table-cell" style:parent-style-name="Default" style:data-style-name="N37"/>
 <style:style style:name="indented" style:family="table-cell" style:parent-style-name="Default"><style:paragraph-properties fo:text-align="start" fo:margin-left="0.25in"/></style:style>
+<style:style style:name="up" style:family="table-cell" style:parent-style-name="Default"><style:table-cell-properties style:rotation-angle="270"/></style:style>
+<style:style style:name="stacked" style:family="table-cell" style:parent-style-name="Default"><style:table-cell-properties style:direction="ttb"/></style:style>
 </office:automatic-styles><office:body><office:spreadsheet>
 <table:table table:name="Sales">
 <table:table-column table:style-name="co1" table:default-cell-style-name="indented"/>
@@ -25,6 +27,7 @@ const CONTENT = `<office:document-content><office:automatic-styles>
 <table:table-column table:style-name="co2" table:number-columns-repeated="16380"/>
 <table:table-row table:style-name="ro1"><table:table-cell table:style-name="head" table:number-columns-spanned="2" office:value-type="string"><text:p>City</text:p></table:table-cell><table:covered-table-cell/><table:table-cell table:number-columns-repeated="3"/></table:table-row>
 <table:table-row table:number-rows-repeated="2"><table:table-cell office:value-type="string"><text:p>Lyon</text:p></table:table-cell><table:table-cell office:value-type="percentage" office:value="-0.03"><text:p>-3%</text:p></table:table-cell><table:table-cell office:value-type="percentage" office:value="0.5"><text:p>50%</text:p></table:table-cell><table:table-cell office:value-type="boolean" office:boolean-value="true"><text:p>TRUE</text:p></table:table-cell></table:table-row>
+<table:table-row><table:table-cell table:style-name="up" office:value-type="string"><text:p>Up</text:p></table:table-cell><table:table-cell table:style-name="stacked" office:value-type="string"><text:p>Ab</text:p></table:table-cell></table:table-row>
 <table:table-row table:visibility="collapse" table:number-rows-repeated="1048570"><table:table-cell/></table:table-row>
 </table:table></office:spreadsheet></office:body></office:document-content>`
 
@@ -87,5 +90,13 @@ describe('an OpenDocument spreadsheet as it looks', () => {
     expect(at(1, 1)).toMatchObject({ align: 'right', text: { color: '#ff0000' } })
     expect(at(1, 2)?.text.color).toBeUndefined()
     expect(at(2, 3)?.align).toBe('right')
+    expect(at(0, 0)?.rotation).toBeUndefined()
+  })
+
+  it('turns a cell’s text by its angle, down for one past the half turn, or stacks its letters', () => {
+    if (!table) throw new Error('No table.')
+    const look = readOpenSheetLook(table, { rows: 4, columns: 2 }, book, new Map(), { grid: true, headings: true, zoom: 1 }, numbers)
+    const at = (row: number, column: number) => look.looks[look.cells[row]?.[column] ?? -1]
+    expect([at(3, 0)?.rotation, at(3, 1)?.rotation]).toEqual([-90, 'stacked'])
   })
 })

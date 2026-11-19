@@ -13,8 +13,10 @@ import type { BorderLook, TextLook } from './document-look.ts'
 import {
   cellLooks,
   digitWidth,
+  excelRotation,
   type MergedCells,
   PALETTE,
+  type Rotation,
   readWorkbookTheme,
   type SheetLayout,
   type SheetLook,
@@ -163,7 +165,14 @@ interface CellStyleRead {
   vertical: string | undefined
   wrap: boolean
   indent: number
+  rotation?: Rotation | undefined
 }
+
+/**
+ * Excel 4's and 5's turns of a cell's text, by their number: none, letters stacked, 90 degrees counterclockwise, and
+ * 90 clockwise.
+ */
+const ORIENTATIONS: (Rotation | undefined)[] = [undefined, 'stacked', 90, -90]
 
 /**
  * A style of Excel 2, given by its font and a byte of flags, as its records (`XF`) and its cells' own attributes keep
@@ -202,13 +211,16 @@ function readEarliestStyle(style: Reader, version: number, color: (index: number
     align: ALIGNS[alignment & 7],
     vertical: version === 4 ? VERTICALS[(alignment >> 4) & 3] : undefined,
     wrap: (alignment & 8) !== 0,
-    indent: 0
+    indent: 0,
+    rotation: version === 4 ? ORIENTATIONS[(alignment >> 6) & 3] : undefined
   }
 }
 
 /** A style of cells (`XF`), as Excel 97 writes it in 20 bytes and Excel 5 in 16, its parts at places of their own. */
 function readCellStyle(style: Reader, five: boolean, color: (index: number) => string | undefined): CellStyleRead {
   const alignment = style.u8(6)
+  // Excel 5 turns a cell's text a quarter at most, in the byte after its alignment; Excel 97 by any angle, there.
+  const turn = style.u8(7)
   const read = (pattern: number, front: number, back: number, lines: [number, number][], indent: number): CellStyleRead => ({
     font: style.u16(0),
     pattern,
@@ -218,7 +230,8 @@ function readCellStyle(style: Reader, five: boolean, color: (index: number) => s
     align: ALIGNS[alignment & 7],
     vertical: VERTICALS[(alignment >> 4) & 7],
     wrap: (alignment & 8) !== 0,
-    indent
+    indent,
+    rotation: five ? ORIENTATIONS[turn & 3] : excelRotation(turn)
   })
   if (five) {
     const fill = style.u32(8)
@@ -385,7 +398,8 @@ export async function readOlderBookStyles(records: OlderBookRecords): Promise<Wo
       align: style.align,
       vertical: style.vertical,
       wrap: style.wrap,
-      indent: style.indent
+      indent: style.indent,
+      rotation: style.rotation
     }
   })
   return { colors: { theme, palette, fonts: { major: '', minor: '' } }, cells, text: fonts[0] ?? {} }
