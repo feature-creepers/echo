@@ -770,8 +770,10 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
                 {moodWord}
               </Eyebrow>
             </motion.span>
-            {/* Two lines are kept for what is said, so a longer sentence never moves the stream under it. They come in
-                once the core, rising from the middle of the screen, has passed where they are. */}
+            {/* Two lines are kept for what is said, and every line shown there holds to them, so it never moves the
+                stream under it nor runs onto the chips. Only a problem may take more room, and then pushes the chips
+                down rather than covering them. They come in once the core, rising from the middle of the screen, has
+                passed where they are. */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: atHome || !arrived ? 0 : 1 }}
@@ -779,7 +781,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
               className="mt-3 grid w-full justify-items-center gap-1"
             >
               <div className="relative w-full max-w-[38rem]">
-                <div className="h-[3.25rem] text-text" aria-live={atHome ? undefined : 'polite'}>
+                <div className="min-h-[3.25rem] text-text" aria-live={atHome ? undefined : 'polite'}>
                   {!atHome && caption}
                 </div>
                 {/* Under the two lines kept for what is said, over the room above the stream, so it moves nothing. With
