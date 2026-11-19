@@ -1038,11 +1038,131 @@ describe('an Excel 97 workbook', () => {
     })
   })
 
-  it('says when it is protected with a password, or is of Excel 4 or older', () => {
+  it('says when it is protected with a password, or is not a workbook it knows', () => {
     expect(() => readOlderExcel(workbook(true))).toThrow('protected with a password')
-    expect(() => readOlderExcel(new Uint8Array([0x09, 0x04, 0x06, 0x00, 0x00, 0x00, 0x10, 0x00, ...new Array(600).fill(0)]))).toThrow('Excel 4 or older')
     const four = new Bytes().raw(record(0x0809, new Bytes().u16(0x0400).u16(0x0010).zeros(4))).done()
-    expect(() => readOlderExcel(compound({ Book: four }))).toThrow('Excel 4 or older')
+    expect(() => readOlderExcel(compound({ Book: four }))).toThrow('not an Excel workbook')
+  })
+
+  it('reads a workbook’s stream written straight into a file, as some programs write one', () => {
+    const stream = openCompound(workbook()).stream('Workbook') as Uint8Array
+    expect(readOlderExcel(stream)).toEqual(readOlderExcel(workbook()))
+  })
+})
+
+/** Joins records into the bytes of a file. */
+const fileOf = (...parts: Uint8Array[]) => new Bytes().raw(parts.flatMap((part) => [...part])).done()
+
+describe('a workbook of Excel 2, 3 or 4', () => {
+  /** A cell of Excel 2: its place, then three bytes of attributes, the second naming its format. */
+  const cellTwo = (row: number, column: number, format = 0) => new Bytes().u16(row).u16(column).u8(0).u8(format).u8(0)
+  /** A cell of Excel 3 and 4: its place, then its style. */
+  const cellFour = (row: number, column: number, style = 0) => new Bytes().u16(row).u16(column).u16(style)
+  const formatTwo = (code: string) => record(0x001e, new Bytes().u8(code.length).narrow(code))
+  const formatFour = (code: string) => record(0x041e, new Bytes().u16(0).u8(code.length).narrow(code))
+  const styleFour = (format: number) => record(0x0443, new Bytes().u8(0).u8(format).zeros(10))
+  const beginning = (type: number, kind: number) => record(type, new Bytes().u16(0).u16(kind))
+
+  it('reads a worksheet of Excel 2, each cell in the format it names, in the code page of the file', () => {
+    const file = fileOf(
+      beginning(0x0009, 0x0010),
+      record(0x0042, new Bytes().u16(32769)),
+      formatTwo('General'),
+      formatTwo('0.00'),
+      formatTwo('0%'),
+      record(0x0004, cellTwo(0, 0).u8(4).raw([0x43, 0x61, 0x66, 0xe9])),
+      record(0x0003, cellTwo(0, 1, 1).f64(2.71)),
+      record(0x0002, cellTwo(1, 0, 2).u16(1)),
+      record(0x0005, cellTwo(1, 1).u8(1).u8(0)),
+      record(0x0006, cellTwo(2, 0).u8(0).zeros(5).u16(0xffff).u8(0).u8(0)),
+      record(0x0007, new Bytes().u8(2).narrow('ok')),
+      record(0x0006, cellTwo(2, 1).f64(7.5).u8(0).u8(0)),
+      record(0x0005, cellTwo(2, 2).u8(0x07).u8(1)),
+      EOF
+    )
+    expect(readOlderExcel(file)).toEqual({
+      kind: 'workbook',
+      sheets: [
+        {
+          name: '',
+          rows: [
+            ['Café', '2.71'],
+            ['100%', 'TRUE'],
+            ['ok', '7.5', '#DIV/0!']
+          ],
+          cut: false,
+          figures: []
+        }
+      ]
+    })
+  })
+
+  it('reads each worksheet of an Excel 4 workbook after the record naming it, in its own formats or the workbook’s', () => {
+    const header = (name: number[]) => record(0x008f, new Bytes().u32(0).u8(name.length).raw(name))
+    const file = fileOf(
+      beginning(0x0409, 0x0100),
+      record(0x0042, new Bytes().u16(1251)),
+      formatFour('General'),
+      formatFour('0.0'),
+      styleFour(0),
+      styleFour(1),
+      EOF,
+      // "Лист" in Windows' Cyrillic code page.
+      header([0xcb, 0xe8, 0xf1, 0xf2]),
+      beginning(0x0409, 0x0010),
+      record(0x0204, cellFour(0, 0).u16(2).narrow('Pi')),
+      record(0x0203, cellFour(0, 1, 1).f64(3.14)),
+      record(0x027e, cellFour(1, 0).u32((7 << 2) | 0x02)),
+      record(0x0406, cellFour(1, 1).u8(0).zeros(5).u16(0xffff).zeros(4)),
+      record(0x0207, new Bytes().u16(4).narrow('done')),
+      EOF,
+      header([...'Macros'].map((letter) => letter.charCodeAt(0))),
+      beginning(0x0409, 0x0040),
+      EOF,
+      header([...'Shares'].map((letter) => letter.charCodeAt(0))),
+      beginning(0x0409, 0x0010),
+      formatFour('General'),
+      formatFour('0%'),
+      styleFour(1),
+      record(0x0203, cellFour(0, 0).f64(0.5)),
+      EOF
+    )
+    expect(readOlderExcel(file)).toEqual({
+      kind: 'workbook',
+      sheets: [
+        {
+          name: 'Лист',
+          rows: [
+            ['Pi', '3.1'],
+            ['7', 'done']
+          ],
+          cut: false,
+          figures: []
+        },
+        { name: 'Shares', rows: [['50%']], cut: false, figures: [] }
+      ]
+    })
+  })
+
+  it('reads a worksheet of Excel 3, and says when one is protected with a password or cut short', () => {
+    const three = (...records: Uint8Array[]) =>
+      fileOf(beginning(0x0209, 0x0010), formatTwo('General'), record(0x0243, new Bytes().u8(0).u8(0).zeros(10)), ...records, EOF)
+    expect(readOlderExcel(three(record(0x0204, cellFour(0, 1).u16(3).narrow('Sum')), record(0x0206, cellFour(1, 1).f64(12).zeros(4))))).toEqual({
+      kind: 'workbook',
+      sheets: [
+        {
+          name: '',
+          rows: [
+            ['', 'Sum'],
+            ['', '12']
+          ],
+          cut: false,
+          figures: []
+        }
+      ]
+    })
+    expect(() => readOlderExcel(three(record(0x002f, new Bytes().u16(0).u16(0))))).toThrow('protected with a password')
+    expect(() => readOlderExcel(three().subarray(0, 30))).toThrow('damaged')
   })
 })
 

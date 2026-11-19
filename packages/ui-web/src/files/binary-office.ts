@@ -1,9 +1,10 @@
 /**
  * The older Office formats read in the window itself, with no service and no library (docs/SPEC.md, section 9.7):
- * the documents of Word 6 to 2003 (.doc), the workbooks of Excel 5 to 2003 (.xls) and the presentations of PowerPoint
+ * the documents of Word 6 to 2003 (.doc), the workbooks of Excel 2 to 2003 (.xls) and the presentations of PowerPoint
  * 97 to 2003 (.ppt). Each is a compound file (`compound.ts`) whose streams hold the binary records each app wrote,
- * read for what a preview shows, as the newer formats are: a document as Markdown, a workbook's sheets as tables, the
- * text of each slide, and the pictures of each (`office-art.ts`).
+ * but for Excel 2 to 4, which wrote theirs straight into the file. They are read for what a preview shows, as the
+ * newer formats are: a document as Markdown, a workbook's sheets as tables, the text of each slide, and the pictures
+ * of each (`office-art.ts`).
  *
  * Every offset read is checked against its stream, so a damaged file fails with a sentence rather than reading past
  * its end. A file protected with a password says so.
@@ -266,11 +267,20 @@ export function codePageDecoder(codePage: number): TextDecoder {
   const label =
     codePage >= 1250 && codePage <= 1258
       ? `windows-${codePage}`
-      : (
-          { 874: 'windows-874', 932: 'shift_jis', 936: 'gbk', 949: 'euc-kr', 950: 'big5', 10000: 'macintosh', 1200: 'utf-16le', 65001: 'utf-8' } as Record<
-            number,
-            string
-          >
+      : // Excel 2 to 4 name the Mac's and Windows' own code pages 32768 and 32769.
+        (
+          {
+            874: 'windows-874',
+            932: 'shift_jis',
+            936: 'gbk',
+            949: 'euc-kr',
+            950: 'big5',
+            10000: 'macintosh',
+            1200: 'utf-16le',
+            32768: 'macintosh',
+            32769: 'windows-1252',
+            65001: 'utf-8'
+          } as Record<number, string>
         )[codePage]
   try {
     return new TextDecoder(label ?? 'windows-1252')
@@ -852,9 +862,6 @@ export function rkNumber(value: number): number {
 const ERRORS: Record<number, string> = { 0: '#NULL!', 7: '#DIV/0!', 15: '#VALUE!', 23: '#REF!', 29: '#NAME?', 36: '#NUM!', 42: '#N/A' }
 const flag = (value: number, error: boolean) => (error ? (ERRORS[value] ?? '#N/A') : value ? 'TRUE' : 'FALSE')
 
-/** What a workbook of Excel 4 or older says: a file of records of its own, not a compound file. */
-const EXCEL_4 = 'It is a workbook of Excel 4 or older, which is not read here.'
-
 /**
  * A sheet of an older workbook as it is read: its rows as shown, each cell with its number, for the charts that name
  * it, and the pictures its drawing places.
@@ -879,17 +886,27 @@ function joined(parts: readonly Uint8Array[]): Uint8Array {
 }
 
 /**
- * A workbook of Excel 97 to 2003, or of Excel 5 and 95, its sheets each as rows of its cells' values as their formats
- * show them. Excel 5 and 95 write their text in 8-bit characters of the workbook's code page, with no table of strings.
+ * A workbook of Excel 97 to 2003, of Excel 5 and 95, or of Excel 2 to 4, its sheets each as rows of its cells' values
+ * as their formats show them. Excel 5 and 95 write their text in 8-bit characters of the workbook's code page, with no
+ * table of strings, and so do Excel 2 to 4.
  */
 export function readOlderExcel(bytes: Uint8Array, options: NumberFormatOptions = {}): OfficePreview {
   return { kind: 'workbook', sheets: readOlderSheets(bytes, options).map(({ name, rows, cut, figures }) => ({ name, rows, cut, figures })) }
 }
 
-/** The sheets of a workbook of Excel 97 to 2003, or of Excel 5 and 95, read as `readOlderExcel` shows them. */
+/** The beginnings of a part of a workbook (`BOF`), in Excel 2, 3, 4, and 5 and later. */
+const BEGINNINGS = new Map([
+  [0x0009, 2],
+  [0x0209, 3],
+  [0x0409, 4],
+  [0x0809, 5]
+])
+
+/** The sheets of a workbook, read as `readOlderExcel` shows them. */
 export function readOlderSheets(bytes: Uint8Array, options: NumberFormatOptions = {}): OlderSheet[] {
-  // Excel 2, 3 and 4 wrote their records straight into the file.
-  if (bytes.length >= 4 && [0x0009, 0x0209, 0x0409, 0x0809].includes(readU16(bytes, 0)) && readU16(bytes, 2) < 32) throw new Error(EXCEL_4)
+  // Excel 2, 3 and 4 wrote their records straight into the file, and some programs write Excel 5's and 97's so too.
+  const first = BEGINNINGS.get(readU16(bytes, 0))
+  if (bytes.length >= 4 && first !== undefined && readU16(bytes, 2) < 32) return first < 5 ? earliestSheets(bytes, options) : bookSheets(bytes, options)
   return sheetsOf(openCompound(bytes), options)
 }
 
@@ -897,10 +914,84 @@ export function readOlderSheets(bytes: Uint8Array, options: NumberFormatOptions 
 function sheetsOf(file: Compound, options: NumberFormatOptions = {}): OlderSheet[] {
   const stream = file.stream('Workbook') ?? file.stream('Book')
   if (!stream) throw new Error('This is not an Excel workbook.')
+  return bookSheets(stream, options)
+}
+
+/** The kinds of part an Excel 2 to 4 file's beginning names: a worksheet, and the records of Excel 4's workbook. */
+const WORKSHEET = 0x0010
+const WORKBOOK = 0x0100
+
+/** A part of an Excel 2 to 4 file, from its beginning to its end, with the formats and styles it keeps. */
+interface EarliestPart {
+  at: number
+  kind: number
+  version: number
+  name: Uint8Array | undefined
+  codes: Uint8Array[]
+  styles: number[]
+  codePage: number | undefined
+  date1904: boolean | undefined
+}
+
+/**
+ * The sheets of a file of Excel 2, 3 or 4, whose records are written straight into it rather than in a compound file:
+ * a worksheet alone, or Excel 4's workbook, its own records first, then each sheet after a record naming it
+ * (`SHEETHDR`). A part keeps its formats in order and its styles (`XF`), each naming a format by its place; a cell of
+ * Excel 2 names its format itself. A sheet with no formats or styles of its own uses the workbook's.
+ */
+function earliestSheets(bytes: Uint8Array, options: NumberFormatOptions): OlderSheet[] {
+  const book = reader(bytes)
+  const parts: EarliestPart[] = []
+  let part: EarliestPart | undefined
+  let named: Uint8Array | undefined
+  let depth = 0
+  for (const { type, at, size } of records(book, 0)) {
+    const version = BEGINNINGS.get(type)
+    if (version !== undefined) {
+      if (depth++ === 0) {
+        part = { at: at - 4, kind: size >= 4 ? book.u16(at + 2) : 0, version, name: named, codes: [], styles: [], codePage: undefined, date1904: undefined }
+        parts.push(part)
+        named = undefined
+      }
+      continue
+    }
+    if (type === 0x000a) {
+      if (--depth <= 0) [depth, part] = [0, undefined]
+      continue
+    }
+    if (type === 0x008f && depth === 0 && size >= 5) named = book.bytes(at + 5, Math.min(book.u8(at + 4), size - 5))
+    if (!part || depth !== 1) continue
+    if (type === 0x002f) throw new Error(PROTECTED)
+    if (type === 0x0042 && size >= 2) part.codePage = book.u16(at)
+    else if (type === 0x0022 && size >= 2) part.date1904 = book.u16(at) === 1
+    else if (type === 0x001e && size >= 1) part.codes.push(book.bytes(at + 1, Math.min(book.u8(at), size - 1)))
+    else if (type === 0x041e && size >= 3) part.codes.push(book.bytes(at + 3, Math.min(book.u8(at + 2), size - 3)))
+    else if ((type === 0x0243 || type === 0x0443) && size >= 2) part.styles.push(book.u8(at + 1))
+  }
+  const workbook = parts.find((one) => one.kind === WORKBOOK)
+  return parts
+    .filter((one) => one.kind === WORKSHEET)
+    .slice(0, SHEET_LIMIT)
+    .map((sheet) => {
+      const decoder = codePageDecoder(sheet.codePage ?? workbook?.codePage ?? 1252)
+      const eight = (text: Uint8Array) => decoder.decode(text)
+      const codes = (sheet.codes.length > 0 || !workbook ? sheet : workbook).codes.map(eight)
+      const styles = (sheet.styles.length > 0 || !workbook ? sheet : workbook).styles
+      // Excel 2's cells name their format; Excel 3's and 4's, their style.
+      const formatOf = (style: number) => codes[sheet.version === 2 ? style : (styles[style] ?? 0)] ?? 'General'
+      const shown = { ...options, date1904: sheet.date1904 ?? workbook?.date1904 ?? false }
+      const { rows, cut, cells } = sheetRows(book, sheet.at, { strings: [], version: sheet.version, eight }, formatOf, shown)
+      // A worksheet alone has no name but its file's.
+      return { name: sheet.name ? eight(sheet.name) : '', rows, cut, cells, figures: [] }
+    })
+}
+
+/** The sheets of a workbook's stream of Excel 5 to 2003. */
+function bookSheets(stream: Uint8Array, options: NumberFormatOptions): OlderSheet[] {
   const book = reader(stream)
   if (book.u16(0) !== 0x0809) throw new Error('This is not an Excel workbook.')
   const version = book.u16(4)
-  if (version !== 0x0600 && version !== 0x0500) throw new Error(EXCEL_4)
+  if (version !== 0x0600 && version !== 0x0500) throw new Error('This is not an Excel workbook.')
   const five = version === 0x0500
   // Excel 5 and 95's 8-bit text is in the workbook's code page; Excel 97's, in the first 256 characters of Unicode.
   let narrow = five ? codePageDecoder(1252) : undefined
@@ -990,7 +1081,7 @@ function sheetsOf(file: Compound, options: NumberFormatOptions = {}): OlderSheet
     .map(({ name, at, chart }) =>
       chart
         ? { name, rows: [], cut: false, cells: new Map<string, CellValue>(), drawing: new Uint8Array(), charts: [chartRecords(book, at)], objects: [] }
-        : { name, ...sheetRows(book, at, { strings, five, eight }, shownBy, shown) }
+        : { name, ...sheetRows(book, at, { strings, version: five ? 5 : 8, eight }, shownBy, shown) }
     )
   // The sheets are read before their charts, which may name their cells rather than keep their values.
   const context: ChartContext = {
@@ -1070,15 +1161,22 @@ function sheetFigures(placed: SheetObjects, stored: (place: number) => StoredPic
   return found
 }
 
-/** The rows of a sheet, from its records: its cells in their columns, empty ones kept so the columns line up. */
+/** The records of a formula, in Excel 5 and later, in Excel 3, and in Excel 4. */
+const FORMULAS = new Set([0x0006, 0x0206, 0x0406])
+
+/**
+ * The rows of a sheet, from its records: its cells in their columns, empty ones kept so the columns line up. Its
+ * version is Excel's, from 2 to 8: Excel 2's cells have records of their own, and before Excel 97 text is 8-bit.
+ */
 function sheetRows(
   book: Reader,
   from: number,
-  text: { strings: readonly string[]; five: boolean; eight: (bytes: Uint8Array) => string },
+  text: { strings: readonly string[]; version: number; eight: (bytes: Uint8Array) => string },
   formatOf: (style: number) => string,
   options: NumberFormatOptions
 ): { rows: string[][]; cut: boolean; cells: Map<string, CellValue> } & SheetObjects {
-  const { strings, five, eight } = text
+  const { strings, version, eight } = text
+  const five = version < 8
   const rows: string[][] = []
   // The sheet's drawing, in records of its own and those that continue them, among the records of its objects, and
   // each chart's records, between its own beginning and end.
@@ -1108,8 +1206,23 @@ function sheetRows(
   let depth = 0
   // A formula's text result follows it in a record of its own.
   let waiting: { row: number; column: number } | undefined
+  // A formula's last result: a number, or marked by its last two bytes as text, a boolean, an error or nothing.
+  const formula = (row: number, column: number, result: number, style: number) => {
+    waiting = undefined
+    if (book.u16(result + 6) !== 0xffff) number(row, column, book.f64(result), style)
+    else {
+      const kind = book.u8(result)
+      if (kind === 0) waiting = { row, column }
+      else if (kind === 1 || kind === 2) put(row, column, flag(book.u8(result + 2), kind === 2))
+    }
+  }
+  // A formula's text result, after the formula it is the result of.
+  const result = (value: string) => {
+    if (waiting) put(waiting.row, waiting.column, value)
+    waiting = undefined
+  }
   for (const { type, at, size } of records(book, from)) {
-    if (type === 0x0809) {
+    if (BEGINNINGS.has(type)) {
       depth++
       if (depth === 2) charts.push([])
     } else if (type === 0x000a && --depth <= 0) break
@@ -1126,6 +1239,17 @@ function sheetRows(
     if (type === 0x005d && size >= 6 && (five || book.u16(at) === 0x15)) objects.push(book.u16(at + 4))
     const row = () => book.u16(at)
     const column = () => book.u16(at + 2)
+    if (version === 2) {
+      // Excel 2's cells keep three bytes of attributes after their place, the second naming their format.
+      const format = () => book.u8(at + 5) & 0x3f
+      if (type === 0x0002) number(row(), column(), book.u16(at + 7), format())
+      else if (type === 0x0003) number(row(), column(), book.f64(at + 7), format())
+      else if (type === 0x0004) put(row(), column(), eight(book.bytes(at + 8, book.u8(at + 7))))
+      else if (type === 0x0005) put(row(), column(), flag(book.u8(at + 7), book.u8(at + 8) !== 0))
+      else if (type === 0x0006) formula(row(), column(), at + 7, format())
+      else if (type === 0x0007) result(eight(book.bytes(at + 1, book.u8(at))))
+      continue
+    }
     if (type === 0x00fd) put(row(), column(), strings[book.u32(at + 6)] ?? '')
     else if (type === 0x0203) number(row(), column(), book.f64(at + 6), book.u16(at + 4))
     else if (type === 0x027e) number(row(), column(), rkNumber(book.u32(at + 6)), book.u16(at + 4))
@@ -1140,19 +1264,11 @@ function sheetRows(
       const length = book.u16(start)
       const wide = !five && (book.u8(start + 2) & 0x01) !== 0
       const text = five ? eight(book.bytes(start + 2, length)) : wide ? utf16(book.bytes(start + 3, length * 2)) : latin1(book.bytes(start + 3, length))
-      if (type !== 0x0207) put(row(), column(), text)
-      else if (waiting) put(waiting.row, waiting.column, text)
-      waiting = undefined
-    } else if (type === 0x0006) {
-      waiting = undefined
-      // A formula's last result: a number, or marked by its last two bytes as text, a boolean, an error or nothing.
-      if (book.u16(at + 12) !== 0xffff) number(row(), column(), book.f64(at + 6), book.u16(at + 4))
-      else {
-        const kind = book.u8(at + 6)
-        if (kind === 0) waiting = { row: row(), column: column() }
-        else if (kind === 1 || kind === 2) put(row(), column(), flag(book.u8(at + 8), kind === 2))
-      }
-    }
+      if (type !== 0x0207) {
+        put(row(), column(), text)
+        waiting = undefined
+      } else result(text)
+    } else if (FORMULAS.has(type)) formula(row(), column(), at + 6, book.u16(at + 4))
   }
   while (rows.length > 0 && (rows.at(-1)?.every((value) => value === '') ?? false)) rows.pop()
   return { rows, cut, cells, drawing: joined(drawing), charts, objects }
