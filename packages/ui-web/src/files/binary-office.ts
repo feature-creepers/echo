@@ -1613,7 +1613,7 @@ function sheetRows(
     else if (type === 0x0225 && size >= 4) laid.defaultHeight = book.u16(at + 2)
     else if (type === 0x023e) laid.window = book.bytes(at, size)
     else if (type === 0x00a0) laid.zoom = book.bytes(at, size)
-    else if (type === 0x01b0 || type === 0x01b1) {
+    else if (type === 0x01b0 || type === 0x01b1 || type === 0x0879 || type === 0x087a || type === 0x087b) {
       laid.conditions ??= []
       laid.conditions.push({ type, bytes: book.bytes(at, size) })
     } else if (type === 0x0201 && size >= 6) styled(row(), column(), book.u16(at + 4), 'empty')
