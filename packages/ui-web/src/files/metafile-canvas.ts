@@ -219,6 +219,14 @@ export interface State {
   clip: string | undefined
 }
 
+/** A clipping as it was defined: its shape, its rule, the clipping it is cut by, and how far it was moved. */
+interface Clip {
+  data: string
+  rule: 'evenodd' | 'nonzero'
+  parent: string | undefined
+  offset: Point
+}
+
 export const initialState = (): State => ({
   pen: DEFAULT_PEN,
   brush: DEFAULT_BRUSH,
@@ -321,6 +329,10 @@ export class Canvas {
 
   private define(definition: string) {
     if (this.full) return
+    if (this.written + definition.length > SVG_LIMIT) {
+      this.full = true
+      return
+    }
     this.written += definition.length
     this.definitions.push(definition)
   }
@@ -577,16 +589,47 @@ export class Canvas {
 
   // Clipping
 
+  /** Each clipping defined, by its identifier: what it is cut by is another, so a clipping moved can be defined again. */
+  private readonly clips = new Map<string, Clip>()
+
   /** A clipping of the device's paths, within the clipping before it unless it replaces it. */
   private clipTo(data: string, rule: 'evenodd' | 'nonzero', within: boolean) {
+    this.state.clip = this.defineClip({ data, rule, parent: within ? this.state.clip : undefined, offset: [0, 0] })
+  }
+
+  private defineClip(clip: Clip): string {
     const id = this.id('c')
-    const parent = within && this.state.clip ? ` clip-path="url(#${this.state.clip})"` : ''
-    this.define(`<clipPath id="${id}" clipPathUnits="userSpaceOnUse"${parent}><path d="${data}" clip-rule="${rule}"/></clipPath>`)
-    this.state.clip = id
+    const parent = clip.parent ? ` clip-path="url(#${clip.parent})"` : ''
+    const [x, y] = clip.offset
+    const moved = x !== 0 || y !== 0 ? ` transform="translate(${number(x)} ${number(y)})"` : ''
+    this.define(`<clipPath id="${id}" clipPathUnits="userSpaceOnUse"${parent}><path d="${clip.data}" clip-rule="${clip.rule}"${moved}/></clipPath>`)
+    this.clips.set(id, clip)
+    return id
   }
 
   intersectClip(box: Box) {
     this.clipTo(this.rectangle(box), 'nonzero', true)
+  }
+
+  /** A shape of the device's units as the clipping, within the one before it or in its place. */
+  shapeClip(data: string, rule: 'evenodd' | 'nonzero', within: boolean) {
+    // A shape of no area clips everything away, as an empty region does.
+    this.clipTo(data || 'M0 0Z', rule, within)
+  }
+
+  /** The clipping moved by a distance of the device's units, each clipping it is cut by moved with it. */
+  moveClip(x: number, y: number) {
+    if (this.full || this.state.clip === undefined || !Number.isFinite(x) || !Number.isFinite(y)) return
+    const chain: Clip[] = []
+    for (let id: string | undefined = this.state.clip; id !== undefined; ) {
+      const clip = this.clips.get(id)
+      if (!clip) break
+      chain.push(clip)
+      id = clip.parent
+    }
+    let parent: string | undefined
+    for (const clip of chain.reverse()) parent = this.defineClip({ ...clip, parent, offset: [clip.offset[0] + x, clip.offset[1] + y] })
+    this.state.clip = parent
   }
 
   /** The clipping with a box of the picture taken out of it. */
@@ -749,6 +792,14 @@ export class Canvas {
   /** A shape filled with one colour and no outline. */
   solid(data: string, fill: string, opacity = 1) {
     if (data) this.element(`<path d="${data}" fill="${fill}"${opacity < 1 ? ` fill-opacity="${number(Math.max(0, opacity))}"` : ''} stroke="none"/>`)
+  }
+
+  /** Lines of one colour, a pixel wide, drawn only where they cross a shape, both of the device's units, by the even-odd rule. */
+  hatch(shape: string, lines: string, colour: string) {
+    if (!shape || !lines) return
+    const id = this.id('c')
+    this.define(`<clipPath id="${id}" clipPathUnits="userSpaceOnUse"><path d="${shape}" clip-rule="evenodd"/></clipPath>`)
+    this.element(`<path d="${lines}" fill="none" stroke="${colour}" stroke-width="1" vector-effect="non-scaling-stroke" clip-path="url(#${id})"/>`)
   }
 
   /** The SVG of what was drawn, in a box of the device's units, at a size in pixels. */

@@ -2,14 +2,17 @@
  * StarView metafiles drawn as SVG (docs/SPEC.md, section 9.7): the pictures LibreOffice and OpenOffice keep of an
  * object in an OpenDocument file (`ObjectReplacements/`), an equation or a chart as it was last drawn. A StarView
  * metafile (`VCLMTF`) records the drawing calls of their toolkit, each an action with its version and length: lines,
- * shapes and polygons with curves, text placed by its characters' positions, bitmaps, gradients' fallbacks, colours,
- * fonts, mappings and the states saved and restored. Each is played on the canvas Windows' metafiles are played on
- * (`metafile-canvas.ts`), in hundredths of a millimetre. An action it does not draw is passed over by its length.
+ * shapes and polygons with curves, text placed by its characters' positions, bitmaps, gradients' fallbacks, hatches,
+ * colours, fonts, mappings, clipping by rectangles and regions, and the states saved and restored. Each is played on
+ * the canvas Windows' metafiles are played on (`metafile-canvas.ts`), in hundredths of a millimetre, as LibreOffice's
+ * vcl reads and plays it (`SvmReader.cxx`, `region.cxx`, `outdev/hatch.cxx`). An action it does not draw is passed
+ * over by its length.
  *
  * Every read is checked against the action that holds it, so a damaged metafile draws what came before the damage.
  */
 
 import {
+  apply,
   type Bitmap,
   type Box,
   box,
@@ -21,6 +24,7 @@ import {
   type Matrix,
   type MetafileHint,
   multiply,
+  number,
   type Point,
   PS_NULL,
   Reader,
@@ -51,6 +55,25 @@ function colourOf(value: number): { colour: string; opacity: number } | undefine
   if (transparency === 0xff) return undefined
   return { colour: `#${(value & 0xffffff).toString(16).padStart(6, '0')}`, opacity: 1 - transparency / 255 }
 }
+
+/** The colours StarView names by their number, in order (`GenericTypeSerializer::readColor`); past them, black. */
+const NAMED_COLOURS = [
+  0x000000, 0x000080, 0x008000, 0x008080, 0x800000, 0x800080, 0x808000, 0x808080, 0xc0c0c0, 0x0000ff, 0x00ff00, 0x00ffff, 0xff0000, 0xff00ff, 0xffff00,
+  0xffffff, 0xffffff, 0x000000, 0xffffff, 0x000000, 0x000000, 0xffffff, 0x000000, 0xffffff, 0x000000, 0xc0c0c0, 0xffffff, 0x808080, 0xc0c0c0, 0xffffff, 0x000000
+]
+
+/**
+ * A colour as gradients and hatches keep it, in StarView's older way: a number naming one of its colours, or, with
+ * its high bit set, red, green and blue in two bytes each, of which the high one counts.
+ */
+function namedColour(action: Reader, at: number): { value: number; next: number } {
+  const name = action.u16(at)
+  if ((name & 0x8000) === 0) return { value: NAMED_COLOURS[name] ?? 0, next: at + 2 }
+  const channel = (place: number) => action.u16(place) >> 8
+  return { value: (channel(at + 2) << 16) | (channel(at + 4) << 8) | channel(at + 6), next: at + 8 }
+}
+
+const hex = (value: number) => `#${(value & 0xffffff).toString(16).padStart(6, '0')}`
 
 /** An action's version and the length of what follows it (`VersionCompat`). */
 function compat(action: Reader, at: number): { version: number; start: number; end: number } {
@@ -127,6 +150,109 @@ function readPolygon(action: Reader, at: number, flagged: boolean): { points: Po
     next = outer.end
   }
   return { points, controls, next }
+}
+
+/** Polygons without curves after their count in two bytes (`ReadPolyPolygon`), those of no point left out as vcl leaves them. */
+function readPolygons(action: Reader, at: number, end: number): { polygons: Point[][]; next: number } {
+  const count = action.u16(at)
+  const polygons: Point[][] = []
+  let next = at + 2
+  for (let index = 0; index < count && next < end; index++) {
+    const polygon = readPolygon(action, next, false)
+    if (polygon.points.length > 0) polygons.push(polygon.points)
+    next = polygon.next
+  }
+  return { polygons, next }
+}
+
+/**
+ * A region (`vcl::Region`), in the picture's units: one without bounds, which clips nothing; an empty one, which
+ * clips everything; or a shape, polygons by the even-odd rule or rectangles together.
+ */
+type Region = { kind: 'unbounded' } | { kind: 'empty' } | { kind: 'shape'; polygons: Point[][]; rule: 'evenodd' | 'nonzero' }
+
+/** The kinds of a region's entries (`RegionBand::load`): a band's top and bottom, a rectangle's left and right across it, the end. */
+const BAND = 0
+const BAND_END = 2
+
+/**
+ * A region as vcl writes it (`ReadRegion`): its version and its kind, then the bands it is made of, each a top and a
+ * bottom and the left and right of each rectangle across it, then, from its second version, the polygons it was made
+ * from, which count before the bands. Bands that end early, or one after the first with no rectangle, are bands vcl
+ * refuses, and a region with nothing else then has no bounds.
+ */
+function readRegion(action: Reader, at: number): { region: Region; next: number } {
+  const { version, start, end } = compat(action, at)
+  const kind = action.u16(start + 2)
+  if (kind === 0) return { region: { kind: 'unbounded' }, next: end }
+  if (kind === 1) return { region: { kind: 'empty' }, next: end }
+  const rectangles: Point[][] = []
+  let place = start + 4
+  let banded = place + 2 <= end && action.u16(place) !== BAND_END
+  let band: { top: number; bottom: number; rectangles: number } | undefined
+  let bands = 0
+  for (; place + 2 <= end; ) {
+    const entry = action.u16(place)
+    place += 2
+    if (entry === BAND_END) break
+    if (place + 8 > end) {
+      banded = false
+      place = end
+      break
+    }
+    const [low, high] = [action.i32(place), action.i32(place + 4)]
+    place += 8
+    if (entry === BAND) {
+      if (band && band.rectangles === 0 && bands > 1) banded = false
+      band = { top: low, bottom: high, rectangles: 0 }
+      bands++
+    } else if (band) {
+      band.rectangles++
+      rectangles.push([
+        [low, band.top],
+        [high, band.top],
+        [high, band.bottom],
+        [low, band.bottom]
+      ])
+    }
+  }
+  if (band && band.rectangles === 0 && bands > 1) banded = false
+  if (version >= 2 && place < end && action.u8(place) !== 0) {
+    const { polygons } = readPolygons(action, place + 1, end)
+    return { region: { kind: 'shape', polygons, rule: 'evenodd' }, next: end }
+  }
+  return { region: banded ? { kind: 'shape', polygons: rectangles, rule: 'nonzero' } : { kind: 'unbounded' }, next: end }
+}
+
+/** The most lines a hatch draws at each of its angles, as many as vcl draws when it is fuzzed: one denser is drawn with its lines further apart. */
+const HATCH_LINES = 1024
+
+/**
+ * A hatch's lines at one angle, in tenths of a degree turned counterclockwise as the picture shows, a distance apart,
+ * across a box of the device's units: one through its top left corner, where vcl starts them, and the others either
+ * side of it.
+ */
+function hatchLines(area: Box, distance: number, angle: number): string {
+  const radians = (angle * Math.PI) / 1800
+  const along: Point = [Math.cos(radians), -Math.sin(radians)]
+  const across: Point = [Math.sin(radians), Math.cos(radians)]
+  const corners: Point[] = [
+    [area.left, area.top],
+    [area.right, area.top],
+    [area.left, area.bottom],
+    [area.right, area.bottom]
+  ]
+  const offsets = corners.map(([x, y]) => (x - area.left) * across[0] + (y - area.top) * across[1])
+  const [low, high] = [Math.min(...offsets), Math.max(...offsets)]
+  const spacing = Math.max(distance, (high - low) / HATCH_LINES)
+  const reach = Math.hypot(area.right - area.left, area.bottom - area.top)
+  if (!Number.isFinite(spacing) || spacing <= 0 || !Number.isFinite(reach)) return ''
+  let data = ''
+  for (let step = Math.ceil(low / spacing); step * spacing <= high; step++) {
+    const [x, y] = [area.left + across[0] * step * spacing, area.top + across[1] * step * spacing]
+    data += `M${number(x - along[0] * reach)} ${number(y - along[1] * reach)}L${number(x + along[0] * reach)} ${number(y + along[1] * reach)}`
+  }
+  return data
 }
 
 /** A line's look (`LineInfo`): its style, none, solid or dashed, and its width. */
@@ -214,11 +340,25 @@ STAR_SYMBOLS[0xe0d4] = 'ϕ'
 /** Text alignment as the canvas takes it: the top, the baseline or the bottom of its characters at the point. */
 const ALIGNS = [0, 24, 8]
 
+/**
+ * What a state saved brings back (`PushFlags`), each by its bit: the line's colour, the fill's, the font, the text's
+ * colour, the mapping, the clipping, the text's background and its alignment. What a save does not name stays as it
+ * was changed since.
+ */
+const SAVES_LINE = 0x0001
+const SAVES_FILL = 0x0002
+const SAVES_FONT = 0x0004
+const SAVES_TEXT_COLOUR = 0x0008
+const SAVES_MAPPING = 0x0010
+const SAVES_CLIPPING = 0x0020
+const SAVES_TEXT_FILL = 0x0080
+const SAVES_ALIGNMENT = 0x0100
+
 /** The player of a metafile's actions: its canvas, the mappings saved with each state, and the matrix it is drawn into. */
 class Player {
   readonly canvas: Canvas
   private mapping: Mapping
-  private readonly saved: Mapping[] = []
+  private readonly saved: { mapping: Mapping; flags: number }[] = []
   private outer: Matrix
   private played = 0
 
@@ -264,16 +404,45 @@ class Player {
     return closed && data ? `${data}Z` : data
   }
 
-  private polygons(action: Reader, at: number): { data: string; next: number } {
-    const count = action.u16(at)
-    let next = at + 2
-    let data = ''
-    for (let index = 0; index < count && next < action.length; index++) {
-      const polygon = readPolygon(action, next, false)
-      data += this.path(polygon.points, undefined, true)
-      next = polygon.next
+  private polygons(action: Reader, at: number): { data: string; polygons: Point[][]; next: number } {
+    const { polygons, next } = readPolygons(action, at, action.length)
+    return { data: polygons.map((points) => this.path(points, undefined, true)).join(''), polygons, next }
+  }
+
+  /** A region as the clipping, within the one before it or in its place, mapped to the device as the picture is now. */
+  private clip(region: Region, within: boolean): void {
+    const canvas = this.canvas
+    if (region.kind === 'unbounded') {
+      // A region without bounds takes the clipping away when it replaces it, and leaves it as it is when it cuts it.
+      if (!within) canvas.state.clip = undefined
+      return
     }
-    return { data, next }
+    const data = region.kind === 'shape' ? region.polygons.map((points) => this.path(points, undefined, true)).join('') : ''
+    canvas.shapeClip(data, region.kind === 'shape' ? region.rule : 'nonzero', within)
+  }
+
+  /**
+   * A hatch, as vcl draws one on the device (`OutputDevice::DrawHatch`): lines of its colour a pixel wide, at its angle
+   * on the device whatever the mapping, its distance apart, at least three pixels, through the top left corner of the
+   * polygons' box a pixel out of it, a second set turned a right angle for a double hatch and a third turned half of
+   * one for a triple hatch, drawn where they cross the polygons by the even-odd rule.
+   */
+  private hatch(polygons: readonly Point[][], data: string, style: number, colour: string, distance: number, angle: number): void {
+    const canvas = this.canvas
+    const matrix = canvas.matrix()
+    let area: Box | undefined
+    for (const polygon of polygons)
+      for (const [x, y] of polygon) {
+        const [deviceX, deviceY] = apply(matrix, x, y)
+        if (!area) area = box(deviceX, deviceY, deviceX, deviceY)
+        else area = box(Math.min(area.left, deviceX), Math.min(area.top, deviceY), Math.max(area.right, deviceX), Math.max(area.bottom, deviceY))
+      }
+    if (!area) return
+    const pixel = canvas.pixel
+    const spacing = Math.max(distance * Math.hypot(matrix[0], matrix[1]), 3 * pixel)
+    const angles = style === 1 ? [angle, angle + 900] : style === 2 ? [angle, angle + 900, angle + 450] : [angle]
+    const grown = box(area.left - pixel, area.top - pixel, area.right + pixel, area.bottom + pixel)
+    canvas.hatch(data, angles.map((one) => hatchLines(grown, spacing, one)).join(''), colour)
   }
 
   private rectangle(action: Reader, at: number): Box {
@@ -451,21 +620,45 @@ class Player {
           const scaled = (shift: number) => Math.round((((colour >> shift) & 0xff) * Math.min(percent, 100)) / 100)
           return `#${[16, 8, 0].map((shift) => scaled(shift).toString(16).padStart(2, '0')).join('')}`
         }
-        const from = intensity(action.u32(gradient + 2), action.u16(gradient + 18))
-        const to = intensity(action.u32(gradient + 6), action.u16(gradient + 20))
-        const angle = action.u16(gradient + 10) % 3600
+        // Its style, its two colours in StarView's older way, then its angle, border, centre and intensities.
+        const first = namedColour(action, gradient + 2)
+        const last = namedColour(action, first.next)
+        const from = intensity(first.value, action.u16(last.next + 8))
+        const to = intensity(last.value, action.u16(last.next + 10))
+        const angle = action.u16(last.next) % 3600
         const vertical = angle < 450 || angle >= 3150 || (angle >= 1350 && angle < 2250)
         const reversed = angle >= 1350 && angle < 3150
         canvas.gradient(rectangle, reversed ? to : from, reversed ? from : to, vertical)
         break
       }
-      case 128:
-        // A clipping of a region is not followed; one taken away is.
-        if (action.u8(end - 1) === 0) state.clip = undefined
+      case 126: {
+        // A hatch: its polygons, then its style, colour, distance and angle (`ReadHatch`).
+        const { data, polygons, next } = this.polygons(action, start)
+        const hatch = compat(action, next).start
+        const colour = namedColour(action, hatch + 2)
+        this.hatch(polygons, data, action.u16(hatch), hex(colour.value), action.i32(colour.next), action.i16(colour.next + 4))
         break
+      }
+      case 128: {
+        // The clipping replaced by a region, or taken away when the flag after it says there is none.
+        const { region, next } = readRegion(action, start)
+        if (action.u8(next) !== 0) this.clip(region, false)
+        else state.clip = undefined
+        break
+      }
       case 129:
         canvas.intersectClip(this.rectangle(action, start))
         break
+      case 130:
+        this.clip(readRegion(action, start).region, true)
+        break
+      case 131: {
+        // The clipping moved, by a distance of the picture's units mapped as it is now.
+        const [x, y] = [action.i32(start), action.i32(start + 4)]
+        const matrix = canvas.matrix()
+        canvas.moveClip(matrix[0] * x + matrix[2] * y, matrix[1] * x + matrix[3] * y)
+        break
+      }
       case 132:
       case 133: {
         const colour = colourOf(action.u32(start))
@@ -496,12 +689,26 @@ class Player {
         break
       case 139:
         canvas.save()
-        if (this.saved.length < 256) this.saved.push(this.mapping)
+        if (this.saved.length < 256) this.saved.push({ mapping: this.mapping, flags: action.u16(start) })
         break
-      case 140:
+      case 140: {
+        const saved = this.saved.pop()
+        const now = canvas.state
         canvas.restore(-1)
-        this.mapping = this.saved.pop() ?? this.mapping
+        if (!saved) break
+        // Only what the save named comes back; the rest stays as it is now.
+        const restored = canvas.state
+        const { flags } = saved
+        if (!(flags & SAVES_LINE)) restored.pen = now.pen
+        if (!(flags & SAVES_FILL)) restored.brush = now.brush
+        if (!(flags & SAVES_FONT)) restored.font = now.font
+        if (!(flags & SAVES_TEXT_COLOUR)) restored.textColour = now.textColour
+        if (!(flags & SAVES_CLIPPING)) restored.clip = now.clip
+        if (!(flags & SAVES_TEXT_FILL)) [restored.background, restored.opaque] = [now.background, now.opaque]
+        if (!(flags & SAVES_ALIGNMENT)) restored.align = now.align
+        if (flags & SAVES_MAPPING) this.mapping = saved.mapping
         break
+      }
       case 142: {
         // Polygons filled through a share of their own transparency.
         const { data, next } = this.polygons(action, start)
