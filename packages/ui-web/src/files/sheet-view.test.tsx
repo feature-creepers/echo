@@ -19,6 +19,20 @@ const sheet = (more: Partial<SheetLook>): SheetLook => ({
 })
 
 describe('a sheet shown as it looks', () => {
+  it('draws the pictures a held sheet holds over its cells, scaled with them and cut at its edge', () => {
+    const figure = { kind: 'picture', type: 'image/png', bytes: new Uint8Array([1]), alt: 'Logo' } as const
+    const html = renderToStaticMarkup(
+      <SheetView
+        look={sheet({ headings: false, zoom: 0.5 })}
+        rows={[['a']]}
+        pictures={[{ figure, left: 10, top: 5, width: 60, height: 20 }]}
+        urls={new Map([[figure, 'blob:logo']])}
+      />
+    )
+    expect(html).toContain('<img src="blob:logo" alt="Logo" style="position:absolute;left:10pt;top:5pt;width:60pt;height:20pt;max-width:none"/>')
+    expect(html).toContain('zoom:0.5;position:relative;width:fit-content;overflow:hidden')
+  })
+
   it('turns text in its cell: a quarter as a line running down, read from the bottom when it turns counterclockwise, stacked letters upright, any other angle about its start', () => {
     const html = renderToStaticMarkup(
       <SheetView

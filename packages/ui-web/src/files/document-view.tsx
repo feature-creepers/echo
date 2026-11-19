@@ -410,7 +410,7 @@ function Placed({ placed }: { placed: PlacedFigure }) {
           ) : null
         ) : (
           <span className="block size-full overflow-hidden bg-white">
-            <Figure figure={figure.kind === 'sheet' ? fitted(figure, placed) : figure} url={url} alt={placed.alt} block />
+            <Figure figure={figure.kind === 'sheet' ? fitted(figure, placed) : figure} url={url} urls={urls} alt={placed.alt} block />
           </span>
         )}
       </span>

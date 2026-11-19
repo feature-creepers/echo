@@ -17,7 +17,7 @@ export function Figures({ figures, urls, className }: { figures: OfficeFigure[];
   return (
     <div className={cn('flex min-w-0 flex-wrap items-start gap-3', className)}>
       {figures.map((figure, index) => (
-        <Figure key={index} figure={figure} url={urls.get(figure)} alt={figure.kind === 'chart' ? figure.title : figure.alt} block />
+        <Figure key={index} figure={figure} url={urls.get(figure)} urls={urls} alt={figure.kind === 'chart' ? figure.title : figure.alt} block />
       ))}
     </div>
   )
@@ -25,10 +25,22 @@ export function Figures({ figures, urls, className }: { figures: OfficeFigure[];
 
 /**
  * A figure of an Office file: a picture at the size its file gives it, never wider than where it is shown; a chart,
- * as the Chart block draws one, under its title; a worksheet held as an object, as its sheet looks; or, for what the
- * window cannot show, a frame saying what it is.
+ * as the Chart block draws one, under its title; a worksheet held as an object, as its sheet looks, with the pictures
+ * it holds shown from `urls`; or, for what the window cannot show, a frame saying what it is.
  */
-export function Figure({ figure, url, alt, block }: { figure: OfficeFigure; url: string | undefined; alt: string; block: boolean }) {
+export function Figure({
+  figure,
+  url,
+  urls,
+  alt,
+  block
+}: {
+  figure: OfficeFigure
+  url: string | undefined
+  urls?: ReadonlyMap<OfficeFigure, string> | undefined
+  alt: string
+  block: boolean
+}) {
   if (figure.kind === 'picture')
     return url ? (
       <img
@@ -39,7 +51,7 @@ export function Figure({ figure, url, alt, block }: { figure: OfficeFigure; url:
         className={cn('h-auto max-w-full rounded-xs', block ? 'block' : 'inline-block align-middle')}
       />
     ) : null
-  if (figure.kind === 'sheet') return <SheetView look={figure.look} rows={figure.rows} />
+  if (figure.kind === 'sheet') return <SheetView look={figure.look} rows={figure.rows} pictures={figure.pictures} urls={urls} />
   if (figure.kind === 'chart')
     return (
       <span className="grid w-full min-w-0 gap-1.5 rounded-md border border-line px-3 py-2.5">
@@ -60,6 +72,10 @@ export function Figure({ figure, url, alt, block }: { figure: OfficeFigure; url:
     </span>
   )
 }
+
+/** A file's figures with the pictures the worksheets among them hold over their cells, which are shown too. */
+export const withHeldPictures = (figures: readonly OfficeFigure[]): OfficeFigure[] =>
+  figures.flatMap((figure): OfficeFigure[] => (figure.kind === 'sheet' ? [figure, ...(figure.pictures ?? []).map((picture) => picture.figure)] : [figure]))
 
 /** Addresses for the pictures of a file the window can show, made while they are shown and let go of after. */
 export function useFigureUrls(figures: readonly OfficeFigure[]): ReadonlyMap<OfficeFigure, string> {

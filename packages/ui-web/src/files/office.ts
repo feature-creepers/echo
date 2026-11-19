@@ -21,7 +21,7 @@ import {
 import { type Compound, openCompound } from './compound.ts'
 import { cellValue, serialNow, withConditions } from './conditional-formats.ts'
 import type { TextLook } from './document-look.ts'
-import { type CellArea, cellArea, sheetFigure } from './embedded-sheet.ts'
+import { type CellArea, cellArea, heldExtent, sheetFigure } from './embedded-sheet.ts'
 import { isEquationProgram } from './equation-editor.ts'
 import { builtInFormat, formatNumber, generalNumber, type NumberFormatOptions, numberColor } from './number-format.ts'
 import {
@@ -39,6 +39,8 @@ import {
 import { mathText, objectFormula } from './office-math.ts'
 import {
   BLOCK_LIMIT,
+  type CellAnchor,
+  type CellPoint,
   COLUMN_LIMIT,
   type Format,
   figureMark,
@@ -118,23 +120,57 @@ async function drawnFigure(drawn: Drawn, targets: ReadonlyMap<string, string>, f
   return drawn.picture === undefined ? undefined : figures.picture(targets.get(drawn.picture), drawn.alt, drawn)
 }
 
+/** A figure a drawing places, by its place in the file's figures, and where a sheet's drawing anchors it. */
+interface PlacedFigure {
+  figure: number
+  anchor?: CellAnchor | undefined
+}
+
+/** English Metric Units in points: 12,700 to the point. */
+const emuPoints = (value: string | undefined): number | undefined => {
+  const emu = Number(value)
+  return value !== undefined && Number.isFinite(emu) ? emu / 12_700 : undefined
+}
+
+/** The parts of a place in a sheet's cells as its anchor writes them, and how each is read. */
+const POINT_PARTS: Record<string, { key: keyof Omit<CellPoint, 'shares'>; read: (text: string) => number | undefined }> = {
+  'xdr:col': { key: 'column', read: (text) => Number(text) },
+  'xdr:row': { key: 'row', read: (text) => Number(text) },
+  'xdr:colOff': { key: 'x', read: (text) => emuPoints(text.trim()) },
+  'xdr:rowOff': { key: 'y', read: (text) => emuPoints(text.trim()) }
+}
+
+/** Whether an anchor says where what it holds starts: at a cell, or from the sheet's corner. */
+const placing = (anchor: CellAnchor | undefined): anchor is CellAnchor =>
+  anchor !== undefined && (anchor.from !== undefined || (anchor.left !== undefined && anchor.top !== undefined))
+
+/** An anchor of a sheet's drawing, which places what it holds on the sheet's cells. */
+const isAnchor = (name: string) => name === 'xdr:twoCellAnchor' || name === 'xdr:oneCellAnchor' || name === 'xdr:absoluteAnchor'
+
 /**
  * The pictures and charts a DrawingML drawing places, in order: a sheet's drawing part, a slide. A slide's background
- * and what is kept for older apps (`mc:Fallback`) are passed over. An object of another app a sheet's drawing places,
- * by the shape Excel draws it as for older apps (`a14:compatExt`), is the figure `objects` makes of it, in its place.
+ * and what is kept for older apps (`mc:Fallback`) are passed over. On a sheet, each is where its anchor puts it on the
+ * cells, but for the pictures of a group, which share their group's anchor. An object of another app a sheet's drawing
+ * places, by the shape Excel draws it as for older apps (`a14:compatExt`), is the figure `objects` makes of it, in its
+ * place.
  */
 async function drawnFigures(
   xml: string,
   targets: ReadonlyMap<string, string>,
   figures: Figures,
-  objects?: (shape: number) => Promise<number | undefined>
-): Promise<number[]> {
-  const found: number[] = []
+  objects?: (shape: number, anchor: CellAnchor | undefined) => Promise<number | undefined>
+): Promise<PlacedFigure[]> {
+  const found: PlacedFigure[] = []
   let drawn: Drawn | undefined
   // The object of another app an anchor of a sheet's drawing places.
   let object: number | undefined
   // A sheet's anchor may give the size of what it holds before it.
   let anchored: { width?: number | undefined; height?: number | undefined } = {}
+  // Where the anchor puts what it holds, read as it comes: its places in the cells, or its corner and size.
+  let anchor: CellAnchor | undefined
+  let point: CellPoint | undefined
+  let part: (typeof POINT_PARTS)[string] | undefined
+  let grouped = 0
   let passed = 0
   let background = false
   for (const event of xmlEvents(xml)) {
@@ -148,9 +184,23 @@ async function drawnFigures(
       if (name === 'mc:Fallback') passed = 1
       else if (name === 'p:bg') background = true
       else if (background) continue
+      else if (isAnchor(name)) {
+        anchor = {}
+        grouped = 0
+      } else if (anchor && (name === 'xdr:from' || name === 'xdr:to')) point = { row: 0, column: 0, x: 0, y: 0 }
+      else if (point && POINT_PARTS[name]) part = POINT_PARTS[name]
+      else if (anchor && name === 'xdr:pos') {
+        anchor.left = emuPoints(attributes.x)
+        anchor.top = emuPoints(attributes.y)
+      } else if (name === 'xdr:grpSp') grouped++
       else if (isDrawn(name)) drawn ??= { alt: '', ...anchored }
-      else if (name === 'xdr:ext' && !drawn) anchored = { width: emuPixels(attributes.cx), height: emuPixels(attributes.cy) }
-      else if (name === 'a14:compatExt' && objects) object = shapeNumber(attributes.spid)
+      else if (name === 'xdr:ext' && !drawn) {
+        anchored = { width: emuPixels(attributes.cx), height: emuPixels(attributes.cy) }
+        if (anchor) {
+          anchor.width = emuPoints(attributes.cx)
+          anchor.height = emuPoints(attributes.cy)
+        }
+      } else if (name === 'a14:compatExt' && objects) object = shapeNumber(attributes.spid)
       else if (!drawn) continue
       else if (name === 'xdr:cNvPr' || name === 'p:cNvPr') drawn.alt ||= attributes.descr || attributes.title || ''
       else if (name === 'a:blip') drawn.picture ??= attributes['r:embed']
@@ -159,16 +209,27 @@ async function drawnFigures(
         drawn.width = emuPixels(attributes.cx)
         drawn.height = emuPixels(attributes.cy)
       }
-    } else if (event.type === 'close') {
-      if (event.name === 'p:bg') background = false
-      else if (event.name === 'xdr:twoCellAnchor' || event.name === 'xdr:oneCellAnchor' || event.name === 'xdr:absoluteAnchor') {
+    } else if (event.type === 'text') {
+      const value = part && point ? part.read(event.text) : undefined
+      if (part && point && value !== undefined && Number.isFinite(value)) point[part.key] = value
+    } else {
+      const name = event.name
+      if (name === 'p:bg') background = false
+      else if (POINT_PARTS[name]) part = undefined
+      else if ((name === 'xdr:from' || name === 'xdr:to') && anchor && point) {
+        if (name === 'xdr:from') anchor.from = point
+        else anchor.to = point
+        point = undefined
+      } else if (name === 'xdr:grpSp') grouped = Math.max(0, grouped - 1)
+      else if (isAnchor(name)) {
         anchored = {}
-        const placed = object === undefined || !objects ? undefined : await objects(object)
-        if (placed !== undefined) found.push(placed)
+        const placed = object === undefined || !objects ? undefined : await objects(object, anchor)
+        if (placed !== undefined) found.push({ figure: placed, anchor: placing(anchor) ? anchor : undefined })
         object = undefined
-      } else if (drawn && isDrawn(event.name)) {
+        anchor = undefined
+      } else if (drawn && isDrawn(name)) {
         const figure = await drawnFigure(drawn, targets, figures)
-        if (figure !== undefined) found.push(figure)
+        if (figure !== undefined) found.push({ figure, anchor: grouped > 0 || !placing(anchor) ? undefined : { ...anchor } })
         drawn = undefined
       }
     }
@@ -699,7 +760,7 @@ async function embeddedSheet(bytes: Uint8Array, options: NumberFormatOptions, de
     active = [...workbook.matchAll(/<sheet\b[^>]*\bname="([^"]*)"/g)][tab]?.[1]
     active = active === undefined ? undefined : decodeEntities(active)
     area = cellArea(/<oleSize\b[^>]*\bref="([^"]*)"/.exec(workbook)?.[1])
-    preview = await readWorkbook(archive, options)
+    preview = await readWorkbook(archive, options, undefined, area ?? true)
   } else if (bytes[0] === 0xd0 && bytes[1] === 0xcf) {
     // A compound file: a workbook of 2007 or later in its `Package` stream, or one of 97 to 2003 in its own.
     const file = openCompound(bytes)
@@ -712,13 +773,17 @@ async function embeddedSheet(bytes: Uint8Array, options: NumberFormatOptions, de
     const view = olderWorkbookView(bytes)
     active = view.active
     area = view.area
-    preview = await readOlderExcel(bytes, options)
+    preview = await readOlderExcel(bytes, options, undefined, area ?? true)
   }
   if (preview.kind !== 'workbook') return undefined
   const sheet = preview.sheets.find((one) => one.name === active) ?? preview.sheets[0]
   const look = sheet?.look
-  // A sheet that holds pictures or charts, which its cells alone would leave out, is shown by its object's picture.
-  return sheet && look && sheet.figures.length === 0 ? sheetFigure({ name: sheet.name, rows: sheet.rows, look }, area) : undefined
+  // Its pictures are placed over its cells where their anchors put them; a sheet holding a chart, or a picture whose
+  // place is not known, which its cells alone would leave out, is shown by its object's picture.
+  const anchors = sheet?.anchors ?? []
+  const placed = sheet?.figures.map((figure, index) => ({ figure, anchor: anchors[index] })) ?? []
+  if (!sheet || !look || placed.some(({ figure, anchor }) => figure.kind !== 'picture' || anchor === undefined)) return undefined
+  return sheetFigure({ name: sheet.name, rows: sheet.rows, look }, area, '', placed)
 }
 
 /** An Excel workbook's sheets as they are read, with the options its numbers are shown by. */
@@ -780,9 +845,16 @@ async function workbookSheets(
 
 /**
  * An Excel workbook's sheets, each as rows of its cells' values as their formats show them, then the pictures and
- * charts its drawing places and the objects of other apps it holds, what these hold read by `objects` when given.
+ * charts its drawing places and the objects of other apps it holds, what these hold read by `objects` when given. A
+ * workbook held as an object (`held`) has its sheets' looks reach as far as the block its object shows and the figures
+ * its sheets place, which are drawn over its cells.
  */
-export async function readWorkbook(archive: Archive, options: NumberFormatOptions = {}, objects?: ObjectReader): Promise<OfficePreview> {
+export async function readWorkbook(
+  archive: Archive,
+  options: NumberFormatOptions = {},
+  objects?: ObjectReader,
+  held?: CellArea | true
+): Promise<OfficePreview> {
   const { sheets, shown, styles } = await workbookSheets(archive, options)
   // The sheets are read before their charts, which may name their cells rather than keep their values.
   const cells = sheetCells(sheets)
@@ -792,23 +864,26 @@ export async function readWorkbook(archive: Archive, options: NumberFormatOption
     // A sheet's pictures and charts are in its drawing, a part of their own, and so are its objects of other apps,
     // which it lists; one its drawing does not place follows the others.
     const targets = await relationships(archive, target)
-    const held = new Map((await sheetObjects(archive, xml, targets).catch(() => [])).map((object) => [object.shape, object]))
+    const listed = new Map((await sheetObjects(archive, xml, targets).catch(() => [])).map((object) => [object.shape, object]))
     const object = async (shape: number) => {
-      const found = held.get(shape)
-      held.delete(shape)
+      const found = listed.get(shape)
+      listed.delete(shape)
       return found && objectFigure(found, figures)
     }
     const drawing = targets.get(/<drawing\b[^>]*\br:id="([^"]*)"/.exec(xml)?.[1] ?? '')
     const drawn = drawing === undefined ? undefined : await textOf(archive, drawing)
     const placed = drawn === undefined || drawing === undefined ? [] : await drawnFigures(drawn, await relationships(archive, drawing), figures, object)
-    for (const shape of [...held.keys()]) {
+    for (const [shape, { anchor }] of [...listed]) {
       const figure = await object(shape)
-      if (figure !== undefined) placed.push(figure)
+      if (figure !== undefined) placed.push({ figure, anchor })
     }
+    const kept = placed.filter(({ figure }) => figures.list[figure] !== undefined)
+    const anchors = kept.map(({ anchor }) => anchor)
     // Its look, read from its part with its cells' styles; a sheet whose look cannot be read shows as a table.
     let look: SheetLook | undefined
+    const extent = { rows: rows.length, columns: Math.max(0, ...rows.map((row) => row.length)) }
     try {
-      look = readSheetLook(xml, layout, styles, { rows: rows.length, columns: Math.max(0, ...rows.map((row) => row.length)) })
+      look = readSheetLook(xml, layout, styles, held ? heldExtent(extent, held === true ? undefined : held, anchors) : extent)
     } catch {
       look = undefined
     }
@@ -819,7 +894,14 @@ export async function readWorkbook(archive: Archive, options: NumberFormatOption
         now: serialNow(shown.date1904 ?? false),
         date1904: shown.date1904 ?? false
       })
-    read.push({ name, rows, cut, figures: figuresAt(figures, placed), look })
+    read.push({
+      name,
+      rows,
+      cut,
+      figures: kept.flatMap(({ figure }) => figures.list[figure] ?? []),
+      look,
+      ...(anchors.some((anchor) => anchor !== undefined) ? { anchors } : {})
+    })
   }
   return { kind: 'workbook', sheets: read }
 }
@@ -1039,7 +1121,7 @@ export async function readPresentation(archive: Archive, options: NumberFormatOp
         placed: [],
         drawing: { kind: 'picture', type: 'image/svg+xml', bytes: drawing.svg, alt, width: Math.round(drawing.width), height: Math.round(drawing.height) }
       })
-    } else slides.push({ ...text, placed: await drawnFigures(xml, await relationships(archive, target), figures) })
+    } else slides.push({ ...text, placed: (await drawnFigures(xml, await relationships(archive, target), figures)).map(({ figure }) => figure) })
   }
   return {
     kind: 'presentation',

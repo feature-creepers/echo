@@ -22,13 +22,51 @@ export interface OfficeChart {
  */
 export type OfficeFigure = PictureFigure | ({ kind: 'chart' } & OfficeChart) | SheetFigure | { kind: 'unshown'; alt: string; what: 'picture' | 'chart' }
 
-/** A worksheet a file holds as an object of Excel: the block of cells of its sheet the object shows, as the sheet looks. */
+/**
+ * A worksheet a file holds as an object of Excel: the block of cells of its sheet the object shows, as the sheet looks,
+ * and the pictures it holds over them.
+ */
 export interface SheetFigure {
   kind: 'sheet'
   name: string
   rows: string[][]
   look: SheetLook
   alt: string
+  pictures?: SheetPicture[] | undefined
+}
+
+/** A picture a worksheet held as an object shows over its cells, in points from the corner of its block. */
+export interface SheetPicture {
+  figure: PictureFigure
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+/**
+ * A place in a sheet's cells: a cell, by its row and column counted from 0, and how far into it, in points, or as
+ * shares of its width and height (`shares`), as Excel 97 measures.
+ */
+export interface CellPoint {
+  row: number
+  column: number
+  x: number
+  y: number
+  shares?: boolean | undefined
+}
+
+/**
+ * Where a figure is on its sheet, as its drawing anchors it: from a cell to another, from a cell at a size, or from the
+ * sheet's corner (`left`, `top`) at a size, in points.
+ */
+export interface CellAnchor {
+  from?: CellPoint | undefined
+  to?: CellPoint | undefined
+  left?: number | undefined
+  top?: number | undefined
+  width?: number | undefined
+  height?: number | undefined
 }
 
 /**
@@ -73,7 +111,18 @@ export type PictureFigure = { kind: 'picture'; type: string; bytes: Uint8Array; 
  */
 export type OfficePreview =
   | { kind: 'document'; markdown: string; figures: OfficeFigure[]; cut: boolean; look?: DocumentLook | undefined }
-  | { kind: 'workbook'; sheets: { name: string; rows: string[][]; cut: boolean; figures: OfficeFigure[]; look?: SheetLook | undefined }[] }
+  | {
+      kind: 'workbook'
+      sheets: {
+        name: string
+        rows: string[][]
+        cut: boolean
+        figures: OfficeFigure[]
+        look?: SheetLook | undefined
+        /** Where each figure is on the sheet, in the order of the figures, when its drawing says. */
+        anchors?: (CellAnchor | undefined)[] | undefined
+      }[]
+    }
   | { kind: 'presentation'; slides: { title: string; lines: string[]; figures: OfficeFigure[]; drawing?: PictureFigure }[]; cut: boolean }
 
 /** What a file protected with a password says, whatever its format. */

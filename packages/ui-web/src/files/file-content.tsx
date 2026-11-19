@@ -5,7 +5,7 @@ import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { Markdown } from '../view/blocks/markdown.tsx'
 import { DocumentPages } from './document-view.tsx'
-import { Figure, Figures, useFigureUrls } from './figure-view.tsx'
+import { Figure, Figures, useFigureUrls, withHeldPictures } from './figure-view.tsx'
 import { badgeOf, extensionOf, kindOf, previewTypeOf } from './kinds.ts'
 import { type OfficePreview, readOffice } from './office.ts'
 import { SheetView } from './sheet-view.tsx'
@@ -138,11 +138,13 @@ function Office({ name, bytes, className }: { name: string; bytes: Uint8Array; c
 function OfficeShown({ preview, className }: { preview: OfficePreview; className?: string | undefined }) {
   const all = useMemo(
     () =>
-      preview.kind === 'document'
-        ? preview.figures
-        : preview.kind === 'workbook'
-          ? preview.sheets.flatMap((sheet) => sheet.figures)
-          : preview.slides.flatMap((slide) => (slide.drawing ? [slide.drawing, ...slide.figures] : slide.figures)),
+      withHeldPictures(
+        preview.kind === 'document'
+          ? preview.figures
+          : preview.kind === 'workbook'
+            ? preview.sheets.flatMap((sheet) => sheet.figures)
+            : preview.slides.flatMap((slide) => (slide.drawing ? [slide.drawing, ...slide.figures] : slide.figures))
+      ),
     [preview]
   )
   const urls = useFigureUrls(all)
@@ -167,7 +169,7 @@ function OfficeShown({ preview, className }: { preview: OfficePreview; className
       const figure = (address: string, alt: string, block: boolean) => {
         const found = /^figure:(\d+)$/.exec(address)
         const shownFigure = found ? preview.figures[Number(found[1])] : undefined
-        return shownFigure ? <Figure figure={shownFigure} url={urls.get(shownFigure)} alt={alt} block={block} /> : alt
+        return shownFigure ? <Figure figure={shownFigure} url={urls.get(shownFigure)} urls={urls} alt={alt} block={block} /> : alt
       }
       // A document drawn as it looks shows its pages; one that could not be shows its text.
       if (preview.look)

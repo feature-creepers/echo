@@ -15,7 +15,7 @@ import { type ChartContext, type ChartRecord, readGraphChart, readOlderChart } f
 import { codePageDecoder, damaged, languageCodePage, type Reader, reader, wordProperties } from './binary-records.ts'
 import { type Compound, openCompound } from './compound.ts'
 import { cellValue, serialNow, withConditions } from './conditional-formats.ts'
-import type { CellArea } from './embedded-sheet.ts'
+import { type CellArea, heldExtent } from './embedded-sheet.ts'
 import { objectEquation } from './equation-editor.ts'
 import { builtInFormat, formatNumber, generalNumber, type NumberFormatOptions, numberColor } from './number-format.ts'
 import {
@@ -34,6 +34,7 @@ import {
 import { type CellValue, cellRange, pictureType } from './office-figures.ts'
 import {
   BLOCK_LIMIT,
+  type CellAnchor,
   COLUMN_LIMIT,
   figureMark,
   heldLines,
@@ -1065,6 +1066,8 @@ export interface OlderSheet {
   cut: boolean
   cells: Map<string, CellValue>
   figures: OfficeFigure[]
+  /** Where each figure is on the sheet, in the order of the figures, when its drawing says. */
+  anchors?: (CellAnchor | undefined)[] | undefined
 }
 
 /** Bytes kept in several records, one after the other. */
@@ -1082,9 +1085,15 @@ function joined(parts: readonly Uint8Array[]): Uint8Array {
  * A workbook of Excel 97 to 2003, of Excel 5 and 95, or of Excel 2 to 4, its sheets each as rows of its cells' values
  * as their formats show them. Excel 5 and 95 write their text in 8-bit characters of the workbook's code page, with no
  * table of strings, and so do Excel 2 to 4. What the objects of other apps of an Excel 97 workbook hold is read by
- * `objects` when given.
+ * `objects` when given. A workbook held as an object (`held`) has its sheets' looks reach as far as the block its
+ * object shows and the pictures its sheets place, which are drawn over its cells.
  */
-export async function readOlderExcel(bytes: Uint8Array, options: NumberFormatOptions = {}, objects?: ObjectReader): Promise<OfficePreview> {
+export async function readOlderExcel(
+  bytes: Uint8Array,
+  options: NumberFormatOptions = {},
+  objects?: ObjectReader,
+  held?: CellArea | true
+): Promise<OfficePreview> {
   const parts = workbookParts(bytes, options, objects)
   await parts.figures.drawPacked()
   // Each sheet's look, from its records and the styles it uses, the workbook's or, in Excel 2 to 4, often its own, each
@@ -1098,13 +1107,14 @@ export async function readOlderExcel(bytes: Uint8Array, options: NumberFormatOpt
   return {
     kind: 'workbook',
     sheets: await Promise.all(
-      withFigures(parts).map(async ({ name, rows, cut, figures, cells }, index) => {
+      withFigures(parts).map(async ({ name, rows, cut, figures, cells, anchors }, index) => {
         const { layout, laid, looks } = parts.sheets[index] ?? {}
         const styles = looks && (await stylesOf(looks))
         let look: SheetLook | undefined
-        if (styles && layout && laid && rows.length > 0) {
+        if (styles && layout && laid && (rows.length > 0 || (held && figures.length > 0))) {
+          const extent = { rows: rows.length, columns: Math.max(0, ...rows.map((row) => row.length)) }
           try {
-            look = readOlderSheetLook(laid, layout, styles, { rows: rows.length, columns: Math.max(0, ...rows.map((row) => row.length)) })
+            look = readOlderSheetLook(laid, layout, styles, held ? heldExtent(extent, held === true ? undefined : held, anchors ?? []) : extent)
           } catch {
             look = undefined
           }
@@ -1117,7 +1127,7 @@ export async function readOlderExcel(bytes: Uint8Array, options: NumberFormatOpt
               date1904
             })
         }
-        return { name, rows, cut, figures, look }
+        return { name, rows, cut, figures, look, ...(anchors ? { anchors } : {}) }
       })
     )
   }
@@ -1129,7 +1139,7 @@ export async function readOlderExcel(bytes: Uint8Array, options: NumberFormatOpt
  */
 interface WorkbookParts {
   sheets: (Omit<OlderSheet, 'figures'> & {
-    places: number[]
+    places: { figure: number; anchor?: CellAnchor | undefined }[]
     layout?: SheetLayout | undefined
     laid?: OlderSheetRecords | undefined
     looks?: OlderBookRecords | undefined
@@ -1137,9 +1147,20 @@ interface WorkbookParts {
   figures: ArtFigures
 }
 
-/** The sheets of a workbook with their figures as they are now. */
+/** The sheets of a workbook with their figures as they are now, and where each is on its sheet when its drawing says. */
 const withFigures = ({ sheets, figures }: WorkbookParts): OlderSheet[] =>
-  sheets.map(({ name, rows, cut, cells, places }) => ({ name, rows, cut, cells, figures: figures.at(places) }))
+  sheets.map(({ name, rows, cut, cells, places }) => {
+    const shown = places.filter(({ figure }) => figures.list[figure] !== undefined)
+    const anchors = shown.map(({ anchor }) => anchor)
+    return {
+      name,
+      rows,
+      cut,
+      cells,
+      figures: figures.at(shown.map(({ figure }) => figure)),
+      ...(anchors.some((anchor) => anchor !== undefined) ? { anchors } : {})
+    }
+  })
 
 /** The beginnings of a part of a workbook (`BOF`), in Excel 2, 3, 4, and 5 and later. */
 const BEGINNINGS = new Map([
@@ -1548,10 +1569,10 @@ function sheetFigures(
   figures: ArtFigures,
   context: ChartContext,
   held?: HeldObjects
-): number[] {
+): { figure: number; anchor?: CellAnchor | undefined }[] {
   const [container] = artRecords(placed.drawing)
   const shapes = container?.type === ART.drawing ? artShapes(placed.drawing, container).filter((shape) => shape.picture !== undefined) : []
-  const found: number[] = []
+  const found: { figure: number; anchor?: CellAnchor | undefined }[] = []
   let picture = 0
   let chart = 0
   const nextPicture = (object?: ObjectRecord) => {
@@ -1566,7 +1587,7 @@ function sheetFigures(
     }
     const figure = figures.picture(`store:${shape.picture}`, stored(shape.picture), equation ?? shape.alt)
     if (figure === undefined) return
-    found.push(figure)
+    found.push({ figure, anchor: sheetAnchor(placed.drawing, shape.anchor) })
     const read = held?.read
     if (storage && equation === undefined && read) {
       const program = storageProgram(storage) || object?.program || ''
@@ -1583,7 +1604,7 @@ function sheetFigures(
       // A chart whose records cannot be read is one its app draws.
     }
     const figure = figures.chart(read)
-    if (figure !== undefined) found.push(figure)
+    if (figure !== undefined) found.push({ figure })
   }
   for (const object of placed.objects) {
     if (object.kind === PICTURE_OBJECT) nextPicture(object)
@@ -1592,6 +1613,20 @@ function sheetFigures(
   while (picture < shapes.length) nextPicture()
   while (chart < placed.charts.length) nextChart()
   return found
+}
+
+/**
+ * Where a shape of a sheet's drawing is on its cells (`OfficeArtClientAnchorSheet`): after two bytes of flags, its first
+ * column and how far into it in 1024ths of its width, its first row and how far into it in 256ths of its height, then
+ * the same of its last cell.
+ */
+function sheetAnchor(bytes: Uint8Array, record: ArtRecord | undefined): CellAnchor | undefined {
+  if (!record || record.size < 18 || record.at + 18 > bytes.length) return undefined
+  const value = (at: number) => readU16(bytes, record.at + at)
+  return {
+    from: { column: value(2), x: value(4) / 1024, row: value(6), y: value(8) / 256, shares: true },
+    to: { column: value(10), x: value(12) / 1024, row: value(14), y: value(16) / 256, shares: true }
+  }
 }
 
 /** The records of a formula, in Excel 5 and later, in Excel 3, and in Excel 4. */

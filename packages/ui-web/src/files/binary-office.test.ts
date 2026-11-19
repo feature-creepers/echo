@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { readOlderExcel, readOlderPowerPoint, readOlderSheets, readOlderWord, rkNumber } from './binary-office.ts'
 import { openCompound } from './compound.ts'
 import type { DocumentTable } from './document-look.ts'
-import { readOffice } from './office.ts'
+import { embeddedObjects, readOffice } from './office.ts'
 import type { OfficePreview } from './office-text.ts'
 
 /** Little-endian bytes written in order, with places to fill in once known; big-endian, as a Mac of its time wrote them, when asked. */
@@ -1656,6 +1656,61 @@ describe('an object of another app in a workbook', () => {
     })
   })
 
+  it('shows a worksheet holding pictures as its sheet, its pictures placed over its cells, and one holding a chart by its picture', async () => {
+    const anchored = (inside: string) =>
+      `<xdr:twoCellAnchor><xdr:from><xdr:col>1</xdr:col><xdr:colOff>127000</xdr:colOff><xdr:row>0</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:to><xdr:col>2</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>1</xdr:row><xdr:rowOff>63500</xdr:rowOff></xdr:to>${inside}<xdr:clientData/></xdr:twoCellAnchor>`
+    const pictured = (inside: string) =>
+      storedZip({
+        'xl/workbook.xml': '<workbook><sheets><sheet name="Costs" r:id="rId1"/></sheets><oleSize ref="A1:C2"/></workbook>',
+        'xl/_rels/workbook.xml.rels': '<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>',
+        'xl/worksheets/sheet1.xml':
+          '<worksheet><sheetFormatPr defaultRowHeight="15"/><cols><col min="1" max="3" width="10" customWidth="1"/></cols><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Tea</t></is></c></row></sheetData><drawing r:id="rId1"/></worksheet>',
+        'xl/worksheets/_rels/sheet1.xml.rels': '<Relationships><Relationship Id="rId1" Target="../drawings/drawing1.xml"/></Relationships>',
+        'xl/drawings/drawing1.xml': `<xdr:wsDr>${anchored(inside)}</xdr:wsDr>`,
+        'xl/drawings/_rels/drawing1.xml.rels':
+          '<Relationships><Relationship Id="rId1" Target="../media/image1.png"/><Relationship Id="rId2" Target="../charts/chart1.xml"/></Relationships>',
+        'xl/media/image1.png': new Uint8Array(PNG),
+        'xl/charts/chart1.xml':
+          '<c:chartSpace><c:chart><c:plotArea><c:barChart><c:ser><c:val><c:numCache><c:pt idx="0"><c:v>3</c:v></c:pt></c:numCache></c:val></c:ser></c:barChart></c:plotArea></c:chart></c:chartSpace>'
+      })
+    const document = (workbook: Uint8Array) =>
+      storedZip({
+        'word/document.xml':
+          '<w:document><w:body><w:p><w:r><w:object><v:shape style="width:150pt;height:30pt"><v:imagedata r:id="rId1" o:title=""/></v:shape><o:OLEObject Type="Embed" ProgID="Excel.Sheet.12" r:id="rId2"/></w:object></w:r></w:p></w:body></w:document>',
+        'word/_rels/document.xml.rels':
+          '<Relationships><Relationship Id="rId1" Target="media/image1.png"/><Relationship Id="rId2" Target="embeddings/Microsoft_Excel_Worksheet.xlsx"/></Relationships>',
+        'word/media/image1.png': new Uint8Array([...PNG, 1]),
+        'word/embeddings/Microsoft_Excel_Worksheet.xlsx': workbook
+      })
+    const logo =
+      '<xdr:pic><xdr:nvPicPr><xdr:cNvPr id="2" name="Logo" descr="Logo"/></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="rId1"/></xdr:blipFill></xdr:pic>'
+    const preview = await readOffice('docx', document(pictured(logo)))
+    const [figure] = preview.kind === 'document' ? preview.figures : []
+    expect(figure).toMatchObject({
+      kind: 'sheet',
+      name: 'Costs',
+      rows: [
+        ['Tea', '', ''],
+        ['', '', '']
+      ]
+    })
+    const columns = figure?.kind === 'sheet' ? figure.look.columns : []
+    expect(figure?.kind === 'sheet' ? figure.pictures : undefined).toEqual([
+      {
+        figure: { kind: 'picture', type: 'image/png', bytes: new Uint8Array(PNG), alt: 'Logo' },
+        left: (columns[0] ?? 0) + 10,
+        top: 0,
+        width: (columns[1] ?? 0) - 10,
+        height: 20
+      }
+    ])
+    const charted = await readOffice(
+      'docx',
+      document(pictured('<xdr:graphicFrame><a:graphic><a:graphicData><c:chart r:id="rId2"/></a:graphicData></a:graphic></xdr:graphicFrame>'))
+    )
+    expect(charted).toMatchObject({ figures: [{ kind: 'picture', bytes: new Uint8Array([...PNG, 1]) }] })
+  })
+
   it('shows an Excel 97 workbook’s objects in the order of its records, what they hold read from their storages', async () => {
     const store = container(0xf000, [
       atom(0xf006, new Bytes().zeros(16)),
@@ -1719,6 +1774,53 @@ describe('an object of another app in a workbook', () => {
       'picture',
       'picture',
       'picture'
+    ])
+  })
+
+  it('shows a worksheet of Excel 97 holding a picture as its sheet, the picture where its shape’s anchor puts it', async () => {
+    const store = container(0xf000, [atom(0xf006, new Bytes().zeros(16)), container(0xf001, [storeEntry(blipOf(0xf01e, 0x6e0, PNG))])])
+    // From B1, half its width in, to C2, a quarter of its height down.
+    const anchor = new Bytes().u16(0).u16(1).u16(512).u16(0).u16(0).u16(2).u16(0).u16(1).u16(64)
+    const drawing = artDrawing(artShape(1025, 0x0a00, 1, 'Logo', anchor))
+    const sheet = [
+      bof(),
+      record(0x0055, new Bytes().u16(8)),
+      record(0x0225, new Bytes().u16(0).u16(300)),
+      record(0x00fd, cell(0, 0).u32(0)),
+      record(0x00ec, drawing),
+      objectRecordOf(0x08),
+      EOF
+    ]
+    const sheetName = new Bytes().u8(5).u8(0).narrow('Costs')
+    const globals = (sheetAt: number) => [
+      bof(),
+      record(0x0085, new Bytes().u32(sheetAt).u8(0).u8(0).raw(sheetName.done())),
+      record(0x00fc, new Bytes().u32(1).u32(1).u16(3).u8(0).narrow('Tea')),
+      record(0x00eb, store),
+      EOF
+    ]
+    const length = globals(0).reduce((sum, one) => sum + one.length, 0)
+    const all = new Bytes()
+    for (const part of [...globals(length), ...sheet]) all.raw(part)
+    const book = compound({ Workbook: all.done() })
+    const preview = await readOlderExcel(book)
+    expect(preview.kind === 'workbook' ? preview.sheets[0]?.anchors : undefined).toEqual([
+      { from: { column: 1, x: 0.5, row: 0, y: 0, shares: true }, to: { column: 2, x: 0, row: 1, y: 0.25, shares: true } }
+    ])
+    // Held as an object, the block it was sized to shows the picture over its cells.
+    const held = await embeddedObjects()('Excel.Sheet.8', openCompound(book))
+    const columns = held?.kind === 'sheet' ? held.look.columns : []
+    // The block it shows reaches as far as its cells and the picture over them.
+    expect(held).toMatchObject({
+      kind: 'sheet',
+      name: 'Costs',
+      rows: [
+        ['Tea', '', ''],
+        ['', '', '']
+      ]
+    })
+    expect(held?.kind === 'sheet' ? held.pictures?.map(({ figure, ...place }) => ({ alt: figure.alt, ...place })) : undefined).toEqual([
+      { alt: 'Logo', left: (columns[0] ?? 0) + (columns[1] ?? 0) / 2, top: 0, width: (columns[1] ?? 0) / 2, height: 15 + 15 / 4 }
     ])
   })
 })
