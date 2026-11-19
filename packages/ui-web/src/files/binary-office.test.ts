@@ -5,9 +5,13 @@ import type { DocumentTable } from './document-look.ts'
 import { readOffice } from './office.ts'
 import type { OfficePreview } from './office-text.ts'
 
-/** Little-endian bytes written in order, with places to fill in once known. */
+/** Little-endian bytes written in order, with places to fill in once known; big-endian, as a Mac of its time wrote them, when asked. */
 class Bytes {
   private readonly values: number[] = []
+  private readonly bigEndian: boolean
+  constructor(bigEndian = false) {
+    this.bigEndian = bigEndian
+  }
   get length() {
     return this.values.length
   }
@@ -16,10 +20,10 @@ class Bytes {
     return this
   }
   u16(value: number) {
-    return this.u8(value).u8(value >> 8)
+    return this.bigEndian ? this.u8(value >> 8).u8(value) : this.u8(value).u8(value >> 8)
   }
   u32(value: number) {
-    return this.u16(value & 0xffff).u16(value >>> 16)
+    return this.bigEndian ? this.u16(value >>> 16).u16(value & 0xffff) : this.u16(value & 0xffff).u16(value >>> 16)
   }
   f64(value: number) {
     const view = new DataView(new ArrayBuffer(8))
@@ -1803,5 +1807,178 @@ describe('a PowerPoint 95 presentation', () => {
       figures: [],
       cut: false
     })
+  })
+})
+
+/** What a presentation of PowerPoint 3 or 4 is made of, in tests: its version, the computer that wrote it, and its first title's bytes. */
+interface FourOptions {
+  version?: number
+  mac?: boolean
+  title?: number[]
+  infoSize?: number
+}
+
+/**
+ * A presentation of PowerPoint 3 or 4 as libmwaw lays it out, in the byte order of the computer that wrote it: a head
+ * naming the table of zones and the document's information, which names its root, which names the list of slides.
+ * The first slide has notes, and a free text listed before its title and body; the second draws a group, holding two
+ * texts listed after it, before a text listed first; the third names as its title a frame that is no longer one.
+ */
+function fourStream(options: FourOptions = {}): Uint8Array {
+  const version = options.version ?? 4
+  const mac = options.mac ?? false
+  const bytes = () => new Bytes(mac)
+  const zones: Uint8Array[] = [bytes().zeros(24).done()]
+  const add = (zone: Bytes) => zones.push(zone.done()) - 1
+  // A frame: its kind (1 a shape, 4 a group), the placeholder it is (1 a title, 2 a body), whether it has text.
+  const frame = (kind: number, placeholder: number, text: boolean, group: [number, number] = [0, 0]) => {
+    const head =
+      version === 3
+        ? bytes()
+            .u8(mac ? kind << 4 : kind)
+            .u8(0)
+        : bytes().u16(mac ? (kind << 13) | (placeholder << 1) : kind | (placeholder << 12))
+    return head
+      .u8(text ? (mac ? 0x80 : 0x01) : 0)
+      .zeros(21)
+      .u32(group[0])
+      .u32(group[1])
+      .done()
+  }
+  const frames = (...each: Uint8Array[]) => add(bytes().raw(each.flatMap((one) => [...one])))
+  const texts = (...each: number[][]) => {
+    const zone = bytes().zeros(14)
+    for (const text of each) {
+      zone.zeros(54).u32(text.length).raw(text)
+      if (text.length % 2 === 1) zone.u8(0)
+      zone.u16(0x0c).u32(text.length).u16(16).u32(1).zeros(16)
+      zone.u16(0x18).u32(text.length).u16(28).u32(1).zeros(28)
+    }
+    return add(zone)
+  }
+  const content = (text: number, drawn: number, title: number, body: number) =>
+    add(
+      bytes()
+        .u32(text)
+        .u32(drawn)
+        .u16(0)
+        .u16(0)
+        .u16(1)
+        .u16(title & 0xffff)
+        .u16(body & 0xffff)
+        .zeros(20)
+    )
+  const slide = (shown: number, notes = 0) =>
+    add(
+      bytes()
+        .u32(0)
+        .u32(0)
+        .u32(shown)
+        .u32(notes)
+        .zeros(version === 3 ? 16 : 18)
+    )
+
+  const notes = content(texts(ascii('Speaker notes')), frames(frame(1, 2, true)), -1, 0)
+  const first = slide(
+    content(
+      texts(ascii('Seen from the train'), options.title ?? ascii('Plans'), ascii('Train at 9\rMuseum\vthen dinner')),
+      frames(frame(1, 0, true), frame(1, 1, true), frame(1, 2, true)),
+      1,
+      2
+    ),
+    notes
+  )
+  const second = slide(
+    content(
+      texts(ascii('Last'), ascii('Inside'), ascii('Group')),
+      frames(frame(4, 0, false, [2, 3]), frame(1, 0, true), frame(1, 0, true), frame(1, 0, true)),
+      -1,
+      -1
+    )
+  )
+  const third = slide(content(texts(ascii('Hybrid library')), frames(frame(1, 0, true)), 0, -1))
+  const list = bytes().u16(3).u32(10).zeros(10)
+  for (const each of [first, second, third]) list.zeros(12).u32(each)
+  const root = add(bytes().zeros(6).u32(add(list)).u16(0).u16(3).zeros(8))
+  const information = add(
+    bytes()
+      .zeros(34)
+      .u32(root)
+      .padTo(options.infoSize ?? (version === 3 ? 142 : 146))
+  )
+
+  let place = 24
+  const places = zones.map((zone) => {
+    const at = place
+    place += zone.length
+    return at
+  })
+  const stream = bytes()
+    .u32(0x0baddeed)
+    .u32(version)
+    .u32(place)
+    .u16(zones.length)
+    .u16(4)
+    .u32(place + zones.length * 8)
+    .u16(0)
+    .u16(information)
+  for (const zone of zones) stream.raw(zone)
+  for (const [index, zone] of zones.entries()) stream.u32(zone.length).u32(places[index] ?? 0)
+  return stream.done()
+}
+
+describe('a presentation of PowerPoint 4 or older', () => {
+  const read = (title: string, lastTitle = '') => [
+    { title, lines: ['Seen from the train', 'Train at 9', 'Museum then dinner'], figures: [] },
+    { title: '', lines: ['Inside', 'Group', 'Last'], figures: [] },
+    { title: lastTitle, lines: lastTitle === '' ? ['Hybrid library'] : [], figures: [] }
+  ]
+
+  it.each([
+    { name: 'of PowerPoint 4 from a PC, its slides in the order of their list, notes left out', file: compound({ PP40: fourStream() }), slides: read('Plans') },
+    {
+      name: 'of PowerPoint 4 from a Mac, in its order and its characters',
+      file: compound({ PP40: fourStream({ mac: true, title: [0x43, 0x61, 0x66, 0x8e] }) }),
+      slides: read('Café')
+    },
+    {
+      name: 'of PowerPoint 4 in the code page its summary names',
+      file: compound({ PP40: fourStream({ title: HELLO }), '\u0005SummaryInformation': codePageSummary(1251) }),
+      slides: read('Привет')
+    },
+    {
+      name: 'of PowerPoint 3 from a PC, as the file itself, the title its slide names',
+      file: fourStream({ version: 3 }),
+      slides: read('Plans', 'Hybrid library')
+    },
+    { name: 'of PowerPoint 3 from a Mac', file: fourStream({ version: 3, mac: true }), slides: read('Plans', 'Hybrid library') }
+  ])('reads one $name', async ({ file, slides }) => {
+    expect(await readOlderPowerPoint(file)).toEqual({ kind: 'presentation', slides, cut: false })
+  })
+
+  it.each([
+    {
+      name: 'PowerPoint 2 from a PC',
+      file: new Bytes().u32(0x0baddeed).u32(2).u32(24).zeros(24).done(),
+      message: 'It is a presentation of PowerPoint 2 or older, which is not read here.'
+    },
+    {
+      name: 'PowerPoint 2 from a Mac',
+      file: new Bytes(true).u32(0x0baddeed).u32(2).u32(24).zeros(24).done(),
+      message: 'It is a presentation of PowerPoint 2 or older, which is not read here.'
+    },
+    {
+      name: 'a version it does not know',
+      file: new Bytes().u32(0x0baddeed).u32(9).u32(24).zeros(24).done(),
+      message: 'The file is damaged: its slides could not be read.'
+    },
+    { name: 'damaged information', file: compound({ PP40: fourStream({ infoSize: 100 }) }), message: 'The file is damaged: its slides could not be read.' },
+    {
+      name: 'a stream of PowerPoint 4 without its mark',
+      file: compound({ PP40: new Bytes().zeros(64).done() }),
+      message: 'The file is damaged: its slides could not be read.'
+    }
+  ])('says plainly what it cannot read: $name', async ({ file, message }) => {
+    await expect(readOlderPowerPoint(file)).rejects.toThrow(message)
   })
 })

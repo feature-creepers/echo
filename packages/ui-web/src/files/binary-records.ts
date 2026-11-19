@@ -1,6 +1,6 @@
 /**
- * Reading the older Office formats' binary records (docs/SPEC.md, section 9.7): little-endian numbers, each read checked
- * against its end, so a damaged file fails with a sentence rather than reading past it; and the properties Word 97 to
+ * Reading the older Office formats' binary records (docs/SPEC.md, section 9.7): numbers, each read checked against its
+ * end, so a damaged file fails with a sentence rather than reading past it; and the properties Word 97 to
  * 2003 writes (`sprm`s), each a code that says how long its operand is.
  */
 
@@ -8,18 +8,21 @@ export const damaged = (): never => {
   throw new Error('The file is damaged: its text could not be read.')
 }
 
-/** Little-endian numbers from bytes, each read checked against their end. */
-export function reader(bytes: Uint8Array) {
+/**
+ * Numbers from bytes, each read checked against their end: little-endian, as Windows writes them, unless a file was
+ * written on a Mac of its time, whose numbers are big-endian (`littleEndian` false).
+ */
+export function reader(bytes: Uint8Array, littleEndian = true) {
   const data = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   const within = (at: number, size: number) => at >= 0 && at + size <= bytes.length
   return {
     length: bytes.length,
     u8: (at: number) => (within(at, 1) ? data.getUint8(at) : damaged()),
-    u16: (at: number) => (within(at, 2) ? data.getUint16(at, true) : damaged()),
-    i16: (at: number) => (within(at, 2) ? data.getInt16(at, true) : damaged()),
-    u32: (at: number) => (within(at, 4) ? data.getUint32(at, true) : damaged()),
-    i32: (at: number) => (within(at, 4) ? data.getInt32(at, true) : damaged()),
-    f64: (at: number) => (within(at, 8) ? data.getFloat64(at, true) : damaged()),
+    u16: (at: number) => (within(at, 2) ? data.getUint16(at, littleEndian) : damaged()),
+    i16: (at: number) => (within(at, 2) ? data.getInt16(at, littleEndian) : damaged()),
+    u32: (at: number) => (within(at, 4) ? data.getUint32(at, littleEndian) : damaged()),
+    i32: (at: number) => (within(at, 4) ? data.getInt32(at, littleEndian) : damaged()),
+    f64: (at: number) => (within(at, 8) ? data.getFloat64(at, littleEndian) : damaged()),
     bytes: (at: number, size: number) => (within(at, size) ? bytes.subarray(at, at + size) : damaged())
   }
 }

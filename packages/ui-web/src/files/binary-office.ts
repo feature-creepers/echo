@@ -1,10 +1,10 @@
 /**
  * The older Office formats read in the window itself, with no service and no library (docs/SPEC.md, section 9.7):
  * the documents of Word 6 to 2003 (.doc), the workbooks of Excel 2 to 2003 (.xls) and the presentations of PowerPoint
- * 97 to 2003 (.ppt). Each is a compound file (`compound.ts`) whose streams hold the binary records each app wrote,
- * but for Excel 2 to 4, which wrote theirs straight into the file. They are read for what a preview shows, as the
- * newer formats are: a document as Markdown, a workbook's sheets as tables, the text of each slide, and the pictures
- * of each (`office-art.ts`).
+ * 3 to 2003 (.ppt). Each is a compound file (`compound.ts`) whose streams hold the binary records each app wrote,
+ * but for Excel 2 to 4 and PowerPoint 3, which wrote theirs straight into the file. They are read for what a preview
+ * shows, as the newer formats are: a document as Markdown, a workbook's sheets as tables, the text of each slide, and
+ * the pictures of each (`office-art.ts`).
  *
  * Every offset read is checked against its stream, so a damaged file fails with a sentence rather than reading past
  * its end. A file protected with a password says so.
@@ -1899,6 +1899,190 @@ function ninetyFiveText(text: string, longer: boolean): OfficePreview {
   }
 }
 
+// PowerPoint 3 and 4
+
+/**
+ * What a presentation of PowerPoint 2 to 4 says of itself at its start: a mark that reads 0x0BADDEED in the order of
+ * the computer that wrote it, big-endian on a Mac, little-endian on a PC, then its version. PowerPoint 4 keeps it in a
+ * compound file, as the stream `PP40`; PowerPoint 3 and older write it as the file itself, with no compound file.
+ */
+function olderPresentationHead(bytes: Uint8Array): { version: number; littleEndian: boolean } | undefined {
+  if (bytes.length < 32) return undefined
+  const mark = readU32(bytes, 0)
+  const littleEndian = mark === 0x0baddeed ? true : mark === 0xeddead0b ? false : undefined
+  if (littleEndian === undefined) return undefined
+  return { version: reader(bytes, littleEndian).u32(4), littleEndian }
+}
+
+/**
+ * What a frame of PowerPoint 3 or 4 is (32 bytes each), as far as its text needs: whether it has some, by the flag of
+ * its third byte (the highest bit, in the PC's order the lowest); whether it groups others (its kind 4), and which, by
+ * the first and last of them in its last eight bytes; and, in PowerPoint 4, the kind of placeholder it is (1 a title, 2
+ * a body, 3 an object, 0 none), from its first word. The kind is in that word's top three bits on a Mac and its lowest
+ * three on a PC, the placeholder in bits 1 and 2 on a Mac and 12 and 13 on a PC; PowerPoint 3 gives its kind in the
+ * first byte, high half on a Mac, low half on a PC.
+ */
+function fourFrame(frames: Reader, index: number, version: number, littleEndian: boolean): { text: boolean; group?: [number, number]; placeholder?: number } {
+  const at = index * 32
+  const text = (frames.u8(at + 2) & (littleEndian ? 0x01 : 0x80)) !== 0
+  const word = frames.u16(at)
+  const first = frames.u8(at)
+  const kind = version === 3 ? (littleEndian ? first & 7 : (first >> 4) & 7) : littleEndian ? word & 7 : (word >> 13) & 7
+  const group: [number, number] | undefined = kind === 4 ? [frames.u32(at + 24), frames.u32(at + 28)] : undefined
+  const placeholder = version === 3 ? undefined : littleEndian ? (word >> 12) & 3 : (word >> 1) & 3
+  return { text, ...(group ? { group } : {}), ...(placeholder === undefined ? {} : { placeholder }) }
+}
+
+/** The most frames of a slide gathered into groups, past which the rest are read in the order of their list. */
+const GROUPED_LIMIT = 1 << 16
+
+/**
+ * The texts of a slide of PowerPoint 3 or 4 (its `TextZone`), in order: after a head of 14 bytes, each a box of 58
+ * bytes (its paragraph's style, its place, its first font and ruler) whose last four give its length, its characters,
+ * a byte to make them even, then its runs of fonts and of paragraphs, each a head of 12 bytes (a tag, the length again,
+ * the size of a run and their count) and the runs. A text whose parts do not fit ends the list, as libmwaw ends it.
+ */
+function fourTexts(zone: Reader, decoder: TextDecoder): string[] {
+  const texts: string[] = []
+  let at = 14
+  while (at + 58 < zone.length) {
+    const size = zone.u32(at + 54)
+    if (size > zone.length - at - 58 - 18) break
+    const text = decoder.decode(zone.bytes(at + 58, size))
+    let after = at + 58 + size + (size & 1)
+    // The runs of fonts, then of paragraphs: each head says how long a run is and how many follow.
+    for (const last of [false, true]) {
+      const runSize = zone.u16(after + 6)
+      const runs = zone.u32(after + 8)
+      if (runSize < 4 || runs > (zone.length - after) / runSize || after + 12 + runSize * runs + (last ? 0 : 8) > zone.length) return texts
+      after += 12 + runSize * runs
+    }
+    texts.push(text)
+    at = after
+  }
+  return texts
+}
+
+/**
+ * A slide of PowerPoint 3 or 4, from its content (`SlideContent`, 38 bytes): its texts and its frames. A frame with
+ * text takes the next of the slide's texts, in the order of the list, but for its title and its body, the two frames
+ * the content names, whose texts come last, the title's first. They are read in the order the slide is drawn, a
+ * group's frames where the group is, each once, as libmwaw sends them. The title's frame's text is the slide's title,
+ * in PowerPoint 4 when the frame says it still is one: a slide can name as its title a frame that no longer is, and
+ * PowerPoint, converting it, makes its text a text box's. Lines are the paragraphs of each text, a line break inside
+ * one read as a space.
+ */
+function fourSlide(
+  content: Reader,
+  zone: (index: number) => Reader | undefined,
+  version: number,
+  littleEndian: boolean,
+  decoder: TextDecoder
+): { title: string; lines: string[] } {
+  const slide = { title: '', lines: [] as string[] }
+  const kept = zone(content.u32(0))
+  const texts = kept ? fourTexts(kept, decoder) : []
+  const frames = zone(content.u32(4))
+  if (!frames) return slide
+  const title = content.i16(14)
+  const body = content.i16(16)
+  const listed = Array.from({ length: Math.floor(frames.length / 32) }, (_, index) => fourFrame(frames, index, version, littleEndian))
+  const main = listed.filter((frame, index) => frame.text && (index === title || index === body)).length
+  const places = new Map<number, number>()
+  let other = 0
+  listed.forEach((frame, index) => {
+    if (!frame.text) return
+    // The body is the first main text when the slide has no title, the second when it has one.
+    places.set(index, index === title ? texts.length - main : index === body ? texts.length - main + (title === -1 ? 0 : 1) : other++)
+  })
+  const seen = new Set<number>()
+  let grouped = 0
+  for (let start = 0; start < listed.length; start++) {
+    const waiting = [start]
+    for (let index = waiting.pop(); index !== undefined; index = waiting.pop()) {
+      const frame = listed[index]
+      if (!frame || seen.has(index)) continue
+      seen.add(index)
+      const place = places.get(index)
+      if (place === undefined) {
+        // A group whose frames are not all in the list has none, as libmwaw reads it.
+        const [first, last] = frame.group && frame.group[1] < listed.length ? frame.group : [1, 0]
+        for (let child = last; child >= first && grouped < GROUPED_LIMIT; child--, grouped++) if (!seen.has(child)) waiting.push(child)
+        continue
+      }
+      const lines = (texts[place] ?? '')
+        .split('\r')
+        .map((line) => line.replaceAll('\v', ' ').trim())
+        .filter(Boolean)
+      if (lines.length === 0) continue
+      if (index === title && slide.title === '' && (frame.placeholder === undefined || frame.placeholder === 1)) slide.title = lines.join(' ')
+      else slide.lines.push(...lines)
+    }
+  }
+  return slide
+}
+
+/**
+ * The slides of a presentation of PowerPoint 3 or 4, in the order of its list, as libmwaw's reader of them
+ * (`PowerPoint3Parser`) lays them out, Microsoft having described none: a table of zones, each a length and a place,
+ * whose count is at 12 and place at 8; the document's information (zone named at 22, 142 bytes in PowerPoint 3, 146
+ * in 4) names its root (22 bytes), which names the list of slides (16 bytes a slide after a head of 16), each naming
+ * its slide (32 bytes, 34 in 4), which names its content. Pages of notes and masters are left out.
+ */
+function fourSlides(
+  stream: Uint8Array,
+  version: number,
+  littleEndian: boolean,
+  decoder: TextDecoder
+): { slides: { title: string; lines: string[] }[]; cut: boolean } {
+  const data = reader(stream, littleEndian)
+  const table = data.u32(8)
+  const count = data.u16(12)
+  const zone = (index: number): Reader | undefined => {
+    if (index < 0 || index >= count || table + index * 8 + 8 > stream.length) return undefined
+    const length = data.u32(table + index * 8) & 0x3fffffff
+    const begin = data.u32(table + index * 8 + 4)
+    if (length === 0 || begin + length > stream.length) return undefined
+    return reader(stream.subarray(begin, begin + length), littleEndian)
+  }
+  const information = zone(data.u16(22))
+  if (information?.length !== (version === 3 ? 142 : 146)) return damaged()
+  const root = zone(information.u32(34))
+  if (root?.length !== 22) return damaged()
+  const list = zone(root.u32(6))
+  if (!list || list.length % 16 !== 0) return damaged()
+  const slides: { title: string; lines: string[] }[] = []
+  const listed = Math.min(list.u16(0), list.length / 16 - 1)
+  for (let index = 0; index < listed; index++) {
+    if (slides.length >= SLIDE_LIMIT) return { slides, cut: true }
+    const slide = zone(list.u32(16 + index * 16 + 12))
+    const content = slide?.length === (version === 3 ? 32 : 34) ? zone(slide.u32(8)) : undefined
+    // A slide whose records cannot be found is kept, empty, so the others keep their numbers.
+    slides.push(content?.length === 38 ? fourSlide(content, zone, version, littleEndian, decoder) : { title: '', lines: [] })
+  }
+  return { slides, cut: false }
+}
+
+/**
+ * A presentation of PowerPoint 4 or older: PowerPoint 3's and 4's slides one by one, each with its title and the
+ * lines of its other text, in the Mac's own characters when a Mac wrote it, else in the code page its summary names.
+ * They are not drawn. PowerPoint 2 and 1, whose files say version 2, laid out theirs another way, each of the Mac and
+ * the PC its own, and only two small test files of them are public to check a reading against: they are not read.
+ */
+function readOlderPresentation(stream: Uint8Array, head: { version: number; littleEndian: boolean }, file: Compound | undefined): OfficePreview {
+  if (head.version === 2) throw new Error('It is a presentation of PowerPoint 2 or older, which is not read here.')
+  if (head.version !== 3 && head.version !== 4) throw new Error('The file is damaged: its slides could not be read.')
+  const decoder = head.littleEndian ? codePageDecoder((file && summaryCodePage(file)) ?? 1252) : codePageDecoder(10000)
+  let read: ReturnType<typeof fourSlides> | undefined
+  try {
+    read = fourSlides(stream, head.version, head.littleEndian, decoder)
+  } catch {
+    read = undefined
+  }
+  if (!read || read.slides.length === 0) throw new Error('The file is damaged: its slides could not be read.')
+  return { kind: 'presentation', slides: read.slides.map((slide) => ({ ...slide, figures: [] })), cut: read.cut }
+}
+
 /** Where each object of a presentation is, by its number, from its latest save back to its first. */
 function persistedObjects(file: ReturnType<typeof openCompound>, stream: Reader): { places: Map<number, number>; document?: number } {
   const places = new Map<number, number>()
@@ -1979,9 +2163,19 @@ async function objectStorage(raw: Uint8Array, record: PowerPointRecord | undefin
  * A PowerPoint 97 to 2003 presentation's slides, in order: each one's title, the lines of its other text, and the
  * slide drawn as it looks (`older-slide-drawing.ts`). A slide that cannot be drawn shows its pictures instead: an
  * object of another app by its picture, a chart's drawn from its storage when the window does not show that picture.
+ * A presentation of PowerPoint 95, or of 4 or older, is read its own way.
  */
 export async function readOlderPowerPoint(bytes: Uint8Array): Promise<OfficePreview> {
+  // PowerPoint 3 and older wrote a presentation as the file itself; PowerPoint 4 keeps the same in a compound file.
+  const bare = olderPresentationHead(bytes)
+  if (bare) return readOlderPresentation(bytes, bare, undefined)
   const file = openCompound(bytes)
+  const four = file.stream('PP40')
+  if (four) {
+    const head = olderPresentationHead(four)
+    if (!head) throw new Error('The file is damaged: its slides could not be read.')
+    return readOlderPresentation(four, head, file)
+  }
   const raw = file.stream('PowerPoint Document')
   if (!raw) throw new Error('This is not a PowerPoint presentation.')
   if (file.stream('EncryptedSummary')) throw new Error(PROTECTED)
