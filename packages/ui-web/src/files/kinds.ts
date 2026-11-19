@@ -5,7 +5,7 @@
 
 /**
  * How a file is previewed: rendered as the Prose block renders, as text, as a table, as a picture, as a document, as
- * the text of a Word, Excel or PowerPoint file, or not at all.
+ * the text of an Office file (Word, Excel, PowerPoint or OpenDocument), or not at all.
  */
 export type PreviewMode = 'markdown' | 'text' | 'csv' | 'image' | 'pdf' | 'office' | 'none'
 
@@ -67,8 +67,9 @@ const KINDS: Record<string, FileKind> = {
   xlsx: { label: 'Excel spreadsheet', preview: 'office' },
   ppt: { label: 'PowerPoint presentation', preview: 'none' },
   pptx: { label: 'PowerPoint presentation', preview: 'office' },
-  odt: { label: 'OpenDocument text', preview: 'none' },
-  ods: { label: 'OpenDocument spreadsheet', preview: 'none' },
+  odt: { label: 'OpenDocument text', preview: 'office' },
+  ods: { label: 'OpenDocument spreadsheet', preview: 'office' },
+  odp: { label: 'OpenDocument presentation', preview: 'office' },
   zip: { label: 'ZIP archive', preview: 'none' },
   gz: { label: 'Compressed file', preview: 'none' },
   tar: { label: 'Archive', preview: 'none' },

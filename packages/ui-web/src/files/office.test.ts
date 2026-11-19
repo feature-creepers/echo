@@ -172,3 +172,106 @@ describe('an Office file previewed', () => {
     await expect(readOffice('pptx', await zip({ 'other.xml': '<a/>' }))).rejects.toThrow('not a PowerPoint presentation')
   })
 })
+
+/** An OpenDocument's content part: its automatic styles, then its body. */
+const odf = (styles: string, body: string) =>
+  `<?xml version="1.0" encoding="UTF-8"?><office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" office:version="1.3">` +
+  `<office:automatic-styles>${styles}</office:automatic-styles><office:body>${body}</office:body></office:document-content>`
+
+describe('an OpenDocument file previewed', () => {
+  it('shows a text as Markdown: headings by level and by style, lists, spaces, line breaks, tables, without notes or comments', async () => {
+    const body = [
+      '<text:p text:style-name="P1">Trip to Rome</text:p>',
+      '<text:h text:style-name="Heading_20_2" text:outline-level="2">Day <text:span>one</text:span></text:h>',
+      '<text:p>Visit the *Forum*<text:note><text:note-citation>1</text:note-citation><text:note-body><text:p>A note</text:p></text:note-body></text:note> &amp; eat<office:annotation><text:p>Comment</text:p></office:annotation></text:p>',
+      '<text:p>Two<text:s text:c="2"/>spaces<text:tab/>and<text:line-break/>a break</text:p>',
+      '<text:list><text:list-item><text:p>Tickets</text:p><text:list><text:list-item><text:p>Museum</text:p></text:list-item></text:list></text:list-item></text:list>',
+      '<text:p>   </text:p>',
+      '<text:p><draw:frame><draw:text-box><text:p>In a frame</text:p></draw:text-box></draw:frame></text:p>',
+      '<table:table><table:table-row><table:table-cell><text:p>Day</text:p></table:table-cell><table:table-cell><text:p>Cost</text:p></table:table-cell></table:table-row>' +
+        '<table:table-row><table:table-cell><text:p>1</text:p></table:table-cell><table:table-cell><text:p>40 | 50</text:p></table:table-cell></table:table-row></table:table>'
+    ].join('\n')
+    const file = await zip({
+      mimetype: 'application/vnd.oasis.opendocument.text',
+      'content.xml': odf('<style:style style:name="P1" style:family="paragraph" style:parent-style-name="Title"/>', `<office:text>${body}</office:text>`)
+    })
+    expect(await readOffice('odt', file)).toEqual({
+      kind: 'document',
+      markdown: [
+        '# Trip to Rome',
+        '## Day one',
+        'Visit the \\*Forum\\* & eat',
+        'Two  spaces\tand  \na break',
+        '- Tickets',
+        '  - Museum',
+        '| Day | Cost |\n| --- | --- |\n| 1 | 40 \\| 50 |'
+      ].join('\n\n'),
+      cut: false
+    })
+  })
+
+  it('shows a spreadsheet as tables: the text each cell shows, repeated cells and rows, and not the empty end of a sheet', async () => {
+    const cell = (text: string, more = '') => `<table:table-cell office:value-type="string"${more}><text:p>${text}</text:p></table:table-cell>`
+    const empty = (repeated: number) => `<table:table-cell table:number-columns-repeated="${repeated}"/>`
+    const sheet =
+      '<table:table table:name="Budget"><table:table-column table:number-columns-repeated="1024"/>' +
+      `<table:table-row>${cell('Item')}${empty(1)}${cell('Paid')}${empty(16381)}</table:table-row>` +
+      `<table:table-row table:number-rows-repeated="1">${empty(1024)}</table:table-row>` +
+      `<table:table-row>${cell('Hotel')}<table:table-cell office:value-type="float" office:value="120.5"><text:p>120,50 €</text:p></table:table-cell>` +
+      `<table:table-cell office:value-type="boolean" office:boolean-value="true"/>${empty(1021)}</table:table-row>` +
+      `<table:table-row table:number-rows-repeated="2">${cell('Same', ' table:number-columns-repeated="2"')}</table:table-row>` +
+      `<table:table-row table:number-rows-repeated="1048570">${empty(1024)}</table:table-row></table:table>` +
+      `<table:table table:name="Empty"><table:table-row>${empty(5)}</table:table-row></table:table>`
+    const file = await zip({ 'content.xml': odf('', `<office:spreadsheet>${sheet}</office:spreadsheet>`) })
+    expect(await readOffice('ods', file)).toEqual({
+      kind: 'workbook',
+      sheets: [
+        {
+          name: 'Budget',
+          rows: [['Item', '', 'Paid'], [], ['Hotel', '120,50 €', 'TRUE'], ['Same', 'Same'], ['Same', 'Same']],
+          cut: false
+        },
+        { name: 'Empty', rows: [], cut: false }
+      ]
+    })
+  })
+
+  it('cuts a sheet past its rows and columns shown, and says so', async () => {
+    const row =
+      '<table:table-row table:number-rows-repeated="600"><table:table-cell table:number-columns-repeated="80"><text:p>x</text:p></table:table-cell></table:table-row>'
+    const file = await zip({ 'content.xml': odf('', `<office:spreadsheet><table:table table:name="Big">${row}</table:table></office:spreadsheet>`) })
+    const preview = await readOffice('ods', file)
+    if (preview.kind !== 'workbook') throw new Error('Not a workbook.')
+    expect(preview.sheets[0]?.rows).toHaveLength(500)
+    expect(preview.sheets[0]?.rows[0]).toHaveLength(50)
+    expect(preview.sheets[0]?.cut).toBe(true)
+  })
+
+  it('shows a presentation as its slides, in order: each title, then its text, without its notes', async () => {
+    const frame = (kind: string, ...lines: string[]) =>
+      `<draw:frame presentation:class="${kind}"><draw:text-box>${lines.map((line) => `<text:p>${line}</text:p>`).join('')}</draw:text-box></draw:frame>`
+    const page = (name: string, title: string, ...lines: string[]) =>
+      `<draw:page draw:name="${name}">${frame('title', title)}${frame('outline', ...lines)}<draw:custom-shape><text:p>In a shape</text:p></draw:custom-shape>` +
+      '<presentation:notes><draw:frame><draw:text-box><text:p>Speaker notes</text:p></draw:text-box></draw:frame></presentation:notes></draw:page>'
+    const file = await zip({
+      'content.xml': odf(
+        '',
+        `<office:presentation>${page('one', 'Welcome', 'Ada &amp; team')}${page('two', 'Results', 'Up 12%', 'Ahead of plan')}</office:presentation>`
+      )
+    })
+    expect(await readOffice('odp', file)).toEqual({
+      kind: 'presentation',
+      slides: [
+        { title: 'Welcome', lines: ['Ada & team', 'In a shape'] },
+        { title: 'Results', lines: ['Up 12%', 'Ahead of plan', 'In a shape'] }
+      ],
+      cut: false
+    })
+  })
+
+  it('says when a file is not an OpenDocument', async () => {
+    await expect(readOffice('odt', await zip({ 'other.xml': '<a/>' }))).rejects.toThrow('not an OpenDocument text')
+    await expect(readOffice('ods', await zip({ 'other.xml': '<a/>' }))).rejects.toThrow('not an OpenDocument spreadsheet')
+    await expect(readOffice('odp', await zip({ 'other.xml': '<a/>' }))).rejects.toThrow('not an OpenDocument presentation')
+  })
+})

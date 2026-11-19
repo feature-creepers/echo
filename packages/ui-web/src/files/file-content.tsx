@@ -26,8 +26,8 @@ type Reading = { is: 'reading' } | { is: 'failed' } | { is: 'read'; bytes: Uint8
 
 /**
  * A file's content, shown as what it is: Markdown as the Prose block shows it, text and code in the monospace
- * face, a table as a table, a picture, a PDF in the window's own viewer, the text of a Word, Excel or PowerPoint
- * file, and anything else as its kind and size.
+ * face, a table as a table, a picture, a PDF in the window's own viewer, the text of an Office file, and anything
+ * else as its kind and size.
  */
 export function FileContent({ client, path, name, size, modified, className }: FileContentProps) {
   const kind = kindOf(name)
@@ -109,8 +109,8 @@ function Shown({ name, bytes, size, className }: { name: string; bytes: Uint8Arr
 type OfficeReading = { is: 'reading' } | { is: 'failed'; why: string } | { is: 'read'; preview: OfficePreview }
 
 /**
- * A Word, Excel or PowerPoint file, read in the window: a document as the Prose block shows it, each sheet as a
- * table, each slide's title and text. What it looks like is left to its app, and the preview says so.
+ * An Office file, Word, Excel, PowerPoint or OpenDocument, read in the window: a document as the Prose block shows
+ * it, each sheet as a table, each slide's title and text. What it looks like is left to its app, and the preview says so.
  */
 function Office({ name, bytes, className }: { name: string; bytes: Uint8Array; className?: string | undefined }) {
   const [reading, setReading] = useState<OfficeReading>({ is: 'reading' })

@@ -1,9 +1,9 @@
 /**
- * Word, Excel and PowerPoint files read in the window itself, with no service and no library (docs/SPEC.md, section
- * 9.7): each is a ZIP archive of XML parts, unpacked with the window's own decompression and read for what a
- * preview shows. A document becomes Markdown, shown as the Prose block shows it; a workbook, its sheets as tables; a
- * presentation, the text of each slide. Their look, pictures and charts are left to their app. The older binary
- * formats (.doc, .xls, .ppt) are not read.
+ * Office files read in the window itself, with no service and no library (docs/SPEC.md, section 9.7): Word, Excel and
+ * PowerPoint's (.docx, .xlsx, .pptx) and OpenDocument's (.odt, .ods, .odp). Each is a ZIP archive of XML parts,
+ * unpacked with the window's own decompression and read for what a preview shows. A document becomes Markdown, shown
+ * as the Prose block shows it; a workbook, its sheets as tables; a presentation, the text of each slide. Their look,
+ * pictures and charts are left to their app. The older binary formats (.doc, .xls, .ppt) are not read.
  */
 
 /** What a preview of an Office file shows. */
@@ -13,7 +13,14 @@ export type OfficePreview =
   | { kind: 'presentation'; slides: { title: string; lines: string[] }[]; cut: boolean }
 
 /** The extensions read, and what each is. */
-export const OFFICE_KINDS = { docx: 'document', xlsx: 'workbook', pptx: 'presentation' } as const
+export const OFFICE_KINDS = {
+  docx: 'document',
+  xlsx: 'workbook',
+  pptx: 'presentation',
+  odt: 'document',
+  ods: 'workbook',
+  odp: 'presentation'
+} as const
 
 /** The most a part of an archive is unpacked to: a preview never needs more, and a crafted archive stops there. */
 const PART_LIMIT = 32 * 1024 * 1024
@@ -255,14 +262,17 @@ export async function readDocument(archive: Archive): Promise<OfficePreview> {
     } else if (event.name === 'w:tr' && depth === 1 && row) {
       table.push(row)
       row = undefined
-    } else if (event.name === 'w:tbl' && --depth === 0 && table.length > 0) {
-      const width = Math.max(...table.map((one) => one.length))
-      const line = (cells: string[]) => `| ${Array.from({ length: width }, (_, column) => plain(cells[column] ?? '').replace(/\n/g, ' ')).join(' | ')} |`
-      const [head = [], ...body] = table
-      blocks.push([line(head), `|${' --- |'.repeat(width)}`, ...body.map(line)].join('\n'))
-    }
+    } else if (event.name === 'w:tbl' && --depth === 0 && table.length > 0) blocks.push(markdownTable(table))
   }
   return { kind: 'document', markdown: blocks.join('\n\n'), cut: blocks.length >= BLOCK_LIMIT }
+}
+
+/** A document's table as a Markdown table: its first row the head, every row as wide as the widest. */
+function markdownTable(table: string[][]): string {
+  const width = Math.max(...table.map((one) => one.length))
+  const line = (cells: string[]) => `| ${Array.from({ length: width }, (_, column) => plain(cells[column] ?? '').replace(/\n/g, ' ')).join(' | ')} |`
+  const [head = [], ...body] = table
+  return [line(head), `|${' --- |'.repeat(width)}`, ...body.map(line)].join('\n')
 }
 
 /** A cell's column from its reference: "A1" is 0, "AB7" is 27. */
@@ -410,11 +420,290 @@ function slideText(xml: string): { title: string; lines: string[] } {
   return { title, lines }
 }
 
+/**
+ * OpenDocument: every kind keeps what it holds in one part, `content.xml`, under `office:body`. Its text is in
+ * paragraphs (`text:p`) and headings (`text:h`), spaces past the first written as `text:s`; a spreadsheet's and a
+ * text's tables are `table:table`, whose rows and cells may stand for several alike (`number-rows-repeated`,
+ * `number-columns-repeated`), as a sheet's empty end is written; a presentation's slides are `draw:page`.
+ */
+
+/** What is passed over in an OpenDocument's body: notes, comments, the text a change took out, and what drawings hold. */
+const PASSED_OVER = new Set([
+  'text:note',
+  'office:annotation',
+  'text:tracked-changes',
+  'presentation:notes',
+  'text:sequence-decls',
+  'draw:frame',
+  'draw:custom-shape',
+  'draw:g'
+])
+
+/** The same in a presentation, whose slides' text is in drawings. */
+const SLIDE_PASSED_OVER = new Set(['text:note', 'office:annotation', 'text:tracked-changes', 'presentation:notes', 'text:sequence-decls'])
+
+/** An OpenDocument's body as steps, without what is passed over, and the parents of its automatic styles, by name. */
+function openDocumentBody(xml: string, passed: ReadonlySet<string>): { events: XmlEvent[]; parents: Map<string, string> } {
+  const events: XmlEvent[] = []
+  const parents = new Map<string, string>()
+  let body = false
+  let skipped: string | undefined
+  let depth = 0
+  for (const event of xmlEvents(xml)) {
+    if (!body) {
+      const name = event.type === 'open' && event.name === 'style:style' ? event.attributes['style:name'] : undefined
+      const parent = event.type === 'open' ? event.attributes['style:parent-style-name'] : undefined
+      if (name && parent) parents.set(name, parent)
+      if (event.type === 'open' && event.name === 'office:body') body = true
+      continue
+    }
+    if (skipped !== undefined) {
+      if (event.type === 'open' && event.name === skipped) depth++
+      else if (event.type === 'close' && event.name === skipped && --depth === 0) skipped = undefined
+      continue
+    }
+    if (event.type === 'open' && passed.has(event.name)) {
+      skipped = event.name
+      depth = 1
+      continue
+    }
+    events.push(event)
+  }
+  return { events, parents }
+}
+
+/** What a step within a paragraph adds to its text, as OpenDocument writes spaces, tabs and line breaks. Nothing for any other step. */
+function inlineText(event: XmlEvent): string | undefined {
+  // Within a paragraph, a run of white space in the XML is one space: more are written as `text:s`.
+  if (event.type === 'text') return event.text.replace(/\s+/g, ' ')
+  if (event.type !== 'open') return undefined
+  if (event.name === 'text:s') return ' '.repeat(Math.min(repeatCount(event.attributes['text:c']), 1000))
+  if (event.name === 'text:tab') return '\t'
+  if (event.name === 'text:line-break') return '\n'
+  return undefined
+}
+
+/** How many alike a row, a cell or a run of spaces stands for: 1 when it does not say. */
+function repeatCount(value: string | undefined): number {
+  const count = Number(value ?? 1)
+  return Number.isInteger(count) && count > 0 ? count : 1
+}
+
+/** The heading level a paragraph style gives, by its name or the name of a style it comes from: "Title", "Heading 2". */
+function openHeadingLevel(style: string | undefined, parents: ReadonlyMap<string, string>): number | undefined {
+  let name = style
+  for (let steps = 0; name !== undefined && steps < 10; steps++) {
+    // OpenDocument writes a space in a style's name as `_20_`.
+    const readable = name.replace(/_20_/g, ' ').toLowerCase()
+    if (readable === 'title') return 1
+    if (readable === 'subtitle') return 2
+    const level = Number(/^heading (\d)$/.exec(readable)?.[1] ?? 0)
+    if (level > 0) return Math.min(level, 6)
+    name = parents.get(name)
+  }
+  return undefined
+}
+
+/** An OpenDocument's `content.xml`. Throws when there is none: the file is not one. */
+async function openDocumentContent(archive: Archive, kind: string): Promise<string> {
+  const xml = await textOf(archive, 'content.xml')
+  if (xml === undefined) throw new Error(`This is not an OpenDocument ${kind}.`)
+  return xml
+}
+
+const isCell = (name: string) => name === 'table:table-cell' || name === 'table:covered-table-cell'
+const isParagraph = (name: string) => name === 'text:p' || name === 'text:h'
+
+/** An OpenDocument text as Markdown: its headings, paragraphs, list items and tables, in order. */
+export async function readOpenText(archive: Archive): Promise<OfficePreview> {
+  const { events, parents } = openDocumentBody(await openDocumentContent(archive, 'text'), PASSED_OVER)
+  const blocks: string[] = []
+  let paragraph: { text: string; level: number | undefined } | undefined
+  let lists = 0
+  let depth = 0
+  let table: string[][] = []
+  let row: string[] | undefined
+  let cell: string[] | undefined
+
+  for (const event of events) {
+    if (blocks.length >= BLOCK_LIMIT) break
+    const added = paragraph ? inlineText(event) : undefined
+    if (paragraph && added !== undefined) {
+      paragraph.text += added
+      continue
+    }
+    if (event.type === 'open') {
+      if (event.name === 'table:table' && ++depth === 1) table = []
+      else if (event.name === 'table:table-row' && depth === 1) row = []
+      else if (isCell(event.name) && depth === 1) cell = []
+      else if (event.name === 'text:list') lists++
+      else if (event.name === 'text:h') paragraph = { text: '', level: Math.min(repeatCount(event.attributes['text:outline-level']), 6) }
+      else if (event.name === 'text:p') paragraph = { text: '', level: openHeadingLevel(event.attributes['text:style-name'], parents) }
+      continue
+    }
+    if (event.type !== 'close') continue
+    if (isParagraph(event.name) && paragraph) {
+      const text = paragraph.text.trim()
+      if (cell) cell.push(text)
+      else if (text !== '') {
+        const lines = text.split('\n').map(plain)
+        const indent = '  '.repeat(Math.max(0, lists - 1))
+        if (paragraph.level) blocks.push(`${'#'.repeat(paragraph.level)} ${lines.join(' ')}`)
+        else if (lists > 0) blocks.push(`${indent}- ${lines.join(`  \n${indent}  `)}`)
+        else blocks.push(lines.join('  \n'))
+      }
+      paragraph = undefined
+    } else if (event.name === 'text:list') lists = Math.max(0, lists - 1)
+    else if (isCell(event.name) && depth === 1 && cell && row) {
+      row.push(cell.filter(Boolean).join(' '))
+      cell = undefined
+    } else if (event.name === 'table:table-row' && depth === 1 && row) {
+      table.push(row)
+      row = undefined
+    } else if (event.name === 'table:table' && --depth === 0 && table.length > 0) blocks.push(markdownTable(table))
+  }
+  return { kind: 'document', markdown: blocks.join('\n\n'), cut: blocks.length >= BLOCK_LIMIT }
+}
+
+/** A cell's value as stored, for a cell that shows no text of its own. */
+function storedValue(attributes: Record<string, string>): string {
+  const flag = attributes['office:boolean-value']
+  if (flag !== undefined) return flag === 'true' ? 'TRUE' : 'FALSE'
+  return attributes['office:string-value'] ?? attributes['office:value'] ?? attributes['office:date-value'] ?? attributes['office:time-value'] ?? ''
+}
+
+/**
+ * An OpenDocument spreadsheet's sheets, each as rows of its cells as the sheet shows them. Empty rows and cells count
+ * only once something follows them: a sheet's empty end is written as thousands of them.
+ */
+export async function readOpenSpreadsheet(archive: Archive): Promise<OfficePreview> {
+  const { events } = openDocumentBody(await openDocumentContent(archive, 'spreadsheet'), PASSED_OVER)
+  const sheets: { name: string; rows: string[][]; cut: boolean }[] = []
+  let sheet: { name: string; rows: string[][]; cut: boolean; emptyRows: number } | undefined
+  let row: { cells: string[]; repeated: number; emptyCells: number } | undefined
+  let cell: { paragraphs: string[]; stored: string; repeated: number } | undefined
+  let paragraph: string | undefined
+
+  for (const event of events) {
+    const added = paragraph !== undefined ? inlineText(event) : undefined
+    if (paragraph !== undefined && added !== undefined) {
+      paragraph += added
+      continue
+    }
+    if (event.type === 'open') {
+      if (event.name === 'table:table') {
+        if (sheets.length >= SHEET_LIMIT) break
+        sheet = { name: event.attributes['table:name'] ?? `Sheet ${sheets.length + 1}`, rows: [], cut: false, emptyRows: 0 }
+      } else if (event.name === 'table:table-row' && sheet) {
+        row = { cells: [], repeated: repeatCount(event.attributes['table:number-rows-repeated']), emptyCells: 0 }
+      } else if (isCell(event.name) && row) {
+        cell = { paragraphs: [], stored: storedValue(event.attributes), repeated: repeatCount(event.attributes['table:number-columns-repeated']) }
+      } else if (event.name === 'text:p' && cell) paragraph = ''
+      continue
+    }
+    if (event.type !== 'close') continue
+    if (event.name === 'text:p' && cell && paragraph !== undefined) {
+      cell.paragraphs.push(paragraph.trim())
+      paragraph = undefined
+    } else if (isCell(event.name) && cell && row && sheet) {
+      // What the sheet shows, its paragraphs; else the value stored.
+      const text = cell.paragraphs.length > 0 ? cell.paragraphs.join(' ') : cell.stored
+      if (text === '') row.emptyCells += cell.repeated
+      else {
+        const wanted = row.cells.length + row.emptyCells + cell.repeated
+        while (row.cells.length < COLUMN_LIMIT && row.emptyCells > 0) {
+          row.cells.push('')
+          row.emptyCells--
+        }
+        for (let copy = 0; copy < cell.repeated && row.cells.length < COLUMN_LIMIT; copy++) row.cells.push(text)
+        row.emptyCells = 0
+        if (wanted > COLUMN_LIMIT) sheet.cut = true
+      }
+      cell = undefined
+    } else if (event.name === 'table:table-row' && row && sheet) {
+      if (row.cells.length === 0) sheet.emptyRows += row.repeated
+      else {
+        const wanted = sheet.rows.length + sheet.emptyRows + row.repeated
+        while (sheet.rows.length < ROW_LIMIT && sheet.emptyRows > 0) {
+          sheet.rows.push([])
+          sheet.emptyRows--
+        }
+        for (let copy = 0; copy < row.repeated && sheet.rows.length < ROW_LIMIT; copy++) sheet.rows.push([...row.cells])
+        sheet.emptyRows = 0
+        if (wanted > ROW_LIMIT) sheet.cut = true
+      }
+      row = undefined
+    } else if (event.name === 'table:table' && sheet) {
+      sheets.push({ name: sheet.name, rows: sheet.rows, cut: sheet.cut })
+      sheet = undefined
+    }
+  }
+  return { kind: 'workbook', sheets }
+}
+
+const isShape = (name: string) => name === 'draw:frame' || name === 'draw:custom-shape'
+
+/** An OpenDocument presentation's slides, in order: each one's title, from its title frame, and the lines of its other text. */
+export async function readOpenPresentation(archive: Archive): Promise<OfficePreview> {
+  const { events } = openDocumentBody(await openDocumentContent(archive, 'presentation'), SLIDE_PASSED_OVER)
+  const slides: { title: string; lines: string[] }[] = []
+  let cut = false
+  let slide: { title: string; lines: string[] } | undefined
+  let shape: { title: boolean; paragraphs: string[] } | undefined
+  let shapes = 0
+  let paragraph: string | undefined
+
+  for (const event of events) {
+    const added = paragraph !== undefined ? inlineText(event) : undefined
+    if (paragraph !== undefined && added !== undefined) {
+      paragraph += added.replace(/\n/g, ' ')
+      continue
+    }
+    if (event.type === 'open') {
+      if (event.name === 'draw:page') {
+        if (slides.length >= SLIDE_LIMIT) {
+          cut = true
+          break
+        }
+        slide = { title: '', lines: [] }
+      } else if (isShape(event.name) && slide && ++shapes === 1) shape = { title: event.attributes['presentation:class'] === 'title', paragraphs: [] }
+      else if (isParagraph(event.name) && slide) paragraph = ''
+      continue
+    }
+    if (event.type !== 'close') continue
+    if (isParagraph(event.name) && paragraph !== undefined && slide) {
+      const text = paragraph.trim()
+      if (text !== '') (shape ? shape.paragraphs : slide.lines).push(text)
+      paragraph = undefined
+    } else if (isShape(event.name) && slide && shapes > 0 && --shapes === 0 && shape) {
+      if (shape.title && slide.title === '') slide.title = shape.paragraphs.join(' ')
+      else slide.lines.push(...shape.paragraphs)
+      shape = undefined
+    } else if (event.name === 'draw:page' && slide) {
+      slides.push(slide)
+      slide = undefined
+    }
+  }
+  return { kind: 'presentation', slides, cut }
+}
+
 /** An Office file read for its preview, by its extension. */
 export async function readOffice(extension: string, bytes: Uint8Array): Promise<OfficePreview> {
   const archive = openArchive(bytes)
-  if (extension === 'docx') return readDocument(archive)
-  if (extension === 'xlsx') return readWorkbook(archive)
-  if (extension === 'pptx') return readPresentation(archive)
-  throw new Error('This kind of file is not read here.')
+  switch (extension) {
+    case 'docx':
+      return readDocument(archive)
+    case 'xlsx':
+      return readWorkbook(archive)
+    case 'pptx':
+      return readPresentation(archive)
+    case 'odt':
+      return readOpenText(archive)
+    case 'ods':
+      return readOpenSpreadsheet(archive)
+    case 'odp':
+      return readOpenPresentation(archive)
+    default:
+      throw new Error('This kind of file is not read here.')
+  }
 }

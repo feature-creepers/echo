@@ -13,6 +13,8 @@ describe('what a file is', () => {
     ['budget.xlsx', 'Excel spreadsheet', 'office'],
     ['plan.docx', 'Word document', 'office'],
     ['old.doc', 'Word document', 'none'],
+    ['notes.odt', 'OpenDocument text', 'office'],
+    ['slides.odp', 'OpenDocument presentation', 'office'],
     ['archive.weird', 'WEIRD file', 'none'],
     ['README', 'File', 'none'],
     ['.env', 'File', 'none']
