@@ -30,6 +30,7 @@ import type { ViewActions } from '../view/context.ts'
 import { createPush, scrollsUnder, wheelTravel } from '../view/push.ts'
 import { HOME_PEEK, ViewStream } from '../view/view-stream.tsx'
 import { doing } from './activity.ts'
+import { captionOf, useLastHeard } from './caption.ts'
 import { EngineIndicator } from './engine-indicator.tsx'
 import { InputLine } from './input-line.tsx'
 import { ReadyChips } from './ready-chips.tsx'
@@ -400,6 +401,8 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
   const running = channel.running !== undefined
   /** Sentences whose sound is still being made: the voice is about to speak. */
   const voicing = speaking.sentence !== undefined || speaking.waiting > 0
+  /** The sentence heard now, else the last one heard: the caption stays on what was said. */
+  const heard = useLastHeard(speaking)
   const noEngine = engines !== undefined && engines.active === undefined
 
   const say = useCallback(
@@ -660,11 +663,23 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
   const compact = streaming && !home
   // Where what was asked came from, when not from the person just now.
   const origin = last?.trigger === 'task' ? 'Scheduled' : last?.trigger === 'resume' ? 'Resumed' : undefined
+  const line = captionOf({
+    hearing: speaking.sentence !== undefined,
+    busy: running || voicing,
+    last: last && {
+      request: last.trigger !== 'greeting' && last.trigger !== 'reminder' && last.trigger !== 'ready',
+      heard: heard?.sentence.turn === last.turn,
+      replied: last.replied !== ''
+    },
+    problem: failed !== undefined || problem !== undefined
+  })
   const caption = (
     <AnimatePresence mode="wait">
-      {speaking.sentence ? (
+      {(line === 'sentence' || line === 'heard') && heard ? (
+        // The sentence heard stays as it ended once the voice moves on, under the same key, so it does not blink
+        // between sentences and stays there once all is said.
         <motion.p
-          key={`${speaking.sentence.turn}:${speaking.sentence.text}`}
+          key={`${heard.sentence.turn}:${heard.sentence.text}`}
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
           // A sentence leaves quickly, so the next one is shown as its sound starts.
@@ -672,24 +687,23 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
           transition={settle}
           className={cn('text-balance', compact ? 'text-[0.9375rem] leading-relaxed' : 'text-xl leading-snug tracking-[-0.01em]')}
         >
-          <SpokenLine text={speaking.sentence.text} since={speaking.since} seconds={speaking.seconds} paused={speaking.paused} />
+          <SpokenLine text={heard.sentence.text} since={heard.since} seconds={heard.seconds} paused={line === 'sentence' && speaking.paused} />
         </motion.p>
-      ) : (running || voicing) && (last?.trigger === 'greeting' || last?.trigger === 'reminder' || last?.trigger === 'ready') ? null : (running || voicing) &&
-        last ? (
+      ) : line === 'asked' && last ? (
         <motion.p
           key={`said:${last.turn}`}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0, transition: { duration: 0.12 } }}
-          // What was asked is a reminder of what the core works on, not something to read again: two quiet lines at
-          // most, wherever it is shown, however long it was.
+          // What was asked is a reminder of what the core works on until it says something, not something to read
+          // again: two quiet lines at most, wherever it is shown, however long it was.
           className={cn('line-clamp-2 text-balance text-text-faint', compact ? 'text-[0.9375rem] leading-relaxed' : 'text-base leading-relaxed')}
         >
           {origin && <span className="font-medium text-text-soft">{origin} · </span>}
           {/* Files handed over without a word are named instead. */}
           {last.said === '' ? (last.attached?.map((one) => one.name).join(', ') ?? '') : `“${last.said}”`}
         </motion.p>
-      ) : failed || problem ? (
+      ) : line === 'problem' ? (
         <motion.div key="problem" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="grid justify-items-center gap-3">
           <p className="text-balance text-danger text-sm leading-relaxed">{failed ?? problem}</p>
           {noEngine && (
@@ -698,7 +712,8 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
             </button>
           )}
         </motion.div>
-      ) : last?.replied ? (
+      ) : line === 'replied' && last ? (
+        // The reply, when none of its sentences was heard here: on opening, or once the voice was cut.
         <motion.p
           key={`last:${last.turn}`}
           initial={{ opacity: 0 }}
