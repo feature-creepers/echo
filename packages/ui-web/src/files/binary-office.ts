@@ -48,7 +48,7 @@ import {
 import { type OlderBookRecords, type OlderSheetRecords, readOlderBookStyles, readOlderPalette, readOlderSheetLook } from './older-sheet-look.ts'
 import { drawOlderSlide, type OlderDeck, olderDeck } from './older-slide-drawing.ts'
 import { type FloatingAnchor, readOlderWordLook, type TextPiece } from './older-word-look.ts'
-import { type CellKind, paletteColor, type SheetLayout, type SheetLook } from './sheet-look.ts'
+import { type CellKind, paletteColor, type SheetLayout, type SheetLook, type WorkbookStyles } from './sheet-look.ts'
 import { DRAWINGS_LIMIT } from './slide-svg.ts'
 
 /** The most characters of a document read: past them, a preview shows the start. */
@@ -1033,29 +1033,45 @@ function joined(parts: readonly Uint8Array[]): Uint8Array {
 export async function readOlderExcel(bytes: Uint8Array, options: NumberFormatOptions = {}): Promise<OfficePreview> {
   const parts = workbookParts(bytes, options)
   await parts.figures.drawPacked()
-  // Each sheet's look, from its records and the workbook's styles; a sheet whose look cannot be read shows as a table.
-  const styles = parts.looks && (await readOlderBookStyles(parts.looks).catch(() => undefined))
+  // Each sheet's look, from its records and the styles it uses, the workbook's or, in Excel 2 to 4, often its own, each
+  // read once; a sheet whose look cannot be read shows as a table.
+  const read = new Map<OlderBookRecords, Promise<WorkbookStyles | undefined>>()
+  const stylesOf = (looks: OlderBookRecords) => {
+    const known = read.get(looks) ?? readOlderBookStyles(looks).catch(() => undefined)
+    read.set(looks, known)
+    return known
+  }
   return {
     kind: 'workbook',
-    sheets: withFigures(parts).map(({ name, rows, cut, figures }, index) => {
-      const { layout, laid } = parts.sheets[index] ?? {}
-      let look: SheetLook | undefined
-      if (styles && layout && laid && rows.length > 0)
-        try {
-          look = readOlderSheetLook(laid, layout, styles, { rows: rows.length, columns: Math.max(0, ...rows.map((row) => row.length)) })
-        } catch {
-          look = undefined
-        }
-      return { name, rows, cut, figures, look }
-    })
+    sheets: await Promise.all(
+      withFigures(parts).map(async ({ name, rows, cut, figures }, index) => {
+        const { layout, laid, looks } = parts.sheets[index] ?? {}
+        const styles = looks && (await stylesOf(looks))
+        let look: SheetLook | undefined
+        if (styles && layout && laid && rows.length > 0)
+          try {
+            look = readOlderSheetLook(laid, layout, styles, { rows: rows.length, columns: Math.max(0, ...rows.map((row) => row.length)) })
+          } catch {
+            look = undefined
+          }
+        return { name, rows, cut, figures, look }
+      })
+    )
   }
 }
 
-/** A workbook's sheets as they are read, each with the places of its figures in the workbook's and the records of its look. */
+/**
+ * A workbook's sheets as they are read, each with the places of its figures in the workbook's, the records of its look
+ * and those of the styles it uses.
+ */
 interface WorkbookParts {
-  sheets: (Omit<OlderSheet, 'figures'> & { places: number[]; layout?: SheetLayout | undefined; laid?: OlderSheetRecords | undefined })[]
+  sheets: (Omit<OlderSheet, 'figures'> & {
+    places: number[]
+    layout?: SheetLayout | undefined
+    laid?: OlderSheetRecords | undefined
+    looks?: OlderBookRecords | undefined
+  })[]
   figures: ArtFigures
-  looks?: OlderBookRecords | undefined
 }
 
 /** The sheets of a workbook with their figures as they are now. */
@@ -1106,13 +1122,16 @@ interface EarliestPart {
   styles: number[]
   codePage: number | undefined
   date1904: boolean | undefined
+  /** The records of its look: its fonts, its styles of cells in full and its palette. */
+  looks: OlderBookRecords
 }
 
 /**
  * The sheets of a file of Excel 2, 3 or 4, whose records are written straight into it rather than in a compound file:
  * a worksheet alone, or Excel 4's workbook, its own records first, then each sheet after a record naming it
- * (`SHEETHDR`). A part keeps its formats in order and its styles (`XF`), each naming a format by its place; a cell of
- * Excel 2 names its format itself. A sheet with no formats or styles of its own uses the workbook's.
+ * (`SHEETHDR`). A part keeps its formats in order and its styles (`XF`), each naming a format by its place, its fonts
+ * and its palette; a cell of Excel 2 keeps its format, font, alignment, borders and shading itself as well. A sheet
+ * with no formats or styles of its own uses the workbook's.
  */
 function earliestSheets(bytes: Uint8Array, options: NumberFormatOptions): WorkbookParts {
   const book = reader(bytes)
@@ -1124,7 +1143,28 @@ function earliestSheets(bytes: Uint8Array, options: NumberFormatOptions): Workbo
     const version = BEGINNINGS.get(type)
     if (version !== undefined) {
       if (depth++ === 0) {
-        part = { at: at - 4, kind: size >= 4 ? book.u16(at + 2) : 0, version, name: named, codes: [], styles: [], codePage: undefined, date1904: undefined }
+        const looks: OlderBookRecords = {
+          version,
+          fonts: [],
+          fontColors: [],
+          styles: [],
+          explicit: [],
+          palette: undefined,
+          extended: [],
+          theme: undefined,
+          eight: latin1
+        }
+        part = {
+          at: at - 4,
+          kind: size >= 4 ? book.u16(at + 2) : 0,
+          version,
+          name: named,
+          codes: [],
+          styles: [],
+          codePage: undefined,
+          date1904: undefined,
+          looks
+        }
         parts.push(part)
         named = undefined
       }
@@ -1141,7 +1181,14 @@ function earliestSheets(bytes: Uint8Array, options: NumberFormatOptions): Workbo
     else if (type === 0x0022 && size >= 2) part.date1904 = book.u16(at) === 1
     else if (type === 0x001e && size >= 1) part.codes.push(book.bytes(at + 1, Math.min(book.u8(at), size - 1)))
     else if (type === 0x041e && size >= 3) part.codes.push(book.bytes(at + 3, Math.min(book.u8(at + 2), size - 3)))
-    else if ((type === 0x0243 || type === 0x0443) && size >= 2) part.styles.push(book.u8(at + 1))
+    else if ((type === 0x0243 || type === 0x0443) && size >= 2) {
+      part.styles.push(book.u8(at + 1))
+      part.looks.styles.push(book.bytes(at, size))
+    } else if (type === 0x0043 && part.version === 2 && size >= 4) part.looks.styles.push(book.bytes(at, size))
+    // Excel 2's fonts (`FONT`) are followed by their colour (`FONTCOLOR`); Excel 3's and 4's keep theirs.
+    else if (((type === 0x0031 && part.version === 2) || type === 0x0231) && size >= 5) part.looks.fonts.push(book.bytes(at, size))
+    else if (type === 0x0045 && size >= 2 && part.looks.fonts.length > 0) part.looks.fontColors[part.looks.fonts.length - 1] = book.u16(at)
+    else if (type === 0x0092) part.looks.palette = book.bytes(at, size)
   }
   const workbook = parts.find((one) => one.kind === WORKBOOK)
   const sheets = parts
@@ -1152,12 +1199,37 @@ function earliestSheets(bytes: Uint8Array, options: NumberFormatOptions): Workbo
       const eight = (text: Uint8Array) => decoder.decode(text)
       const codes = (sheet.codes.length > 0 || !workbook ? sheet : workbook).codes.map(eight)
       const styles = (sheet.styles.length > 0 || !workbook ? sheet : workbook).styles
-      // Excel 2's cells name their format; Excel 3's and 4's, their style.
-      const formatOf = (style: number) => codes[sheet.version === 2 ? style : (styles[style] ?? 0)] ?? 'General'
+      const looks = (sheet.looks.styles.length > 0 || !workbook ? sheet : workbook).looks
+      looks.eight = eight
+      // Excel 2's cells name one of its styles when it keeps them, else keep their attributes themselves, each set of
+      // them a style of its own after the records'; the style names a format, in six bits of its own.
+      const kept = new Map<string, number>()
+      const twoStyle = (attributes: Uint8Array, extended: number | undefined) => {
+        const index = (attributes[0] ?? 0) & 0x3f
+        if (looks.styles.length > 0) return index === 63 ? (extended ?? 0) : index
+        // The first style is plain, for the cells with none of their own.
+        if (looks.explicit.length === 0) kept.set('0,0,0', looks.explicit.push(new Uint8Array(3)) - 1)
+        const key = attributes.join(',')
+        const known = kept.get(key) ?? looks.explicit.push(attributes) - 1
+        kept.set(key, known)
+        return known
+      }
+      const twoFormat = (style: number) => (looks.styles[style]?.[2] ?? looks.explicit[style - looks.styles.length]?.[1] ?? 0) & 0x3f
+      // Excel 3's and 4's cells name their style, which names their format.
+      const formatOf = (style: number) => codes[sheet.version === 2 ? twoFormat(style) : (styles[style] ?? 0)] ?? 'General'
       const shown = { ...options, date1904: sheet.date1904 ?? workbook?.date1904 ?? false }
-      const { rows, cut, cells } = sheetRows(book, sheet.at, { strings: [], version: sheet.version, eight }, formatOf, shown)
+      const colors = { palette: readOlderPalette(looks.palette) }
+      const { rows, cut, cells, layout, laid } = sheetRows(
+        book,
+        sheet.at,
+        { strings: [], version: sheet.version, eight },
+        formatOf,
+        shown,
+        (index) => paletteColor(index, colors),
+        twoStyle
+      )
       // A worksheet alone has no name but its file's.
-      return { name: sheet.name ? eight(sheet.name) : '', rows, cut, cells, places: [] }
+      return { name: sheet.name ? eight(sheet.name) : '', rows, cut, cells, places: [], layout, laid, looks }
     })
   return { sheets, figures: new ArtFigures() }
 }
@@ -1187,7 +1259,17 @@ function bookParts(stream: Uint8Array, options: NumberFormatOptions): WorkbookPa
   const styles: number[] = []
   let date1904 = false
   // The records of its look: its fonts, its styles of cells in full, its palette, their colours in full and its theme.
-  const looks: OlderBookRecords = { five, fonts: [], styles: [], palette: undefined, extended: [], theme: undefined, eight }
+  const looks: OlderBookRecords = {
+    version: five ? 5 : 8,
+    fonts: [],
+    fontColors: [],
+    styles: [],
+    explicit: [],
+    palette: undefined,
+    extended: [],
+    theme: undefined,
+    eight
+  }
   const theme: Uint8Array[] = []
   let theming = false
   let shared: Uint8Array[] | undefined
@@ -1296,9 +1378,12 @@ function bookParts(stream: Uint8Array, options: NumberFormatOptions): WorkbookPa
     cells: cellRange(new Map(read.map((sheet) => [sheet.name, sheet.cells])))
   }
   return {
-    sheets: read.map(({ drawing, charts, objects, ...sheet }) => ({ ...sheet, places: sheetFigures({ drawing, charts, objects }, stored, figures, context) })),
-    figures,
-    looks
+    sheets: read.map(({ drawing, charts, objects, ...sheet }) => ({
+      ...sheet,
+      places: sheetFigures({ drawing, charts, objects }, stored, figures, context),
+      looks
+    })),
+    figures
   }
 }
 
@@ -1365,7 +1450,8 @@ const FORMULAS = new Set([0x0006, 0x0206, 0x0406])
 
 /**
  * The rows of a sheet, from its records: its cells in their columns, empty ones kept so the columns line up. Its
- * version is Excel's, from 2 to 8: Excel 2's cells have records of their own, and before Excel 97 text is 8-bit.
+ * version is Excel's, from 2 to 8: Excel 2's cells have records of their own, each keeping three bytes of attributes
+ * that say its style (`twoStyle`), and before Excel 97 text is 8-bit.
  */
 function sheetRows(
   book: Reader,
@@ -1373,14 +1459,15 @@ function sheetRows(
   text: { strings: readonly string[]; version: number; eight: (bytes: Uint8Array) => string },
   formatOf: (style: number) => string,
   options: NumberFormatOptions,
-  palette: (index: number) => string | undefined = () => undefined
+  palette: (index: number) => string | undefined = () => undefined,
+  twoStyle: (attributes: Uint8Array, extended: number | undefined) => number = () => 0
 ): { rows: string[][]; cut: boolean; cells: Map<string, CellValue>; layout: SheetLayout; laid: OlderSheetRecords } & SheetObjects {
   const { strings, version, eight } = text
   const five = version < 8
   const rows: string[][] = []
   // Each cell's style, what it holds and the colour its format writes its number in, and the records of the sheet's layout, for its look.
   const layout: SheetLayout = { styles: [], kinds: [], heights: [], numberColors: [] }
-  const laid: OlderSheetRecords = { columns: [], rows: [], merges: [] }
+  const laid: OlderSheetRecords = { two: version === 2, columns: [], rows: [], merges: [] }
   const styled = (row: number, column: number, style: number, kind: CellKind, value?: number) => {
     if (row >= ROW_LIMIT || column >= COLUMN_LIMIT) return
     layout.styles[row] ??= []
@@ -1419,6 +1506,8 @@ function sheetRows(
   let depth = 0
   // A formula's text result follows it in a record of its own.
   let waiting: { row: number; column: number } | undefined
+  // The style Excel 2's next cell names when its own attributes say it is the 63rd or later (`IXFE`).
+  let extended: number | undefined
   // A formula's last result: a number, or marked by its last two bytes as text, a boolean, an error or nothing.
   const formula = (row: number, column: number, result: number, style: number) => {
     waiting = undefined
@@ -1454,14 +1543,28 @@ function sheetRows(
     const row = () => book.u16(at)
     const column = () => book.u16(at + 2)
     if (version === 2) {
-      // Excel 2's cells keep three bytes of attributes after their place, the second naming their format.
-      const format = () => book.u8(at + 5) & 0x3f
-      if (type === 0x0002) number(row(), column(), book.u16(at + 7), format())
-      else if (type === 0x0003) number(row(), column(), book.f64(at + 7), format())
-      else if (type === 0x0004) put(row(), column(), eight(book.bytes(at + 8, book.u8(at + 7))))
-      else if (type === 0x0005) put(row(), column(), flag(book.u8(at + 7), book.u8(at + 8) !== 0))
-      else if (type === 0x0006) formula(row(), column(), at + 7, format())
+      // The records of the sheet's layout, Excel 2's own.
+      if (type === 0x0024) laid.columns.push(book.bytes(at, size))
+      else if (type === 0x0008) laid.rows.push(book.bytes(at, size))
+      else if (type === 0x0055 && size >= 2) laid.defaultWidth = book.u16(at)
+      else if (type === 0x0025 && size >= 2) laid.defaultHeight = book.u16(at) & 0x7fff
+      else if (type === 0x003e) laid.window = book.bytes(at, size)
+      else if (type === 0x0044 && size >= 2) extended = book.u16(at)
       else if (type === 0x0007) result(eight(book.bytes(at + 1, book.u8(at))))
+      if (type < 0x0001 || type > 0x0006 || size < 7) continue
+      // Excel 2's cells keep three bytes of attributes after their place, which say their style.
+      const style = twoStyle(book.bytes(at + 4, 3), extended)
+      extended = undefined
+      if (type === 0x0001) styled(row(), column(), style, 'empty')
+      else if (type === 0x0002) number(row(), column(), book.u16(at + 7), style)
+      else if (type === 0x0003) number(row(), column(), book.f64(at + 7), style)
+      else if (type === 0x0004) {
+        put(row(), column(), eight(book.bytes(at + 8, book.u8(at + 7))))
+        styled(row(), column(), style, 'text')
+      } else if (type === 0x0005) {
+        put(row(), column(), flag(book.u8(at + 7), book.u8(at + 8) !== 0))
+        styled(row(), column(), style, book.u8(at + 8) !== 0 ? 'error' : 'logical')
+      } else if (type === 0x0006) formula(row(), column(), at + 7, style)
       continue
     }
     // The records of the sheet's layout, and the cells with a style but no value.

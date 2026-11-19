@@ -1,9 +1,10 @@
 /**
- * A sheet of an Excel workbook of 5 to 2003 as it looks (docs/SPEC.md, section 9.7), read into `sheet-look.ts` from the
- * records `binary-office.ts` keeps: the workbook's fonts (`FONT`), its styles of cells (`XF`), each a font, a format,
- * an alignment, borders and a fill, and its palette (`PALETTE`); each sheet's columns' widths (`COLINFO`, `DEFCOLWIDTH`,
- * `STANDARDWIDTH`), rows' heights (`ROW`, `DEFAULTROWHEIGHT`), merged cells (`MERGEDCELLS`), and whether it shows its
- * grid and headings (`WINDOW2`) and how much it is zoomed (`SCL`).
+ * A sheet of an Excel workbook of 2 to 2003 as it looks (docs/SPEC.md, section 9.7), read into `sheet-look.ts` from the
+ * records `binary-office.ts` keeps: the workbook's fonts (`FONT`, with `FONTCOLOR` in Excel 2), its styles of cells
+ * (`XF`), each a font, a format, an alignment, borders and a fill, and its palette (`PALETTE`); each sheet's columns'
+ * widths (`COLINFO`, `COLWIDTH` in Excel 2, `DEFCOLWIDTH`, `STANDARDWIDTH`), rows' heights (`ROW`,
+ * `DEFAULTROWHEIGHT`), merged cells (`MERGEDCELLS`), and whether it shows its grid and headings (`WINDOW2`) and how
+ * much it is zoomed (`SCL`). Each version lays these records out its own way; what they say is the same.
  */
 
 import { openArchive, textOf } from './archive.ts'
@@ -22,13 +23,22 @@ import {
 } from './sheet-look.ts'
 
 /**
- * The records of a workbook's styles: its fonts, its styles of cells and its palette, as Excel 97 or Excel 5 wrote them,
- * and the colours in full Excel 2007 adds for older apps (`XFEXT`), some of its theme, whose package it keeps (`THEME`).
+ * The records of a workbook's styles: its fonts, its styles of cells and its palette, as Excel 2, 3, 4, 5 or 97 wrote
+ * them, and the colours in full Excel 2007 adds for older apps (`XFEXT`), some of its theme, whose package it keeps
+ * (`THEME`).
  */
 export interface OlderBookRecords {
-  five: boolean
+  /** Excel's version, from 2 to 8, each laying out its fonts and styles its own way. */
+  version: number
   fonts: Uint8Array[]
+  /** Excel 2's colours of its fonts (`FONTCOLOR`), each by the place of the font it follows. */
+  fontColors: (number | undefined)[]
   styles: Uint8Array[]
+  /**
+   * The attributes Excel 2's cells keep themselves, three bytes each, styles after those of the records when a sheet
+   * has none: a font and a format, then an alignment, borders and shading.
+   */
+  explicit: Uint8Array[]
   palette: Uint8Array | undefined
   extended: Uint8Array[]
   theme: Uint8Array | undefined
@@ -38,6 +48,8 @@ export interface OlderBookRecords {
 
 /** The records of a sheet's layout, each as it was read. */
 export interface OlderSheetRecords {
+  /** Whether they are Excel 2's, whose columns, rows and window have records of their own. */
+  two?: boolean | undefined
   /** The width of a column with none of its own, in characters (`DEFCOLWIDTH`), or in 256ths of one (`STANDARDWIDTH`). */
   defaultWidth?: number | undefined
   standardWidth?: number | undefined
@@ -87,6 +99,25 @@ function mixed(over: string, under: string, share: number): string {
     .join('')}`
 }
 
+/**
+ * A font of Excel 2, 3 or 4: its height in twentieths of a point and its weight, slant, underline and strike as flags,
+ * then in Excel 3 and 4 its colour, then its name.
+ */
+function readEarliestFont(bytes: Uint8Array, version: number, eight: (bytes: Uint8Array) => string, color: string | undefined): TextLook {
+  const font = reader(bytes)
+  const flags = font.u16(2)
+  const at = version === 2 ? 4 : 6
+  const name = eight(font.bytes(at + 1, Math.min(font.u8(at), bytes.length - at - 1)))
+  const look: TextLook = { size: Math.min(Math.max(font.u16(0) / 20, 1), 409) }
+  if (name) look.font = name
+  if (color) look.color = color
+  if (flags & 1) look.bold = true
+  if (flags & 2) look.italic = true
+  if (flags & 4) look.underline = 'solid'
+  if (flags & 8) look.struck = true
+  return look
+}
+
 /** A font (`FONT`): its height in twentieths of a point, slant and strike, colour, weight, position, underline, then its name. */
 function readFont(bytes: Uint8Array, five: boolean, eight: (bytes: Uint8Array) => string, color: (index: number) => string | undefined): TextLook {
   const font = reader(bytes)
@@ -132,6 +163,47 @@ interface CellStyleRead {
   vertical: string | undefined
   wrap: boolean
   indent: number
+}
+
+/**
+ * A style of Excel 2, given by its font and a byte of flags, as its records (`XF`) and its cells' own attributes keep
+ * it: an alignment, a thin black line on each side it names, and shading, which Excel 2 draws as black dots over white.
+ */
+function twoStyle(font: number, flags: number): CellStyleRead {
+  const line = (bit: number) => ({ kind: flags & bit ? 1 : 0, color: '#000000' })
+  return {
+    font,
+    pattern: flags & 0x80 ? 17 : 0,
+    front: '#000000',
+    back: '#ffffff',
+    lines: [line(0x20), line(0x08), line(0x40), line(0x10)],
+    align: ALIGNS[flags & 7],
+    vertical: undefined,
+    wrap: false,
+    indent: 0
+  }
+}
+
+/**
+ * A style of cells (`XF`) of Excel 3 or 4, in 12 bytes: its font and format, then its alignment and wrapping (with the
+ * vertical alignment Excel 4 adds), its fill, and its borders, each colour by its number among 24.
+ */
+function readEarliestStyle(style: Reader, version: number, color: (index: number) => string | undefined): CellStyleRead {
+  const alignment = style.u16(4)
+  const fill = style.u16(6)
+  const lines = style.u32(8)
+  const side = (at: number) => ({ kind: (lines >>> at) & 7, color: color((lines >>> (at + 3)) & 0x1f) })
+  return {
+    font: style.u8(0),
+    pattern: fill & 0x3f,
+    front: color((fill >> 6) & 0x1f),
+    back: color((fill >> 11) & 0x1f),
+    lines: [side(0), side(8), side(16), side(24)],
+    align: ALIGNS[alignment & 7],
+    vertical: version === 4 ? VERTICALS[(alignment >> 4) & 3] : undefined,
+    wrap: (alignment & 8) !== 0,
+    indent: 0
+  }
 }
 
 /** A style of cells (`XF`), as Excel 97 writes it in 20 bytes and Excel 5 in 16, its parts at places of their own. */
@@ -258,13 +330,18 @@ export function readOlderPalette(bytes: Uint8Array | undefined): string[] {
  * skipped), alignment, wrapping, indent, borders and fill, in the colours in full Excel 2007 adds for them.
  */
 export async function readOlderBookStyles(records: OlderBookRecords): Promise<WorkbookStyles> {
+  const { version } = records
   const palette = readOlderPalette(records.palette)
-  // The system's colours, 64 and above, give none: text in its automatic colour, a fill of none.
-  const color = (index: number) => (index < 64 && palette[index] !== undefined ? `#${palette[index]}` : undefined)
+  // The system's colours give none, text in its automatic colour and a fill of none: from 64 on in Excel 5 and later,
+  // from 24 in Excel 3 and 4, whose palette has 16 colours of its own, and from 8 in Excel 2, which has none.
+  const system = version >= 5 ? 64 : version >= 3 ? 24 : 8
+  const color = (index: number) => (index < system && palette[index] !== undefined ? `#${palette[index]}` : undefined)
   const theme = await themeColors(records.theme)
-  const fonts = records.fonts.map((bytes) => {
+  const fonts = records.fonts.map((bytes, index) => {
     try {
-      return readFont(bytes, records.five, records.eight, color)
+      if (version >= 5) return readFont(bytes, version === 5, records.eight, color)
+      const named = version === 2 ? (records.fontColors[index] ?? 0x7fff) : reader(bytes).u16(4)
+      return readEarliestFont(bytes, version, records.eight, color(named))
     } catch {
       return {}
     }
@@ -272,11 +349,15 @@ export async function readOlderBookStyles(records: OlderBookRecords): Promise<Wo
   const fontAt = (index: number) => fonts[index < 4 ? index : index - 1] ?? fonts[0] ?? {}
   const read = records.styles.map((bytes) => {
     try {
-      return readCellStyle(reader(bytes), records.five, color)
+      const style = reader(bytes)
+      if (version >= 5) return readCellStyle(style, version === 5, color)
+      return version === 2 ? twoStyle(style.u8(0), style.u8(3)) : readEarliestStyle(style, version, color)
     } catch {
       return undefined
     }
   })
+  // Excel 2's cells that keep their attributes themselves, each its font among the first four and its flags.
+  for (const attributes of records.explicit) read.push(twoStyle((attributes[1] ?? 0) >> 6, attributes[2] ?? 0))
   for (const bytes of records.extended) {
     try {
       const record = reader(bytes)
@@ -321,23 +402,24 @@ export function readOlderSheetLook(sheet: OlderSheetRecords, layout: SheetLayout
   const defaultWidth = sheet.standardWidth !== undefined ? columnPixels(sheet.standardWidth / 256) : Math.ceil(((sheet.defaultWidth ?? 8) * digit + 5) / 8) * 8
   const columns = Array.from({ length: size.columns }, () => (defaultWidth * 3) / 4)
   for (const bytes of sheet.columns) {
-    if (bytes.length < 10) continue
+    if (bytes.length < (sheet.two ? 4 : 10)) continue
     const record = reader(bytes)
-    const hidden = (record.u16(8) & 1) !== 0
-    const width = record.u16(4) / 256
-    for (let column = record.u16(0); column <= Math.min(record.u16(2), size.columns - 1); column++)
-      columns[column] = hidden ? 0 : (Math.min(columnPixels(width), 2000) * 3) / 4
+    // Excel 2's columns (`COLWIDTH`) are named in a byte each and cannot be hidden.
+    const [first, last, width, hidden] = sheet.two
+      ? [record.u8(0), record.u8(1), record.u16(2) / 256, false]
+      : [record.u16(0), record.u16(2), record.u16(4) / 256, (record.u16(8) & 1) !== 0]
+    for (let column = first; column <= Math.min(last, size.columns - 1); column++) columns[column] = hidden ? 0 : (Math.min(columnPixels(width), 2000) * 3) / 4
   }
   const usual = sheet.defaultHeight !== undefined && sheet.defaultHeight > 0 ? Math.min(sheet.defaultHeight / 20, 409) : (styles.text.size ?? 10) * 1.28
   const rows = Array.from({ length: size.rows }, () => usual)
   for (const bytes of sheet.rows) {
-    if (bytes.length < 16) continue
+    if (bytes.length < (sheet.two ? 8 : 16)) continue
     const record = reader(bytes)
     const row = record.u16(0)
     if (row >= size.rows) continue
-    // A row's height, unless it keeps the default one (its top bit), and whether it is hidden.
+    // A row's height, unless it keeps the default one (its top bit), and whether it is hidden, which Excel 2 cannot say.
     const height = record.u16(6)
-    rows[row] = record.u16(12) & 0x20 ? 0 : height & 0x8000 ? usual : Math.min((height & 0x7fff) / 20, 409)
+    rows[row] = !sheet.two && record.u16(12) & 0x20 ? 0 : height & 0x8000 ? usual : Math.min((height & 0x7fff) / 20, 409)
   }
   const merges: MergedCells[] = []
   for (const bytes of sheet.merges) {
@@ -354,7 +436,9 @@ export function readOlderSheetLook(sheet: OlderSheetRecords, layout: SheetLayout
       })
     }
   }
-  const view = sheet.window && sheet.window.length >= 2 ? reader(sheet.window).u16(0) : 0x06
+  // Excel 2's window says in a byte each whether it shows the grid and the headings; the later ones, in flags.
+  const window = sheet.window
+  const view = !window || window.length < (sheet.two ? 3 : 2) ? 0x06 : sheet.two ? (window[1] ? 0x02 : 0) | (window[2] ? 0x04 : 0) : reader(window).u16(0)
   const scale = sheet.zoom && sheet.zoom.length >= 4 ? reader(sheet.zoom) : undefined
   const zoom = scale && scale.u16(2) > 0 ? scale.u16(0) / scale.u16(2) : 1
   return {

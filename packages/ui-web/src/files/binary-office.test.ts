@@ -1231,7 +1231,7 @@ describe('a workbook of Excel 2, 3 or 4', () => {
       record(0x0005, cellTwo(2, 2).u8(0x07).u8(1)),
       EOF
     )
-    expect(await readOlderExcel(file)).toEqual({
+    expect(textual(await readOlderExcel(file))).toEqual({
       kind: 'workbook',
       sheets: [
         {
@@ -1278,7 +1278,7 @@ describe('a workbook of Excel 2, 3 or 4', () => {
       record(0x0203, cellFour(0, 0).f64(0.5)),
       EOF
     )
-    expect(await readOlderExcel(file)).toEqual({
+    expect(textual(await readOlderExcel(file))).toEqual({
       kind: 'workbook',
       sheets: [
         {
@@ -1298,7 +1298,7 @@ describe('a workbook of Excel 2, 3 or 4', () => {
   it('reads a worksheet of Excel 3, and says when one is protected with a password or cut short', async () => {
     const three = (...records: Uint8Array[]) =>
       fileOf(beginning(0x0209, 0x0010), formatTwo('General'), record(0x0243, new Bytes().u8(0).u8(0).zeros(10)), ...records, EOF)
-    expect(await readOlderExcel(three(record(0x0204, cellFour(0, 1).u16(3).narrow('Sum')), record(0x0206, cellFour(1, 1).f64(12).zeros(4))))).toEqual({
+    expect(textual(await readOlderExcel(three(record(0x0204, cellFour(0, 1).u16(3).narrow('Sum')), record(0x0206, cellFour(1, 1).f64(12).zeros(4)))))).toEqual({
       kind: 'workbook',
       sheets: [
         {
@@ -1314,6 +1314,145 @@ describe('a workbook of Excel 2, 3 or 4', () => {
     })
     await expect(readOlderExcel(three(record(0x002f, new Bytes().u16(0).u16(0))))).rejects.toThrow('protected with a password')
     await expect(readOlderExcel(three().subarray(0, 30))).rejects.toThrow('damaged')
+  })
+
+  /** A sheet's look and the look of each of its cells, by row and column. */
+  const lookOf = async (file: Uint8Array) => {
+    const preview = await readOlderExcel(file)
+    const look = preview.kind === 'workbook' ? preview.sheets[0]?.look : undefined
+    return { look, cells: look?.cells.map((row) => row.map((index) => (index === undefined ? undefined : look.looks[index]))) }
+  }
+  const thin = { width: 0.75, style: 'solid', color: '#000000' }
+
+  it('draws a sheet of Excel 4 as it looks, in its fonts, styles, palette, columns, rows and window', async () => {
+    /** A font of Excel 3 and 4: its height, its flags (bold, italic, underline, struck), its colour by number and its name. */
+    const font = (height: number, flags: number, color: number, name: string) =>
+      record(0x0231, new Bytes().u16(height).u16(flags).u16(color).u8(name.length).narrow(name))
+    /** A style of Excel 4: its font, its format, a cell's, its alignment and the attributes it uses, its fill, its borders. */
+    const style = (font: number, alignment: number, fill: number, lines: number) =>
+      record(0x0443, new Bytes().u8(font).u8(0).u16(0x0001).u8(alignment).u8(0xf8).u16(fill).u32(lines))
+    const file = fileOf(
+      beginning(0x0409, 0x0010),
+      formatFour('General'),
+      font(200, 0, 0x7fff, 'Arial'),
+      font(240, 0x01 | 0x02 | 0x04, 10, 'Times New Roman'),
+      // A plain style in the system's colours, then one centred in the middle, wrapped, filled in yellow, a thin line
+      // above in the window's text colour and a double one below in the palette's ninth colour, as the workbook set it.
+      style(0, 0x20, 25 << 11, 24 << 3),
+      style(1, 2 | 8 | (1 << 4), 1 | (13 << 6) | (25 << 11), 1 | (24 << 3) | (6 << 16) | (8 << 19)),
+      record(0x0092, new Bytes().u16(1).raw([0x12, 0x34, 0x56, 0])),
+      record(0x0055, new Bytes().u16(10)),
+      record(
+        0x007d,
+        new Bytes()
+          .u16(1)
+          .u16(1)
+          .u16(20 * 256)
+          .u16(0)
+          .u16(0)
+          .u16(0)
+      ),
+      record(0x0208, new Bytes().u16(0).u16(0).u16(2).u16(600).u16(0).u16(0).u16(0x0140).u16(0)),
+      record(0x023e, new Bytes().u16(0x04).u16(0).u16(0).u32(0)),
+      record(0x0204, cellFour(0, 0, 1).u16(5).narrow('Title')),
+      record(0x0203, cellFour(0, 1).f64(2)),
+      EOF
+    )
+    const { look, cells } = await lookOf(file)
+    // Arial's digit is seven pixels: ten characters are 80 pixels with Excel's margin, twenty are 140.
+    expect([look?.columns, look?.rows, look?.grid, look?.headings]).toEqual([[60, 105], [30], false, true])
+    expect(cells).toEqual([
+      [
+        {
+          text: { font: 'Times New Roman', size: 12, bold: true, italic: true, underline: 'solid', color: '#ff0000' },
+          fill: '#ffff00',
+          borders: { top: thin, bottom: { width: 2.25, style: 'double', color: '#123456' } },
+          align: 'center',
+          vertical: 'middle',
+          wrap: true,
+          indent: 0
+        },
+        { text: { font: 'Arial', size: 10 }, borders: {}, align: 'right', vertical: 'bottom', wrap: false, indent: 0 }
+      ]
+    ])
+  })
+
+  /** A font of Excel 2: its height, its flags and its name; its colour, when it has one, in a record after it. */
+  const fontTwo = (height: number, flags: number, name: string) => record(0x0031, new Bytes().u16(height).u16(flags).u8(name.length).narrow(name))
+  /** A cell of Excel 2 with its three bytes of attributes: its style, its format and font, its alignment, borders and shading. */
+  const attributed = (row: number, column: number, attributes: [number, number, number]) => new Bytes().u16(row).u16(column).raw(attributes)
+
+  it('draws a sheet of Excel 2 with no styles of its own from the attributes its cells keep, its columns, rows and window its own', async () => {
+    const file = fileOf(
+      beginning(0x0009, 0x0010),
+      formatTwo('General'),
+      formatTwo('0.00'),
+      fontTwo(200, 0, 'Arial'),
+      fontTwo(200, 1, 'Arial'),
+      record(0x0045, new Bytes().u16(2)),
+      record(
+        0x0024,
+        new Bytes()
+          .u8(0)
+          .u8(0)
+          .u16(15 * 256)
+      ),
+      record(0x0008, new Bytes().u16(1).u16(0).u16(2).u16(400).u16(0).u8(0).u16(0)),
+      record(0x003e, new Bytes().u8(0).u8(0).u8(1).u8(0).u8(0).u16(0).u16(0).u8(1).u32(0)),
+      // A name in the second font, centred, with lines above and below it, then a number in the format "0.00",
+      // aligned right and shaded.
+      record(
+        0x0004,
+        attributed(0, 0, [0, 1 << 6, 2 | 0x20 | 0x40])
+          .u8(4)
+          .narrow('Name')
+      ),
+      record(0x0003, attributed(1, 1, [0, 1, 3 | 0x80]).f64(2.5)),
+      EOF
+    )
+    const preview = await readOlderExcel(file)
+    expect(preview.kind === 'workbook' && preview.sheets[0]?.rows).toEqual([['Name'], ['', '2.50']])
+    const { look, cells } = await lookOf(file)
+    expect([look?.columns, look?.rows, look?.grid, look?.headings]).toEqual([[78.75, 48], [12.8, 20], false, true])
+    // A cell with no attributes of its own is plain.
+    const plain = { text: { font: 'Arial', size: 10 }, borders: {}, align: 'left', vertical: 'bottom', wrap: false, indent: 0 }
+    expect(cells).toEqual([
+      [{ ...plain, text: { font: 'Arial', size: 10, bold: true, color: '#ff0000' }, borders: { top: thin, bottom: thin }, align: 'center' }, plain],
+      [plain, { ...plain, fill: '#dfdfdf', align: 'right' }]
+    ])
+  })
+
+  it('draws the cells of Excel 2 in the styles they name, the 63rd and later named by the record before them', async () => {
+    const file = fileOf(
+      beginning(0x0009, 0x0010),
+      formatTwo('General'),
+      formatTwo('0%'),
+      fontTwo(200, 0, 'Arial'),
+      fontTwo(240, 2, 'Courier'),
+      record(0x0043, new Bytes().u8(0).u8(0).u8(0).u8(0)),
+      record(
+        0x0043,
+        new Bytes()
+          .u8(1)
+          .u8(0)
+          .u8(1)
+          .u8(1 | 0x08)
+      ),
+      record(0x0044, new Bytes().u16(1)),
+      record(0x0002, attributed(0, 0, [63, 0, 0]).u16(1)),
+      // A cell's own attributes give way to the style it names.
+      record(0x0002, attributed(0, 1, [0, 1, 0x80]).u16(1)),
+      EOF
+    )
+    const preview = await readOlderExcel(file)
+    expect(preview.kind === 'workbook' && preview.sheets[0]?.rows).toEqual([['100%', '1']])
+    const { cells } = await lookOf(file)
+    expect(cells).toEqual([
+      [
+        { text: { font: 'Courier', size: 12, italic: true }, borders: { left: thin }, align: 'left', vertical: 'bottom', wrap: false, indent: 0 },
+        { text: { font: 'Arial', size: 10 }, borders: {}, align: 'right', vertical: 'bottom', wrap: false, indent: 0 }
+      ]
+    ])
   })
 })
 

@@ -75,9 +75,11 @@ function extended(index: number, colors: [kind: number, rgb: [number, number, nu
 }
 
 const records = (overrides: Partial<OlderBookRecords>): OlderBookRecords => ({
-  five: false,
+  version: 8,
   fonts: [font({ name: 'Arial' })],
+  fontColors: [],
   styles: [],
+  explicit: [],
   palette: undefined,
   extended: [],
   theme: undefined,
@@ -162,7 +164,7 @@ describe('the styles of an Excel 97 workbook', () => {
       .done()
     const styles = await readOlderBookStyles(
       records({
-        five: true,
+        version: 5,
         fonts: [
           new Bytes()
             .u16(200)
