@@ -213,6 +213,36 @@ describe('an Office file previewed', () => {
     })
   })
 
+  it('shows the stretches of a cell’s text in their own fonts, shared or its own, their cell’s font under what they leave out', async () => {
+    const file = await zip({
+      'xl/workbook.xml': '<workbook><sheets><sheet name="Notes" r:id="rId1"/></sheets></workbook>',
+      'xl/_rels/workbook.xml.rels':
+        '<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Target="styles.xml"/></Relationships>',
+      'xl/styles.xml':
+        '<styleSheet><fonts><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="12"/><color rgb="FF0000FF"/><name val="Calibri"/></font></fonts>' +
+        '<cellXfs><xf fontId="0"/><xf fontId="1"/></cellXfs></styleSheet>',
+      'xl/sharedStrings.xml':
+        '<sst><si><r><t xml:space="preserve">Total </t></r><r><rPr><i/><sz val="14"/><color rgb="FFFF0000"/><rFont val="Georgia"/></rPr><t>due</t></r>' +
+        '<rPh><r><t>ignored</t></r></rPh></si><si><t>plain</t></si></sst>',
+      'xl/worksheets/sheet1.xml':
+        '<worksheet><sheetData><row r="1"><c r="A1" t="s" s="1"><v>0</v></c><c r="B1" t="s"><v>1</v></c>' +
+        '<c r="C1" t="inlineStr"><is><r><rPr><b/></rPr><t>Paid</t></r><r><t xml:space="preserve"> late</t></r></is></c></row></sheetData></worksheet>'
+    })
+    const preview = await readOffice('xlsx', file)
+    if (preview.kind !== 'workbook') throw new Error('Not a workbook.')
+    expect(preview.sheets[0]?.rows).toEqual([['Total due', 'plain', 'Paid late']])
+    const runs = preview.sheets[0]?.look?.runs?.[0]
+    expect(runs?.[0]).toEqual([
+      { start: 0, text: expect.objectContaining({ font: 'Calibri', size: 12, color: '#0000ff', bold: true }) },
+      { start: 6, text: expect.objectContaining({ font: 'Georgia', size: 14, color: '#ff0000', bold: false, italic: true }) }
+    ])
+    expect(runs?.[1]).toBeUndefined()
+    expect(runs?.[2]).toEqual([
+      { start: 0, text: expect.objectContaining({ font: 'Calibri', size: 11, bold: true, italic: false }) },
+      { start: 4, text: expect.objectContaining({ font: 'Calibri', size: 11, bold: undefined }) }
+    ])
+  })
+
   it('shows each number of a workbook as the format of its style shows it, and its dates as the workbook counts them', async () => {
     const workbook = (properties: string) =>
       zip({
@@ -580,6 +610,33 @@ describe('an OpenDocument file previewed', () => {
         { name: 'Empty', rows: [], cut: false, figures: [] }
       ]
     })
+  })
+
+  it('shows the stretches of a cell’s text in the spans they are within, over their cell’s look, across its paragraphs', async () => {
+    const styles =
+      '<style:style style:name="T1" style:family="text"><style:text-properties fo:font-weight="bold" fo:color="#c00000"/></style:style>' +
+      '<style:style style:name="T2" style:family="text"><style:text-properties fo:font-style="italic"/></style:style>'
+    const cells =
+      '<table:table-cell office:value-type="string"><text:p>Total <text:span text:style-name="T1">due <text:span text:style-name="T2">now</text:span></text:span></text:p></table:table-cell>' +
+      '<table:table-cell office:value-type="string"><text:p>One</text:p><text:p><text:span text:style-name="T2">Two</text:span></text:p></table:table-cell>' +
+      '<table:table-cell office:value-type="string"><text:p>Plain <text:span>still</text:span></text:p></table:table-cell>'
+    const sheet = `<table:table table:name="Notes"><table:table-row table:number-rows-repeated="2">${cells}</table:table-row></table:table>`
+    const preview = await readOffice('ods', await zip({ 'content.xml': odf(styles, `<office:spreadsheet>${sheet}</office:spreadsheet>`) }))
+    if (preview.kind !== 'workbook') throw new Error('Not a workbook.')
+    expect(preview.sheets[0]?.rows[0]).toEqual(['Total due now', 'One Two', 'Plain still'])
+    const look = preview.sheets[0]?.look
+    const under = look?.text
+    expect(look?.runs?.[1]?.[0]).toEqual([
+      { start: 0, text: under },
+      { start: 6, text: { ...under, bold: true, color: '#c00000' } },
+      { start: 10, text: { ...under, bold: true, color: '#c00000', italic: true } }
+    ])
+    expect(look?.runs?.[0]?.[1]).toEqual([
+      { start: 0, text: under },
+      { start: 4, text: { ...under, italic: true } }
+    ])
+    // Spans of no style leave their cell's text as it is.
+    expect(look?.runs?.[0]?.[2]).toBeUndefined()
   })
 
   it('cuts a sheet past its rows and columns shown, and says so', async () => {

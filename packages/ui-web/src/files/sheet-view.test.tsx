@@ -37,6 +37,31 @@ describe('a sheet shown as it looks', () => {
     expect(html).toContain('bottom:0;transform-origin:left bottom;transform:rotate(-45deg)">Rising<')
   })
 
+  it('writes each stretch of a cell’s text in its own font, the lines under its text left to the stretches', () => {
+    const html = renderToStaticMarkup(
+      <SheetView
+        look={sheet({
+          cells: [[0]],
+          looks: [cell({ text: { underline: 'solid', bold: true } })],
+          runs: [
+            [
+              [
+                { start: 0, text: { bold: false } },
+                { start: 6, text: { font: 'Georgia', color: '#c00000', bold: true, underline: 'solid' } },
+                { start: 9, text: { bold: false } }
+              ]
+            ]
+          ]
+        })}
+        rows={[['Total due now']]}
+      />
+    )
+    expect(html).toContain('<span style="font-weight:400;font-style:normal;display:inline">Total </span>')
+    expect(html).toMatch(/<span style="[^"]*font-family:&#x27;Georgia&#x27;[^"]*color:#c00000[^"]*text-decoration-line:underline[^"]*">due<\/span>/)
+    expect(html).toContain('<span style="font-weight:400;font-style:normal;display:inline"> now</span>')
+    expect(html).not.toMatch(/<div style="[^"]*text-decoration-line:underline/)
+  })
+
   it.each<[number, string]>([
     [0, 'A'],
     [25, 'Z'],

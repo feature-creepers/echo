@@ -42,6 +42,21 @@ export interface MergedCells {
   columns: number
 }
 
+/** A stretch of a cell's text in a font of its own, from its first character up to the next stretch. */
+export interface CellRun {
+  start: number
+  text: TextLook
+}
+
+/**
+ * A stretch of a cell's text as a sheet's reader finds it, from its first character: in the font of the workbook's
+ * that its number names, or in a look of its own.
+ */
+export interface LaidRun {
+  start: number
+  font: number | TextLook
+}
+
 /**
  * A sheet's look: each column's width and each row's height (none for one hidden), the look of each cell by its place
  * in `looks`, its merged cells, whether it shows its grid and its headings, how much it is zoomed, and its default text.
@@ -51,6 +66,8 @@ export interface SheetLook {
   rows: number[]
   cells: (number | undefined)[][]
   looks: CellLook[]
+  /** The stretches of a cell's text in fonts of their own, by row and column, for the cells that have them. */
+  runs?: ((CellRun[] | undefined)[] | undefined)[] | undefined
   merges: MergedCells[]
   grid: boolean
   headings: boolean
@@ -234,7 +251,13 @@ function fontOf(node: XmlNode | undefined, colors: WorkbookColors): TextLook {
   const underline = childAt(node, 'u') ? (attribute('u') ?? 'single') : undefined
   const position = attribute('vertAlign')
   return {
-    font: scheme === 'major' ? colors.fonts.major || attribute('name') : scheme === 'minor' ? colors.fonts.minor || attribute('name') : attribute('name'),
+    // A stretch of text names its font as `rFont`, a style as `name`.
+    font:
+      scheme === 'major'
+        ? colors.fonts.major || attribute('name')
+        : scheme === 'minor'
+          ? colors.fonts.minor || attribute('name')
+          : (attribute('name') ?? attribute('rFont')),
     size: Number.isFinite(size) && size > 0 ? Math.min(size, 409) : undefined,
     color: workbookColor(childAt(node, 'color'), colors),
     bold: on('b'),
@@ -243,6 +266,25 @@ function fontOf(node: XmlNode | undefined, colors: WorkbookColors): TextLook {
     struck: on('strike'),
     position: position === 'superscript' ? 'super' : position === 'subscript' ? 'sub' : undefined
   }
+}
+
+/**
+ * The font of a stretch of a cell's text (`rPr`), which says all it is: what it does not set bold, slanted, underlined
+ * or struck is not. The cell's font gives what it leaves out of its typeface, size and colour (`wholeRun`).
+ */
+export function readRunFont(node: XmlNode, colors: WorkbookColors): TextLook {
+  return allOf(fontOf(node, colors))
+}
+
+/**
+ * A stretch's font as all it is, over its cell's whose weight, slant and strike its text would otherwise take: what it
+ * does not set bold, slanted or struck is not.
+ */
+const allOf = (font: TextLook): TextLook => ({ ...font, bold: font.bold ?? false, italic: font.italic ?? false, struck: font.struck ?? false })
+
+/** A stretch's whole font: its own, its cell's typeface, size and colour where it leaves them out. */
+export function wholeRun(look: TextLook, cell: TextLook): TextLook {
+  return { ...look, font: look.font ?? cell.font, size: look.size ?? cell.size, color: look.color ?? cell.color }
 }
 
 /** A workbook's styles of cells, read from its styles part, each a font, a fill, borders and an alignment. */
@@ -260,6 +302,8 @@ export interface WorkbookStyles {
     rotation?: Rotation | undefined
   }[]
   text: TextLook
+  /** The workbook's fonts by the number a stretch of text names them by, where its stretches name them so. */
+  fonts?: TextLook[] | undefined
 }
 
 export function readWorkbookStyles(xml: string | undefined, theme: Pick<WorkbookColors, 'theme' | 'fonts'>): WorkbookStyles {
@@ -308,6 +352,8 @@ export interface SheetLayout {
   heights: ({ height?: number | undefined; hidden: boolean } | undefined)[]
   /** The colour each cell's number format writes it in, when it names one. */
   numberColors: (string | undefined)[][]
+  /** The stretches of each cell's text in fonts of their own, for the cells that have them. */
+  runs?: ((LaidRun[] | undefined)[] | undefined)[] | undefined
 }
 
 const ALIGNS: Record<string, CellLook['align']> = {
@@ -386,7 +432,7 @@ export function readSheetLook(xml: string, layout: SheetLayout, styles: Workbook
  * Each cell's look, from its style, where its content sits by what it holds when its style says nothing, and the
  * colour its number format writes it in; the same looks shared.
  */
-export function cellLooks(layout: SheetLayout, styles: WorkbookStyles, size: { rows: number; columns: number }): Pick<SheetLook, 'cells' | 'looks'> {
+export function cellLooks(layout: SheetLayout, styles: WorkbookStyles, size: { rows: number; columns: number }): Pick<SheetLook, 'cells' | 'looks' | 'runs'> {
   const digit = digitWidth(styles.text)
   const looks: CellLook[] = []
   const known = new Map<string, number>()
@@ -417,7 +463,15 @@ export function cellLooks(layout: SheetLayout, styles: WorkbookStyles, size: { r
       return index
     })
   )
-  return { cells, looks }
+  // Each stretch of a cell's text in the font its number names or its own, the text before the first in the cell's.
+  const runs = layout.runs?.map((row, at) =>
+    row?.map((stretches, column) => {
+      const own = looks[cells[at]?.[column] ?? -1]?.text ?? styles.text
+      const read = stretches?.map(({ start, font }) => ({ start, text: typeof font === 'number' ? allOf(styles.fonts?.[font] ?? own) : font }))
+      return read && read.length > 0 && (read[0]?.start ?? 0) > 0 ? [{ start: 0, text: own }, ...read] : read
+    })
+  )
+  return runs ? { cells, looks, runs } : { cells, looks }
 }
 
 /**

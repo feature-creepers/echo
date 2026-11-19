@@ -1189,6 +1189,44 @@ describe('an Excel 97 workbook', () => {
     })
   })
 
+  it('shows a string’s runs of format in the fonts they name, the fifth font that Excel never writes skipped', async () => {
+    /** A font of Excel 97: its height, its weight and its name. */
+    const font = (height: number, weight: number, name: string) =>
+      record(0x0031, new Bytes().u16(height).u16(0).u16(0x7fff).u16(weight).u16(0).u8(0).u8(0).u8(0).u8(0).u8(name.length).u8(0).narrow(name))
+    // "Total due" shared, its last three characters in the font Excel numbers 5; "Paid late" a cell's own, from its fifth in bold.
+    const strings = new Bytes().u32(1).u32(1).u16(9).u8(0x08).u16(1).narrow('Total due').u16(6).u16(5)
+    const sheet = [bof(), record(0x00fd, cell(0, 0).u32(0)), record(0x00d6, cell(0, 1).u16(9).u8(0).narrow('Paid late').u16(1).u16(4).u16(1)), EOF]
+    const sheetName = new Bytes().u8(5).u8(0).narrow('Notes')
+    const globals = (sheetAt: number) => [
+      bof(),
+      font(200, 400, 'Arial'),
+      font(200, 700, 'Arial'),
+      font(200, 400, 'Arial'),
+      font(200, 400, 'Arial'),
+      font(280, 400, 'Georgia'),
+      record(0x00fc, strings),
+      record(0x0085, new Bytes().u32(sheetAt).u8(0).u8(0).raw(sheetName.done())),
+      EOF
+    ]
+    const length = globals(0).reduce((sum, one) => sum + one.length, 0)
+    const all = new Bytes()
+    for (const part of [...globals(length), ...sheet]) all.raw(part)
+    const preview = await readOlderExcel(compound({ Workbook: all.done() }))
+    if (preview.kind !== 'workbook') throw new Error('Not a workbook.')
+    expect(preview.sheets[0]?.rows).toEqual([['Total due', 'Paid late']])
+    const plain = { font: 'Arial', size: 10 }
+    expect(preview.sheets[0]?.look?.runs?.[0]).toEqual([
+      [
+        { start: 0, text: plain },
+        { start: 6, text: { font: 'Georgia', size: 14, bold: false, italic: false, struck: false } }
+      ],
+      [
+        { start: 0, text: plain },
+        { start: 4, text: { ...plain, bold: true, italic: false, struck: false } }
+      ]
+    ])
+  })
+
   it('says when it is protected with a password, or is not a workbook it knows', async () => {
     await expect(readOlderExcel(workbook(true))).rejects.toThrow('protected with a password')
     const four = new Bytes().raw(record(0x0809, new Bytes().u16(0x0400).u16(0x0010).zeros(4))).done()

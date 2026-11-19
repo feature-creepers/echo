@@ -818,7 +818,7 @@ function strip(look: RunRead): TextLook {
 }
 
 /** What a look sets, without what it leaves to the look under it. */
-const definedLook = (look: TextLook): TextLook => Object.fromEntries(Object.entries(look).filter(([, one]) => one !== undefined)) as TextLook
+export const definedLook = (look: TextLook): TextLook => Object.fromEntries(Object.entries(look).filter(([, one]) => one !== undefined)) as TextLook
 
 /** A paragraph's pieces without the space a line ends with before its end. */
 function trimmed(spans: DocumentSpan[]): DocumentSpan[] {

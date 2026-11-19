@@ -48,7 +48,7 @@ import {
 import { type OlderBookRecords, type OlderSheetRecords, readOlderBookStyles, readOlderPalette, readOlderSheetLook } from './older-sheet-look.ts'
 import { drawOlderSlide, type OlderDeck, olderDeck } from './older-slide-drawing.ts'
 import { type FloatingAnchor, readOlderWordLook, type TextPiece } from './older-word-look.ts'
-import { type CellKind, paletteColor, type SheetLayout, type SheetLook, type WorkbookStyles } from './sheet-look.ts'
+import { type CellKind, type LaidRun, paletteColor, type SheetLayout, type SheetLook, type WorkbookStyles } from './sheet-look.ts'
 import { DRAWINGS_LIMIT } from './slide-svg.ts'
 
 /** The most characters of a document read: past them, a preview shows the start. */
@@ -961,6 +961,13 @@ class Continued {
   }
   /** A string of Excel's (`XLUnicodeRichExtendedString`), its formatting runs and phonetic guide passed over. */
   text(): string {
+    return this.richText().text
+  }
+  /**
+   * A string of Excel's with its formatting runs: where each stretch starts and the number of its font, four bytes
+   * each after its characters. Its phonetic guide is passed over.
+   */
+  richText(): { text: string; runs: LaidRun[] } {
     const length = this.u16()
     const flags = this.u8()
     const runs = flags & 0x08 ? this.u16() : 0
@@ -982,8 +989,13 @@ class Continued {
       this.place += slice.length
       left -= take
     }
-    this.skip(runs * 4 + extra)
-    return text
+    const stretches: LaidRun[] = []
+    for (let index = 0; index < runs; index++) {
+      const start = this.u16()
+      stretches.push({ start, font: this.u16() })
+    }
+    this.skip(extra)
+    return { text, runs: stretches }
   }
 }
 
@@ -1246,6 +1258,8 @@ function bookParts(stream: Uint8Array, options: NumberFormatOptions): WorkbookPa
   const eight = (bytes: Uint8Array) => (narrow ? narrow.decode(bytes) : latin1(bytes))
 
   const strings: string[] = []
+  // The stretches of the shared strings that have them, by their place.
+  const stringRuns: (LaidRun[] | undefined)[] = []
   const sheets: { name: string; at: number; chart: boolean }[] = []
   // Every sheet's name by its place, as formulas name them, through the references to the workbook's own sheets.
   const names: string[] = []
@@ -1279,7 +1293,11 @@ function bookParts(stream: Uint8Array, options: NumberFormatOptions): WorkbookPa
     parts.skip(4)
     const count = parts.u32()
     try {
-      for (let index = 0; index < count; index++) strings.push(parts.text())
+      for (let index = 0; index < count; index++) {
+        const { text, runs } = parts.richText()
+        strings.push(text)
+        if (runs.length > 0) stringRuns[strings.length - 1] = runs
+      }
     } catch {
       // A table of strings cut short keeps those read.
     }
@@ -1361,7 +1379,7 @@ function bookParts(stream: Uint8Array, options: NumberFormatOptions): WorkbookPa
     .map(({ name, at, chart }) =>
       chart
         ? { name, rows: [], cut: false, cells: new Map<string, CellValue>(), drawing: new Uint8Array(), charts: [chartRecords(book, at)], objects: [] }
-        : { name, ...sheetRows(book, at, { strings, version: five ? 5 : 8, eight }, shownBy, shown, palette) }
+        : { name, ...sheetRows(book, at, { strings, runs: stringRuns, version: five ? 5 : 8, eight }, shownBy, shown, palette) }
     )
   // The sheets are read before their charts, which may name their cells rather than keep their values.
   const context: ChartContext = {
@@ -1456,7 +1474,7 @@ const FORMULAS = new Set([0x0006, 0x0206, 0x0406])
 function sheetRows(
   book: Reader,
   from: number,
-  text: { strings: readonly string[]; version: number; eight: (bytes: Uint8Array) => string },
+  text: { strings: readonly string[]; runs?: readonly (LaidRun[] | undefined)[]; version: number; eight: (bytes: Uint8Array) => string },
   formatOf: (style: number) => string,
   options: NumberFormatOptions,
   palette: (index: number) => string | undefined = () => undefined,
@@ -1496,6 +1514,14 @@ function sheetRows(
     while (line.length < column) line.push('')
     line[column] = value
     cells.set(`${row},${column}`, { text: value, number: held !== undefined && Number.isFinite(held) ? held : undefined })
+  }
+  // A string's stretches in fonts of their own, each naming its font by its number.
+  const stretched = (row: number, column: number, runs: readonly LaidRun[] | undefined) => {
+    if (!runs || runs.length === 0 || row >= ROW_LIMIT || column >= COLUMN_LIMIT) return
+    layout.runs ??= []
+    const line = layout.runs[row] ?? []
+    layout.runs[row] = line
+    line[column] = [...runs]
   }
   // A number as the format of its cell's style shows it.
   const number = (row: number, column: number, value: number, style: number) => {
@@ -1583,6 +1609,7 @@ function sheetRows(
     if (type === 0x00fd) {
       put(row(), column(), strings[book.u32(at + 6)] ?? '')
       styled(row(), column(), book.u16(at + 4), 'text')
+      stretched(row(), column(), text.runs?.[book.u32(at + 6)])
     } else if (type === 0x0203) number(row(), column(), book.f64(at + 6), book.u16(at + 4))
     else if (type === 0x027e) number(row(), column(), rkNumber(book.u32(at + 6)), book.u16(at + 4))
     else if (type === 0x00bd) {
@@ -1597,12 +1624,22 @@ function sheetRows(
       const start = type === 0x0207 ? at : at + 6
       const length = book.u16(start)
       const wide = !five && (book.u8(start + 2) & 0x01) !== 0
-      const text = five ? eight(book.bytes(start + 2, length)) : wide ? utf16(book.bytes(start + 3, length * 2)) : latin1(book.bytes(start + 3, length))
+      const shown = five ? eight(book.bytes(start + 2, length)) : wide ? utf16(book.bytes(start + 3, length * 2)) : latin1(book.bytes(start + 3, length))
       if (type !== 0x0207) {
-        put(row(), column(), text)
+        put(row(), column(), shown)
         styled(row(), column(), book.u16(at + 4), 'text')
         waiting = undefined
-      } else result(text)
+      } else result(shown)
+      // A string with runs of format after its characters (`RSTRING`): a byte each in Excel 5, two in Excel 97.
+      if (type === 0x00d6) {
+        let after = start + (five ? 2 + length : 3 + length * (wide ? 2 : 1))
+        const count = five ? book.u8(after) : book.u16(after)
+        after += five ? 1 : 2
+        const runs: LaidRun[] = []
+        for (let index = 0; index < Math.min(count, 256) && after + (five ? 2 : 4) <= at + size; index++, after += five ? 2 : 4)
+          runs.push(five ? { start: book.u8(after), font: book.u8(after + 1) } : { start: book.u16(after), font: book.u16(after + 2) })
+        stretched(row(), column(), runs)
+      }
     } else if (FORMULAS.has(type)) formula(row(), column(), at + 6, book.u16(at + 4))
   }
   while (rows.length > 0 && (rows.at(-1)?.every((value) => value === '') ?? false)) rows.pop()

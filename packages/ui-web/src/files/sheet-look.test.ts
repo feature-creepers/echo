@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { numberColor } from './number-format.ts'
-import { excelRotation, type Rotation, readSheetLook, readWorkbookStyles, readWorkbookTheme, type SheetLayout, workbookColor } from './sheet-look.ts'
+import {
+  excelRotation,
+  type Rotation,
+  readRunFont,
+  readSheetLook,
+  readWorkbookStyles,
+  readWorkbookTheme,
+  type SheetLayout,
+  wholeRun,
+  workbookColor
+} from './sheet-look.ts'
 import { xmlTree } from './xml.ts'
 
 const THEME = `<a:theme xmlns:a="a"><a:themeElements><a:clrScheme name="Office">
@@ -146,6 +156,50 @@ describe('a workbook as it looks', () => {
     expect([at(2, 0)?.align, at(2, 1)?.align, at(2, 2)?.align]).toEqual(['center', 'center', 'left'])
     // Cells set alike share one look.
     expect(look.cells[2]?.[0]).toBe(look.cells[2]?.[1])
+  })
+
+  it('reads a stretch’s font as all it is, bold or not, and takes its typeface, size and colour from its cell’s where it leaves them out', () => {
+    const colors = styles().colors
+    const font = (xml: string) => readRunFont(xmlTree(`<rPr>${xml}</rPr>`).children[0] ?? xmlTree('<rPr/>'), colors)
+    expect(font('<b/><sz val="14"/><color rgb="FFFF0000"/><rFont val="Arial"/>')).toEqual({
+      font: 'Arial',
+      size: 14,
+      color: '#ff0000',
+      bold: true,
+      italic: false,
+      underline: undefined,
+      struck: false,
+      position: undefined
+    })
+    expect(wholeRun(font('<i/>'), { font: 'Calibri', size: 11, color: '#000000', bold: true })).toMatchObject({
+      font: 'Calibri',
+      size: 11,
+      color: '#000000',
+      bold: false,
+      italic: true
+    })
+  })
+
+  it('shows the stretches of a cell’s text in their fonts, given whole or by their number, the text before the first in its cell’s', () => {
+    const fonts = [
+      { font: 'Arial', size: 10 },
+      { font: 'Arial', size: 10, bold: true }
+    ]
+    const layout: SheetLayout = {
+      styles: [[1, 0]],
+      kinds: [['text', 'text']],
+      heights: [],
+      numberColors: [],
+      runs: [[[{ start: 4, font: { font: 'Georgia', size: 12, italic: true } }], [{ start: 0, font: 1 }]]]
+    }
+    const look = readSheetLook('<worksheet/>', layout, { ...styles(), fonts }, { rows: 1, columns: 2 })
+    const heading = look.looks[look.cells[0]?.[0] ?? -1]?.text
+    expect(look.runs?.[0]?.[0]).toEqual([
+      { start: 0, text: heading },
+      { start: 4, text: { font: 'Georgia', size: 12, italic: true } }
+    ])
+    expect(look.runs?.[0]?.[1]).toEqual([{ start: 0, text: { font: 'Arial', size: 10, bold: true, italic: false, struck: false } }])
+    expect(readSheetLook('<worksheet/>', { ...layout, runs: undefined }, styles(), { rows: 1, columns: 2 }).runs).toBeUndefined()
   })
 
   it('takes a sheet’s default column width when it gives one, and holds widths, heights and zoom within Excel’s', () => {

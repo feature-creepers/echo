@@ -6,8 +6,8 @@
  */
 
 import type { CSSProperties, ReactNode } from 'react'
-import type { BorderLook } from './document-look.ts'
-import type { Rotation, SheetLook } from './sheet-look.ts'
+import type { BorderLook, TextLook } from './document-look.ts'
+import type { CellRun, Rotation, SheetLook } from './sheet-look.ts'
 import { fontStack } from './slide-svg.ts'
 
 const pt = (value: number) => `${Math.round(value * 100) / 100}pt`
@@ -143,8 +143,12 @@ export function SheetView({ look, rows }: { look: SheetLook; rows: readonly (rea
                     overflow: spills || turn !== undefined ? 'visible' : 'hidden',
                     ...(turn === undefined ? {} : { position: 'relative', textAlign: cell?.align ?? 'left' })
                   }
+                  // A cell whose text is in stretches leaves the lines under and through it to them, which cannot take a line away.
+                  const stretched = look.runs?.[row]?.[column]
+                  const lines: CSSProperties = stretched && stretched.length > 0 ? { textDecorationLine: undefined, textDecorationStyle: undefined } : {}
                   const content: CSSProperties = {
                     ...textCss(cell),
+                    ...lines,
                     padding: `0 ${pt(1.5)} 0 ${pt(1.5 + (cell?.align === 'left' ? (cell.indent ?? 0) : 0))}`,
                     paddingRight: cell?.align === 'right' && cell.indent ? pt(1.5 + cell.indent) : undefined,
                     textAlign: cell?.align ?? 'left',
@@ -165,8 +169,8 @@ export function SheetView({ look, rows }: { look: SheetLook; rows: readonly (rea
                       rowSpan={merged && merged.rows > 1 ? look.rows.slice(row, row + merged.rows).filter((one) => one > 0).length : undefined}
                       style={style}
                     >
-                      {text !== '' && turn === undefined && <div style={content}>{text}</div>}
-                      {turn !== undefined && <div style={turnedCss(cell, turn)}>{text}</div>}
+                      {text !== '' && turn === undefined && <div style={content}>{stretches(text, stretched)}</div>}
+                      {turn !== undefined && <div style={{ ...turnedCss(cell, turn), ...lines }}>{stretches(text, stretched)}</div>}
                     </td>
                   )
                 })}
@@ -211,8 +215,27 @@ function turnedCss(cell: SheetLook['looks'][number] | undefined, turn: Rotation)
   }
 }
 
+/**
+ * A cell's text, in the fonts of its stretches when it has them, each its whole font: the cell's own lines under and
+ * through its text are drawn by the stretches that have them.
+ */
+function stretches(text: string, runs: readonly CellRun[] | undefined): ReactNode {
+  if (!runs || runs.length === 0) return text
+  return runs.map((run, index) => {
+    const part = text.slice(run.start, runs[index + 1]?.start ?? text.length)
+    return part === '' ? null : (
+      <span key={run.start} style={{ ...lookCss(run.text), display: 'inline' }}>
+        {part}
+      </span>
+    )
+  })
+}
+
 function textCss(cell: SheetLook['looks'][number] | undefined): CSSProperties {
-  const look = cell?.text
+  return lookCss(cell?.text)
+}
+
+function lookCss(look: TextLook | undefined): CSSProperties {
   if (!look) return {}
   const lines = [look.underline ? 'underline' : '', look.struck ? 'line-through' : ''].filter(Boolean).join(' ')
   return {

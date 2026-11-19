@@ -5,8 +5,8 @@
  * headings and zoom its settings give it.
  */
 
-import { colorOf } from './document-look.ts'
-import { bordersOf, points, textLook } from './open-look.ts'
+import { colorOf, type TextLook } from './document-look.ts'
+import { bordersOf, definedLook, points, textLook } from './open-look.ts'
 import type { Properties, StyleBook } from './open-styles.ts'
 import { type CellKind, type CellLook, generalAlign, type MergedCells, type SheetLook } from './sheet-look.ts'
 import { childAt, childrenNamed, type XmlNode, xmlTree } from './xml.ts'
@@ -104,14 +104,27 @@ export function openNumberColor(style: XmlNode | undefined, value: number, style
 
 const ALIGNS: Record<string, CellLook['align']> = { start: 'left', left: 'left', center: 'center', end: 'right', right: 'right', justify: 'justify' }
 
-/** A sheet's look, at the size its text was read at, from its table and the spreadsheet's styles and fonts. */
+/**
+ * A stretch of a cell's text as an OpenDocument spreadsheet writes it, from its first character: in the styles of the
+ * spans it is within, outermost first, over its cell's; none for the text outside them.
+ */
+export interface OpenRun {
+  start: number
+  styles: readonly string[]
+}
+
+/**
+ * A sheet's look, at the size its text was read at, from its table and the spreadsheet's styles and fonts, with the
+ * stretches of its cells' text in spans of their own, by row and column.
+ */
 export function readOpenSheetLook(
   table: XmlNode,
   size: { rows: number; columns: number },
   book: StyleBook,
   fonts: ReadonlyMap<string, string>,
   view: SheetView,
-  numbers: ReadonlyMap<string, XmlNode> = new Map()
+  numbers: ReadonlyMap<string, XmlNode> = new Map(),
+  stretches: readonly ((readonly OpenRun[] | undefined)[] | undefined)[] = []
 ): SheetLook {
   const usualText = textLook(book.properties('table-cell', 'Default', 'text', false), fonts)
   const text = { font: usualText.font, size: usualText.size, color: usualText.color }
@@ -211,7 +224,22 @@ export function readOpenSheetLook(
       return index
     })
   )
-  return { columns, rows, cells, looks, merges, ...view, text }
+  // Each stretch of a cell's text in what its spans set over its cell's font.
+  const spanned = (name: string): TextLook => {
+    const { hidden: _hidden, ...shown } = textLook(book.properties('text', name, 'text', false, false), fonts)
+    return definedLook(shown)
+  }
+  const runs = stretches.slice(0, rows.length).map((line, row) =>
+    line?.slice(0, columns.length).map((own, column) => {
+      const under = looks[cells[row]?.[column] ?? -1]?.text ?? text
+      return own?.map(({ start, styles }) => {
+        const look: TextLook = { ...under }
+        for (const name of styles) Object.assign(look, spanned(name))
+        return { start, text: look }
+      })
+    })
+  )
+  return { columns, rows, cells, looks, merges, ...view, text, ...(runs.length > 0 ? { runs } : {}) }
 }
 
 function cellLook(cell: Properties, paragraph: Properties, text: Properties, kind: CellKind, fonts: ReadonlyMap<string, string>): CellLook {

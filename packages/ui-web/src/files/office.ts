@@ -11,6 +11,7 @@
 import { type Archive, openArchive, partOf, relationships, resolvePart, textOf } from './archive.ts'
 import { readOlderExcel, readOlderPowerPoint, readOlderSheets, readOlderWord } from './binary-office.ts'
 import { openCompound } from './compound.ts'
+import type { TextLook } from './document-look.ts'
 import { builtInFormat, formatNumber, generalNumber, type NumberFormatOptions, numberColor } from './number-format.ts'
 import { type CellRange, type CellSource, type CellValue, cellRange, emuPixels, Figures, lengthPixels, readChart, readOpenChart } from './office-figures.ts'
 import { mathMlText, mathText } from './office-math.ts'
@@ -34,18 +35,21 @@ import {
   SLIDE_LIMIT
 } from './office-text.ts'
 import { readOpenLook } from './open-look.ts'
-import { dataStyles, readOpenSheetLook, readSheetViews } from './open-sheet-look.ts'
+import { dataStyles, type OpenRun, readOpenSheetLook, readSheetViews } from './open-sheet-look.ts'
 import { drawOpenPage, type OpenDeck, openDeck } from './open-slide-drawing.ts'
 import { fontFaces, StyleBook } from './open-styles.ts'
 import {
   type CellKind,
+  type LaidRun,
   paletteColor,
+  readRunFont,
   readSheetLook,
   readWorkbookStyles,
   readWorkbookTheme,
   type SheetLayout,
   type SheetLook,
-  type WorkbookStyles
+  type WorkbookStyles,
+  wholeRun
 } from './sheet-look.ts'
 import { drawSlide } from './slide-drawing.ts'
 import { DRAWINGS_LIMIT } from './slide-svg.ts'
@@ -532,11 +536,15 @@ async function workbookSheets(
   const palette = (index: number) => paletteColor(index, styles.colors)
 
   const strings: string[] = []
+  // Each shared string's stretches in fonts of their own (`r`), each with the font it sets (`rPr`), if any.
+  const stringRuns: (StringRun[] | undefined)[] = []
   let shared: string | undefined
   let inText = false
   // Phonetic guides (`rPh`) hold readings of East Asian text, not the text itself.
   let phonetic = false
+  const stretches = new Stretches((node) => readRunFont(node, styles.colors))
   for (const event of xmlEvents((await textOf(archive, 'xl/sharedStrings.xml')) ?? '')) {
+    if (shared !== undefined && !phonetic && stretches.read(event, shared.length)) continue
     if (event.type === 'open' && event.name === 'si') shared = ''
     else if (event.type === 'open' && event.name === 'rPh') phonetic = true
     else if (event.type === 'close' && event.name === 'rPh') phonetic = false
@@ -544,6 +552,7 @@ async function workbookSheets(
     else if (event.type === 'close' && event.name === 't') inText = false
     else if (event.type === 'close' && event.name === 'si') {
       strings.push(shared ?? '')
+      stringRuns.push(stretches.take())
       shared = undefined
     } else if (event.type === 'text' && inText && shared !== undefined) shared += event.text
   }
@@ -555,7 +564,13 @@ async function workbookSheets(
     const target = targets.get(event.attributes['r:id'] ?? '')
     const xml = target === undefined ? undefined : await textOf(archive, target)
     if (xml === undefined || target === undefined) continue
-    sheets.push({ name: event.attributes.name ?? `Sheet ${sheets.length + 1}`, ...sheetRows(xml, strings, formats, shown, palette), xml, target })
+    const text = {
+      strings,
+      runs: stringRuns,
+      stretches: new Stretches((node) => readRunFont(node, styles.colors)),
+      look: (style: number) => styles.cells[style]?.text ?? styles.text
+    }
+    sheets.push({ name: event.attributes.name ?? `Sheet ${sheets.length + 1}`, ...sheetRows(xml, text, formats, shown, palette), xml, target })
   }
   return { sheets, shown, styles }
 }
@@ -590,10 +605,55 @@ export async function readWorkbook(archive: Archive, options: NumberFormatOption
 /** The figures found at these places of a file's list. */
 const figuresAt = (figures: Figures, places: readonly number[]) => places.flatMap((place) => figures.list[place] ?? [])
 
+/** A stretch of a string as Excel keeps it, from its first character: in the font it sets, else in its cell's. */
+interface StringRun {
+  start: number
+  font: TextLook | undefined
+}
+
+/**
+ * The stretches of a string (`r`), read from its steps as they come: where each starts, and the font its properties
+ * (`rPr`) set, whose elements say all of it.
+ */
+class Stretches {
+  private runs: StringRun[] = []
+  private properties: XmlNode | undefined
+  private readonly font: (node: XmlNode) => TextLook
+  constructor(font: (node: XmlNode) => TextLook) {
+    this.font = font
+  }
+  /** Takes in a step of a string whose text is so long so far; whether it was one of its stretches'. */
+  read(event: XmlEvent, length: number): boolean {
+    if (event.type === 'open' && event.name === 'r') this.runs.push({ start: length, font: undefined })
+    else if (event.type === 'open' && event.name === 'rPr') this.properties = { name: 'rPr', attributes: {}, children: [], text: '' }
+    else if (event.type === 'open' && this.properties) this.properties.children.push({ name: event.name, attributes: event.attributes, children: [], text: '' })
+    else if (event.type === 'close' && event.name === 'rPr' && this.properties) {
+      const last = this.runs.at(-1)
+      if (last) last.font = this.font(this.properties)
+      this.properties = undefined
+    } else return this.properties !== undefined && event.type === 'close'
+    return true
+  }
+  /** The stretches of the string just read, when one sets a font, and a start for the next. */
+  take(): StringRun[] | undefined {
+    const runs = this.runs
+    this.runs = []
+    this.properties = undefined
+    return runs.some((run) => run.font) ? runs : undefined
+  }
+}
+
 /** The rows of a sheet, its cells in their columns, empty ones kept so the columns line up. */
 function sheetRows(
   xml: string,
-  strings: readonly string[],
+  texts: {
+    strings: readonly string[]
+    /** Each shared string's stretches, and a reader of a cell's own string's. */
+    runs: readonly (StringRun[] | undefined)[]
+    stretches: Stretches
+    /** The font of a cell's style, for a stretch that leaves out its typeface, size or colour. */
+    look: (style: number) => TextLook
+  },
   formats: readonly string[],
   options: NumberFormatOptions,
   palette: (index: number) => string | undefined = () => undefined
@@ -604,10 +664,12 @@ function sheetRows(
   // How each row and cell is laid out, for the sheet's look.
   const layout: SheetLayout = { styles: [], kinds: [], heights: [], numberColors: [] }
   let cut = false
+  const { strings } = texts
   let row: string[] | undefined
   let cell: { column: number; type: string; value: string; format: string; style: number } | undefined
   let reading = false
   for (const event of xmlEvents(xml)) {
+    if (cell?.type === 'inlineStr' && texts.stretches.read(event, cell.value.length)) continue
     if (event.type === 'open') {
       if (event.name === 'row') {
         if (rows.length >= ROW_LIMIT) {
@@ -638,6 +700,8 @@ function sheetRows(
     else if (event.type === 'close') {
       if (event.name === 'v' || event.name === 't') reading = false
       else if (event.name === 'c' && cell && row) {
+        // A string's stretches, taken from the reader of a cell's own string whether the cell is shown or not.
+        const own = cell.type === 'inlineStr' ? texts.stretches.take() : cell.type === 's' ? texts.runs[Number(cell.value)] : undefined
         if (cell.column < COLUMN_LIMIT) {
           while (row.length < cell.column) row.push('')
           const text = cellText(cell, strings, options)
@@ -651,6 +715,14 @@ function sheetRows(
           layout.styles[at][cell.column] = cell.style
           layout.kinds[at][cell.column] = cellKind(cell)
           if (number !== undefined && Number.isFinite(number)) layout.numberColors[at][cell.column] = numberColor(number, cell.format, palette)
+          // A string's stretches in their whole fonts, from the cell's where they leave something out.
+          if (own) {
+            const look = texts.look(cell.style)
+            layout.runs ??= []
+            const line = layout.runs[at] ?? []
+            layout.runs[at] = line
+            line[cell.column] = own.map(({ start, font }): LaidRun => ({ start, font: font ? wholeRun(font, look) : look }))
+          }
         } else cut = true
         cell = undefined
       } else if (event.name === 'row' && row) {
@@ -1178,6 +1250,19 @@ function definedFormat(spans: readonly Format[]): Format {
   return format
 }
 
+/** How deep a cell's spans are followed: a stretch deeper is in the look of the span it is within at that depth. */
+const SPAN_DEPTH = 20
+
+/**
+ * A cell's stretches in spans, from the start of its text, the text before the first in its cell's own look, each
+ * stretch the last that starts where it does; none when no stretch is in a span of a style.
+ */
+function openRuns(runs: readonly OpenRun[], length: number): OpenRun[] | undefined {
+  if (!runs.some((run) => run.styles.some((name) => name !== '') && run.start < length)) return undefined
+  const ordered = [{ start: 0, styles: [] }, ...runs]
+  return ordered.filter((run, index) => run.start < length && (ordered[index + 1]?.start ?? length) !== run.start)
+}
+
 /** A cell's value as stored, for a cell that shows no text of its own. */
 function storedValue(attributes: Record<string, string>): string {
   const flag = attributes['office:boolean-value']
@@ -1195,9 +1280,13 @@ export async function readOpenSpreadsheet(archive: Archive): Promise<OfficePrevi
   const figures = new Figures(archive)
   const placed = await openFrames(content, 'table:table', figures)
   const sheets: Extract<OfficePreview, { kind: 'workbook' }>['sheets'] = []
-  let sheet: { name: string; rows: string[][]; cut: boolean; emptyRows: number } | undefined
-  let row: { cells: string[]; repeated: number; emptyCells: number } | undefined
-  let cell: { paragraphs: string[]; stored: string; repeated: number } | undefined
+  // The stretches of each sheet's cells' text in spans of their own, by row and column, for the cells that have them.
+  const stretches: (OpenRun[] | undefined)[][][] = []
+  let sheet: { name: string; rows: string[][]; runs: (OpenRun[] | undefined)[][]; cut: boolean; emptyRows: number } | undefined
+  let row: { cells: string[]; runs: (OpenRun[] | undefined)[]; repeated: number; emptyCells: number } | undefined
+  // A cell's stretches where its shown text has them, and those of the paragraph being read where it has them so far,
+  // in the spans it is within and the number of those too deep to be followed.
+  let cell: { paragraphs: string[]; stored: string; repeated: number; runs: OpenRun[]; spans: string[]; deeper: number; reading: OpenRun[] } | undefined
   let paragraph: string | undefined
 
   for (const event of events) {
@@ -1209,21 +1298,49 @@ export async function readOpenSpreadsheet(archive: Archive): Promise<OfficePrevi
     if (event.type === 'open') {
       if (event.name === 'table:table') {
         if (sheets.length >= SHEET_LIMIT) break
-        sheet = { name: event.attributes['table:name'] ?? `Sheet ${sheets.length + 1}`, rows: [], cut: false, emptyRows: 0 }
+        sheet = { name: event.attributes['table:name'] ?? `Sheet ${sheets.length + 1}`, rows: [], runs: [], cut: false, emptyRows: 0 }
       } else if (event.name === 'table:table-row' && sheet) {
-        row = { cells: [], repeated: repeatCount(event.attributes['table:number-rows-repeated']), emptyCells: 0 }
+        row = { cells: [], runs: [], repeated: repeatCount(event.attributes['table:number-rows-repeated']), emptyCells: 0 }
       } else if (isCell(event.name) && row) {
-        cell = { paragraphs: [], stored: storedValue(event.attributes), repeated: repeatCount(event.attributes['table:number-columns-repeated']) }
+        cell = {
+          paragraphs: [],
+          stored: storedValue(event.attributes),
+          repeated: repeatCount(event.attributes['table:number-columns-repeated']),
+          runs: [],
+          spans: [],
+          deeper: 0,
+          reading: []
+        }
       } else if (event.name === 'text:p' && cell) paragraph = ''
+      else if (event.name === 'text:span' && cell && paragraph !== undefined) {
+        if (cell.spans.length >= SPAN_DEPTH) cell.deeper++
+        else {
+          cell.spans.push(event.attributes['text:style-name'] ?? '')
+          cell.reading.push({ start: paragraph.length, styles: [...cell.spans] })
+        }
+      }
       continue
     }
     if (event.type !== 'close') continue
-    if (event.name === 'text:p' && cell && paragraph !== undefined) {
-      cell.paragraphs.push(paragraph.trim())
+    if (event.name === 'text:span' && cell && paragraph !== undefined && cell.deeper > 0) cell.deeper--
+    else if (event.name === 'text:span' && cell && paragraph !== undefined && cell.spans.length > 0) {
+      cell.spans.pop()
+      cell.reading.push({ start: paragraph.length, styles: [...cell.spans] })
+    } else if (event.name === 'text:p' && cell && paragraph !== undefined) {
+      // The paragraph's stretches where they fall in its cell's text, which joins its paragraphs trimmed with a space.
+      const shown = paragraph.trim()
+      const leading = paragraph.length - paragraph.trimStart().length
+      const at = cell.paragraphs.reduce((length, one) => length + one.length + 1, 0)
+      for (const { start, styles } of cell.reading) cell.runs.push({ start: at + Math.min(Math.max(start - leading, 0), shown.length), styles })
+      cell.paragraphs.push(shown)
+      cell.reading = []
+      cell.spans = []
+      cell.deeper = 0
       paragraph = undefined
     } else if (isCell(event.name) && cell && row && sheet) {
       // What the sheet shows, its paragraphs; else the value stored.
       const text = cell.paragraphs.length > 0 ? cell.paragraphs.join(' ') : cell.stored
+      const runs = cell.paragraphs.length > 0 ? openRuns(cell.runs, text.length) : undefined
       if (text === '') row.emptyCells += cell.repeated
       else {
         const wanted = row.cells.length + row.emptyCells + cell.repeated
@@ -1231,7 +1348,10 @@ export async function readOpenSpreadsheet(archive: Archive): Promise<OfficePrevi
           row.cells.push('')
           row.emptyCells--
         }
-        for (let copy = 0; copy < cell.repeated && row.cells.length < COLUMN_LIMIT; copy++) row.cells.push(text)
+        for (let copy = 0; copy < cell.repeated && row.cells.length < COLUMN_LIMIT; copy++) {
+          if (runs) row.runs[row.cells.length] = runs
+          row.cells.push(text)
+        }
         row.emptyCells = 0
         if (wanted > COLUMN_LIMIT) sheet.cut = true
       }
@@ -1244,12 +1364,16 @@ export async function readOpenSpreadsheet(archive: Archive): Promise<OfficePrevi
           sheet.rows.push([])
           sheet.emptyRows--
         }
-        for (let copy = 0; copy < row.repeated && sheet.rows.length < ROW_LIMIT; copy++) sheet.rows.push([...row.cells])
+        for (let copy = 0; copy < row.repeated && sheet.rows.length < ROW_LIMIT; copy++) {
+          if (row.runs.length > 0) sheet.runs[sheet.rows.length] = row.runs
+          sheet.rows.push([...row.cells])
+        }
         sheet.emptyRows = 0
         if (wanted > ROW_LIMIT) sheet.cut = true
       }
       row = undefined
     } else if (event.name === 'table:table' && sheet) {
+      stretches[sheets.length] = sheet.runs
       sheets.push({ name: sheet.name, rows: sheet.rows, cut: sheet.cut, figures: figuresAt(figures, placed[sheets.length] ?? []) })
       sheet = undefined
     }
@@ -1272,7 +1396,8 @@ export async function readOpenSpreadsheet(archive: Archive): Promise<OfficePrevi
         book,
         fonts,
         views(read.name),
-        numbers
+        numbers,
+        stretches[index]
       )
     } catch {
       read.look = undefined

@@ -402,7 +402,12 @@ export async function readOlderBookStyles(records: OlderBookRecords): Promise<Wo
       rotation: style.rotation
     }
   })
-  return { colors: { theme, palette, fonts: { major: '', minor: '' } }, cells, text: fonts[0] ?? {} }
+  return {
+    colors: { theme, palette, fonts: { major: '', minor: '' } },
+    cells,
+    text: fonts[0] ?? {},
+    fonts: Array.from({ length: fonts.length + 1 }, (_, index) => fontAt(index))
+  }
 }
 
 /**
