@@ -123,6 +123,19 @@ describe('the scope', () => {
     expect((await checkUse(run(`cp a.txt '${secret}'/`), scope, [])).reach).toBe('read')
   })
 
+  it('names the places a command names outside its folder, each once, so what it changes there is looked for', async () => {
+    const { root, granted, secret } = machine()
+    const scope: Scope = { places: [{ path: root, kind: 'folder', write: true }], computer: 'off' }
+    const run = (command: string): ComputerUse => ({ action: 'run', tool: 'Bash', paths: [granted], command })
+    expect((await checkUse(run('touch new.txt && cp a.txt sub/'), scope, [])).named).toBeUndefined()
+    expect((await checkUse(run(`cp a.txt ../private/ && cat '${join(secret, 'b.txt')}' > ../private/b.txt`), scope, [])).named).toEqual([
+      { path: secret, below: false },
+      { path: join(secret, 'b.txt'), below: false }
+    ])
+    // Named once going through it and once not, it is gone through.
+    expect((await checkUse(run('ls ../private && rm -r ../private'), scope, [])).named).toEqual([{ path: secret, below: true }])
+  })
+
   it('never reaches a protected place, whatever was granted, by a tool or by a command', async () => {
     const { root, granted } = machine()
     const keys = join(root, 'keys')

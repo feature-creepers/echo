@@ -34,6 +34,7 @@ export type {
   HarnessModel,
   HarnessModels,
   HarnessStatus,
+  NamedPlace,
   OneShot,
   ProtectedPath,
   Reach,

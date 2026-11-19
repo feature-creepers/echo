@@ -401,9 +401,10 @@ export function createAccess({ settings, screen, computer, timers, records, vers
   ): Promise<Verdict> => {
     const changes = use.action === 'create' || use.action === 'change' || use.action === 'delete'
     const versions = changes ? await activity.keep(use.paths) : { kept: [], created: [] }
-    // A command that may change files: its folder is looked at first, to find what it changed once it ended.
+    // A command that may change files: its folder is looked at first, with the places it names outside it, to find
+    // what it changed once it ended.
     const folder = use.action === 'run' && reason !== 'read-only' ? use.paths[0] : undefined
-    const snapshot = folder === undefined ? undefined : await computer?.snapshot?.(folder).catch(() => undefined)
+    const snapshot = folder === undefined ? undefined : await computer?.snapshot?.(folder, use.named ?? []).catch(() => undefined)
     const recorded = activity.record({
       ...by,
       tool: use.tool,

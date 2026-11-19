@@ -1,4 +1,4 @@
-import type { ProtectedPath } from './harness.ts'
+import type { NamedPlace, ProtectedPath } from './harness.ts'
 
 /**
  * The computer the core runs on, as far as the core needs to know it to keep what the user grants: the
@@ -43,8 +43,12 @@ export interface Computer {
    * What a folder holds now, to tell once a command run in it ended what it changed there (docs/SPEC.md, section
    * 12.2): in a git work tree, the files git sees, from where the work tree starts; elsewhere, the folder's files,
    * within limits. Nothing when it cannot be looked at. Left out, what a command changes is not known.
+   *
+   * `named` are the places the command names outside that folder, looked at too: a file, or a path where nothing
+   * is yet, alone; a folder from its work tree's top when it is in one, else its own files, and those of its
+   * subfolders only when the command goes through it.
    */
-  snapshot?(folder: string): Promise<FolderSnapshot | undefined>
+  snapshot?(folder: string, named?: readonly NamedPlace[]): Promise<FolderSnapshot | undefined>
 }
 
 /** A folder as a command found it. */

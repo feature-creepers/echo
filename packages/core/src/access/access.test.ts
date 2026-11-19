@@ -54,12 +54,15 @@ function machine() {
       trashed.push(path)
       return `/data/trash/today/${path.split('/').at(-1)}`
     },
-    // What a command changes is found by comparing the folder's files before it ran with them after.
-    async snapshot(folder) {
-      const before = new Map([...files].filter(([path]) => path.startsWith(`${folder}/`)))
+    // What a command changes is found by comparing the files of its folder, and of the places it names outside it,
+    // before it ran with them after.
+    async snapshot(folder, named = []) {
+      const places = [folder, ...named.map((place) => place.path)]
+      const looked = (path: string) => places.some((place) => path === place || path.startsWith(`${place}/`))
+      const before = new Map([...files].filter(([path]) => looked(path)))
       return {
         async changes() {
-          const now = new Map([...files].filter(([path]) => path.startsWith(`${folder}/`)))
+          const now = new Map([...files].filter(([path]) => looked(path)))
           return [...new Set([...before.keys(), ...now.keys()])].flatMap((path) => {
             const [was, is] = [before.get(path), now.get(path)]
             return was === is ? [] : [{ path, before: was ?? ('none' as const), after: is ?? ('none' as const) }]
@@ -597,6 +600,18 @@ describe('the activity', () => {
       versions: undefined
     })
     expect(again.activity(5).uses.find((one) => one.id === ran.use)?.changes).toHaveLength(3)
+  })
+
+  it('finds what a command changed in the places it names outside its folder', async () => {
+    const { reach, access, settings, files } = setup()
+    settings.setAccess({ approvals: 'auto' })
+    const copied = '/elsewhere/notes.md'
+    const ran = await reach.approve({ ...command('cp notes.md /elsewhere/'), named: [{ path: '/elsewhere', below: false }] }, signal())
+    if (!ran.allow || !ran.use) throw new Error('The command is expected to go ahead.')
+    files.set(copied, text('a\n'))
+    reach.report?.(ran.use, { ok: true })
+    await settle()
+    expect(access.activity(1).uses[0]?.changes).toEqual([{ path: copied, status: 'created', added: 1, removed: 0 }])
   })
 
   it('looks at no folder for a command that only reads', async () => {

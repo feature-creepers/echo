@@ -103,7 +103,7 @@ export async function createComputer({ workspace, data, where = { home: homedir(
         return undefined
       }
     },
-    snapshot: (folder) => snapshots.snapshot(folder),
+    snapshot: (folder, named) => snapshots.snapshot(folder, named),
     async list(folder) {
       try {
         return (await readdir(folder, { withFileTypes: true })).filter((entry) => entry.isFile()).map((entry) => entry.name)

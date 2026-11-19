@@ -83,10 +83,21 @@ export interface ComputerUse {
   /** For a command, whether every path it names may be changed (`write`), or some may only be read. */
   reach?: 'read' | 'write' | undefined
   /**
+   * For a command, the places it names outside the folder it runs in, as the adapter found them to check them:
+   * where it may change files beyond its folder, looked at too to find what it changed there.
+   */
+  named?: readonly NamedPlace[] | undefined
+  /**
    * The adapter found it beyond what was granted, or reaching a place never reached: the core refuses it with
    * this reason, and keeps the refusal in the activity.
    */
   refused?: { why: 'outside' | 'protected'; reason: string } | undefined
+}
+
+/** A place a command names: real and absolute, and whether the command goes through what is inside it. */
+export interface NamedPlace {
+  path: string
+  below: boolean
 }
 
 /** Whether a use may go ahead. Allowed, it carries the use's identifier, which the adapter reports its outcome with. */

@@ -1,4 +1,4 @@
-import { type ComputerUse, type ProtectedPath, readCommand, type Scope } from '@repo/core'
+import { type ComputerUse, type NamedPlace, type ProtectedPath, readCommand, type Scope } from '@repo/core'
 import { namedPath, real, within } from './paths.ts'
 
 /**
@@ -103,13 +103,21 @@ export async function checkUse(use: ComputerUse, scope: Scope, never: readonly s
   if (folder === undefined) return refuse('outside', 'The command has no folder to run in.')
   const reading = readCommand(use.command ?? '', use.shell ?? 'posix')
   let changes = true
+  let runsIn: string | undefined
+  // The places it names outside its folder, each once, so what it changes there is looked for too.
+  const outside = new Map<string, NamedPlace>()
   for (const named of [{ path: folder, below: false, written: folder }, ...reading.paths.map((one) => ({ ...one, written: one.path }))]) {
     const target = await real(namedPath(named.path, folder))
     const found = problem(named.written, target, false, named.below)
     if (found) return refuse(found.why, found.reason)
     if (scope.computer !== 'write' && !places.some((place) => place.write && within(target, place.real))) changes = false
+    if (runsIn === undefined) runsIn = target
+    else if (!within(target, runsIn)) {
+      const known = outside.get(target)
+      outside.set(target, { path: target, below: named.below || known?.below === true })
+    }
   }
-  return { ...use, reach: changes ? 'write' : 'read' }
+  return { ...use, reach: changes ? 'write' : 'read', ...(outside.size > 0 ? { named: [...outside.values()] } : {}) }
 }
 
 /** Whether a scope reaches anything at all, and whether it can change anything. */

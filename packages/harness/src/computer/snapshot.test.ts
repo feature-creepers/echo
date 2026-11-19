@@ -74,6 +74,68 @@ describe('what a command changed in a folder', () => {
     expect(await snapshot?.changes()).toHaveLength(CHANGES_LIMIT)
   })
 
+  /** What a snapshot found, as text, each file by its whole path. */
+  const whole = (found: { path: string; before: Uint8Array | string; after: Uint8Array | string }[] | undefined) =>
+    (found ?? []).map((one) => [one.path, text(one.before), text(one.after)]).sort()
+
+  it('outside its folder: in the places the command names, a folder by its own files, a file alone, a path where nothing was', async () => {
+    const top = folder()
+    const other = folder()
+    const elsewhere = folder()
+    writeFileSync(join(other, 'notes.md'), 'a\n')
+    mkdirSync(join(other, 'sub'))
+    writeFileSync(join(other, 'sub', 'deep.md'), 'deep\n')
+    writeFileSync(join(elsewhere, 'log.txt'), 'one\n')
+    writeFileSync(join(elsewhere, 'untouched.txt'), 'same\n')
+    const snapshot = await createSnapshots().snapshot(top, [
+      { path: other, below: false },
+      { path: join(elsewhere, 'log.txt'), below: false },
+      { path: join(elsewhere, 'untouched.txt'), below: false },
+      { path: join(elsewhere, 'made.txt'), below: false },
+      { path: join(elsewhere, 'copied'), below: false }
+    ])
+    writeFileSync(join(top, 'here.md'), 'here\n')
+    writeFileSync(join(other, 'notes.md'), 'a\nb\n')
+    writeFileSync(join(other, 'copy.md'), 'c\n')
+    // The command did not go through it: what its subfolders hold is not looked at.
+    writeFileSync(join(other, 'sub', 'deep.md'), 'changed\n')
+    writeFileSync(join(elsewhere, 'log.txt'), 'two\n')
+    writeFileSync(join(elsewhere, 'made.txt'), 'made\n')
+    mkdirSync(join(elsewhere, 'copied'))
+    writeFileSync(join(elsewhere, 'copied', 'x.md'), 'x\n')
+    expect(whole(await snapshot?.changes())).toEqual(
+      [
+        [join(top, 'here.md'), 'none', 'here\n'],
+        [join(other, 'notes.md'), 'a\n', 'a\nb\n'],
+        [join(other, 'copy.md'), 'none', 'c\n'],
+        [join(elsewhere, 'log.txt'), 'one\n', 'two\n'],
+        [join(elsewhere, 'made.txt'), 'none', 'made\n'],
+        [join(elsewhere, 'copied', 'x.md'), 'none', 'x\n']
+      ].sort()
+    )
+  })
+
+  it('outside its folder: through every subfolder of a place the command goes through, and a file deleted there', async () => {
+    const top = folder()
+    const other = folder()
+    mkdirSync(join(other, 'sub'))
+    writeFileSync(join(other, 'sub', 'deep.md'), 'deep\n')
+    const snapshot = await createSnapshots().snapshot(top, [{ path: other, below: true }])
+    rmSync(join(other, 'sub'), { recursive: true })
+    expect(whole(await snapshot?.changes())).toEqual([[join(other, 'sub', 'deep.md'), 'deep\n', 'none']])
+  })
+
+  it('looks once at a place inside the folder or named twice, and says each file once', async () => {
+    const top = folder()
+    writeFileSync(join(top, 'a.md'), 'a\n')
+    const snapshot = await createSnapshots().snapshot(top, [
+      { path: join(top, 'a.md'), below: false },
+      { path: top, below: true }
+    ])
+    writeFileSync(join(top, 'a.md'), 'b\n')
+    expect(whole(await snapshot?.changes())).toEqual([[join(top, 'a.md'), 'a\n', 'b\n']])
+  })
+
   const git = (top: string, ...args: string[]) =>
     execFileSync('git', ['-C', top, '-c', 'user.name=Ada', '-c', 'user.email=ada@example.com', '-c', 'core.autocrlf=false', ...args])
   const hasGit = (() => {
@@ -140,6 +202,24 @@ describe('what a command changed in a folder', () => {
     expect(said((await switching?.changes()) ?? [], top)).toEqual([
       ['a.ts', 'main\n', 'other\n'],
       ['b.ts', 'b\n', 'none']
+    ])
+  })
+
+  it.runIf(hasGit)('outside its folder: a place in another work tree, from the top of that tree', async () => {
+    const top = folder()
+    const other = folder()
+    git(other, 'init', '-q')
+    git(other, 'config', 'core.autocrlf', 'false')
+    mkdirSync(join(other, 'docs'))
+    writeFileSync(join(other, 'docs', 'a.md'), 'a\n')
+    git(other, 'add', '.')
+    git(other, 'commit', '-q', '-m', 'start')
+    const snapshot = await createSnapshots().snapshot(top, [{ path: join(other, 'docs'), below: false }])
+    writeFileSync(join(other, 'docs', 'a.md'), 'b\n')
+    writeFileSync(join(other, 'beside.md'), 'beside\n')
+    expect(said((await snapshot?.changes()) ?? [], other)).toEqual([
+      ['beside.md', 'none', 'beside\n'],
+      ['docs/a.md', 'a\n', 'b\n']
     ])
   })
 })

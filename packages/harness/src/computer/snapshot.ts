@@ -1,7 +1,9 @@
 import { execFile } from 'node:child_process'
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { join, sep } from 'node:path'
-import type { FolderSnapshot, FoundChange } from '@repo/core'
+import type { FolderSnapshot, FoundChange, NamedPlace } from '@repo/core'
+import { within } from './paths.ts'
+import { system } from './system/index.ts'
 
 /**
  * What a command changed in the folder it ran in (docs/SPEC.md, section 12.2), found by looking before it runs and
@@ -9,6 +11,9 @@ import type { FolderSnapshot, FoundChange } from '@repo/core'
  * files differ, and what a file clean before held is git's own copy, so only the files already changed are read
  * first. Elsewhere, the folder's files are listed with their sizes and times, and the small ones are held, so what a
  * file held before can be shown; a larger one is named as changed.
+ *
+ * The places a command names outside its folder are looked at the same way, so a copy to another folder or a file
+ * written elsewhere is found too: a file alone, a folder from its work tree's top or by its own files.
  */
 
 /** Folders never looked into outside git: what a program installs or builds, and other tools' own. */
@@ -42,6 +47,8 @@ export const AFTER_LIMIT = 20 * 1024 * 1024
 export const CHANGES_LIMIT = 200
 /** The most files already changed in a work tree that are read before a command. */
 const DIRTY_LIMIT = 500
+/** The most places a command names outside its folder that are looked at too: past them, the rest are not. */
+export const NAMED_LIMIT = 16
 
 /** Run git in a folder and give back what it printed, as bytes. Rejects when it fails or is not there. */
 export type Git = (folder: string, args: readonly string[]) => Promise<Uint8Array>
@@ -100,7 +107,13 @@ async function now(path: string): Promise<FoundChange['after']> {
 const placeIn = (top: string, path: string) => join(top, ...path.split('/'))
 
 export interface Snapshots {
-  snapshot(folder: string): Promise<FolderSnapshot | undefined>
+  snapshot(folder: string, named?: readonly NamedPlace[]): Promise<FolderSnapshot | undefined>
+}
+
+/** A place looked at, and what it covers: a place inside it, looked at already, is not looked at again. */
+interface Part {
+  covers?: string
+  snapshot: FolderSnapshot
 }
 
 /** Snapshots of folders, holding small files across them so a folder looked at again reads only what changed. */
@@ -158,8 +171,11 @@ export function createSnapshots(git: Git = runGit): Snapshots {
     }
   }
 
-  /** The files of a folder outside git, with their sizes and times, those of folders skipped left out. */
-  const list = async (folder: string): Promise<Map<string, { size: number; modified: number }>> => {
+  /**
+   * The files of a folder outside git, with their sizes and times, those of folders skipped left out; only those
+   * directly in it unless `deep`.
+   */
+  const list = async (folder: string, deep = true): Promise<Map<string, { size: number; modified: number }>> => {
     const files = new Map<string, { size: number; modified: number }>()
     const waiting = [folder]
     while (waiting.length > 0 && files.size < FILES_LIMIT) {
@@ -170,7 +186,7 @@ export function createSnapshots(git: Git = runGit): Snapshots {
         const path = join(current, entry.name)
         if (entry.isDirectory()) {
           // Another work tree inside is git's to tell about, when a command runs there.
-          if (!SKIPPED.has(entry.name) && (await stat(join(path, '.git')).catch(() => undefined)) === undefined) waiting.push(path)
+          if (deep && !SKIPPED.has(entry.name) && (await stat(join(path, '.git')).catch(() => undefined)) === undefined) waiting.push(path)
         } else if (entry.isFile()) {
           const found = await stat(path).catch(() => undefined)
           if (found) files.set(path, { size: found.size, modified: found.mtimeMs })
@@ -180,8 +196,8 @@ export function createSnapshots(git: Git = runGit): Snapshots {
     return files
   }
 
-  const outsideGit = async (folder: string): Promise<FolderSnapshot> => {
-    const files = await list(folder)
+  const outsideGit = async (folder: string, deep = true): Promise<FolderSnapshot> => {
+    const files = await list(folder, deep)
     for (const [path, { size, modified }] of files) {
       const known = held.get(path)
       if (size > HELD_LIMIT || (known && known.size === size && known.modified === modified)) continue
@@ -190,7 +206,7 @@ export function createSnapshots(git: Git = runGit): Snapshots {
     }
     return {
       async changes() {
-        const later = await list(folder)
+        const later = await list(folder, deep)
         const found: FoundChange[] = []
         for (const path of new Set([...files.keys(), ...later.keys()])) {
           if (found.length >= CHANGES_LIMIT) break
@@ -209,12 +225,81 @@ export function createSnapshots(git: Git = runGit): Snapshots {
     }
   }
 
+  /**
+   * A file, or a path where nothing is yet, looked at alone: what it held, and once the command ended, what it holds,
+   * or all that a folder made there holds.
+   */
+  const alone = async (path: string): Promise<FolderSnapshot> => {
+    const was = await stat(path).catch(() => undefined)
+    const before: FoundChange['before'] = !was
+      ? 'none'
+      : was.size > HELD_LIMIT
+        ? 'unknown'
+        : await readFile(path).then(
+            (bytes) => new Uint8Array(bytes),
+            (): FoundChange['before'] => 'unknown'
+          )
+    return {
+      async changes() {
+        const is = await stat(path).catch(() => undefined)
+        if (!was && is?.isDirectory()) {
+          const found: FoundChange[] = []
+          for (const file of (await list(path)).keys()) {
+            if (found.length >= CHANGES_LIMIT) break
+            found.push({ path: file, before: 'none', after: await now(file) })
+          }
+          return found
+        }
+        if (was && is?.isFile() && was.size === is.size && was.mtimeMs === is.mtimeMs) return []
+        const current = await now(path)
+        return same(before, current) ? [] : [{ path, before, after: current }]
+      }
+    }
+  }
+
+  /** A folder, from its work tree's top when it is in one; else by its files, and its subfolders' only when `deep`. */
+  const folderPart = async (folder: string, deep: boolean): Promise<Part> => {
+    const top = text(await git(folder, ['rev-parse', '--show-toplevel']).catch(() => new Uint8Array())).trim()
+    // Git names the top with "/" on every system.
+    if (top !== '') {
+      const local = top.split('/').join(sep)
+      return { covers: local, snapshot: await inGit(local) }
+    }
+    return deep ? { covers: folder, snapshot: await outsideGit(folder) } : { snapshot: await outsideGit(folder, false) }
+  }
+
+  /** A place a command names: a folder as a folder is looked at, anything else alone. */
+  const namedPart = async ({ path, below }: NamedPlace): Promise<Part> =>
+    (await stat(path).catch(() => undefined))?.isDirectory() ? folderPart(path, below) : { covers: path, snapshot: await alone(path) }
+
   return {
-    async snapshot(folder) {
+    async snapshot(folder, named = []) {
       try {
-        const top = text(await git(folder, ['rev-parse', '--show-toplevel']).catch(() => new Uint8Array())).trim()
-        // Git names the top with "/" on every system.
-        return top !== '' ? await inGit(top.split('/').join(sep)) : await outsideGit(folder)
+        const parts = [await folderPart(folder, true)]
+        for (const place of named.slice(0, NAMED_LIMIT)) {
+          if (parts.some((part) => part.covers !== undefined && within(place.path, part.covers))) continue
+          const part = await namedPart(place).catch(() => undefined)
+          if (part) parts.push(part)
+        }
+        const [only] = parts
+        if (only && parts.length === 1) return only.snapshot
+        return {
+          async changes() {
+            // A file two places hold, a work tree inside a folder gone through, is said once.
+            const seen = new Set<string>()
+            const found: FoundChange[] = []
+            for (const part of parts) {
+              for (const change of await part.snapshot.changes().catch((): FoundChange[] => [])) {
+                if (found.length >= CHANGES_LIMIT) return found
+                const key = system.caseless ? change.path.toLowerCase() : change.path
+                if (seen.has(key)) continue
+                seen.add(key)
+                found.push(change)
+              }
+            }
+            return found
+          }
+        }
       } catch {
         return undefined
       }
