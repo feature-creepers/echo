@@ -1,6 +1,6 @@
-import type { PlanStep } from '@repo/protocol'
+import type { Exchange, PlanStep } from '@repo/protocol'
 import { describe, expect, it } from 'vitest'
-import { planCount, planLine } from './plan.ts'
+import { doingOf, planCount, planLine } from './plan.ts'
 
 const step = (text: string, state: PlanStep['state']): PlanStep => ({ text, state })
 
@@ -28,4 +28,36 @@ describe('where a plan stands', () => {
       expect(planLine(plan)).toBe(line)
       if (plan && count !== undefined) expect(planCount(plan)).toBe(count)
     })
+})
+
+const line = (turn: string, thread: string | undefined, said: string, outcome: Exchange['outcome'], plan?: PlanStep[]): Exchange => ({
+  turn,
+  at: '2026-11-19T12:00:00.000Z',
+  persona: 'persona',
+  said,
+  replied: '',
+  outcome,
+  ...(thread === undefined ? {} : { thread }),
+  ...(plan === undefined ? {} : { plan })
+})
+
+describe('what a thread at work is doing', () => {
+  it.each([
+    { name: 'nothing, with no line of its own', lines: [line('1', 'other', 'Fix it', 'running')], doing: undefined },
+    { name: 'nothing, when its lines are answered', lines: [line('1', 'project', 'Fix it', 'done')], doing: undefined },
+    { name: 'the request it answers', lines: [line('1', 'project', ' Fix the sheet ', 'running')], doing: 'Fix the sheet' },
+    {
+      name: 'its latest request still running',
+      lines: [line('1', 'project', 'First', 'running'), line('2', 'project', 'Second', 'running'), line('3', 'project', 'Third', 'done')],
+      doing: 'Second'
+    },
+    {
+      name: 'where its plan stands, before the request',
+      lines: [line('1', 'project', 'Fix it', 'running', [step('Read', 'done'), step('Fix', 'current')])],
+      doing: 'Step 2 of 2 · Fix'
+    },
+    { name: 'nothing, for a request of no words', lines: [line('1', 'project', '  ', 'running')], doing: undefined }
+  ])('says $name', ({ lines, doing }) => {
+    expect(doingOf('project', lines)).toBe(doing)
+  })
 })

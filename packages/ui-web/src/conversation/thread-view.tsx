@@ -1,5 +1,5 @@
 import type { Client } from '@repo/client'
-import type { AccessUse, FileChange, Persona, Step } from '@repo/protocol'
+import type { AccessUse, FileChange, Persona, Step, Thread } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import { AttachedLine } from '../attachments/attached-line.tsx'
@@ -12,39 +12,46 @@ import { changedInWords, lastPart, relativePath, totalOf } from '../changes/word
 import { Button } from '../primitives/button.tsx'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
-import { BackGlyph, ChevronGlyph } from '../primitives/icons.tsx'
+import { ArrowGlyph, BackGlyph } from '../primitives/icons.tsx'
 import { accentStyle } from '../styles/accent.ts'
 import { settle } from '../styles/motion.ts'
 import { Markdown } from '../view/blocks/markdown.tsx'
 import { useFollowLatest } from './follow-latest.ts'
 import { AnswerActions } from './full-answer.tsx'
+import { LatestButton } from './latest-button.tsx'
 import { PlanList } from './plan-list.tsx'
 import { commandOf, stepSummary, stepTitle } from './steps.ts'
-import { KIND, StateDot } from './thread-list.tsx'
+import { kindWords, overOf, STATE, StateDot, underOf, underWords, usedWords } from './thread-list.tsx'
 import type { ThreadEntry } from './thread-pages.ts'
 import { type EarlierReading, useThreadPages } from './use-thread-pages.ts'
 import { whoAsked } from './who-asked.ts'
 
 const clock = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' })
-const STATE = { working: 'working', ready: 'ready', parked: 'idle' } as const
 
 export interface ThreadViewProps {
   client: Client
   thread: string
+  /** Every thread, to show the one this thread is part of and those it handed work to. */
+  threads: readonly Thread[]
   personas: readonly Persona[]
   onBack(): void
+  /** Open another thread's work in its place. */
+  onOpenThread(thread: string): void
 }
 
 /**
  * One thread, for those who want to see the work: each thing asked, every tool call with what went in and came
  * out (folded until opened, and read whole then), what was said aloud, and the full written answer. It opens at
- * the latest request and follows the thread as it works; earlier requests are read as the person scrolls up.
+ * the latest request and follows the thread as it works; earlier requests are read as the person scrolls up. Its
+ * header says where it stands, stops it while it works, and leads to the thread it is part of and to those it
+ * handed work to.
  */
-export function ThreadView({ client, thread, personas, onBack }: ThreadViewProps) {
+export function ThreadView({ client, thread, threads, personas, onBack, onOpenThread }: ThreadViewProps) {
   const { pages, problem, earlier, readEarlier } = useThreadPages(client, thread)
   const scroll = useFollowLatest(pages?.entries[0]?.exchange.turn)
 
-  const header = pages?.thread ?? client.threads.current().threads.find((one) => one.id === thread)
+  // The list is current as the thread's state changes; the page read may be a moment behind it.
+  const header = threads.find((one) => one.id === thread) ?? pages?.thread
 
   // The turns that changed files, whose changes are read from the activity: each use, and the turn's files counted.
   const changing = useMemo(
@@ -66,35 +73,14 @@ export function ThreadView({ client, thread, personas, onBack }: ThreadViewProps
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="grid grid-cols-1 gap-2 border-line border-b px-4 py-3">
-        <button
-          type="button"
-          onClick={onBack}
-          className="-ml-1 flex w-fit items-center gap-1 rounded-sm px-1 py-0.5 text-text-faint text-xs transition-colors hover:text-text"
-        >
-          <BackGlyph /> Threads
-        </button>
-        {header && (
-          <div className="flex items-start justify-between gap-3">
-            <div className="grid min-w-0 gap-1">
-              <span className="font-medium text-[0.9375rem] leading-snug [overflow-wrap:anywhere]">{header.title}</span>
-              <span className="flex min-w-0 items-center gap-2 text-label text-text-faint">
-                <StateDot state={header.state} />
-                <span className="min-w-0 truncate">
-                  {KIND[header.kind]} · {STATE[header.state]}
-                  {header.folder && <span title={header.folder}> · in {lastPart(header.folder)}</span>}
-                </span>
-              </span>
-            </div>
-            {/* A sub-thread shows nothing of its own: its work is shown by its topic. */}
-            {header.kind !== 'subthread' && (
-              <Button kind="quiet" size="sm" className="shrink-0" onClick={() => void client.threads.focus(thread).catch(() => undefined)}>
-                {header.kind === 'aside' ? 'Show the card' : 'Show on screen'}
-              </Button>
-            )}
-          </div>
-        )}
-      </div>
+      <ThreadHeader
+        header={header}
+        threads={threads}
+        onBack={onBack}
+        onOpenThread={onOpenThread}
+        onStop={() => void client.threads.stop(thread).catch(() => undefined)}
+        onFocus={() => void client.threads.focus(thread).catch(() => undefined)}
+      />
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div ref={scroll.ref} className="scroll-quiet min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4">
           <div>
@@ -123,24 +109,113 @@ export function ThreadView({ client, thread, personas, onBack }: ThreadViewProps
             )}
           </div>
         </div>
-        <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
-          <AnimatePresence>
-            {scroll.away && (
-              <motion.button
-                type="button"
-                onClick={scroll.toLatest}
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 4 }}
-                transition={settle}
-                className="material shadow-float pointer-events-auto flex items-center gap-1 rounded-md py-1 pr-2.5 pl-2 text-label text-text-soft transition-colors hover:text-text"
-              >
-                <ChevronGlyph /> Latest
-              </motion.button>
-            )}
-          </AnimatePresence>
-        </div>
+        <LatestButton scroll={scroll} />
       </div>
+    </div>
+  )
+}
+
+interface ThreadHeaderProps {
+  /** The thread, once it is known. */
+  header: Thread | undefined
+  threads: readonly Thread[]
+  onBack(): void
+  onOpenThread(thread: string): void
+  onStop(): void
+  onFocus(): void
+}
+
+/**
+ * The top of a thread's work. Its first line is the way back: to the list, or to the thread it is part of, as a
+ * path; and what can be done with it from here: brought to the screen, for a topic, or stopped while it works.
+ * Under it, what the thread is and where it stands, then the threads it handed work to, each a step away.
+ */
+function ThreadHeader({ header, threads, onBack, onOpenThread, onStop, onFocus }: ThreadHeaderProps) {
+  const over = header === undefined ? undefined : overOf(header)
+  const above = over === undefined ? undefined : threads.find((one) => one.id === over)
+  const under = header === undefined ? [] : underOf(header.id, threads)
+  const working = header?.state === 'working'
+  const meta =
+    header === undefined
+      ? []
+      : [
+          kindWords(header),
+          STATE[header.state],
+          header.folder === undefined ? undefined : `in ${lastPart(header.folder)}`,
+          working ? undefined : usedWords(header.at, new Date())
+        ].filter((part) => part !== undefined && part !== '')
+  return (
+    <div className="grid grid-cols-1 gap-2 border-line border-b px-4 pt-2 pb-3">
+      <div className="-ml-1 flex min-w-0 items-center gap-0.5 text-text-faint text-xs">
+        <button type="button" onClick={onBack} className="flex shrink-0 items-center gap-1 rounded-sm px-1 py-0.5 transition-colors hover:text-text">
+          <BackGlyph /> Threads
+        </button>
+        {above && (
+          <>
+            <span aria-hidden="true">/</span>
+            <button
+              type="button"
+              onClick={() => onOpenThread(above.id)}
+              title={`Show the work of ${above.title}`}
+              className="min-w-0 truncate rounded-sm px-1 py-0.5 transition-colors hover:text-text"
+            >
+              {above.title}
+            </button>
+          </>
+        )}
+        <span className="ml-auto flex shrink-0 items-center gap-1 pl-2">
+          {/* A sub-thread shows nothing of its own: its work is shown by the thread it works for. */}
+          {header !== undefined && header.kind !== 'subthread' && (
+            <Button kind="quiet" size="sm" onClick={onFocus}>
+              Show on screen
+            </Button>
+          )}
+          {working && (
+            <button
+              type="button"
+              onClick={onStop}
+              aria-label={`Stop ${header.title}`}
+              className="h-6 rounded-sm px-2 text-label text-text-soft outline-none transition-colors duration-(--duration-quick) ease-soft hover:bg-danger/15 hover:text-danger focus-visible:bg-danger/15 focus-visible:text-danger"
+            >
+              Stop
+            </button>
+          )}
+        </span>
+      </div>
+      {header && (
+        <div className="grid min-w-0 gap-1">
+          <span className="font-medium text-[0.9375rem] leading-snug [overflow-wrap:anywhere]">{header.title}</span>
+          <span className="flex min-w-0 items-center gap-2 text-label text-text-faint">
+            <StateDot state={header.state} />
+            <span className="min-w-0 truncate" title={header.folder}>
+              {meta.join(' · ')}
+            </span>
+          </span>
+        </div>
+      )}
+      {under.length > 0 && (
+        <div className="grid min-w-0 gap-1.5 pt-0.5">
+          <Eyebrow>{underWords(under)}</Eyebrow>
+          <ul className="flex min-w-0 flex-wrap gap-1">
+            {under.map((thread) => (
+              <li key={thread.id} className="min-w-0 max-w-full">
+                <button
+                  type="button"
+                  onClick={() => onOpenThread(thread.id)}
+                  title={`Show the work of ${thread.title}`}
+                  className="group flex h-6 min-w-0 max-w-full items-center gap-1.5 rounded-sm bg-white/[0.05] pr-1.5 pl-2 text-text-soft text-xs shadow-[inset_0_0_0_0.5px_rgb(255_255_255/0.07)] transition-colors duration-(--duration-quick) ease-soft hover:bg-white/[0.09] hover:text-text"
+                >
+                  <StateDot state={thread.state} />
+                  <span className="min-w-0 truncate">{thread.title}</span>
+                  <span className="shrink-0 text-text-faint transition-transform duration-(--duration-quick) ease-soft group-hover:translate-x-0.5 [&_svg]:size-3">
+                    <ArrowGlyph />
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   )
 }

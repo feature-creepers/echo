@@ -7,10 +7,11 @@ import { z } from 'zod'
 export const threadIdSchema = z.string().min(1).max(64)
 
 export const THREAD_KINDS = [
-  /** A topic the conversation can come back to: a recipe, a form, a trip. */
+  /**
+   * A topic the conversation can come back to: a recipe, a form, a trip. A side question is one too, opened beside the
+   * topic on the stage without taking its place (`beside`).
+   */
   'topic',
-  /** A side question answered without leaving the current topic. Its view goes in the margin. */
-  'aside',
   /**
    * Part of a topic's work, handed by its thread to a thread of its own so both go on at once. It answers that thread,
    * never the person: nothing it writes is said, and its result goes back to the thread that opened it.
@@ -32,8 +33,13 @@ export const threadSchema = z.object({
   title: z.string(),
   kind: z.enum(THREAD_KINDS),
   state: z.enum(THREAD_STATES),
-  /** For an aside: the topic on the stage when it was opened, which it sits beside. For a sub-thread: the thread that opened it. */
+  /** For a sub-thread: the thread that opened it, which it works for. */
   parent: threadIdSchema.optional(),
+  /**
+   * For a topic opened for a side question (docs/SPEC.md, section 7.5): the topic on the stage when it was asked, which
+   * kept the stage. The side sheet lists it under that topic.
+   */
+  beside: threadIdSchema.optional(),
   /**
    * For a project: the folder the thread works in, absolute, as the system names it. Its session runs there, reads
    * the folder's own instructions for those who work in it, and works on its files as a developer would.

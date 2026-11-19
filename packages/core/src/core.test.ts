@@ -275,7 +275,7 @@ describe('threads and the screen through the core', () => {
     const { EXAMPLE_VIEW } = await import('@repo/catalog')
     thread?.emit({ type: 'text', text: 'Here is your week. ' })
     expect(await core.toolHost.call(token, 'ui_render', { title: 'The week', view: EXAMPLE_VIEW })).toEqual({ ok: true, text: 'Shown.' })
-    expect(events.find((event) => event.name === 'view.shown')).toMatchObject({ view: { title: 'The week', slot: 'stage', thread: expect.any(String) } })
+    expect(events.find((event) => event.name === 'view.shown')).toMatchObject({ view: { title: 'The week', thread: expect.any(String) } })
     expect((await run(core, 'view.read', {})).view?.title).toBe('The week')
     expect((await run(core, 'threads.read', {})).threads.map((one) => one.title)).toEqual(['The week'])
 
@@ -341,7 +341,7 @@ describe('the library through the core', () => {
     expect(found.text).toContain(`[${widget.id}] "Jazz radio" in Music`)
     expect(await later.core.toolHost.call(again, 'library_show', { widget: widget.id })).toEqual({ ok: true, text: 'Shown.' })
     const back = events.find((event) => event.name === 'view.shown')
-    expect(back).toMatchObject({ view: { title: 'Jazz radio', widget: widget.id, slot: 'stage', spec: shown.spec } })
+    expect(back).toMatchObject({ view: { title: 'Jazz radio', widget: widget.id, spec: shown.spec } })
   })
 
   it('saves what a thread shows when the person asks, and pins it, files it and deletes it on request', async () => {

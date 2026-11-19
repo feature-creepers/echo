@@ -14,7 +14,7 @@ export const threadCommands = {
    * Read a thread for the side sheet, a page at a time: its latest requests, or with `before` those just before
    * that request, as many as fit one message. Each comes with its full written answer, its tool calls as a
    * preview (what each was about, the start of what it gave back: `thread.step` reads one whole), and the titles of
-   * the views it showed. Asides included. `earlier` says how many requests come before the page. A request too
+   * the views it showed, its aside cards included. `earlier` says how many requests come before the page. A request too
    * long to fit alone keeps its latest calls, `earlierSteps` saying how many of its first ones are left out.
    */
   'thread.read': {
@@ -45,7 +45,11 @@ export const threadCommands = {
     output: z.object({ stopped: z.boolean() })
   },
 
-  /** Bring a thread to the stage: its view, and its last answer as the caption. An aside's card comes back beside the topic. */
+  /**
+   * Bring a topic back: it takes the focus, its view the stage and its last answer the caption. A side question
+   * answered only in passing comes back in passing: its card on top of the stream, for its full time again, and the
+   * topic on the stage stays.
+   */
   'thread.focus': {
     input: z.object({ thread: threadIdSchema }),
     output: z.object({})

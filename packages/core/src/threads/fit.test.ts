@@ -26,7 +26,6 @@ const view = (id: string, turn: string | undefined, elements = 1): ShownView => 
   title: `View ${id}`,
   ...(turn === undefined ? {} : { turn }),
   thread: 'th1',
-  slot: 'stage',
   spec: {
     root: 'all',
     elements: Object.fromEntries(

@@ -13,12 +13,12 @@ export interface ThreadRegistry {
   read(): Threads
   get(id: string): Thread | undefined
   /**
-   * Open a thread. An aside is given the topic it sits beside; a sub-thread, the thread that opened it; a project's
-   * topic or sub-thread, the folder it works in.
+   * Open a thread. A sub-thread is given the thread that opened it; a topic opened for a side question, the topic on
+   * the stage it was asked beside; a project's topic or sub-thread, the folder it works in.
    */
-  open(asked: { title: string; kind: Thread['kind']; parent?: string | undefined; folder?: string | undefined }): Thread
+  open(asked: { title: string; kind: Thread['kind']; parent?: string | undefined; beside?: string | undefined; folder?: string | undefined }): Thread
   setState(id: string, state: Thread['state']): void
-  /** Bring a topic to the stage. An aside never takes the focus. */
+  /** Bring a topic to the stage. A sub-thread never takes the focus: it works for its topic. */
   focus(id: string): void
   focused(): Thread | undefined
   /** The recent threads, as the orchestrator reads them: one line each, with what each at work is answering when `doing` says. */
@@ -44,6 +44,16 @@ const about = (summary: string | undefined): string => {
   about: ${text.length > ABOUT_LENGTH ? `${text.slice(0, ABOUT_LENGTH - 1)}…` : text}`
 }
 
+/**
+ * A thread as it was recorded. Side questions were once a kind of thread of their own, `aside`, with the topic they
+ * were asked beside as their `parent`: they are read as the topics they are, opened beside that one.
+ */
+const fromRecord = (payload: unknown): unknown => {
+  if (typeof payload !== 'object' || payload === null || (payload as { kind?: unknown }).kind !== 'aside') return payload
+  const { parent, ...rest } = payload as { parent?: unknown }
+  return { ...rest, kind: 'topic', ...(parent === undefined ? {} : { beside: parent }) }
+}
+
 export function createThreadRegistry({ records, now, newId }: RegistryOptions): ThreadRegistry {
   const threads = new Map<string, Thread>()
   let focus: string | undefined
@@ -53,7 +63,7 @@ export function createThreadRegistry({ records, now, newId }: RegistryOptions): 
       if (typeof id === 'string') focus = id
       continue
     }
-    const thread = threadSchema.safeParse(record.payload)
+    const thread = threadSchema.safeParse(fromRecord(record.payload))
     // A thread left working when the core stopped is idle now: its session is gone.
     if (thread.success) threads.set(thread.data.id, thread.data.state === 'working' ? { ...thread.data, state: 'parked' } : thread.data)
   }
@@ -76,15 +86,17 @@ export function createThreadRegistry({ records, now, newId }: RegistryOptions): 
   return {
     read,
     get: (id) => threads.get(id),
-    open({ title, kind, parent, folder }) {
+    open({ title, kind, parent, beside, folder }) {
       const thread: Thread = {
         id: newId(),
         title,
         kind,
         state: 'working',
         at: now().toISOString(),
-        ...(kind !== 'topic' && parent !== undefined && threads.has(parent) ? { parent } : {}),
-        ...(kind !== 'aside' && folder !== undefined ? { folder } : {})
+        ...(kind === 'subthread' && parent !== undefined && threads.has(parent) ? { parent } : {}),
+        // A project is a topic of its own, never a side question.
+        ...(kind === 'topic' && folder === undefined && beside !== undefined && threads.get(beside)?.kind === 'topic' ? { beside } : {}),
+        ...(folder !== undefined ? { folder } : {})
       }
       write(thread)
       return thread
@@ -96,7 +108,7 @@ export function createThreadRegistry({ records, now, newId }: RegistryOptions): 
     },
     focus(id) {
       const thread = threads.get(id)
-      if (!thread || thread.kind !== 'topic' || focus === id) return
+      if (thread?.kind !== 'topic' || focus === id) return
       focus = id
       records.append([{ type: FOCUS, payload: { thread: id } }])
       announce()
@@ -111,7 +123,7 @@ export function createThreadRegistry({ records, now, newId }: RegistryOptions): 
       return recent
         .map(
           (thread) =>
-            `- ${thread.id}: "${thread.title}" (${thread.kind}, ${thread.state}${thread.folder === undefined ? '' : `, working in ${thread.folder}`}${thread.id === focus ? ', on screen' : ''}${thread.state === 'working' && doing?.(thread.id) ? `, answering: ${doing(thread.id)}` : ''}, last used ${thread.at.slice(0, 16).replace('T', ' ')})${about(summary?.(thread.id))}`
+            `- ${thread.id}: "${thread.title}" (${thread.kind}${thread.beside === undefined ? '' : `, a side question asked beside ${thread.beside}`}, ${thread.state}${thread.folder === undefined ? '' : `, working in ${thread.folder}`}${thread.id === focus ? ', on screen' : ''}${thread.state === 'working' && doing?.(thread.id) ? `, answering: ${doing(thread.id)}` : ''}, last used ${thread.at.slice(0, 16).replace('T', ' ')})${about(summary?.(thread.id))}`
         )
         .join('\n')
     },

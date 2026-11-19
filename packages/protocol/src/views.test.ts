@@ -4,7 +4,6 @@ import { onTop, type ShownView, STREAM_LENGTH } from './views.ts'
 const view = (id: string, more: Partial<ShownView> = {}): ShownView => ({
   id,
   title: id,
-  slot: 'stage',
   spec: { root: 'a', elements: { a: { type: 'Divider', props: {}, children: [] } } },
   ...more
 })
@@ -22,14 +21,21 @@ describe('the stream', () => {
     expect(ids(stream)).toEqual(['a', 'b'])
   })
 
-  it("keeps one card per aside, and one per saved widget: each one's latest", () => {
+  it("keeps one aside card per thread, and one per saved widget: each one's latest", () => {
     let stream: ShownView[] = []
     stream = onTop(stream, view('topic', { thread: 'x' }))
-    stream = onTop(stream, view('card-1', { slot: 'margin', thread: 'aside' }))
+    stream = onTop(stream, view('card-1', { aside: true, thread: 'side' }))
     stream = onTop(stream, view('radio-1', { widget: 'radio' }))
-    stream = onTop(stream, view('card-2', { slot: 'margin', thread: 'aside' }))
+    stream = onTop(stream, view('card-2', { aside: true, thread: 'side' }))
     stream = onTop(stream, view('radio-2', { widget: 'radio' }))
     expect(ids(stream)).toEqual(['radio-2', 'card-2', 'topic'])
+  })
+
+  it("keeps a thread's view on the stage beside its aside card", () => {
+    let stream: ShownView[] = []
+    stream = onTop(stream, view('card', { aside: true, thread: 'side' }))
+    stream = onTop(stream, view('full', { thread: 'side' }))
+    expect(ids(stream)).toEqual(['full', 'card'])
   })
 
   it('holds a bounded number of views', () => {

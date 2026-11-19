@@ -3,7 +3,7 @@ import type { Answer } from '../access/approvals.ts'
 import type { Clipboard } from '../ports/clipboard.ts'
 import { createClipboardControl } from './tools.ts'
 
-const showing = () => ({ thread: 't', turn: 'turn', slot: 'stage' as const, focused: true })
+const showing = () => ({ thread: 't', turn: 'turn', focused: true })
 
 function setup(answers: Answer[] = []) {
   let held = 'copied by the person'

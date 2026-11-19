@@ -11,7 +11,7 @@ function setup(records = memoryRecords()) {
   const events: Event[] = []
   screen.onEvent((event) => events.push(event))
   const objections = createObjections({ records, screen, now: () => new Date('2026-11-17T08:00:00Z') })
-  const [raise, record] = objections.tools(() => ({ thread: 't', turn: 'turn', slot: 'stage', focused: true }))
+  const [raise, record] = objections.tools(() => ({ thread: 't', turn: 'turn', focused: true }))
   if (!raise || !record) throw new Error('Two tools are expected.')
   return { objections, raise, record, screen, events, records }
 }

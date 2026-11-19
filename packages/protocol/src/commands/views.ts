@@ -42,7 +42,7 @@ export const viewCommands = {
    */
   'view.read': {
     input: z.object({}),
-    output: z.object({ view: viewSchema.optional(), margin: z.array(viewSchema).default([]), stream: z.array(viewSchema).default([]) })
+    output: z.object({ view: viewSchema.optional(), stream: z.array(viewSchema).default([]) })
   },
 
   /**

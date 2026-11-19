@@ -150,7 +150,7 @@ export function orchestratorInstructions({ persona, earlier, abilities, profile 
       '- Anything that needs work, detail, the screen, or that continues a topic: call thread_send with the thread it belongs to, or thread_open for a new topic. Call it straight away, writing nothing before it and nothing after it: the thread answers the person itself, and anything you said too would be heard twice.',
       '- Either you answer, or a thread does, never both: decide before you write a word.',
       '- Two requests at once ("stop the radio, and what is the weather?"): pass each one to the thread it belongs to, one call for each, in the order they were said.',
-      '- A quick question unrelated to the topic on screen, often after "by the way": call thread_open with kind "aside". With nothing on screen, it is a topic. Its answer appears in a small card beside the current topic, which stays on screen.',
+      '- A quick question unrelated to the topic on screen, often after "by the way": when it is a fact you can say in a sentence, answer it yourself, as any one-line fact. When it needs a search, a tool or the screen, call thread_open with kind "aside": it is answered in passing, in a card on top of the topic, which stays on screen. With nothing on screen, it is a topic. "Tell me more" about it: call thread_send with its thread, which then takes the screen.',
       '- "Back to…", "show me … again": call thread_focus with that thread, then say in a few words that it is back.',
       '- Threads run at the same time. One marked working is busy answering what the list says, and what you send it waits until it is done. Something new while it works, even in the same project, goes to a thread of its own (thread_open, with the same folder for a project), so both go on at once. Send it to the working thread with wait: true only when it continues that work or must come after it.',
       '- "What are you working on?", "where are you with…": answer yourself from the list of threads, in a sentence or two.',
@@ -169,7 +169,7 @@ export function orchestratorInstructions({ persona, earlier, abilities, profile 
 
 export interface ThreadContext extends InstructionsContext {
   title: string
-  kind: 'topic' | 'aside' | 'subthread'
+  kind: 'topic' | 'subthread'
   /** For a sub-thread: the title of the thread that opened it, which it works for. */
   parent?: string | undefined
   /** What the thread is about and where it stood, from the summary sleep wrote. */
@@ -218,6 +218,13 @@ const working = (title: string, folder: string) =>
     '3. Then call answer_write with the report, in Markdown: what you changed and why, file by file; the checks you ran and their results; what is left to do or could not be done, and why. Then stop.',
     'A quick question about the project gets a quick spoken answer, and answer_write only when there is more to read. Show a view with ui_render only when something is better seen, once you have spoken.'
   ].join('\n')
+
+/**
+ * Added to a side question (docs/SPEC.md, section 7.5): it is answered in passing, beside the topic on the stage. It
+ * is the request's, not the thread's: when the person follows it up, the thread answers that in full.
+ */
+export const SIDE_QUESTION =
+  '(A side question, asked while another topic is on screen, which stays there: answer it in a sentence or two. If something helps to see, show a small view of a few blocks: it appears as a card on top of that topic, marked "By the way", and leaves by itself.)'
 
 /** Added to each request a project's thread receives, in place of `SPEAK_FIRST`. */
 export const WORK_FIRST =
@@ -299,11 +306,9 @@ export function threadInstructions({ persona, earlier, abilities, profile, summa
   // What every thread shares comes first and what is its own last, so a new thread starts on the harness's cache
   // of the long shared part (the catalogue above all) and answers sooner.
   const parts = [who(persona), STANCES[persona.stance], SPEECH_CONTRACT]
-  if (abilities) parts.push(LAYERS, abilities, SOURCES, ...(kind === 'topic' ? [SHARING] : []))
+  if (abilities) parts.push(LAYERS, abilities, SOURCES, SHARING)
   parts.push(
-    kind === 'aside'
-      ? `You are answering a side question: "${title}". Answer it in a sentence or two. If something helps to see, show a small view: it appears as a card in the margin, beside the topic on screen, so keep it to a few blocks.`
-      : `In this part of the conversation you work on one topic: "${title}". The person may come back to it later, from other topics, and you will carry on where you stopped. Requests reach you through the assistant that hears everything; answer the person directly, as yourself.`
+    `In this part of the conversation you work on one topic: "${title}". The person may come back to it later, from other topics, and you will carry on where you stopped. Requests reach you through the assistant that hears everything; answer the person directly, as yourself.`
   )
   const memory = known(profile)
   if (memory) parts.push(memory)

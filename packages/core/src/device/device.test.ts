@@ -9,7 +9,7 @@ import { createDeviceControl } from './device.ts'
 import { chooseDrive } from './drives.ts'
 import { choosePrinter, printableKind } from './printers.ts'
 
-const showing = () => ({ thread: 't', turn: 'turn', slot: 'stage' as const, focused: true })
+const showing = () => ({ thread: 't', turn: 'turn', focused: true })
 
 const PRINTERS: Printer[] = [
   { name: 'Brother DCP-9020CDW Printer', default: true, output: 'paper', state: 'ready' },

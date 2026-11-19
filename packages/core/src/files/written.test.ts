@@ -18,7 +18,7 @@ function setup() {
   const written = createWrittenFiles({ screen, workspace, newId: () => `v${++ids}` })
   const events: Event[] = []
   screen.onEvent((event) => events.push(event))
-  const showing = (turn: string): Showing => ({ thread: 't1', turn, slot: 'stage', focused: true })
+  const showing = (turn: string): Showing => ({ thread: 't1', turn, focused: true })
   return { screen, workspace, written, events, showing }
 }
 

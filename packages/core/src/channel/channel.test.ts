@@ -8,9 +8,9 @@ import { manualTimers } from '../replay/manual-timers.ts'
 import { type ScriptedHarness, scriptedHarness } from '../replay/scripted-harness.ts'
 import { createUserSettings } from '../settings/settings.ts'
 import { createTools } from '../tools/tools.ts'
-import { createScreen } from '../views/screen.ts'
+import { ASIDE_STAYS_MS, createScreen } from '../views/screen.ts'
 import { type Abilities, createChannel, EXCHANGE, planProgress, SUBTHREADS_AT_ONCE } from './channel.ts'
-import { DELEGATED_FIRST, SPEAK_FIRST, WORK_FIRST } from './instructions.ts'
+import { DELEGATED_FIRST, SIDE_QUESTION, SPEAK_FIRST, WORK_FIRST } from './instructions.ts'
 
 interface Setup {
   harness?: ScriptedHarness
@@ -250,7 +250,7 @@ describe('threads', () => {
     expect(refused.text).toContain('There is no such thread')
   })
 
-  it('answers an aside in the margin, and leaves the topic on the stage', async () => {
+  it('answers a side question in a card on top of the stream, and leaves the topic on the stage', async () => {
     const { channel, harness, call, screen } = setup()
     channel.say('Plan my trip')
     await settled()
@@ -266,35 +266,41 @@ describe('threads', () => {
     await call(0, 'thread_open', { title: 'Time in Montreal', kind: 'aside' })
     harness.sessions[0]?.emit({ type: 'turn-end' })
     await settled()
-    expect(harness.sessions[2]?.request.instructions).toContain('side question')
+    // A topic like any, asked to answer this request in passing.
+    expect(harness.sessions[2]?.request.instructions).toContain('you work on one topic: "Time in Montreal"')
+    expect(harness.sessions[2]?.sent[0]).toContain(SIDE_QUESTION)
     harness.sessions[2]?.emit({ type: 'text', text: 'It is two in the morning there. ' })
     await call(2, 'ui_render', { title: 'Montreal', view: EXAMPLE_VIEW })
     harness.sessions[2]?.emit({ type: 'turn-end' })
 
     expect(screen.current()?.title).toBe('Itinerary')
-    expect(screen.margin().map((view) => view.title)).toEqual(['Montreal'])
+    expect(screen.stream().map((view) => [view.title, view.aside === true])).toEqual([
+      ['Montreal', true],
+      ['Itinerary', false]
+    ])
     const trip = channel.threads().threads.find((thread) => thread.title === 'Trip')
     expect(channel.threads().focus).toBe(trip?.id)
 
-    // The aside sits under the topic it was asked beside, and its card can be brought back once closed.
-    const aside = channel.threads().threads.find((thread) => thread.kind === 'aside')
-    expect(aside?.parent).toBe(trip?.id)
-    screen.clear(screen.margin()[0]?.id)
-    expect(screen.margin()).toEqual([])
-    expect(channel.focus(aside?.id as string)).toBe(true)
-    expect(screen.margin().map((view) => view.title)).toEqual(['Montreal'])
+    // The side question sits under the topic it was asked beside, and its card can be brought back once closed,
+    // in passing again: the topic keeps the stage.
+    const side = channel.threads().threads.find((thread) => thread.title === 'Time in Montreal')
+    expect(side).toMatchObject({ kind: 'topic', beside: trip?.id })
+    screen.clear(screen.asides()[0]?.id)
+    expect(screen.asides()).toEqual([])
+    expect(channel.focus(side?.id as string)).toBe(true)
+    expect(screen.asides().map((view) => view.title)).toEqual(['Montreal'])
     expect(screen.current()?.title).toBe('Itinerary')
-    expect(channel.thread(aside?.id as string)).toMatchObject({
+    expect(channel.thread(side?.id as string)).toMatchObject({
       thread: { title: 'Time in Montreal' },
       exchanges: [{ replied: 'It is two in the morning there.' }],
       views: [{ title: 'Montreal' }]
     })
   })
 
-  describe('an aside card', () => {
+  describe('a side question', () => {
     /** A topic on the stage, and a side question answered beside it in a card. */
-    async function asideBesideTopic() {
-      const context = setup()
+    async function asideBesideTopic(more: Setup = {}) {
+      const context = setup(more)
       const { channel, harness, call } = context
       channel.say('Plan my trip')
       await settled()
@@ -312,31 +318,115 @@ describe('threads', () => {
       harness.sessions[2]?.emit({ type: 'text', text: 'It is two in the morning there. ' })
       await call(2, 'ui_render', { title: 'Montreal', view: EXAMPLE_VIEW })
       harness.sessions[2]?.emit({ type: 'turn-end' })
-      expect(context.screen.margin().map((view) => view.title)).toEqual(['Montreal'])
-      return context
+      expect(context.screen.asides().map((view) => view.title)).toEqual(['Montreal'])
+      const side = context.channel.threads().threads.find((thread) => thread.title === 'Time in Montreal')?.id as string
+      return { ...context, side }
     }
 
-    it.each(['Thanks', 'Merci Ada !', 'ok thank you so much'])('leaves on %j, which is still answered', async (said) => {
+    it.each(['Thanks', 'Merci Ada !', 'ok thank you so much'])('puts its card away on %j, which is still answered', async (said) => {
       const { channel, harness, screen, spoken } = await asideBesideTopic()
       channel.say(said)
-      expect(screen.margin()).toEqual([])
+      expect(screen.asides()).toEqual([])
       expect(screen.current()?.title).toBe('Itinerary')
       await settled()
       harness.sessions[0]?.reply('You are welcome.')
       expect(spoken().at(-1)).toBe('You are welcome.')
     })
 
-    it('stays when thanks comes with more', async () => {
+    it('keeps its card when thanks comes with more', async () => {
       const { channel, screen } = await asideBesideTopic()
       channel.say('Thanks, and what about Tokyo?')
-      expect(screen.margin().map((view) => view.title)).toEqual(['Montreal'])
+      expect(screen.asides().map((view) => view.title)).toEqual(['Montreal'])
     })
 
-    it('leaves on Escape, with the answer under way, and the topic stays', async () => {
+    it('puts its card away on Escape, with the answer under way, and the topic stays', async () => {
       const { channel, screen } = await asideBesideTopic()
       channel.stop()
-      expect(screen.margin()).toEqual([])
+      expect(screen.asides()).toEqual([])
       expect(screen.current()?.title).toBe('Itinerary')
+    })
+
+    it('followed up, is the topic it is: it takes the stage and answers in full', async () => {
+      const { channel, harness, call, screen, side } = await asideBesideTopic()
+      channel.say('Tell me more about that')
+      await settled()
+      await call(0, 'thread_send', { thread: side })
+      harness.sessions[0]?.emit({ type: 'turn-end' })
+      await settled()
+      expect(channel.threads().focus).toBe(side)
+      // The same session carries on, with what it answered in passing, and is not asked to be brief this time.
+      expect(harness.sessions[2]?.sent).toHaveLength(2)
+      expect(harness.sessions[2]?.sent[1]).not.toContain(SIDE_QUESTION)
+      harness.sessions[2]?.emit({ type: 'text', text: 'Montreal is six hours behind Paris. ' })
+      await call(2, 'ui_render', { title: 'Montreal in detail', view: EXAMPLE_VIEW })
+      harness.sessions[2]?.emit({ type: 'turn-end' })
+      expect(screen.current()).toMatchObject({ title: 'Montreal in detail', thread: side })
+      expect(screen.current()?.aside).toBeUndefined()
+      expect(screen.stream().map((view) => view.title)).toEqual(['Montreal in detail', 'Montreal', 'Itinerary'])
+    })
+
+    it('keeps its session as long as its card, for a "tell me more", then closes it', async () => {
+      const timers = manualTimers()
+      const { harness } = await asideBesideTopic({ timers })
+      timers.advance(ASIDE_STAYS_MS - 1)
+      expect(harness.sessions[2]?.closed).toBe(false)
+      timers.advance(1)
+      expect(harness.sessions[2]?.closed).toBe(true)
+      // The topic it was asked beside keeps its own, with all its work in it.
+      timers.advance(24 * 60 * 60_000)
+      expect(harness.sessions[1]?.closed).toBe(false)
+    })
+
+    it('followed up, keeps its session as a topic does', async () => {
+      const timers = manualTimers()
+      const { channel, harness, call, side } = await asideBesideTopic({ timers })
+      channel.say('Tell me more about that')
+      await settled()
+      await call(0, 'thread_send', { thread: side })
+      harness.sessions[0]?.emit({ type: 'turn-end' })
+      await settled()
+      harness.sessions[2]?.reply('Montreal is six hours behind Paris.')
+      timers.advance(24 * 60 * 60_000)
+      expect(harness.sessions[2]?.closed).toBe(false)
+    })
+
+    it('opens a new session, told what came before, once its own was closed', async () => {
+      const timers = manualTimers()
+      const { channel, harness, call, side } = await asideBesideTopic({ timers })
+      timers.advance(ASIDE_STAYS_MS)
+      channel.say('Tell me more about Montreal')
+      await settled()
+      await call(0, 'thread_send', { thread: side })
+      harness.sessions[0]?.emit({ type: 'turn-end' })
+      await settled()
+      const again = harness.sessions.at(-1)
+      expect(again).not.toBe(harness.sessions[2])
+      expect(again?.request.instructions).toContain('"Time in Montreal"')
+      expect(again?.request.instructions).toContain('It is two in the morning there.')
+    })
+
+    it('answered in words alone, is brought back as the topic it is, with no card to show in passing', async () => {
+      const { channel, harness, call, screen } = setup()
+      channel.say('Plan my trip')
+      await settled()
+      await call(0, 'thread_open', { title: 'Trip' })
+      harness.sessions[0]?.emit({ type: 'turn-end' })
+      await settled()
+      harness.sessions[1]?.emit({ type: 'text', text: 'Here is a plan. ' })
+      await call(1, 'ui_render', { title: 'Itinerary', view: EXAMPLE_VIEW })
+      harness.sessions[1]?.emit({ type: 'turn-end' })
+      channel.say('By the way, how tall is Mont Royal?')
+      await settled()
+      await call(0, 'thread_open', { title: 'Mont Royal', kind: 'aside' })
+      harness.sessions[0]?.emit({ type: 'turn-end' })
+      await settled()
+      harness.sessions[2]?.reply('It is 233 metres high.')
+      expect(screen.current()?.title).toBe('Itinerary')
+      const side = channel.threads().threads.find((thread) => thread.title === 'Mont Royal')?.id as string
+      expect(channel.threads().focus).not.toBe(side)
+      expect(channel.focus(side)).toBe(true)
+      expect(channel.threads().focus).toBe(side)
+      expect(screen.current()).toBeUndefined()
     })
   })
 
@@ -1028,7 +1118,7 @@ describe('files a thread writes', () => {
     harness.sessions[1]?.emit({ type: 'tool', name: 'computer_write', phase: 'started', call: 'c1' })
     harness.sessions[1]?.emit({ type: 'tool', name: 'computer_write', phase: 'ended', call: 'c1', output: 'ok', wrote: ['/w/trip.md'] })
     harness.sessions[1]?.emit({ type: 'tool', name: 'computer_write', phase: 'ended', call: 'c2', failed: true, wrote: ['/w/no.md'] })
-    expect(wrote).toEqual([{ showing: expect.objectContaining({ turn, slot: 'stage', focused: true }), paths: ['/w/trip.md'] }])
+    expect(wrote).toEqual([{ showing: expect.objectContaining({ turn, focused: true }), paths: ['/w/trip.md'] }])
   })
 })
 

@@ -6,7 +6,7 @@ import { memoryRecords } from '../records/memory.ts'
 import { createScreen, type Showing } from '../views/screen.ts'
 import { createLibrary, type Library, summary, WIDGET } from './library.ts'
 
-const onStage: Showing = { thread: 'a', turn: 't1', slot: 'stage', focused: true }
+const onStage: Showing = { thread: 'a', turn: 't1', focused: true }
 
 const player = (title: string, url: string) => ({
   root: 'all',

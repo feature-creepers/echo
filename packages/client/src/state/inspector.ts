@@ -4,6 +4,11 @@ import { cell, type Followed } from './followed.ts'
 
 /** One event as the inspector shows it: when it arrived, and the event whole. */
 export interface Logged {
+  /**
+   * Its place in the order of arrival, unique while the app runs: what tells two events apart when they arrive in
+   * the same millisecond with the same words, and how many arrived after one.
+   */
+  id: number
   at: number
   event: Event
 }
@@ -17,6 +22,10 @@ const KEPT = 400
  */
 export function followEvents(session: Session): Followed<readonly Logged[]> & { unfollow(): void } {
   const state = cell<readonly Logged[]>([])
-  const stop = session.onEvent((event) => state.set([...state.current().slice(-(KEPT - 1)), { at: Date.now(), event }]))
+  let arrived = 0
+  const stop = session.onEvent((event) => {
+    arrived += 1
+    state.set([...state.current().slice(-(KEPT - 1)), { id: arrived, at: Date.now(), event }])
+  })
   return { current: state.current, subscribe: state.subscribe, unfollow: stop }
 }

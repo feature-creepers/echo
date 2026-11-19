@@ -7,7 +7,7 @@ export type ThreadRead = CommandOutput<'thread.read'>
 
 /** The threads behind the conversation, kept current for as long as the session lasts. */
 export interface ThreadsState extends Followed<Threads> {
-  /** Bring a thread back: a topic to the stage, an aside's card beside it. */
+  /** Bring a topic back to the stage, or, when the last thing it showed is a side question's card, that card on top. */
   focus(thread: string): Promise<void>
   /** Stop one thread's work, or with none named, every thread's. */
   stop(thread?: string): Promise<void>

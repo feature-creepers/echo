@@ -9,9 +9,6 @@ import type { ToolResult } from '../ports/tools.ts'
 export const VIEW_SHOWN = 'view.shown'
 export const VIEW_CLEARED = 'view.cleared'
 
-/** How many aside cards the margin holds; an older one leaves when a new one comes. */
-const MARGIN = 3
-
 /** How long an aside's card stays once shown, before it leaves by itself: long enough to read it twice. */
 export const ASIDE_STAYS_MS = 3 * 60_000
 
@@ -26,13 +23,14 @@ export interface ScreenOptions {
   now?: () => Date
 }
 
-/** Who asks to show something: a thread, the turn it is answering, and where its views go. */
+/** Who asks to show something: a thread, the turn it is answering, and how what it shows is placed. */
 export interface Showing {
   thread: string | undefined
   turn: TurnId | undefined
-  slot: 'stage' | 'margin'
   /** Whether its topic is the one on the stage. A topic in the background keeps its view for when it comes back. */
   focused: boolean
+  /** It answers a side question: what it shows is an aside card, on top of the stream, and the stage stays as it is. */
+  aside?: boolean | undefined
 }
 
 /** A view already checked against the catalogue, to show as it is: a saved widget brought back. */
@@ -48,16 +46,16 @@ export interface Checked {
 }
 
 /**
- * What the assistant shows: each thread's view, the one of the topic in focus on the stage, aside cards in the
- * margin, and the stream the main screen draws, every view still open, newest first.
+ * What the assistant shows: each thread's view, the one of the topic in focus on the stage, and the stream the main
+ * screen draws, every view still open, newest first, the side questions' cards among them.
  */
 export interface Screen {
   /** What is on the stage now. */
   current(): ShownView | undefined
-  /** The aside cards, the newest last. */
-  margin(): ShownView[]
-  /** Every view of the conversation still open, newest first, stage and asides together. */
+  /** Every view of the conversation still open, newest first, stage and aside cards together. */
   stream(): ShownView[]
+  /** The aside cards still in the stream, newest first. */
+  asides(): ShownView[]
   /** Show what a session asked to show. The answer says "shown", or lists what to correct. */
   show(asked: unknown, showing: Showing): ToolResult
   /** Show a view that was checked already, as it is. */
@@ -68,13 +66,23 @@ export interface Screen {
   latest(thread: string | undefined): ShownView | undefined
   /** Every view a thread showed, oldest first, from the records. */
   history(thread: string): ShownView[]
-  /** Put an aside's latest card back in the margin, for a while again. */
+  /** When the latest view a thread showed is an aside card, put it back on top of the stream, for its full time again. */
   recall(thread: string): void
   /** The focus moved to this thread: the stage shows its view, or nothing. */
   focus(thread: string | undefined): void
   /** Remove the view given, wherever it is in the stream, or, left out, what is on the stage. */
   clear(view?: string): void
   onEvent(listener: (event: Event) => void): () => void
+}
+
+/**
+ * A view as it was recorded. The cards of side questions were once said to go in a margin beside the stage
+ * (`slot: 'margin'`): they are read as the aside cards they are.
+ */
+const fromRecord = (payload: unknown): unknown => {
+  if (typeof payload !== 'object' || payload === null || !('slot' in payload)) return payload
+  const { slot, ...rest } = payload as { slot?: unknown }
+  return slot === 'margin' ? { ...rest, aside: true } : rest
 }
 
 /**
@@ -87,28 +95,25 @@ export function createScreen({ records, newId, timers, now = () => new Date() }:
   const emit = (event: Event) => {
     for (const listener of listeners) listener(event)
   }
+  const recorded = (payload: unknown) => viewSchema.safeParse(fromRecord(payload))
 
   /** The latest view of each thread, by thread; views shown outside any thread are kept under ''. */
   const byThread = new Map<string, ShownView>()
   let stage: ShownView | undefined
-  let margin: ShownView[] = []
   let stream: ShownView[] = []
   const place = (view: ShownView) => {
     byThread.set(view.thread ?? '', view)
     stream = onTop(stream, view)
-    // An aside keeps one card in the margin: its latest.
-    if (view.slot === 'margin')
-      margin = [...margin.filter((card) => card.id !== view.id && (view.thread === undefined || card.thread !== view.thread)), view].slice(-MARGIN)
-    else stage = view
+    // An aside card goes on top of the stream: the stage keeps the topic it was asked beside.
+    if (view.aside !== true) stage = view
   }
   const remove = (id: string | undefined) => {
     const target = id ?? stage?.id
     if (id === undefined || stage?.id === id) stage = undefined
-    margin = margin.filter((card) => card.id !== id)
     stream = stream.filter((view) => view.id !== target)
     // A view removed from the stage does not come back when its topic does. An aside's card closed is only put
-    // away: it comes back when its aside is opened again.
-    for (const [thread, view] of byThread) if (view.id === target && view.slot === 'stage') byThread.delete(thread)
+    // away: it comes back when its topic is brought back.
+    for (const [thread, view] of byThread) if (view.id === target && view.aside !== true) byThread.delete(thread)
   }
 
   /**
@@ -117,7 +122,7 @@ export function createScreen({ records, newId, timers, now = () => new Date() }:
    */
   const leaving = new Map<string, () => void>()
   const leaveLater = (view: ShownView, ms: number) => {
-    if (!timers || view.slot !== 'margin') return
+    if (!timers || view.aside !== true) return
     leaving.get(view.id)?.()
     leaving.set(
       view.id,
@@ -128,22 +133,22 @@ export function createScreen({ records, newId, timers, now = () => new Date() }:
     )
   }
 
-  /** When each aside card in the margin was last shown, from the records, for those still there after a restart. */
+  /** When each aside card was last shown, from the records, for those still in the stream after a restart. */
   const shownAt = new Map<string, number>()
   for (const record of records.read([VIEW_SHOWN, VIEW_CLEARED])) {
     if (record.type === VIEW_CLEARED) remove((record.payload as { view?: string }).view)
     else {
-      const view = viewSchema.safeParse(record.payload)
+      const view = recorded(record.payload)
       if (!view.success) continue
       place(view.data)
-      if (view.data.slot === 'margin') shownAt.set(view.data.id, Date.parse(record.at))
+      if (view.data.aside === true) shownAt.set(view.data.id, Date.parse(record.at))
     }
   }
 
   function clear(id?: string) {
     const target = id ?? stage?.id
     if (target === undefined) return
-    if (stage?.id !== target && !margin.some((card) => card.id === target) && !stream.some((view) => view.id === target)) return
+    if (stage?.id !== target && !stream.some((view) => view.id === target)) return
     leaving.get(target)?.()
     leaving.delete(target)
     remove(target)
@@ -151,8 +156,10 @@ export function createScreen({ records, newId, timers, now = () => new Date() }:
     emit({ type: 'event', name: 'view.cleared', view: target })
   }
 
-  // The cards still in the margin after a restart leave when their time is up, or at once if it already was.
-  for (const card of margin) {
+  const asides = () => stream.filter((view) => view.aside === true)
+
+  // The aside cards still in the stream after a restart leave when their time is up, or at once if it already was.
+  for (const card of asides()) {
     const at = shownAt.get(card.id)
     if (at !== undefined && !Number.isNaN(at)) leaveLater(card, at + ASIDE_STAYS_MS - now().getTime())
   }
@@ -161,7 +168,7 @@ export function createScreen({ records, newId, timers, now = () => new Date() }:
     const view: ShownView = {
       id: checked.id ?? newId(),
       title: checked.title,
-      slot: showing.slot,
+      ...(showing.aside === true ? { aside: true } : {}),
       spec: checked.spec,
       ...(checked.widget === undefined ? {} : { widget: checked.widget }),
       ...(checked.reminder === undefined ? {} : { reminder: checked.reminder }),
@@ -169,7 +176,7 @@ export function createScreen({ records, newId, timers, now = () => new Date() }:
       ...(showing.thread === undefined ? {} : { thread: showing.thread })
     }
     records.append([{ type: VIEW_SHOWN, payload: view }])
-    if (view.slot === 'stage' && !showing.focused && showing.thread !== undefined) {
+    if (view.aside !== true && !showing.focused && showing.thread !== undefined) {
       byThread.set(showing.thread, view)
       return { ok: true, text: 'Kept for when this topic is back on screen.' }
     }
@@ -181,8 +188,8 @@ export function createScreen({ records, newId, timers, now = () => new Date() }:
 
   return {
     current: () => stage,
-    margin: () => [...margin],
     stream: () => [...stream],
+    asides,
 
     show(asked, showing) {
       const read = request.safeParse(asked)
@@ -195,10 +202,10 @@ export function createScreen({ records, newId, timers, now = () => new Date() }:
     present,
 
     find(id) {
-      for (const view of [stage, ...margin, ...byThread.values()]) if (view?.id === id) return view
+      for (const view of [stage, ...stream, ...byThread.values()]) if (view?.id === id) return view
       // An older view is in the records: they are read only for this, which is rare.
       for (const record of records.read([VIEW_SHOWN]).reverse()) {
-        const view = viewSchema.safeParse(record.payload)
+        const view = recorded(record.payload)
         if (view.success && view.data.id === id) return view.data
       }
       return undefined
@@ -209,7 +216,7 @@ export function createScreen({ records, newId, timers, now = () => new Date() }:
     history(thread) {
       const views: ShownView[] = []
       for (const record of records.read([VIEW_SHOWN])) {
-        const view = viewSchema.safeParse(record.payload)
+        const view = recorded(record.payload)
         // A card brought back, or brought up to date, is recorded again: it is still one view, as it was last shown.
         if (!view.success || view.data.thread !== thread) continue
         const at = views.findIndex((one) => one.id === view.data.id)
@@ -221,9 +228,9 @@ export function createScreen({ records, newId, timers, now = () => new Date() }:
 
     recall(thread) {
       const view = byThread.get(thread)
-      if (view?.slot !== 'margin') return
-      // Recorded again, so the card is still there after a restart.
-      if (!margin.some((card) => card.id === view.id)) records.append([{ type: VIEW_SHOWN, payload: view }])
+      if (view?.aside !== true) return
+      // Recorded again, so the card is still there after a restart, and leaves its full time after now.
+      records.append([{ type: VIEW_SHOWN, payload: view }])
       place(view)
       emit({ type: 'event', name: 'view.shown', view })
       leaveLater(view, ASIDE_STAYS_MS)
@@ -231,7 +238,7 @@ export function createScreen({ records, newId, timers, now = () => new Date() }:
 
     focus(thread) {
       const view = byThread.get(thread ?? '')
-      if (view && view.slot === 'stage') {
+      if (view && view.aside !== true) {
         if (stage?.id === view.id) return
         stage = view
         // A topic brought back puts its view on top of the stream again.

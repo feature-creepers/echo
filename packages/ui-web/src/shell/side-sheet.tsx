@@ -1,39 +1,34 @@
 import type { Client } from '@repo/client'
 import { describeShortcut } from '@repo/client'
 import { useFollowed } from '@repo/client/react'
-import type { Persona, TurnId } from '@repo/protocol'
+import type { Persona } from '@repo/protocol'
 import { motion } from 'motion/react'
-import { useState } from 'react'
+import type { ReactNode } from 'react'
 import { FullAnswer } from '../conversation/full-answer.tsx'
 import { ProjectForm } from '../conversation/project-form.tsx'
-import { ThreadList } from '../conversation/thread-list.tsx'
+import { StateDot, ThreadList } from '../conversation/thread-list.tsx'
 import { ThreadView } from '../conversation/thread-view.tsx'
 import { Transcript } from '../conversation/transcript.tsx'
 import { useDevice } from '../device/device.tsx'
 import { Inspector } from '../inspector/inspector.tsx'
-import { Button } from '../primitives/button.tsx'
 import { cn } from '../primitives/cn.ts'
 import { IconButton } from '../primitives/icon-button.tsx'
 import { CloseGlyph } from '../primitives/icons.tsx'
-import { Kbd } from '../primitives/kbd.tsx'
-import { slide } from '../styles/motion.ts'
+import { settle, slide } from '../styles/motion.ts'
 import { SheetHandle } from './sheet-handle.tsx'
+import { SHEET_TABS, type SheetMove, type SheetPlace, type SheetTab } from './sheet-place.ts'
 import { SHEET_CSS_WIDTH, sheetWidthStyle } from './sheet-width.ts'
-
-export const SHEET_TABS = ['transcript', 'threads', 'inspector'] as const
-export type SheetTab = (typeof SHEET_TABS)[number]
 
 const TITLES: Record<SheetTab, string> = { transcript: 'Transcript', threads: 'Threads', inspector: 'Inspector' }
 
 export interface SideSheetProps {
   client: Client
   personas: readonly Persona[]
+  /** Where the sheet stands: the tab it shows, and where each tab is. */
+  place: SheetPlace
+  /** The tab it shows. */
   tab: SheetTab
-  onTab(tab: SheetTab): void
-  /** The line whose full answer the transcript shows, instead of the whole log. */
-  answer: TurnId | undefined
-  onAnswer(turn: TurnId | undefined): void
-  onClose(): void
+  onMove(move: SheetMove): void
   /** How wide the user made the sheet, and what to do as its edge is dragged. */
   resize: {
     width: number
@@ -49,29 +44,28 @@ export interface SideSheetProps {
  * their work, and the raw events. It slides over the main screen instead of pushing it, so the core and the view
  * never move off centre, and opens over whatever screen is showing. Its left edge resizes it. What the user keeps
  * at hand, pinned widgets, stays on the main screen.
+ *
+ * Its header is the tabs alone, with the way to close it: each tab says what it shows, so no title repeats it, and
+ * what a tab can do (find a thread, open a project, sift the events) sits at the top of the tab itself.
  */
-export function SideSheet({ client, personas, tab, onTab, answer, onAnswer, onClose, resize }: SideSheetProps) {
+export function SideSheet({ client, personas, place, tab, onMove, resize }: SideSheetProps) {
   const channel = useFollowed(client.channel)
   const threads = useFollowed(client.threads)
   const events = useFollowed(client.events)
   const device = useDevice()
   const transcriptKey = device.settings.shortcuts.transcript
-  /** The thread opened in the Threads tab, kept while the user looks at another tab. */
-  const [opened, setOpened] = useState<string>()
-  /** The Threads tab shows the form that opens a project, instead of the list. */
-  const [opening, setOpening] = useState(false)
+  const working = threads.threads.filter((thread) => thread.state === 'working').length
+  const answered = place.answer === undefined ? undefined : channel.exchanges.find((exchange) => exchange.turn === place.answer)
+  // A thread no longer kept shows the list instead.
+  const opened = place.thread !== undefined && threads.threads.some((thread) => thread.id === place.thread) ? place.thread : undefined
+  const openThread = (thread: string | undefined) => onMove({ to: 'thread', thread })
 
-  const counts: Record<SheetTab, number | undefined> = {
-    transcript: undefined,
-    threads: threads.threads.length || undefined,
-    inspector: undefined
-  }
-  const subtitle: Record<SheetTab, string> = {
-    transcript: `${channel.exchanges.length} ${channel.exchanges.length === 1 ? 'exchange' : 'exchanges'}`,
-    threads: threads.threads.length === 0 ? 'Topics behind the conversation' : `${threads.threads.filter((one) => one.state === 'working').length} working`,
-    inspector: `${events.length} events from the core`
-  }
-  const answered = answer === undefined ? undefined : channel.exchanges.find((exchange) => exchange.turn === answer)
+  // Each place comes in with a short rise and fade, as a page of the hub does; the one it replaces goes at once.
+  const pane = (key: string, content: ReactNode) => (
+    <motion.div key={key} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={settle} className="flex min-h-0 flex-1 flex-col">
+      {content}
+    </motion.div>
+  )
 
   return (
     <motion.aside
@@ -86,23 +80,11 @@ export function SideSheet({ client, personas, tab, onTab, answer, onAnswer, onCl
       className="material absolute inset-y-0 right-0 z-30 flex min-w-0 max-w-[calc(100%-3rem)] flex-col border-black/50 border-l shadow-[-20px_0_40px_-24px_rgb(0_0_0/0.7)]"
     >
       <SheetHandle {...resize} />
-      <header className="grid grid-cols-1 gap-3 border-white/[0.06] border-b px-4 pt-4 pb-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="grid min-w-0 gap-0.5 pl-0.5">
-            <h2 className="font-semibold text-[0.9375rem] leading-tight tracking-[-0.01em]">{TITLES[tab]}</h2>
-            <p className="truncate text-text-faint text-xs">{subtitle[tab]}</p>
-          </div>
-          <div className="-mr-1 flex shrink-0 items-center gap-1.5">
-            {tab === 'transcript' && transcriptKey !== '' && <Kbd>{describeShortcut(transcriptKey, device.mac)}</Kbd>}
-            <IconButton label="Close the side sheet" onClick={onClose}>
-              <CloseGlyph />
-            </IconButton>
-          </div>
-        </div>
+      <header className="flex items-center gap-2 border-white/[0.06] border-b py-2.5 pr-2.5 pl-3">
         <div
           role="tablist"
           aria-label="What the side sheet shows"
-          className="grid grid-cols-3 rounded-md bg-white/[0.06] p-0.5 shadow-[inset_0_0_0_1px_rgb(255_255_255/0.04)]"
+          className="grid min-w-0 flex-1 grid-cols-3 rounded-md bg-white/[0.06] p-0.5 shadow-[inset_0_0_0_1px_rgb(255_255_255/0.04)]"
         >
           {SHEET_TABS.map((name) => (
             <button
@@ -110,7 +92,9 @@ export function SideSheet({ client, personas, tab, onTab, answer, onAnswer, onCl
               type="button"
               role="tab"
               aria-selected={tab === name}
-              onClick={() => onTab(name)}
+              // Chosen again, a tab goes back to its start: the log, or the list of threads.
+              onClick={() => onMove({ to: 'tab', tab: name })}
+              title={name === 'transcript' && transcriptKey !== '' ? `Transcript (${describeShortcut(transcriptKey, device.mac)})` : undefined}
               className={cn(
                 'relative flex h-6 min-w-0 items-center justify-center gap-1.5 rounded-sm text-xs transition-colors duration-150',
                 tab === name ? 'text-text' : 'text-text-soft hover:text-text'
@@ -124,51 +108,67 @@ export function SideSheet({ client, personas, tab, onTab, answer, onAnswer, onCl
                 />
               )}
               <span className="relative truncate">{TITLES[name]}</span>
-              {counts[name] !== undefined && (
-                <span className={cn('relative text-[0.6875rem] tabular-nums', tab === name ? 'text-text-soft' : 'text-text-faint')}>{counts[name]}</span>
+              {name === 'threads' && working > 0 && (
+                <span className="relative flex items-center gap-1 text-[0.6875rem] tabular-nums" title={`${working} at work`}>
+                  <StateDot state="working" />
+                  <span className={tab === name ? 'text-text-soft' : 'text-text-faint'}>{working}</span>
+                </span>
               )}
             </button>
           ))}
         </div>
+        <IconButton label="Close the side sheet" onClick={() => onMove({ to: 'close' })}>
+          <CloseGlyph />
+        </IconButton>
       </header>
-      {tab === 'transcript' ? (
-        answer !== undefined ? (
-          <FullAnswer
-            key={answer}
-            exchange={answered}
-            title={threads.threads.find((thread) => thread.id === answered?.thread)?.title}
-            persona={personas.find((persona) => persona.id === answered?.persona)}
-            onBack={() => onAnswer(undefined)}
-          />
-        ) : (
-          <Transcript exchanges={channel.exchanges} personas={personas} onOpenAnswer={onAnswer} />
-        )
-      ) : tab === 'threads' ? (
-        opening ? (
-          <ProjectForm
-            client={client}
-            onBack={() => setOpening(false)}
-            onOpened={(thread) => {
-              setOpening(false)
-              setOpened(thread)
-            }}
-          />
-        ) : opened && threads.threads.some((thread) => thread.id === opened) ? (
-          <ThreadView key={opened} client={client} thread={opened} personas={personas} onBack={() => setOpened(undefined)} />
-        ) : (
-          <div className="flex min-h-0 flex-1 flex-col">
-            <div className="flex items-center justify-between gap-3 px-5 pt-3">
-              <span className="text-text-faint text-xs">Work in a folder of yours</span>
-              <Button kind="secondary" size="sm" onClick={() => setOpening(true)}>
-                Open a project
-              </Button>
-            </div>
-            <ThreadList threads={threads} onOpen={setOpened} onStop={(thread) => void client.threads.stop(thread).catch(() => undefined)} />
-          </div>
-        )
-      ) : (
-        <Inspector events={events} />
-      )}
+      {tab === 'transcript'
+        ? place.answer !== undefined
+          ? pane(
+              `answer-${place.answer}`,
+              <FullAnswer
+                exchange={answered}
+                title={threads.threads.find((thread) => thread.id === answered?.thread)?.title}
+                persona={personas.find((persona) => persona.id === answered?.persona)}
+                onBack={() => onMove({ to: 'answer', turn: undefined })}
+              />
+            )
+          : pane(
+              'transcript',
+              <Transcript
+                exchanges={channel.exchanges}
+                threads={threads.threads}
+                personas={personas}
+                onOpenAnswer={(turn) => onMove({ to: 'answer', turn })}
+                onOpenThread={openThread}
+              />
+            )
+        : tab === 'threads'
+          ? place.opening
+            ? pane('project', <ProjectForm client={client} onBack={() => onMove({ to: 'opening', opening: false })} onOpened={openThread} />)
+            : opened !== undefined
+              ? pane(
+                  `thread-${opened}`,
+                  <ThreadView
+                    client={client}
+                    thread={opened}
+                    threads={threads.threads}
+                    personas={personas}
+                    onBack={() => openThread(undefined)}
+                    onOpenThread={openThread}
+                  />
+                )
+              : pane(
+                  'threads',
+                  <ThreadList
+                    threads={threads}
+                    exchanges={channel.exchanges}
+                    selected={place.lastThread}
+                    onOpen={openThread}
+                    onStop={(thread) => void client.threads.stop(thread).catch(() => undefined)}
+                    onOpenProject={() => onMove({ to: 'opening', opening: true })}
+                  />
+                )
+          : pane('inspector', <Inspector events={events} />)}
     </motion.aside>
   )
 }

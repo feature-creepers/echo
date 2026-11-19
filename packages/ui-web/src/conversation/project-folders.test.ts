@@ -36,8 +36,8 @@ describe('the folders a project can be opened in', () => {
       ]
     },
     {
-      name: 'an aside has no folder of its own',
-      threads: [{ ...topic('a', '/home/ada/code/echo'), kind: 'aside' }],
+      name: "a sub-thread's folder is its topic's",
+      threads: [{ ...topic('a', '/home/ada/code/echo'), kind: 'subthread' }],
       places: [],
       offered: []
     }

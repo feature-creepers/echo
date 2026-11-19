@@ -31,8 +31,8 @@ import { createSentenceCutter, type SentenceCutter, speakable } from '../speech/
 import { fitThread, stepWhole, type ThreadPage } from '../threads/fit.ts'
 import { createThreadRegistry } from '../threads/registry.ts'
 import type { Grant, Tool } from '../tools/tools.ts'
-import type { Checked, Screen, Showing } from '../views/screen.ts'
-import { DELEGATED_FIRST, instructionsFor, orchestratorInstructions, SPEAK_FIRST, threadInstructions, WORK_FIRST } from './instructions.ts'
+import { ASIDE_STAYS_MS, type Checked, type Screen, type Showing } from '../views/screen.ts'
+import { DELEGATED_FIRST, instructionsFor, orchestratorInstructions, SIDE_QUESTION, SPEAK_FIRST, threadInstructions, WORK_FIRST } from './instructions.ts'
 import { readySentence } from './ready.ts'
 import { isThanks } from './thanks.ts'
 
@@ -316,6 +316,11 @@ interface Turn {
   /** The thread answering it, once the orchestrator has passed it on. */
   routed: Runtime | undefined
   /**
+   * A side question (docs/SPEC.md, section 7.5): passed on without moving the focus, so the topic on the stage stays
+   * there, and answered in passing, its view an aside card.
+   */
+  aside: boolean
+  /**
    * A second request in the same words ("stop the radio, and what is the weather?") is a turn of its own,
    * answered by its own thread. It is heard after this one: `next` on the first, `after` on the second.
    */
@@ -374,6 +379,13 @@ interface Runtime {
   showing: (() => Showing) | undefined
   /** Told once it has nothing left to answer: the thread that opened it, waiting for its result. */
   idle: (() => void)[]
+  /**
+   * How long its session stays open once it has nothing to answer, after its latest request: a side question's, as long
+   * as its card. Left out, it stays open until the app quits, as a topic's does.
+   */
+  kept: number | undefined
+  /** Cancels the closing of its session, due once it was kept long enough with nothing to answer. */
+  closing: (() => void) | undefined
 }
 
 const openInput = z.object({
@@ -429,6 +441,7 @@ const newTurn = (exchange: Exchange, language: string | undefined, handed: Hande
   calls: 0,
   stopped: false,
   routed: undefined,
+  aside: false,
   next: undefined,
   after: undefined,
   held: [],
@@ -685,14 +698,20 @@ export function createChannel(options: ChannelOptions): Channel {
   }
 
   /**
-   * Bring a thread back: a topic to the stage, an aside's card beside it. When its answer was waiting, marked ready,
+   * Bring a topic back: it takes the focus and its view the stage. A side question that showed only aside cards comes
+   * back in passing: its card on top of the stream, and the topic on the stage stays. One answered in words alone has
+   * nothing to show in passing: asked for again, it is the topic it is. When its answer was waiting, marked ready,
    * gives back what of it was not heard yet, to be said now, and its turn.
    */
   const bringBack = (thread: Thread): { turn: TurnId; sentences: string[] } | undefined => {
     if (thread.kind === 'topic') {
-      registry.focus(thread.id)
-      screen.focus(thread.id)
-    } else screen.recall(thread.id)
+      const shown = thread.beside === undefined ? [] : screen.history(thread.id)
+      if (shown.length > 0 && shown.every((view) => view.aside === true)) screen.recall(thread.id)
+      else {
+        registry.focus(thread.id)
+        screen.focus(thread.id)
+      }
+    }
     toTell.delete(thread.id)
     if (thread.state !== 'ready') return undefined
     registry.setState(thread.id, 'parked')
@@ -707,10 +726,10 @@ export function createChannel(options: ChannelOptions): Channel {
 
   /**
    * The side questions' cards leave the stream (docs/SPEC.md, section 7.5): the person said thanks, or pressed Escape.
-   * Each is only put away: it comes back when its aside is opened again.
+   * Each is only put away: it comes back when its topic is brought back.
    */
   const putAsidesAway = () => {
-    for (const card of screen.margin()) screen.clear(card.id)
+    for (const card of screen.asides()) screen.clear(card.id)
   }
 
   /** Tell the person, in a notification, that an answer is there: once per turn, and only for an answer with words. */
@@ -748,7 +767,7 @@ export function createChannel(options: ChannelOptions): Channel {
   const runtimeFor = (thread: string): Runtime => {
     let runtime = runtimes.get(thread)
     if (!runtime) {
-      runtime = { thread, live: undefined, answering: undefined, queue: [], readable: [], showing: undefined, idle: [] }
+      runtime = { thread, live: undefined, answering: undefined, queue: [], readable: [], showing: undefined, idle: [], kept: undefined, closing: undefined }
       runtimes.set(thread, runtime)
     }
     return runtime
@@ -790,8 +809,8 @@ export function createChannel(options: ChannelOptions): Channel {
     const showing = (): Showing => ({
       thread: runtime.thread,
       turn: runtime.answering?.exchange.turn,
-      slot: kind === 'aside' ? 'margin' : 'stage',
-      focused: registry.focused()?.id === (parent?.id ?? runtime.thread)
+      focused: registry.focused()?.id === (parent?.id ?? runtime.thread),
+      aside: runtime.answering?.aside === true
     })
     runtime.showing = showing
     // A topic shares out its work to sub-threads. A sub-thread has no screen and speaks to no one: its full answer is its
@@ -933,10 +952,33 @@ export function createChannel(options: ChannelOptions): Channel {
     }
   }
 
-  /** A thread with nothing left to answer tells whoever waits for it: the thread that opened it, as its sub-thread. */
+  /**
+   * A thread with nothing left to answer tells whoever waits for it: the thread that opened it, as its sub-thread. A
+   * side question's session is kept as long as its card, for what may follow, then closed.
+   */
   const settle = (runtime: Runtime) => {
     if (runtime.answering || runtime.queue.length > 0) return
     for (const resolve of runtime.idle.splice(0)) resolve()
+    closeLater(runtime)
+  }
+
+  /**
+   * Close a thread's session once it has had nothing to answer for as long as it is kept, so that side questions,
+   * answered in passing, do not each hold a session and the machine's memory until the app quits (docs/SPEC.md,
+   * sections 7.3 and 7.5). The next request opens a new one, told what came before. A topic's session is not closed:
+   * it holds what a long piece of work read and did, which the recap of a new one would not.
+   */
+  const closeLater = (runtime: Runtime) => {
+    runtime.closing?.()
+    runtime.closing = undefined
+    const live = runtime.live
+    if (!options.timers || !live || runtime.kept === undefined) return
+    runtime.closing = options.timers.after(runtime.kept, () => {
+      runtime.closing = undefined
+      if (runtime.live !== live || runtime.answering || runtime.queue.length > 0) return
+      runtime.live = undefined
+      end(live)
+    })
   }
 
   /** Give the thread the next request that waits for it, if it is free. */
@@ -944,6 +986,11 @@ export function createChannel(options: ChannelOptions): Channel {
     if (runtime.answering) return
     const waiting = runtime.queue.shift()
     if (!waiting) return settle(runtime)
+    // At work again, its session stays open; once done, a side question's is kept as long as its card. Followed up, it
+    // is a topic's, kept.
+    runtime.closing?.()
+    runtime.closing = undefined
+    runtime.kept = waiting.turn.aside ? ASIDE_STAYS_MS : undefined
     runtime.answering = waiting.turn
     registry.setState(runtime.thread, 'working')
     const engine = await harness()
@@ -983,8 +1030,10 @@ export function createChannel(options: ChannelOptions): Channel {
     // its own sub-threads still at work, or done since it last read them.
     records.append([{ type: WORK, payload: { thread: runtime.thread, request: waiting.text, exchange: waiting.turn.exchange } }])
     const beside = working ? `${besideIn(working)}${subthreadsOf(working)}` : ''
+    // A side question is answered in passing; a request that follows it up is the topic's own, answered in full.
+    const side = waiting.turn.aside ? `${SIDE_QUESTION}\n\n` : ''
     session.send(
-      `${context()}\n${changed}${recalled ? `${recalled}\n\n` : ''}${waiting.text}${beside}\n\n${note ? `${note}\n\n` : ''}${reminder}`,
+      `${context()}\n${changed}${recalled ? `${recalled}\n\n` : ''}${waiting.text}${beside}\n\n${note ? `${note}\n\n` : ''}${side}${reminder}`,
       attachmentsFor(handed, images)
     )
   }
@@ -1270,7 +1319,10 @@ export function createChannel(options: ChannelOptions): Channel {
     ]
   }
 
-  /** Pass a turn to a thread, which answers it as soon as it is free. */
+  /**
+   * Pass a turn to a thread, which answers it as soon as it is free. A topic takes the focus, unless the turn is a side
+   * question: the topic on the stage then stays there.
+   */
   const route = (turn: Turn, thread: Thread, request: string) => {
     const runtime = runtimeFor(thread.id)
     // What the orchestrator wrote before passing the turn on is said now, whole, and the thread is told of it, so
@@ -1284,7 +1336,7 @@ export function createChannel(options: ChannelOptions): Channel {
     turn.exchange = { ...turn.exchange, thread: thread.id }
     replace(turn.exchange)
     for (const file of turn.handed.files) if (!runtime.readable.includes(file.location)) runtime.readable.push(file.location)
-    if (thread.kind === 'topic') {
+    if (thread.kind === 'topic' && !turn.aside) {
       registry.focus(thread.id)
       screen.focus(thread.id)
     }
@@ -1295,15 +1347,18 @@ export function createChannel(options: ChannelOptions): Channel {
   /**
    * Pass a request on. The first one passed takes the turn; a second, when the person asked two things at once,
    * becomes a turn of its own, heard once the first is answered. A third is refused: two is already a lot to hear.
+   * Either may be a side question, answered beside the topic on the stage.
    */
-  const passOn = (turn: Turn, thread: Thread, request: string): ToolResult => {
+  const passOn = (turn: Turn, thread: Thread, request: string, aside = false): ToolResult => {
     if (!turn.routed) {
+      turn.aside = aside
       route(turn, thread, request)
       return { ok: true, text: `Thread ${thread.id} is answering. Write nothing more.` }
     }
     if (turn.next || turn.routed.thread === thread.id) return { ok: false, text: 'This has already been passed on. Write nothing more.' }
     const exchange: Exchange = { turn: newId(), at: now().toISOString(), persona: turn.exchange.persona, said: request, replied: '', outcome: 'running' }
     const second = newTurn(exchange, turn.language, turn.handed)
+    second.aside = aside
     second.after = turn
     turn.next = second
     transcript.push(exchange)
@@ -1374,7 +1429,7 @@ export function createChannel(options: ChannelOptions): Channel {
       definition: {
         name: 'thread_open',
         description:
-          'Open a new thread and pass it what the person said. kind "topic" for something to work on, "aside" for a quick side question. For work on a project, a code repository or a folder of files the person works on with you, give `folder`: the thread works there.',
+          'Open a new thread and pass it what the person said. kind "topic" for something to work on, "aside" for a quick side question that needs a search, a tool or the screen: it is answered beside the topic on screen, which stays there. For work on a project, a code repository or a folder of files the person works on with you, give `folder`: the thread works there.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -1398,17 +1453,18 @@ export function createChannel(options: ChannelOptions): Channel {
         let folder: string | undefined
         if (asked.data.folder !== undefined) {
           if (!abilities?.workIn) return { ok: false, text: 'Projects cannot be worked on here: there is no computer to work on.' }
-          const found = await abilities.workIn(asked.data.folder, { thread: undefined, turn: turn.exchange.turn, slot: 'stage', focused: true })
+          const found = await abilities.workIn(asked.data.folder, { thread: undefined, turn: turn.exchange.turn, focused: true })
           if (!found.ok) return { ok: false, text: `${found.text} Tell the person in a sentence.` }
           if (deciding !== turn || turn.stopped) return { ok: false, text: 'The person moved on. Write nothing more.' }
           folder = found.folder
         }
-        // An aside sits beside the topic on the stage. With no topic on the stage, there is nothing to sit beside:
-        // the question is a topic of its own. A project is always a topic.
+        // A side question is a topic of its own, answered beside the topic on the stage, which keeps the focus. With no
+        // topic on the stage, there is nothing to answer it beside: it takes the stage as any topic. A project is
+        // never a side question.
         const beside = registry.focused()
         const aside = folder === undefined && asked.data.kind === 'aside' && beside !== undefined && screen.current() !== undefined
-        const thread = registry.open({ title: asked.data.title, kind: aside ? 'aside' : 'topic', parent: aside ? beside.id : undefined, folder })
-        return passOn(turn, thread, asked.data.request ?? turn.exchange.said)
+        const thread = registry.open({ title: asked.data.title, kind: 'topic', beside: aside ? beside.id : undefined, folder })
+        return passOn(turn, thread, asked.data.request ?? turn.exchange.said, aside)
       }
     },
     {
@@ -1744,7 +1800,7 @@ export function createChannel(options: ChannelOptions): Channel {
       // Said whole, as one turn the assistant started; the card shows what it is about while it is heard.
       const cutter = createSentenceCutter()
       return byItself('reminder', [...cutter.push(sentence), ...cutter.flush()], language, silent, (turn) =>
-        screen.present(card, { thread: undefined, turn, slot: 'stage', focused: true })
+        screen.present(card, { thread: undefined, turn, focused: true })
       )
     },
 
@@ -1893,7 +1949,10 @@ export function createChannel(options: ChannelOptions): Channel {
     close() {
       end(orchestrator)
       orchestrator = undefined
-      for (const runtime of runtimes.values()) end(runtime.live)
+      for (const runtime of runtimes.values()) {
+        runtime.closing?.()
+        end(runtime.live)
+      }
       runtimes.clear()
     }
   }

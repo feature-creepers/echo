@@ -22,7 +22,7 @@ export interface ViewCardProps {
  * can be snoozed from its bar.
  */
 export function ViewCard({ view, actions, onClose }: ViewCardProps) {
-  const aside = view.slot === 'margin'
+  const aside = view.aside === true
   const { snooze } = actions
   return (
     <article className="grid w-full min-w-0 overflow-hidden rounded-lg bg-surface/90 shadow-[0_0_0_1px_rgb(255_255_255/0.065),inset_0_1px_0_rgb(255_255_255/0.03),0_18px_44px_-26px_rgb(0_0_0/0.9)]">

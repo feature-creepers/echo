@@ -3,10 +3,11 @@ import { describe, expect, it } from 'vitest'
 import type { Session } from '../session.ts'
 import { followView } from './view.ts'
 
-const view = (id: string, slot: 'stage' | 'margin' = 'stage'): ShownView => ({
+const view = (id: string, aside = false, thread?: string): ShownView => ({
   id,
   title: id,
-  slot,
+  ...(aside ? { aside } : {}),
+  ...(thread === undefined ? {} : { thread }),
   spec: { root: 'a', elements: { a: { type: 'Divider', props: {}, children: [] } } }
 })
 
@@ -19,8 +20,7 @@ function fakeSession() {
       ran.push(name)
       if (name === 'view.read')
         return new Promise<never>(
-          (resolve) =>
-            (answer = (shown, stream = shown ? [shown] : []) => resolve((shown ? { view: shown, margin: [], stream } : { margin: [], stream }) as never))
+          (resolve) => (answer = (shown, stream = shown ? [shown] : []) => resolve((shown ? { view: shown, stream } : { stream }) as never))
         )
       return Promise.resolve({} as never)
     },
@@ -79,15 +79,15 @@ describe('followView', () => {
     expect(state.current().arrived).toEqual(['reminder'])
   })
 
-  it('keeps aside cards in the margin, apart from the stage', () => {
+  it('puts aside cards on top of the stream, and keeps the topic on the stage', () => {
     const core = fakeSession()
     const state = followView(core.session)
     core.emit({ type: 'event', name: 'view.shown', view: view('topic') })
-    for (const id of ['m1', 'm2', 'm3', 'm4']) core.emit({ type: 'event', name: 'view.shown', view: view(id, 'margin') })
+    for (const id of ['m1', 'm2', 'm3', 'm4']) core.emit({ type: 'event', name: 'view.shown', view: view(id, true, id) })
     expect(state.current().stage?.id).toBe('topic')
-    expect(state.current().margin.map((card) => card.id)).toEqual(['m2', 'm3', 'm4'])
+    expect(state.current().stream.map((card) => card.id)).toEqual(['m4', 'm3', 'm2', 'm1', 'topic'])
     core.emit({ type: 'event', name: 'view.cleared', view: 'm3' })
-    expect(state.current().margin.map((card) => card.id)).toEqual(['m2', 'm4'])
+    expect(state.current().stream.map((card) => card.id)).toEqual(['m4', 'm2', 'm1', 'topic'])
     expect(state.current().stage?.id).toBe('topic')
   })
 
@@ -98,7 +98,7 @@ describe('followView', () => {
     await settled()
     expect(state.current().arrived).toEqual([])
     core.emit({ type: 'event', name: 'view.shown', view: view('new') })
-    core.emit({ type: 'event', name: 'view.shown', view: view('aside', 'margin') })
+    core.emit({ type: 'event', name: 'view.shown', view: view('aside', true) })
     expect(state.current().arrived).toEqual(['new', 'aside'])
   })
 
@@ -107,7 +107,7 @@ describe('followView', () => {
     const state = followView(core.session)
     core.answer(view('b'), [view('b'), view('a')])
     await settled()
-    core.emit({ type: 'event', name: 'view.shown', view: view('aside', 'margin') })
+    core.emit({ type: 'event', name: 'view.shown', view: view('aside', true) })
     core.emit({ type: 'event', name: 'view.shown', view: view('c') })
     expect(state.current().stream.map((one) => one.id)).toEqual(['c', 'aside', 'b', 'a'])
   })

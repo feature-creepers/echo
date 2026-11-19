@@ -20,8 +20,12 @@ export const viewSchema = z.object({
   turn: turnIdSchema.optional(),
   /** The thread it belongs to. */
   thread: z.string().min(1).max(64).optional(),
-  /** Where it goes: the stage, or the margin for an aside. */
-  slot: z.enum(['stage', 'margin']).default('stage'),
+  /**
+   * The answer to a side question (docs/SPEC.md, section 7.5): a card marked "By the way", on top of the stream while
+   * the topic keeps the stage. It leaves by itself a while after it was shown, when the person says thanks, and on
+   * Escape, and a thread keeps one such card, its latest.
+   */
+  aside: z.boolean().optional(),
   /** The saved widget of the library this view shows again, when it is one. */
   widget: z.string().min(1).max(64).optional(),
   /** The reminder this card is of, when it is one's: it can be snoozed from it. */
@@ -38,13 +42,13 @@ export const STREAM_LENGTH = 12
 
 /**
  * The stream with a view put on top: newest first, each view once. The core and every client keep it by this one
- * rule, so they agree on it. A view shown again (a topic brought back) moves to the top. An aside keeps one card,
- * its latest, and a saved widget one card, its latest version: a new one takes the place of the one before.
+ * rule, so they agree on it. A view shown again (a topic brought back) moves to the top. A thread keeps one aside
+ * card, its latest, and a saved widget one card, its latest version: a new one takes the place of the one before.
  */
 export function onTop(stream: readonly ShownView[], view: ShownView): ShownView[] {
   const replaced = (other: ShownView) =>
     other.id === view.id ||
     (view.widget !== undefined && other.widget === view.widget) ||
-    (view.slot === 'margin' && view.thread !== undefined && other.slot === 'margin' && other.thread === view.thread)
+    (view.aside === true && view.thread !== undefined && other.aside === true && other.thread === view.thread)
   return [view, ...stream.filter((other) => !replaced(other))].slice(0, STREAM_LENGTH)
 }

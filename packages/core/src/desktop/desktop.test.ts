@@ -87,7 +87,7 @@ function setup({ found, on = true }: { found?: DesktopFound; on?: boolean } = {}
     mark: (marked) => marks.push(marked),
     pause: async () => undefined
   })
-  const showing = () => ({ thread: 't', turn: 'turn', slot: 'stage' as const, focused: true })
+  const showing = () => ({ thread: 't', turn: 'turn', focused: true })
   const ready = control.state()
   const call = async (name: string, input: unknown): Promise<ToolResult> => {
     // Whether the system allows it is found once, before any tool is given.
@@ -101,7 +101,7 @@ function setup({ found, on = true }: { found?: DesktopFound; on?: boolean } = {}
   return { control, settings, access, desktop, done, touch, call, heading, asked, marks, timers, ready }
 }
 
-const anywhere = () => ({ thread: 't', turn: undefined, slot: 'stage' as const, focused: true })
+const anywhere = () => ({ thread: 't', turn: undefined, focused: true })
 
 describe('other apps', () => {
   it('gives a thread its tools only while the person lets it and the system allows it', async () => {

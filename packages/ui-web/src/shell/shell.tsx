@@ -3,7 +3,7 @@ import { describeShortcut, matchesShortcut, pinnedOf } from '@repo/client'
 import { useFollowed } from '@repo/client/react'
 import type { Accent, CommandInput, Look, PersonaId, TurnId } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { OPEN_ACCESS_EVENT } from '../access/access-indicator.tsx'
 import type { SpeechEngine } from '../audio/engine.ts'
 import { useDeviceSpeech } from '../audio/use-speech.ts'
@@ -27,8 +27,9 @@ import { LibraryGlyph, SheetGlyph, WidgetsGlyph } from '../primitives/icons.tsx'
 import { accentStyle } from '../styles/accent.ts'
 import { DURATION, EASE } from '../styles/motion.ts'
 import type { ViewActions } from '../view/context.ts'
+import { FIRST_SHEET_PLACE, moveSheet, type SheetTab } from './sheet-place.ts'
 import { previewSheetWidth } from './sheet-width.ts'
-import { type SheetTab, SideSheet } from './side-sheet.tsx'
+import { SideSheet } from './side-sheet.tsx'
 
 export interface ShellProps {
   /** The name of the product, as the app that hosts the interface is called. */
@@ -100,34 +101,15 @@ function Connected({ productName, client, engine }: { productName: string; clien
   const openHub = useCallback((page: HubPage = lastPage.current, widget?: string) => setScreen({ is: 'hub', page, widget }), [])
 
   /**
-   * The side sheet, open on a tab, and the tab it opens on next. It opens and closes over whatever screen shows,
-   * and stays open from one screen to the next. The transcript can show one line's full answer instead of the log.
+   * Where the side sheet stands: open on a tab or closed, and where each tab is. It opens and closes over whatever
+   * screen shows, and stays open from one screen to the next. Held here, so that anything on the screen can open it
+   * on a place: a line's full answer, a thread at work.
    */
-  const [sheet, setSheet] = useState<SheetTab>()
-  const [answer, setAnswer] = useState<TurnId>()
-  const lastTab = useRef<SheetTab>('transcript')
-  const openSheet = useCallback((tab: SheetTab | undefined) => {
-    if (tab) lastTab.current = tab
-    else setAnswer(undefined)
-    setSheet(tab)
-  }, [])
-  /** The sheet as it is now, for the keys, which are listened to once. */
-  const sheetNow = useRef<SheetTab>(undefined)
-  sheetNow.current = sheet
-  const toggleSheet = useCallback(
-    (tab?: SheetTab) => {
-      const open = sheetNow.current
-      openSheet(open !== undefined && (tab === undefined || open === tab) ? undefined : (tab ?? lastTab.current))
-    },
-    [openSheet]
-  )
-  const openAnswer = useCallback(
-    (turn: TurnId) => {
-      setAnswer(turn)
-      openSheet('transcript')
-    },
-    [openSheet]
-  )
+  const [sheetPlace, moveSheetTo] = useReducer(moveSheet, FIRST_SHEET_PLACE)
+  const sheet = sheetPlace.open
+  const toggleSheet = useCallback((tab?: SheetTab) => moveSheetTo({ to: 'toggle', tab }), [])
+  const openAnswer = useCallback((turn: TurnId) => moveSheetTo({ to: 'answer', turn }), [])
+  const openThread = useCallback((thread: string | undefined) => moveSheetTo({ to: 'thread', thread }), [])
   /** The persona the user is about to pick in a form, shown in its accent before anything is sent. */
   const [picked, setPicked] = useState<PersonaId>()
 
@@ -375,6 +357,7 @@ function Connected({ productName, client, engine }: { productName: string; clien
                     voiceBands={speech.ready ? speech.bands : undefined}
                     onSetUpVoice={engine ? () => openHub('voice') : undefined}
                     onOpenAnswer={openAnswer}
+                    onOpenThread={openThread}
                   />
                   <PinnedDocksView controls={controls} actions={actions} docks={docks} />
                 </div>
@@ -391,11 +374,9 @@ function Connected({ productName, client, engine }: { productName: string; clien
                 key="sheet"
                 client={client}
                 personas={personas.available}
+                place={sheetPlace}
                 tab={sheet}
-                onTab={openSheet}
-                answer={answer}
-                onAnswer={setAnswer}
-                onClose={() => openSheet(undefined)}
+                onMove={moveSheetTo}
                 resize={{
                   width: sheetWidth,
                   keep: showing.is === 'hub' && hubRoom ? HUB_KEEPS : 0,

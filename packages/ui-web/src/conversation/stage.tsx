@@ -57,6 +57,8 @@ export interface StageProps {
   onSetUpVoice?: (() => void) | undefined
   /** Show the full answer a line's thread wrote, whole, in the side sheet. */
   onOpenAnswer(turn: TurnId): void
+  /** Show a thread's work in the side sheet, or with none, the list of threads. */
+  onOpenThread(thread: string | undefined): void
 }
 
 /** The event an app dispatches on the window to start talking, or to send what was said: its global shortcut. */
@@ -358,7 +360,7 @@ function syllables(): number {
  * The main screen: the assistant, present. The core in the middle, what it is saying under it as it says
  * it, and the line to talk to it at the bottom.
  */
-export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voiceLevel, voiceBands, onSetUpVoice, onOpenAnswer }: StageProps) {
+export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voiceLevel, voiceBands, onSetUpVoice, onOpenAnswer, onOpenThread }: StageProps) {
   const channel = useFollowed(client.channel)
   const speaking = useFollowed(client.speech)
   const activity = useFollowed(client.activity)
@@ -926,7 +928,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
             <RunningThreads
               threads={threads.threads}
               exchanges={channel.exchanges}
-              onFocus={(thread) => void client.threads.focus(thread).catch(() => undefined)}
+              onOpen={onOpenThread}
               onStop={(thread) => void client.threads.stop(thread).catch(() => setProblem(refusalCopy('failed')))}
             />
             <AnimatePresence>

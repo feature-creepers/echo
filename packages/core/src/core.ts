@@ -525,8 +525,8 @@ export function createCore(options: CoreOptions): Core {
       'engines.read': async () => ({ ok: true, output: { engines: await engines.read(true) } }),
       'view.read': () => {
         const view = screen.current()
-        const shown = { margin: screen.margin(), stream: screen.stream() }
-        return { ok: true, output: view ? { view, ...shown } : shown }
+        const stream = screen.stream()
+        return { ok: true, output: view ? { view, stream } : { stream } }
       },
       'view.clear': (input) => {
         screen.clear(input.view)
@@ -622,7 +622,7 @@ export function createCore(options: CoreOptions): Core {
       },
       'library.show': (input) => {
         // Brought back by the user, it is shown on the stage over whatever topic is there, and starts nothing by itself.
-        const shown = library.show(input.widget, { thread: undefined, turn: undefined, slot: 'stage', focused: true })
+        const shown = library.show(input.widget, { thread: undefined, turn: undefined, focused: true })
         return shown.ok ? { ok: true, output: {} } : { ok: false, error: { code: 'unknown-widget', message: shown.text } }
       },
       'thread.focus': (input) =>
@@ -635,7 +635,7 @@ export function createCore(options: CoreOptions): Core {
         // The person chose the folder in the interface: that is their consent, and no card asks them again.
         const granted = await access.grant(
           { path: input.folder, write: true, purpose: 'work', chosen: true },
-          { thread: undefined, turn: undefined, slot: 'stage', focused: true }
+          { thread: undefined, turn: undefined, focused: true }
         )
         if (!granted.ok) return { ok: false, error: { code: 'invalid-input', message: granted.text } }
         return { ok: true, output: channel.work({ folder: granted.path, request: input.request }) }
