@@ -224,6 +224,39 @@ describe('an extruded shape drawn as LibreOffice draws it', () => {
   })
 })
 
+describe('a picture in a shape’s text', () => {
+  const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+  const caption = (image: string, words: string) =>
+    `<draw:custom-shape draw:style-name="green" svg:width="2in" svg:height="2in"><text:p><draw:frame text:anchor-type="as-char" svg:width="1in" svg:height="0.5in">${image}</draw:frame><text:line-break/>${words}</text:p><draw:enhanced-geometry draw:type="rectangle"/></draw:custom-shape>`
+
+  it.each([
+    {
+      name: 'in its line at its size, a caption under it, as LibreOffice draws a caption it made a shape of',
+      element: caption(`<draw:image><office:binary-data>${PNG}</office:binary-data></draw:image>`, 'Figure 1'),
+      shows: ['<image width="96" height="48" preserveAspectRatio="none" href="data:image/png;base64,', '>Figure 1<']
+    },
+    {
+      name: 'alone, with no words',
+      element: caption(`<draw:image><office:binary-data>${PNG}</office:binary-data></draw:image>`, ''),
+      shows: ['href="data:image/png;base64,']
+    },
+    {
+      name: 'keeping its room when it cannot be read',
+      element: caption('<draw:image xlink:href="Pictures/missing.png"/>', 'Figure 2'),
+      shows: ['<span style="display:inline-block;width:96px;height:48px', '>Figure 2<']
+    },
+    {
+      name: 'left out when it has no size',
+      element: caption('<draw:image xlink:href="Pictures/missing.png"/>', 'Figure 3').replace('svg:width="1in"', ''),
+      shows: ['>Figure 3<']
+    }
+  ])('draws a picture $name', async ({ element, shows }) => {
+    const drawn = await lone(element)
+    for (const piece of shows) expect(drawn?.text).toContain(piece)
+    expect(drawn?.text).not.toMatch(/<script|href="(?!data:)/)
+  })
+})
+
 describe('a path flattened into lines', () => {
   it.each([
     { data: 'M0 0L10 0L10 10', count: 3, last: [10, 10] },

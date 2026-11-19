@@ -127,8 +127,23 @@ export interface RunStyle {
   letterSpacing?: number | undefined
 }
 
-/** A run of text in its style, or a line broken within its paragraph. */
-export type TextPiece = { text: string; style: RunStyle } | 'break'
+/** A run of text in its style; a picture in the text's line, by its address of data, at its size in pixels; or a line broken within its paragraph. */
+export type TextPiece = TextRun | TextPicture | 'break'
+
+export interface TextRun {
+  text: string
+  style: RunStyle
+}
+
+/** A picture in a line of text: its address of data, none when it cannot be shown, and its size in pixels, which it takes either way. */
+export interface TextPicture {
+  picture: string | undefined
+  width: number
+  height: number
+}
+
+/** Whether a piece of text is a run of its characters. */
+export const isRun = (piece: TextPiece): piece is TextRun => piece !== 'break' && 'text' in piece
 
 /** A bullet or a number before a paragraph: its mark, its colour, its font, its size as a share of the text's, and its width. */
 export interface TextBullet {
@@ -261,7 +276,16 @@ function paragraphHtml(paragraph: TextParagraph): string {
   ]
     .filter(Boolean)
     .join(';')
-  const runs = paragraph.pieces.map((piece) => (piece === 'break' ? '<br/>' : `<span style="${runCss(piece.style)}">${escaped(piece.text)}</span>`))
+  const runs = paragraph.pieces.map((piece) => {
+    if (piece === 'break') return '<br/>'
+    if (isRun(piece)) return `<span style="${runCss(piece.style)}">${escaped(piece.text)}</span>`
+    // A picture sits on the line's baseline at its size, drawn in SVG of its own, which an image inside an image
+    // stretches to its box as an element of HTML there does not; one that cannot be shown keeps its room.
+    const size = `width:${number(piece.width)}px;height:${number(piece.height)}px;vertical-align:baseline;text-indent:0`
+    return piece.picture
+      ? `<svg xmlns="http://www.w3.org/2000/svg" width="${number(piece.width)}" height="${number(piece.height)}" style="display:inline-block;${size}"><image width="${number(piece.width)}" height="${number(piece.height)}" preserveAspectRatio="none" href="${piece.picture}"/></svg>`
+      : `<span style="display:inline-block;${size}"></span>`
+  })
   let bullet = ''
   if (paragraph.bullet) {
     const { mark, paint, width, font, size } = paragraph.bullet

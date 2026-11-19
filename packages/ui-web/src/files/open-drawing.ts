@@ -34,6 +34,7 @@ import {
   fillAttribute,
   fromHex,
   GROUP_DEPTH_LIMIT,
+  isRun,
   listNumber,
   number,
   type Outline,
@@ -48,6 +49,7 @@ import {
   type TextFrame,
   type TextParagraph,
   type TextPiece,
+  type TextRun,
   textDiv,
   textHtml
 } from './slide-svg.ts'
@@ -149,6 +151,8 @@ export interface DrawingContext {
   shapes: number
   pictureBytes: number
   shown: (node: XmlNode, inMaster: boolean) => boolean
+  /** The pictures of frames in shapes' text, read before their text is laid out, by their frame. */
+  textPictures?: Map<XmlNode, string | undefined> | undefined
 }
 
 // Pictures
@@ -912,7 +916,7 @@ function readParagraphs(holder: XmlNode, base: TextBase, context: DrawingContext
       const add = (text: string) => {
         if (text === '') return
         const last = pieces.at(-1)
-        if (last && last !== 'break' && last.style === style) last.text += text
+        if (last && isRun(last) && last.style === style) last.text += text
         else pieces.push({ text, style })
       }
       for (const part of element.children) {
@@ -922,14 +926,20 @@ function readParagraphs(holder: XmlNode, base: TextBase, context: DrawingContext
         else if (part.name === 'text:s') add(' '.repeat(Math.min(Math.max(Number(part.attributes['text:c']) || 1, 1), 256)))
         else if (part.name === 'text:tab') add('\t')
         else if (part.name === 'text:line-break') pieces.push('break')
-        else if (part.name === 'text:page-number') add(String(context.place))
+        else if (part.name === 'draw:frame') {
+          // A picture in the text, as a caption LibreOffice made a shape of holds one, is in its line at its size.
+          const width = length(part.attributes['svg:width']) ?? 0
+          const height = length(part.attributes['svg:height']) ?? 0
+          if (childAt(part, 'draw:image') && width > 0 && height > 0 && width < 100_000 && height < 100_000)
+            pieces.push({ picture: context.textPictures?.get(part), width, height })
+        } else if (part.name === 'text:page-number') add(String(context.place))
         else if (part.name === 'presentation:footer') add(context.footer ?? '')
         else if (part.name === 'presentation:date-time') add(context.date ?? '')
         else if (part.name !== 'text:note' && part.name !== 'office:annotation' && part.name !== 'text:bookmark') add(plainText(part))
       }
     }
     inline(node, textProperties)
-    const firstStyle = pieces.find((piece): piece is { text: string; style: RunStyle } => piece !== 'break')
+    const firstStyle = pieces.find(isRun)
     const look = runStyle(textProperties, source)
     const size = firstStyle?.style.size ?? look.size ?? 18
     // A list's level gives a bullet or a number, and the indents its paragraph style does not.
@@ -991,10 +1001,32 @@ function readParagraphs(holder: XmlNode, base: TextBase, context: DrawingContext
   return paragraphs
 }
 
+/** The most pictures read in one shape's text, so a damaged file costs little. */
+const TEXT_PICTURE_LIMIT = 64
+
+/** The pictures of the frames in a shape's paragraphs, read as any picture is, before its text is laid out. */
+async function readTextPictures(holder: XmlNode, context: DrawingContext): Promise<void> {
+  const found: XmlNode[] = []
+  const walk = (node: XmlNode, depth: number) => {
+    for (const child of node.children) {
+      if (found.length >= TEXT_PICTURE_LIMIT || depth > 32) return
+      if (child.name === 'draw:frame') found.push(child)
+      else if (child.name.startsWith('text:')) walk(child, depth + 1)
+    }
+  }
+  walk(holder, 0)
+  if (found.length === 0) return
+  context.textPictures ??= new Map()
+  for (const frame of found) {
+    const image = childAt(frame, 'draw:image')
+    if (image && !context.textPictures.has(frame)) context.textPictures.set(frame, (await pictureHeld(image, context))?.href)
+  }
+}
+
 /** A shape's text as a frame: its paragraphs, the padding and placing its graphic properties give, its font and colour. */
 function textFrame(holder: XmlNode, base: TextBase, graphic: Properties, context: DrawingContext, anchor: 'top' | 'middle' | 'bottom'): TextFrame | undefined {
   const paragraphs = readParagraphs(holder, base, context)
-  if (!paragraphs.some((paragraph) => paragraph.pieces.some((piece) => piece !== 'break' && piece.text.trim() !== ''))) return undefined
+  if (!paragraphs.some((paragraph) => paragraph.pieces.some((piece) => piece !== 'break' && (!isRun(piece) || piece.text.trim() !== '')))) return undefined
   const padding = (side: string) => length(graphic[`fo:padding-${side}`] ?? graphic['fo:padding']) ?? 4.72
   const vertical = graphic['draw:textarea-vertical-align']
   const look = runStyle(levelProperties(base, 1, 'text', context.source), context.source)
@@ -1020,15 +1052,21 @@ function textReach(frame: TextFrame, box: { width: number; height: number }): Si
   for (const paragraph of frame.paragraphs) {
     const size = (paragraph.size * 4) / 3
     const lineHeight = paragraph.lineHeight !== undefined ? (paragraph.lineHeight * 4) / 3 : size * 1.2 * (paragraph.lineSpacing ?? 1)
-    // Each line broken is as wide as its characters, and takes as many lines as its words need in the box when they wrap.
-    const lines = [0]
-    for (const piece of paragraph.pieces)
-      if (piece === 'break') lines.push(0)
-      else lines[lines.length - 1] = (lines.at(-1) ?? 0) + piece.text.length
-    for (const characters of lines) {
-      const wide = characters * size * 0.6
+    // Each line broken is as wide as its characters and pictures, as tall as its tallest picture at least, and takes as
+    // many lines as its words need in the box when they wrap.
+    const lines = [{ wide: 0, tall: 0 }]
+    for (const piece of paragraph.pieces) {
+      const line = lines.at(-1) as { wide: number; tall: number }
+      if (piece === 'break') lines.push({ wide: 0, tall: 0 })
+      else if (isRun(piece)) line.wide += piece.text.length * size * 0.6
+      else {
+        line.wide += piece.width
+        line.tall = Math.max(line.tall, piece.height)
+      }
+    }
+    for (const { wide, tall } of lines) {
       width = Math.max(width, wide)
-      height += lineHeight * (frame.wraps && room > 1 ? Math.max(1, Math.ceil(wide / room)) : 1)
+      height += Math.max(tall, lineHeight * (frame.wraps && room > 1 ? Math.max(1, Math.ceil(wide / room)) : 1))
     }
   }
   width += frame.insets.left + frame.insets.right
@@ -1394,6 +1432,7 @@ async function drawShape(node: XmlNode, context: DrawingContext, inMaster: boole
   }
 
   if (textHolder) {
+    await readTextPictures(textHolder, context)
     const frame = textFrame(textHolder, base, graphic, context, anchor)
     if (frame) {
       const box = textBox ?? { x: 0, y: 0, width, height }
@@ -1498,16 +1537,14 @@ function fontworkOf(
   for (const paragraph of paragraphs) {
     let line = ''
     for (const piece of paragraph.pieces)
-      if (piece !== 'break') line += piece.text.replace(/\t/g, ' ')
-      else if (!legacy) {
+      if (isRun(piece)) line += piece.text.replace(/\t/g, ' ')
+      else if (piece === 'break' && !legacy) {
         lines.push(line)
         line = ''
       }
     lines.push(line)
   }
-  const first = paragraphs
-    .flatMap((paragraph) => paragraph.pieces)
-    .find((piece): piece is { text: string; style: RunStyle } => piece !== 'break' && piece.text.trim() !== '')
+  const first = paragraphs.flatMap((paragraph) => paragraph.pieces).find((piece): piece is TextRun => isRun(piece) && piece.text.trim() !== '')
   if (!first) return undefined
   const look = runStyle(levelProperties(base, 1, 'text', context.source), context.source)
   const points = first.style.size ?? look.size ?? 18
