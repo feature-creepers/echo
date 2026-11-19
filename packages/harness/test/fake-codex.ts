@@ -143,6 +143,19 @@ function appServer(): void {
       return complete(id, 'failed', 'Not logged in. Run codex login.')
     }
     if (text.includes('retry')) notify('error', { error: { message: 'stream disconnected' }, willRetry: true })
+    if (text.includes('plan the work')) {
+      notify('turn/plan/updated', {
+        threadId: 'thread-1',
+        turnId: id,
+        explanation: null,
+        plan: [
+          { step: 'Find the failing test', status: 'completed' },
+          { step: 'Fix it', status: 'inProgress' }
+        ]
+      })
+      await message(id, ['Planned.'])
+      return complete(id)
+    }
     if (text.includes('whole')) {
       await message(id, ['All at once.'], true)
       return complete(id)

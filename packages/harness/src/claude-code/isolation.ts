@@ -24,8 +24,14 @@ export const TOOL_SERVER = 'core'
 
 const TOOL_PREFIX = `mcp__${TOOL_SERVER}__`
 
-/** The CLI's own tools a session may be given: searching the web and reading a page. Nothing else of its own. */
+/** The CLI's own tools a session may be given: searching the web and reading a page. */
 export const WEB_TOOLS: Record<string, string> = { WebSearch: 'web_search', WebFetch: 'web_read' }
+
+/**
+ * The CLI's own to-do list, which a session working on a project keeps its plan in (docs/SPEC.md, section 7.11). It
+ * acts on nothing: what it is given is read as the plan, not as a call. Nothing else of the CLI's own is given.
+ */
+export const PLAN_TOOL = 'TodoWrite'
 
 /** A tool's name as the core serves it, given the name the CLI uses. Nothing when the tool is not one of the core's. */
 export function coreToolName(name: unknown): string | undefined {
@@ -73,6 +79,8 @@ export interface IsolationFiles {
   web?: boolean
   /** The CLI's own tools for the computer the session is given, and the folders it may work in besides its own. */
   computer?: { tools: readonly string[]; folders: readonly string[] } | undefined
+  /** Whether the session keeps its plan in the CLI's own to-do list: a project's does. */
+  plan?: boolean
 }
 
 /** The arguments every call shares, live session or single question. Left out, the effort is the CLI's own choice. */
@@ -82,8 +90,9 @@ export function isolationArguments(model: string, files: IsolationFiles, effort?
     effort === undefined ? [] : ['--effort', effort],
     // Replaces the CLI's own system prompt instead of adding to it.
     ['--system-prompt-file', files.instructions],
-    // None of its own tools but those given: the web, and the computer within what the person granted. No sub-agent.
-    ['--tools', [...(files.web ? Object.keys(WEB_TOOLS) : []), ...(files.computer?.tools ?? [])].join(',')],
+    // None of its own tools but those given: the web, the computer within what the person granted, and for a project
+    // its to-do list. No sub-agent.
+    ['--tools', [...(files.web ? Object.keys(WEB_TOOLS) : []), ...(files.computer?.tools ?? []), ...(files.plan ? [PLAN_TOOL] : [])].join(',')],
     (files.computer?.folders ?? []).flatMap((folder) => ['--add-dir', folder]),
     // Neither the user's settings nor the folder's, and with them no CLAUDE.md, no hook, no plugin.
     ['--setting-sources', ''],
@@ -110,9 +119,9 @@ const names = (value: unknown): string[] => (Array.isArray(value) ? value.filter
  * A new version of the CLI may rename a flag or add a feature of its own. This says so the day it happens,
  * instead of an assistant that quietly knows more, or can do more, than the core gave it.
  */
-export function isolationLeaks(init: Record<string, unknown>, web = false, computer: readonly string[] = []): string[] {
+export function isolationLeaks(init: Record<string, unknown>, web = false, computer: readonly string[] = [], plan = false): string[] {
   const leaks: string[] = []
-  const tools = names(init.tools).filter((tool) => reportedToolName(tool, web, computer) === undefined)
+  const tools = names(init.tools).filter((tool) => reportedToolName(tool, web, computer) === undefined && !(plan && tool === PLAN_TOOL))
   if (tools.length > 0) leaks.push(`its own tools (${tools.join(', ')})`)
   const servers = Array.isArray(init.mcp_servers) ? init.mcp_servers.map((server: { name?: unknown }) => String(server?.name)) : []
   const others = servers.filter((server) => server !== TOOL_SERVER)

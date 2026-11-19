@@ -100,6 +100,22 @@ describe('a Codex session', () => {
     expect(followed.outline()).toEqual(['tool:ui_render:started', 'tool:ui_render:ended', "text:The core's tool was accepted.", 'turn-end'])
   })
 
+  it('tells the plan Codex keeps for the work, whole each time it changes', async () => {
+    const session = harness().session()
+    const followed = follow(session)
+    session.send('plan the work')
+    await followed.until('turn-end')
+
+    expect(followed.outline()).toEqual(['plan', 'text:Planned.', 'turn-end'])
+    expect(followed.events[0]).toEqual({
+      type: 'plan',
+      steps: [
+        { text: 'Find the failing test', state: 'done' },
+        { text: 'Fix it', state: 'current' }
+      ]
+    })
+  })
+
   it('starts a new paragraph for the text that follows a tool call', async () => {
     const session = harness().session(true)
     const followed = follow(session)

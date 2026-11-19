@@ -7,6 +7,7 @@ import type { Attachment, Log, Session, SessionRequest, Verdict } from '@repo/co
 import { absolute, kindAt, real, within } from '../computer/paths.ts'
 import { checkUse } from '../computer/scope.ts'
 import { system } from '../computer/system/index.ts'
+import { planFromTodos } from '../plan.ts'
 import { type Cli, NotInstalled } from '../process/cli.ts'
 import { createSessionEvents } from '../process/events.ts'
 import { asArray, asObject, asString, type JsonObject } from '../process/json.ts'
@@ -17,7 +18,16 @@ import { start } from '../process/run.ts'
 import { createWorkingFiles } from '../process/working-files.ts'
 import { computerTools, useOf } from './computer-tools.ts'
 import { sandboxSettings } from './confinement.ts'
-import { ISOLATION_VARIABLES, isolationArguments, isolationLeaks, reportedToolName, sessionSettings, TOOL_SERVER, toolServerConfig } from './isolation.ts'
+import {
+  ISOLATION_VARIABLES,
+  isolationArguments,
+  isolationLeaks,
+  PLAN_TOOL,
+  reportedToolName,
+  sessionSettings,
+  TOOL_SERVER,
+  toolServerConfig
+} from './isolation.ts'
 import { SIGNED_OUT } from './status.ts'
 
 export interface SessionContext {
@@ -93,6 +103,8 @@ export function openSession(request: SessionRequest, context: SessionContext): S
   let errorOutput = ''
   /** The CLI's own tools on the computer this session was given, and the folder it works in. */
   let computer: string[] = []
+  /** A project's session keeps its plan in the CLI's own to-do list. */
+  const planning = request.folder !== undefined
   let workingFolder = context.folder
   /** The CLI's own folder, and the identifier of this session in it: a long output is kept there for the session to read. */
   let cliFolder: string | undefined
@@ -134,7 +146,8 @@ export function openSession(request: SessionRequest, context: SessionContext): S
         settings: await files.write('settings.json', JSON.stringify(sessionSettings(computer, confined))),
         tools: request.tools ? await files.write('tools.json', toolServerConfig(request.tools)) : undefined,
         web: request.web === true,
-        computer: { tools: computer, folders: computer.length > 0 ? folders : [] }
+        computer: { tools: computer, folders: computer.length > 0 ? folders : [] },
+        plan: planning
       }
       if (closed) return void files.remove()
       running = start(launch.command, [...SESSION_ARGUMENTS, ...isolationArguments(context.model, paths, context.effort)], {
@@ -214,7 +227,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
     if (checked) return
     checked = true
     sessionId = asString(init.session_id)
-    const leaks = isolationLeaks(init, request.web === true, computer)
+    const leaks = isolationLeaks(init, request.web === true, computer, planning)
     if (leaks.length > 0) log.error(`A Claude Code session started with ${leaks.join(', ')}, which should all be switched off.`)
     if (!request.tools) return
     const server = asArray(init.mcp_servers)
@@ -270,6 +283,12 @@ export function openSession(request: SessionRequest, context: SessionContext): S
    * way. It is reported again once the whole block, input included, has arrived.
    */
   function toolStarted(id: unknown, name: unknown, input: unknown): void {
+    // The to-do list acts on nothing: what it is given is the plan, told once it is whole.
+    if (planning && name === PLAN_TOOL) {
+      const steps = input === undefined ? undefined : planFromTodos(input)
+      if (steps) events.emit({ type: 'plan', steps })
+      return
+    }
     const call = asString(id)
     const tool = reportedToolName(name, request.web === true, computer)
     if (call === undefined || tool === undefined) return
@@ -360,9 +379,10 @@ export function openSession(request: SessionRequest, context: SessionContext): S
       void onComputer(tool, input, asString(question.tool_use_id) ?? callOf(tool, input)).then(answer)
       return
     }
-    // The core decides for itself whether one of its tools may run, when it is called. Nothing else may run at all.
+    // The core decides for itself whether one of its tools may run, when it is called. A project's to-do list acts on
+    // nothing. Nothing else may run at all.
     answer(
-      reportedToolName(tool, request.web === true) === undefined
+      reportedToolName(tool, request.web === true) === undefined && !(planning && tool === PLAN_TOOL)
         ? { behavior: 'deny', message: 'This tool is not available in this session.' }
         : { behavior: 'allow', updatedInput: input }
     )

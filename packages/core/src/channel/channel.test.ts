@@ -1,5 +1,5 @@
 import { EXAMPLE_VIEW } from '@repo/catalog'
-import type { Event, Exchange } from '@repo/protocol'
+import type { Event, Exchange, PlanStep } from '@repo/protocol'
 import { describe, expect, it, vi } from 'vitest'
 import { createEngineRoom } from '../engines/engines.ts'
 import { memoryRecords } from '../records/memory.ts'
@@ -7,7 +7,7 @@ import { type ScriptedHarness, scriptedHarness } from '../replay/scripted-harnes
 import { createUserSettings } from '../settings/settings.ts'
 import { createTools } from '../tools/tools.ts'
 import { createScreen } from '../views/screen.ts'
-import { type Abilities, createChannel, EXCHANGE } from './channel.ts'
+import { type Abilities, createChannel, EXCHANGE, planProgress } from './channel.ts'
 import { SPEAK_FIRST, WORK_FIRST } from './instructions.ts'
 
 interface Setup {
@@ -1290,6 +1290,38 @@ describe('a project', () => {
     expect(harness.sessions[1]?.request.folder).toBe('/home/ada/code/echo')
   })
 
+  it('keeps the plan its harness writes on its line, tells it, and tells the orchestrator where the work stands', async () => {
+    const { channel, harness, thread, events, ended } = await openProject(projectAbilities())
+    thread?.emit({ type: 'tool', name: 'computer_read', phase: 'started', call: 'r1' })
+    thread?.emit({
+      type: 'plan',
+      steps: [
+        { text: 'Read the handle', state: 'done' },
+        { text: '  Make it   wider ', state: 'current' },
+        { text: ' ', state: 'todo' },
+        { text: 'Run the checks', state: 'todo' }
+      ]
+    })
+    const planned = events.flatMap((event) => (event.name === 'turn.planned' ? [event.exchange] : []))
+    expect(planned.at(-1)?.plan).toEqual([
+      { text: 'Read the handle', state: 'done' },
+      { text: 'Make it wider', state: 'current' },
+      { text: 'Run the checks', state: 'todo' }
+    ])
+
+    channel.say('What are you working on?')
+    await settled()
+    expect(harness.sessions[0]?.sent.at(-1)).toContain('answering: In the echo repo, make the handle wider. (step 2 of 3: Make it wider)')
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+
+    thread?.emit({ type: 'plan', steps: [] })
+    expect(events.flatMap((event) => (event.name === 'turn.planned' ? [event.exchange] : [])).at(-1)).not.toHaveProperty('plan')
+    thread?.emit({ type: 'plan', steps: [{ text: 'Make it wider', state: 'done' }] })
+    thread?.emit({ type: 'turn-end' })
+    await settled()
+    expect(ended().find((line) => line.said === 'In the echo repo, make the handle wider.')?.plan).toEqual([{ text: 'Make it wider', state: 'done' }])
+  })
+
   it('lets a request wait behind the work it follows, when the orchestrator says so', async () => {
     const { channel, harness, call, thread } = await openProject(projectAbilities())
     thread?.emit({ type: 'tool', name: 'Edit', phase: 'started', call: 'e1' })
@@ -1379,6 +1411,31 @@ describe('a project', () => {
     )
     expect(second.channel.read(10).at(-1)).toMatchObject({ trigger: 'resume', said: 'Check the installed build, then go on with the plan.' })
   })
+})
+
+describe('where a plan stands', () => {
+  const cases: { name: string; plan: PlanStep[]; said: string | undefined }[] = [
+    { name: 'no plan', plan: [], said: undefined },
+    {
+      name: 'the step under way',
+      plan: [
+        { text: 'Read', state: 'done' },
+        { text: 'Fix', state: 'current' },
+        { text: 'Check', state: 'todo' }
+      ],
+      said: 'step 2 of 3: Fix'
+    },
+    {
+      name: 'the next step to do, when none is under way',
+      plan: [
+        { text: 'Read', state: 'done' },
+        { text: 'Fix', state: 'todo' }
+      ],
+      said: 'step 2 of 2: Fix'
+    },
+    { name: 'every step done', plan: [{ text: 'Read', state: 'done' }], said: 'all 1 steps done' }
+  ]
+  for (const { name, plan, said } of cases) it(name, () => expect(planProgress(plan)).toBe(said))
 })
 
 describe('lines the retention period erased', () => {

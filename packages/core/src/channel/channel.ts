@@ -6,6 +6,9 @@ import {
   LANGUAGE_CODES,
   languageName,
   type Persona,
+  PLAN_STEP_MAX_LENGTH,
+  PLAN_STEPS_MAX,
+  type PlanStep,
   type ShownView,
   type Step,
   stepSchema,
@@ -182,6 +185,19 @@ export function moment(at: Date, timeZone?: string): string {
   }).format(at)
   return `${written.replace(' at ', ', ')} (${zone})`
 }
+
+/** Where a plan stands, in a few words: "step 3 of 7: Run the checks", or that every step is done. */
+export function planProgress(plan: readonly PlanStep[]): string | undefined {
+  if (plan.length === 0) return undefined
+  const at = plan.findIndex((one) => one.state === 'current')
+  const step = at >= 0 ? at : plan.findIndex((one) => one.state === 'todo')
+  if (step < 0) return `all ${plan.length} steps done`
+  const text = plan[step]?.text ?? ''
+  return `step ${step + 1} of ${plan.length}: ${text.length > DOING_LENGTH ? `${text.slice(0, DOING_LENGTH - 1)}…` : text}`
+}
+
+/** A line of the transcript without a plan: the session dropped its to-do list. */
+const withoutPlan = ({ plan: _plan, ...exchange }: Exchange): Exchange => exchange
 
 /** The single conversation: it takes what the user says, one turn at a time, and announces the answer as it comes. */
 export interface Channel {
@@ -789,6 +805,18 @@ export function createChannel(options: ChannelOptions): Channel {
         if (event.phase === 'ended' && !event.failed && event.wrote && event.wrote.length > 0 && runtime.showing)
           abilities?.wrote?.(runtime.showing(), event.wrote)
         return
+      case 'plan': {
+        if (!turn) return
+        // The harness's own to-do list for the work: the person sees where it stands, and the others are told.
+        const plan = event.steps.slice(0, PLAN_STEPS_MAX).flatMap((one) => {
+          const text = one.text.replace(/\s+/g, ' ').trim()
+          return text === '' ? [] : [{ text: text.length > PLAN_STEP_MAX_LENGTH ? `${text.slice(0, PLAN_STEP_MAX_LENGTH - 1)}…` : text, state: one.state }]
+        })
+        turn.exchange = plan.length > 0 ? { ...turn.exchange, plan } : withoutPlan(turn.exchange)
+        replace(turn.exchange)
+        emit({ type: 'event', name: 'turn.planned', exchange: turn.exchange })
+        return
+      }
       case 'turn-end': {
         if (!turn) return
         // An answer is waiting to be seen when some of it was said while another turn had the stage, or when it
@@ -875,9 +903,12 @@ export function createChannel(options: ChannelOptions): Channel {
 
   /** What a thread is answering now, in the words it was given, for the index the orchestrator reads. */
   const doing = (thread: string): string | undefined => {
-    const said = runtimes.get(thread)?.answering?.exchange.said.replace(/\s+/g, ' ').trim()
+    const exchange = runtimes.get(thread)?.answering?.exchange
+    const said = exchange?.said.replace(/\s+/g, ' ').trim()
     if (said === undefined || said === '') return undefined
-    return said.length > DOING_LENGTH ? `${said.slice(0, DOING_LENGTH - 1)}…` : said
+    const asked = said.length > DOING_LENGTH ? `${said.slice(0, DOING_LENGTH - 1)}…` : said
+    const where = exchange?.plan ? planProgress(exchange.plan) : undefined
+    return where === undefined ? asked : `${asked} (${where})`
   }
 
   /** The other threads at work in a folder now, told to a project's thread that starts beside them. */

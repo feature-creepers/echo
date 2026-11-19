@@ -1,10 +1,13 @@
+import type { PlanStep } from '@repo/protocol'
+
 /**
  * What the core needs from an AI agent program such as Claude Code or Codex.
  *
  * A harness is an engine. The core gives it instructions, the address of its own tool server and what the
  * user said; it takes back reply text and the fact that tools were used. Everything a harness would add by
  * itself is switched off by its adapter: its memory, the user's settings and project files, the user's own
- * tool servers, its own tools, slash commands, plugins and sub-agents.
+ * tool servers, its own tools, slash commands, plugins and sub-agents. What it keeps of its own is its to-do list
+ * for a piece of work, which it reports as a plan.
  */
 
 /** What a session is for, which decides the model it runs on. Each adapter maps roles to its own models. */
@@ -154,6 +157,11 @@ export type SessionEvent =
       wrote?: string[]
       use?: string
     }
+  /**
+   * The plan the session keeps for the work under way, whole, as it now stands: the harness's own to-do list. Each
+   * new one replaces the last.
+   */
+  | { type: 'plan'; steps: PlanStep[] }
   /** The turn is over. Nothing more comes until the next `send`. */
   | { type: 'turn-end' }
   /** The session cannot go on, and why, in words for the user. It is closed. */

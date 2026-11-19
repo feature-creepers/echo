@@ -1,7 +1,15 @@
 import { z } from 'zod'
 import { activityUsedSchema, allowancesChangedSchema } from './events/access.ts'
 import { deviceCameraSchema } from './events/camera.ts'
-import { activitySchema, answerWrittenSchema, enginesChangedSchema, speechSaySchema, turnEndedSchema, turnStartedSchema } from './events/conversation.ts'
+import {
+  activitySchema,
+  answerWrittenSchema,
+  enginesChangedSchema,
+  speechSaySchema,
+  turnEndedSchema,
+  turnPlannedSchema,
+  turnStartedSchema
+} from './events/conversation.ts'
 import { workspaceChangedSchema } from './events/files.ts'
 import { libraryChangedSchema } from './events/library.ts'
 import { assistantStateChangedSchema, memoryChangedSchema } from './events/memory.ts'
@@ -18,6 +26,7 @@ export const eventSchema = z.discriminatedUnion('name', [
   turnEndedSchema,
   activitySchema,
   answerWrittenSchema,
+  turnPlannedSchema,
   enginesChangedSchema,
   viewShownSchema,
   viewClearedSchema,

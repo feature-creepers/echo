@@ -4,6 +4,7 @@ import type { Attachment, ComputerUse, Log, Role, Session, SessionRequest } from
 import { absolute } from '../computer/paths.ts'
 import { checkUse } from '../computer/scope.ts'
 import { system } from '../computer/system/index.ts'
+import { planFromCodex } from '../plan.ts'
 import { type Cli, type Launch, NotInstalled } from '../process/cli.ts'
 import { createSessionEvents } from '../process/events.ts'
 import { asArray, asObject, asString, type JsonObject } from '../process/json.ts'
@@ -386,6 +387,12 @@ export function openSession(request: SessionRequest, context: SessionContext): S
         }
         endOwed = true
         settle()
+        return
+      }
+      case 'turn/plan/updated': {
+        // Its plan tool's list for the work: told whole each time it changes.
+        const steps = planFromCodex(params)
+        if (steps) events.emit({ type: 'plan', steps })
         return
       }
       case 'item/agentMessage/delta': {

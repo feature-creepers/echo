@@ -44,6 +44,12 @@ export const answerWrittenSchema = eventPrefixSchema.extend({
   exchange: exchangeSchema
 })
 
+/** A thread's plan for a turn changed: a step was added, begun or done. The line of the transcript now carries it. */
+export const turnPlannedSchema = eventPrefixSchema.extend({
+  name: z.literal('turn.planned'),
+  exchange: exchangeSchema
+})
+
 /** Which harnesses can be used changed: one was installed, signed in or out, or another was picked. */
 export const enginesChangedSchema = eventPrefixSchema.extend({
   name: z.literal('engines.changed'),

@@ -17,6 +17,7 @@ import { accentStyle } from '../styles/accent.ts'
 import { settle } from '../styles/motion.ts'
 import { Markdown } from '../view/blocks/markdown.tsx'
 import { AnswerActions } from './full-answer.tsx'
+import { PlanList } from './plan-list.tsx'
 import { commandOf, stepSummary, stepTitle } from './steps.ts'
 import { StateDot } from './thread-list.tsx'
 import { whoAsked } from './who-asked.ts'
@@ -57,7 +58,8 @@ export function ThreadView({ client, thread, personas, onBack }: ThreadViewProps
     const stop = client.session.onEvent((event) => {
       const concerns =
         (event.name === 'activity' && event.step?.thread === thread) ||
-        ((event.name === 'turn.started' || event.name === 'turn.ended' || event.name === 'answer.written') && event.exchange.thread === thread) ||
+        ((event.name === 'turn.started' || event.name === 'turn.ended' || event.name === 'answer.written' || event.name === 'turn.planned') &&
+          event.exchange.thread === thread) ||
         (event.name === 'view.shown' && event.view.thread === thread) ||
         event.name === 'threads.changed'
       if (concerns) soon()
@@ -189,6 +191,8 @@ function ExchangeEntry({ exchange, steps, views, persona, about, client, changes
       </div>
 
       {files && files.length > 0 && <TurnChanges turn={exchange.turn} files={files} context={context} />}
+
+      <PlanList plan={exchange.plan} />
 
       {(steps.length > 0 || (!shownByCalls && views.length > 0)) && (
         <div className="grid grid-cols-1 gap-1">

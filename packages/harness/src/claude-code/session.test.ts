@@ -19,11 +19,12 @@ function harness(options: { env?: Environment; folder?: string } = {}) {
   const log = recordingLog()
   const at = options.folder ?? folder()
   const created: Harness = createClaudeCode({ folder: at, log, command: fake('fake-claude.ts'), env: options.env ?? process.env })
-  const session = (tools = false) => {
+  const session = (tools = false, project?: string) => {
     const opened = created.open({
-      role: 'orchestrator',
+      role: project === undefined ? 'orchestrator' : 'thread',
       instructions: 'You are Ada.',
-      ...(tools ? { tools: { url: 'http://127.0.0.1:4000/mcp', token: 'secret-token' } } : {})
+      ...(tools ? { tools: { url: 'http://127.0.0.1:4000/mcp', token: 'secret-token' } } : {}),
+      ...(project === undefined ? {} : { folder: project })
     })
     open.push(opened)
     return opened
@@ -143,6 +144,35 @@ describe('a Claude Code session', () => {
 
     expect(followed.text()).toBe('Refused: This tool is not available in this session.')
     expect(followed.events.some((event) => event.type === 'tool')).toBe(false)
+  })
+
+  it("keeps a project's plan in the CLI's own to-do list, told as a plan rather than a call", async () => {
+    const session = harness().session(true, folder())
+    const followed = follow(session)
+    session.send('plan the work')
+    await followed.until('turn-end')
+
+    expect(followed.text()).toBe('Planned.')
+    expect(followed.events.filter((event) => event.type === 'plan')).toEqual([
+      {
+        type: 'plan',
+        steps: [
+          { text: 'Read the code', state: 'done' },
+          { text: 'Fix it', state: 'current' }
+        ]
+      }
+    ])
+    expect(followed.events.some((event) => event.type === 'tool')).toBe(false)
+  })
+
+  it('gives no to-do list to a session that works on no project', async () => {
+    const session = harness().session(true)
+    const followed = follow(session)
+    session.send('plan the work')
+    await followed.until('turn-end')
+
+    expect(followed.text()).toBe('Refused: This tool is not available in this session.')
+    expect(followed.events.some((event) => event.type === 'plan')).toBe(false)
   })
 
   it('answers a question it does not know with an error, so the CLI is not left waiting', async () => {

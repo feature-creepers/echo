@@ -3,13 +3,17 @@ import { useId, useRef, useState } from 'react'
 import { BAR_LABEL } from '../access/access-indicator.tsx'
 import { lastPart } from '../changes/words.ts'
 import { Floating } from '../primitives/menu.tsx'
+import { planLine } from './plan.ts'
 import { StateDot } from './thread-list.tsx'
 
 /** What a thread at work is answering, in the person's words: the latest of its requests still running. */
 export function answeringOf(thread: string, exchanges: readonly Exchange[]): string | undefined {
-  const said = exchanges.findLast((line) => line.thread === thread && line.outcome === 'running')?.said.trim()
+  const said = runningOf(thread, exchanges)?.said.trim()
   return said === '' ? undefined : said
 }
+
+/** The latest of a thread's requests still running. */
+const runningOf = (thread: string, exchanges: readonly Exchange[]) => exchanges.findLast((line) => line.thread === thread && line.outcome === 'running')
 
 /**
  * The threads at work, under the composer: a few words saying how many, which open the list of them. Each can be
@@ -60,6 +64,8 @@ export function RunningThreads({
         <ul className="grid gap-px p-1">
           {working.map((thread) => {
             const answering = answeringOf(thread.id, exchanges)
+            // Where its plan stands says more of the work than the request it answers, which its title keeps.
+            const step = planLine(runningOf(thread.id, exchanges)?.plan)
             return (
               <li key={thread.id} className="flex items-center gap-1 rounded-sm hover:bg-white/[0.05]">
                 <button
@@ -73,9 +79,9 @@ export function RunningThreads({
                   className="grid min-w-0 flex-1 gap-0.5 rounded-sm px-2.5 py-1.5 text-left outline-none focus-visible:bg-white/[0.07]"
                 >
                   <span className="truncate text-[0.8125rem] text-text">{thread.title}</span>
-                  <span className="truncate text-label text-text-faint">
+                  <span className="truncate text-label text-text-faint" title={step === undefined ? undefined : answering}>
                     {thread.folder && <span title={thread.folder}>in {lastPart(thread.folder)} · </span>}
-                    {answering ?? 'working'}
+                    {step ?? answering ?? 'working'}
                   </span>
                 </button>
                 <button

@@ -68,6 +68,7 @@ export function followChannel(session: Session): ChannelState {
         if (event.exchange.outcome !== 'done') for (const listener of stops) listener(event.exchange.turn)
         return
       case 'answer.written':
+      case 'turn.planned':
         put(event.exchange)
         return
       case 'speech.say': {

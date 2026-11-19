@@ -20,13 +20,15 @@ export function Inspector({ events }: { events: readonly Logged[] }) {
               ? `${event.tool} ${event.phase}${event.step && stepSummary(event.step) ? ` · ${stepSummary(event.step)}` : ''}`
               : event.name === 'answer.written'
                 ? `${event.exchange.written?.length ?? 0} characters`
-                : event.name === 'turn.started' || event.name === 'turn.ended'
-                  ? `${event.exchange.outcome}${event.exchange.thread ? ` · thread ${event.exchange.thread.slice(0, 8)}` : ''}`
-                  : event.name === 'view.shown'
-                    ? `${event.view.title} · ${event.view.slot}${event.view.widget ? ' · saved' : ''}`
-                    : event.name === 'library.changed'
-                      ? `${event.library.widgets.length} saved`
-                      : ''
+                : event.name === 'turn.planned'
+                  ? `${event.exchange.plan?.length ?? 0} steps`
+                  : event.name === 'turn.started' || event.name === 'turn.ended'
+                    ? `${event.exchange.outcome}${event.exchange.thread ? ` · thread ${event.exchange.thread.slice(0, 8)}` : ''}`
+                    : event.name === 'view.shown'
+                      ? `${event.view.title} · ${event.view.slot}${event.view.widget ? ' · saved' : ''}`
+                      : event.name === 'library.changed'
+                        ? `${event.library.widgets.length} saved`
+                        : ''
         return (
           <li key={`${logged.at}-${event.name}-${summary}`}>
             <button

@@ -28,6 +28,20 @@ export const TURN_OUTCOMES = [
   'failed'
 ] as const
 
+/** How many steps a plan keeps, and how long each is: a plan longer than that is no longer one to follow. */
+export const PLAN_STEPS_MAX = 50
+export const PLAN_STEP_MAX_LENGTH = 500
+
+/**
+ * A step of the plan a thread keeps while it works through a request (docs/SPEC.md, section 7.11): the harness's own
+ * to-do list, what it is and where it stands. The one under way is `current`.
+ */
+export const planStepSchema = z.object({
+  text: z.string().min(1).max(PLAN_STEP_MAX_LENGTH),
+  state: z.enum(['todo', 'current', 'done'])
+})
+export type PlanStep = z.infer<typeof planStepSchema>
+
 /** One thing the user said and what the assistant answered: a line of the transcript. */
 export const exchangeSchema = z.object({
   turn: turnIdSchema,
@@ -55,6 +69,8 @@ export const exchangeSchema = z.object({
    * out. Only a thread's answer that has more to it than what was said carries one; small talk does not.
    */
   written: z.string().optional(),
+  /** The plan its thread kept while it worked, as it last stood: only work in several steps has one. */
+  plan: z.array(planStepSchema).max(PLAN_STEPS_MAX).optional(),
   outcome: z.enum(TURN_OUTCOMES),
   /** Why it could not answer, in words for the user. Only when the outcome is 'failed'. */
   problem: z.string().optional()

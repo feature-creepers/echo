@@ -227,6 +227,19 @@ function session(): void {
       await write(next, 0, [decision.behavior === 'allow' ? 'Allowed.' : `Refused: ${String(decision.message)}`])
       return result([user])
     }
+    if (text.includes('plan the work')) {
+      // The CLI's own to-do list: asked about as any tool, and given back as done.
+      const decision = await callTool(message, 0, 'TodoWrite', {
+        todos: [
+          { content: 'Read the code', status: 'completed', activeForm: 'Reading the code' },
+          { content: 'Fix it', status: 'in_progress', activeForm: 'Fixing it' }
+        ]
+      })
+      const next = id('msg')
+      start(next)
+      await write(next, 0, [decision.behavior === 'allow' ? 'Planned.' : `Refused: ${String(decision.message)}`])
+      return result([user])
+    }
     if (text.includes('foreign')) {
       const decision = await callTool(message, 0, 'Bash')
       const next = id('msg')

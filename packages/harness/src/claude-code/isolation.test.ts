@@ -47,6 +47,15 @@ describe('the isolation of Claude Code', () => {
     expect(reportedToolName('mcp__core__ui_render', true)).toBe('ui_render')
   })
 
+  it("gives a project's session the CLI's own to-do list, and counts it a leak in any other", () => {
+    const files = { instructions: 'i.txt', settings: 's.json' }
+    const tools = (args: string[]) => args[args.indexOf('--tools') + 1]
+    expect(tools(isolationArguments('haiku', { ...files, plan: true }))).toBe('TodoWrite')
+    expect(tools(isolationArguments('haiku', files))).toBe('')
+    expect(isolationLeaks({ tools: ['TodoWrite'] }, false, [], true)).toEqual([])
+    expect(isolationLeaks({ tools: ['TodoWrite'] })).toEqual(['its own tools (TodoWrite)'])
+  })
+
   it('sets how hard the model reasons only when a level was chosen', () => {
     const files = { instructions: 'i.txt', settings: 's.json' }
     const effort = (args: string[]) => (args.includes('--effort') ? args[args.indexOf('--effort') + 1] : undefined)
