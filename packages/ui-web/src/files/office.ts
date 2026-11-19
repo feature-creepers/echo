@@ -25,6 +25,7 @@ import {
   markdownTable,
   type OfficeFigure,
   type OfficePreview,
+  type PictureFigure,
   PROTECTED,
   partsText,
   plain,
@@ -32,7 +33,8 @@ import {
   SHEET_LIMIT,
   SLIDE_LIMIT
 } from './office-text.ts'
-import { type XmlEvent, xmlEvents } from './xml.ts'
+import { drawSlide } from './slide-drawing.ts'
+import { childAt, type XmlEvent, xmlEvents, xmlTree } from './xml.ts'
 
 export { type Archive, openArchive } from './archive.ts'
 export type { OfficeFigure, OfficePreview } from './office-text.ts'
@@ -630,13 +632,28 @@ function cellText(cell: { type: string; value: string; format: string }, strings
   }
 }
 
-/** A PowerPoint presentation's slides, in order: each one's title, the lines of its other text, and its pictures and charts. */
+/** The most bytes of slides drawn in one presentation: past them, a slide shows its text, pictures and charts. */
+const DRAWINGS_LIMIT = 96 * 1024 * 1024
+
+/**
+ * A PowerPoint presentation's slides, in order: each one's title and the lines of its other text, and the slide drawn
+ * as it looks (`slide-drawing.ts`); a slide that cannot be drawn shows its pictures and charts instead.
+ */
 export async function readPresentation(archive: Archive, options: NumberFormatOptions = {}): Promise<OfficePreview> {
   const presentation = await textOf(archive, 'ppt/presentation.xml')
   if (presentation === undefined) throw new Error('This is not a PowerPoint presentation.')
   const targets = await relationships(archive, 'ppt/presentation.xml')
-  const figures = new Figures(archive, options, embeddedCells(archive, options))
-  const slides: { title: string; lines: string[]; placed: number[] }[] = []
+  const cells = embeddedCells(archive, options)
+  const figures = new Figures(archive, options, cells)
+  const root = childAt(xmlTree(presentation), 'p:presentation')
+  const sizeOf = childAt(root, 'p:sldSz')?.attributes
+  const size = { width: Number(sizeOf?.cx) || 12_192_000, height: Number(sizeOf?.cy) || 6_858_000 }
+  const chart = async (part: string) => {
+    const xml = await textOf(archive, part)
+    return xml === undefined ? undefined : readChart(xml, options, () => cells({ part, xml }).catch(() => undefined))
+  }
+  const slides: { title: string; lines: string[]; placed: number[]; drawing?: PictureFigure | undefined }[] = []
+  let drawn = 0
   let cut = false
   for (const event of xmlEvents(presentation)) {
     if (event.type !== 'open' || event.name !== 'p:sldId') continue
@@ -647,9 +664,26 @@ export async function readPresentation(archive: Archive, options: NumberFormatOp
     const target = targets.get(event.attributes['r:id'] ?? '')
     const xml = target === undefined ? undefined : await textOf(archive, target)
     if (xml === undefined || target === undefined) continue
-    slides.push({ ...slideText(xml), placed: await drawnFigures(xml, await relationships(archive, target), figures) })
+    const text = slideText(xml)
+    const drawing =
+      drawn < DRAWINGS_LIMIT
+        ? await drawSlide(archive, target, size, { chart, defaultText: childAt(root, 'p:defaultTextStyle') }).catch(() => undefined)
+        : undefined
+    if (drawing) {
+      drawn += drawing.svg.length
+      const alt = [text.title, ...text.lines].filter(Boolean).join('. ')
+      slides.push({
+        ...text,
+        placed: [],
+        drawing: { kind: 'picture', type: 'image/svg+xml', bytes: drawing.svg, alt, width: Math.round(drawing.width), height: Math.round(drawing.height) }
+      })
+    } else slides.push({ ...text, placed: await drawnFigures(xml, await relationships(archive, target), figures) })
   }
-  return { kind: 'presentation', slides: slides.map(({ placed, ...slide }) => ({ ...slide, figures: figuresAt(figures, placed) })), cut }
+  return {
+    kind: 'presentation',
+    slides: slides.map(({ placed, drawing, ...slide }) => ({ ...slide, figures: figuresAt(figures, placed), ...(drawing ? { drawing } : {}) })),
+    cut
+  }
 }
 
 /** A slide's title, from its title placeholder, and the lines of its other shapes, in order. */

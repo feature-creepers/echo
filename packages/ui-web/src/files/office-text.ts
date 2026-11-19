@@ -15,10 +15,10 @@ export interface OfficeChart {
  * A picture or a chart a file holds, where the file places it. A picture in a format the window cannot show (an
  * EMF, a TIFF) or a chart with no values kept is `unshown`, and says what it is.
  */
-export type OfficeFigure =
-  | { kind: 'picture'; type: string; bytes: Uint8Array; alt: string; width?: number | undefined; height?: number | undefined }
-  | ({ kind: 'chart' } & OfficeChart)
-  | { kind: 'unshown'; alt: string; what: 'picture' | 'chart' }
+export type OfficeFigure = PictureFigure | ({ kind: 'chart' } & OfficeChart) | { kind: 'unshown'; alt: string; what: 'picture' | 'chart' }
+
+/** A picture of a file, from its bytes, at the size the file gives it. */
+export type PictureFigure = { kind: 'picture'; type: string; bytes: Uint8Array; alt: string; width?: number | undefined; height?: number | undefined }
 
 /**
  * What a preview of an Office file shows. A document's Markdown names its figures as pictures whose address is
@@ -27,7 +27,7 @@ export type OfficeFigure =
 export type OfficePreview =
   | { kind: 'document'; markdown: string; figures: OfficeFigure[]; cut: boolean }
   | { kind: 'workbook'; sheets: { name: string; rows: string[][]; cut: boolean; figures: OfficeFigure[] }[] }
-  | { kind: 'presentation'; slides: { title: string; lines: string[]; figures: OfficeFigure[] }[]; cut: boolean }
+  | { kind: 'presentation'; slides: { title: string; lines: string[]; figures: OfficeFigure[]; drawing?: PictureFigure }[]; cut: boolean }
 
 /** What a file protected with a password says, whatever its format. */
 export const PROTECTED = 'It is protected with a password, so its text cannot be read here.'

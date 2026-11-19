@@ -140,15 +140,18 @@ function OfficeShown({ preview, className }: { preview: OfficePreview; className
         ? preview.figures
         : preview.kind === 'workbook'
           ? preview.sheets.flatMap((sheet) => sheet.figures)
-          : preview.slides.flatMap((slide) => slide.figures),
+          : preview.slides.flatMap((slide) => (slide.drawing ? [slide.drawing, ...slide.figures] : slide.figures)),
     [preview]
   )
   const urls = useFigureUrls(all)
   const shown = all.some((figure) => figure.kind !== 'unshown')
+  const drawn = preview.kind === 'presentation' && preview.slides.some((slide) => slide.drawing)
   const note = (cut: boolean) => (
     <p className="mt-6 text-text-faint text-xs">
       {cut ? 'Showing the start of it. ' : ''}
-      {shown ? 'Its text, pictures and charts' : 'Its text only'}: open it with its app for how it looks.
+      {drawn
+        ? 'Its slides as drawn here: open it with its app for exactly how it looks.'
+        : `${shown ? 'Its text, pictures and charts' : 'Its text only'}: open it with its app for how it looks.`}
     </p>
   )
   switch (preview.kind) {
@@ -196,12 +199,19 @@ function OfficeShown({ preview, className }: { preview: OfficePreview; className
             {preview.slides.map((slide, index) => (
               <li key={index} className="grid gap-1.5 rounded-md border border-line px-4 py-3">
                 <span className="text-[0.6875rem] text-text-faint">Slide {index + 1}</span>
-                {slide.title !== '' && <span className="font-medium text-[0.9375rem]">{slide.title}</span>}
-                {slide.lines.map((line, at) => (
-                  <span key={at} className="text-[0.8125rem] text-text-soft">
-                    {line}
-                  </span>
-                ))}
+                {/* A slide drawn shows its text in the drawing, and says it in the drawing's description. */}
+                {slide.drawing ? (
+                  <Figure figure={slide.drawing} url={urls.get(slide.drawing)} alt={slide.drawing.alt} block />
+                ) : (
+                  <>
+                    {slide.title !== '' && <span className="font-medium text-[0.9375rem]">{slide.title}</span>}
+                    {slide.lines.map((line, at) => (
+                      <span key={at} className="text-[0.8125rem] text-text-soft">
+                        {line}
+                      </span>
+                    ))}
+                  </>
+                )}
                 {slide.figures.length > 0 && <Figures figures={slide.figures} urls={urls} className="mt-1.5" />}
               </li>
             ))}
