@@ -548,14 +548,15 @@ describe('an OpenDocument file previewed', () => {
         `<office:presentation>${page('one', 'Welcome', 'Ada &amp; team')}${page('two', 'Results', 'Up 12%', 'Ahead of plan')}</office:presentation>`
       )
     })
-    expect(await readOffice('odp', file)).toEqual({
-      kind: 'presentation',
-      slides: [
-        { title: 'Welcome', lines: ['Ada & team', 'In a shape'], figures: [] },
-        { title: 'Results', lines: ['Up 12%', 'Ahead of plan', 'In a shape'], figures: [] }
-      ],
-      cut: false
-    })
+    const read = await readOffice('odp', file)
+    expect(read.kind === 'presentation' && read.slides.map(({ drawing, ...slide }) => ({ ...slide, drawn: drawing?.alt }))).toEqual([
+      { title: 'Welcome', lines: ['Ada & team', 'In a shape'], figures: [], drawn: 'Welcome. Ada & team. In a shape' },
+      { title: 'Results', lines: ['Up 12%', 'Ahead of plan', 'In a shape'], figures: [], drawn: 'Results. Up 12%. Ahead of plan. In a shape' }
+    ])
+    // Each page is drawn as it looks, without its notes.
+    const drawn = read.kind === 'presentation' ? new TextDecoder().decode(read.slides[1]?.drawing?.bytes) : ''
+    expect(drawn).toContain('>Ahead of plan</span>')
+    expect(drawn).not.toContain('Speaker notes')
   })
 
   it('shows a text with its format, links, numbered lists, and the pictures and charts its frames show, not the text of a frame', async () => {
@@ -636,7 +637,12 @@ describe('an OpenDocument file previewed', () => {
       ),
       'Pictures/1.png': PNG
     })
-    expect(await readOffice('odp', presentation)).toEqual({ kind: 'presentation', slides: [{ title: 'Hello', lines: [], figures: [logo] }], cut: false })
+    // A page drawn shows its pictures in its drawing.
+    const read = await readOffice('odp', presentation)
+    const slide = read.kind === 'presentation' ? read.slides[0] : undefined
+    expect(slide && { ...slide, drawing: undefined }).toEqual({ title: 'Hello', lines: [], figures: [], drawing: undefined })
+    const drawn = new TextDecoder().decode(slide?.drawing?.bytes)
+    expect(drawn.split('data:image/png;base64,').length).toBe(2)
   })
 
   it('says when a file is protected with a password, as its manifest says its content is encrypted', async () => {

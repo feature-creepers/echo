@@ -33,9 +33,10 @@ import {
   SHEET_LIMIT,
   SLIDE_LIMIT
 } from './office-text.ts'
+import { drawOpenPage, type OpenDeck, openDeck } from './open-slide-drawing.ts'
 import { drawSlide } from './slide-drawing.ts'
 import { DRAWINGS_LIMIT } from './slide-svg.ts'
-import { childAt, type XmlEvent, xmlEvents, xmlTree } from './xml.ts'
+import { childAt, childrenNamed, type XmlEvent, xmlEvents, xmlTree } from './xml.ts'
 
 export { type Archive, openArchive } from './archive.ts'
 export type { OfficeFigure, OfficePreview } from './office-text.ts'
@@ -1153,9 +1154,18 @@ export async function readOpenPresentation(archive: Archive): Promise<OfficePrev
   const { events } = openDocumentBody(content, SLIDE_PASSED_OVER)
   const figures = new Figures(archive)
   const placed = await openFrames(content, 'draw:page', figures)
-  const slides: { title: string; lines: string[]; figures: OfficeFigure[] }[] = []
+  const tree = xmlTree(content)
+  const pages = childrenNamed(childAt(tree, 'office:document-content', 'office:body', 'office:presentation'), 'draw:page')
+  let deck: OpenDeck | undefined
+  try {
+    deck = await openDeck(archive, tree)
+  } catch {
+    deck = undefined
+  }
+  let drawn = 0
+  const slides: { title: string; lines: string[]; figures: OfficeFigure[]; drawing?: PictureFigure }[] = []
   let cut = false
-  let slide: { title: string; lines: string[]; figures: OfficeFigure[] } | undefined
+  let slide: { title: string; lines: string[]; figures: OfficeFigure[]; drawing?: PictureFigure } | undefined
   let shape: { title: boolean; paragraphs: string[] } | undefined
   let shapes = 0
   let paragraph: string | undefined
@@ -1187,6 +1197,22 @@ export async function readOpenPresentation(archive: Archive): Promise<OfficePrev
       else slide.lines.push(...shape.paragraphs)
       shape = undefined
     } else if (event.name === 'draw:page' && slide) {
+      // The page drawn as it looks, in place of its pictures and charts.
+      const page = pages[slides.length]
+      const drawing = deck && page && drawn < DRAWINGS_LIMIT ? await drawOpenPage(deck, page, slides.length + 1).catch(() => undefined) : undefined
+      if (drawing) {
+        drawn += drawing.svg.length
+        const alt = [slide.title, ...slide.lines].filter(Boolean).join('. ')
+        slide.figures = []
+        slide.drawing = {
+          kind: 'picture',
+          type: 'image/svg+xml',
+          bytes: drawing.svg,
+          alt,
+          width: Math.round(drawing.width),
+          height: Math.round(drawing.height)
+        }
+      }
       slides.push(slide)
       slide = undefined
     }
