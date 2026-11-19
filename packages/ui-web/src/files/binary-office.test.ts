@@ -1729,7 +1729,7 @@ const codePageSummary = (codePage: number) =>
  * whose text keeps a title's kind, the second with a group, then its masters in a list of their own; and the text it
  * keeps for searching.
  */
-function ninetyFiveDeck(searched: string, options: { title?: number[]; codePage?: number } = {}): Uint8Array {
+function ninetyFiveDeck(searched: string, options: { title?: number[]; body?: string; codePage?: number } = {}): Uint8Array {
   const shapes = (...children: Uint8Array[]) => ninetyFiveContainer(0x0bb8, children)
   const slide = (...children: Uint8Array[]) => ninetyFiveContainer(0x03ee, [ninetyFiveAtom(0x03ef, new Bytes().zeros(8)), ...children])
   const notes = ninetyFiveContainer(0x03f0, [shapes(ninetyFiveShape(true, 2, ascii('Speaker notes')))])
@@ -1738,7 +1738,7 @@ function ninetyFiveDeck(searched: string, options: { title?: number[]; codePage?
       notes,
       shapes(
         ninetyFiveShape(true, 0, options.title ?? ascii('Plans')),
-        ninetyFiveShape(true, 1, ascii('Train at 9\rMuseum\vthen dinner')),
+        ninetyFiveShape(true, 1, ascii(options.body ?? 'Train at 9\rMuseum\vthen dinner')),
         ninetyFiveShape(false, 0, ascii('Seen from the train'))
       )
     ),
@@ -1776,6 +1776,16 @@ describe('a PowerPoint 95 presentation', () => {
       deck: ninetyFiveDeck(`${String.fromCharCode(...HELLO)}${searched.slice(5)}`, { title: HELLO, codePage: 1251 }),
       slides: [
         { title: 'Привет', lines: ['Train at 9', 'Museum then dinner', 'Seen from the train'], figures: [] },
+        { title: 'Welcome', lines: [], figures: [] }
+      ]
+    },
+    {
+      name: 'its fields, stars in its records, with the values the text kept for searching gives them',
+      deck: ninetyFiveDeck('Plans\r\r3/23/96: train at 9:15 AM\rMuseum, slide 1\r\rSeen from the train\r\rWelcome\r\r', {
+        body: '*: train at *\rMuseum, slide *'
+      }),
+      slides: [
+        { title: 'Plans', lines: ['3/23/96: train at 9:15 AM', 'Museum, slide 1', 'Seen from the train'], figures: [] },
         { title: 'Welcome', lines: [], figures: [] }
       ]
     }

@@ -1796,7 +1796,8 @@ function ninetyFiveTexts(
  * The slides of a PowerPoint 95 presentation, in the order of its first list, the one of its slides, before its
  * masters'; and whether their text, in the order of its shapes, is the text it keeps for searching (`Text_Content`),
  * slide after slide and shape after shape, as PowerPoint 95 writes it there: what tells that its records were read as
- * they were meant.
+ * they were meant. A field (a date, a time, a slide's number) is a star in a shape's text, and its value as it was
+ * last saved is in the text kept for searching: it is read there.
  */
 function ninetyFiveSlides(
   raw: Uint8Array,
@@ -1807,28 +1808,57 @@ function ninetyFiveSlides(
   const [top] = ninetyFiveChildren(stream, 0, stream.length)
   const list = ninetyFiveChild(stream, ninetyFiveChild(stream, top, NINETY_FIVE.document), NINETY_FIVE.list)
   const slides: { title: string; lines: string[] }[] = []
-  const kept = searched === undefined ? undefined : spacedOnce(searched)
+  const kept = searched === undefined ? undefined : paragraphed(searched)
   let from = 0
   for (const record of list ? ninetyFiveChildren(stream, list.at, list.at + list.size) : []) {
     if (record.type !== NINETY_FIVE.slide || !record.container) continue
     if (slides.length >= SLIDE_LIMIT) return { slides, cut: true, searched: from >= 0 }
     const slide = { title: '', lines: [] as string[] }
     for (const text of ninetyFiveTexts(stream, record, decoder)) {
-      if (text.title && slide.title === '') slide.title = text.lines.join(' ')
-      else slide.lines.push(...text.lines)
+      let lines = text.lines
       if (kept !== undefined && from >= 0) {
-        const shape = spacedOnce(text.lines.join(' '))
-        const found = kept.indexOf(shape, from)
-        from = found < 0 ? -1 : found + shape.length
+        const found = searchedShape(kept, paragraphed(lines.join('\r')), from)
+        from = found ? found.end : -1
+        if (found) lines = found.text.split('\r').filter(Boolean)
       }
+      if (text.title && slide.title === '') slide.title = lines.join(' ')
+      else slide.lines.push(...lines)
     }
     slides.push(slide)
   }
   return { slides, cut: false, searched: from >= 0 }
 }
 
-/** Text with its runs of spaces, line breaks and paragraph ends as one space, to compare two copies of it. */
-const spacedOnce = (text: string) => text.replace(/\s+/g, ' ').trim()
+/** Text with its runs of spaces and line breaks as one space, and its paragraph ends, blank paragraphs gone, as one, to compare two copies of it. */
+const paragraphed = (text: string) =>
+  text
+    .replace(/[^\S\r]+/g, ' ')
+    .replace(/ ?\r[\r ]*/g, '\r')
+    .trim()
+
+/**
+ * Where a shape's text is in the text kept for searching, from a place on, and its text with each field's value: the
+ * text between the parts around its star, within one paragraph; from the paragraph's start when the shape opens with
+ * a field, to its end when the shape ends with one. Each part is found after the one before, so the search goes
+ * through the text once.
+ */
+function searchedShape(kept: string, shape: string, from: number): { end: number; text: string } | undefined {
+  const [first = '', ...parts] = shape.split('*')
+  // A shape's text starts a paragraph of the text kept, so one that opens with a field starts at the next paragraph.
+  const start = first !== '' ? kept.indexOf(first, from) : from === 0 || kept[from - 1] === '\r' ? from : kept.indexOf('\r', from) + 1
+  if (start < from || start < 0) return undefined
+  let end = start + first.length
+  let text = first
+  for (const [index, part] of parts.entries()) {
+    const paragraphEnd = kept.indexOf('\r', end)
+    const next = part === '' && index === parts.length - 1 ? (paragraphEnd < 0 ? kept.length : paragraphEnd) : kept.indexOf(part, end)
+    const value = next < 0 ? '\r' : kept.slice(end, next)
+    if (value.includes('\r')) return undefined
+    text += value + part
+    end = next + part.length
+  }
+  return { end, text }
+}
 
 /**
  * The code page a compound file's summary names for its text (its first property, `PID_CODEPAGE`), when it names one
@@ -1856,8 +1886,8 @@ function summaryCodePage(file: Compound): number | undefined {
 /**
  * A presentation of PowerPoint 95, slide by slide in the order of its list, each with its title and the lines of its
  * other text, from its records; when they cannot be read, or their text is not the one it keeps for searching, that
- * text instead. Its slides are not drawn: no public description of its records says how they look, and no app of
- * today opens them to compare.
+ * text instead. Microsoft never described these records; libmwaw, the library LibreOffice opens them with, reads the
+ * same ones. Its slides are not drawn: nothing at hand shows how PowerPoint 95 drew them, to check a drawing against.
  */
 function readNinetyFive(file: Compound, raw: Uint8Array): OfficePreview {
   const decoder = codePageDecoder(summaryCodePage(file) ?? 1252)
