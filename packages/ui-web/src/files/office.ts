@@ -3,9 +3,9 @@
  * PowerPoint's (.docx, .xlsx, .pptx) and OpenDocument's (.odt, .ods, .odp). Each is a ZIP archive of XML parts,
  * unpacked with the window's own decompression and read for what a preview shows. A document becomes Markdown, shown
  * as the Prose block shows it, with its strong, slanted and struck text, its links, and its pictures and charts where
- * they are; a workbook, its sheets as tables, each followed by its pictures and charts; a presentation, the text of
- * each slide and its pictures and charts. The rest of their look is left to their app. The older binary formats (.doc,
- * .xls, .ppt) are compound files, read by `binary-office.ts`.
+ * they are, and a Word document its pages as they look (`word-look.ts`); a workbook, its sheets as tables, each followed
+ * by its pictures and charts; a presentation, the text of each slide, its pictures and charts, and the slide drawn as
+ * it looks. The older binary formats (.doc, .xls, .ppt) are compound files, read by `binary-office.ts`.
  */
 
 import { type Archive, openArchive, partOf, relationships, resolvePart, textOf } from './archive.ts'
@@ -36,6 +36,7 @@ import {
 import { drawOpenPage, type OpenDeck, openDeck } from './open-slide-drawing.ts'
 import { drawSlide } from './slide-drawing.ts'
 import { DRAWINGS_LIMIT } from './slide-svg.ts'
+import { readWordLook } from './word-look.ts'
 import { childAt, childrenNamed, type XmlEvent, xmlEvents, xmlTree } from './xml.ts'
 
 export { type Archive, openArchive } from './archive.ts'
@@ -433,7 +434,9 @@ export async function readDocument(archive: Archive, options: NumberFormatOption
         break
     }
   }
-  return { kind: 'document', markdown: joinBlocks(blocks), figures: figures.list, cut: blocks.length >= BLOCK_LIMIT }
+  // Its look is read after its text, with the same figures; a document whose look cannot be read shows its text.
+  const look = await readWordLook(archive, figures).catch(() => undefined)
+  return { kind: 'document', markdown: joinBlocks(blocks), figures: figures.list, cut: blocks.length >= BLOCK_LIMIT || (look?.cut ?? false), look: look?.look }
 }
 
 /** A cell's column from its reference: "A1" is 0, "AB7" is 27. */

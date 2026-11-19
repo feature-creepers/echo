@@ -4,6 +4,8 @@
  * is shown.
  */
 
+import type { DocumentLook } from './document-look.ts'
+
 /** A chart as its file last drew it: its kind, as near as the Chart block draws, and the values it kept. */
 export interface OfficeChart {
   title: string
@@ -22,10 +24,10 @@ export type PictureFigure = { kind: 'picture'; type: string; bytes: Uint8Array; 
 
 /**
  * What a preview of an Office file shows. A document's Markdown names its figures as pictures whose address is
- * `figure:` and their place in `figures`.
+ * `figure:` and their place in `figures`; its look, when it could be read, is shown in its place.
  */
 export type OfficePreview =
-  | { kind: 'document'; markdown: string; figures: OfficeFigure[]; cut: boolean }
+  | { kind: 'document'; markdown: string; figures: OfficeFigure[]; cut: boolean; look?: DocumentLook | undefined }
   | { kind: 'workbook'; sheets: { name: string; rows: string[][]; cut: boolean; figures: OfficeFigure[] }[] }
   | { kind: 'presentation'; slides: { title: string; lines: string[]; figures: OfficeFigure[]; drawing?: PictureFigure }[]; cut: boolean }
 

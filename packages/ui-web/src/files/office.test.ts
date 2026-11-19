@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { textOf } from './archive.ts'
-import { columnOf, decodeEntities, openArchive, readOffice, xmlEvents } from './office.ts'
+import { columnOf, decodeEntities, type OfficePreview, openArchive, readOffice, xmlEvents } from './office.ts'
+
+/** A Word document's preview without its look, which `word-look.test.ts` checks, once it is known to have one. */
+function textual(preview: OfficePreview): OfficePreview {
+  if (preview.kind !== 'document') return preview
+  const { look, ...text } = preview
+  expect(look?.pages.length).toBeGreaterThan(0)
+  return text
+}
 
 /** Deflate bytes as a ZIP archive stores them, with the window's own compression. */
 async function deflate(bytes: Uint8Array): Promise<Uint8Array> {
@@ -156,7 +164,7 @@ describe('an Office file previewed', () => {
       `<w:tbl><w:tr><w:tc>${paragraph('Day')}</w:tc><w:tc>${paragraph('Cost')}</w:tc></w:tr><w:tr><w:tc>${paragraph('1')}</w:tc><w:tc>${paragraph('40 | 50')}</w:tc></w:tr></w:tbl>`
     ].join('')
     const file = await zip({ 'word/document.xml': `<w:document ${W}><w:body>${body}</w:body></w:document>`, 'word/styles.xml': styles })
-    expect(await readOffice('docx', file)).toEqual({
+    expect(textual(await readOffice('docx', file))).toEqual({
       kind: 'document',
       markdown: [
         '# Trip to Rome',
@@ -263,7 +271,7 @@ describe('an Office file previewed', () => {
       'word/media/image3.wmf': WMF,
       'word/charts/chart1.xml': CHART
     })
-    expect(await readOffice('docx', file)).toEqual({
+    expect(textual(await readOffice('docx', file))).toEqual({
       kind: 'document',
       markdown: [
         'A **bold** and _slanted_ word, not bold, ~~gone~~, **strong**',
@@ -294,7 +302,7 @@ describe('an Office file previewed', () => {
       `<w:p><w:r><w:t xml:space="preserve">Energy: </w:t></w:r>${math(`${term('E=m')}<m:sSup><m:e>${term('c')}</m:e><m:sup>${term('2')}</m:sup></m:sSup>`)}</w:p>` +
       `<w:p><m:oMathPara>${math(term('a_b'))}${math(`<m:f><m:num>${term('1')}</m:num><m:den>${term('2')}</m:den></m:f>`)}</m:oMathPara></w:p>`
     const file = await zip({ 'word/document.xml': `<w:document ${W}><w:body>${body}</w:body></w:document>` })
-    expect(await readOffice('docx', file)).toEqual({ kind: 'document', markdown: 'Energy: E=mc²\n\na\\_b  \n1/2', figures: [], cut: false })
+    expect(textual(await readOffice('docx', file))).toEqual({ kind: 'document', markdown: 'Energy: E=mc²\n\na\\_b  \n1/2', figures: [], cut: false })
   })
 
   it('shows the pictures and charts of a workbook’s sheets and of a presentation’s slides, in order, without a slide’s background', async () => {
