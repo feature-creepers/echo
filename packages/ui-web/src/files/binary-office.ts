@@ -368,9 +368,18 @@ function wordPictures(
     }
     return found
   }
+  // An object shown as its program's icon keeps it: its storage's `ObjInfo` stream says so (`fIcon`).
+  const shownAsIcon = (object: number) => {
+    try {
+      return ((objects?.storage(`_${object}`)?.stream('\x03ObjInfo')?.[0] ?? 0) & 0x40) !== 0
+    } catch {
+      return false
+    }
+  }
   const held = (figure: number | undefined, field: { object?: number | undefined; program?: string | undefined }) => {
     const { object, program } = field
-    if (figure !== undefined && object !== undefined && program !== undefined && streams.read) figures.later(figure, () => readObject(object, program))
+    if (figure !== undefined && object !== undefined && program !== undefined && streams.read)
+      figures.later(figure, () => readObject(object, program), shownAsIcon(object))
     return figure
   }
 

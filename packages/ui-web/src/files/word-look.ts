@@ -1410,7 +1410,8 @@ class WordReader {
     const target = data?.attributes['r:id']
     if (target === undefined) return undefined
     // An equation of Equation Editor or MathType is shown by its picture, its linear text the picture's words; what
-    // another object holds is shown in its place when it is read here, a worksheet as its sheet.
+    // another object holds is shown in its place when it is read here, a worksheet as its sheet, unless it shows as its
+    // program's icon, which it keeps.
     const object = findNode(node, (one) => one.name === 'o:OLEObject')
     const program = object?.attributes.ProgID ?? ''
     const part = story.targets.get(object?.attributes['r:id'] ?? '')
@@ -1418,7 +1419,8 @@ class WordReader {
     // A document's text is the words of its picture.
     const words = equation ?? (await this.figures.text(part, program))?.lines.join(' ')
     const alt = words ?? data?.attributes['o:title'] ?? ''
-    const held = object && words === undefined ? await this.figures.object(part, program, alt) : undefined
+    const icon = object?.attributes.DrawAspect === 'Icon'
+    const held = object && words === undefined && !icon ? await this.figures.object(part, program, alt) : undefined
     const figure = held ?? (await this.figures.picture(story.targets.get(target), alt, { width: lengthPixels(width), height: lengthPixels(height) }))
     if (figure === undefined) return undefined
     return { placed: { figure, alt, width: points(width), height: points(height) } }

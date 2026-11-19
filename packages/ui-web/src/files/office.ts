@@ -360,7 +360,7 @@ export async function readDocument(archive: Archive, options: NumberFormatOption
   let equation: XmlEvent[] | undefined
   let displayed = false
   // The object of another app a drawing holds: its relationship's identifier and its program.
-  let object: { id: string; program: string } | undefined
+  let object: { id: string; program: string; icon: boolean } | undefined
 
   const finish = (paragraph: WordParagraph) => {
     write(paragraph)
@@ -499,7 +499,7 @@ export async function readDocument(archive: Archive, options: NumberFormatOption
           break
         case 'o:OLEObject': {
           const id = event.attributes['r:id']
-          if (drawing && id !== undefined) object = { id, program: event.attributes.ProgID ?? '' }
+          if (drawing && id !== undefined) object = { id, program: event.attributes.ProgID ?? '', icon: event.attributes.DrawAspect === 'Icon' }
           break
         }
         case 'wp:extent':
@@ -563,8 +563,11 @@ export async function readDocument(archive: Archive, options: NumberFormatOption
             paragraph.held = [...(paragraph.held ?? []), quoted]
             break
           }
-          // What another object holds is shown in place of its picture when it is read here: a worksheet as its sheet.
-          const figure = (held && (await figures.object(targets.get(held.id), held.program, placed.alt))) ?? (await drawnFigure(placed, targets, figures))
+          // What another object holds is shown in place of its picture when it is read here: a worksheet as its sheet,
+          // unless it shows as its program's icon, which it keeps.
+          const figure =
+            (held && !held.icon ? await figures.object(targets.get(held.id), held.program, placed.alt) : undefined) ??
+            (await drawnFigure(placed, targets, figures))
           if (figure !== undefined && paragraph) paragraph.parts.push({ figure, alt: placed.alt })
         }
         break

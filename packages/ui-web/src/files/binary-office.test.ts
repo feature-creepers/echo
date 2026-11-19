@@ -540,6 +540,19 @@ describe('an object of another app in a document or a presentation', () => {
     // In its look, in the place of its picture, at the size its picture is given.
     const opening = preview.kind === 'document' ? preview.look?.pages[0]?.bands[0]?.blocks[0] : undefined
     expect(opening).toMatchObject({ spans: [{ placed: { figure: 0, width: 75, height: 30 } }] })
+    // One shown as its program's icon keeps its icon, in the text and in the look.
+    const iconic = storedZip({
+      'word/document.xml': `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body.replace('r:id="rId2"', 'DrawAspect="Icon" r:id="rId2"')}</w:body></w:document>`,
+      'word/_rels/document.xml.rels':
+        '<Relationships><Relationship Id="rId1" Target="media/image1.png"/><Relationship Id="rId2" Target="embeddings/Microsoft_Excel_Worksheet.xlsx"/></Relationships>',
+      'word/media/image1.png': new Uint8Array(PNG),
+      'word/embeddings/Microsoft_Excel_Worksheet.xlsx': workbook
+    })
+    const icon = await readOffice('docx', iconic)
+    expect(icon).toMatchObject({ markdown: '![](figure:0)', figures: [{ kind: 'picture', type: 'image/png' }] })
+    expect(icon.kind === 'document' && icon.figures).toHaveLength(1)
+    const placed = icon.kind === 'document' ? icon.look?.pages[0]?.bands[0]?.blocks[0] : undefined
+    expect(placed).toMatchObject({ spans: [{ placed: { figure: 0 } }] })
   })
 
   it('shows a worksheet of Excel 97 held in a Word 97 document as its sheet, and its picture when it holds pictures', async () => {
@@ -557,7 +570,7 @@ describe('an object of another app in a document or a presentation', () => {
       .done()
     const object = new Bytes().u16(0x080a).u8(1).u16(0x0855).u8(1).u16(0x6a03).u32(79).done()
     const picture = new Bytes().u16(0x6a03).u32(0).u16(0x0855).u8(1).done()
-    const document = (book: Uint8Array) =>
+    const document = (book: Uint8Array, icon = false) =>
       wordDocument(
         [
           { text, format: formatting(0) },
@@ -574,7 +587,9 @@ describe('an object of another app in a document or a presentation', () => {
           anchors: [],
           drawings: new Uint8Array(),
           blip: new Uint8Array(),
-          objects: { _79: { Workbook: openCompound(book).stream('Workbook') as Uint8Array } }
+          objects: {
+            _79: { Workbook: openCompound(book).stream('Workbook') as Uint8Array, ...(icon ? { '\x03ObjInfo': new Uint8Array([0x40, 0, 3, 0, 0x0d, 0]) } : {}) }
+          }
         }
       )
     const read = await readOffice('doc', document(workbook()))
@@ -590,6 +605,9 @@ describe('an object of another app in a document or a presentation', () => {
     expect(read).toMatchObject({ markdown: '![](figure:0)\n\nEnd', figures: [{ kind: 'sheet', name: 'Budget', rows }] })
     const pictured = await readOffice('doc', document(picturedWorkbook()))
     expect(pictured).toMatchObject({ figures: [{ kind: 'picture', type: 'image/png' }] })
+    // One shown as its program's icon, as its storage's `ObjInfo` says, keeps its icon.
+    const icon = await readOffice('doc', document(workbook(), true))
+    expect(icon).toMatchObject({ figures: [{ kind: 'picture', type: 'image/png' }] })
   })
 
   it('shows a document of Word held in a document by its text, quoted after its paragraph, the text its picture’s words', async () => {
