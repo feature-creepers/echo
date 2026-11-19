@@ -36,8 +36,10 @@ import {
   BLOCK_LIMIT,
   COLUMN_LIMIT,
   figureMark,
+  heldLines,
   joinBlocks,
   markdownTable,
+  type ObjectRead,
   type ObjectReader,
   type OfficeChart,
   type OfficeFigure,
@@ -537,18 +539,25 @@ function wordPictures(
 
   // What an object holds, shown in place of its picture once read when it is read here: a worksheet as its sheet. The
   // object's storage gives the reader the stream that holds it, a workbook of 2007 or later's package or 97's own.
-  const held = (figure: number | undefined, field: { object?: number | undefined; program?: string | undefined }) => {
+  const reads = new Map<number, Promise<ObjectRead | undefined>>()
+  const readObject = (object: number, program: string): Promise<ObjectRead | undefined> => {
     const { read } = streams
-    if (figure === undefined || field.object === undefined || field.program === undefined || !read) return figure
-    const { program } = field
-    let storage: Compound | undefined
-    try {
-      storage = objects?.storage(`_${field.object}`)
-    } catch {
-      storage = undefined
+    let found = reads.get(object)
+    if (!found) {
+      let storage: Compound | undefined
+      try {
+        storage = objects?.storage(`_${object}`)
+      } catch {
+        storage = undefined
+      }
+      found = storage && read ? read(program, storage).catch(() => undefined) : Promise.resolve(undefined)
+      reads.set(object, found)
     }
-    const bytes = storage && (storage.stream('Package') ?? storage.stream('Workbook') ?? storage.stream('Book'))
-    if (bytes) figures.later(figure, () => read(program, bytes))
+    return found
+  }
+  const held = (figure: number | undefined, field: { object?: number | undefined; program?: string | undefined }) => {
+    const { object, program } = field
+    if (figure !== undefined && object !== undefined && program !== undefined && streams.read) figures.later(figure, () => readObject(object, program))
     return figure
   }
 
@@ -582,6 +591,10 @@ function wordPictures(
      */
     inline(place: number, field: { object?: number | undefined; chart: boolean; program?: string | undefined }): number | undefined {
       return once(`inline:${place}`, () => inlineAt(place, field))
+    },
+    /** What an object holds, by the number of its storage and its program, read once: a document's text, a sheet. */
+    read(object: number | undefined, program: string | undefined): Promise<ObjectRead | undefined> {
+      return object === undefined || program === undefined ? Promise.resolve(undefined) : readObject(object, program)
     },
     /** The equation of Equation Editor or MathType an object holds, by the number of its storage, as linear text. */
     equation(object: number | undefined): string | undefined {
@@ -641,7 +654,16 @@ export async function readOlderWord(bytes: Uint8Array, objects?: ObjectReader): 
   // Word 1 wrote its documents as Word 2 did, a few of its places and properties its own.
   const one = readU16(bytes, 0) === 0xa59b
   const two = one || readU16(bytes, 0) === 0xa5db
-  const file = two ? undefined : openCompound(bytes)
+  return readWord(two ? undefined : openCompound(bytes), bytes, one, objects)
+}
+
+/** A Word 97 document held as an object, from its storage, as `readOlderWord` reads one, its own objects by their pictures. */
+export function readOlderWordStorage(storage: Compound): Promise<OfficePreview> {
+  return readWord(storage, new Uint8Array(), false)
+}
+
+async function readWord(file: Compound | undefined, bytes: Uint8Array, one: boolean, objects?: ObjectReader): Promise<OfficePreview> {
+  const two = !file
   const stream = file ? file.stream('WordDocument') : bytes
   if (!stream) throw new Error('This is not a Word document.')
   const word = reader(stream)
@@ -857,6 +879,8 @@ export async function readOlderWord(bytes: Uint8Array, objects?: ObjectReader): 
 
   // Fields hold their code, then what they show: only what they show is text. An object's code names its kind.
   const fields: { code: string; coding: boolean; object?: number | undefined }[] = []
+  // The text of the documents held as objects, by the place of their figures.
+  const quotes = new Map<number, Promise<ObjectRead | undefined>>()
   const figure = (found: number | undefined) => {
     if (found !== undefined) paragraph += `${FIGURE_START}${found}${FIGURE_END}`
   }
@@ -878,15 +902,14 @@ export async function readOlderWord(bytes: Uint8Array, objects?: ObjectReader): 
     else if (code === 0x01 && place >= 0) {
       // An equation of Equation Editor or MathType is written as linear text in its place, as Word's own are.
       const equation = pictures?.equation(field?.object)
+      const program = /^\s*EMBED\s+(\S+)/i.exec(field?.code ?? '')?.[1]
       if (equation !== undefined) paragraph += equation
-      else
-        figure(
-          pictures?.inline(place, {
-            object: field?.object,
-            chart: /^\s*EMBED\s+\S*Chart/i.test(field?.code ?? ''),
-            program: /^\s*EMBED\s+(\S+)/i.exec(field?.code ?? '')?.[1]
-          })
-        )
+      else {
+        const found = pictures?.inline(place, { object: field?.object, chart: /^\s*EMBED\s+\S*Chart/i.test(field?.code ?? ''), program })
+        figure(found)
+        // A document held as an object is shown by its text, once read, after the paragraph that holds it.
+        if (found !== undefined && pictures && /^Word\.Document\b/i.test(program ?? '')) quotes.set(found, pictures.read(field?.object, program))
+      }
     } else if (code === 0x08) figure(pictures?.floating(character))
     else if (code === 0x09 || (code >= 0x20 && char !== FIGURE_START && char !== FIGURE_END)) paragraph += char
   }
@@ -948,10 +971,21 @@ export async function readOlderWord(bytes: Uint8Array, objects?: ObjectReader): 
   await pictures?.figures.drawPacked()
   const figures = pictures?.figures.list ?? []
   // Each figure's place in the text becomes its mark, once the text around it is written as Markdown.
-  const markdown = joinBlocks(blocks).replace(new RegExp(`${FIGURE_START}(\\d+)${FIGURE_END}`, 'g'), (_, place: string) => {
-    const found = figures[Number(place)]
-    return found ? figureMark(Number(place), found.kind === 'chart' ? found.title : found.alt) : ''
-  })
+  const held = new Map<number, ObjectRead | undefined>()
+  for (const [place, read] of quotes) held.set(place, await read)
+  // A document held is quoted on lines of its own, or written on its cell's line in a table.
+  const markdown = joinBlocks(blocks)
+    .replace(new RegExp(`${FIGURE_START}(\\d+)${FIGURE_END}`, 'g'), (_, place: string, at: number, whole: string) => {
+      const text = held.get(Number(place))
+      if (text?.kind === 'text') return whole[whole.lastIndexOf('\n', at) + 1] === '|' ? plain(text.lines.join(' ')) : `\n\n${text.markdown}\n\n`
+      const found = figures[Number(place)]
+      return found ? figureMark(Number(place), found.kind === 'chart' ? found.title : found.alt) : ''
+    })
+    // The space around a quotation, and the blank lines it doubles, are left out.
+    .replace(/[ \t]+\n\n>/g, '\n\n>')
+    .replace(/(\n>[^\n]*)\n\n[ \t]+/g, '$1\n\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/^\n+|\n+$/g, '')
   const cut = blocks.length >= BLOCK_LIMIT || read >= CHARACTER_LIMIT
   return look ? { kind: 'document', markdown, figures, cut: cut || look.cut, look: look.look } : { kind: 'document', markdown, figures, cut }
 }
@@ -2255,6 +2289,16 @@ function presentationObjects(raw: Uint8Array, container: PowerPointRecord): Map<
   return objects
 }
 
+/** The program an object's storage names in its `CompObj` stream (`Word.Document.8`); empty when it names none. */
+function storageProgram(storage: Compound): string {
+  try {
+    const kept = storage.stream('\x01CompObj')
+    return (kept && /\b(?:Word\.Document|Excel\.Sheet|Excel\.Chart|Equation)(?:\.[\w]+)?/.exec(latin1(kept))?.[0]) ?? ''
+  } catch {
+    return ''
+  }
+}
+
 /**
  * An object's storage as PowerPoint keeps it (`ExOleObjStg`): a compound file of its own, packed by zlib after its
  * size when the record says so.
@@ -2274,7 +2318,7 @@ async function objectStorage(raw: Uint8Array, record: PowerPointRecord | undefin
  * object of another app by its picture, a chart's drawn from its storage when the window does not show that picture.
  * A presentation of PowerPoint 95, or of 4 or older, is read its own way.
  */
-export async function readOlderPowerPoint(bytes: Uint8Array): Promise<OfficePreview> {
+export async function readOlderPowerPoint(bytes: Uint8Array, read?: ObjectReader): Promise<OfficePreview> {
   // PowerPoint 3 and older wrote a presentation as the file itself; PowerPoint 4 keeps the same in a compound file.
   const bare = olderPresentationHead(bytes)
   if (bare) return readOlderPresentation(bytes, bare, undefined)
@@ -2359,13 +2403,18 @@ export async function readOlderPowerPoint(bytes: Uint8Array): Promise<OfficePrev
       if (text.title && slide.title === '') slide.title = text.lines.join(' ')
       else slide.lines.push(...text.lines.filter((line) => !slide.lines.includes(line)))
     }
-    // An equation of Equation Editor or MathType on the slide, an object, is a line of its text.
+    // An equation of Equation Editor or MathType on the slide, an object, is a line of its text; a document of Word,
+    // the lines of its own, its program named in its storage.
     const drawing = drawn?.type === 0x03ee ? childOf(raw, drawn, 0x040c) : undefined
     const shapes = drawing && childOf(raw, drawing, ART.drawing)
     for (const shape of shapes ? artShapes(raw, shapes) : []) {
       const storage = shape.client && (await storageOf(shape.client))
-      const equation = storage && objectEquation(storage)
-      if (equation !== undefined && !slide.lines.includes(equation)) slide.lines.push(equation)
+      if (!storage) continue
+      const equation = objectEquation(storage)
+      const program = storageProgram(storage)
+      const lines =
+        equation !== undefined ? [equation] : read && /^Word\.Document\b/i.test(program) ? heldLines(await read(program, storage).catch(() => undefined)) : []
+      slide.lines.push(...lines.filter((line) => !slide.lines.includes(line)))
     }
     const drawnSlide =
       deck && drawn?.type === 0x03ee && drawnBytes < DRAWINGS_LIMIT ? await drawOlderSlide(deck, drawn, persisted, index + 1).catch(() => undefined) : undefined

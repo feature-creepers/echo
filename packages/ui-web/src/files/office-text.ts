@@ -4,6 +4,7 @@
  * is shown.
  */
 
+import type { Compound } from './compound.ts'
 import type { DocumentLook } from './document-look.ts'
 import type { SheetLook } from './sheet-look.ts'
 
@@ -31,10 +32,22 @@ export interface SheetFigure {
 }
 
 /**
- * What an object of another app holds, read from its bytes (a part of the file, or a stream of the object's storage)
- * by the program that made it, to show in place of its picture: none for an object it does not read.
+ * What an object of another app holds that a preview shows: a figure in place of its picture (a worksheet as its
+ * sheet), or a document's text, as a quotation in Markdown and as its lines.
  */
-export type ObjectReader = (program: string, bytes: Uint8Array) => Promise<OfficeFigure | undefined>
+export type ObjectRead = OfficeFigure | { kind: 'text'; markdown: string; lines: string[] }
+
+/**
+ * What an object of another app holds, read from its bytes (a part of the file, or a stream of the object's storage)
+ * or its storage, by the program that made it: none for an object it does not read.
+ */
+export type ObjectReader = (program: string, source: Uint8Array | Compound) => Promise<ObjectRead | undefined>
+
+/** The most lines of a held document a slide shows. */
+const HELD_LINE_LIMIT = 20
+
+/** A held document's text as lines of a slide, at most a number of them; none for anything else. */
+export const heldLines = (read: ObjectRead | undefined): string[] => (read?.kind === 'text' ? read.lines.slice(0, HELD_LINE_LIMIT) : [])
 
 /** A picture of a file, from its bytes, at the size the file gives it. */
 export type PictureFigure = { kind: 'picture'; type: string; bytes: Uint8Array; alt: string; width?: number | undefined; height?: number | undefined }

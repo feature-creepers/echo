@@ -13,7 +13,7 @@
 import { unpack } from './archive.ts'
 import { drawMetafile, type MetafileHint, shownSize } from './metafile.ts'
 import { emuPixels, FIGURE_LIMIT, PICTURE_BYTES_LIMIT, pictureType } from './office-figures.ts'
-import type { OfficeChart, OfficeFigure } from './office-text.ts'
+import type { ObjectRead, OfficeChart, OfficeFigure } from './office-text.ts'
 
 /** A record of OfficeArt: its type, its instance, whether it holds other records, and where its content is. */
 export interface ArtRecord {
@@ -299,7 +299,7 @@ export class ArtFigures {
   private bytes = 0
   private readonly found = new Map<string, number>()
   private readonly packed: { place: number; metafile: KeptMetafile; alt: string; size: { width?: number | undefined; height?: number | undefined } }[] = []
-  private readonly held: { place: number; read: () => Promise<OfficeFigure | undefined> }[] = []
+  private readonly held: { place: number; read: () => Promise<ObjectRead | undefined> }[] = []
 
   /** A picture's figure, by its place in the list: shown from its bytes, drawn from its metafile, or said to be one its app shows. */
   picture(
@@ -345,7 +345,7 @@ export class ArtFigures {
    * A figure that gives way, once the file is read, to what `read` makes of the object it pictures (a worksheet as its
    * sheet), when it makes something.
    */
-  later(place: number, read: () => Promise<OfficeFigure | undefined>): void {
+  later(place: number, read: () => Promise<ObjectRead | undefined>): void {
     this.held.push({ place, read })
   }
 
@@ -364,7 +364,8 @@ export class ArtFigures {
     for (const { place, read } of this.held.splice(0)) {
       const figure = await read().catch(() => undefined)
       const before = this.list[place]
-      if (figure && before) this.list[place] = figure.kind === 'sheet' && figure.alt === '' && 'alt' in before ? { ...figure, alt: before.alt } : figure
+      if (figure && figure.kind !== 'text' && before)
+        this.list[place] = figure.kind === 'sheet' && figure.alt === '' && 'alt' in before ? { ...figure, alt: before.alt } : figure
     }
   }
 

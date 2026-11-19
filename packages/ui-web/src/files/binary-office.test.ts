@@ -592,19 +592,93 @@ describe('an object of another app in a document or a presentation', () => {
     expect(pictured).toMatchObject({ figures: [{ kind: 'picture', type: 'image/png' }] })
   })
 
-  it('writes a slide’s as a line of its text, and leaves another object to its picture', async () => {
+  it('shows a document of Word held in a document by its text, quoted after its paragraph, the text its picture’s words', async () => {
+    const held = storedZip({
+      'word/document.xml': `<w:document><w:body><w:p><w:r><w:t>Minutes</w:t></w:r></w:p><w:p><w:r><w:t>All agreed.</w:t></w:r></w:p></w:body></w:document>`
+    })
+    const body =
+      '<w:p><w:r><w:t xml:space="preserve">See: </w:t></w:r><w:r><w:object><v:shape style="width:75pt;height:30pt"><v:imagedata r:id="rId1" o:title=""/></v:shape>' +
+      '<o:OLEObject Type="Embed" ProgID="Word.Document.12" r:id="rId2"/></w:object></w:r></w:p><w:p><w:r><w:t>After</w:t></w:r></w:p>'
+    const file = storedZip({
+      'word/document.xml': `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}</w:body></w:document>`,
+      'word/_rels/document.xml.rels':
+        '<Relationships><Relationship Id="rId1" Target="media/image1.png"/><Relationship Id="rId2" Target="embeddings/Microsoft_Word_Document.docx"/></Relationships>',
+      'word/media/image1.png': new Uint8Array(PNG),
+      'word/embeddings/Microsoft_Word_Document.docx': held
+    })
+    const preview = await readOffice('docx', file)
+    expect(preview).toMatchObject({ markdown: 'See:\n\n> Minutes\n>\n> All agreed.\n\nAfter' })
+    const opening = preview.kind === 'document' ? preview.look?.pages[0]?.bands[0]?.blocks[0] : undefined
+    expect(opening).toMatchObject({ spans: [{ text: 'See: ' }, { placed: { alt: 'Minutes All agreed.' } }] })
+  })
+
+  it('shows a document of Word 97 held in a Word 97 document or a presentation by its text', async () => {
+    // The document held: a Word 97 document's streams, kept as a storage of the other, its program named.
+    const inner = openCompound(
+      wordDocument([
+        { text: 'Minutes\r', format: formatting(0) },
+        { text: 'All agreed.\r', format: formatting(0) }
+      ])
+    )
+    const named = new Bytes().zeros(28).u32(16).narrow('Word.Document.8').u8(0).done()
+    const storage = {
+      WordDocument: inner.stream('WordDocument') as Uint8Array,
+      '1Table': (inner.stream('1Table') ?? inner.stream('0Table')) as Uint8Array,
+      '\x01CompObj': named
+    }
+    const text = 'Notes \x13 EMBED Word.Document.8 \x14\x01\x15\r'
+    const separator = 1024 + text.indexOf('\x14') * 2
+    const shape = artShape(1026, 0x0a00, 1)
+    const entry = storeEntry(blipOf(0xf01e, 0x6e0, PNG))
+    const data = new Bytes()
+      .u32(68 + shape.length + entry.length)
+      .u16(68)
+      .u16(0x64)
+      .padTo(68)
+      .raw(shape)
+      .raw(entry)
+      .done()
+    const object = new Bytes().u16(0x080a).u8(1).u16(0x0855).u8(1).u16(0x6a03).u32(80).done()
+    const picture = new Bytes().u16(0x6a03).u32(0).u16(0x0855).u8(1).done()
+    const file = wordDocument(
+      [
+        { text, format: formatting(0) },
+        { text: 'End\r', format: formatting(0) }
+      ],
+      false,
+      {
+        runs: [
+          { start: 1024, end: separator, properties: new Uint8Array() },
+          { start: separator, end: separator + 2, properties: object },
+          { start: separator + 2, end: separator + 4, properties: picture }
+        ],
+        data,
+        anchors: [],
+        drawings: new Uint8Array(),
+        blip: new Uint8Array(),
+        objects: { _80: storage }
+      }
+    )
+    expect(await readOffice('doc', file)).toMatchObject({ markdown: 'Notes\n\n> Minutes\n>\n> All agreed.\n\nEnd' })
+    const read = await readOffice('ppt', presentation(false, false, await packedObject(compound(storage))))
+    expect(read.kind === 'presentation' ? read.slides[1]?.lines : undefined).toEqual(['Minutes', 'All agreed.'])
+  })
+
+  it('writes a slide’s as a line of its text, a document’s text as lines, and leaves another object to its picture', async () => {
     const frame = (id: string, program: string) =>
       `<p:graphicFrame><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/presentationml/2006/ole"><p:oleObj name="Object" r:id="${id}" progId="${program}"><p:embed/></p:oleObj></a:graphicData></a:graphic></p:graphicFrame>`
     const file = storedZip({
       'ppt/presentation.xml': '<p:presentation><p:sldIdLst><p:sldId id="256" r:id="rId2"/></p:sldIdLst></p:presentation>',
       'ppt/_rels/presentation.xml.rels': '<Relationships><Relationship Id="rId2" Target="slides/slide1.xml"/></Relationships>',
-      'ppt/slides/slide1.xml': `<p:sld><p:cSld><p:spTree>${frame('rId2', 'Equation.DSMT4')}${frame('rId3', 'Excel.Sheet.8')}</p:spTree></p:cSld></p:sld>`,
+      'ppt/slides/slide1.xml': `<p:sld><p:cSld><p:spTree>${frame('rId2', 'Equation.DSMT4')}${frame('rId3', 'Excel.Sheet.8')}${frame('rId4', 'Word.Document.12')}</p:spTree></p:cSld></p:sld>`,
       'ppt/slides/_rels/slide1.xml.rels':
-        '<Relationships><Relationship Id="rId2" Target="../embeddings/oleObject1.bin"/><Relationship Id="rId3" Target="../embeddings/oleObject2.bin"/></Relationships>',
+        '<Relationships><Relationship Id="rId2" Target="../embeddings/oleObject1.bin"/><Relationship Id="rId3" Target="../embeddings/oleObject2.bin"/><Relationship Id="rId4" Target="../embeddings/Document.docx"/></Relationships>',
       'ppt/embeddings/oleObject1.bin': object,
-      'ppt/embeddings/oleObject2.bin': object
+      'ppt/embeddings/oleObject2.bin': object,
+      'ppt/embeddings/Document.docx': storedZip({ 'word/document.xml': '<w:document><w:body><w:p><w:r><w:t>Agenda</w:t></w:r></w:p></w:body></w:document>' })
     })
-    expect(await readOffice('pptx', file)).toMatchObject({ slides: [{ title: '', lines: ['x²'] }] })
+    // A document held is the lines of its text.
+    expect(await readOffice('pptx', file)).toMatchObject({ slides: [{ title: '', lines: ['x²', 'Agenda'] }] })
   })
 })
 const JPEG = [0xff, 0xd8, 0xff, 0xe0, 0, 0x10]

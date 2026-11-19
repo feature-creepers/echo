@@ -10,7 +10,7 @@ import { openCompound } from './compound.ts'
 import { objectEquation } from './equation-editor.ts'
 import { drawMetafile, shownSize } from './metafile.ts'
 import { formatNumber, type NumberFormatOptions } from './number-format.ts'
-import type { ObjectReader, OfficeChart, OfficeFigure } from './office-text.ts'
+import type { ObjectRead, ObjectReader, OfficeChart, OfficeFigure } from './office-text.ts'
 import { xmlEvents } from './xml.ts'
 
 /** The most figures a file shows, and the most bytes its pictures hold together: a preview, not the file. */
@@ -104,6 +104,7 @@ export class Figures {
   private bytes = 0
   private readonly found = new Map<string, number>()
   private readonly equations = new Map<string, Promise<string | undefined>>()
+  private readonly held = new Map<string, Promise<ObjectRead | undefined>>()
   private readonly archive: Archive
   private readonly options: NumberFormatOptions
   private readonly cells: CellSource | undefined
@@ -125,14 +126,33 @@ export class Figures {
    * place in the list; none when it holds nothing read here, and its picture is shown instead.
    */
   async object(part: string | undefined, program: string, alt: string): Promise<number | undefined> {
+    const read = await this.read(part, program)
+    if (part === undefined || !read || read.kind === 'text') return undefined
+    return this.add(JSON.stringify(['object', part]), async () => (read.kind === 'sheet' ? { ...read, alt: read.alt || alt } : read))
+  }
+
+  /** The text of a document an object holds, from its part, as a quotation and as lines; none for another object. */
+  async text(part: string | undefined, program: string): Promise<Extract<ObjectRead, { kind: 'text' }> | undefined> {
+    const read = await this.read(part, program)
+    return read?.kind === 'text' ? read : undefined
+  }
+
+  /** What an object holds, from its part, read once. */
+  private read(part: string | undefined, program: string): Promise<ObjectRead | undefined> {
     const objects = this.objects
-    if (part === undefined || !objects) return undefined
-    return this.add(JSON.stringify(['object', part]), async () => {
-      const read = partOf(this.archive, part)
-      const bytes = read && (await read().catch(() => undefined))
-      const figure = bytes && (await objects(program, bytes).catch(() => undefined))
-      return figure && (figure.kind === 'sheet' ? { ...figure, alt: figure.alt || alt } : figure)
-    })
+    if (part === undefined || !objects) return Promise.resolve(undefined)
+    let read = this.held.get(part)
+    if (!read) {
+      const bytes = partOf(this.archive, part)
+      read = bytes
+        ? bytes().then(
+            (object) => objects(program, object).catch(() => undefined),
+            () => undefined
+          )
+        : Promise.resolve(undefined)
+      this.held.set(part, read)
+    }
+    return read
   }
 
   /** The picture in a part of the archive, by its place in the list; none when there is no such part or no room. */

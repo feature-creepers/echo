@@ -9,8 +9,8 @@
  */
 
 import { type Archive, openArchive, partOf, relationships, resolvePart, textOf } from './archive.ts'
-import { olderWorkbookView, readOlderExcel, readOlderPowerPoint, readOlderSheets, readOlderWord } from './binary-office.ts'
-import { openCompound } from './compound.ts'
+import { olderWorkbookView, readOlderExcel, readOlderPowerPoint, readOlderSheets, readOlderWord, readOlderWordStorage } from './binary-office.ts'
+import { type Compound, openCompound } from './compound.ts'
 import { cellValue, serialNow, withConditions } from './conditional-formats.ts'
 import type { TextLook } from './document-look.ts'
 import { type CellArea, cellArea, sheetFigure } from './embedded-sheet.ts'
@@ -23,10 +23,12 @@ import {
   COLUMN_LIMIT,
   type Format,
   figureMark,
+  heldLines,
   type InlinePart,
   inlineLines,
   joinBlocks,
   markdownTable,
+  type ObjectRead,
   type ObjectReader,
   type OfficeFigure,
   type OfficePreview,
@@ -220,12 +222,16 @@ async function wordNumbering(archive: Archive): Promise<(list: string, level: nu
   }
 }
 
-/** A paragraph of a Word document as it is read: its parts, its style, and where it is in a list. */
+/**
+ * A paragraph of a Word document as it is read: its parts, its style, where it is in a list, and the text of the
+ * documents it holds as objects.
+ */
 interface WordParagraph {
   parts: InlinePart[]
   style?: string | undefined
   list?: string | undefined
   level: number
+  held?: { markdown: string; lines: string[] }[]
 }
 
 /** A run's text with its format and where it leads, as the parts of a paragraph keep it. */
@@ -262,6 +268,14 @@ export async function readDocument(archive: Archive, options: NumberFormatOption
   let object: { id: string; program: string } | undefined
 
   const finish = (paragraph: WordParagraph) => {
+    write(paragraph)
+    // A document held as an object follows the paragraph that holds it, as a quotation of its text.
+    for (const held of paragraph.held ?? []) {
+      if (cell) cell.push(plain(held.lines.join(' ')))
+      else blocks.push(held.markdown)
+    }
+  }
+  const write = (paragraph: WordParagraph) => {
     const text = partsText(paragraph.parts).replace(/\s+/g, ' ').trim()
     const shown = paragraph.parts.filter((part): part is { figure: number; alt: string } => 'figure' in part)
     if (cell) {
@@ -448,6 +462,12 @@ export async function readDocument(archive: Archive, options: NumberFormatOption
             paragraph?.parts.push(runPart(written, {}, link))
             break
           }
+          // A document is shown by its text, after the paragraph, its picture kept for the look.
+          const quoted = held && (await figures.text(targets.get(held.id), held.program))
+          if (quoted && paragraph) {
+            paragraph.held = [...(paragraph.held ?? []), quoted]
+            break
+          }
           // What another object holds is shown in place of its picture when it is read here: a worksheet as its sheet.
           const figure = (held && (await figures.object(targets.get(held.id), held.program, placed.alt))) ?? (await drawnFigure(placed, targets, figures))
           if (figure !== undefined && paragraph) paragraph.parts.push({ figure, alt: placed.alt })
@@ -544,10 +564,54 @@ export function embeddedCells(archive: Archive, options: NumberFormatOptions = {
 
 /**
  * What objects of other apps hold, shown in place of their pictures: a worksheet of Excel, newer or older, held as it
- * is or in a compound file's `Package` stream, as the block of cells of its active sheet its object shows.
+ * is or in a compound file's `Package` stream, as the block of cells of its active sheet its object shows; a document
+ * of Word, newer or older, by its text. A document's own objects are not read again: they keep their pictures.
  */
 export function embeddedObjects(options: NumberFormatOptions = {}): ObjectReader {
-  return async (program, bytes) => (/^Excel\.Sheet\b/i.test(program.trim()) ? embeddedSheet(bytes, options) : undefined)
+  return async (program, source) => {
+    const name = program.trim()
+    if (/^Excel\.Sheet\b/i.test(name)) {
+      const bytes = source instanceof Uint8Array ? source : (source.stream('Package') ?? source.stream('Workbook') ?? source.stream('Book'))
+      return bytes && embeddedSheet(bytes, options)
+    }
+    if (/^Word\.Document\b/i.test(name)) return embeddedText(source, options)
+    return undefined
+  }
+}
+
+/** The most of a held document's text shown, in characters. */
+const HELD_TEXT_LIMIT = 4000
+
+/**
+ * A document of Word held as an object, by its text: newer, held as it is or in a compound file's `Package` stream, or
+ * of 97 to 2003, its storage a Word document of its own. Its pictures are left out, their words kept.
+ */
+async function embeddedText(source: Uint8Array | Compound, options: NumberFormatOptions): Promise<ObjectRead | undefined> {
+  let preview: OfficePreview
+  if (source instanceof Uint8Array) {
+    if (source[0] === 0x50 && source[1] === 0x4b) preview = await readDocument(openArchive(source), options)
+    else if (source[0] === 0xd0 && source[1] === 0xcf) return embeddedText(openCompound(source), options)
+    else return undefined
+  } else {
+    const held = source.stream('Package')
+    preview = held ? await readDocument(openArchive(held), options) : await readOlderWordStorage(source)
+  }
+  if (preview.kind !== 'document') return undefined
+  let markdown = preview.markdown.replace(/!\[((?:\\.|[^\]\\])*)\]\(figure:\d+\)/g, '$1').trim()
+  if (markdown === '') return undefined
+  if (markdown.length > HELD_TEXT_LIMIT) markdown = `${markdown.slice(0, markdown.lastIndexOf('\n\n', HELD_TEXT_LIMIT) + 1 || HELD_TEXT_LIMIT).trimEnd()}\n\n…`
+  // Its lines as plain text, for a slide's lines and a table's cell.
+  const lines = markdown
+    .split(/\n+/)
+    .map((line) =>
+      line
+        .replace(/^\s*(#+|[-*]|\d+\.|>|\|)\s+/, '')
+        .replace(/\*\*|~~|(?<![\\\w])_|_(?!\w)|\[([^\]]*)\]\([^)]*\)/g, (_, text: string | undefined) => text ?? '')
+        .replace(/\\([\\`*_[\]<>|#~.+-])/g, '$1')
+        .trim()
+    )
+    .filter((line) => line !== '' && !/^[-| ]+$/.test(line))
+  return { kind: 'text', markdown: markdown.replace(/^/gm, '> ').replace(/^> $/gm, '>'), lines }
 }
 
 async function embeddedSheet(bytes: Uint8Array, options: NumberFormatOptions, depth = 0): Promise<OfficeFigure | undefined> {
@@ -843,7 +907,7 @@ export async function readPresentation(archive: Archive, options: NumberFormatOp
   if (presentation === undefined) throw new Error('This is not a PowerPoint presentation.')
   const targets = await relationships(archive, 'ppt/presentation.xml')
   const cells = embeddedCells(archive, options)
-  const figures = new Figures(archive, options, cells)
+  const figures = new Figures(archive, options, cells, embeddedObjects(options))
   const root = childAt(xmlTree(presentation), 'p:presentation')
   const sizeOf = childAt(root, 'p:sldSz')?.attributes
   const size = { width: Number(sizeOf?.cx) || 12_192_000, height: Number(sizeOf?.cy) || 6_858_000 }
@@ -863,7 +927,7 @@ export async function readPresentation(archive: Archive, options: NumberFormatOp
     const target = targets.get(event.attributes['r:id'] ?? '')
     const xml = target === undefined ? undefined : await textOf(archive, target)
     if (xml === undefined || target === undefined) continue
-    const text = slideText(xml, await objectEquations(xml, await relationships(archive, target), figures))
+    const text = slideText(xml, await objectLines(xml, await relationships(archive, target), figures))
     const drawing =
       drawn < DRAWINGS_LIMIT
         ? await drawSlide(archive, target, size, { chart, defaultText: childAt(root, 'p:defaultTextStyle') }).catch(() => undefined)
@@ -886,17 +950,23 @@ export async function readPresentation(archive: Archive, options: NumberFormatOp
 }
 
 /**
- * The equations of Equation Editor or MathType a part's objects hold (`p:oleObj`, `o:OLEObject`), as linear text, by
- * their relationship's identifier.
+ * The lines a part's objects hold (`p:oleObj`, `o:OLEObject`), by their relationship's identifier: an equation of
+ * Equation Editor or MathType as linear text, a document of Word by the lines of its text.
  */
-async function objectEquations(xml: string, targets: ReadonlyMap<string, string>, figures: Figures): Promise<Map<string, string>> {
-  const found = new Map<string, string>()
+async function objectLines(xml: string, targets: ReadonlyMap<string, string>, figures: Figures): Promise<Map<string, string[]>> {
+  const found = new Map<string, string[]>()
   for (const event of xmlEvents(xml)) {
     if (event.type !== 'open' || (event.name !== 'p:oleObj' && event.name !== 'o:OLEObject')) continue
     const id = event.attributes['r:id']
-    if (id === undefined || found.has(id) || !isEquationProgram(event.attributes.progId ?? event.attributes.ProgID)) continue
-    const written = await figures.equation(targets.get(id))
-    if (written !== undefined) found.set(id, written)
+    const program = event.attributes.progId ?? event.attributes.ProgID ?? ''
+    if (id === undefined || found.has(id)) continue
+    if (isEquationProgram(program)) {
+      const written = await figures.equation(targets.get(id))
+      if (written !== undefined) found.set(id, [written])
+    } else {
+      const lines = heldLines(await figures.text(targets.get(id), program))
+      if (lines.length > 0) found.set(id, lines)
+    }
   }
   return found
 }
@@ -906,7 +976,7 @@ async function objectEquations(xml: string, targets: ReadonlyMap<string, string>
  * linear text in its paragraph, the picture PowerPoint keeps of it for older apps (`mc:Fallback`) passed over, and one
  * of Equation Editor or MathType, an object, as a line of its own.
  */
-function slideText(xml: string, equations: ReadonlyMap<string, string> = new Map()): { title: string; lines: string[] } {
+function slideText(xml: string, objects: ReadonlyMap<string, string[]> = new Map()): { title: string; lines: string[] } {
   let title = ''
   const lines: string[] = []
   let shape: { title: boolean; paragraphs: string[] } | undefined
@@ -935,10 +1005,7 @@ function slideText(xml: string, equations: ReadonlyMap<string, string> = new Map
       else if (event.name === 'a:p') paragraph = ''
       else if (event.name === 'a:br' && paragraph !== undefined) paragraph += ' '
       else if (event.name === 'a:t') inText = true
-      else if (event.name === 'p:oleObj') {
-        const written = equations.get(event.attributes['r:id'] ?? '')
-        if (written !== undefined) lines.push(written)
-      }
+      else if (event.name === 'p:oleObj') lines.push(...(objects.get(event.attributes['r:id'] ?? '') ?? []))
     } else if (event.type === 'text') {
       if (inText && paragraph !== undefined) paragraph += event.text
     } else if (event.name === 'a:t') inText = false
@@ -1588,7 +1655,7 @@ export async function readOffice(extension: string, bytes: Uint8Array, options: 
   // The older formats are compound files, not archives.
   if (extension === 'doc') return readOlderWord(bytes, embeddedObjects(options))
   if (extension === 'xls') return readOlderExcel(bytes, options)
-  if (extension === 'ppt') return readOlderPowerPoint(bytes)
+  if (extension === 'ppt') return readOlderPowerPoint(bytes, embeddedObjects(options))
   // Word, Excel and PowerPoint keep a file protected with a password in a compound file, encrypted, not in an archive.
   if (protectedPackage(bytes)) throw new Error(PROTECTED)
   const archive = openArchive(bytes)
