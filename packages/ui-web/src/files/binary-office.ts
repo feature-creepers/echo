@@ -457,8 +457,13 @@ function wordPictures(
     const mode = picture.u16(location + 6)
     const scaled = (goal: number, scale: number) => twipPixels((picture.i16(location + goal) * (picture.u16(location + scale) || 1000)) / 1000)
     const size = { width: scaled(0x1c, 0x20), height: scaled(0x1e, 0x22) }
-    // A picture of Word 6's kind, a metafile of its own, is one its app shows.
-    if (mode !== 0x64 && mode !== 0x66) return instead() ?? figures.picture(`data:${location}`, undefined, '', size)
+    // A picture of Word 6's kind is a WMF after its header, without a header of its own, drawn in its window.
+    if (mode !== 0x64 && mode !== 0x66) {
+      const end = Math.min(location + length, data.length)
+      const metafile = location + header < end ? data.subarray(location + header, end) : undefined
+      const kept = metafile && { bytes: metafile, packed: false, size: metafile.length, hint: size }
+      return instead() ?? figures.picture(`data:${location}`, kept ? { metafile: kept } : undefined, '', size)
+    }
     let at = location + header
     if (mode === 0x66) at += 1 + picture.u8(at)
     const end = Math.min(location + length, data.length)
@@ -561,7 +566,7 @@ const FIGURE_END = '\ue001'
  * behind a header of their own, their text in the 8-bit code page of the document's language and their properties in
  * one-byte codes; Word 2 wrote the same straight into the file, with places and codes of its own.
  */
-export function readOlderWord(bytes: Uint8Array): OfficePreview {
+export async function readOlderWord(bytes: Uint8Array): Promise<OfficePreview> {
   if (readU16(bytes, 0) === 0xa59b) throw new Error('It is a document of Word 1 or older, which is not read here.')
   const two = readU16(bytes, 0) === 0xa5db
   const file = two ? undefined : openCompound(bytes)
@@ -825,6 +830,7 @@ export function readOlderWord(bytes: Uint8Array): OfficePreview {
   }
   if (paragraph.trim() !== '') endParagraph('\r', undefined)
   flushTable()
+  await pictures?.figures.drawPacked()
   const figures = pictures?.figures.list ?? []
   // Each figure's place in the text becomes its mark, once the text around it is written as Markdown.
   const markdown = joinBlocks(blocks).replace(new RegExp(`${FIGURE_START}(\\d+)${FIGURE_END}`, 'g'), (_, place: string) => {
@@ -958,9 +964,20 @@ function joined(parts: readonly Uint8Array[]): Uint8Array {
  * as their formats show them. Excel 5 and 95 write their text in 8-bit characters of the workbook's code page, with no
  * table of strings, and so do Excel 2 to 4.
  */
-export function readOlderExcel(bytes: Uint8Array, options: NumberFormatOptions = {}): OfficePreview {
-  return { kind: 'workbook', sheets: readOlderSheets(bytes, options).map(({ name, rows, cut, figures }) => ({ name, rows, cut, figures })) }
+export async function readOlderExcel(bytes: Uint8Array, options: NumberFormatOptions = {}): Promise<OfficePreview> {
+  const parts = workbookParts(bytes, options)
+  await parts.figures.drawPacked()
+  return { kind: 'workbook', sheets: withFigures(parts).map(({ name, rows, cut, figures }) => ({ name, rows, cut, figures })) }
 }
+
+/** A workbook's sheets as they are read, each with the places of its figures in the workbook's. */
+interface WorkbookParts {
+  sheets: (Omit<OlderSheet, 'figures'> & { places: number[] })[]
+  figures: ArtFigures
+}
+
+/** The sheets of a workbook with their figures as they are now. */
+const withFigures = ({ sheets, figures }: WorkbookParts): OlderSheet[] => sheets.map(({ places, ...sheet }) => ({ ...sheet, figures: figures.at(places) }))
 
 /** The beginnings of a part of a workbook (`BOF`), in Excel 2, 3, 4, and 5 and later. */
 const BEGINNINGS = new Map([
@@ -970,19 +987,26 @@ const BEGINNINGS = new Map([
   [0x0809, 5]
 ])
 
-/** The sheets of a workbook, read as `readOlderExcel` shows them. */
+/** The sheets of a workbook, read as `readOlderExcel` shows them, a metafile kept packed not drawn yet. */
 export function readOlderSheets(bytes: Uint8Array, options: NumberFormatOptions = {}): OlderSheet[] {
-  // Excel 2, 3 and 4 wrote their records straight into the file, and some programs write Excel 5's and 97's so too.
-  const first = BEGINNINGS.get(readU16(bytes, 0))
-  if (bytes.length >= 4 && first !== undefined && readU16(bytes, 2) < 32) return first < 5 ? earliestSheets(bytes, options) : bookSheets(bytes, options)
-  return sheetsOf(openCompound(bytes), options)
+  return withFigures(workbookParts(bytes, options))
 }
 
-/** The sheets of a workbook's stream, in a compound file or in an object's storage within one. */
-function sheetsOf(file: Compound, options: NumberFormatOptions = {}): OlderSheet[] {
+function workbookParts(bytes: Uint8Array, options: NumberFormatOptions): WorkbookParts {
+  // Excel 2, 3 and 4 wrote their records straight into the file, and some programs write Excel 5's and 97's so too.
+  const first = BEGINNINGS.get(readU16(bytes, 0))
+  if (bytes.length >= 4 && first !== undefined && readU16(bytes, 2) < 32) return first < 5 ? earliestSheets(bytes, options) : bookParts(bytes, options)
+  const file = openCompound(bytes)
   const stream = file.stream('Workbook') ?? file.stream('Book')
   if (!stream) throw new Error('This is not an Excel workbook.')
-  return bookSheets(stream, options)
+  return bookParts(stream, options)
+}
+
+/** The sheets of a workbook's stream in an object's storage. */
+function sheetsOf(file: Compound): OlderSheet[] {
+  const stream = file.stream('Workbook') ?? file.stream('Book')
+  if (!stream) throw new Error('This is not an Excel workbook.')
+  return withFigures(bookParts(stream, {}))
 }
 
 /** The kinds of part an Excel 2 to 4 file's beginning names: a worksheet, and the records of Excel 4's workbook. */
@@ -1007,7 +1031,7 @@ interface EarliestPart {
  * (`SHEETHDR`). A part keeps its formats in order and its styles (`XF`), each naming a format by its place; a cell of
  * Excel 2 names its format itself. A sheet with no formats or styles of its own uses the workbook's.
  */
-function earliestSheets(bytes: Uint8Array, options: NumberFormatOptions): OlderSheet[] {
+function earliestSheets(bytes: Uint8Array, options: NumberFormatOptions): WorkbookParts {
   const book = reader(bytes)
   const parts: EarliestPart[] = []
   let part: EarliestPart | undefined
@@ -1037,7 +1061,7 @@ function earliestSheets(bytes: Uint8Array, options: NumberFormatOptions): OlderS
     else if ((type === 0x0243 || type === 0x0443) && size >= 2) part.styles.push(book.u8(at + 1))
   }
   const workbook = parts.find((one) => one.kind === WORKBOOK)
-  return parts
+  const sheets = parts
     .filter((one) => one.kind === WORKSHEET)
     .slice(0, SHEET_LIMIT)
     .map((sheet) => {
@@ -1050,12 +1074,13 @@ function earliestSheets(bytes: Uint8Array, options: NumberFormatOptions): OlderS
       const shown = { ...options, date1904: sheet.date1904 ?? workbook?.date1904 ?? false }
       const { rows, cut, cells } = sheetRows(book, sheet.at, { strings: [], version: sheet.version, eight }, formatOf, shown)
       // A worksheet alone has no name but its file's.
-      return { name: sheet.name ? eight(sheet.name) : '', rows, cut, cells, figures: [] }
+      return { name: sheet.name ? eight(sheet.name) : '', rows, cut, cells, places: [] }
     })
+  return { sheets, figures: new ArtFigures() }
 }
 
 /** The sheets of a workbook's stream of Excel 5 to 2003. */
-function bookSheets(stream: Uint8Array, options: NumberFormatOptions): OlderSheet[] {
+function bookParts(stream: Uint8Array, options: NumberFormatOptions): WorkbookParts {
   const book = reader(stream)
   if (book.u16(0) !== 0x0809) throw new Error('This is not an Excel workbook.')
   const version = book.u16(4)
@@ -1165,10 +1190,10 @@ function bookSheets(stream: Uint8Array, options: NumberFormatOptions): OlderShee
     },
     cells: cellRange(new Map(read.map((sheet) => [sheet.name, sheet.cells])))
   }
-  return read.map(({ drawing, charts, objects, ...sheet }) => ({
-    ...sheet,
-    figures: figures.at(sheetFigures({ drawing, charts, objects }, stored, figures, context))
-  }))
+  return {
+    sheets: read.map(({ drawing, charts, objects, ...sheet }) => ({ ...sheet, places: sheetFigures({ drawing, charts, objects }, stored, figures, context) })),
+    figures
+  }
 }
 
 /** The records of a chart sheet, from its beginning to its end. */
@@ -1525,6 +1550,7 @@ export async function readOlderPowerPoint(bytes: Uint8Array): Promise<OfficePrev
   }
 
   const slides: { title: string; lines: string[]; figures: OfficeFigure[] }[] = []
+  const placedBySlide: number[][] = []
   for (const { texts, persisted } of found) {
     // Text boxes of its own, beyond its placeholders, are in the slide's drawing, and so are its pictures.
     const at = places.get(persisted)
@@ -1546,8 +1572,12 @@ export async function readOlderPowerPoint(bytes: Uint8Array): Promise<OfficePrev
       const figure = chart ? figures.chart(chart) : figures.picture(`store:${shape.picture}`, picture, shape.alt, slideAnchorSize(raw, shape.anchor))
       if (figure !== undefined) placed.push(figure)
     }
-    slide.figures = figures.at(placed)
+    placedBySlide.push(placed)
     slides.push(slide)
   }
+  await figures.drawPacked()
+  slides.forEach((slide, index) => {
+    slide.figures = figures.at(placedBySlide[index] ?? [])
+  })
   return { kind: 'presentation', slides, cut }
 }

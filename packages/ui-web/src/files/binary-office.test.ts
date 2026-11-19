@@ -436,7 +436,7 @@ const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d]
 const JPEG = [0xff, 0xd8, 0xff, 0xe0, 0, 0x10]
 
 describe('a Word 97 document', () => {
-  it('reads its headings, paragraphs, fields, lists and tables, from both kinds of piece', () => {
+  it('reads its headings, paragraphs, fields, lists and tables, from both kinds of piece', async () => {
     const file = wordDocument([
       { text: 'Trip to Lyon\r', format: formatting(1) },
       { text: 'We leave on Friday, \x13 PAGE \\* MERGEFORMAT \x141\x15 café\x0bat 9.\r', format: formatting(0) },
@@ -455,7 +455,7 @@ describe('a Word 97 document', () => {
       { text: '\x07', format: formatting(0, [IN_TABLE, ROW_END]) },
       { text: 'The end, \xe9t\xe9 \x93here\x94.\r', format: formatting(0) }
     ])
-    expect(readOlderWord(file)).toEqual({
+    expect(await readOlderWord(file)).toEqual({
       kind: 'document',
       markdown: [
         '# Trip to Lyon',
@@ -469,7 +469,7 @@ describe('a Word 97 document', () => {
     })
   })
 
-  it('shows its pictures where they are: in the text, floating over it, and an embedded chart as one its app draws', () => {
+  it('shows its pictures where they are: in the text, floating over it, and an embedded chart as one its app draws', async () => {
     const first = 'Our cat \x01 and a view \x08.\r'
     const last = '\x13 EMBED MSGraph.Chart.8 \x14\x01\x15\r'
     const inText = 1024 + first.indexOf('\x01') * 2
@@ -517,7 +517,7 @@ describe('a Word 97 document', () => {
         blip: blipOf(0xf01d, 0x46a, JPEG)
       }
     )
-    expect(readOlderWord(file)).toEqual({
+    expect(await readOlderWord(file)).toEqual({
       kind: 'document',
       markdown: 'Our cat ![A cat](figure:0) and a view ![](figure:1).\n\n![](figure:2)',
       figures: [
@@ -529,7 +529,7 @@ describe('a Word 97 document', () => {
     })
   })
 
-  it('draws an embedded chart from its object’s storage when its picture is a metafile the window does not show', () => {
+  it('draws an embedded chart from its object’s storage when its picture is a metafile the window does not show', async () => {
     const text = '\x13 EMBED MSGraph.Chart.8 \x14\x01\x15\r'
     const separator = 1024 + text.indexOf('\x14') * 2
     const shape = artShape(1026, 0x0a00, 1)
@@ -563,12 +563,12 @@ describe('a Word 97 document', () => {
         objects: { _77: { Workbook: graphStream() } }
       }
     )
-    expect(readOlderWord(file)).toEqual({ kind: 'document', markdown: '![](figure:0)\n\nEnd', figures: [GRAPH_CHART], cut: false })
+    expect(await readOlderWord(file)).toEqual({ kind: 'document', markdown: '![](figure:0)\n\nEnd', figures: [GRAPH_CHART], cut: false })
   })
 
   it('says when it is protected with a password, or is not one', async () => {
-    expect(() => readOlderWord(wordDocument([{ text: 'Secret\r', format: formatting(0) }], true))).toThrow('protected with a password')
-    expect(() => readOlderWord(compound({ Other: new Uint8Array(8) }))).toThrow('not a Word document')
+    await expect(readOlderWord(wordDocument([{ text: 'Secret\r', format: formatting(0) }], true))).rejects.toThrow('protected with a password')
+    await expect(readOlderWord(compound({ Other: new Uint8Array(8) }))).rejects.toThrow('not a Word document')
     await expect(readOffice('doc', new Uint8Array(10))).rejects.toThrow('not a file of the older Office formats')
   })
 
@@ -676,13 +676,13 @@ describe('a Word 6 or 95 document', () => {
   ]
   const expected = ['# Привет', 'Привет мир  \n1', '- мир', '| A | B |\n| --- | --- |', 'End'].join('\n\n')
 
-  it('reads its text in the code page of its language, its headings, lists and tables, saved whole or quickly', () => {
+  it('reads its text in the code page of its language, its headings, lists and tables, saved whole or quickly', async () => {
     for (const quick of [false, true])
-      expect(readOlderWord(sixDocument(paragraphs, { quick }))).toEqual({ kind: 'document', markdown: expected, figures: [], cut: false })
+      expect(await readOlderWord(sixDocument(paragraphs, { quick }))).toEqual({ kind: 'document', markdown: expected, figures: [], cut: false })
   })
 
-  it('says when it is protected with a password', () => {
-    expect(() => readOlderWord(sixDocument(paragraphs, { encrypted: true }))).toThrow('protected with a password')
+  it('says when it is protected with a password', async () => {
+    await expect(readOlderWord(sixDocument(paragraphs, { encrypted: true }))).rejects.toThrow('protected with a password')
   })
 })
 
@@ -783,15 +783,15 @@ describe('a Word 2 document', () => {
   ]
   const expected = ['## Trip', 'Café', '- Coat', '| A | B |\n| --- | --- |', '# Plan', 'End'].join('\n\n')
 
-  it('reads its headings, built in or named, its lists and tables, saved whole or quickly', () => {
+  it('reads its headings, built in or named, its lists and tables, saved whole or quickly', async () => {
     for (const quick of [false, true])
-      expect(readOlderWord(twoDocument(paragraphs, { quick }))).toEqual({ kind: 'document', markdown: expected, figures: [], cut: false })
+      expect(await readOlderWord(twoDocument(paragraphs, { quick }))).toEqual({ kind: 'document', markdown: expected, figures: [], cut: false })
   })
 
-  it('says when it is protected with a password, cut short, or of Word 1 or older', () => {
-    expect(() => readOlderWord(twoDocument(paragraphs, { encrypted: true }))).toThrow('protected with a password')
-    expect(() => readOlderWord(twoDocument(paragraphs).subarray(0, 0x100))).toThrow('damaged')
-    expect(() => readOlderWord(new Uint8Array([0x9b, 0xa5, 0x21, 0x00, ...new Array(600).fill(0)]))).toThrow('Word 1 or older')
+  it('says when it is protected with a password, cut short, or of Word 1 or older', async () => {
+    await expect(readOlderWord(twoDocument(paragraphs, { encrypted: true }))).rejects.toThrow('protected with a password')
+    await expect(readOlderWord(twoDocument(paragraphs).subarray(0, 0x100))).rejects.toThrow('damaged')
+    await expect(readOlderWord(new Uint8Array([0x9b, 0xa5, 0x21, 0x00, ...new Array(600).fill(0)]))).rejects.toThrow('Word 1 or older')
   })
 })
 
@@ -946,8 +946,8 @@ function chartedWorkbook(): Uint8Array {
 }
 
 describe('an Excel 97 workbook', () => {
-  it('draws a sheet’s charts from the values they kept, and a chart sheet’s from the cells its formulas name', () => {
-    const read = readOlderExcel(chartedWorkbook())
+  it('draws a sheet’s charts from the values they kept, and a chart sheet’s from the cells its formulas name', async () => {
+    const read = await readOlderExcel(chartedWorkbook())
     const sales = (points: { x: string; y: number }[]) => [{ name: 'Sales', points }]
     expect(read.kind === 'workbook' ? read.sheets.map(({ name, rows, figures }) => ({ name, rows, figures })) : undefined).toEqual([
       {
@@ -977,8 +977,8 @@ describe('an Excel 97 workbook', () => {
     ])
   })
 
-  it('shows the pictures each sheet’s drawing places, from the workbook’s store', () => {
-    expect(readOlderExcel(picturedWorkbook())).toEqual({
+  it('shows the pictures each sheet’s drawing places, from the workbook’s store', async () => {
+    expect(await readOlderExcel(picturedWorkbook())).toEqual({
       kind: 'workbook',
       sheets: [
         {
@@ -994,8 +994,8 @@ describe('an Excel 97 workbook', () => {
     })
   })
 
-  it('reads each worksheet as rows of its values as stored, its strings across the records that continue them', () => {
-    expect(readOlderExcel(workbook())).toEqual({
+  it('reads each worksheet as rows of its values as stored, its strings across the records that continue them', async () => {
+    expect(await readOlderExcel(workbook())).toEqual({
       kind: 'workbook',
       sheets: [
         {
@@ -1026,7 +1026,7 @@ describe('an Excel 97 workbook', () => {
     expect(rkNumber(0x3ff80000)).toBe(1.5)
   })
 
-  it('shows each number as the format of its style shows it, dates counted as the workbook counts them', () => {
+  it('shows each number as the format of its style shows it, dates counted as the workbook counts them', async () => {
     const styled = (date1904: boolean) => {
       const format = new Bytes().u16(164).u16(10).u8(0).narrow('dd/mm/yyyy')
       // Styles 0 to 15 are Excel's own; 16 gives the format of its own, 17 a percentage, 18 thousands.
@@ -1069,15 +1069,15 @@ describe('an Excel 97 workbook', () => {
       for (const part of [...globals(length), ...sheet]) all.raw(part)
       return compound({ Workbook: all.done() })
     }
-    const rows = (date1904: boolean) => {
-      const read = readOlderExcel(styled(date1904), { locale: 'en-US' })
+    const rows = async (date1904: boolean) => {
+      const read = await readOlderExcel(styled(date1904), { locale: 'en-US' })
       return read.kind === 'workbook' ? read.sheets[0]?.rows : undefined
     }
-    expect(rows(false)).toEqual([['04/11/2023', '25.00%', '1,234,567', '8.2', '05/11/2023']])
-    expect(rows(true)?.[0]?.[0]).toBe('05/11/2027')
+    expect(await rows(false)).toEqual([['04/11/2023', '25.00%', '1,234,567', '8.2', '05/11/2023']])
+    expect((await rows(true))?.[0]?.[0]).toBe('05/11/2027')
   })
 
-  it('reads a workbook of Excel 5 and 95: its text in the workbook’s code page, plain or with runs of format, and its formats', () => {
+  it('reads a workbook of Excel 5 and 95: its text in the workbook’s code page, plain or with runs of format, and its formats', async () => {
     const cyrillic = (...bytes: number[]) => new Uint8Array(bytes)
     const five = () => record(0x0809, new Bytes().u16(0x0500).u16(0x0005).zeros(4))
     const sheet = [
@@ -1130,7 +1130,7 @@ describe('an Excel 97 workbook', () => {
     const length = globals(0).reduce((sum, one) => sum + one.length, 0)
     const all = new Bytes()
     for (const part of [...globals(length), ...sheet]) all.raw(part)
-    expect(readOlderExcel(compound({ Book: all.done() }))).toEqual({
+    expect(await readOlderExcel(compound({ Book: all.done() }))).toEqual({
       kind: 'workbook',
       sheets: [
         {
@@ -1146,15 +1146,15 @@ describe('an Excel 97 workbook', () => {
     })
   })
 
-  it('says when it is protected with a password, or is not a workbook it knows', () => {
-    expect(() => readOlderExcel(workbook(true))).toThrow('protected with a password')
+  it('says when it is protected with a password, or is not a workbook it knows', async () => {
+    await expect(readOlderExcel(workbook(true))).rejects.toThrow('protected with a password')
     const four = new Bytes().raw(record(0x0809, new Bytes().u16(0x0400).u16(0x0010).zeros(4))).done()
-    expect(() => readOlderExcel(compound({ Book: four }))).toThrow('not an Excel workbook')
+    await expect(readOlderExcel(compound({ Book: four }))).rejects.toThrow('not an Excel workbook')
   })
 
-  it('reads a workbook’s stream written straight into a file, as some programs write one', () => {
+  it('reads a workbook’s stream written straight into a file, as some programs write one', async () => {
     const stream = openCompound(workbook()).stream('Workbook') as Uint8Array
-    expect(readOlderExcel(stream)).toEqual(readOlderExcel(workbook()))
+    expect(await readOlderExcel(stream)).toEqual(await readOlderExcel(workbook()))
   })
 })
 
@@ -1171,7 +1171,7 @@ describe('a workbook of Excel 2, 3 or 4', () => {
   const styleFour = (format: number) => record(0x0443, new Bytes().u8(0).u8(format).zeros(10))
   const beginning = (type: number, kind: number) => record(type, new Bytes().u16(0).u16(kind))
 
-  it('reads a worksheet of Excel 2, each cell in the format it names, in the code page of the file', () => {
+  it('reads a worksheet of Excel 2, each cell in the format it names, in the code page of the file', async () => {
     const file = fileOf(
       beginning(0x0009, 0x0010),
       record(0x0042, new Bytes().u16(32769)),
@@ -1188,7 +1188,7 @@ describe('a workbook of Excel 2, 3 or 4', () => {
       record(0x0005, cellTwo(2, 2).u8(0x07).u8(1)),
       EOF
     )
-    expect(readOlderExcel(file)).toEqual({
+    expect(await readOlderExcel(file)).toEqual({
       kind: 'workbook',
       sheets: [
         {
@@ -1205,7 +1205,7 @@ describe('a workbook of Excel 2, 3 or 4', () => {
     })
   })
 
-  it('reads each worksheet of an Excel 4 workbook after the record naming it, in its own formats or the workbook’s', () => {
+  it('reads each worksheet of an Excel 4 workbook after the record naming it, in its own formats or the workbook’s', async () => {
     const header = (name: number[]) => record(0x008f, new Bytes().u32(0).u8(name.length).raw(name))
     const file = fileOf(
       beginning(0x0409, 0x0100),
@@ -1235,7 +1235,7 @@ describe('a workbook of Excel 2, 3 or 4', () => {
       record(0x0203, cellFour(0, 0).f64(0.5)),
       EOF
     )
-    expect(readOlderExcel(file)).toEqual({
+    expect(await readOlderExcel(file)).toEqual({
       kind: 'workbook',
       sheets: [
         {
@@ -1252,10 +1252,10 @@ describe('a workbook of Excel 2, 3 or 4', () => {
     })
   })
 
-  it('reads a worksheet of Excel 3, and says when one is protected with a password or cut short', () => {
+  it('reads a worksheet of Excel 3, and says when one is protected with a password or cut short', async () => {
     const three = (...records: Uint8Array[]) =>
       fileOf(beginning(0x0209, 0x0010), formatTwo('General'), record(0x0243, new Bytes().u8(0).u8(0).zeros(10)), ...records, EOF)
-    expect(readOlderExcel(three(record(0x0204, cellFour(0, 1).u16(3).narrow('Sum')), record(0x0206, cellFour(1, 1).f64(12).zeros(4))))).toEqual({
+    expect(await readOlderExcel(three(record(0x0204, cellFour(0, 1).u16(3).narrow('Sum')), record(0x0206, cellFour(1, 1).f64(12).zeros(4))))).toEqual({
       kind: 'workbook',
       sheets: [
         {
@@ -1269,8 +1269,8 @@ describe('a workbook of Excel 2, 3 or 4', () => {
         }
       ]
     })
-    expect(() => readOlderExcel(three(record(0x002f, new Bytes().u16(0).u16(0))))).toThrow('protected with a password')
-    expect(() => readOlderExcel(three().subarray(0, 30))).toThrow('damaged')
+    await expect(readOlderExcel(three(record(0x002f, new Bytes().u16(0).u16(0))))).rejects.toThrow('protected with a password')
+    await expect(readOlderExcel(three().subarray(0, 30))).rejects.toThrow('damaged')
   })
 })
 

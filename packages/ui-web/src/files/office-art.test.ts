@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ART, ArtFigures, artRecords, artShapes, bitmapFile, blipBytes, storedPictures, twipPixels } from './office-art.ts'
+import { ART, ArtFigures, artRecords, artShapes, bitmapFile, blipBytes, blipMetafile, storedPictures, twipPixels } from './office-art.ts'
 import { FIGURE_LIMIT } from './office-figures.ts'
 
 /** Little-endian bytes, as OfficeArt writes them. */
@@ -165,6 +165,71 @@ describe('OfficeArt records', () => {
     for (let index = figures.list.length; index < FIGURE_LIMIT; index++) figures.unshown('', 'picture')
     expect(figures.picture('store:9', png, 'One too many')).toBeUndefined()
     expect(figures.unshown('', 'chart')).toBeUndefined()
+  })
+
+  /** An EMF of 10 by 5 millimetres that draws one rectangle: its header of 108 bytes, the rectangle, then its end. */
+  const EMF = (() => {
+    const record = (type: number, ...values: number[]) => [...u32(type), ...u32(8 + values.length * 4), ...values.flatMap(u32)]
+    const header = [
+      ...u32(1),
+      ...u32(108),
+      ...[0, 0, 99, 49, 0, 0, 1000, 500, 0x464d4520, 0x10000, 0, 0].flatMap(u32),
+      0,
+      0,
+      0,
+      0,
+      ...[0, 0, 0, 1000, 1000, 100, 100, 0, 0, 0, 100_000, 100_000].flatMap(u32)
+    ]
+    return [...header, ...record(43, 10, 10, 20, 20), ...record(14, 0, 16, 20)]
+  })()
+  /** A metafile of the store: its identifier, its header (its size, box, size in EMUs, size kept, packing), then its bytes. */
+  const metafileBlip = (kept: readonly number[], packed: boolean) =>
+    atom(
+      0xf01a,
+      [
+        ...identifier(1),
+        ...u32(EMF.length),
+        ...[0, 0, 100, 50].flatMap(u32),
+        ...u32(914_400),
+        ...u32(457_200),
+        ...u32(kept.length),
+        packed ? 0 : 0xfe,
+        0xfe,
+        ...kept
+      ],
+      0x3d4
+    )
+  const deflated = async (bytes: readonly number[]) => {
+    const stream = new Blob([new Uint8Array(bytes)]).stream().pipeThrough(new CompressionStream('deflate'))
+    return [...new Uint8Array(await new Response(stream).arrayBuffer())]
+  }
+
+  it('reads a metafile of the store with what its header says of it', () => {
+    const { whole, first } = read(metafileBlip(EMF, false))
+    const found = blipMetafile(whole, first)
+    expect(found && { ...found, bytes: [...found.bytes] }).toEqual({
+      bytes: EMF,
+      packed: false,
+      size: EMF.length,
+      hint: { bounds: { left: 0, top: 0, right: 100, bottom: 50 }, width: 96, height: 48 }
+    })
+    expect(blipMetafile(...(Object.values(read(blip(0xf01e, 0x6e0, PNG))) as [Uint8Array, ReturnType<typeof read>['first']]))).toBeUndefined()
+  })
+
+  it('draws a metafile as SVG at once, or one kept packed once the file is read', async () => {
+    const figures = new ArtFigures()
+    const plain = read(metafileBlip(EMF, false))
+    const packed = read(metafileBlip(await deflated(EMF), true))
+    expect(figures.picture('store:1', { metafile: blipMetafile(plain.whole, plain.first) }, 'Plan', { width: 200 })).toBe(0)
+    expect(figures.picture('store:2', { metafile: blipMetafile(packed.whole, packed.first) }, 'Plan')).toBe(1)
+    expect(figures.list.map((figure) => figure.kind)).toEqual(['picture', 'unshown'])
+    await figures.drawPacked()
+    expect(figures.list.map((figure) => (figure.kind === 'picture' ? [figure.type, figure.width, figure.height] : figure.kind))).toEqual([
+      ['image/svg+xml', 200, 100],
+      ['image/svg+xml', 96, 48]
+    ])
+    const svg = figures.list[1]?.kind === 'picture' ? new TextDecoder().decode(figures.list[1].bytes) : ''
+    expect(svg).toContain('<path d="M10 10L20 10L20 20L10 20Z"')
   })
 
   it.each<[number, number | undefined]>([

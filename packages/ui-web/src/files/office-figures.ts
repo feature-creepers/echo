@@ -1,10 +1,12 @@
 /**
  * The pictures and charts of an Office file (docs/SPEC.md, section 9.7). A picture is shown from its own bytes when
- * the window can show its format, known from the bytes rather than the name; a chart is drawn from the values its
- * file kept when it was last saved, as the Chart block draws, so neither needs its app.
+ * the window can show its format, known from the bytes rather than the name, and a metafile (EMF, WMF) is drawn as
+ * SVG (`metafile.ts`); a chart is drawn from the values its file kept when it was last saved, as the Chart block
+ * draws, so neither needs its app.
  */
 
 import { type Archive, partOf, textOf } from './archive.ts'
+import { drawMetafile, shownSize } from './metafile.ts'
 import { formatNumber, type NumberFormatOptions } from './number-format.ts'
 import type { OfficeChart, OfficeFigure } from './office-text.ts'
 import { xmlEvents } from './xml.ts'
@@ -63,7 +65,7 @@ const POINT_LIMIT = 200
 
 const startsWith = (bytes: Uint8Array, ...values: number[]) => values.every((value, index) => bytes[index] === value)
 
-/** The type of a picture the window shows, from its first bytes; none for a format it does not (EMF, WMF, TIFF). */
+/** The type of a picture the window shows, from its first bytes; none for a format it does not (EMF, WMF, TIFF), which are drawn or left out. */
 export function pictureType(bytes: Uint8Array): string | undefined {
   if (startsWith(bytes, 0x89, 0x50, 0x4e, 0x47)) return 'image/png'
   if (startsWith(bytes, 0xff, 0xd8, 0xff)) return 'image/jpeg'
@@ -118,9 +120,22 @@ export class Figures {
       const bytes = await read().catch(() => undefined)
       if (!bytes) return undefined
       const type = pictureType(bytes)
-      if (type === undefined || this.bytes + bytes.length > PICTURE_BYTES_LIMIT) return { kind: 'unshown', alt, what: 'picture' }
-      this.bytes += bytes.length
-      return { kind: 'picture', type, bytes, alt, width: size.width, height: size.height }
+      if (type !== undefined) {
+        if (this.bytes + bytes.length > PICTURE_BYTES_LIMIT) return { kind: 'unshown', alt, what: 'picture' }
+        this.bytes += bytes.length
+        return { kind: 'picture', type, bytes, alt, width: size.width, height: size.height }
+      }
+      // A metafile is drawn as SVG, at the size the file gives it, else its own.
+      const drawn = drawMetafile(bytes)
+      if (!drawn || this.bytes + drawn.svg.length > PICTURE_BYTES_LIMIT) return { kind: 'unshown', alt, what: 'picture' }
+      this.bytes += drawn.svg.length
+      return {
+        kind: 'picture',
+        type: 'image/svg+xml',
+        bytes: drawn.svg,
+        alt,
+        ...shownSize(size, drawn)
+      }
     })
   }
 

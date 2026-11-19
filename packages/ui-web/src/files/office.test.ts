@@ -107,8 +107,15 @@ describe('a ZIP archive', () => {
 
 /** A picture's bytes, as PNG starts. */
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3])
-/** A picture the window does not show: an EMF's first bytes. */
+/** A picture the window does not show: an EMF's first bytes, which draw nothing. */
 const EMF = new Uint8Array([0x01, 0x00, 0x00, 0x00, 0x6c, 0x00, 0x00, 0x00])
+
+/** A WMF behind its placeable header, an inch by half an inch, that draws one rectangle. */
+const WMF = (() => {
+  const words = (...values: number[]) => values.flatMap((value) => [value & 0xff, (value >> 8) & 0xff])
+  const body = [...words(7, 0, 0x041b, 360, 720, 0, 0), ...words(3, 0, 0)]
+  return new Uint8Array([...words(0xcdd7, 0x9ac6, 0, 0, 0, 1440, 720, 1440, 0, 0, 0), ...words(1, 9, 0x0300, 9 + body.length / 2, 0, 0, 0, 7, 0), ...body])
+})()
 
 /** A chart of DrawingML with one series, as saved with the values it drew. */
 const CHART =
@@ -241,7 +248,8 @@ describe('an Office file previewed', () => {
       '<w:p><w:r><mc:AlternateContent><mc:Choice Requires="c14"><w:drawing><wp:inline><wp:docPr id="3" name="Chart 3"/><a:graphic><a:graphicData>' +
         '<c:chart r:id="rId7"/></a:graphicData></a:graphic></wp:inline></w:drawing></mc:Choice><mc:Fallback><w:pict><v:imagedata r:id="rId6"/></w:pict>' +
         '<w:t>Fallback text</w:t></mc:Fallback></mc:AlternateContent></w:r></w:p>',
-      `<w:tbl><w:tr><w:tc><w:p>${run('Bold cell', '<w:b/>')}</w:p></w:tc><w:tc><w:p>${inlinePicture('rId5', 'Small')}</w:p></w:tc></w:tr></w:tbl>`
+      `<w:tbl><w:tr><w:tc><w:p>${run('Bold cell', '<w:b/>')}</w:p></w:tc><w:tc><w:p>${inlinePicture('rId5', 'Small')}</w:p></w:tc></w:tr></w:tbl>`,
+      `<w:p>${inlinePicture('rId8', 'A plan')}</w:p>`
     ].join('')
     const file = await zip({
       'word/document.xml': `<w:document ${W}><w:body>${body}</w:body></w:document>`,
@@ -249,9 +257,10 @@ describe('an Office file previewed', () => {
       'word/numbering.xml': `<w:numbering ${W}><w:abstractNum w:abstractNumId="7"><w:lvl w:ilvl="0"><w:numFmt w:val="decimal"/></w:lvl></w:abstractNum><w:num w:numId="2"><w:abstractNumId w:val="7"/></w:num></w:numbering>`,
       'word/_rels/document.xml.rels':
         '<Relationships><Relationship Id="rId5" Target="media/image1.png"/><Relationship Id="rId6" Target="media/image2.emf"/>' +
-        '<Relationship Id="rId7" Target="charts/chart1.xml"/><Relationship Id="rId9" Target="https://example.org/" TargetMode="External"/></Relationships>',
+        '<Relationship Id="rId7" Target="charts/chart1.xml"/><Relationship Id="rId8" Target="media/image3.wmf"/><Relationship Id="rId9" Target="https://example.org/" TargetMode="External"/></Relationships>',
       'word/media/image1.png': PNG,
       'word/media/image2.emf': EMF,
+      'word/media/image3.wmf': WMF,
       'word/charts/chart1.xml': CHART
     })
     expect(await readOffice('docx', file)).toEqual({
@@ -264,13 +273,15 @@ describe('an Office file previewed', () => {
         '![The old town](figure:0)',
         'Again: ![The old town](figure:0)![A drawing](figure:1)',
         '![](figure:2)',
-        '| **Bold cell** | ![Small](figure:3) |\n| --- | --- |'
+        '| **Bold cell** | ![Small](figure:3) |\n| --- | --- |',
+        '![A plan](figure:4)'
       ].join('\n\n'),
       figures: [
         { kind: 'picture', type: 'image/png', bytes: PNG, alt: 'The old town', width: 200, height: 100 },
         { kind: 'unshown', alt: 'A drawing', what: 'picture' },
         { ...COSTS },
-        { kind: 'picture', type: 'image/png', bytes: PNG, alt: 'Small', width: 200, height: 100 }
+        { kind: 'picture', type: 'image/png', bytes: PNG, alt: 'Small', width: 200, height: 100 },
+        { kind: 'picture', type: 'image/svg+xml', bytes: expect.any(Uint8Array), alt: 'A plan', width: 200, height: 100 }
       ],
       cut: false
     })

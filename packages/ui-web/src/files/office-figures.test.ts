@@ -13,7 +13,7 @@ describe('a picture of an Office file', () => {
     ['BMP', text('BM\x00\x00'), 'image/bmp'],
     ['WebP', text('RIFF\x00\x00\x00\x00WEBPVP8 '), 'image/webp'],
     ['SVG', text('<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg"/>'), 'image/svg+xml'],
-    ['EMF, which the window does not show', bytes(0x01, 0x00, 0x00, 0x00, 0x6c, 0x00, 0x00, 0x00), undefined],
+    ['EMF, which the window does not show but is drawn', bytes(0x01, 0x00, 0x00, 0x00, 0x6c, 0x00, 0x00, 0x00), undefined],
     ['WMF', bytes(0xd7, 0xcd, 0xc6, 0x9a), undefined],
     ['TIFF', text('II*\x00'), undefined],
     ['RIFF that is not WebP', text('RIFF\x00\x00\x00\x00WAVE'), undefined],
