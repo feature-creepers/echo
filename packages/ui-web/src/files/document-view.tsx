@@ -110,6 +110,9 @@ function Paragraph({ paragraph, above, below }: { paragraph: DocumentParagraph; 
   const shown = useContext(ShownContext)
   const { look, mark, marker } = paragraph
   const hanging = (look.firstLine ?? 0) < 0 ? -(look.firstLine ?? 0) : 0
+  // A number's tab goes to the text's start when the first line hangs before it, else on to the next default tab stop.
+  const firstStart = Math.max(0, (look.start ?? 0) + (look.firstLine ?? 0))
+  const markerWidth = hanging > 0 ? hanging : (Math.floor(firstStart / shown.tab) + 1) * shown.tab - firstStart
   const style: CSSProperties = {
     position: 'relative',
     margin: 0,
@@ -139,7 +142,7 @@ function Paragraph({ paragraph, above, below }: { paragraph: DocumentParagraph; 
           display: 'inline-block',
           boxSizing: 'border-box',
           textIndent: 0,
-          minWidth: marker.tab ? pt(hanging > 0 ? hanging : shown.tab) : undefined,
+          minWidth: marker.tab ? pt(markerWidth) : undefined,
           paddingRight: marker.tab ? '0.4em' : undefined,
           whiteSpace: 'pre'
         }}
@@ -147,7 +150,7 @@ function Paragraph({ paragraph, above, below }: { paragraph: DocumentParagraph; 
         {marker.text}
       </span>
     ) : (
-      <span style={{ display: 'inline-block', position: 'relative', textIndent: 0, width: marker.tab ? pt(hanging > 0 ? hanging : shown.tab) : 0 }}>
+      <span style={{ display: 'inline-block', position: 'relative', textIndent: 0, width: marker.tab ? pt(markerWidth) : 0 }}>
         <span
           style={{
             ...textStyle(marker.look),
@@ -233,7 +236,7 @@ function Span({ span }: { span: DocumentSpan }) {
   if ('tab' in span) return <span style={textStyle(span.look)}>{'\t'}</span>
   if ('break' in span) return <br />
   if ('field' in span) return <span style={textStyle(span.look)}>{span.field === 'page' ? shown.page : String(shown.pages)}</span>
-  if ('note' in span) return <span style={textStyle(span.look)}>{String(span.note)}</span>
+  if ('note' in span) return <span style={textStyle(span.look)}>{span.label ?? String(span.note)}</span>
   if ('placed' in span) return span.placed.at?.from === 'page' ? null : <Placed placed={span.placed} />
   return span.box.at?.from === 'page' ? null : <Box box={span.box} />
 }

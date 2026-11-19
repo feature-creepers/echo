@@ -12,9 +12,22 @@
 
 import { unpack } from './archive.ts'
 import { type ChartContext, type ChartRecord, readGraphChart, readOlderChart } from './binary-chart.ts'
+import { damaged, operandSize, type Reader, reader } from './binary-records.ts'
 import { type Compound, openCompound } from './compound.ts'
 import { builtInFormat, formatNumber, generalNumber, type NumberFormatOptions } from './number-format.ts'
-import { ART, ArtFigures, type ArtRecord, artRecords, artShape, artShapes, childOf, type StoredPicture, storedPictures, twipPixels } from './office-art.ts'
+import {
+  ART,
+  ArtFigures,
+  type ArtRecord,
+  type ArtShape,
+  artRecords,
+  artShape,
+  artShapes,
+  childOf,
+  type StoredPicture,
+  storedPictures,
+  twipPixels
+} from './office-art.ts'
 import { type CellValue, cellRange, pictureType } from './office-figures.ts'
 import {
   BLOCK_LIMIT,
@@ -33,30 +46,11 @@ import {
   SLIDE_LIMIT
 } from './office-text.ts'
 import { drawOlderSlide, type OlderDeck, olderDeck } from './older-slide-drawing.ts'
+import { type FloatingAnchor, readOlderWordLook, type TextPiece } from './older-word-look.ts'
 import { DRAWINGS_LIMIT } from './slide-svg.ts'
 
 /** The most characters of a document read: past them, a preview shows the start. */
 const CHARACTER_LIMIT = 4_000_000
-
-const damaged = (): never => {
-  throw new Error('The file is damaged: its text could not be read.')
-}
-
-/** Little-endian numbers from bytes, each read checked against their end. */
-function reader(bytes: Uint8Array) {
-  const data = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
-  const within = (at: number, size: number) => at >= 0 && at + size <= bytes.length
-  return {
-    length: bytes.length,
-    u8: (at: number) => (within(at, 1) ? data.getUint8(at) : damaged()),
-    u16: (at: number) => (within(at, 2) ? data.getUint16(at, true) : damaged()),
-    i16: (at: number) => (within(at, 2) ? data.getInt16(at, true) : damaged()),
-    u32: (at: number) => (within(at, 4) ? data.getUint32(at, true) : damaged()),
-    f64: (at: number) => (within(at, 8) ? data.getFloat64(at, true) : damaged()),
-    bytes: (at: number, size: number) => (within(at, size) ? bytes.subarray(at, at + size) : damaged())
-  }
-}
-type Reader = ReturnType<typeof reader>
 
 /** Text of 8-bit characters whose high byte is zero, as Excel and PowerPoint write it. */
 const latin1 = (bytes: Uint8Array) => {
@@ -77,31 +71,6 @@ interface ParagraphFormat {
   level: number
   /** Its outline level, set on it directly: 0 to 8 for a heading's 1 to 9. */
   outline?: number
-}
-
-/** How many bytes a property's operand takes, from the property's code, or from its operand when it says. */
-function operandSize(property: number, word: Reader, at: number): number {
-  switch ((property >> 13) & 7) {
-    case 0:
-    case 1:
-      return 1
-    case 2:
-    case 4:
-    case 5:
-      return 2
-    case 3:
-      return 4
-    case 7:
-      return 3
-  }
-  // A table's definition counts its operand in two bytes, the rest of it plus one.
-  if (property === 0xd608 || property === 0xd606) return word.u16(at) + 1
-  // Tab stops changed, past 255 of them, list what they take away and add.
-  if (property === 0xc615 && word.u8(at) === 255) {
-    const removed = word.u8(at + 1)
-    return 3 + removed * 4 + word.u8(at + 2 + removed * 4) * 3
-  }
-  return word.u8(at) + 1
 }
 
 /** A paragraph's format, from its style and the properties set on it (`grpprl`). */
@@ -415,6 +384,9 @@ function wordPictures(
 ) {
   const { data, objects } = streams
   const figures = new ArtFigures()
+  // Each figure's size in the text, in points, and the rules drawn in its place, by where they are, for the document's look.
+  const sizes = new Map<number, { width?: number | undefined; height?: number | undefined }>()
+  const rules = new Map<number, NonNullable<ArtShape['rule']>>()
   const objectChart = (id: number | undefined) => {
     const storage = id === undefined ? undefined : objects?.storage(`_${id}`)
     return storage && embeddedChart(storage)
@@ -446,14 +418,19 @@ function wordPictures(
     const length = picture.u32(location)
     const header = picture.u16(location + 4)
     const mode = picture.u16(location + 6)
-    const scaled = (goal: number, scale: number) => twipPixels((picture.i16(location + goal) * (picture.u16(location + scale) || 1000)) / 1000)
-    const size = { width: scaled(0x1c, 0x20), height: scaled(0x1e, 0x22) }
+    const twips = (goal: number, scale: number) => (picture.i16(location + goal) * (picture.u16(location + scale) || 1000)) / 1000
+    const size = { width: twipPixels(twips(0x1c, 0x20)), height: twipPixels(twips(0x1e, 0x22)) }
+    const points = (value: number) => (value > 0 ? value / 20 : undefined)
+    const sized = (figure: number | undefined) => {
+      if (figure !== undefined) sizes.set(figure, { width: points(twips(0x1c, 0x20)), height: points(twips(0x1e, 0x22)) })
+      return figure
+    }
     // A picture of Word 6's kind is a WMF after its header, without a header of its own, drawn in its window.
     if (mode !== 0x64 && mode !== 0x66) {
       const end = Math.min(location + length, data.length)
       const metafile = location + header < end ? data.subarray(location + header, end) : undefined
       const kept = metafile && { bytes: metafile, packed: false, size: metafile.length, hint: size }
-      return instead() ?? figures.picture(`data:${location}`, kept ? { metafile: kept } : undefined, '', size)
+      return sized(instead() ?? figures.picture(`data:${location}`, kept ? { metafile: kept } : undefined, '', size))
     }
     let at = location + header
     if (mode === 0x66) at += 1 + picture.u8(at)
@@ -468,13 +445,18 @@ function wordPictures(
       }
     }
     // The shape names its picture by its place in the document's store; the entry after it holds that picture itself.
+    // A rule across the text is drawn as one, with no picture.
+    if (shape?.rule && shape.picture === undefined) {
+      rules.set(location, shape.rule)
+      return undefined
+    }
     const stored = storedPictures(data, { type: ART.store, instance: 0, container: true, at: entries, size: end - entries })(1)
     const shown = stored?.bytes !== undefined && pictureType(stored.bytes) !== undefined
-    return (shown ? undefined : instead()) ?? figures.picture(`data:${location}`, stored, shape?.alt ?? '', size)
+    return sized((shown ? undefined : instead()) ?? figures.picture(`data:${location}`, stored, shape?.alt ?? '', size))
   }
 
   // Pictures floating over the text: their anchors by character, their shapes by identifier, their pictures in the store.
-  const anchors = new Map<number, { id: number; width?: number | undefined; height?: number | undefined }>()
+  const anchors = new Map<number, { id: number; width?: number | undefined; height?: number | undefined; place: FloatingAnchor }>()
   const shapes = new Map<number, ReturnType<typeof artShapes>[number]>()
   let stored: (place: number) => StoredPicture | undefined = () => undefined
   try {
@@ -482,7 +464,20 @@ function wordPictures(
     for (let index = 0; index < count; index++) {
       const spa = places.anchors.at + (count + 1) * 4 + index * 26
       const span = (from: number, to: number) => twipPixels((table.u32(spa + to) | 0) - (table.u32(spa + from) | 0))
-      anchors.set(table.u32(places.anchors.at + index * 4), { id: table.u32(spa), width: span(4, 12), height: span(8, 16) })
+      // Where it is, from what, and how text wraps around it (`FSPA`).
+      const flags = table.u16(spa + 20)
+      const left = table.u32(spa + 4) | 0
+      const top = table.u32(spa + 8) | 0
+      const place: FloatingAnchor = {
+        left: left / 20,
+        top: top / 20,
+        width: Math.max(0, (table.u32(spa + 12) | 0) - left) / 20,
+        height: Math.max(0, (table.u32(spa + 16) | 0) - top) / 20,
+        across: (['margin', 'page', 'column'] as const)[(flags >> 1) & 3] ?? 'column',
+        down: (['margin', 'page', 'paragraph'] as const)[(flags >> 3) & 3] ?? 'paragraph',
+        wrap: (flags >> 5) & 0xf
+      }
+      anchors.set(table.u32(places.anchors.at + index * 4), { id: table.u32(spa), width: span(4, 12), height: span(8, 16), place })
     }
     const end = Math.min(places.drawings.at + places.drawings.size, tableBytes.length)
     const [group] = places.drawings.size > 0 ? artRecords(tableBytes, places.drawings.at, end) : []
@@ -506,6 +501,28 @@ function wordPictures(
     return figures.picture(`store:${shape.picture}`, stored(shape.picture), shape.alt, anchor)
   }
 
+  // A special character's figure: an object's chart or what says it is one, or the picture its run names.
+  const inlineAt = (place: number, field: { object?: number | undefined; chart: boolean }): number | undefined => {
+    try {
+      const run = runAt(place)
+      if (!run) return undefined
+      const found = characterPicture(word, run.at, run.size)
+      if (found.object) {
+        const chart = objectChart(found.location)
+        return chart ? figures.chart(chart) : figures.unshown('', field.chart ? 'chart' : 'picture')
+      }
+      return found.data || found.location === undefined ? undefined : inline(found.location, field.object)
+    } catch {
+      return undefined
+    }
+  }
+
+  // The text and the look ask for the same figures: each is read once.
+  const read = new Map<string, number | undefined>()
+  const once = (key: string, find: () => number | undefined) => {
+    if (!read.has(key)) read.set(key, find())
+    return read.get(key)
+  }
   return {
     figures,
     /**
@@ -513,18 +530,7 @@ function wordPictures(
      * that names an object (its storage's number) and says whether it is a chart.
      */
     inline(place: number, field: { object?: number | undefined; chart: boolean }): number | undefined {
-      try {
-        const run = runAt(place)
-        if (!run) return undefined
-        const found = characterPicture(word, run.at, run.size)
-        if (found.object) {
-          const chart = objectChart(found.location)
-          return chart ? figures.chart(chart) : figures.unshown('', field.chart ? 'chart' : 'picture')
-        }
-        return found.data || found.location === undefined ? undefined : inline(found.location, field.object)
-      } catch {
-        return undefined
-      }
+      return once(`inline:${place}`, () => inlineAt(place, field))
     },
     /** The object a field's separator names, by the number of its storage; none for a field of no object. */
     object(place: number): number | undefined {
@@ -538,11 +544,30 @@ function wordPictures(
     },
     /** The figure of a shape anchored at a character, by the character's place in the text. */
     floating(character: number): number | undefined {
+      return once(`floating:${character}`, () => {
+        try {
+          return floating(character)
+        } catch {
+          return undefined
+        }
+      })
+    },
+    /** The rule across the text a special character is, by its place in the main stream, once its figure was asked for. */
+    rule(place: number): ArtShape['rule'] {
       try {
-        return floating(character)
+        const run = runAt(place)
+        const found = run && characterPicture(word, run.at, run.size)
+        return found?.location === undefined ? undefined : rules.get(found.location)
       } catch {
         return undefined
       }
+    },
+    /** Where a shape anchored at a character is, and how text wraps around it. */
+    anchor(character: number): FloatingAnchor | undefined {
+      return anchors.get(character)?.place
+    },
+    size(figure: number) {
+      return sizes.get(figure)
     }
   }
 }
@@ -584,6 +609,8 @@ export async function readOlderWord(bytes: Uint8Array): Promise<OfficePreview> {
   let formats: WordPlace
   let complex: WordPlace | undefined
   let pictures: ReturnType<typeof wordPictures> | undefined
+  // A Word 97 document's parts and stories' lengths, for its look.
+  let parts: { part: (index: number) => WordPlace; lengths: number[] } | undefined
   if (two) {
     textLength = Math.min(word.u32(0x34), CHARACTER_LIMIT)
     styles = { at: word.u32(0x5e), size: word.u16(0x62) }
@@ -602,7 +629,9 @@ export async function readOlderWord(bytes: Uint8Array): Promise<OfficePreview> {
     const pairsAt = longsAt + 2 + longs * 4
     const pairCount = word.u16(pairsAt)
     if (pairCount < 34) damaged()
-    const pair = (index: number) => ({ at: word.u32(pairsAt + 2 + index * 8), size: word.u32(pairsAt + 6 + index * 8) })
+    const pair = (index: number) =>
+      index < pairCount ? { at: word.u32(pairsAt + 2 + index * 8), size: word.u32(pairsAt + 6 + index * 8) } : { at: 0, size: 0 }
+    parts = { part: pair, lengths: Array.from({ length: 8 }, (_, index) => (index + 3 < longs ? word.u32(longsAt + 2 + (index + 3) * 4) : 0)) }
     styles = pair(1)
     formats = pair(13)
     complex = pair(33)
@@ -623,12 +652,15 @@ export async function readOlderWord(bytes: Uint8Array): Promise<OfficePreview> {
 
   // The text is in pieces, each where the file keeps it: in 8-bit characters, or in UTF-16. A Word 6 file saved
   // whole has one, from the start of its text; one saved quickly lists them, all 8-bit, Word 2 their size in two bytes.
-  const pieces: { start: number; end: number; at: number; narrow: boolean }[] = []
+  // Word 97 lists the properties some pieces share first, each piece naming its own by their place in the list.
+  const pieces: TextPiece[] = []
+  const shared: WordPlace[] = []
   if (complex === undefined) pieces.push({ start: 0, end: textLength, at: word.u32(0x18), narrow: true })
   else
     for (let at = complex.at; at < complex.at + complex.size; ) {
       const kind = table.u8(at)
       if (kind === 1) {
+        shared.push({ at: at + 3, size: Math.max(0, table.i16(at + 1)) })
         at += 3 + Math.max(0, table.i16(at + 1))
         continue
       }
@@ -640,7 +672,14 @@ export async function readOlderWord(bytes: Uint8Array): Promise<OfficePreview> {
         const raw = table.u32(list + (count + 1) * 4 + index * 8 + 2)
         const narrow = six || (raw & 0x40000000) !== 0
         const offset = six ? raw : raw & 0x3fffffff
-        pieces.push({ start: table.u32(list + index * 4), end: table.u32(list + (index + 1) * 4), at: narrow && !six ? offset / 2 : offset, narrow })
+        const modifier = table.u16(list + (count + 1) * 4 + index * 8 + 6)
+        pieces.push({
+          start: table.u32(list + index * 4),
+          end: table.u32(list + (index + 1) * 4),
+          at: narrow && !six ? offset / 2 : offset,
+          narrow,
+          properties: !six && modifier & 1 ? shared[modifier >> 1] : undefined
+        })
       }
       break
     }
@@ -821,6 +860,24 @@ export async function readOlderWord(bytes: Uint8Array): Promise<OfficePreview> {
   }
   if (paragraph.trim() !== '') endParagraph('\r', undefined)
   flushTable()
+  // A Word 97 document's look, read after its text with the same figures; one whose look cannot be read shows its text.
+  let look: ReturnType<typeof readOlderWordLook> | undefined
+  const dataStream = file?.stream('Data')
+  if (parts && pictures)
+    try {
+      look = readOlderWordLook({
+        word,
+        table,
+        data: dataStream && reader(dataStream),
+        part: parts.part,
+        lengths: parts.lengths,
+        pieces,
+        figures: pictures,
+        limit: CHARACTER_LIMIT
+      })
+    } catch {
+      look = undefined
+    }
   await pictures?.figures.drawPacked()
   const figures = pictures?.figures.list ?? []
   // Each figure's place in the text becomes its mark, once the text around it is written as Markdown.
@@ -828,7 +885,8 @@ export async function readOlderWord(bytes: Uint8Array): Promise<OfficePreview> {
     const found = figures[Number(place)]
     return found ? figureMark(Number(place), found.kind === 'chart' ? found.title : found.alt) : ''
   })
-  return { kind: 'document', markdown, figures, cut: blocks.length >= BLOCK_LIMIT || read >= CHARACTER_LIMIT }
+  const cut = blocks.length >= BLOCK_LIMIT || read >= CHARACTER_LIMIT
+  return look ? { kind: 'document', markdown, figures, cut: cut || look.cut, look: look.look } : { kind: 'document', markdown, figures, cut }
 }
 
 /** A 16-bit number at the start of a file, before it is known to be anything. */

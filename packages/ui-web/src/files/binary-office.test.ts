@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { readOlderExcel, readOlderPowerPoint, readOlderSheets, readOlderWord, rkNumber } from './binary-office.ts'
 import { openCompound } from './compound.ts'
+import type { DocumentTable } from './document-look.ts'
 import { readOffice } from './office.ts'
+import type { OfficePreview } from './office-text.ts'
 
 /** Little-endian bytes written in order, with places to fill in once known. */
 class Bytes {
@@ -196,6 +198,13 @@ describe('a compound file', () => {
     expect(() => openCompound(short)).toThrow('damaged')
   })
 })
+
+/** A preview without the look of its document, which `older-word-look.test.ts` checks. */
+function textual(preview: OfficePreview): OfficePreview {
+  if (preview.kind !== 'document') return preview
+  const { look: _look, ...rest } = preview
+  return rest
+}
 
 /** A Word paragraph's properties as they are written: its style, then each property's code and operand. */
 function formatting(style: number, properties: [code: number, operand: number[]][] = []): number[] {
@@ -455,7 +464,8 @@ describe('a Word 97 document', () => {
       { text: '\x07', format: formatting(0, [IN_TABLE, ROW_END]) },
       { text: 'The end, \xe9t\xe9 \x93here\x94.\r', format: formatting(0) }
     ])
-    expect(await readOlderWord(file)).toEqual({
+    const preview = await readOlderWord(file)
+    expect(textual(preview)).toEqual({
       kind: 'document',
       markdown: [
         '# Trip to Lyon',
@@ -467,6 +477,13 @@ describe('a Word 97 document', () => {
       figures: [],
       cut: false
     })
+    // Its look, read from the same records: a heading, a page's number for its field, a table of two rows.
+    const blocks = preview.kind === 'document' ? preview.look?.pages.flatMap((page) => page.bands.flatMap((band) => band.blocks)) : undefined
+    expect(blocks?.map((block) => block.kind)).toEqual(['paragraph', 'paragraph', 'paragraph', 'table', 'paragraph'])
+    expect(blocks?.[0]).toMatchObject({ heading: 1, spans: [{ text: 'Trip to Lyon' }] })
+    expect(blocks?.[1]).toMatchObject({ spans: [{ text: 'We leave on Friday, ' }, { field: 'page' }, { text: ' café' }, { break: true }, { text: 'at 9.' }] })
+    expect((blocks?.[3] as DocumentTable | undefined)?.rows.map((row) => row.cells.length)).toEqual([2, 2])
+    expect(blocks?.[4]).toMatchObject({ spans: [{ text: 'The end, été “here”.' }] })
   })
 
   it('shows its pictures where they are: in the text, floating over it, and an embedded chart as one its app draws', async () => {
@@ -517,7 +534,8 @@ describe('a Word 97 document', () => {
         blip: blipOf(0xf01d, 0x46a, JPEG)
       }
     )
-    expect(await readOlderWord(file)).toEqual({
+    const preview = await readOlderWord(file)
+    expect(textual(preview)).toEqual({
       kind: 'document',
       markdown: 'Our cat ![A cat](figure:0) and a view ![](figure:1).\n\n![](figure:2)',
       figures: [
@@ -526,6 +544,17 @@ describe('a Word 97 document', () => {
         { kind: 'unshown', alt: '', what: 'chart' }
       ],
       cut: false
+    })
+    // In its look, the same figures: one in its line at its size in points, one floating at the side its anchor is nearer.
+    const opening = preview.kind === 'document' ? preview.look?.pages[0]?.bands[0]?.blocks[0] : undefined
+    expect(opening).toMatchObject({
+      spans: [
+        { text: 'Our cat ' },
+        { placed: { figure: 0, width: 72, height: 18 } },
+        { text: ' and a view ' },
+        { placed: { figure: 1, width: 144, height: 72, float: 'left' } },
+        { text: '.' }
+      ]
     })
   })
 
@@ -563,7 +592,7 @@ describe('a Word 97 document', () => {
         objects: { _77: { Workbook: graphStream() } }
       }
     )
-    expect(await readOlderWord(file)).toEqual({ kind: 'document', markdown: '![](figure:0)\n\nEnd', figures: [GRAPH_CHART], cut: false })
+    expect(textual(await readOlderWord(file))).toEqual({ kind: 'document', markdown: '![](figure:0)\n\nEnd', figures: [GRAPH_CHART], cut: false })
   })
 
   it('says when it is protected with a password, or is not one', async () => {

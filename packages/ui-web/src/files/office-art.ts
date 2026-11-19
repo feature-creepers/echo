@@ -197,13 +197,25 @@ export interface ArtShape {
   id: number
   picture?: number | undefined
   alt: string
+  /** A rule across the text, as Word writes HTML's: its share of the text's width in thousandths, its height in points and its colour. */
+  rule?: { share: number; height: number; color: string | undefined } | undefined
   anchor?: ArtRecord | undefined
   client?: ArtRecord | undefined
 }
 
-/** The properties read of a shape: the picture it shows (`pib`), and its description, its words for those who cannot see it. */
+/**
+ * The properties read of a shape: the picture it shows (`pib`), and its description, its words for those who cannot see
+ * it; for a rule, its fill, its share of the width and its height, and the flags that say it is one.
+ */
 const PICTURE = 0x0104
 const DESCRIPTION = 0x0381
+const FILL_COLOR = 0x0181
+const RULE_SHARE = 0x0393
+const RULE_HEIGHT = 0x0395
+const GROUP_FLAGS = 0x03bf
+/** A rule across the text (`fHorizRule`), and the bit that says the flag is set at all. */
+const HORIZONTAL_RULE = 1 << 11
+const HORIZONTAL_RULE_SET = 1 << 27
 
 /** A shape's properties (an `OPT` record): their simple values, and their complex ones (text) in order after them. */
 function shapeProperties(bytes: Uint8Array, record: ArtRecord): Map<number, number | string> {
@@ -243,6 +255,22 @@ export function artShape(bytes: Uint8Array, container: ArtRecord): ArtShape | un
       if (typeof picture === 'number' && picture > 0) shape.picture = picture
       const words = properties.get(DESCRIPTION)
       if (typeof words === 'string') shape.alt ||= words.trim()
+      const flags = properties.get(GROUP_FLAGS)
+      if (typeof flags === 'number' && flags & HORIZONTAL_RULE && flags & HORIZONTAL_RULE_SET) {
+        const share = properties.get(RULE_SHARE)
+        const height = properties.get(RULE_HEIGHT)
+        const fill = properties.get(FILL_COLOR)
+        // Colours are red, green and blue from the low byte up; one with a high byte set names a scheme's, read as none.
+        const color =
+          typeof fill === 'number' && fill >>> 24 === 0
+            ? `#${[0, 8, 16].map((shift) => ((fill >> shift) & 0xff).toString(16).padStart(2, '0')).join('')}`
+            : undefined
+        shape.rule = {
+          share: typeof share === 'number' && share > 0 && share <= 1000 ? share : 1000,
+          height: typeof height === 'number' && height > 0 ? Math.min(height / 20, 72) : 1.5,
+          color
+        }
+      }
     } else if (record.type === ART.clientAnchor) shape.anchor = record
     else if (record.type === ART.clientData) shape.client = record
   }

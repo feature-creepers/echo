@@ -84,7 +84,7 @@ export interface TextBox {
 
 /**
  * A piece of a paragraph: text, a tab (to a stop of its own when it names one), a line broken, the page's number or the count of pages (written where the page
- * is shown), a figure, a box of text, or the mark of a note, numbered.
+ * is shown), a figure, a box of text, or the mark of a note, numbered, written as its label when the file numbers it otherwise (`i`, `ii`).
  */
 export type DocumentSpan =
   | { text: string; look: TextLook; link?: string | undefined }
@@ -93,7 +93,7 @@ export type DocumentSpan =
   | { field: 'page' | 'pages'; look: TextLook }
   | { placed: PlacedFigure }
   | { box: TextBox }
-  | { note: number; look: TextLook }
+  | { note: number; look: TextLook; label?: string | undefined }
 
 /**
  * A paragraph: its look, its number or bullet (followed by a tab or not, and aligned at its first line's start, centred

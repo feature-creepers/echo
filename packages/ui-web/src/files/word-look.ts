@@ -167,12 +167,55 @@ const UNDERLINES: Record<string, TextLook['underline']> = {
 
 const SYMBOL_FONTS = /^(symbol|wingdings( 2| 3)?|webdings|zapf ?dingbats|marlett|mt extra)$/i
 
+/** Whether a font is one of symbols, whose characters stand for others. */
+export const isSymbolFont = (font: string | undefined): boolean => font !== undefined && SYMBOL_FONTS.test(font)
+
 /** A character of a font of symbols as the one it looks like: Symbol keeps its bullet where other fonts keep a middle dot. */
 export function symbolCharacter(font: string, character: string): string {
   const code = character.codePointAt(0) ?? 0
-  if (/^symbol$/i.test(font) && (code === 0xb7 || code === 0xf0b7)) return '•'
+  if (/^symbol$/i.test(font)) {
+    const plain = code >= 0xf020 && code <= 0xf0ff ? code - 0xf000 : code
+    const known = SYMBOL_CHARACTERS[plain]
+    if (known) return known
+    // Symbol's letters are Greek's, in the order of the Latin ones they stand in for.
+    if (plain >= 0x41 && plain <= 0x5a) return [...SYMBOL_UPPER][plain - 0x41] as string
+    if (plain >= 0x61 && plain <= 0x7a) return [...SYMBOL_LOWER][plain - 0x61] as string
+  }
   return bulletCharacter(character)
 }
+
+/** What Symbol's characters past its letters stand for: suits, arrows, the signs of mathematics. */
+const SYMBOL_CHARACTERS: Record<number, string> = {
+  163: '≤',
+  165: '∞',
+  167: '♣',
+  168: '♦',
+  169: '♥',
+  170: '♠',
+  171: '↔',
+  172: '←',
+  173: '↑',
+  174: '→',
+  175: '↓',
+  176: '°',
+  177: '±',
+  179: '≥',
+  180: '×',
+  183: '•',
+  184: '÷',
+  185: '≠',
+  187: '≈',
+  214: '√',
+  215: '⋅',
+  222: '⇒',
+  224: '◊',
+  229: '∑',
+  242: '∫'
+}
+
+/** Symbol's Greek letters, by the Latin letter each stands in for, from A to Z. */
+const SYMBOL_UPPER = 'ΑΒΧΔΕΦΓΗΙϑΚΛΜΝΟΠΘΡΣΤΥςΩΞΨΖ'
+const SYMBOL_LOWER = 'αβχδεφγηιϕκλμνοπθρστυϖωξψζ'
 
 /** A run's look while it is read: what the look keeps, and whether it is hidden. */
 type RunRead = TextLook & { hidden?: boolean | undefined }
