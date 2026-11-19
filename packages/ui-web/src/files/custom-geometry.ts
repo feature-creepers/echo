@@ -24,6 +24,8 @@ export interface CustomGeometry {
   fill: string
   stroke: string
   pieces?: string[] | undefined
+  /** Every subpath in the order it is drawn, filled, stroked or neither: the lines a Fontwork's text follows. */
+  outlines?: string[] | undefined
 }
 
 /** The view box a path's numbers are in. */
@@ -52,6 +54,7 @@ export function customGeometry(commands: readonly PathCommand[], view: ViewBox, 
   const x = (value: number) => (value - view.left) * scaleX
   const y = (value: number) => (value - view.top) * scaleY
   const pieces: string[] = []
+  const outlines: string[] = []
   const fills: string[] = []
   const strokes: string[] = []
   // The path under way: its subpaths, and whether it is filled and stroked.
@@ -64,7 +67,10 @@ export function customGeometry(commands: readonly PathCommand[], view: ViewBox, 
   let pen: [number, number] = [0, 0]
   const point = (to: [number, number]) => `${number(to[0])} ${number(to[1])}`
   const endSubpath = (closed: boolean) => {
-    if (data) subpaths.push(closed ? `${data}Z` : data)
+    if (data) {
+      subpaths.push(closed ? `${data}Z` : data)
+      outlines.push(closed ? `${data}Z` : data)
+    }
     data = ''
   }
   const endPath = () => {
@@ -217,5 +223,5 @@ export function customGeometry(commands: readonly PathCommand[], view: ViewBox, 
   }
   endPath()
   // A shape of one path keeps no pieces: its fill is its one piece.
-  return { fill: fills.join(''), stroke: strokes.join(''), pieces: pieces.length > 1 ? pieces : undefined }
+  return { fill: fills.join(''), stroke: strokes.join(''), pieces: pieces.length > 1 ? pieces : undefined, outlines }
 }

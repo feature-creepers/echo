@@ -114,7 +114,7 @@ export interface Outline {
 
 // Text
 
-/** How a run of text is written: its size in points, its weight, slant, lines, case, colour and font. */
+/** How a run of text is written: its size in points, its weight, slant, lines, case, colour, font, and the space after each letter in pixels. */
 export interface RunStyle {
   size?: number | undefined
   bold?: boolean | undefined
@@ -124,6 +124,7 @@ export interface RunStyle {
   caps?: boolean | undefined
   paint?: Paint | undefined
   font?: string | undefined
+  letterSpacing?: number | undefined
 }
 
 /** A run of text in its style, or a line broken within its paragraph. */

@@ -5,7 +5,7 @@
  * line with its dashes and the arrows at its ends, and its text. A style takes what it leaves out from the style it
  * comes from, then from its family's default, then from what LibreOffice gives a shape whose styles say nothing: its
  * own blue fill and line, or the colours of the app that wrote the file when that is an older one (`shapeColours`). A placeholder's text takes the style of its master's outline at its level. Lists are bulleted or
- * numbered as their list style says.
+ * numbered as their list style says. A Fontwork's text is laid along its path in place of its outline (`fontwork.ts`).
  *
  * What cannot be read is left out of the drawing rather than failing it: a shape whose parts are missing, a picture
  * of a format the window does not show.
@@ -14,6 +14,7 @@
 import { type Archive, partOf, textOf } from './archive.ts'
 import { customGeometry, type PathCommand } from './custom-geometry.ts'
 import { enhancedGeometry } from './enhanced-geometry.ts'
+import { type FontworkGlyph, type FontworkStyle, fontworkElement, glyphCorners, layFontwork } from './fontwork.ts'
 import { drawMetafile } from './metafile.ts'
 import { pictureType, readOpenChart } from './office-figures.ts'
 import { objectFormula } from './office-math.ts'
@@ -80,6 +81,8 @@ export interface DrawingSource {
   colours: ShapeColours
   /** Whether a shape takes the styles its style comes from: a presentation's do, a text's take only their own, as Writer draws them. */
   styled: boolean
+  /** Whether the file asks for Fontwork's older way of laying several lines on one path (`LegacySingleLineFontwork`), as files from before LibreOffice 7.5 do by saying nothing. */
+  legacyFontwork: boolean
 }
 
 /** The fill and line a shape is drawn with when its styles name neither. */
@@ -124,7 +127,9 @@ export async function drawingSource(
       named.set(`${child.name}/${child.attributes['draw:name']}`, child)
   const meta = await textOf(archive, 'meta.xml').catch(() => undefined)
   const generator = meta === undefined ? undefined : /<meta:generator>([^<]{0,300})<\/meta:generator>/.exec(meta)?.[1]
-  return { archive, book, fonts, named, addresses: new Map(), colours: shapeColours(generator), styled }
+  const settings = await textOf(archive, 'settings.xml').catch(() => undefined)
+  const legacyFontwork = !/config:name="LegacySingleLineFontwork"[^>]{0,100}>\s*false\s*</.test(settings ?? '')
+  return { archive, book, fonts, named, addresses: new Map(), colours: shapeColours(generator), styled, legacyFontwork }
 }
 
 export const plainText = (node: XmlNode): string => (node.name === '#text' ? node.text : node.children.map(plainText).join(''))
@@ -762,6 +767,38 @@ function pathPoints(paths: readonly Subpath[]): Point[] {
   return points
 }
 
+/** The most points one subpath is flattened into, so a damaged path costs little. */
+const FLAT_LIMIT = 4000
+
+/**
+ * Path data as polylines, one for each subpath: its curves by points along them, as many as their length needs, and
+ * its arcs by steps of five degrees at most, as LibreOffice divides them; a closed subpath ends where it starts.
+ */
+export function flattened(data: string): Point[][] {
+  return subpaths(data).map((path) => {
+    const points: Point[] = [path.from]
+    let from = path.from
+    for (const segment of path.segments) {
+      if (points.length >= FLAT_LIMIT) break
+      if (segment.kind === 'arc' && distance(from, segment.to) > 1e-9) {
+        const arc = arcCentre(from, segment)
+        const steps = arc.degenerate ? 1 : Math.min(256, Math.max(1, Math.ceil(Math.abs(arc.sweep) / (Math.PI / 36))))
+        for (let step = 1; step < steps; step++) points.push(arc.pointAt(arc.first + (arc.sweep * step) / steps))
+      } else if (segment.kind === 'curve') {
+        const along = [from, ...segment.controls, segment.to]
+        let reach = 0
+        for (let index = 1; index < along.length; index++) reach += distance(along[index - 1] as Point, along[index] as Point)
+        const steps = Math.min(64, Math.max(8, Math.ceil(reach / 4)))
+        for (let step = 1; step < steps; step++) points.push(curvePoint(along, step / steps))
+      }
+      points.push(segment.to)
+      from = segment.to
+    }
+    if (path.closed && distance(from, path.from) > 1e-9) points.push(path.from)
+    return points
+  })
+}
+
 // Text
 
 /** A text's properties as a run's style: its size in points, weight, slant, lines, case, colour and font. */
@@ -784,7 +821,8 @@ function runStyle(properties: Properties, source: DrawingSource): RunStyle {
     strike: lined('style:text-line-through-style'),
     caps: properties['fo:text-transform'] === 'uppercase',
     paint: properties['style:use-window-font-color'] === 'true' ? undefined : paintOf(properties['fo:color']),
-    font: family
+    font: family,
+    letterSpacing: length(properties['fo:letter-spacing'])
   }
 }
 
@@ -1327,8 +1365,16 @@ async function drawShape(node: XmlNode, context: DrawingContext, inMaster: boole
       const drawn = geometry
         ? enhancedGeometry(geometry, { width, height })
         : { geometry: { fill: rectangle(width, height), stroke: rectangle(width, height) }, flipH: false, flipV: false, text: undefined }
-      const lined = withArrows(drawn.geometry.stroke, outline, markers)
-      const element = customElement({ ...drawn.geometry, stroke: lined.data }, await fill(), outline, canvas, { width, height }) + lined.arrows
+      let element: string
+      const fontwork = fontworkOf(node, base, graphic, context, { width, height })
+      if (fontwork) {
+        // A Fontwork draws its text in its fill and line, in place of its geometry and of its text's frame.
+        element = fontworkElement(fontwork.glyphs, fontwork.style, await fill(), outline, canvas)
+        textHolder = undefined
+      } else {
+        const lined = withArrows(drawn.geometry.stroke, outline, markers)
+        element = customElement({ ...drawn.geometry, stroke: lined.data }, await fill(), outline, canvas, { width, height }) + lined.arrows
+      }
       const flips =
         drawn.flipH || drawn.flipV
           ? `translate(${number(drawn.flipH ? width : 0)} ${number(drawn.flipV ? height : 0)}) scale(${drawn.flipH ? -1 : 1} ${drawn.flipV ? -1 : 1})`
@@ -1349,6 +1395,62 @@ async function drawShape(node: XmlNode, context: DrawingContext, inMaster: boole
   }
   const drawn = content.filter(Boolean)
   if (drawn.length > 0) canvas.parts.push(transform ? `<g transform="${transform}">${drawn.join('')}</g>` : drawn.join(''))
+}
+
+/** Whether a custom shape is a Fontwork: its geometry says its text follows its path. */
+const isFontwork = (node: XmlNode) => node.name === 'draw:custom-shape' && childAt(node, 'draw:enhanced-geometry')?.attributes['draw:text-path'] === 'true'
+
+/**
+ * A Fontwork's letters placed along the lines of its geometry, and the style they are laid out in: the font of its
+ * text's first run, which LibreOffice takes for the whole text, its size, its spacing, and its geometry's and style's
+ * choices. None for a shape that is no Fontwork, or one with no text.
+ */
+function fontworkOf(
+  node: XmlNode,
+  base: TextBase,
+  graphic: Properties,
+  context: DrawingContext,
+  size: { width: number; height: number }
+): { glyphs: FontworkGlyph[]; style: FontworkStyle } | undefined {
+  const geometry = childAt(node, 'draw:enhanced-geometry')
+  if (!geometry || !isFontwork(node)) return undefined
+  const paragraphs = readParagraphs(node, base, context)
+  const legacy = context.source.legacyFontwork
+  // Each paragraph is a line, or, but in the older way, as many lines as its breaks make.
+  const lines: string[] = []
+  for (const paragraph of paragraphs) {
+    let line = ''
+    for (const piece of paragraph.pieces)
+      if (piece !== 'break') line += piece.text.replace(/\t/g, ' ')
+      else if (!legacy) {
+        lines.push(line)
+        line = ''
+      }
+    lines.push(line)
+  }
+  const first = paragraphs
+    .flatMap((paragraph) => paragraph.pieces)
+    .find((piece): piece is { text: string; style: RunStyle } => piece !== 'break' && piece.text.trim() !== '')
+  if (!first) return undefined
+  const look = runStyle(levelProperties(base, 1, 'text', context.source), context.source)
+  const points = first.style.size ?? look.size ?? 18
+  const { attributes } = geometry
+  const horizontal = graphic['draw:textarea-horizontal-align']
+  const vertical = graphic['draw:textarea-vertical-align']
+  const fitting = graphic['draw:fit-to-size']
+  const style: FontworkStyle = {
+    font: { family: first.style.font ?? look.font ?? 'Liberation Sans', bold: first.style.bold ?? false, italic: first.style.italic ?? false },
+    size: (points * 4) / 3,
+    letterSpacing: first.style.letterSpacing ?? 0,
+    scaleToShape: attributes['draw:text-path-scale'] === 'shape',
+    sameLetterHeights: attributes['draw:text-path-same-letter-heights'] === 'true',
+    fitToSize: fitting === 'true' || fitting === 'all',
+    align: horizontal === 'left' || horizontal === 'center' || horizontal === 'right' ? horizontal : 'block',
+    vertical: vertical === 'top' || vertical === 'bottom' ? vertical : 'middle',
+    legacy
+  }
+  const outlines = (enhancedGeometry(geometry, size).geometry.outlines ?? []).flatMap(flattened)
+  return { glyphs: layFontwork(outlines, lines, style, size.height), style }
 }
 
 const rectangle = (width: number, height: number) => `M0 0L${number(width)} 0L${number(width)} ${number(height)}L0 ${number(height)}Z`
@@ -1521,12 +1623,15 @@ const beyond = (outer: Rectangle, inner: Rectangle): Sides => ({
  * The points a shape's own outline passes through and bends toward, in its box before its transform, where they may
  * reach past that box: a custom shape's geometry (a callout's tail), a path's or a polygon's points past its view box.
  */
-function outlinePoints(node: XmlNode, width: number, height: number): Point[] {
+function outlinePoints(node: XmlNode, width: number, height: number, context: DrawingContext, inMaster: boolean): Point[] {
   const { attributes } = node
   if (node.name === 'draw:custom-shape') {
     const geometry = childAt(node, 'draw:enhanced-geometry')
     if (!geometry) return []
     const drawn = enhancedGeometry(geometry, { width, height })
+    // A Fontwork reaches as far as its letters, which may stand past its path.
+    const fontwork = fontworkOf(node, textBase(node, context.source, inMaster), graphicOf(node, context.source, inMaster), context, { width, height })
+    if (fontwork) return glyphCorners(fontwork.glyphs, fontwork.style).map(([x, y]) => [drawn.flipH ? width - x : x, drawn.flipV ? height - y : y])
     return pathPoints(subpaths(`${drawn.geometry.fill} ${drawn.geometry.stroke}`)).map(([x, y]) => [drawn.flipH ? width - x : x, drawn.flipV ? height - y : y])
   }
   const view = viewBoxOf(attributes['svg:viewBox'], width, height)
@@ -1584,14 +1689,14 @@ function shapeBounds(node: XmlNode, context: DrawingContext, inMaster: boolean, 
   } else {
     const matrix = matrixOf(transformSteps(node))
     box = around(corners({ x: 0, y: 0, width, height }).map((point) => applied(matrix, point)))
-    drawn = around(outlinePoints(node, width, height).map((point) => applied(matrix, point)))
+    drawn = around(outlinePoints(node, width, height, context, inMaster).map((point) => applied(matrix, point)))
   }
   if (!box) return undefined
   const markers = outline?.paint ? markersOf(graphic, context) : {}
   const line = Math.max(outline?.paint ? outline.width / 2 : 0, ...[markers.start, markers.end].map((marker) => (marker ? markerReach(marker) : 0))) + 1
   const past = drawn ? beyond(around([...corners(box), ...corners(drawn)]) ?? box, box) : { top: 0, right: 0, bottom: 0, left: 0 }
   const reach: Sides = { top: past.top + line, right: past.right + line, bottom: past.bottom + line, left: past.left + line }
-  const holder = node.name === 'draw:frame' ? childAt(node, 'draw:text-box') : node
+  const holder = node.name === 'draw:frame' ? childAt(node, 'draw:text-box') : isFontwork(node) ? undefined : node
   const frame = holder && textFrame(holder, textBase(node, context.source, inMaster), graphic, context, node.name === 'draw:frame' ? 'top' : 'middle')
   if (frame) {
     const words = textReach(frame, box)

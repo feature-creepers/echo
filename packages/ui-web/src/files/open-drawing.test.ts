@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Archive } from './archive.ts'
-import { drawingSource, drawLoneShape, shapeColours, subpathEnds, subpaths, writePath } from './open-drawing.ts'
+import { drawingSource, drawLoneShape, flattened, shapeColours, subpathEnds, subpaths, writePath } from './open-drawing.ts'
 import { fontFaces, StyleBook } from './open-styles.ts'
 import { childAt, xmlTree } from './xml.ts'
 
@@ -173,6 +173,47 @@ describe('a text’s drawing reaching past its box', () => {
       '<draw:path draw:style-name="green" svg:width="1in" svg:height="1in" svg:viewBox="0 0 100 100" svg:d="M0 0C0 133 100 133 100 0Z"/>'
     )
     expect(drawn?.reach.bottom).toBeCloseTo(1, 0)
+  })
+})
+
+describe('a Fontwork drawn as LibreOffice draws it', () => {
+  const fontwork = (path: string) =>
+    `<draw:custom-shape draw:style-name="green" svg:width="2in" svg:height="1in"><text:p>Wave</text:p><draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:text-path="true" draw:text-path-mode="shape" draw:text-path-scale="path" draw:type="fontwork-wave" draw:enhanced-path="${path}"/></draw:custom-shape>`
+
+  it('draws its letters in its fill, between its two paths, and none of its geometry or its text’s frame', async () => {
+    const drawn = await lone(fontwork('M 0 0 C 7200 6000 14400 -6000 21600 0 N M 0 21600 C 7200 27600 14400 15600 21600 21600 N'))
+    expect(drawn?.text.match(/<text /g)).toHaveLength(4)
+    expect(drawn?.text).toContain('fill="#00ff00"')
+    expect(drawn?.text).not.toContain('<foreignObject')
+    expect(drawn?.text).not.toMatch(/<path d="M0 0C/)
+  })
+
+  it('lets its letters on one path reach above and below it, past its box', async () => {
+    const drawn = await lone(fontwork('M 0 0 L 21600 0 N'))
+    expect(drawn?.text.match(/<text /g)).toHaveLength(4)
+    expect(drawn?.reach.top).toBeGreaterThan(10)
+  })
+
+  it('draws nothing of a Fontwork with no text', async () => {
+    const drawn = await lone(
+      '<draw:custom-shape draw:style-name="green" svg:width="2in" svg:height="1in"><draw:enhanced-geometry draw:text-path="true" draw:enhanced-path="M 0 0 L 21600 0 N"/></draw:custom-shape>'
+    )
+    expect(drawn?.text ?? '').not.toContain('<text')
+  })
+})
+
+describe('a path flattened into lines', () => {
+  it.each([
+    { data: 'M0 0L10 0L10 10', count: 3, last: [10, 10] },
+    { data: 'M0 0L10 0L10 10Z', count: 4, last: [0, 0] },
+    { data: 'M0 0C0 40 40 40 40 0', count: 31, last: [40, 0] },
+    { data: 'M0 0A10 10 0 0 1 20 0', count: 37, last: [20, 0] },
+    { data: 'nonsense', count: 0, last: undefined }
+  ])('flattens $data', ({ data, count, last }) => {
+    const lines = flattened(data)
+    const points = lines.flat()
+    expect(points).toHaveLength(count)
+    expect(points.at(-1)?.map((value) => Math.round(value * 1000) / 1000)).toEqual(last)
   })
 })
 

@@ -86,14 +86,29 @@ describe('a shape drawn by its own path', () => {
       }
     ]
   ])('draws %s', (_, commands, expected) => {
-    expect(drawn(commands)).toEqual(expected)
+    expect(drawn(commands)).toMatchObject(expected)
   })
 
   it('draws nothing in an empty view box, and leaves out numbers that make no whole step', () => {
-    expect(customGeometry([{ command: 'L', values: [1, 1] }], { left: 0, top: 0, width: 0, height: 0 }, { width: 10, height: 10 })).toEqual({
+    expect(customGeometry([{ command: 'L', values: [1, 1] }], { left: 0, top: 0, width: 0, height: 0 }, { width: 10, height: 10 })).toMatchObject({
       fill: 'M0 0',
       stroke: 'M0 0'
     })
-    expect(drawn([{ command: 'C', values: [1, 2, 3] }])).toEqual({ fill: '', stroke: '' })
+    expect(drawn([{ command: 'C', values: [1, 2, 3] }])).toMatchObject({ fill: '', stroke: '', outlines: [] })
+  })
+
+  it('keeps every subpath in its order, filled, stroked or neither, for the lines a Fontwork follows', () => {
+    const commands: PathCommand[] = [
+      { command: 'M', values: [0, 0] },
+      { command: 'L', values: [100, 0] },
+      { command: 'F', values: [] },
+      { command: 'S', values: [] },
+      { command: 'N', values: [] },
+      { command: 'M', values: [0, 100] },
+      { command: 'L', values: [100, 100] },
+      { command: 'Z', values: [] },
+      { command: 'N', values: [] }
+    ]
+    expect(drawn(commands)).toMatchObject({ fill: 'M0 100L200 100Z', stroke: 'M0 100L200 100Z', outlines: ['M0 0L200 0', 'M0 100L200 100Z'] })
   })
 })

@@ -56,7 +56,11 @@ describe('a custom shape’s geometry', () => {
       ),
       { width: 200, height: 100 }
     )
-    expect(drawn.geometry).toEqual({ fill: 'M100 0L200 0L200 100L0 100Z', stroke: 'M100 0L200 0L200 100L0 100Z' })
+    expect(drawn.geometry).toMatchObject({
+      fill: 'M100 0L200 0L200 100L0 100Z',
+      stroke: 'M100 0L200 0L200 100L0 100Z',
+      outlines: ['M100 0L200 0L200 100L0 100Z']
+    })
     expect(drawn.text).toEqual({ x: 100, y: 0, width: 100, height: 100 })
   })
 
