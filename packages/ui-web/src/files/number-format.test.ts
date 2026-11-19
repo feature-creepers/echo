@@ -88,5 +88,7 @@ describe('a number as its format shows it', () => {
     expect(formatNumber(45234, builtInFormat(15), en)).toBe('4-Nov-23')
     expect(formatNumber(0.256, builtInFormat(9), en)).toBe('26%')
     expect(formatNumber(5, builtInFormat(200), en)).toBe('5')
+    expect(formatNumber(99_999_999, builtInFormat(14), en)).toBe('99999999')
+    expect(formatNumber(-1, 'dd/mm/yyyy', en)).toBe('-1')
   })
 })

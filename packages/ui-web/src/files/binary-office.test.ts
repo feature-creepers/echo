@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readExcel97, readPowerPoint97, readWord97, rkNumber } from './binary-office.ts'
+import { readOlderExcel, readOlderPowerPoint, readOlderWord, rkNumber } from './binary-office.ts'
 import { openCompound } from './compound.ts'
 import { readOffice } from './office.ts'
 
@@ -288,7 +288,7 @@ describe('a Word 97 document', () => {
       { text: '\x07', format: formatting(0, [IN_TABLE, ROW_END]) },
       { text: 'The end, \xe9t\xe9 \x93here\x94.\r', format: formatting(0) }
     ])
-    expect(readWord97(file)).toEqual({
+    expect(readOlderWord(file)).toEqual({
       kind: 'document',
       markdown: [
         '# Trip to Lyon',
@@ -303,8 +303,8 @@ describe('a Word 97 document', () => {
   })
 
   it('says when it is protected with a password, or is not one', async () => {
-    expect(() => readWord97(wordDocument([{ text: 'Secret\r', format: formatting(0) }], true))).toThrow('protected with a password')
-    expect(() => readWord97(compound({ Other: new Uint8Array(8) }))).toThrow('not a Word document')
+    expect(() => readOlderWord(wordDocument([{ text: 'Secret\r', format: formatting(0) }], true))).toThrow('protected with a password')
+    expect(() => readOlderWord(compound({ Other: new Uint8Array(8) }))).toThrow('not a Word document')
     await expect(readOffice('doc', new Uint8Array(10))).rejects.toThrow('not a file of the older Office formats')
   })
 
@@ -312,6 +312,114 @@ describe('a Word 97 document', () => {
     const encrypted = compound({ EncryptionInfo: new Uint8Array(8), EncryptedPackage: new Uint8Array(16) })
     for (const extension of ['docx', 'xlsx', 'pptx']) await expect(readOffice(extension, encrypted)).rejects.toThrow('protected with a password')
     await expect(readOffice('docx', compound({ Other: new Uint8Array(8) }))).rejects.toThrow('not a ZIP archive')
+  })
+})
+
+/** "Привет" (hello) and "мир" (world) in Windows' Cyrillic code page, as Word 6 wrote Russian. */
+const HELLO = [0xcf, 0xf0, 0xe8, 0xe2, 0xe5, 0xf2]
+const WORLD = [0xec, 0xe8, 0xf0]
+
+/**
+ * A Word 6 or 95 document of paragraphs, each its bytes and its formatting with one-byte property codes, all in one
+ * stream: its text whole from where the header says, or in a piece when saved quickly. A style sheet names style 1 a
+ * heading, with 8-bit names.
+ */
+function sixDocument(
+  paragraphs: { bytes: number[]; format: number[] }[],
+  options: { quick?: boolean; encrypted?: boolean; language?: number } = {}
+): Uint8Array {
+  const TEXT_AT = 1024
+  const PAGE = 3
+  const text = paragraphs.flatMap((one) => one.bytes)
+  const word = new Bytes()
+    .u16(0xa5dc)
+    .u16(0x65)
+    .u16(0)
+    .u16(options.language ?? 0x0419)
+    .u16(0)
+    .u16((options.quick ? 0x0004 : 0) | (options.encrypted ? 0x0100 : 0))
+  word.padTo(0x200)
+  word.padTo(TEXT_AT).raw(text)
+  word.padTo(PAGE * 512)
+  const page = new Uint8Array(512)
+  const pageView = new DataView(page.buffer)
+  let fc = TEXT_AT
+  pageView.setUint32(0, fc, true)
+  paragraphs.forEach((one, index) => {
+    fc += one.bytes.length
+    pageView.setUint32((index + 1) * 4, fc, true)
+  })
+  let free = 510
+  paragraphs.forEach((one, index) => {
+    const length = one.format.length % 2 === 1 ? one.format.length : one.format.length + 1
+    free -= length + 1
+    free -= free % 2
+    page[free] = (length + 1) / 2
+    page.set(one.format, free + 1)
+    page[(paragraphs.length + 1) * 4 + index * 7] = free / 2
+  })
+  page[511] = paragraphs.length
+  word.raw(page)
+  const styles = word.length
+  // Style 0, "Normal", and style 1, its built-in number a heading's, named in 8 bits.
+  word.u16(4).u16(2).u16(2)
+  word.u16(2).u16(0)
+  word.u16(10).u16(1).u8(7).narrow('Heading')
+  const stylesSize = word.length - styles
+  const papx = word.length
+  word.u32(TEXT_AT).u32(fc).u16(PAGE)
+  const papxSize = word.length - papx
+  const clx = word.length
+  if (options.quick)
+    word
+      .u8(1)
+      .u16(2)
+      .u16(0)
+      .u8(2)
+      .u32(4 * 2 + 8)
+      .u32(0)
+      .u32(text.length)
+      .u16(0)
+      .u32(TEXT_AT)
+      .u16(0)
+  const clxSize = word.length - clx
+  const document = word.done()
+  const view = new DataView(document.buffer)
+  view.setUint32(0x18, TEXT_AT, true)
+  view.setUint32(0x34, text.length, true)
+  view.setUint32(0x60, styles, true)
+  view.setUint32(0x64, stylesSize, true)
+  view.setUint32(0xc0, papx, true)
+  view.setUint32(0xc4, papxSize, true)
+  view.setUint32(0x160, clx, true)
+  view.setUint32(0x164, clxSize, true)
+  view.setUint16(0x190, 1, true)
+  return compound({ WordDocument: document })
+}
+
+/** A paragraph's properties in Word 6: its style, then one-byte codes and their operands. */
+const sixFormatting = (style: number, ...properties: number[][]) => [style & 0xff, style >> 8, ...properties.flat()]
+
+describe('a Word 6 or 95 document', () => {
+  const paragraphs = [
+    { bytes: [...HELLO, 0x0d], format: sixFormatting(1) },
+    { bytes: [...HELLO, 0x20, ...WORLD, 0x0b, 0x31, 0x0d], format: sixFormatting(0, [5, 1], [17, 0x40, 0x01]) },
+    { bytes: [...WORLD, 0x0d], format: sixFormatting(0, [13, 10]) },
+    { bytes: [0x41, 0x07], format: sixFormatting(0, [24, 1]) },
+    { bytes: [0x42, 0x07], format: sixFormatting(0, [24, 1]) },
+    { bytes: [0x07], format: sixFormatting(0, [24, 1], [25, 1]) },
+    { bytes: [0x45, 0x6e, 0x64, 0x0d], format: sixFormatting(0) }
+  ]
+  const expected = ['# Привет', 'Привет мир  \n1', '- мир', '| A | B |\n| --- | --- |', 'End'].join('\n\n')
+
+  it('reads its text in the code page of its language, its headings, lists and tables, saved whole or quickly', () => {
+    for (const quick of [false, true])
+      expect(readOlderWord(sixDocument(paragraphs, { quick }))).toEqual({ kind: 'document', markdown: expected, figures: [], cut: false })
+  })
+
+  it('says when it is protected with a password, or is of Word 2 or older', () => {
+    expect(() => readOlderWord(sixDocument(paragraphs, { encrypted: true }))).toThrow('protected with a password')
+    expect(() => readOlderWord(new Uint8Array([0x9b, 0xa5, 0x21, 0x00, ...new Array(600).fill(0)]))).toThrow('Word 2 or older')
   })
 })
 
@@ -374,7 +482,7 @@ function workbook(protectedWith = false): Uint8Array {
 
 describe('an Excel 97 workbook', () => {
   it('reads each worksheet as rows of its values as stored, its strings across the records that continue them', () => {
-    expect(readExcel97(workbook())).toEqual({
+    expect(readOlderExcel(workbook())).toEqual({
       kind: 'workbook',
       sheets: [
         {
@@ -438,16 +546,87 @@ describe('an Excel 97 workbook', () => {
       return compound({ Workbook: all.done() })
     }
     const rows = (date1904: boolean) => {
-      const read = readExcel97(styled(date1904), { locale: 'en-US' })
+      const read = readOlderExcel(styled(date1904), { locale: 'en-US' })
       return read.kind === 'workbook' ? read.sheets[0]?.rows : undefined
     }
     expect(rows(false)).toEqual([['04/11/2023', '25.00%', '1,234,567', '8.2', '05/11/2023']])
     expect(rows(true)?.[0]?.[0]).toBe('05/11/2027')
   })
 
-  it('says when it is protected with a password, or is older than Excel 97', () => {
-    expect(() => readExcel97(workbook(true))).toThrow('protected with a password')
-    expect(() => readExcel97(compound({ Book: new Uint8Array(8) }))).toThrow('Excel 95 or older')
+  it('reads a workbook of Excel 5 and 95: its text in the workbook’s code page, plain or with runs of format, and its formats', () => {
+    const cyrillic = (...bytes: number[]) => new Uint8Array(bytes)
+    const five = () => record(0x0809, new Bytes().u16(0x0500).u16(0x0005).zeros(4))
+    const sheet = [
+      five(),
+      record(
+        0x0204,
+        cell(0, 0)
+          .u16(6)
+          .raw(cyrillic(...HELLO))
+      ),
+      record(
+        0x00d6,
+        cell(0, 1)
+          .u16(3)
+          .raw(cyrillic(...WORLD))
+          .u8(1)
+          .u8(0)
+          .u8(0)
+      ),
+      record(0x0203, new Bytes().u16(1).u16(0).u16(16).f64(45234)),
+      record(0x0006, cell(1, 1).u8(0).zeros(5).u16(0xffff).zeros(6)),
+      record(0x0207, new Bytes().u16(2).narrow('ok')),
+      EOF
+    ]
+    const styles = Array.from({ length: 17 }, (_, index) =>
+      record(
+        0x00e0,
+        new Bytes()
+          .u16(0)
+          .u16(index === 16 ? 164 : 0)
+          .zeros(12)
+      )
+    )
+    const globals = (sheetAt: number) => [
+      five(),
+      record(0x0042, new Bytes().u16(1251)),
+      record(0x041e, new Bytes().u16(164).u8(10).narrow('dd/mm/yyyy')),
+      ...styles,
+      record(
+        0x0085,
+        new Bytes()
+          .u32(sheetAt)
+          .u8(0)
+          .u8(0)
+          .u8(3)
+          .raw(cyrillic(...WORLD))
+      ),
+      EOF
+    ]
+    const length = globals(0).reduce((sum, one) => sum + one.length, 0)
+    const all = new Bytes()
+    for (const part of [...globals(length), ...sheet]) all.raw(part)
+    expect(readOlderExcel(compound({ Book: all.done() }))).toEqual({
+      kind: 'workbook',
+      sheets: [
+        {
+          name: 'мир',
+          rows: [
+            ['Привет', 'мир'],
+            ['04/11/2023', 'ok']
+          ],
+          cut: false,
+          figures: []
+        }
+      ]
+    })
+  })
+
+  it('says when it is protected with a password, or is of Excel 4 or older', () => {
+    expect(() => readOlderExcel(workbook(true))).toThrow('protected with a password')
+    expect(() => readOlderExcel(new Uint8Array([0x09, 0x04, 0x06, 0x00, 0x00, 0x00, 0x10, 0x00, ...new Array(600).fill(0)]))).toThrow('Excel 4 or older')
+    const four = new Bytes().raw(record(0x0809, new Bytes().u16(0x0400).u16(0x0010).zeros(4))).done()
+    expect(() => readOlderExcel(compound({ Book: four }))).toThrow('Excel 4 or older')
   })
 })
 
@@ -537,7 +716,7 @@ function presentation(encrypted = false): Uint8Array {
 
 describe('a PowerPoint 97 presentation', () => {
   it('reads each slide in the order of its list: its title, its placeholders’ lines, then its own text boxes', () => {
-    expect(readPowerPoint97(presentation())).toEqual({
+    expect(readOlderPowerPoint(presentation())).toEqual({
       kind: 'presentation',
       slides: [
         { title: 'Plan', lines: ['Train at 9', 'Museum then dinner', 'A note of its own'], figures: [] },
@@ -548,8 +727,8 @@ describe('a PowerPoint 97 presentation', () => {
   })
 
   it('says when it is protected with a password, or is not one', async () => {
-    expect(() => readPowerPoint97(presentation(true))).toThrow('protected with a password')
-    expect(() => readPowerPoint97(compound({ Other: new Uint8Array(8) }))).toThrow('not a PowerPoint presentation')
+    expect(() => readOlderPowerPoint(presentation(true))).toThrow('protected with a password')
+    expect(() => readOlderPowerPoint(compound({ Other: new Uint8Array(8) }))).toThrow('not a PowerPoint presentation')
     expect((await readOffice('ppt', presentation())).kind).toBe('presentation')
   })
 })

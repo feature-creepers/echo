@@ -5,6 +5,9 @@
  * conditions and the padding a column's width gives are left out: a preview shows the text, not the cell.
  */
 
+/** The serial number of the last day Excel counts, 31 December 9999. */
+const LAST_DAY = 2_958_465
+
 /** The formats Excel numbers itself and writes by their number only. */
 const BUILT_IN: Record<number, string> = {
   0: 'General',
@@ -176,7 +179,7 @@ function moment(serial: number, date1904: boolean): Date {
 
 /** A date or time as its tokens show it. */
 function formatDate(serial: number, read: readonly Token[], options: NumberFormatOptions): string {
-  if (serial < 0 || serial > 2_958_465) return generalNumber(serial)
+  if (serial < 0 || serial > LAST_DAY) return generalNumber(serial)
   // Shown to the precision of its fraction of a second, rounded once.
   const fraction = read.find((token) => token.kind === 'date' && token.code.startsWith('.'))
   const places = fraction?.kind === 'date' ? fraction.code.length - 1 : 0
@@ -366,6 +369,8 @@ function formatFraction(value: number, read: readonly Token[], slash: number): s
 export function formatNumber(value: number, code: string, options: NumberFormatOptions = {}): string {
   if (!Number.isFinite(value)) return String(value)
   if (code === 'short date' || code === 'short date h:mm') {
+    // Past the last day Excel counts, 31 December 9999, a number is no date.
+    if (value < 0 || value > LAST_DAY) return generalNumber(value)
     const date = moment(value, options.date1904 ?? false)
     const time = code.endsWith('h:mm')
     return new Intl.DateTimeFormat(options.locale, { dateStyle: 'short', ...(time ? { timeStyle: 'short' } : {}), timeZone: 'UTC' }).format(date)

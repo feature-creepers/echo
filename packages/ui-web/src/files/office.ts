@@ -9,7 +9,7 @@
  */
 
 import { type Archive, openArchive, relationships, resolvePart, textOf } from './archive.ts'
-import { readExcel97, readPowerPoint97, readWord97 } from './binary-office.ts'
+import { readOlderExcel, readOlderPowerPoint, readOlderWord } from './binary-office.ts'
 import { openCompound } from './compound.ts'
 import { builtInFormat, formatNumber, generalNumber, type NumberFormatOptions } from './number-format.ts'
 import { emuPixels, Figures, lengthPixels, readChart, readOpenChart } from './office-figures.ts'
@@ -1098,9 +1098,9 @@ function protectedPackage(bytes: Uint8Array): boolean {
 /** An Office file read for its preview, by its extension; its numbers and dates written as `options` says. */
 export async function readOffice(extension: string, bytes: Uint8Array, options: NumberFormatOptions = {}): Promise<OfficePreview> {
   // The older formats are compound files, not archives.
-  if (extension === 'doc') return readWord97(bytes)
-  if (extension === 'xls') return readExcel97(bytes, options)
-  if (extension === 'ppt') return readPowerPoint97(bytes)
+  if (extension === 'doc') return readOlderWord(bytes)
+  if (extension === 'xls') return readOlderExcel(bytes, options)
+  if (extension === 'ppt') return readOlderPowerPoint(bytes)
   // Word, Excel and PowerPoint keep a file protected with a password in a compound file, encrypted, not in an archive.
   if (protectedPackage(bytes)) throw new Error(PROTECTED)
   const archive = openArchive(bytes)

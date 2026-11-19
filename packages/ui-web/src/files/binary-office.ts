@@ -1,8 +1,9 @@
 /**
  * The older Office formats read in the window itself, with no service and no library (docs/SPEC.md, section 9.7):
- * Word 97 to 2003's documents (.doc), Excel's workbooks (.xls) and PowerPoint's presentations (.ppt). Each is a
- * compound file (`compound.ts`) whose streams hold the binary records each app wrote, read for what a preview shows,
- * as the newer formats are: a document as Markdown, a workbook's sheets as tables, the text of each slide.
+ * the documents of Word 6 to 2003 (.doc), the workbooks of Excel 5 to 2003 (.xls) and the presentations of PowerPoint
+ * 97 to 2003 (.ppt). Each is a compound file (`compound.ts`) whose streams hold the binary records each app wrote,
+ * read for what a preview shows, as the newer formats are: a document as Markdown, a workbook's sheets as tables, the
+ * text of each slide.
  *
  * Every offset read is checked against its stream, so a damaged file fails with a sentence rather than reading past
  * its end. A file protected with a password says so.
@@ -112,8 +113,11 @@ function paragraphFormat(word: Reader, at: number, size: number): ParagraphForma
   return format
 }
 
-/** The heading level of each style a document defines: the built-in headings and title, or a style named as one. */
-function headingStyles(table: Reader, at: number, size: number): Map<number, number> {
+/**
+ * The heading level of each style a document defines: the built-in headings and title, or a style named as one. Its
+ * names are in UTF-16 (`wide`, Word 97) or 8-bit (Word 6 and 95).
+ */
+function headingStyles(table: Reader, at: number, size: number, wide: boolean): Map<number, number> {
   const levels = new Map<number, number>()
   if (size < 4) return levels
   const header = table.u16(at)
@@ -128,9 +132,12 @@ function headingStyles(table: Reader, at: number, size: number): Map<number, num
       const builtIn = table.u16(place + 2) & 0x0fff
       let name = ''
       const named = place + 2 + base
-      if (base > 0 && named + 2 <= place + 2 + length) {
+      if (wide && base > 0 && named + 2 <= place + 2 + length) {
         const characters = Math.min(table.u16(named), (place + 2 + length - named - 2) >> 1)
         name = utf16(table.bytes(named + 2, characters * 2)).toLowerCase()
+      } else if (!wide && base > 0 && named + 1 <= place + 2 + length) {
+        const characters = Math.min(table.u8(named), place + 2 + length - named - 1)
+        name = latin1(table.bytes(named + 1, characters)).toLowerCase()
       }
       const level =
         builtIn >= 1 && builtIn <= 9
@@ -147,74 +154,218 @@ function headingStyles(table: Reader, at: number, size: number): Map<number, num
   return levels
 }
 
-/** A Word 97 to 2003 document as Markdown: its headings, paragraphs, list items and tables, in order. */
-export function readWord97(bytes: Uint8Array): OfficePreview {
+/**
+ * How many bytes a property of Word 6 and 95 takes with its one-byte code: most a fixed size by their code, some
+ * counting their operand in their first byte, tab stops past 255 in their own way.
+ */
+function sixPropertySize(word: Reader, at: number): number {
+  const code = word.u8(at)
+  if (TWO_BYTE_OPERANDS.has(code)) return 3
+  if (COUNTED_OPERANDS.has(code)) return 2 + word.u8(at + 1)
+  if (FOUR_BYTE_OPERANDS.has(code)) return 5
+  if (code === 23) {
+    const size = word.u8(at + 1)
+    if (size !== 255) return 2 + size
+    const removed = word.u8(at + 2)
+    return 2 + 2 + removed * 4 + word.u8(at + 3 + removed * 4) * 3
+  }
+  if (code === 68 || code === 193 || code === 199) return 6
+  if (code === 73 || code === 95 || code === 136 || code === 137) return 4
+  if (code === 120 || code === 187) return 13
+  return 2
+}
+
+const TWO_BYTE_OPERANDS = new Set([
+  2, 16, 17, 18, 19, 21, 22, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 38, 39, 40, 41, 42, 43, 45, 46, 47, 48, 49, 69, 72, 80, 93, 96, 97, 99, 101, 105, 106, 107,
+  109, 110, 121, 122, 123, 124, 140, 141, 144, 145, 148, 149, 154, 155, 156, 157, 160, 161, 164, 165, 166, 167, 168, 169, 170, 171, 182, 183, 184, 189, 195,
+  197, 198
+])
+const COUNTED_OPERANDS = new Set([3, 12, 15, 81, 103, 108, 188, 190, 191])
+const FOUR_BYTE_OPERANDS = new Set([20, 70, 74, 192, 194, 196, 200])
+
+/**
+ * A paragraph's format in Word 6 and 95, from its style and its properties, each a one-byte code: in a table (24),
+ * ending a row (25), numbered or bulleted at a level (13, `nLvlAnm`, 1 to 9 an outline's levels, more a list of one).
+ */
+function sixParagraphFormat(word: Reader, at: number, size: number): ParagraphFormat {
+  const format: ParagraphFormat = { style: word.u16(at), inTable: false, rowEnd: false, list: false, level: 0 }
+  let place = at + 2
+  const end = at + size
+  while (place + 1 < end) {
+    const code = word.u8(place)
+    if (code === 24) format.inTable = (word.u8(place + 1) & 1) !== 0
+    else if (code === 25) format.rowEnd = (word.u8(place + 1) & 1) !== 0
+    else if (code === 13) {
+      const level = word.u8(place + 1)
+      format.list = level > 0
+      format.level = level >= 1 && level <= 9 ? level - 1 : 0
+    }
+    place += sixPropertySize(word, place)
+  }
+  return format
+}
+
+/** The code page of a language's 8-bit text, as Windows wrote it, by the language's identifier. */
+export function languageCodePage(language: number): number {
+  const primary = language & 0x3ff
+  if (primary === 0x1a) return language === 0x0c1a ? 1251 : 1250
+  if (primary === 0x04) return language === 0x0804 || language === 0x1004 ? 936 : 950
+  return LANGUAGE_CODE_PAGES[primary] ?? 1252
+}
+
+const LANGUAGE_CODE_PAGES: Record<number, number> = {
+  2: 1251,
+  25: 1251,
+  34: 1251,
+  35: 1251,
+  47: 1251,
+  63: 1251,
+  5: 1250,
+  14: 1250,
+  21: 1250,
+  24: 1250,
+  27: 1250,
+  28: 1250,
+  36: 1250,
+  8: 1253,
+  31: 1254,
+  13: 1255,
+  1: 1256,
+  32: 1256,
+  41: 1256,
+  37: 1257,
+  38: 1257,
+  39: 1257,
+  42: 1258,
+  30: 874,
+  17: 932,
+  18: 949
+}
+
+/** A decoder of 8-bit text in a Windows code page; Western European for one the window does not know. */
+export function codePageDecoder(codePage: number): TextDecoder {
+  const label =
+    codePage >= 1250 && codePage <= 1258
+      ? `windows-${codePage}`
+      : (
+          { 874: 'windows-874', 932: 'shift_jis', 936: 'gbk', 949: 'euc-kr', 950: 'big5', 10000: 'macintosh', 1200: 'utf-16le', 65001: 'utf-8' } as Record<
+            number,
+            string
+          >
+        )[codePage]
+  try {
+    return new TextDecoder(label ?? 'windows-1252')
+  } catch {
+    return new TextDecoder('windows-1252')
+  }
+}
+
+/**
+ * A Word document of 97 to 2003, or of Word 6 and 95, as Markdown: its headings, paragraphs, list items and tables,
+ * in order. Word 6 and 95 keep everything in one stream, behind a header of their own, their text in the 8-bit code
+ * page of the document's language and their properties in one-byte codes.
+ */
+export function readOlderWord(bytes: Uint8Array): OfficePreview {
+  if (bytes.length >= 2 && (readU16(bytes, 0) === 0xa59b || readU16(bytes, 0) === 0xa5db))
+    throw new Error('It is a document of Word 2 or older, which is not read here.')
   const file = openCompound(bytes)
   const stream = file.stream('WordDocument')
   if (!stream) throw new Error('This is not a Word document.')
   const word = reader(stream)
-  // Word 6 and 95 wrote a header of their own, which this does not read.
-  if (word.length < 160 || word.u16(0) !== 0xa5ec || word.u16(2) < 0xc1) throw new Error('It is a document of Word 95 or older, which is not read here.')
+  if (word.length < 0x200) damaged()
+  const identifier = word.u16(0)
+  const version = word.u16(2)
+  if (identifier !== 0xa5ec && identifier !== 0xa5dc) throw new Error('This is not a Word document.')
+  const six = version < 0xc1
+  if (six && version < 0x65) throw new Error('It is a document of Word 2 or older, which is not read here.')
   const flags = word.u16(0x0a)
   if (flags & 0x0100) throw new Error(PROTECTED)
-  const tableStream = file.stream(flags & 0x0200 ? '1Table' : '0Table')
+  const tableStream = six ? stream : file.stream(flags & 0x0200 ? '1Table' : '0Table')
   if (!tableStream) damaged()
   const table = reader(tableStream as Uint8Array)
 
-  // The file's header: a fixed part, then counts of 16-bit and 32-bit values, then where things are in the table.
-  const shorts = word.u16(32)
-  const longsAt = 34 + shorts * 2
-  const longs = word.u16(longsAt)
-  const textLength = Math.min(word.u32(longsAt + 2 + 3 * 4), CHARACTER_LIMIT)
-  const pairsAt = longsAt + 2 + longs * 4
-  const pairCount = word.u16(pairsAt)
-  if (pairCount < 34) damaged()
-  const pair = (index: number) => ({ at: word.u32(pairsAt + 2 + index * 8), size: word.u32(pairsAt + 6 + index * 8) })
-  const styles = pair(1)
-  const formats = pair(13)
-  const complex = pair(33)
-
-  // The text is in pieces, each where the file keeps it: in 8-bit characters, or in UTF-16.
-  const pieces: { start: number; end: number; at: number; narrow: boolean }[] = []
-  for (let at = complex.at; at < complex.at + complex.size; ) {
-    const kind = table.u8(at)
-    if (kind === 1) {
-      at += 3 + Math.max(0, table.i16(at + 1))
-      continue
-    }
-    if (kind !== 2) damaged()
-    const size = table.u32(at + 1)
-    const list = at + 5
-    const count = Math.floor((size - 4) / 12)
-    for (let index = 0; index < count; index++) {
-      const raw = table.u32(list + (count + 1) * 4 + index * 8 + 2)
-      const narrow = (raw & 0x40000000) !== 0
-      const offset = raw & 0x3fffffff
-      pieces.push({ start: table.u32(list + index * 4), end: table.u32(list + (index + 1) * 4), at: narrow ? offset / 2 : offset, narrow })
-    }
-    break
+  // Where things are: in Word 97 a fixed part, then counts of 16-bit and 32-bit values, then pairs of where and how
+  // long; in Word 6 and 95, at places of their own.
+  let textLength: number
+  let styles: { at: number; size: number }
+  let formats: { at: number; size: number }
+  let complex: { at: number; size: number } | undefined
+  if (six) {
+    textLength = Math.min(word.u32(0x34), CHARACTER_LIMIT)
+    styles = { at: word.u32(0x60), size: word.u32(0x64) }
+    formats = { at: word.u32(0xc0), size: word.u32(0xc4) }
+    complex = flags & 0x0004 ? { at: word.u32(0x160), size: word.u32(0x164) } : undefined
+  } else {
+    const shorts = word.u16(32)
+    const longsAt = 34 + shorts * 2
+    const longs = word.u16(longsAt)
+    textLength = Math.min(word.u32(longsAt + 2 + 3 * 4), CHARACTER_LIMIT)
+    const pairsAt = longsAt + 2 + longs * 4
+    const pairCount = word.u16(pairsAt)
+    if (pairCount < 34) damaged()
+    const pair = (index: number) => ({ at: word.u32(pairsAt + 2 + index * 8), size: word.u32(pairsAt + 6 + index * 8) })
+    styles = pair(1)
+    formats = pair(13)
+    complex = pair(33)
   }
+
+  // The text is in pieces, each where the file keeps it: in 8-bit characters, or in UTF-16. A Word 6 file saved
+  // whole has one, from the start of its text; one saved quickly lists them, all 8-bit.
+  const pieces: { start: number; end: number; at: number; narrow: boolean }[] = []
+  if (complex === undefined) pieces.push({ start: 0, end: textLength, at: word.u32(0x18), narrow: true })
+  else
+    for (let at = complex.at; at < complex.at + complex.size; ) {
+      const kind = table.u8(at)
+      if (kind === 1) {
+        at += 3 + Math.max(0, table.i16(at + 1))
+        continue
+      }
+      if (kind !== 2) damaged()
+      const size = table.u32(at + 1)
+      const list = at + 5
+      const count = Math.floor((size - 4) / 12)
+      for (let index = 0; index < count; index++) {
+        const raw = table.u32(list + (count + 1) * 4 + index * 8 + 2)
+        const narrow = six || (raw & 0x40000000) !== 0
+        const offset = six ? raw : raw & 0x3fffffff
+        pieces.push({ start: table.u32(list + index * 4), end: table.u32(list + (index + 1) * 4), at: narrow && !six ? offset / 2 : offset, narrow })
+      }
+      break
+    }
   if (pieces.length === 0) damaged()
 
-  // Each paragraph's format is found by where its mark is in the file, in pages of runs of 512 bytes.
+  // Each paragraph's format is found by where its mark is in the file, in pages of runs of 512 bytes: their numbers
+  // in four bytes in Word 97, in two in Word 6, whose list a quick save may leave short of the pages that follow.
   const runs: { start: number; end: number; at?: number; size?: number; format?: ParagraphFormat }[] = []
-  const pages = formats.size >= 4 ? Math.floor((formats.size - 4) / 8) : 0
-  for (let index = 0; index < pages; index++) {
-    const page = (table.u32(formats.at + (pages + 1) * 4 + index * 4) & 0x3fffff) * 512
+  const numberSize = six ? 2 : 4
+  const listed = formats.size >= 4 ? Math.floor((formats.size - 4) / (4 + numberSize)) : 0
+  const pageNumbers: number[] = []
+  for (let index = 0; index < listed; index++) {
+    const at = formats.at + (listed + 1) * 4 + index * numberSize
+    pageNumbers.push(six ? table.u16(at) : table.u32(at) & 0x3fffff)
+  }
+  if (six && listed > 0) {
+    const all = word.u16(0x190)
+    for (let next = (pageNumbers.at(-1) ?? 0) + 1; pageNumbers.length < Math.min(all, 4096); next++) pageNumbers.push(next)
+  }
+  const entrySize = six ? 7 : 13
+  for (const number of pageNumbers) {
+    const page = number * 512
     if (page + 512 > word.length) continue
     const count = word.u8(page + 511)
     for (let run = 0; run < count; run++) {
-      const offset = word.u8(page + (count + 1) * 4 + run * 13) * 2
+      const offset = word.u8(page + (count + 1) * 4 + run * entrySize) * 2
       const found: (typeof runs)[number] = { start: word.u32(page + run * 4), end: word.u32(page + (run + 1) * 4) }
       if (offset > 0) {
         const length = word.u8(page + offset)
-        found.at = length === 0 ? page + offset + 2 : page + offset + 1
-        found.size = length === 0 ? word.u8(page + offset + 1) * 2 : length * 2 - 1
+        found.at = length === 0 && !six ? page + offset + 2 : page + offset + 1
+        found.size = length === 0 && !six ? word.u8(page + offset + 1) * 2 : length * 2 - 1
       }
       runs.push(found)
     }
   }
   runs.sort((one, other) => one.start - other.start)
+  const plainFormat = (): ParagraphFormat => ({ style: 0, inTable: false, rowEnd: false, list: false, level: 0 })
   const formatAt = (place: number): ParagraphFormat | undefined => {
     let low = 0
     let high = runs.length - 1
@@ -224,17 +375,30 @@ export function readWord97(bytes: Uint8Array): OfficePreview {
       if (place < run.start) high = middle - 1
       else if (place >= run.end) low = middle + 1
       else {
-        if (!run.format)
-          run.format =
-            run.at === undefined || run.size === undefined
-              ? { style: 0, inTable: false, rowEnd: false, list: false, level: 0 }
-              : paragraphFormat(word, run.at, run.size)
+        if (!run.format) {
+          // A format that cannot be read is no format: the text is still worth showing.
+          try {
+            run.format =
+              run.at === undefined || run.size === undefined
+                ? plainFormat()
+                : six
+                  ? sixParagraphFormat(word, run.at, run.size)
+                  : paragraphFormat(word, run.at, run.size)
+          } catch {
+            run.format = plainFormat()
+          }
+        }
         return run.format
       }
     }
     return undefined
   }
-  const headings = headingStyles(table, styles.at, styles.size)
+  let headings = new Map<number, number>()
+  try {
+    headings = headingStyles(table, styles.at, styles.size, !six)
+  } catch {
+    // Styles that cannot be read name no headings.
+  }
 
   const blocks: string[] = []
   let rows: string[][] = []
@@ -283,34 +447,60 @@ export function readWord97(bytes: Uint8Array): OfficePreview {
 
   // Fields hold their code, then what they show: only what they show is text.
   const fields: boolean[] = []
+  const take = (code: number, char: string, place: number) => {
+    if (code === 0x13) fields.push(true)
+    else if (code === 0x14) {
+      if (fields.length > 0) fields[fields.length - 1] = false
+    } else if (code === 0x15) fields.pop()
+    else if (fields.includes(true)) return
+    else if (code === 0x0d || code === 0x0c) endParagraph('\r', place)
+    else if (code === 0x07) endParagraph('\x07', place)
+    else if (code === 0x0b) paragraph += '\n'
+    else if (code === 0x1e) paragraph += '-'
+    else if (code === 0x09 || code >= 0x20) paragraph += char
+  }
   let read = 0
-  const narrow = new TextDecoder('windows-1252')
+  // Word 97 writes its 8-bit text in Western European; Word 6 and 95, in the code page of the document's language,
+  // which may take two bytes for a character: the marks that matter are single bytes, found before decoding.
+  const narrow = six
+    ? word.u16(0x14) === 256
+      ? new TextDecoder('macintosh')
+      : codePageDecoder(languageCodePage(word.u16(0x06)))
+    : new TextDecoder('windows-1252')
   for (const piece of [...pieces].sort((one, other) => one.start - other.start)) {
     if (blocks.length >= BLOCK_LIMIT || read >= textLength) break
     const count = Math.min(piece.end, textLength) - piece.start
     if (count <= 0) continue
-    const width = piece.narrow ? 1 : 2
-    const text = piece.narrow ? narrow.decode(word.bytes(piece.at, count)) : utf16(word.bytes(piece.at, count * 2))
     read += count
+    if (piece.narrow) {
+      const part = word.bytes(piece.at, count)
+      let from = 0
+      const flush = (to: number) => {
+        if (to > from) for (const char of narrow.decode(part.subarray(from, to))) take(char.codePointAt(0) ?? 0, char, -1)
+      }
+      for (let index = 0; index < part.length && blocks.length < BLOCK_LIMIT; index++) {
+        const byte = part[index] as number
+        if (byte >= 0x20) continue
+        flush(index)
+        from = index + 1
+        take(byte, String.fromCharCode(byte), piece.at + index)
+      }
+      flush(part.length)
+      continue
+    }
+    const text = utf16(word.bytes(piece.at, count * 2))
     for (let index = 0; index < text.length && blocks.length < BLOCK_LIMIT; index++) {
       const char = text[index] as string
-      const code = char.charCodeAt(0)
-      if (code === 0x13) fields.push(true)
-      else if (code === 0x14) {
-        if (fields.length > 0) fields[fields.length - 1] = false
-      } else if (code === 0x15) fields.pop()
-      else if (fields.includes(true)) continue
-      else if (code === 0x0d || code === 0x0c) endParagraph('\r', piece.at + index * width)
-      else if (code === 0x07) endParagraph('\x07', piece.at + index * width)
-      else if (code === 0x0b) paragraph += '\n'
-      else if (code === 0x1e) paragraph += '-'
-      else if (code === 0x09 || code >= 0x20) paragraph += char
+      take(char.charCodeAt(0), char, piece.at + index * 2)
     }
   }
   if (paragraph.trim() !== '') endParagraph('\r', undefined)
   flushTable()
   return { kind: 'document', markdown: joinBlocks(blocks), figures: [], cut: blocks.length >= BLOCK_LIMIT || read >= CHARACTER_LIMIT }
 }
+
+/** A 16-bit number at the start of a file, before it is known to be anything. */
+const readU16 = (bytes: Uint8Array, at: number) => (bytes[at] ?? 0) | ((bytes[at + 1] ?? 0) << 8)
 
 // Excel
 
@@ -404,13 +594,27 @@ export function rkNumber(value: number): number {
 const ERRORS: Record<number, string> = { 0: '#NULL!', 7: '#DIV/0!', 15: '#VALUE!', 23: '#REF!', 29: '#NAME?', 36: '#NUM!', 42: '#N/A' }
 const flag = (value: number, error: boolean) => (error ? (ERRORS[value] ?? '#N/A') : value ? 'TRUE' : 'FALSE')
 
-/** An Excel 97 to 2003 workbook's sheets, each as rows of its cells' values as their formats show them. */
-export function readExcel97(bytes: Uint8Array, options: NumberFormatOptions = {}): OfficePreview {
+/** What a workbook of Excel 4 or older says: a file of records of its own, not a compound file. */
+const EXCEL_4 = 'It is a workbook of Excel 4 or older, which is not read here.'
+
+/**
+ * A workbook of Excel 97 to 2003, or of Excel 5 and 95, its sheets each as rows of its cells' values as their formats
+ * show them. Excel 5 and 95 write their text in 8-bit characters of the workbook's code page, with no table of strings.
+ */
+export function readOlderExcel(bytes: Uint8Array, options: NumberFormatOptions = {}): OfficePreview {
+  // Excel 2, 3 and 4 wrote their records straight into the file.
+  if (bytes.length >= 4 && [0x0009, 0x0209, 0x0409, 0x0809].includes(readU16(bytes, 0)) && readU16(bytes, 2) < 32) throw new Error(EXCEL_4)
   const file = openCompound(bytes)
-  const stream = file.stream('Workbook')
-  if (!stream) throw new Error(file.stream('Book') ? 'It is a workbook of Excel 95 or older, which is not read here.' : 'This is not an Excel workbook.')
+  const stream = file.stream('Workbook') ?? file.stream('Book')
+  if (!stream) throw new Error('This is not an Excel workbook.')
   const book = reader(stream)
-  if (book.u16(0) !== 0x0809 || book.u16(4) !== 0x0600) throw new Error('It is a workbook of Excel 95 or older, which is not read here.')
+  if (book.u16(0) !== 0x0809) throw new Error('This is not an Excel workbook.')
+  const version = book.u16(4)
+  if (version !== 0x0600 && version !== 0x0500) throw new Error(EXCEL_4)
+  const five = version === 0x0500
+  // Excel 5 and 95's 8-bit text is in the workbook's code page; Excel 97's, in the first 256 characters of Unicode.
+  let narrow = five ? codePageDecoder(1252) : undefined
+  const eight = (bytes: Uint8Array) => (narrow ? narrow.decode(bytes) : latin1(bytes))
 
   const strings: string[] = []
   const sheets: { name: string; at: number }[] = []
@@ -438,7 +642,9 @@ export function readExcel97(bytes: Uint8Array, options: NumberFormatOptions = {}
     }
     readShared()
     if (record.type === 0x002f) throw new Error(PROTECTED)
-    if (record.type === 0x00fc) shared = [book.bytes(record.at, record.size)]
+    if (record.type === 0x00fc && !five) shared = [book.bytes(record.at, record.size)]
+    else if (record.type === 0x0042 && five && record.size >= 2) narrow = codePageDecoder(book.u16(record.at))
+    else if (record.type === 0x041e && five && record.size >= 3) codes.set(book.u16(record.at), eight(book.bytes(record.at + 3, book.u8(record.at + 2))))
     else if (record.type === 0x041e && record.size >= 5) {
       const length = book.u16(record.at + 2)
       const wide = (book.u8(record.at + 4) & 0x01) !== 0
@@ -448,8 +654,12 @@ export function readExcel97(bytes: Uint8Array, options: NumberFormatOptions = {}
     else if (record.type === 0x0085 && book.u8(record.at + 5) === 0) {
       // A worksheet: where its records start, and its name. Charts and macros are left out.
       const length = book.u8(record.at + 6)
-      const wide = (book.u8(record.at + 7) & 0x01) !== 0
-      const name = wide ? utf16(book.bytes(record.at + 8, length * 2)) : latin1(book.bytes(record.at + 8, length))
+      const wide = !five && (book.u8(record.at + 7) & 0x01) !== 0
+      const name = five
+        ? eight(book.bytes(record.at + 7, length))
+        : wide
+          ? utf16(book.bytes(record.at + 8, length * 2))
+          : latin1(book.bytes(record.at + 8, length))
       sheets.push({ name, at: book.u32(record.at) })
     } else if (record.type === 0x000a) break
   }
@@ -462,7 +672,7 @@ export function readExcel97(bytes: Uint8Array, options: NumberFormatOptions = {}
 
   return {
     kind: 'workbook',
-    sheets: sheets.slice(0, SHEET_LIMIT).map(({ name, at }) => ({ name, ...sheetRows(book, at, strings, shownBy, shown), figures: [] }))
+    sheets: sheets.slice(0, SHEET_LIMIT).map(({ name, at }) => ({ name, ...sheetRows(book, at, { strings, five, eight }, shownBy, shown), figures: [] }))
   }
 }
 
@@ -470,10 +680,11 @@ export function readExcel97(bytes: Uint8Array, options: NumberFormatOptions = {}
 function sheetRows(
   book: Reader,
   from: number,
-  strings: readonly string[],
+  text: { strings: readonly string[]; five: boolean; eight: (bytes: Uint8Array) => string },
   formatOf: (style: number) => string,
   options: NumberFormatOptions
 ): { rows: string[][]; cut: boolean } {
+  const { strings, five, eight } = text
   const rows: string[][] = []
   let cut = false
   // A number as the format of its cell's style shows it.
@@ -509,12 +720,13 @@ function sheetRows(
       for (let index = 0; index < Math.floor((size - 6) / 6); index++)
         put(row(), first + index, number(rkNumber(book.u32(at + 6 + index * 6)), book.u16(at + 4 + index * 6)))
     } else if (type === 0x0205) put(row(), column(), flag(book.u8(at + 6), book.u8(at + 7) !== 0))
-    else if (type === 0x0204 || type === 0x0207) {
-      const start = type === 0x0204 ? at + 6 : at
+    else if (type === 0x0204 || type === 0x0207 || type === 0x00d6) {
+      // Text in a cell, plain or with runs of format after it (Excel 5 and 95), or a formula's text result.
+      const start = type === 0x0207 ? at : at + 6
       const length = book.u16(start)
-      const wide = (book.u8(start + 2) & 0x01) !== 0
-      const text = wide ? utf16(book.bytes(start + 3, length * 2)) : latin1(book.bytes(start + 3, length))
-      if (type === 0x0204) put(row(), column(), text)
+      const wide = !five && (book.u8(start + 2) & 0x01) !== 0
+      const text = five ? eight(book.bytes(start + 2, length)) : wide ? utf16(book.bytes(start + 3, length * 2)) : latin1(book.bytes(start + 3, length))
+      if (type !== 0x0207) put(row(), column(), text)
       else if (waiting) put(waiting.row, waiting.column, text)
       waiting = undefined
     } else if (type === 0x0006) {
@@ -613,7 +825,7 @@ function persistedObjects(file: ReturnType<typeof openCompound>, stream: Reader)
 }
 
 /** A PowerPoint 97 to 2003 presentation's slides, in order: each one's title and the lines of its other text. */
-export function readPowerPoint97(bytes: Uint8Array): OfficePreview {
+export function readOlderPowerPoint(bytes: Uint8Array): OfficePreview {
   const file = openCompound(bytes)
   const raw = file.stream('PowerPoint Document')
   if (!raw) throw new Error('This is not a PowerPoint presentation.')
