@@ -155,7 +155,7 @@ export class Figures {
 }
 
 /** How each kind of chart is drawn: amounts compared as bars, a course as a line, a filled course as an area. */
-function chartKind(name: string): OfficeChart['chart'] {
+export function chartKind(name: string): OfficeChart['chart'] {
   const kind = name.replace(/^[a-z]+:/, '').toLowerCase()
   if (kind.startsWith('line') || kind.startsWith('scatter') || kind.startsWith('stock') || kind.startsWith('bubble')) return 'line'
   if (kind.startsWith('area') || kind.startsWith('surface')) return 'area'
@@ -163,7 +163,7 @@ function chartKind(name: string): OfficeChart['chart'] {
 }
 
 /** A series as it is read: its name and its values and labels by their place, and the formulas naming their cells. */
-interface SeriesRead {
+export interface SeriesRead {
   name: string
   labels: Map<number, string>
   values: Map<number, number>
@@ -202,6 +202,17 @@ function chartSeries(read: readonly SeriesRead[]): OfficeChart['series'] {
       return { name: series.name.trim() || `Series ${index + 1}`, points }
     })
     .filter((series) => series.points.length > 0)
+}
+
+/**
+ * A chart as the Chart block draws it, from its series as read: a series that kept none of its values, labels or
+ * name takes them from the cells its formulas name, when `cells` reads them. None when no series has a point.
+ */
+export function drawnChart(title: string, kind: OfficeChart['chart'], series: SeriesRead[], cells?: CellRange): OfficeChart | undefined {
+  for (const one of series) fromCells(one, cells)
+  const drawn = chartSeries(series)
+  if (drawn.length === 0) return undefined
+  return { title: title.replace(/\s+/g, ' ').trim(), chart: kind, series: drawn }
 }
 
 /**
@@ -280,13 +291,7 @@ export async function readChart(
       }
     }
   }
-  if (cells && series.some(wantsCells)) {
-    const range = await cells()
-    for (const one of series) fromCells(one, range)
-  }
-  const drawn = chartSeries(series)
-  if (drawn.length === 0) return undefined
-  return { title: title.replace(/\s+/g, ' ').trim(), chart: kind ?? 'bar', series: drawn }
+  return drawnChart(title, kind ?? 'bar', series, cells && series.some(wantsCells) ? await cells() : undefined)
 }
 
 /**
@@ -334,7 +339,5 @@ export async function readOpenChart(xml: string): Promise<OfficeChart | undefine
     })
     return { name, labels, values }
   })
-  const drawn = chartSeries(series)
-  if (drawn.length === 0) return undefined
-  return { title: title.replace(/\s+/g, ' ').trim(), chart: kind, series: drawn }
+  return drawnChart(title, kind, series)
 }

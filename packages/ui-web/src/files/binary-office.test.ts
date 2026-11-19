@@ -571,7 +571,7 @@ const cell = (row: number, column: number) => new Bytes().u16(row).u16(column).u
 const bof = () => record(0x0809, new Bytes().u16(0x0600).u16(0x0005).zeros(12))
 const EOF = record(0x000a, new Uint8Array())
 
-/** A workbook of one sheet, its strings split over a record that continues them, and a chart sheet left out. */
+/** A workbook of one sheet, its strings split over a record that continues them, and a sheet of macros left out. */
 function workbook(protectedWith = false): Uint8Array {
   // "Hôtel" starts in the table's record in 8-bit characters and goes on in the next in 16-bit ones.
   const strings = new Bytes().u32(3).u32(3).u16(4).u8(0).narrow('Item').u16(5).u8(0).narrow('H\xf4')
@@ -603,12 +603,12 @@ function workbook(protectedWith = false): Uint8Array {
     EOF
   ]
   const sheetName = new Bytes().u8(6).u8(0).narrow('Budget')
-  const chartName = new Bytes().u8(5).u8(0).narrow('Chart')
+  const macroName = new Bytes().u8(6).u8(0).narrow('Macros')
   const globals = (sheetAt: number) => [
     bof(),
     ...(protectedWith ? [record(0x002f, new Bytes().u16(0).u16(0))] : []),
     record(0x0085, new Bytes().u32(sheetAt).u8(0).u8(0).raw(sheetName.done())),
-    record(0x0085, new Bytes().u32(0).u8(0).u8(2).raw(chartName.done())),
+    record(0x0085, new Bytes().u32(0).u8(0).u8(1).raw(macroName.done())),
     record(0x00fc, strings),
     record(0x003c, continued),
     EOF
@@ -651,7 +651,99 @@ function picturedWorkbook(): Uint8Array {
   return compound({ Workbook: all.done() })
 }
 
+/** A chart's records: its kind, then one series whose formulas name its name, values and categories in the sheet. */
+function chartOf(kind: number, kept?: { value: number; category: string }): Uint8Array[] {
+  const area = (part: number, rows: [number, number], column: number) => {
+    const tokens = new Bytes().u8(0x3b).u16(0).u16(rows[0]).u16(rows[1]).u16(column).u16(column).done()
+    return record(0x1051, new Bytes().u8(part).u8(2).zeros(4).u16(tokens.length).raw(tokens))
+  }
+  return [
+    bof(),
+    record(kind, new Bytes().zeros(6)),
+    record(0x1003, new Bytes().zeros(12)),
+    record(0x1033, new Uint8Array()),
+    area(0, [0, 0], 1),
+    area(1, [1, 2], 1),
+    area(2, [1, 2], 0),
+    record(0x1034, new Uint8Array()),
+    ...(kept
+      ? [
+          record(0x1065, new Bytes().u16(1)),
+          record(0x0203, cell(0, 0).f64(kept.value)),
+          record(0x1065, new Bytes().u16(2)),
+          record(0x0204, cell(0, 0).u16(kept.category.length).u8(0).narrow(kept.category))
+        ]
+      : []),
+    EOF
+  ]
+}
+
+/**
+ * A workbook of a sheet of values with a chart on it, which kept what it drew, and a chart sheet whose chart kept
+ * nothing, its formulas naming the sheet's cells through the workbook's references to its own sheets.
+ */
+function chartedWorkbook(): Uint8Array {
+  const text = (row: number, column: number, value: string) => record(0x0204, cell(row, column).u16(value.length).u8(0).narrow(value))
+  const data = [
+    bof(),
+    text(0, 1, 'Sales'),
+    text(1, 0, 'North'),
+    record(0x0203, cell(1, 1).f64(30)),
+    text(2, 0, 'South'),
+    record(0x0203, cell(2, 1).f64(12.5)),
+    record(0x005d, new Bytes().u16(0x15).u16(0x12).u16(5).zeros(16)),
+    ...chartOf(0x1018, { value: 7, category: 'Kept' }),
+    EOF
+  ]
+  const chartSheet = chartOf(0x1017)
+  const sheet = (at: number, kind: number, name: string) => record(0x0085, new Bytes().u32(at).u8(0).u8(kind).u8(name.length).u8(0).narrow(name))
+  const globals = (dataAt: number, chartAt: number) => [
+    bof(),
+    sheet(dataAt, 0, 'Data'),
+    sheet(chartAt, 2, 'Chart'),
+    record(0x01ae, new Bytes().u16(2).u16(0x0401)),
+    record(0x0017, new Bytes().u16(1).u16(0).u16(0).u16(0)),
+    EOF
+  ]
+  const size = (parts: Uint8Array[]) => parts.reduce((sum, one) => sum + one.length, 0)
+  const length = size(globals(0, 0))
+  const all = new Bytes()
+  for (const part of [...globals(length, length + size(data)), ...data, ...chartSheet]) all.raw(part)
+  return compound({ Workbook: all.done() })
+}
+
 describe('an Excel 97 workbook', () => {
+  it('draws a sheet’s charts from the values they kept, and a chart sheet’s from the cells its formulas name', () => {
+    const read = readOlderExcel(chartedWorkbook())
+    const sales = (points: { x: string; y: number }[]) => [{ name: 'Sales', points }]
+    expect(read.kind === 'workbook' ? read.sheets.map(({ name, rows, figures }) => ({ name, rows, figures })) : undefined).toEqual([
+      {
+        name: 'Data',
+        rows: [
+          ['', 'Sales'],
+          ['North', '30'],
+          ['South', '12.5']
+        ],
+        figures: [{ kind: 'chart', title: '', chart: 'line', series: sales([{ x: 'Kept', y: 7 }]) }]
+      },
+      {
+        name: 'Chart',
+        rows: [],
+        figures: [
+          {
+            kind: 'chart',
+            title: '',
+            chart: 'bar',
+            series: sales([
+              { x: 'North', y: 30 },
+              { x: 'South', y: 12.5 }
+            ])
+          }
+        ]
+      }
+    ])
+  })
+
   it('shows the pictures each sheet’s drawing places, from the workbook’s store', () => {
     expect(readOlderExcel(picturedWorkbook())).toEqual({
       kind: 'workbook',

@@ -10,7 +10,7 @@
  */
 
 import { FIGURE_LIMIT, PICTURE_BYTES_LIMIT, pictureType } from './office-figures.ts'
-import type { OfficeFigure } from './office-text.ts'
+import type { OfficeChart, OfficeFigure } from './office-text.ts'
 
 /** A record of OfficeArt: its type, its instance, whether it holds other records, and where its content is. */
 export interface ArtRecord {
@@ -229,6 +229,13 @@ export class ArtFigures {
       this.list.push({ kind: 'picture', type, bytes, alt, width: size.width, height: size.height })
     } else this.list.push({ kind: 'unshown', alt, what: 'picture' })
     this.found.set(known, this.list.length - 1)
+    return this.list.length - 1
+  }
+
+  /** A chart's figure, by its place in the list: drawn from what was read of it, or said to be one its app draws. */
+  chart(read: OfficeChart | undefined): number | undefined {
+    if (this.list.length >= FIGURE_LIMIT) return undefined
+    this.list.push(read ? { kind: 'chart', ...read } : { kind: 'unshown', alt: '', what: 'chart' })
     return this.list.length - 1
   }
 

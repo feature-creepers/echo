@@ -9,10 +9,11 @@
  * its end. A file protected with a password says so.
  */
 
+import { type ChartContext, type ChartRecord, readOlderChart } from './binary-chart.ts'
 import { openCompound } from './compound.ts'
 import { builtInFormat, formatNumber, generalNumber, type NumberFormatOptions } from './number-format.ts'
 import { ART, ArtFigures, type ArtRecord, artRecords, artShape, artShapes, childOf, type StoredPicture, storedPictures, twipPixels } from './office-art.ts'
-import type { CellValue } from './office-figures.ts'
+import { type CellValue, cellRange } from './office-figures.ts'
 import {
   BLOCK_LIMIT,
   COLUMN_LIMIT,
@@ -828,7 +829,11 @@ export function readOlderSheets(bytes: Uint8Array, options: NumberFormatOptions 
   const eight = (bytes: Uint8Array) => (narrow ? narrow.decode(bytes) : latin1(bytes))
 
   const strings: string[] = []
-  const sheets: { name: string; at: number }[] = []
+  const sheets: { name: string; at: number; chart: boolean }[] = []
+  // Every sheet's name by its place, as formulas name them, through the references to the workbook's own sheets.
+  const names: string[] = []
+  const books: boolean[] = []
+  const references: { book: number; sheet: number }[] = []
   // The workbook's store of pictures, in a drawing group whose records continue one another.
   const group: Uint8Array[] = []
   let grouping = false
@@ -873,8 +878,8 @@ export function readOlderSheets(bytes: Uint8Array, options: NumberFormatOptions 
     else if (record.type === 0x00eb) {
       group.push(book.bytes(record.at, record.size))
       grouping = true
-    } else if (record.type === 0x0085 && book.u8(record.at + 5) === 0) {
-      // A worksheet: where its records start, and its name. Charts and macros are left out.
+    } else if (record.type === 0x0085) {
+      // A sheet: where its records start, its kind and its name. Worksheets and chart sheets are shown; macros are not.
       const length = book.u8(record.at + 6)
       const wide = !five && (book.u8(record.at + 7) & 0x01) !== 0
       const name = five
@@ -882,8 +887,14 @@ export function readOlderSheets(bytes: Uint8Array, options: NumberFormatOptions 
         : wide
           ? utf16(book.bytes(record.at + 8, length * 2))
           : latin1(book.bytes(record.at + 8, length))
-      sheets.push({ name, at: book.u32(record.at) })
-    } else if (record.type === 0x000a) break
+      names.push(name)
+      const kind = book.u8(record.at + 5)
+      if (kind === 0 || kind === 2) sheets.push({ name, at: book.u32(record.at), chart: kind === 2 })
+    } else if (record.type === 0x01ae && record.size >= 4) books.push(book.u16(record.at + 2) === 0x0401)
+    else if (record.type === 0x0017 && !five && record.size >= 2)
+      for (let index = 0; index < Math.min(book.u16(record.at), Math.floor((record.size - 2) / 6)); index++)
+        references.push({ book: book.u16(record.at + 2 + index * 6), sheet: book.i16(record.at + 4 + index * 6) })
+    else if (record.type === 0x000a) break
   }
   readShared()
   const shownBy = (style: number) => {
@@ -896,20 +907,89 @@ export function readOlderSheets(bytes: Uint8Array, options: NumberFormatOptions 
   const [drawingGroup] = artRecords(store)
   const stored = storedPictures(store, drawingGroup?.type === ART.drawingGroup ? childOf(store, drawingGroup, ART.store) : undefined)
 
-  return sheets.slice(0, SHEET_LIMIT).map(({ name, at }) => {
-    const { drawing, ...read } = sheetRows(book, at, { strings, five, eight }, shownBy, shown)
-    return { name, ...read, figures: figures.at(sheetPictures(drawing, stored, figures)) }
-  })
+  const read = sheets
+    .slice(0, SHEET_LIMIT)
+    .map(({ name, at, chart }) =>
+      chart
+        ? { name, rows: [], cut: false, cells: new Map<string, CellValue>(), drawing: new Uint8Array(), charts: [chartRecords(book, at)], objects: [] }
+        : { name, ...sheetRows(book, at, { strings, five, eight }, shownBy, shown) }
+    )
+  // The sheets are read before their charts, which may name their cells rather than keep their values.
+  const context: ChartContext = {
+    five,
+    eight,
+    number: (value, style) => {
+      const code = shownBy(style)
+      return /^general$/i.test(code) ? generalNumber(value) : formatNumber(value, code, shown)
+    },
+    sheetName: (index) => {
+      const reference = references[index]
+      return reference && books[reference.book] !== false ? names[reference.sheet] : undefined
+    },
+    cells: cellRange(new Map(read.map((sheet) => [sheet.name, sheet.cells])))
+  }
+  return read.map(({ drawing, charts, objects, ...sheet }) => ({
+    ...sheet,
+    figures: figures.at(sheetFigures({ drawing, charts, objects }, stored, figures, context))
+  }))
 }
 
-/** The pictures a sheet's drawing places, in order, by their places in the workbook's figures. */
-function sheetPictures(drawing: Uint8Array, stored: (place: number) => StoredPicture | undefined, figures: ArtFigures): number[] {
-  const [container] = artRecords(drawing)
-  if (container?.type !== ART.drawing) return []
-  return artShapes(drawing, container).flatMap((shape) => {
-    const found = shape.picture === undefined ? undefined : figures.picture(`store:${shape.picture}`, stored(shape.picture), shape.alt)
-    return found === undefined ? [] : [found]
-  })
+/** The records of a chart sheet, from its beginning to its end. */
+function chartRecords(book: Reader, from: number): ChartRecord[] {
+  const found: ChartRecord[] = []
+  for (const { type, at, size } of records(book, from)) {
+    found.push({ type, body: book.bytes(at, size) })
+    if (type === 0x000a) break
+  }
+  return found
+}
+
+/** The objects a sheet places, as they are read: its drawing, the records of each chart, and the kind of each object in order. */
+interface SheetObjects {
+  drawing: Uint8Array
+  charts: ChartRecord[][]
+  objects: number[]
+}
+
+/** The kinds of object a sheet's object record names. */
+const CHART_OBJECT = 0x05
+const PICTURE_OBJECT = 0x08
+
+/**
+ * The pictures and charts a sheet places, by their places in the workbook's figures, in the order of its objects: a
+ * picture from its drawing's next shape that shows one, a chart from the next chart's records. Those no object names
+ * follow.
+ */
+function sheetFigures(placed: SheetObjects, stored: (place: number) => StoredPicture | undefined, figures: ArtFigures, context: ChartContext): number[] {
+  const [container] = artRecords(placed.drawing)
+  const shapes = container?.type === ART.drawing ? artShapes(placed.drawing, container).filter((shape) => shape.picture !== undefined) : []
+  const found: number[] = []
+  let picture = 0
+  let chart = 0
+  const nextPicture = () => {
+    const shape = shapes[picture++]
+    const figure = shape?.picture === undefined ? undefined : figures.picture(`store:${shape.picture}`, stored(shape.picture), shape.alt)
+    if (figure !== undefined) found.push(figure)
+  }
+  const nextChart = () => {
+    const records = placed.charts[chart++]
+    if (!records) return
+    let read: ReturnType<typeof readOlderChart>
+    try {
+      read = readOlderChart(records, context)
+    } catch {
+      // A chart whose records cannot be read is one its app draws.
+    }
+    const figure = figures.chart(read)
+    if (figure !== undefined) found.push(figure)
+  }
+  for (const kind of placed.objects) {
+    if (kind === PICTURE_OBJECT) nextPicture()
+    else if (kind === CHART_OBJECT) nextChart()
+  }
+  while (picture < shapes.length) nextPicture()
+  while (chart < placed.charts.length) nextChart()
+  return found
 }
 
 /** The rows of a sheet, from its records: its cells in their columns, empty ones kept so the columns line up. */
@@ -919,12 +999,15 @@ function sheetRows(
   text: { strings: readonly string[]; five: boolean; eight: (bytes: Uint8Array) => string },
   formatOf: (style: number) => string,
   options: NumberFormatOptions
-): { rows: string[][]; cut: boolean; cells: Map<string, CellValue>; drawing: Uint8Array } {
+): { rows: string[][]; cut: boolean; cells: Map<string, CellValue> } & SheetObjects {
   const { strings, five, eight } = text
   const rows: string[][] = []
-  // The sheet's drawing, in records of its own and those that continue them, among the records of its objects.
+  // The sheet's drawing, in records of its own and those that continue them, among the records of its objects, and
+  // each chart's records, between its own beginning and end.
   const drawing: Uint8Array[] = []
   let drawn = false
+  const charts: ChartRecord[][] = []
+  const objects: number[] = []
   // Each cell shown, by its row and column, with its number when it holds one.
   const cells = new Map<string, CellValue>()
   let cut = false
@@ -948,9 +1031,12 @@ function sheetRows(
   // A formula's text result follows it in a record of its own.
   let waiting: { row: number; column: number } | undefined
   for (const { type, at, size } of records(book, from)) {
-    if (type === 0x0809) depth++
-    else if (type === 0x000a && --depth <= 0) break
+    if (type === 0x0809) {
+      depth++
+      if (depth === 2) charts.push([])
+    } else if (type === 0x000a && --depth <= 0) break
     // A chart inside a sheet has records of its own, between its own beginning and end.
+    if (depth >= 2) charts.at(-1)?.push({ type, body: book.bytes(at, size) })
     if (depth !== 1) continue
     if (type === 0x00ec || (drawn && type === 0x003c)) {
       drawing.push(book.bytes(at, size))
@@ -958,6 +1044,8 @@ function sheetRows(
       continue
     }
     drawn = false
+    // An object's kind, after the header of its first part in Excel 97, after its count in Excel 5 and 95.
+    if (type === 0x005d && size >= 6 && (five || book.u16(at) === 0x15)) objects.push(book.u16(at + 4))
     const row = () => book.u16(at)
     const column = () => book.u16(at + 2)
     if (type === 0x00fd) put(row(), column(), strings[book.u32(at + 6)] ?? '')
@@ -989,7 +1077,7 @@ function sheetRows(
     }
   }
   while (rows.length > 0 && (rows.at(-1)?.every((value) => value === '') ?? false)) rows.pop()
-  return { rows, cut, cells, drawing: joined(drawing) }
+  return { rows, cut, cells, drawing: joined(drawing), charts, objects }
 }
 
 // PowerPoint
