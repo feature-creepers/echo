@@ -98,6 +98,10 @@ export interface AccessControl {
   exportActivity: Activity['export']
   /** What each turn given changed: its uses that changed files, and the files as it left them, counted. */
   changes: Activity['changes']
+  /** The versions kept of one file: the one each change left, the latest first, and the one before the first. */
+  versions: Activity['versions']
+  /** Put a kept version of a file back, as the person asked; a use of its own, which can be undone in turn. */
+  restore: Activity['restore']
   /**
    * Stop everything: every question waiting is withdrawn, the session's approvals are forgotten, and whoever
    * listens with `onStopEverything` stops too: the conversation's turns and threads, and what runs on its own.
@@ -675,6 +679,10 @@ export function createAccess({ settings, screen, computer, timers, records, vers
     undo: (use, anyway) => activity.undo(use, anyway),
 
     diff: (of) => activity.diff(of),
+
+    versions: (path) => activity.versions(path),
+
+    restore: (use, path, side) => activity.restore(use, path, side),
 
     check: () => activity.check(),
 

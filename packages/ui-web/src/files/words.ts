@@ -1,4 +1,17 @@
-/** Sizes, dates and tables as the interface writes them. */
+import { type FileVersion, RESTORE_TOOL } from '@repo/protocol'
+
+/** Sizes, dates, tables and versions as the interface writes them. */
+
+/**
+ * What made a version of a file, as the person reads it: "Changed by the assistant", "Created by a command",
+ * "Put back by you", or, for the one before the first change kept, "Before the assistant changed it".
+ */
+export function versionWords(version: Pick<FileVersion, 'side' | 'tool' | 'command' | 'change'>): string {
+  if (version.side === 'before') return 'Before the assistant changed it'
+  if (version.tool === RESTORE_TOOL) return 'Put back by you'
+  const did = version.change?.status === 'created' ? 'Created' : version.change?.status === 'deleted' ? 'Deleted' : 'Changed'
+  return `${did} by ${version.command === undefined ? 'the assistant' : 'a command'}`
+}
 
 /** A size as a person reads it, the way file managers write it: "812 bytes", "240 KB", "3.4 MB". */
 export function sizeWords(bytes: number): string {

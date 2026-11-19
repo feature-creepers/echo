@@ -8,9 +8,10 @@ import { IconButton } from '../primitives/icon-button.tsx'
 import { CheckGlyph } from '../primitives/icons.tsx'
 import { copyText, saveCopy } from './file-actions.ts'
 import { FileContent, FileMark } from './file-content.tsx'
-import { CopyGlyph, DisclosureGlyph, DownloadGlyph, FileGlyph, FolderGlyph, OpenGlyph, RefreshGlyph, RevealGlyph } from './glyphs.tsx'
+import { CopyGlyph, DisclosureGlyph, DownloadGlyph, FileGlyph, FolderGlyph, OpenGlyph, RefreshGlyph, RevealGlyph, VersionsGlyph } from './glyphs.tsx'
 import { kindOf } from './kinds.ts'
 import { type Listing, moveFor, type Row, visibleRows } from './tree.ts'
+import { Versions } from './versions.tsx'
 import { itemsWords, modifiedWords, sizeWords } from './words.ts'
 
 /**
@@ -282,6 +283,9 @@ function Preview({ client, entry, onOpenFolder }: { client: Client; entry: Works
     const timer = setTimeout(() => setCopied(false), 1400)
     return () => clearTimeout(timer)
   }, [copied])
+  // Its versions in place of its content, for the file chosen: another file opens on its content.
+  const [versions, setVersions] = useState<string>()
+  const showingVersions = versions === entry.path
 
   const folder = entry.kind === 'folder'
   const facts = [folder ? itemsWords(entry.size) : `${kindOf(entry.name).label} · ${sizeWords(entry.size)}`, modifiedWords(entry.modified)].filter(Boolean)
@@ -321,6 +325,15 @@ function Preview({ client, entry, onOpenFolder }: { client: Client; entry: Works
               <DownloadGlyph />
             </IconButton>
           )}
+          {!folder && (
+            <IconButton
+              label={showingVersions ? 'Show the file' : 'Versions'}
+              active={showingVersions}
+              onClick={() => setVersions(showingVersions ? undefined : entry.path)}
+            >
+              <VersionsGlyph />
+            </IconButton>
+          )}
         </div>
       </header>
       {folder ? (
@@ -333,6 +346,8 @@ function Preview({ client, entry, onOpenFolder }: { client: Client; entry: Works
             Show what is in it
           </Button>
         </div>
+      ) : showingVersions ? (
+        <Versions client={client} location={entry.location} modified={entry.modified} />
       ) : (
         <FileContent client={client} path={entry.path} name={entry.name} size={entry.size} modified={entry.modified} className="h-full" />
       )}

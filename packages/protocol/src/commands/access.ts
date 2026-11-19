@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { allowanceSchema, protectedPlaceSchema } from '../access.ts'
-import { accessUseSchema, activityCheckSchema, fileChangeSchema, fileDiffSchema, useIdSchema } from '../activity.ts'
+import { accessUseSchema, activityCheckSchema, fileChangeSchema, fileDiffSchema, fileVersionSchema, useIdSchema } from '../activity.ts'
 import { turnIdSchema } from '../conversation.ts'
 
 const standingOutput = z.object({ allowances: z.array(allowanceSchema), protected: z.array(protectedPlaceSchema) })
@@ -47,6 +47,24 @@ export const accessCommands = {
    * What each turn given changed on the computer: its uses that created, changed or deleted a file, and the files
    * as the turn left them, each once, with the lines it added and removed in all.
    */
+  /**
+   * The versions the core kept of one file, by where it is: the one each change left, the latest first, and the one
+   * before the first change kept.
+   */
+  'activity.versions': {
+    input: z.object({ path: z.string().min(1).max(4096) }),
+    output: z.object({ versions: z.array(fileVersionSchema) })
+  },
+
+  /**
+   * Put a kept version of a file back, as the person asked: what the file held is kept first, and the restoring is a
+   * use of its own in the activity, so it can be undone in turn. `gone` when that version is no longer kept.
+   */
+  'activity.restore': {
+    input: z.object({ use: useIdSchema, path: z.string().min(1).max(4096), side: z.enum(['before', 'after']) }),
+    output: z.object({ outcome: z.enum(['done', 'gone']), versions: z.array(fileVersionSchema) })
+  },
+
   'activity.changes': {
     input: z.object({ turns: z.array(turnIdSchema).max(50) }),
     output: z.object({

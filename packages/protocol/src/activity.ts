@@ -54,6 +54,31 @@ export const fileChangeSchema = z.object({
 })
 export type FileChange = z.infer<typeof fileChangeSchema>
 
+/**
+ * A version of a file the core kept (docs/SPEC.md, section 9.7): the one a change left, or the one before the first
+ * change it kept of the file. Kept 30 days, as the activity is.
+ */
+export const fileVersionSchema = z.object({
+  /** The use that left it, or before which it was kept. */
+  use: useIdSchema,
+  /** When: an ISO 8601 date. */
+  at: z.string(),
+  /** The version the change left (`after`), or the one before the first change kept (`before`). */
+  side: z.enum(['before', 'after']),
+  /** What made the change: the tool, as the activity names it. */
+  tool: z.string(),
+  /** For a command, its line. */
+  command: z.string().optional(),
+  /** What the change did to the file, in numbers. Left out for the version before. */
+  change: fileChangeSchema.optional(),
+  /** Whether it can be put back: its content was kept, and it is not a file deleted. */
+  restorable: z.boolean()
+})
+export type FileVersion = z.infer<typeof fileVersionSchema>
+
+/** The tool that puts a kept version of a file back, as the person asked, as the activity names it. */
+export const RESTORE_TOOL = 'Restore'
+
 export const accessUseSchema = z.object({
   id: useIdSchema,
   /** When it was decided: an ISO 8601 date. */

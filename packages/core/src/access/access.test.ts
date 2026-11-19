@@ -9,7 +9,7 @@ import { manualTimers } from '../replay/manual-timers.ts'
 import { ACCESS_SET, createUserSettings } from '../settings/settings.ts'
 import { createScreen } from '../views/screen.ts'
 import { createAccess, DIRECT_TOOLS } from './access.ts'
-import { ACCESS_OUTCOME, ACCESS_USE, KEPT_MS } from './activity.ts'
+import { ACCESS_OUTCOME, ACCESS_USE, KEPT_MS, samePlace } from './activity.ts'
 
 const WORKSPACE = '/data/workspace'
 
@@ -639,6 +639,41 @@ describe('the changes, reviewed as diffs', () => {
     // A turn that changed nothing is left out; an unknown use has no diff at all.
     expect(await context.access.changes(['another'])).toEqual([])
     expect(await context.access.diff({ use: 'nothing' })).toBeUndefined()
+  })
+
+  it("lists a file's versions, the latest first, and puts one back as a change of its own", async () => {
+    const context = setup()
+    context.settings.setAccess({ approvals: 'trust' })
+    const path = `${WORKSPACE}/list.md`
+    context.files.set(path, text('a\n'))
+    const first = await changed(context, change, 'a\nb\n')
+    const second = await changed(context, change, 'a\nb\nc\n')
+    expect(context.access.versions(path)).toEqual([
+      { use: second, at: expect.any(String), side: 'after', tool: 'Edit', change: { path, status: 'changed', added: 1, removed: 0 }, restorable: true },
+      { use: first, at: expect.any(String), side: 'after', tool: 'Edit', change: { path, status: 'changed', added: 1, removed: 0 }, restorable: true },
+      { use: first, at: expect.any(String), side: 'before', tool: 'Edit', restorable: true }
+    ])
+
+    // The file as it was before the assistant changed it, put back: what it held is kept, and it shows as a change.
+    expect(await context.access.restore(first, path, 'before')).toBe('done')
+    expect(new TextDecoder().decode(context.files.get(path) ?? new Uint8Array())).toBe('a\n')
+    const [restoring, ...older] = context.access.versions(path)
+    expect(restoring).toMatchObject({ side: 'after', tool: 'Restore', change: { added: 0, removed: 2 }, restorable: true })
+    expect(older).toHaveLength(3)
+    expect(context.access.activity(1).uses[0]).toMatchObject({ tool: 'Restore', decision: 'approved', reason: 'pressed', undo: { kind: 'restore' } })
+
+    // A version no longer kept, or of another file, cannot be put back.
+    expect(await context.access.restore('nothing', path, 'after')).toBe('gone')
+    expect(await context.access.restore(first, `${WORKSPACE}/other.md`, 'after')).toBe('gone')
+    expect(context.access.versions(`${WORKSPACE}/other.md`)).toEqual([])
+  })
+
+  it.each([
+    ['C:\\Users\\ada\\Notes\\a.md', 'c:/users/ada/notes/a.md', true],
+    ['/home/ada/a.md', '/home/ada/a.md/', true],
+    ['/home/ada/A.md', '/home/ada/a.md', false]
+  ])('tells %s and %s are the same file: %s', (one, other, same) => {
+    expect(samePlace(one, other)).toBe(same)
   })
 
   it('counts no lines of a file that is not text', async () => {

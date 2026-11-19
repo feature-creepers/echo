@@ -1,4 +1,4 @@
-import { type AccessUse, type ActivityCheck, accessUseSchema, type FileChange, type FileDiff } from '@repo/protocol'
+import { type AccessUse, type ActivityCheck, accessUseSchema, type FileChange, type FileDiff, type FileVersion, RESTORE_TOOL } from '@repo/protocol'
 import { z } from 'zod'
 import type { Blobs } from '../ports/blobs.ts'
 import type { Computer } from '../ports/computer.ts'
@@ -89,6 +89,16 @@ export interface Activity {
   diff(of: { use: string } | { turn: string }): Promise<FileDiff[] | undefined>
   /** For each turn, its uses that changed files, and the files as the turn left them, with the lines added and removed in all. */
   changes(turns: readonly string[]): Promise<{ turn: string; uses: AccessUse[]; files: FileChange[] }[]>
+  /**
+   * The versions kept of one file, by where it is (docs/SPEC.md, section 9.7): the one each change left, the latest
+   * first, then the one before the first change that kept it.
+   */
+  versions(path: string): FileVersion[]
+  /**
+   * Put a kept version of a file back, as the person asked. What the file holds is kept first, and the restoring is a
+   * use of its own, so it shows in the activity and can be undone. `gone` when that version is no longer kept.
+   */
+  restore(use: string, path: string, side: FileVersion['side']): Promise<'done' | 'gone'>
   /** Whether the chain of the records kept holds. */
   check(): ActivityCheck
   /** The whole activity kept, with its seals and the check, as one JSON document. */
@@ -135,6 +145,15 @@ function counted(before: Side, after: Side): Pick<Left, 'added' | 'removed' | 'b
 }
 
 const NOTHING = new Uint8Array()
+
+/** Whether two places are the same file, as the system compares them: Windows' and its drive letters ignore capitals. */
+export function samePlace(one: string, other: string): boolean {
+  const plain = (path: string) => {
+    const slashed = path.replace(/\\/g, '/').replace(/\/+$/, '')
+    return /^[a-z]:\//i.test(slashed) ? slashed.toLowerCase() : slashed
+  }
+  return plain(one) === plain(other)
+}
 
 export function createActivity({ records, versions, computer, now, newId }: ActivityOptions): Activity {
   const entries = new Map<string, Entry>()
@@ -379,6 +398,64 @@ export function createActivity({ records, versions, computer, now, newId }: Acti
         }
       }
       return files
+    },
+
+    versions(path) {
+      const found: FileVersion[] = []
+      let first = true
+      for (const { use, outcome } of entries.values()) {
+        if (use.decision === 'refused' || outcome?.ok === false) continue
+        const before = use.kept?.find((one) => samePlace(one.path, path))
+        const left = outcome?.after?.find((one) => samePlace(one.path, path))
+        if (!before && !left && !use.created?.some((one) => samePlace(one, path))) continue
+        const made = { use: use.id, at: use.at, tool: use.tool, ...(use.command === undefined ? {} : { command: use.command }) }
+        if (first && before) found.push({ ...made, side: 'before', restorable: true })
+        first = false
+        if (!left) continue
+        const change =
+          left.status === undefined || left.added === undefined || left.removed === undefined
+            ? undefined
+            : {
+                path: left.path,
+                status: left.status,
+                added: left.added,
+                removed: left.removed,
+                ...(left.binary ? { binary: true } : {}),
+                ...(left.large ? { large: true } : {})
+              }
+        found.push({ ...made, side: 'after', ...(change ? { change } : {}), restorable: left.fingerprint !== undefined && left.status !== 'deleted' })
+      }
+      return found.reverse()
+    },
+
+    async restore(id, path, side) {
+      const entry = entries.get(id)
+      if (!entry || !computer) return 'gone'
+      const hash =
+        side === 'before'
+          ? entry.use.kept?.find((one) => samePlace(one.path, path))?.hash
+          : entry.outcome?.after?.find((one) => samePlace(one.path, path) && one.status !== 'deleted')?.fingerprint
+      const bytes = hash === undefined ? undefined : versions.get(hash)
+      if (!bytes) return 'gone'
+      // The person's own change, kept as any other: what the file held can be put back in turn.
+      const { kept, created } = await this.keep([path])
+      const restoring = this.record({
+        tool: RESTORE_TOOL,
+        action: created.length > 0 ? 'create' : 'change',
+        paths: [path],
+        decision: 'approved',
+        reason: 'pressed',
+        ...(kept && kept.length > 0 ? { kept } : {}),
+        ...(created.length > 0 ? { created } : {})
+      })
+      try {
+        await computer.write(path, bytes)
+      } catch (error) {
+        await this.outcome(restoring.id, { ok: false, error: error instanceof Error ? error.message : String(error) })
+        throw error
+      }
+      await this.outcome(restoring.id, { ok: true })
+      return 'done'
     },
 
     async changes(turns) {

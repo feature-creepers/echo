@@ -669,6 +669,13 @@ export function createCore(options: CoreOptions): Core {
         return files ? { ok: true, output: { files } } : { ok: false, error: { code: 'invalid-input', message: 'There is no such use in the activity.' } }
       },
       'activity.changes': async (input) => ({ ok: true, output: { turns: await access.changes(input.turns) } }),
+      'activity.versions': (input) => ({ ok: true, output: { versions: access.versions(input.path) } }),
+      'activity.restore': async (input) => {
+        const outcome = await access.restore(input.use, input.path, input.side)
+        // Put back in the assistant's folder, the Files page shows it at once.
+        if (outcome === 'done') workspaceChanged([workspace?.pathOf(input.path)].flatMap((path) => path ?? []))
+        return { ok: true, output: { outcome, versions: access.versions(input.path) } }
+      },
       'everything.stop': () => {
         access.stopEverything()
         return { ok: true, output: {} }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { badgeOf, extensionOf, kindOf, previewTypeOf } from './kinds.ts'
 import { type Listing, moveFor, parentOf, type Row, visibleRows } from './tree.ts'
-import { itemsWords, modifiedWords, sizeWords, tableRows } from './words.ts'
+import { itemsWords, modifiedWords, sizeWords, tableRows, versionWords } from './words.ts'
 
 describe('what a file is', () => {
   it.each([
@@ -37,6 +37,17 @@ describe('what a file is', () => {
 })
 
 describe('words', () => {
+  const change = { path: '/w/a.md', added: 1, removed: 0 }
+  it.each([
+    [{ side: 'before', tool: 'Edit' }, 'Before the assistant changed it'],
+    [{ side: 'after', tool: 'Edit', change: { ...change, status: 'changed' } }, 'Changed by the assistant'],
+    [{ side: 'after', tool: 'Write', change: { ...change, status: 'created' } }, 'Created by the assistant'],
+    [{ side: 'after', tool: 'Bash', command: 'rm a.md', change: { ...change, status: 'deleted' } }, 'Deleted by a command'],
+    [{ side: 'after', tool: 'Restore', change: { ...change, status: 'changed' } }, 'Put back by you']
+  ] as const)('says what made a version: %j', (version, said) => {
+    expect(versionWords(version)).toBe(said)
+  })
+
   it.each([
     [0, '0 bytes'],
     [1, '1 byte'],

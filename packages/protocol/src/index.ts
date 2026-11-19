@@ -29,10 +29,13 @@ export {
   activityCheckSchema,
   type FileChange,
   type FileDiff,
+  type FileVersion,
   fileChangeSchema,
   fileDiffSchema,
+  fileVersionSchema,
   type Hunk,
   hunkSchema,
+  RESTORE_TOOL,
   USE_DECISIONS,
   USE_REASONS,
   useIdSchema

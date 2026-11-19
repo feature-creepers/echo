@@ -78,6 +78,13 @@ export const RefreshGlyph = (props: Sized) => (
   </Glyph>
 )
 
+/** The versions kept of a file: a clock whose hand turns back. */
+export const VersionsGlyph = (props: Sized) => (
+  <Glyph {...sized(props)}>
+    <path d="M2.8 8a5.2 5.2 0 1 0 1.5-3.7M2.5 2.5v2.3h2.3M8 5v3l2 1.3" />
+  </Glyph>
+)
+
 /** Open something with its own app: an arrow out of a frame. */
 export const OpenGlyph = (props: Sized) => (
   <Glyph {...sized(props)}>
