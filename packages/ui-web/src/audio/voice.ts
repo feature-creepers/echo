@@ -15,7 +15,8 @@ export interface SpeakingVoice extends DeviceVoice {
 
 /** How the voice speaks, read for each sentence so that a change of settings applies to the next one. */
 export interface VoiceManner {
-  style(): string
+  /** The style to speak a sentence in, by its language: a persona may sound otherwise from one language to the next. */
+  style(language: string): string
   /** The pace, 1 being the voice's own. */
   speed?: () => number
   /** The output device to play on. Nothing for the system's choice. */
@@ -61,9 +62,10 @@ export function engineVoice(engine: SpeechEngine, manner: VoiceManner | (() => s
     if (known) return known
     const { context: audio } = ready()
     const speed = how.speed?.() ?? 1
-    const style = how.style()
+    const spokenIn = language ?? fallbackLanguage
+    const style = how.style(spokenIn)
     const made = clauses(text).map((piece) =>
-      engine.speak(how.spoken?.(piece) ?? piece, { language: language ?? fallbackLanguage, style, ...(speed === 1 ? {} : { speed }) }).then(
+      engine.speak(how.spoken?.(piece) ?? piece, { language: spokenIn, style, ...(speed === 1 ? {} : { speed }) }).then(
         (sound) => {
           const out = audio.createBuffer(1, sound.samples.length, sound.sampleRate)
           out.copyToChannel(new Float32Array(sound.samples), 0)

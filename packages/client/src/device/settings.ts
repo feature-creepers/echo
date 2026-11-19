@@ -25,6 +25,11 @@ export interface DeviceSettings {
     aloud: boolean
     /** How fast the voice speaks: 1 is its natural pace. */
     speed: number
+    /**
+     * The voice styles the user picked: by persona, then by language. A language with none picked is spoken in
+     * the style that suits the persona's stance in that language.
+     */
+    styles: VoiceStyles
   }
   /** Keyboard shortcuts, as Electron writes them. An empty one is off. */
   shortcuts: {
@@ -69,6 +74,9 @@ export interface AudioDevice {
   label: string
 }
 
+/** A persona's identifier, then a language's two-letter code, to the identifier of the voice style picked for it. */
+export type VoiceStyles = Record<string, Record<string, string>>
+
 export const PAUSES = ['short', 'normal', 'long', 'never'] as const
 export type Pause = (typeof PAUSES)[number]
 
@@ -100,7 +108,7 @@ export const DEFAULT_DEVICE_SETTINGS: DeviceSettings = {
   microphone: { id: '', label: '' },
   speaker: { id: '', label: '' },
   listening: { pause: 'normal', sounds: true },
-  voice: { aloud: true, speed: 1 },
+  voice: { aloud: true, speed: 1, styles: {} },
   shortcuts: { talk: '', talkInWindow: 'CommandOrControl+Space', transcript: 'CommandOrControl+T', stopEverything: '' },
   app: { launchAtLogin: false, startHidden: false, closeToTray: true },
   updates: { automatic: true },
@@ -128,6 +136,29 @@ function overlay<Value>(base: Value, patch: unknown): Value {
   return out as Value
 }
 
+/** How a persona's identifier, a language's code and a style's identifier are written. */
+const PERSONA_ID = /^[\w-]{1,64}$/
+const LANGUAGE_CODE = /^[a-z]{2}$/
+const STYLE_ID = /^[\w-]{1,40}$/
+
+/**
+ * The voice styles picked, from anything: each pick whose persona, language and style are written as they
+ * should be. The rest is dropped, and a persona left with no pick with it.
+ */
+function readVoiceStyles(raw: unknown): VoiceStyles {
+  if (!isObject(raw)) return {}
+  const personas: [string, Record<string, string>][] = []
+  for (const [persona, languages] of Object.entries(raw)) {
+    if (!PERSONA_ID.test(persona) || !isObject(languages)) continue
+    const picked = Object.entries(languages).filter(
+      (pick): pick is [string, string] => LANGUAGE_CODE.test(pick[0]) && typeof pick[1] === 'string' && STYLE_ID.test(pick[1])
+    )
+    if (picked.length > 0) personas.push([persona, Object.fromEntries(picked)])
+  }
+  // Made from entries rather than assigned key by key, so that a key such as "__proto__" stays a plain key.
+  return Object.fromEntries(personas)
+}
+
 /**
  * Settings that can be used, from anything: a file written by an older version, edited by hand, or broken.
  * What is missing or wrong takes its default; what is unknown is dropped.
@@ -137,6 +168,8 @@ export function readDeviceSettings(raw: unknown): DeviceSettings {
   const fallback = DEFAULT_DEVICE_SETTINGS
   if (!PAUSES.includes(read.listening.pause)) read.listening.pause = fallback.listening.pause
   if (!Number.isFinite(read.voice.speed) || read.voice.speed < 0.5 || read.voice.speed > 2) read.voice.speed = fallback.voice.speed
+  // The picks' keys are not known in advance, so they are read on their own rather than laid over the defaults.
+  read.voice.styles = readVoiceStyles(isObject(raw) && isObject(raw.voice) ? raw.voice.styles : undefined)
   if (!Number.isFinite(read.sheet.width)) read.sheet.width = fallback.sheet.width
   read.sheet.width = Math.round(Math.min(SHEET_WIDTH.most, Math.max(SHEET_WIDTH.least, read.sheet.width)))
   for (const name of Object.keys(read.shortcuts) as ShortcutName[]) {
@@ -152,7 +185,10 @@ export function readDeviceSettings(raw: unknown): DeviceSettings {
 
 /** The settings with a change applied, read again so that a wrong value never gets in. */
 export function changeDeviceSettings(settings: DeviceSettings, change: DeviceSettingsChange): DeviceSettings {
-  return readDeviceSettings(overlay(copy(settings), change))
+  const changed = overlay(copy(settings), change)
+  // The voice styles picked are given whole: laid over the ones before, a persona or a language new to them would be lost.
+  if (change.voice?.styles !== undefined) changed.voice.styles = copy(change.voice.styles)
+  return readDeviceSettings(changed)
 }
 
 export type ShortcutName = keyof DeviceSettings['shortcuts']

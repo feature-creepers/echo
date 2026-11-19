@@ -1,16 +1,42 @@
-import type { Persona } from '@repo/protocol'
+import { LANGUAGES, type LanguageCode, type Languages, type Persona } from '@repo/protocol'
+import { useState } from 'react'
 import { Button } from '../primitives/button.tsx'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { Select } from '../primitives/select.tsx'
 import { accentStyle } from '../styles/accent.ts'
+import { introduction } from './introductions.ts'
 import type { DeviceSpeech } from './use-speech.ts'
 
-/** Each persona's voice, picked from the voice's styles, with a sentence to hear it first. */
-export function VoicePicker({ speech, personas }: { speech: DeviceSpeech; personas: readonly Persona[] }) {
+/** Every language the voice speaks, to pick the one whose voices are shown. */
+const LANGUAGE_OPTIONS = LANGUAGES.map((language) => ({ value: language.code as LanguageCode, label: language.name }))
+
+/** The language to show the voices of first: the one the assistant answers in, else the one the person speaks, else English. */
+export function firstLanguage(languages: Languages | undefined): LanguageCode {
+  if (languages && languages.answers !== 'spoken') return languages.answers
+  if (languages && languages.spoken !== 'auto') return languages.spoken
+  return 'en'
+}
+
+interface VoicePickerProps {
+  speech: DeviceSpeech
+  personas: readonly Persona[]
+  /** The languages of the conversation, to show first the voices of the one the assistant speaks. */
+  languages?: Languages | undefined
+}
+
+/**
+ * Each persona's voice in a language, picked from the voice's styles, with a sentence in that language to hear it
+ * first: the same style does not sound the same in every language, so a persona's voice is picked language by language.
+ */
+export function VoicePicker({ speech, personas, languages }: VoicePickerProps) {
+  const [language, setLanguage] = useState<LanguageCode>(() => firstLanguage(languages))
   if (!speech.ready || speech.styles.length === 0) return null
   return (
     <div className="grid gap-3">
-      <Eyebrow className="px-0.5 font-semibold text-text-soft">Voices</Eyebrow>
+      <div className="flex items-center justify-between gap-4">
+        <Eyebrow className="px-0.5 font-semibold text-text-soft">Voices</Eyebrow>
+        <Select<LanguageCode> label="The language of the voices" value={language} options={LANGUAGE_OPTIONS} onChange={setLanguage} className="w-44" />
+      </div>
       <ul className="divide-y divide-white/[0.06] overflow-hidden rounded-lg bg-raised/95 shadow-[inset_0_0_0_1px_rgb(255_255_255/0.06)]">
         {personas.map((persona) => (
           <li key={persona.id} style={accentStyle(persona.accent)} className="flex items-center gap-4 px-4 py-2.5">
@@ -18,12 +44,12 @@ export function VoicePicker({ speech, personas }: { speech: DeviceSpeech; person
             <span className="w-32 shrink-0 truncate text-[0.8125rem]">{persona.name}</span>
             <Select
               label={`The voice of ${persona.name}`}
-              value={speech.styleOf(persona)}
+              value={speech.styleOf(persona, language)}
               options={speech.styles.map((style) => ({ value: style.id, label: style.name }))}
-              onChange={(style) => speech.pick(persona.id, style)}
+              onChange={(style) => speech.pick(persona, language, style)}
               className="flex-1"
             />
-            <Button size="sm" onClick={() => speech.preview(persona, `Hello, I am ${persona.name}. This is how I sound.`)}>
+            <Button size="sm" onClick={() => speech.preview(persona, introduction(language, persona.name), { language })}>
               Listen
             </Button>
           </li>

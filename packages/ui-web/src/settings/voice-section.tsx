@@ -156,7 +156,7 @@ export function VoiceSection({ client, languages, interruptions, vocabulary, spe
       {speech ? (
         <div className="grid gap-8">
           <VoiceSetup speech={speech} />
-          <VoicePicker speech={speech} personas={personas} />
+          <VoicePicker speech={speech} personas={personas} languages={languages} />
         </div>
       ) : (
         <p className="text-sm text-text-soft">This device cannot run speech models.</p>
@@ -196,7 +196,7 @@ export function VoiceSection({ client, languages, interruptions, vocabulary, spe
               options={SPEEDS.map((speed) => ({ value: speed, label: PACES[speed] }))}
               onChange={(speed) => {
                 change({ voice: { speed } })
-                if (speech?.ready && active) speech.preview(active, 'This is the pace I will speak at.', speed)
+                if (speech?.ready && active) speech.preview(active, 'This is the pace I will speak at.', { speed })
               }}
             />
           </div>

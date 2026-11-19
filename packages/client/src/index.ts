@@ -17,7 +17,8 @@ export {
   SHEET_WIDTH,
   type ShortcutName,
   SPEEDS,
-  shortcutClash
+  shortcutClash,
+  type VoiceStyles
 } from './device/settings.ts'
 export {
   describeShortcut,

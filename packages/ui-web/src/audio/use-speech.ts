@@ -8,41 +8,10 @@ import { findDevice } from './devices.ts'
 import { favouring, type InstallProgress, type SpeechEngine, type SpeechReadiness } from './engine.ts'
 import { namesAsWords } from './names.ts'
 import { engineVoice, type SpeakingVoice } from './voice.ts'
+import { paceOf, styleOf, withPick } from './voice-styles.ts'
 
-/**
- * The voice style of each stance, until the user picks their own, chosen by ear and by measuring the styles'
- * pitch and pace. The stance that goes along speaks as a polished, assured aide: crisp, quick, the most even
- * of the lighter voices. The one that questions speaks in the deep, composed voice whose pitch moves least:
- * calm, level, never raised. The voice speaks every language in the same style, so each persona sounds like
- * itself in French as in English.
- */
-const STYLE_OF_STANCE: Record<Persona['stance'], string> = { accommodating: 'm3', critical: 'm2' }
-
-/** How each stance's pace compares with the pace set: the one that questions takes its time. */
-const PACE_OF_STANCE: Record<Persona['stance'], number> = { accommodating: 1, critical: 0.95 }
-
-/** The pace a persona speaks at, from the pace set. */
-export function paceOf(persona: Persona | undefined, speed: number): number {
-  return speed * PACE_OF_STANCE[persona?.stance ?? 'accommodating']
-}
-
-/** Where the voices the user picked are kept: on this device, since speakers and taste belong to it. */
-const PICKED = 'echo.voices'
-
-function readPicked(): Record<string, string> {
-  try {
-    const kept = JSON.parse(localStorage.getItem(PICKED) ?? '{}') as unknown
-    return typeof kept === 'object' && kept !== null ? (kept as Record<string, string>) : {}
-  } catch {
-    return {}
-  }
-}
-
-/** The voice style a persona speaks in: the one the user picked for it, or its stance's. */
-export function styleOf(persona: Persona | undefined, picked: Record<string, string>): string {
-  if (!persona) return STYLE_OF_STANCE.accommodating
-  return picked[persona.id] ?? STYLE_OF_STANCE[persona.stance]
-}
+/** Where earlier versions kept the voices picked, one for every language: let go, since a style is now picked by language. */
+const EARLIER_PICKS = 'echo.voices'
 
 export type Install = { is: 'idle' } | { is: 'running'; progress: InstallProgress | undefined } | { is: 'failed'; reason: string }
 
@@ -59,12 +28,15 @@ export interface DeviceSpeech {
   bands: (into: Float32Array) => Float32Array | undefined
   /** The voice styles there are, once the engines have said. */
   styles: { id: string; name: string }[]
-  /** The style each persona speaks in, picked or by default. */
-  styleOf(persona: Persona): string
-  /** Pick a persona's voice. */
-  pick(persona: string, style: string): void
-  /** Say a sentence as a persona speaks, in its voice and at its pace, from the pace set or the one given. */
-  preview(persona: Persona, text: string, speed?: number): void
+  /** The style a persona speaks a language in, picked or by default. */
+  styleOf(persona: Persona, language: string): string
+  /** Pick a persona's voice in a language. */
+  pick(persona: Persona, language: string, style: string): void
+  /**
+   * Say a sentence as a persona speaks, in its voice and at its pace: in the language given, English otherwise,
+   * at the pace set or the one given.
+   */
+  preview(persona: Persona, text: string, how?: { language?: string; speed?: number }): void
 }
 
 /**
@@ -75,10 +47,7 @@ export function useDeviceSpeech(engine: SpeechEngine | undefined, client: Client
   const [readiness, setReadiness] = useState<SpeechReadiness>()
   const [install, setInstall] = useState<Install>({ is: 'idle' })
   const voice = useRef<SpeakingVoice | undefined>(undefined)
-  const [picked, setPicked] = useState(readPicked)
   const [styles, setStyles] = useState<{ id: string; name: string }[]>([])
-  const speaking = useRef({ persona, picked })
-  speaking.current = { persona, picked }
   // Every persona's name, which the voice says as a word although it is written in capitals.
   const snapshot = useFollowed(client.settings)
   const names = useRef<readonly string[]>([])
@@ -88,9 +57,13 @@ export function useDeviceSpeech(engine: SpeechEngine | undefined, client: Client
   const words = useRef<readonly string[]>([])
   words.current = snapshot.state === 'ready' ? snapshot.settings.vocabulary : []
   // How the voice speaks and where it plays are settings of this device, read for each sentence.
-  const { settings } = useDevice()
+  const { settings, change } = useDevice()
   const manner = useRef({ speed: settings.voice.speed, sink: undefined as string | undefined })
   manner.current.speed = settings.voice.speed
+  // The persona speaking and the styles picked, read for each sentence so that a change applies to the next one.
+  const picked = settings.voice.styles
+  const speaking = useRef({ persona, picked })
+  speaking.current = { persona, picked }
   const { aloud } = settings.voice
   const speaker = settings.speaker
 
@@ -129,28 +102,31 @@ export function useDeviceSpeech(engine: SpeechEngine | undefined, client: Client
       .catch(() => undefined)
   }, [ready])
 
-  const pick = useCallback((id: string, style: string) => {
-    setPicked((before) => {
-      const next = { ...before, [id]: style }
-      try {
-        localStorage.setItem(PICKED, JSON.stringify(next))
-      } catch {
-        // Not kept: the choice lasts until the app closes.
-      }
-      return next
-    })
+  useEffect(() => {
+    try {
+      localStorage.removeItem(EARLIER_PICKS)
+    } catch {
+      // Nothing kept there to let go of.
+    }
   }, [])
 
+  const pick = useCallback(
+    (persona: Persona, language: string, style: string) => {
+      change({ voice: { styles: withPick(speaking.current.picked, persona, language, style) } })
+    },
+    [change]
+  )
+
   const preview = useCallback(
-    (persona: Persona, text: string, speed?: number) => {
+    (persona: Persona, text: string, how: { language?: string; speed?: number } = {}) => {
       if (!ready) return
       const sample = engineVoice(ready, {
-        style: () => styleOf(persona, speaking.current.picked),
-        speed: () => paceOf(persona, speed ?? manner.current.speed),
+        style: (language) => styleOf(persona, language, speaking.current.picked),
+        speed: () => paceOf(persona, how.speed ?? manner.current.speed),
         sink: () => manner.current.sink,
         spoken
       })
-      sample.say({ turn: 'preview', text, language: undefined })
+      sample.say({ turn: 'preview', text, language: how.language })
     },
     [ready, spoken]
   )
@@ -159,7 +135,7 @@ export function useDeviceSpeech(engine: SpeechEngine | undefined, client: Client
   useEffect(() => {
     if (!ready || !aloud) return
     const made = engineVoice(ready, {
-      style: () => styleOf(speaking.current.persona, speaking.current.picked),
+      style: (language) => styleOf(speaking.current.persona, language, speaking.current.picked),
       speed: () => paceOf(speaking.current.persona, manner.current.speed),
       sink: () => manner.current.sink,
       spoken
@@ -193,7 +169,7 @@ export function useDeviceSpeech(engine: SpeechEngine | undefined, client: Client
     level: () => voice.current?.level() ?? 0,
     bands: (into) => voice.current?.bands(into),
     styles,
-    styleOf: (one) => styleOf(one, picked),
+    styleOf: (one, language) => styleOf(one, language, picked),
     pick,
     preview
   }
