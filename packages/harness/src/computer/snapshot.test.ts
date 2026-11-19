@@ -299,6 +299,17 @@ describe('what a command changed where its line does not name', () => {
     expect(said((await snapshot?.changes()) ?? [], home).map(([path]) => path)).toEqual(['.bashrc', 'Documents/letter.md'])
   })
 
+  it('finds every file of a burst of writes, though the system loses count of them', async () => {
+    const top = folder()
+    const place = folder()
+    const snapshot = await createSnapshots().snapshot(top, [], { places: [place], everywhere: false })
+    for (let index = 0; index < 60; index++) {
+      mkdirSync(join(place, `part ${index}`, 'inside'), { recursive: true })
+      for (const name of ['a.txt', 'b.txt', 'c.txt']) writeFileSync(join(place, `part ${index}`, 'inside', name), `${index}\n`)
+    }
+    expect(foundIn((await snapshot?.changes()) ?? [], place)).toHaveLength(180)
+  })
+
   it('watches nothing once let go', async () => {
     const top = folder()
     const place = folder()

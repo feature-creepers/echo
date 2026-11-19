@@ -61,8 +61,11 @@ const SETTLE_MS = 150
 const WRITTEN_SLACK_MS = 2000
 /** The slack on when a file was made, the clock and the file system's times read apart. */
 const MADE_SLACK_MS = 10
-/** The most paths given to git at once, to keep within a command line's length. */
-const GIT_BATCH = 50
+/**
+ * The most paths given to git at once: few calls, since starting git is slow on Windows, and well within a command
+ * line's length there (32,767 characters) for paths from a work tree's top.
+ */
+const GIT_BATCH = 150
 
 /** Run git in a folder and give back what it printed, as bytes. Rejects when it fails or is not there. */
 export type Git = (folder: string, args: readonly string[]) => Promise<Uint8Array>
@@ -312,70 +315,111 @@ export function createSnapshots({ git = runGit, never = () => false, home, appDa
     (await stat(path).catch(() => undefined))?.isDirectory() ? folderPart(path, below) : { covers: path, snapshot: await alone(path) }
 
   /**
+   * Where the work tree a folder is in starts: the nearest folder up from it that holds `.git`, a folder or a file.
+   * Nothing outside one. Found by looking, not by starting git, since a command may touch hundreds of folders.
+   */
+  const topOf = async (folder: string, tops: Map<string, string>): Promise<string> => {
+    const walked: string[] = []
+    let current = folder
+    let top: string | undefined
+    while (top === undefined) {
+      const known = tops.get(current)
+      if (known !== undefined) top = known
+      else if ((await stat(join(current, '.git')).catch(() => undefined)) !== undefined) top = current
+      else {
+        walked.push(current)
+        const parent = dirname(current)
+        if (parent === current) top = ''
+        current = parent
+      }
+    }
+    for (const one of walked) tops.set(one, top)
+    tops.set(current, top)
+    return top
+  }
+
+  /**
    * The files of git work trees among paths: those git ignores, a build's and a tool's, as the folder a command runs
    * in leaves them out; and those it tracks, which were there before the command.
    */
-  const knownToGit = async (paths: readonly string[]) => {
+  const knownToGit = async (paths: readonly string[], tops: Map<string, string>) => {
     const ignored = new Set<string>()
     const tracked = new Set<string>()
-    const tops = new Map<string, string>()
     const byTop = new Map<string, string[]>()
     for (const path of paths) {
-      const folder = dirname(path)
-      let top = tops.get(folder)
-      if (top === undefined) {
-        // Git names the top with "/" on every system.
-        top = text(await git(folder, ['rev-parse', '--show-toplevel']).catch(() => new Uint8Array()))
-          .trim()
-          .split('/')
-          .join(sep)
-        tops.set(folder, top)
-      }
+      const top = await topOf(dirname(path), tops)
       if (top !== '') byTop.set(top, [...(byTop.get(top) ?? []), path])
     }
     for (const [top, inside] of byTop) {
       for (let at = 0; at < inside.length; at += GIT_BATCH) {
         const named = new Map(inside.slice(at, at + GIT_BATCH).map((path) => [fromTop(top, path), path]))
-        // Git says nothing, and fails, when none of them is ignored or tracked.
-        // `check-ignore` writes a line each, `-z` being for what it reads: a name git quotes is not matched, and is kept.
-        const said = async (args: string[]) =>
-          text(await git(top, [...args, '--', ...named.keys()]).catch(() => new Uint8Array()))
-            .split(/[\0\n]/)
-            .flatMap((one) => named.get(one) ?? [])
-        for (const path of await said(['-c', 'core.quotePath=false', 'check-ignore'])) ignored.add(path)
-        for (const path of await said(['ls-files', '-z'])) tracked.add(path)
+        // One question for both: git names those it tracks (`H`, deleted ones too) and those it does not but would
+        // see (`?`); one it names neither way, it ignores. Names are taken as written, never as patterns.
+        const answer = await git(top, [
+          '--literal-pathspecs',
+          'ls-files',
+          '-z',
+          '-t',
+          '--cached',
+          '--others',
+          '--exclude-standard',
+          '--',
+          ...named.keys()
+        ]).catch(() => undefined)
+        // Git could not say: none of them is left out for it.
+        if (answer === undefined) continue
+        const said = text(answer)
+        const seen = new Set<string>()
+        for (const entry of said.split('\0')) {
+          const path = named.get(entry.slice(2))
+          if (path === undefined) continue
+          seen.add(path)
+          if (entry[0] !== '?') tracked.add(path)
+        }
+        for (const path of named.values()) if (!seen.has(path)) ignored.add(path)
       }
     }
     return { ignored, tracked }
   }
 
-  /** What the paths the system told of while a command ran became: the files it changed, made and deleted. */
+  /**
+   * What the paths the system told of while a command ran became: the files it changed, made and deleted. Those
+   * written while it ran, or gone, are asked of git a batch at a time, until enough are found.
+   */
   const judge = async (noted: readonly Noted[], started: number): Promise<FoundChange[]> => {
     const seen: { path: string; first: Noted['first']; is: Noted['first'] }[] = []
     for (const { path, first } of noted) {
       if (first?.isDirectory()) continue
       const is = await stat(path).catch(() => undefined)
-      if (!is?.isDirectory()) seen.push({ path, first, is })
-    }
-    const { ignored, tracked } = await knownToGit(seen.map((one) => one.path))
-    // A file was there before when it was first seen made before the command, held from a look before, or tracked.
-    const before = (one: (typeof seen)[number]) =>
-      (one.first?.isFile() === true && (one.first.birthtimeMs === 0 || one.first.birthtimeMs < started - MADE_SLACK_MS)) ||
-      held.has(one.path) ||
-      tracked.has(one.path)
-    const found: FoundChange[] = []
-    for (const one of seen) {
-      if (found.length >= CHANGES_LIMIT) break
-      if (ignored.has(one.path)) continue
-      if (!one.is) {
-        // Gone: a file there before was deleted; one the command made and took away again was never there.
-        if (before(one)) found.push({ path: one.path, before: 'unknown', after: 'none' })
-        continue
-      }
+      if (is?.isDirectory()) continue
       // Told of, but not written while the command ran: read, or only its times or rights changed.
-      if (!one.is.isFile() || Math.max(one.is.mtimeMs, one.is.ctimeMs) < started - WRITTEN_SLACK_MS) continue
-      const made = one.is.birthtimeMs > 0 && one.is.birthtimeMs >= started - MADE_SLACK_MS && !before(one)
-      found.push({ path: one.path, before: made ? 'none' : 'unknown', after: await now(one.path) })
+      if (is && (!is.isFile() || Math.max(is.mtimeMs, is.ctimeMs) < started - WRITTEN_SLACK_MS)) continue
+      seen.push({ path, first, is })
+    }
+    const tops = new Map<string, string>()
+    const found: FoundChange[] = []
+    for (let at = 0; at < seen.length && found.length < CHANGES_LIMIT; at += GIT_BATCH) {
+      const batch = seen.slice(at, at + GIT_BATCH)
+      const { ignored, tracked } = await knownToGit(
+        batch.map((one) => one.path),
+        tops
+      )
+      // A file was there before when it was first seen made before the command, held from a look before, or tracked.
+      const before = (one: (typeof seen)[number]) =>
+        (one.first?.isFile() === true && (one.first.birthtimeMs === 0 || one.first.birthtimeMs < started - MADE_SLACK_MS)) ||
+        held.has(one.path) ||
+        tracked.has(one.path)
+      for (const one of batch) {
+        if (found.length >= CHANGES_LIMIT) break
+        if (ignored.has(one.path)) continue
+        if (!one.is) {
+          // Gone: a file there before was deleted; one the command made and took away again was never there.
+          if (before(one)) found.push({ path: one.path, before: 'unknown', after: 'none' })
+          continue
+        }
+        const made = one.is.birthtimeMs > 0 && one.is.birthtimeMs >= started - MADE_SLACK_MS && !before(one)
+        found.push({ path: one.path, before: made ? 'none' : 'unknown', after: await now(one.path) })
+      }
     }
     return found
   }

@@ -8,6 +8,10 @@ import { within } from './paths.ts'
  * line does not name, a script's output or a tool's settings, and nobody can tell them before it runs. The system
  * says which paths changed; what was at each when it first said so is noted at once, so that a file there before the
  * command can be told later from one it made and took away again.
+ *
+ * When changes come faster than the system can tell them, it says only that something changed (Windows' buffer of
+ * changes overflows on a burst of writes): the place is then looked through once the command ended, for the files
+ * written since it started. A file deleted meanwhile is not found that way.
  */
 
 /** The most paths noted while one command runs: past them, a build's or an install's, the rest are not. */
@@ -16,6 +20,10 @@ export const NOTED_LIMIT = 1000
 export const FOLDERS_LIMIT = 2000
 /** The most files noted in a folder made while the command runs, before it could be watched. */
 const MADE_LIMIT = 200
+/** The most entries looked through in a place the system lost count of. */
+const LOOKED_LIMIT = 20_000
+/** The slack on when a file was written, which some file systems keep to two seconds. */
+const WRITTEN_SLACK_MS = 2000
 
 /** A path the system said changed, and what was there when it first said so: nothing, when it was already gone. */
 export interface Noted {
@@ -53,8 +61,11 @@ function passedOnTheWay(place: string, path: string, passed: WatchOptions['passe
  * is not watched again. What cannot be watched (gone, not readable) is passed over.
  */
 export async function watchPlaces(places: readonly string[], options: WatchOptions): Promise<Watching> {
+  const started = Date.now()
   const watchers: FSWatcher[] = []
   const noted = new Map<string, Promise<Stats | undefined>>()
+  /** The folders whose changes the system lost count of, and whether their subfolders were watched with them. */
+  const lost = new Map<string, boolean>()
   let stopped = false
   let folders = 0
 
@@ -66,10 +77,19 @@ export async function watchPlaces(places: readonly string[], options: WatchOptio
     )
   }
 
-  const start = (folder: string, recursive: boolean, told: (name: string) => void) => {
+  const start = (
+    folder: string,
+    recursive: boolean,
+    told: (name: string) => void,
+    losing: () => void = () => {
+      lost.set(folder, recursive || lost.get(folder) === true)
+    }
+  ) => {
     try {
       const watcher = watch(folder, { persistent: false, recursive }, (_event, name) => {
+        // No name: the system lost count of what changed there.
         if (name) told(name.toString())
+        else if (!stopped) losing()
       })
       // A folder removed or no longer readable ends its watch.
       watcher.on('error', () => watcher.close())
@@ -118,9 +138,14 @@ export async function watchPlaces(places: readonly string[], options: WatchOptio
     if (found?.isFile()) {
       // A file granted alone: its folder is watched for it, and only it.
       const folder = dirname(place)
-      start(folder, false, (name) => {
-        if (join(folder, name) === place) note(place)
-      })
+      start(
+        folder,
+        false,
+        (name) => {
+          if (join(folder, name) === place) note(place)
+        },
+        () => note(place)
+      )
     } else if (found?.isDirectory()) {
       if (options.trees) {
         start(place, true, (name) => {
@@ -131,10 +156,27 @@ export async function watchPlaces(places: readonly string[], options: WatchOptio
     }
   }
 
+  /** The files of a folder written since the watching started, noted, its subfolders' too when `deep`. */
+  const lookThrough = async (folder: string, deep: boolean, budget = { left: LOOKED_LIMIT }) => {
+    for (const entry of await readdir(folder, { withFileTypes: true }).catch(() => [])) {
+      if (budget.left-- <= 0 || noted.size >= NOTED_LIMIT) return
+      const path = join(folder, entry.name)
+      if (entry.isDirectory()) {
+        if (deep && !options.passed(folder, entry.name)) await lookThrough(path, deep, budget)
+      } else if (entry.isFile()) {
+        const found = await stat(path).catch(() => undefined)
+        if (found && Math.max(found.mtimeMs, found.ctimeMs) >= started - WRITTEN_SLACK_MS) note(path)
+      }
+    }
+  }
+
   return {
     async stop() {
+      if (!stopped) {
+        for (const watcher of watchers) watcher.close()
+        for (const [folder, deep] of lost) await lookThrough(folder, deep)
+      }
       stopped = true
-      for (const watcher of watchers) watcher.close()
       const told: Noted[] = []
       for (const [path, first] of noted) told.push({ path, first: await first })
       return told
