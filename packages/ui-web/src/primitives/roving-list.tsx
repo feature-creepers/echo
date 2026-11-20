@@ -57,5 +57,5 @@ export function RovingList(props: PartProps<'div'>) {
 
 /** One entry of the list, named by `value` among the others. Render it as another button with `render`. */
 export function RovingEntry({ value, ...props }: { value: string } & Omit<PartProps<'button'>, 'value'>) {
-  return usePart(rovingList, 'entry', { value }, props, 'button')
+  return usePart(rovingList, 'entry', { value }, { type: 'button', ...props }, 'button')
 }
