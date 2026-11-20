@@ -1,7 +1,7 @@
 import type { AccountPart, CalendarEvent, EventRange, MailAddress, MailArrival, MailMessage, MailSearch, MailSummary } from '@repo/core'
 import { z } from 'zod'
 import { type Call, CallFailed } from '../requests.ts'
-import { addressesOf, type GmailPart, gmailContent, gmailPartSchema, headerOf, plainText } from './gmail-message.ts'
+import { addressesOf, attachmentsOf, type GmailPart, gmailContent, gmailPartSchema, headerOf, plainText } from './gmail-message.ts'
 import { MAX_PAGES, type Provider, quoted, scopeSet } from './provider.ts'
 
 /**
@@ -82,7 +82,10 @@ const dateOf = (message: z.infer<typeof messageSchema>) =>
 
 const readMessage = (call: Call, id: string) => call(`${GMAIL_API}/messages/${encodeURIComponent(id)}?format=full`, messageSchema)
 
-/** The messages that match, the latest first, each read whole for how many files it carries; never their files. */
+/**
+ * The messages that match, the latest first, each read whole for how many files it carries; never their files, and
+ * never their text, which only a read makes.
+ */
 async function gmailSearch(call: Call, search: MailSearch): Promise<MailSummary[]> {
   const query = new URLSearchParams({ q: gmailQuery(search), maxResults: String(search.limit) })
   const { messages } = await call(`${GMAIL_API}/messages?${query}`, messagesSchema)
@@ -94,7 +97,7 @@ async function gmailSearch(call: Call, search: MailSearch): Promise<MailSummary[
     subject: headerOf(message.payload, 'Subject') || '(no subject)',
     snippet: plainText(message.snippet),
     unread: message.labelIds.includes('UNREAD'),
-    attachments: gmailContent(message.payload).attachments.length
+    attachments: attachmentsOf(message.payload).length
   }))
 }
 

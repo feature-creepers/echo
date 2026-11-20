@@ -5,5 +5,11 @@ declare module 'html-to-text' {
     format?: string
     options?: Record<string, unknown>
   }
-  export function convert(html: string, options?: { wordwrap?: number | false; selectors?: Selector[] }): string
+  interface Limits {
+    maxBaseElements?: number
+    maxChildNodes?: number
+    maxDepth?: number
+    maxInputLength?: number
+  }
+  export function convert(html: string, options?: { wordwrap?: number | false; selectors?: Selector[]; limits?: Limits }): string
 }

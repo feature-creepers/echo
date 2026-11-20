@@ -1,5 +1,5 @@
 import type { MailAddress, MailAttachment } from '@repo/core'
-import { convert } from 'html-to-text'
+import { convert, type Selector } from 'html-to-text'
 import { z } from 'zod'
 
 /**
@@ -66,18 +66,35 @@ export function addressesOf(header: string): MailAddress[] {
   })
 }
 
+/** How much of a mail's HTML is made text: far more than the text a model is given, and cut before it is read. */
+const HTML_LENGTH = 500_000
+
+/**
+ * How far html-to-text walks a page. Others write a mail's HTML, and an unlimited walk follows its nesting until the
+ * stack overflows.
+ */
+const LIMITS = { maxDepth: 100, maxChildNodes: 5_000, maxBaseElements: 1, maxInputLength: HTML_LENGTH }
+
+const UNREADABLE = 'This mail’s text could not be read.'
+
+/** HTML as plain text, within the limits; a page that still cannot be made text says so rather than failing the read. */
+function textOf(html: string, selectors: Selector[] = []): string {
+  try {
+    return convert(html.slice(0, HTML_LENGTH), { wordwrap: false, limits: LIMITS, selectors })
+  } catch {
+    return UNREADABLE
+  }
+}
+
 /** Text Gmail gives with its HTML entities, such as a snippet, as plain text. */
-export const plainText = (html: string) => convert(html, { wordwrap: false })
+export const plainText = (html: string) => textOf(html)
 
 /** HTML as plain text: links by their words, no pictures. */
 const textOfHtml = (html: string) =>
-  convert(html, {
-    wordwrap: false,
-    selectors: [
-      { selector: 'a', options: { ignoreHref: true } },
-      { selector: 'img', format: 'skip' }
-    ]
-  })
+  textOf(html, [
+    { selector: 'a', options: { ignoreHref: true } },
+    { selector: 'img', format: 'skip' }
+  ])
 
 /** Whether a part is a file the mail carries rather than its text. */
 const isAttachment = (part: GmailPart) => Boolean(part.filename) || /^\s*attachment/i.test(headerOf(part, 'Content-Disposition') ?? '')
@@ -97,8 +114,8 @@ function textsOf(part: GmailPart): string[] {
   return children.flatMap(textsOf)
 }
 
-/** The files a part and the parts in it carry. */
-function attachmentsOf(part: GmailPart): MailAttachment[] {
+/** The files a part and the parts in it carry: its text is never read for them. */
+export function attachmentsOf(part: GmailPart): MailAttachment[] {
   if (isAttachment(part))
     return [{ name: part.filename || 'unnamed', kind: (part.mimeType ?? 'application/octet-stream').toLowerCase(), size: part.body?.size ?? 0 }]
   return (part.parts ?? []).flatMap(attachmentsOf)
