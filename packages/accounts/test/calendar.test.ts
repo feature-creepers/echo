@@ -54,6 +54,26 @@ describe('an event of Outlook', () => {
       { title: 'Holiday', allDay: true, start: '2026-12-03', end: '2026-12-05' }
     ],
     [
+      'all day, Graph saying UTC',
+      {
+        subject: 'Holiday',
+        isAllDay: true,
+        start: { dateTime: '2026-12-03T00:00:00.0000000', timeZone: 'UTC' },
+        end: { dateTime: '2026-12-04T00:00:00.0000000', timeZone: 'UTC' }
+      },
+      { allDay: true, start: '2026-12-03', end: '2026-12-04' }
+    ],
+    [
+      'all day, Graph saying the event’s own zone',
+      {
+        subject: 'Holiday',
+        isAllDay: true,
+        start: { dateTime: '2026-12-03T00:00:00.0000000', timeZone: 'Tokyo Standard Time' },
+        end: { dateTime: '2026-12-04T00:00:00.0000000', timeZone: 'Tokyo Standard Time' }
+      },
+      { allDay: true, start: '2026-12-03', end: '2026-12-04' }
+    ],
+    [
       'declined, with a place and a preview',
       {
         subject: 'Lunch',
