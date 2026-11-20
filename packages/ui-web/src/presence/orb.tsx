@@ -55,14 +55,6 @@ function readLook(element: Element): Look {
   return (LOOKS as readonly string[]).includes(value) ? (value as Look) : NEUTRAL_LOOK
 }
 
-/** A canvas filling its box, made for one drawing and thrown away with it. */
-function addCanvas(box: HTMLElement) {
-  const canvas = document.createElement('canvas')
-  canvas.style.cssText = 'display:block;width:100%;height:100%'
-  box.append(canvas)
-  return canvas
-}
-
 /**
  * The core, in whatever accent and look surround it (`--accent`, and `--look`, which `accentStyle` sets from the
  * persona). It is decoration for a screen reader: the name and the state written beside it say the same thing in
@@ -82,16 +74,13 @@ export function Orb({ mood, size, level, bands, gaze, load, around, onFrame, sca
     const element = box.current
     if (!element) return
 
-    // The canvas is made here rather than by React: one that gave the graphics card's context can never give a 2D
-    // one, and one whose context was let go cannot be drawn on again, so each drawing gets its own.
-    let canvas = addCanvas(element)
+    const canvas = document.createElement('canvas')
+    canvas.style.cssText = 'display:block;width:100%;height:100%'
+    element.append(canvas)
+    // The core is copied into its canvas from the context every core shares; where there is none, it is painted on
+    // the canvas itself.
     const gpu = createGpuCore(canvas, forceShader())
-    let flat: CanvasRenderingContext2D | null = null
-    if (!gpu) {
-      canvas.remove()
-      canvas = addCanvas(element)
-      flat = canvas.getContext('2d')
-    }
+    const flat = gpu ? null : canvas.getContext('2d')
     const painter = createPainter()
     let look = readLook(element)
     const life = createLife(live.current.mood, look)

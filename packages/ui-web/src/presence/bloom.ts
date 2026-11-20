@@ -85,11 +85,12 @@ interface Target {
 }
 
 interface Bloom {
-  /** Draw the core into the bloom's own texture from now on, for a canvas this many device pixels across. */
+  /** Draw the core into the bloom's own texture from now on, for a core this many device pixels across. */
   begin(side: number): void
-  /** Blur what was drawn and lay it, with its halo as strong as asked, over the canvas. */
+  /** Blur what was drawn and lay it, with its halo as strong as asked, over the bottom left of the canvas. */
   finish(strength: number, grain: number): void
-  dispose(): void
+  /** Let go of the textures kept for cores this many device pixels across. */
+  release(side: number): void
 }
 
 export function createBloom(gl: WebGL2RenderingContext): Bloom | undefined {
@@ -110,6 +111,9 @@ export function createBloom(gl: WebGL2RenderingContext): Bloom | undefined {
     compose: { scene: at(compose, 'u_scene'), glow: at(compose, 'u_glow'), strength: at(compose, 'u_strength'), grain: at(compose, 'u_grain') }
   }
 
+  // The scene at full size, then each half, for each size of core drawn, so cores of several sizes drawn in turn
+  // make nothing again from one frame to the next. The chain begun last is the one drawn into.
+  const chains = new Map<number, Target[]>()
   let targets: Target[] = []
   const make = (side: number): Target | undefined => {
     const texture = gl.createTexture()
@@ -122,27 +126,27 @@ export function createBloom(gl: WebGL2RenderingContext): Bloom | undefined {
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0)
     return { texture, frame, side }
   }
-  const release = () => {
-    for (const target of targets) {
+  const remove = (chain: readonly Target[]) => {
+    for (const target of chain) {
       gl.deleteTexture(target.texture)
       gl.deleteFramebuffer(target.frame)
     }
-    targets = []
   }
-  // The scene at full size, then each half, made again only when the canvas changes size.
-  const sized = (side: number) => {
-    if (targets[0]?.side === side) return true
-    release()
+  const chainFor = (side: number): Target[] => {
+    const kept = chains.get(side)
+    if (kept) return kept
+    const chain: Target[] = []
     for (let level = 0, each = side; level <= LEVELS && (level < 2 || each >= SMALLEST); level++, each = Math.floor(each / 2)) {
       const target = make(each)
       // Half a chain would lay a stale halo over the canvas: without all of it, the core is drawn without one.
       if (!target) {
-        release()
-        return false
+        remove(chain)
+        return []
       }
-      targets.push(target)
+      chain.push(target)
     }
-    return true
+    chains.set(side, chain)
+    return chain
   }
   const pass = (made: WebGLProgram, from: Target, into: Target | null, side: number) => {
     gl.bindFramebuffer(gl.FRAMEBUFFER, into?.frame ?? null)
@@ -154,7 +158,7 @@ export function createBloom(gl: WebGL2RenderingContext): Bloom | undefined {
 
   return {
     begin(side) {
-      if (!sized(side)) return
+      targets = chainFor(side)
       const scene = targets[0]
       if (!scene) return
       gl.bindFramebuffer(gl.FRAMEBUFFER, scene.frame)
@@ -208,9 +212,12 @@ export function createBloom(gl: WebGL2RenderingContext): Bloom | undefined {
       gl.drawArrays(gl.TRIANGLES, 0, 3)
       gl.activeTexture(gl.TEXTURE0)
     },
-    dispose() {
-      release()
-      for (const made of [down, up, compose]) gl.deleteProgram(made)
+    release(side) {
+      const chain = chains.get(side)
+      if (!chain) return
+      remove(chain)
+      chains.delete(side)
+      if (targets === chain) targets = []
     }
   }
 }

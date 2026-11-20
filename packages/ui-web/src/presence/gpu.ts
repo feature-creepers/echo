@@ -11,18 +11,22 @@ import { BANDS, ECHO_LENGTH, LOOK_SHRINK, type Pose } from './life.ts'
  * While one look gives way to another, both are drawn, each weighted by how far it is in effect, and added: a
  * cross-fade, with the outgoing look drawing back a little as the incoming one settles in. Then its light blooms
  * (`bloom.ts`), each look as much as it asks.
+ *
+ * Every core of the page is drawn in one context, on a canvas never put in the page, and copied into a canvas of its
+ * own where it sits, so each keeps its place and depth in the page. A page holds only so many contexts before it
+ * drops the oldest, and each would build the same programs again.
  */
 
 const DRAWINGS: Record<Look, Drawing> = { lens: LENS, hud: HUD }
 
 interface GpuCore {
   /**
-   * Draws one frame: the pose from the life behind it, each look's accent as red, green and blue from 0 to 255 (a
-   * look giving way keeps the accent it had), the canvas's side in device pixels, and how large the core is drawn in
-   * it, from 0 to 1.
+   * Draws one frame into the core's canvas: the pose from the life behind it, each look's accent as red, green and
+   * blue from 0 to 255 (a look giving way keeps the accent it had), the canvas's side in device pixels, and how large
+   * the core is drawn in it, from 0 to 1.
    */
   paint(pose: Pose, accents: Record<Look, Rgb>, side: number, scale: number): void
-  /** Lets the graphics card go at once, rather than when the page is collected. */
+  /** Stops drawing this core, and lets go of what was kept only for its size. */
   dispose(): void
 }
 
@@ -43,7 +47,7 @@ function build(gl: WebGL2RenderingContext, vertex: WebGLShader, drawing: Drawing
   return { program, shared: locate(SHARED) as Program['shared'], own: locate(drawing.uniforms) }
 }
 
-/** Everything the core keeps on the graphics card, made again whenever the context comes back after being lost. */
+/** Everything the cores keep on the graphics card, made again whenever the context comes back after being lost. */
 function prepare(gl: WebGL2RenderingContext) {
   const vertex = compile(gl, gl.VERTEX_SHADER, VERTEX)
   const echo = gl.createTexture()
@@ -64,12 +68,29 @@ function prepare(gl: WebGL2RenderingContext) {
   return { programs, echo, bloom }
 }
 
+type Prepared = NonNullable<ReturnType<typeof prepare>>
+
+/** The one context every core is drawn in, and what is kept there. */
+interface Renderer {
+  canvas: HTMLCanvasElement
+  gl: WebGL2RenderingContext
+  /** Nothing while the context is lost, or when what it needs could not be made again. */
+  ready: Prepared | undefined
+  /** The side each core was last drawn at, in device pixels. */
+  sides: Map<object, number>
+  echo: Uint8Array
+  grain: number
+}
+
+/** Made for the first core; `null` once the graphics card refused it, so no other core asks again. */
+let renderer: Renderer | null | undefined
+
 /**
- * Sets the core up on a canvas, or gives nothing when the graphics card cannot draw it there; it is then drawn on
- * a 2D canvas of its own (`painter.ts`). A machine without a usable graphics card is refused too, unless `force`
- * says otherwise: drawing on the processor would cost far more than the 2D drawing, every frame.
+ * A machine without a usable graphics card is refused, unless `force` says otherwise: drawn on the processor, every
+ * core would cost a share of it on every frame.
  */
-export function createGpuCore(canvas: HTMLCanvasElement, force: boolean): GpuCore | undefined {
+function makeRenderer(force: boolean): Renderer | undefined {
+  const canvas = document.createElement('canvas')
   const gl = canvas.getContext('webgl2', {
     alpha: true,
     premultipliedAlpha: true,
@@ -81,79 +102,118 @@ export function createGpuCore(canvas: HTMLCanvasElement, force: boolean): GpuCor
     failIfMajorPerformanceCaveat: !force
   })
   if (!gl) return undefined
-  let ready = prepare(gl)
+  const ready = prepare(gl)
   if (!ready) {
     gl.getExtension('WEBGL_lose_context')?.loseContext()
     return undefined
   }
+  const made: Renderer = { canvas, gl, ready, sides: new Map(), echo: new Uint8Array(ECHO_LENGTH * 2 * 2), grain: 0 }
+  // A lost context (the graphics card reset) stops every core at once, each on its last picture. It comes back
+  // empty: the programs are made again, and the bloom's textures as each size is drawn.
+  canvas.addEventListener('webglcontextlost', (event) => {
+    event.preventDefault()
+    made.ready = undefined
+  })
+  canvas.addEventListener('webglcontextrestored', () => {
+    made.ready = prepare(gl)
+  })
+  return made
+}
 
-  const echo = new Uint8Array(ECHO_LENGTH * 2 * 2)
-  let grain = 0
-
-  // A lost context (the graphics card reset, or too many canvases at once) comes back empty: it is all made again.
-  const onLost = (event: Event) => event.preventDefault()
-  const onRestored = () => {
-    ready = prepare(gl)
+/** The shared canvas is as large as the largest core drawn, so every core fits in its bottom left corner. */
+function fit({ canvas, sides }: Renderer) {
+  const largest = Math.max(0, ...sides.values())
+  if (largest > 0 && (canvas.width !== largest || canvas.height !== largest)) {
+    canvas.width = largest
+    canvas.height = largest
   }
-  canvas.addEventListener('webglcontextlost', onLost)
-  canvas.addEventListener('webglcontextrestored', onRestored)
+}
+
+/** Draws a core into the bottom left corner of the shared canvas, `side` device pixels across. */
+function draw(shared: Renderer, ready: Prepared, pose: Pose, accents: Record<Look, Rgb>, side: number, scale: number) {
+  const { gl, echo } = shared
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+  gl.viewport(0, 0, side, side)
+  gl.clearColor(0, 0, 0, 0)
+  gl.clear(gl.COLOR_BUFFER_BIT)
+  // The bloom makes its textures first: making them binds each, which would take the voice's place.
+  ready.bloom?.begin(side)
+  // Each look gives its light already weighted, so adding them is the cross-fade.
+  gl.enable(gl.BLEND)
+  gl.blendFunc(gl.ONE, gl.ONE)
+  shared.grain = (shared.grain + 17.31) % 256
+  // The voice goes up halved, so a loud voice still fits in a byte.
+  const byte = (value: number) => Math.round(Math.min(1, value / 2) * 255)
+  for (let index = 0; index < ECHO_LENGTH * 2; index++) echo[index] = byte(pose.echo[index] ?? 0)
+  for (let index = 0; index < ECHO_LENGTH * 2; index++) echo[ECHO_LENGTH * 2 + index] = index < BANDS * 2 ? byte(pose.spectrum[index] ?? 0) : 0
+  gl.activeTexture(gl.TEXTURE0)
+  gl.bindTexture(gl.TEXTURE_2D, ready.echo)
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, ECHO_LENGTH, 2, gl.RG, gl.UNSIGNED_BYTE, echo)
+  let glow = 0
+
+  for (const look of Object.keys(DRAWINGS) as Look[]) {
+    const weight = pose.looks[look]
+    if (weight < 0.002) continue
+    const drawing = DRAWINGS[look]
+    const { program, shared: at, own } = ready.programs[look]
+    const size = drawing.size * (1 - LOOK_SHRINK * (1 - weight)) * scale
+    const [red, green, blue] = accents[look]
+    gl.useProgram(program)
+    // The polygon's sides must clear what is drawn, not only its corners.
+    gl.uniform1f(at.extent, Math.min(1.5, (size * drawing.reach) / Math.cos(Math.PI / SIDES)))
+    gl.uniform2f(at.center, side / 2, side / 2)
+    gl.uniform1f(at.radius, (side / 2) * size)
+    gl.uniform3f(at.accent, red / 255, green / 255, blue / 255)
+    gl.uniform1f(at.weight, weight)
+    gl.uniform1f(at.grain, shared.grain)
+    gl.uniform1f(at.echoShift, pose.echoShift)
+    const turn = drawing.turn(pose)
+    gl.uniform2f(at.tilt, turn[0], turn[1])
+    // The clock comes round every few hours, so its small steps stay exact.
+    gl.uniform1f(at.time, pose.clock % 8192)
+    drawing.set(gl, own, pose, (side / 2) * size)
+    gl.drawArrays(gl.TRIANGLE_FAN, 0, SIDES + 2)
+    glow += drawing.bloom * weight
+  }
+  ready.bloom?.finish(glow, shared.grain)
+}
+
+/**
+ * Sets a core up to be drawn into its canvas, or gives nothing when the graphics card cannot draw it: the core is
+ * then painted on the canvas directly (`painter.ts`). The shared context is made for the first core.
+ */
+export function createGpuCore(canvas: HTMLCanvasElement, force: boolean): GpuCore | undefined {
+  if (renderer === undefined) renderer = makeRenderer(force) ?? null
+  const shared = renderer
+  const context = shared && canvas.getContext('2d')
+  if (!shared || !context) return undefined
+  const core = {}
+  // The bloom's textures for a size go with the last core drawn at it.
+  const leave = (side: number | undefined) => {
+    if (side !== undefined && ![...shared.sides.values()].includes(side)) shared.ready?.bloom?.release(side)
+  }
 
   return {
     paint(pose, accents, side, scale) {
-      if (!ready || gl.isContextLost()) return
-      gl.viewport(0, 0, side, side)
-      gl.clearColor(0, 0, 0, 0)
-      gl.clear(gl.COLOR_BUFFER_BIT)
-      // The bloom makes its textures first: making them binds each, which would take the voice's place.
-      ready.bloom?.begin(side)
-      // Each look gives its light already weighted, so adding them is the cross-fade.
-      gl.enable(gl.BLEND)
-      gl.blendFunc(gl.ONE, gl.ONE)
-      grain = (grain + 17.31) % 256
-      // The voice goes up halved, so a loud voice still fits in a byte.
-      const byte = (value: number) => Math.round(Math.min(1, value / 2) * 255)
-      for (let index = 0; index < ECHO_LENGTH * 2; index++) echo[index] = byte(pose.echo[index] ?? 0)
-      for (let index = 0; index < ECHO_LENGTH * 2; index++) echo[ECHO_LENGTH * 2 + index] = index < BANDS * 2 ? byte(pose.spectrum[index] ?? 0) : 0
-      gl.activeTexture(gl.TEXTURE0)
-      gl.bindTexture(gl.TEXTURE_2D, ready.echo)
-      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, ECHO_LENGTH, 2, gl.RG, gl.UNSIGNED_BYTE, echo)
-      let glow = 0
-
-      for (const look of Object.keys(DRAWINGS) as Look[]) {
-        const weight = pose.looks[look]
-        if (weight < 0.002) continue
-        const drawing = DRAWINGS[look]
-        const { program, shared, own } = ready.programs[look]
-        const size = drawing.size * (1 - LOOK_SHRINK * (1 - weight)) * scale
-        const [red, green, blue] = accents[look]
-        gl.useProgram(program)
-        // The polygon's sides must clear what is drawn, not only its corners.
-        gl.uniform1f(shared.extent, Math.min(1.5, (size * drawing.reach) / Math.cos(Math.PI / SIDES)))
-        gl.uniform2f(shared.center, side / 2, side / 2)
-        gl.uniform1f(shared.radius, (side / 2) * size)
-        gl.uniform3f(shared.accent, red / 255, green / 255, blue / 255)
-        gl.uniform1f(shared.weight, weight)
-        gl.uniform1f(shared.grain, grain)
-        gl.uniform1f(shared.echoShift, pose.echoShift)
-        const turn = drawing.turn(pose)
-        gl.uniform2f(shared.tilt, turn[0], turn[1])
-        // The clock comes round every few hours, so its small steps stay exact.
-        gl.uniform1f(shared.time, pose.clock % 8192)
-        drawing.set(gl, own, pose, (side / 2) * size)
-        gl.drawArrays(gl.TRIANGLE_FAN, 0, SIDES + 2)
-        glow += drawing.bloom * weight
+      const { ready } = shared
+      // While the context is lost, the canvas keeps the last picture copied into it.
+      if (!ready || shared.gl.isContextLost()) return
+      const was = shared.sides.get(core)
+      if (was !== side) {
+        shared.sides.set(core, side)
+        leave(was)
+        fit(shared)
       }
-      ready.bloom?.finish(glow, grain)
+      draw(shared, ready, pose, accents, side, scale)
+      // The graphics card counts rows from the bottom: what was drawn is the bottom left square.
+      context.clearRect(0, 0, canvas.width, canvas.height)
+      context.drawImage(shared.canvas, 0, shared.canvas.height - side, side, side, 0, 0, side, side)
     },
     dispose() {
-      canvas.removeEventListener('webglcontextlost', onLost)
-      canvas.removeEventListener('webglcontextrestored', onRestored)
-      if (ready && !gl.isContextLost()) {
-        for (const { program } of Object.values(ready.programs)) gl.deleteProgram(program)
-        gl.deleteTexture(ready.echo)
-        ready.bloom?.dispose()
-      }
-      gl.getExtension('WEBGL_lose_context')?.loseContext()
+      const was = shared.sides.get(core)
+      shared.sides.delete(core)
+      leave(was)
+      fit(shared)
     }
   }
 }
