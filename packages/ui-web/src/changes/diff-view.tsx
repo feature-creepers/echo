@@ -2,8 +2,7 @@ import type { FileChange, FileDiff } from '@repo/protocol'
 import { Fragment, memo, type ReactNode, useMemo, useState } from 'react'
 import { cn } from '../primitives/cn.ts'
 import { FILE_CELLS, markChanges } from './inline.ts'
-import { languageOf } from './languages.ts'
-import { paintHunk, type Role, textRuns } from './syntax.ts'
+import { languageOf, paintHunk, type Role, textRuns } from './syntax.ts'
 import { type DrawnLine, drawnLines, linesInWords, minus, numberWidth, plus, STATUS_WORDS, splitPath, unchangedAround } from './words.ts'
 
 /** A path as the person reads it, relative to the folder the work is in. */
