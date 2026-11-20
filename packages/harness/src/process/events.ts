@@ -1,6 +1,6 @@
 import type { Log, SessionEvent } from '@repo/core'
 
-export interface SessionEvents {
+interface SessionEvents {
   emit(event: SessionEvent): void
   /** Sets the one listener. It is given what happened before it was set, in order, then every event as it happens. */
   listen(listener: (event: SessionEvent) => void): void

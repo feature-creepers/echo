@@ -1,7 +1,6 @@
 import type { ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { Attachment, Log, Session, SessionRequest, Verdict } from '@repo/core'
 import { absolute, kindAt, real, within } from '../computer/paths.ts'
@@ -14,8 +13,9 @@ import { asArray, asObject, asString, type JsonObject } from '../process/json.ts
 import { readJsonLines, writeJsonLine } from '../process/json-lines.ts'
 import { KEPT_OUTPUT, lastLines, saysSignedOut } from '../process/output.ts'
 import { platform } from '../process/platform/index.ts'
-import { start } from '../process/run.ts'
+import { start, stopGently } from '../process/run.ts'
 import { createWorkingFiles } from '../process/working-files.ts'
+import { REPORTED_TOOLS } from '../tool-names.ts'
 import { computerTools, useOf } from './computer-tools.ts'
 import { sandboxSettings } from './confinement.ts'
 import {
@@ -32,7 +32,7 @@ import {
 } from './isolation.ts'
 import { SIGNED_OUT } from './status.ts'
 
-export interface SessionContext {
+interface SessionContext {
   cli: Cli
   /** The adapter's working folder. */
   folder: string
@@ -47,7 +47,7 @@ export interface SessionContext {
  * piece by piece as it is written, and what the CLI would ask a person (may this tool run?) it asks us,
  * on the same lines.
  */
-export const SESSION_ARGUMENTS = [
+const SESSION_ARGUMENTS = [
   '-p',
   '--input-format',
   'stream-json',
@@ -75,9 +75,6 @@ const COMMAND_VARIABLES = {
   // what they asked, sees it on screen, and can stop it.
   CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'
 }
-
-/** How long the CLI has to stop by itself once its input is closed, before it is stopped. */
-const CLOSE_GRACE_MS = 1500
 
 /** A live session with Claude Code. It starts the CLI at once; what is sent before the CLI runs is kept for it. */
 export function openSession(request: SessionRequest, context: SessionContext): Session {
@@ -129,7 +126,9 @@ export function openSession(request: SessionRequest, context: SessionContext): S
     let running: ChildProcess
     try {
       const launch = await context.cli.launch()
-      cliFolder = launch.env.CLAUDE_CONFIG_DIR ?? process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude')
+      // The CLI sees only the environment it is started with, and finds its home folder there.
+      const home = platform.home(launch.env)
+      cliFolder = launch.env.CLAUDE_CONFIG_DIR ?? join(home, '.claude')
       // On the computer, the session works in its project's folder, the assistant's own folder, or an empty one of
       // its own: never in the adapter's folder, whose files hold the session's instructions and token.
       const scope = request.computer?.scope()
@@ -144,9 +143,10 @@ export function openSession(request: SessionRequest, context: SessionContext): S
       for (const place of scope?.places ?? [])
         if (place.kind === 'folder' && place.path !== workingFolder && (await kindAt(place.path)) === 'folder') folders.push(place.path)
       // Where the system can, it holds the session's commands to the scope as well (confinement.ts).
-      const where = { home: homedir(), env: process.env }
       const confined =
-        scope && computer.includes('Bash') && system.confines ? sandboxSettings(scope, { never: [context.folder], caches: system.caches(where) }) : undefined
+        scope && computer.includes('Bash') && system.confines
+          ? sandboxSettings(scope, { never: [context.folder], caches: system.caches({ home, env: launch.env }) })
+          : undefined
       const paths = {
         instructions: await files.write('instructions.txt', request.instructions),
         settings: await files.write('settings.json', JSON.stringify(sessionSettings(computer, confined, delegating))),
@@ -190,15 +190,8 @@ export function openSession(request: SessionRequest, context: SessionContext): S
   function shut(): void {
     closed = true
     withdraw()
-    const running = child
+    if (child) stopGently(child)
     child = undefined
-    if (running && running.exitCode === null && running.signalCode === null) {
-      // The CLI ends by itself when its input closes. It is stopped only if it does not.
-      running.stdin?.end()
-      const timer = setTimeout(() => platform.terminate(running), CLOSE_GRACE_MS)
-      timer.unref()
-      running.once('exit', () => clearTimeout(timer))
-    }
     void files.remove()
   }
 
@@ -326,7 +319,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
     if (known === undefined) return
     calls.delete(call)
     // A file written or edited is named, wherever it is, so the person is shown it.
-    const path = known.tool === WRITE_TOOL && output !== undefined && !failed ? asString(asObject(known.input)?.file_path) : undefined
+    const path = known.tool === REPORTED_TOOLS.write && output !== undefined && !failed ? asString(asObject(known.input)?.file_path) : undefined
     events.emit({
       type: 'tool',
       name: known.tool,
@@ -375,7 +368,8 @@ export function openSession(request: SessionRequest, context: SessionContext): S
     const before = unanswered.size
     for (const answered of asArray(message.user_message_uuids)) unanswered.delete(String(answered))
     // A result always answers something. If it does not say what, it answers the oldest message.
-    if (unanswered.size === before) for (const oldest of [...unanswered].slice(0, 1)) unanswered.delete(oldest)
+    const oldest = unanswered.values().next().value
+    if (unanswered.size === before && oldest !== undefined) unanswered.delete(oldest)
     // With a message still waiting, the CLI goes straight on to it: the turn is not over for the listener.
     if (unanswered.size > 0) return
     wrote = false
@@ -424,18 +418,18 @@ export function openSession(request: SessionRequest, context: SessionContext): S
     const reach = request.computer
     const found = reach ? await useOf(tool, input, workingFolder) : undefined
     if (!reach || !found) return { behavior: 'deny', message: 'This tool is not available in this session.' }
-    // Every tool is held to the same boundary, a command by the paths it names; the core refuses what is beyond it.
-    // The session may read back what the CLI kept of a long output of its own, wherever the CLI keeps it.
-    const scope = reach.scope()
-    const kept = found.action === 'read' ? await ownOutputs(found.paths) : undefined
-    const use = await checkUse(found, kept ? { ...scope, places: [...scope.places, { path: kept, kind: 'folder', write: false }] } : scope, [context.folder])
     const controller = new AbortController()
     asking.add(controller)
+    // A stopped turn gets its answer at once, whatever the core is still doing with the question.
+    const stopped = new Promise<Verdict>((resolve) =>
+      controller.signal.addEventListener('abort', () => resolve({ allow: false, reason: 'The turn was stopped, so it was not done.' }), { once: true })
+    )
     try {
-      // A stopped turn gets its answer at once, whatever the core is still doing with the question.
-      const stopped = new Promise<Verdict>((resolve) =>
-        controller.signal.addEventListener('abort', () => resolve({ allow: false, reason: 'The turn was stopped, so it was not done.' }), { once: true })
-      )
+      // Every tool is held to the same boundary, a command by the paths it names; the core refuses what is beyond it.
+      // The session may read back what the CLI kept of a long output of its own, wherever the CLI keeps it.
+      const scope = reach.scope()
+      const kept = found.action === 'read' ? await ownOutputs(found.paths) : undefined
+      const use = await checkUse(found, kept ? { ...scope, places: [...scope.places, { path: kept, kind: 'folder', write: false }] } : scope, [context.folder])
       const verdict = await Promise.race([reach.approve(use, controller.signal), stopped])
       if (!verdict.allow) return { behavior: 'deny', message: use.refused ? `Refused: ${verdict.reason}` : verdict.reason }
       if (verdict.use !== undefined && call !== undefined) allowedUses.set(call, verdict.use)
@@ -530,7 +524,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
 }
 
 /** What a tool gave back, as text: a plain text, or the text of each of its parts. Pictures are named, not carried. */
-export function resultText(content: unknown): string | undefined {
+function resultText(content: unknown): string | undefined {
   if (typeof content === 'string') return content
   const parts = asArray(content)
     .map(asObject)
@@ -538,9 +532,6 @@ export function resultText(content: unknown): string | undefined {
     .filter((part) => part !== '')
   return parts.length > 0 ? parts.join('\n\n') : undefined
 }
-
-/** The name the core reports a write or an edit of a file under. */
-const WRITE_TOOL = 'computer_write'
 
 /** Why a sub-agent may not call a tool of the core. */
 export const AGENT_REFUSED =
@@ -550,7 +541,7 @@ export const AGENT_REFUSED =
  * The pictures among the files the person handed over, as blocks of a message the model sees: each read whole and
  * sent in base64, ahead of the words. One that cannot be read is left out; the words still name it by its path.
  */
-export async function pictures(attachments: readonly Attachment[], log: Log): Promise<JsonObject[]> {
+async function pictures(attachments: readonly Attachment[], log: Log): Promise<JsonObject[]> {
   const blocks: JsonObject[] = []
   for (const attachment of attachments) {
     if (!attachment.image) continue

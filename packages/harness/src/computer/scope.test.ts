@@ -6,8 +6,15 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { folder, removeFolders } from '../../test/sessions.ts'
 import { createComputer, protectedPaths } from './computer.ts'
 import { absolute, expandHome, namedPath, real, within } from './paths.ts'
-import { checkUse, outsideScope, reachOf } from './scope.ts'
-import { systems } from './system/index.ts'
+import { checkUse, reachOf } from './scope.ts'
+import { darwin } from './system/darwin.ts'
+import { linux } from './system/linux.ts'
+import { win32 } from './system/win32.ts'
+
+const systems = { win32, darwin, linux }
+
+/** Why a use is refused, from the scope. Nothing when it is within it. */
+const outsideScope = async (use: ComputerUse, scope: Scope, never: readonly string[]) => (await checkUse(use, scope, never)).refused?.reason
 
 afterEach(removeFolders)
 

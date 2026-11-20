@@ -3,9 +3,7 @@ import { mkdir, open, readdir, realpath, rm, stat } from 'node:fs/promises'
 import { basename, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { NewFile, Workspace, WorkspaceItem } from '@repo/core'
 import { real, within } from './paths.ts'
-
-/** Windows and macOS do not tell a name from the same name in other capitals, by default. */
-const CASELESS = process.platform === 'win32' || process.platform === 'darwin'
+import { system } from './system/index.ts'
 
 /** How many names like a taken one are tried before giving up: "plan (2).pdf" up to "plan (999).pdf". */
 const NAMES_TRIED = 999
@@ -28,7 +26,7 @@ export async function createWorkspace(folder: string): Promise<Workspace> {
 
   const pathOf = (place: string): string | undefined => {
     const absolute = resolve(place)
-    const between = CASELESS ? relative(location.toLowerCase(), absolute.toLowerCase()) : relative(location, absolute)
+    const between = system.caseless ? relative(location.toLowerCase(), absolute.toLowerCase()) : relative(location, absolute)
     if (between.startsWith('..') || isAbsolute(between)) return undefined
     // The path keeps the capitals it has on disk: the comparison above only ignored them.
     return between === ''

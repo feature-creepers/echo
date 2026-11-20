@@ -4,27 +4,37 @@ import type { Environment } from '../environment.ts'
 import type { Invocation, Platform } from './platform.ts'
 
 /** Windows reads a variable's name without regard to case, and a copied environment keeps the case it was written in: `Path`, mostly. */
+const keyOf = (env: Environment, name: string) => Object.keys(env).find((candidate) => candidate.toUpperCase() === name)
+
 function variable(env: Environment, name: string): string | undefined {
-  const key = Object.keys(env).find((candidate) => candidate.toUpperCase() === name)
+  const key = keyOf(env, name)
   return key === undefined ? undefined : env[key]
 }
 
-/** The extensions Windows runs without being told, in its order. */
+/** The kinds of file a program can be started from: a program, or a script for the command interpreter. */
+const STARTABLE = new Set(['.com', '.exe', '.bat', '.cmd'])
+
+/**
+ * The extensions Windows runs without being told, in its order, of the files that can be started here: PATHEXT also
+ * names scripts for other hosts (`.js`, `.vbs`, `.py`), which `invocation` cannot start.
+ */
 function extensions(env: Environment): string[] {
   return (variable(env, 'PATHEXT') || '.COM;.EXE;.BAT;.CMD')
     .split(';')
-    .filter(Boolean)
     .map((extension) => extension.toLowerCase())
+    .filter((extension) => STARTABLE.has(extension))
 }
 
 /**
- * One argument as the command interpreter must read it. Inside quotes it takes every character as written
- * except the quote itself, which is doubled. A `%NAME%` is still replaced when NAME is a variable: nothing
- * on a command line prevents that.
+ * One argument as the command interpreter must read it, then the program it starts. Inside quotes the interpreter
+ * takes every character as written except the quote itself, which is doubled. The program reads a backslash before
+ * a quote as escaping it, so the backslashes before a quote, or before the closing one, are doubled too. A `%NAME%`
+ * is still replaced when NAME is a variable: nothing on a command line prevents that.
  */
 export function quoteArgument(argument: string): string {
   if (argument === '') return '""'
-  return /[\s"&|<>^()%!,;=]/.test(argument) ? `"${argument.replace(/"/g, '""')}"` : argument
+  if (!/[\s"&|<>^()%!,;=]/.test(argument)) return argument
+  return `"${argument.replace(/(\\*)"/g, '$1$1""').replace(/(\\+)$/, '$1$1')}"`
 }
 
 /**
@@ -40,10 +50,7 @@ export const win32: Platform = {
   home: (env) => variable(env, 'USERPROFILE') || homedir(),
   fileNames: (program, env) => extensions(env).map((extension) => program + extension),
   searchPath: (env) => variable(env, 'PATH') ?? '',
-  withSearchPath: (env, path) => {
-    const key = Object.keys(env).find((candidate) => candidate.toUpperCase() === 'PATH') ?? 'Path'
-    return { ...env, [key]: path }
-  },
+  withSearchPath: (env, path) => ({ ...env, [keyOf(env, 'PATH') ?? 'Path']: path }),
   // A program started from the desktop has the same PATH as one started from a terminal.
   loginPath: async () => undefined,
   usualFolders: () => [],

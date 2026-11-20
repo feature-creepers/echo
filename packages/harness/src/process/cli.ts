@@ -13,7 +13,7 @@ export interface Launch {
 /** The CLI is not on this machine. The message is written for the user. */
 export class NotInstalled extends Error {}
 
-export interface CliOptions {
+interface CliOptions {
   /** The program's name, as typed in a terminal. */
   program: string
   /** The places it is usually installed on this system, for a home folder and an environment. */

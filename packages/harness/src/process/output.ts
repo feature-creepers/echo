@@ -14,6 +14,12 @@ export function lastLines(...outputs: string[]): string {
     .slice(0, 400)
 }
 
+/** The version out of what a CLI's `--version` prints: "2.1.322 (Claude Code)", "codex-cli 0.130.0". */
+export function readVersion(output: string): string | undefined {
+  const line = output.trim().split('\n')[0]?.trim()
+  return line?.match(/\d+(\.\d+)+\S*/)?.[0] ?? (line || undefined)
+}
+
 /** Whether what a CLI printed says the user is not signed in, or no longer. */
 export function saysSignedOut(detail: string): boolean {
   return /not logged in|log ?in|sign ?in|authenticat|credential|unauthori[sz]ed|\b401\b/i.test(detail)

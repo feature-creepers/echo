@@ -3,9 +3,10 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { fake, folder, recordingLog, removeFolders } from '../../test/sessions.ts'
 import type { Cli } from '../process/cli.ts'
 import type { Environment } from '../process/environment.ts'
+import { readVersion } from '../process/output.ts'
 import { createCodex } from './adapter.ts'
 import { userToolServers } from './isolation.ts'
-import { readAccount, readVersion, status } from './status.ts'
+import { readAccount, status } from './status.ts'
 
 afterEach(removeFolders)
 

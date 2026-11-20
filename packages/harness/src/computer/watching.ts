@@ -15,9 +15,9 @@ import { within } from './paths.ts'
  */
 
 /** The most paths noted while one command runs: past them, a build's or an install's, the rest are not. */
-export const NOTED_LIMIT = 1000
+const NOTED_LIMIT = 1000
 /** The most folders watched one by one, where the system watches no tree at once (Linux): past them, the rest are not. */
-export const FOLDERS_LIMIT = 2000
+const FOLDERS_LIMIT = 2000
 /** The most files noted in a folder made while the command runs, before it could be watched. */
 const MADE_LIMIT = 200
 /** The most entries looked through in a place the system lost count of. */
@@ -31,12 +31,12 @@ export interface Noted {
   first: Stats | undefined
 }
 
-export interface Watching {
+interface Watching {
   /** Stop watching, and give the paths noted, each once, in the order they were first told. */
   stop(): Promise<Noted[]>
 }
 
-export interface WatchOptions {
+interface WatchOptions {
   /** Whether the system watches a folder with all its subfolders at once; else each folder is watched on its own. */
   trees: boolean
   /** Whether a folder is passed over with all it holds: what programs install and build, apps' own data. */
@@ -66,6 +66,8 @@ export async function watchPlaces(places: readonly string[], options: WatchOptio
   const noted = new Map<string, Promise<Stats | undefined>>()
   /** The folders whose changes the system lost count of, and whether their subfolders were watched with them. */
   const lost = new Map<string, boolean>()
+  /** No watcher is started once stopping began, though what is looked through then is still noted. */
+  let closing = false
   let stopped = false
   let folders = 0
 
@@ -85,6 +87,7 @@ export async function watchPlaces(places: readonly string[], options: WatchOptio
       lost.set(folder, recursive || lost.get(folder) === true)
     }
   ) => {
+    if (closing) return
     try {
       const watcher = watch(folder, { persistent: false, recursive }, (_event, name) => {
         // No name: the system lost count of what changed there.
@@ -113,7 +116,7 @@ export async function watchPlaces(places: readonly string[], options: WatchOptio
 
   /** A folder and its subfolders, each watched on its own, those made while the command runs as they come. */
   const walk = async (folder: string) => {
-    if (stopped || folders >= FOLDERS_LIMIT) return
+    if (closing || folders >= FOLDERS_LIMIT) return
     folders++
     start(folder, false, (name) => {
       const path = join(folder, name)
@@ -121,7 +124,7 @@ export async function watchPlaces(places: readonly string[], options: WatchOptio
       if (options.passed(folder, name)) return
       void stat(path)
         .then(async (found) => {
-          if (!found?.isDirectory() || stopped) return
+          if (!found?.isDirectory() || closing) return
           await noteMade(path)
           await walk(path)
         })
@@ -170,16 +173,21 @@ export async function watchPlaces(places: readonly string[], options: WatchOptio
     }
   }
 
+  // Stopped once, whoever asks first: the release of a command and the look at what it changed can both ask.
+  let stopping: Promise<Noted[]> | undefined
+  const stop = async (): Promise<Noted[]> => {
+    closing = true
+    for (const watcher of watchers) watcher.close()
+    for (const [folder, deep] of lost) await lookThrough(folder, deep)
+    stopped = true
+    const told: Noted[] = []
+    for (const [path, first] of noted) told.push({ path, first: await first })
+    return told
+  }
   return {
-    async stop() {
-      if (!stopped) {
-        for (const watcher of watchers) watcher.close()
-        for (const [folder, deep] of lost) await lookThrough(folder, deep)
-      }
-      stopped = true
-      const told: Noted[] = []
-      for (const [path, first] of noted) told.push({ path, first: await first })
-      return told
+    stop: () => {
+      stopping ??= stop()
+      return stopping
     }
   }
 }

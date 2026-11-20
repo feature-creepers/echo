@@ -8,7 +8,7 @@ import { absolute, kindAt, real, within } from './paths.ts'
 import { createSnapshots } from './snapshot.ts'
 import { everywhere, system, type Where } from './system/index.ts'
 
-export interface ComputerOptions {
+interface ComputerOptions {
   /** The assistant's own folder. Made when missing. */
   workspace: string
   /** The core's data folder, never reached by a session but for the assistant's folder inside it. Its `trash` holds what is moved there. */
@@ -27,7 +27,7 @@ export function protectedPaths({ where, data, workspace }: { where: Where; data?
 }
 
 /** Whether a path is in a place never reached, as the places say it: inside one and none of its exceptions, or ending so. */
-export function neverAt(places: readonly ProtectedPath[]): (path: string) => boolean {
+function neverAt(places: readonly ProtectedPath[]): (path: string) => boolean {
   return (path) =>
     places.some((place) =>
       place.ending !== undefined

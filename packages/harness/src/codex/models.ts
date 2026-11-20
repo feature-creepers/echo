@@ -6,7 +6,7 @@ import { asArray, asObject, asString } from '../process/json.ts'
 import { platform } from '../process/platform/index.ts'
 
 /** Codex's models when its own list cannot be read, its most capable first. */
-export const CODEX_MODELS = ['gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-luna']
+const CODEX_MODELS = ['gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-luna']
 
 /** The small, fast model, for the roles where speed or cost matters more than depth. */
 const FAST_MODEL = 'gpt-6-luna'
@@ -78,7 +78,7 @@ function describe(slug: string, given: string | undefined): string {
 }
 
 /** The models Codex offers this user, from the list the CLI keeps up to date itself, in its order. */
-export async function listedModels(home: string): Promise<HarnessModel[]> {
+async function listedModels(home: string): Promise<HarnessModel[]> {
   try {
     const cache = asObject(JSON.parse(await readFile(join(home, 'models_cache.json'), 'utf8')))
     const listed = asArray(cache?.models)

@@ -58,9 +58,17 @@ describe('starting a program on Windows', () => {
     expect(quoteArgument('model_instructions_file="C:/x.txt"')).toBe('"model_instructions_file=""C:/x.txt"""')
   })
 
+  it('keeps the backslashes before a quote, which the program would otherwise read as escaping it', () => {
+    expect(quoteArgument('C:\\Users\\Ada Lovelace\\')).toBe('"C:\\Users\\Ada Lovelace\\\\"')
+    expect(quoteArgument('mcp_servers."a \\"b\\"".enabled=false')).toBe('"mcp_servers.""a \\\\""b\\\\"""".enabled=false"')
+    expect(quoteArgument('C:\\Users\\Ada\\')).toBe('C:\\Users\\Ada\\')
+  })
+
   it('tries each extension Windows runs, in its order', () => {
     expect(win32.fileNames('claude', { PATHEXT: '.COM;.EXE;.BAT;.CMD' })).toEqual(['claude.com', 'claude.exe', 'claude.bat', 'claude.cmd'])
     expect(win32.fileNames('claude', {})).toEqual(['claude.com', 'claude.exe', 'claude.bat', 'claude.cmd'])
+    // Scripts for other hosts are named by PATHEXT too, and cannot be started as a program.
+    expect(win32.fileNames('claude', { PATHEXT: '.COM;.EXE;.BAT;.CMD;.VBS;.JS;.PY;.PS1' })).toEqual(['claude.com', 'claude.exe', 'claude.bat', 'claude.cmd'])
   })
 
   it('reads variables whatever the case of their names', () => {

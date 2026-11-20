@@ -1,5 +1,5 @@
 import type { SessionEvent } from '@repo/core'
-import { asArray, asObject, asString } from './process/json.ts'
+import { asObject, asString } from './process/json.ts'
 
 /** A step of a plan, as the core takes it. */
 type PlanStep = Extract<SessionEvent, { type: 'plan' }>['steps'][number]
@@ -29,7 +29,7 @@ export function planFromCodex(params: unknown): PlanStep[] | undefined {
   const plan = asObject(params)?.plan
   if (!Array.isArray(plan)) return undefined
   return stepsOf(
-    asArray(plan).map((step) => {
+    plan.map((step) => {
       const item = asObject(step)
       return { text: asString(item?.step), status: asString(item?.status) }
     }),

@@ -29,7 +29,7 @@ describe('confinement of commands by the system', () => {
     { name: 'the caches alone, with the whole computer to read', given: scope({ computer: 'read', places: [] }), writes: ['/home/ada/.cache', '/tmp'] },
     {
       name: 'nothing on Windows, whose paths the sandbox cannot read',
-      given: scope({ places: [{ path: 'C:UsersadaEcho', kind: 'folder', write: true }] }),
+      given: scope({ places: [{ path: 'C:\\Users\\ada\\Echo', kind: 'folder', write: true }] }),
       writes: ['/home/ada/.cache', '/tmp']
     }
   ])('lets a command change $name', ({ given, writes }) => {

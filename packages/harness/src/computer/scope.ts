@@ -52,12 +52,6 @@ const describe = (scope: Scope) => {
   return places.length > 0 ? ` (${places.join(', ')})` : ' (nothing)'
 }
 
-/** Why a use is refused, from the scope. Nothing when it is within it. */
-export async function outsideScope(use: ComputerUse, scope: Scope, never: readonly string[]): Promise<string | undefined> {
-  const checked = await checkUse(use, scope, never)
-  return checked.refused?.reason
-}
-
 /**
  * A use as the core is asked about it: refused with the reason when it reaches beyond what was granted or a
  * place never reached, and for a command, whether every place it names may be changed.

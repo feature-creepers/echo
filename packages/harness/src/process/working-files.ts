@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
-export interface WorkingFiles {
+interface WorkingFiles {
   /** Write a file and give its path. `name` says what it is: `instructions.txt`. */
   write(name: string, content: string): Promise<string>
   /** A path for a file the CLI will write itself. */

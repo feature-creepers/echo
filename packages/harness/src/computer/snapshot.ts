@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process'
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { dirname, join, relative, sep } from 'node:path'
+import { promisify } from 'node:util'
 import type { Changeable, FolderSnapshot, FoundChange, NamedPlace } from '@repo/core'
 import { within } from './paths.ts'
 import { system } from './system/index.ts'
@@ -40,19 +41,19 @@ const SKIPPED = new Set([
   'coverage'
 ])
 /** The most files listed in a folder that is not a git work tree: past it, the rest is not looked at. */
-export const FILES_LIMIT = 20_000
+const FILES_LIMIT = 20_000
 /** The largest file held before a command, outside git, so what it held can be shown. */
 export const HELD_LIMIT = 1024 * 1024
 /** The most held across folders, outside git: the files seen last are kept first. */
-export const HELD_TOTAL = 64 * 1024 * 1024
+const HELD_TOTAL = 64 * 1024 * 1024
 /** The largest file read once a command ended, as the core keeps versions. */
-export const AFTER_LIMIT = 20 * 1024 * 1024
+const AFTER_LIMIT = 20 * 1024 * 1024
 /** The most files said to be changed by one command: past it, a build or an install, the rest is left out. */
 export const CHANGES_LIMIT = 200
 /** The most files already changed in a work tree that are read before a command. */
 const DIRTY_LIMIT = 500
 /** The most places a command names outside its folder that are looked at too: past them, the rest are not. */
-export const NAMED_LIMIT = 16
+const NAMED_LIMIT = 16
 /** How long a command's places are watched at most, when its end is never told. */
 const WATCHED_MS = 60 * 60 * 1000
 /** How long the system is given, once a command ended, to tell the last of what it changed. */
@@ -67,15 +68,13 @@ const MADE_SLACK_MS = 10
  */
 const GIT_BATCH = 150
 
-/** Run git in a folder and give back what it printed, as bytes. Rejects when it fails or is not there. */
-export type Git = (folder: string, args: readonly string[]) => Promise<Uint8Array>
+const execute = promisify(execFile)
 
-const runGit: Git = (folder, args) =>
-  new Promise((resolve, reject) => {
-    execFile('git', ['-C', folder, ...args], { encoding: 'buffer', maxBuffer: 64 * 1024 * 1024, windowsHide: true, timeout: 20_000 }, (error, out) =>
-      error ? reject(error) : resolve(new Uint8Array(out))
-    )
-  })
+/** Run git in a folder and give back what it printed, as bytes. Rejects when it fails or is not there. */
+async function git(folder: string, args: readonly string[]): Promise<Uint8Array> {
+  const { stdout } = await execute('git', ['-C', folder, ...args], { encoding: 'buffer', maxBuffer: 64 * 1024 * 1024, windowsHide: true, timeout: 20_000 })
+  return new Uint8Array(stdout)
+}
 
 const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes)
 
@@ -123,13 +122,11 @@ async function now(path: string): Promise<FoundChange['after']> {
 /** A path from a work tree's top, "/" between its parts, as this system names it. */
 const placeIn = (top: string, path: string) => join(top, ...path.split('/'))
 
-export interface Snapshots {
+interface Snapshots {
   snapshot(folder: string, named?: readonly NamedPlace[], changeable?: Changeable): Promise<FolderSnapshot | undefined>
 }
 
-export interface SnapshotOptions {
-  /** How git is run. Left out, the git of the search path. */
-  git?: Git | undefined
+interface SnapshotOptions {
   /** Whether a path is in a place never reached: what changes there is not looked at. */
   never?: ((path: string) => boolean) | undefined
   /** The person's own folder, watched when the whole computer may be changed. */
@@ -153,7 +150,7 @@ const samePlace = (one: string, other: string) => within(one, other) && within(o
 const fromTop = (top: string, path: string) => relative(top, path).split(sep).join('/')
 
 /** Snapshots of folders, holding small files across them so a folder looked at again reads only what changed. */
-export function createSnapshots({ git = runGit, never = () => false, home, appData = [], trees = system.watchesTrees }: SnapshotOptions = {}): Snapshots {
+export function createSnapshots({ never = () => false, home, appData = [], trees = system.watchesTrees }: SnapshotOptions = {}): Snapshots {
   // What is held of a file outside git, by where it is: its size and time when it was read, and its bytes.
   const held = new Map<string, { size: number; modified: number; bytes: Uint8Array }>()
   let heldBytes = 0

@@ -1,4 +1,5 @@
 import type { ToolServer } from '@repo/core'
+import { REPORTED_TOOLS } from '../tool-names.ts'
 import { COMPUTER_TOOL_NAMES } from './computer-tools.ts'
 
 /**
@@ -9,10 +10,8 @@ import { COMPUTER_TOOL_NAMES } from './computer-tools.ts'
  * Each is switched off here. `--bare` would do it in one flag, but it refuses a subscription sign-in, which
  * is how most users are signed in.
  *
- * Checked against version 2.1.322, with a subscription: an instruction planted in `CLAUDE.md`,
- * `CLAUDE.local.md`, `.claude/CLAUDE.md`, `.claude/rules/` or `AGENTS.md`, in the working folder or above
- * it, is not followed. The same instruction planted in the folder's auto-memory IS followed with the flags
- * alone, which is why the memory is switched off twice below, by a setting and by a variable.
+ * With the flags alone, an instruction planted in the folder's auto-memory is still followed, which is why the
+ * memory is switched off twice below, by a setting and by a variable.
  *
  * What the CLI still adds and gives no switch for: one sentence before the instructions saying it is a
  * Claude agent, a description of the machine after them (working folder, system, model, date), and the
@@ -25,7 +24,7 @@ export const TOOL_SERVER = 'core'
 const TOOL_PREFIX = `mcp__${TOOL_SERVER}__`
 
 /** The CLI's own tools a session may be given: searching the web and reading a page. */
-export const WEB_TOOLS: Record<string, string> = { WebSearch: 'web_search', WebFetch: 'web_read' }
+const WEB_TOOLS: Record<string, string> = { WebSearch: REPORTED_TOOLS.webSearch, WebFetch: REPORTED_TOOLS.webRead }
 
 /**
  * The CLI's own to-do list, which a session working on a project keeps its plan in (docs/SPEC.md, section 7.11). It
@@ -39,13 +38,10 @@ export const PLAN_TOOL = 'TodoWrite'
  * the same scope and approved the same way, and never with the core's: the voice, the screen and the person are its
  * thread's. Each of its calls is reported, so the person sees what it did.
  */
-export const AGENT_TOOL = 'Task'
+const AGENT_TOOL = 'Task'
 
 /** The names the CLI gives the sub-agents' tool: in its account of how it started, and in the model's calls. */
 const AGENT_TOOL_NAMES = new Set([AGENT_TOOL, 'Agent'])
-
-/** The name a call of a sub-agent is reported under. */
-export const REPORTED_AGENT_TOOL = 'subagent'
 
 /** What a session was given of the CLI's own: the web, its tools on the computer, its to-do list and its sub-agents. */
 export interface Given {
@@ -69,7 +65,7 @@ export function reportedToolName(name: unknown, given: Given = {}): string | und
   if (typeof name !== 'string') return undefined
   if (given.web && Object.hasOwn(WEB_TOOLS, name)) return WEB_TOOLS[name]
   if (given.computer?.includes(name)) return COMPUTER_TOOL_NAMES[name]
-  if (given.agents && AGENT_TOOL_NAMES.has(name)) return REPORTED_AGENT_TOOL
+  if (given.agents && AGENT_TOOL_NAMES.has(name)) return REPORTED_TOOLS.subagent
   return coreToolName(name)
 }
 
@@ -92,13 +88,13 @@ export function sessionSettings(computer: readonly string[], confined?: Record<s
   const ask = [...computer, ...(agents ? [CORE_TOOLS_RULE] : [])]
   if (ask.length === 0) return ISOLATION_SETTINGS
   const permissions = { ...(confined?.permissions as Record<string, unknown> | undefined), ask }
-  return { ...ISOLATION_SETTINGS, ...(confined ?? {}), permissions }
+  return { ...ISOLATION_SETTINGS, ...confined, permissions }
 }
 
 /** Variables that switch off what no flag does. */
 export const ISOLATION_VARIABLES = { CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1' }
 
-export interface IsolationFiles {
+interface IsolationFiles {
   /** The system prompt, whole. */
   instructions: string
   /** `ISOLATION_SETTINGS`, as JSON. */

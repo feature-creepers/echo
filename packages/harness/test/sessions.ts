@@ -46,7 +46,7 @@ export async function eventually(check: () => boolean): Promise<void> {
   while (!check()) await new Promise((resolve) => setTimeout(resolve, 20))
 }
 
-export interface Followed {
+interface Followed {
   /** Every event so far, in order. */
   events: SessionEvent[]
   /** Resolves once `count` events of a type have arrived. */

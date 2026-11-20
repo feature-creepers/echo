@@ -1,3 +1,4 @@
+import { createInterface } from 'node:readline'
 import type { Readable, Writable } from 'node:stream'
 
 /**
@@ -7,25 +8,16 @@ import type { Readable, Writable } from 'node:stream'
  * warning among its messages, and one bad line must not end the conversation.
  */
 export function readJsonLines(stream: Readable, onMessage: (message: unknown) => void): void {
-  let pending = ''
-  // Decoding as text here keeps a character whole when its bytes arrive in two chunks.
-  stream.setEncoding('utf8')
-  stream.on('data', (chunk: string) => {
-    pending += chunk
-    let end = pending.indexOf('\n')
-    while (end >= 0) {
-      const line = pending.slice(0, end).trim()
-      pending = pending.slice(end + 1)
-      end = pending.indexOf('\n')
-      if (line === '') continue
-      let message: unknown
-      try {
-        message = JSON.parse(line)
-      } catch {
-        continue
-      }
-      onMessage(message)
+  createInterface({ input: stream, crlfDelay: Number.POSITIVE_INFINITY }).on('line', (line) => {
+    const trimmed = line.trim()
+    if (trimmed === '') return
+    let message: unknown
+    try {
+      message = JSON.parse(trimmed)
+    } catch {
+      return
     }
+    onMessage(message)
   })
 }
 

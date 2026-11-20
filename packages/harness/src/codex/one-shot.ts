@@ -8,14 +8,14 @@ import { execArguments } from './isolation.ts'
 import { codexHome, codexModels } from './models.ts'
 import { SIGNED_OUT } from './status.ts'
 
-export interface OneShotContext {
+interface OneShotContext {
   cli: Cli
   folder: string
   models: Partial<Record<Role, string>>
   log: Log
 }
 
-export const DEFAULT_TIMEOUT_MS = 120_000
+const DEFAULT_TIMEOUT_MS = 120_000
 
 /** One question to Codex, answered in text: a new process each time, which knows nothing of earlier ones. */
 export async function complete(request: OneShot, context: OneShotContext): Promise<string> {

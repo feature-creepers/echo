@@ -1,5 +1,6 @@
 import type { HarnessStatus } from '@repo/core'
 import type { Cli } from '../process/cli.ts'
+import { readVersion } from '../process/output.ts'
 import { run } from '../process/run.ts'
 
 /** How long the CLI has to say its version or who is signed in. */
@@ -7,12 +8,6 @@ const STATUS_TIMEOUT_MS = 15_000
 
 export const NOT_INSTALLED = 'Codex is not installed. Install it from developers.openai.com/codex, then sign in.'
 export const SIGNED_OUT = 'Codex is not signed in. Sign in to it, then try again.'
-
-/** The version out of what `--version` prints: "codex-cli 0.130.0". */
-export function readVersion(output: string): string | undefined {
-  const line = output.trim().split('\n')[0]?.trim()
-  return line?.match(/\d+(\.\d+)+\S*/)?.[0] ?? (line || undefined)
-}
 
 /** Who is signed in, out of what `login status` prints: "Logged in using ChatGPT", or "Not logged in". */
 export function readAccount(output: string, code: number | null): { signedIn: boolean; account?: string } {

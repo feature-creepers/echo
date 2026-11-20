@@ -1,6 +1,7 @@
 import type { HarnessStatus } from '@repo/core'
 import type { Cli } from '../process/cli.ts'
 import { asString, firstObject } from '../process/json.ts'
+import { readVersion } from '../process/output.ts'
 import { run } from '../process/run.ts'
 
 /** How long the CLI has to say its version or who is signed in. */
@@ -8,12 +9,6 @@ const STATUS_TIMEOUT_MS = 15_000
 
 export const NOT_INSTALLED = 'Claude Code is not installed. Install it from claude.com/claude-code, then sign in.'
 export const SIGNED_OUT = 'Claude Code is not signed in. Sign in to it, then try again.'
-
-/** The version out of what `--version` prints: "2.1.322 (Claude Code)". */
-export function readVersion(output: string): string | undefined {
-  const line = output.trim().split('\n')[0]?.trim()
-  return line?.match(/\d+(\.\d+)+\S*/)?.[0] ?? (line || undefined)
-}
 
 /**
  * Who is signed in, out of what `auth status --json` prints. The CLI answers the same way, with an error

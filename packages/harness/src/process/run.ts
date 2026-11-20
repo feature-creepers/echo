@@ -8,10 +8,13 @@ export interface Command {
   leading: string[]
 }
 
-export interface StartOptions {
+interface StartOptions {
   cwd?: string
   env: Environment
 }
+
+/** How long a program talked to over its input has to stop by itself once that input is closed, before it is stopped. */
+const CLOSE_GRACE_MS = 1500
 
 /** Start a program that is talked to over its standard input and output for as long as it lives. */
 export function start(command: Command, args: string[], options: StartOptions): ChildProcess {
@@ -28,14 +31,23 @@ export function start(command: Command, args: string[], options: StartOptions): 
   return child
 }
 
-export interface RunOptions extends StartOptions {
+/** Close the input of a program started with `start`, which ends a CLI by itself, and stop it if it does not end. */
+export function stopGently(child: ChildProcess): void {
+  if (child.exitCode !== null || child.signalCode !== null) return
+  child.stdin?.end()
+  const timer = setTimeout(() => platform.terminate(child), CLOSE_GRACE_MS)
+  timer.unref()
+  child.once('exit', () => clearTimeout(timer))
+}
+
+interface RunOptions extends StartOptions {
   /** Written to the program's standard input, which is then closed. */
   input?: string
   /** Stop the program and give up after this long. */
   timeoutMs: number
 }
 
-export interface RunResult {
+interface RunResult {
   /** The exit code. Missing when the program was stopped by a signal. */
   code: number | null
   stdout: string

@@ -7,7 +7,7 @@ import { createWorkingFiles } from '../process/working-files.ts'
 import { ISOLATION_SETTINGS, ISOLATION_VARIABLES, isolationArguments } from './isolation.ts'
 import { SIGNED_OUT } from './status.ts'
 
-export interface OneShotContext {
+interface OneShotContext {
   cli: Cli
   folder: string
   model: string
@@ -17,9 +17,9 @@ export interface OneShotContext {
 }
 
 /** The whole answer at once, as one JSON object, when the CLI has finished. */
-export const ONE_SHOT_ARGUMENTS = ['-p', '--output-format', 'json']
+const ONE_SHOT_ARGUMENTS = ['-p', '--output-format', 'json']
 
-export const DEFAULT_TIMEOUT_MS = 120_000
+const DEFAULT_TIMEOUT_MS = 120_000
 
 /** One question to Claude Code, answered in text: a new process each time, which knows nothing of earlier ones. */
 export async function complete(request: OneShot, context: OneShotContext): Promise<string> {

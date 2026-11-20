@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { HarnessComputer, Scope, ToolServer } from '@repo/core'
+import { asObject } from '../process/json.ts'
 import { PROFILE, sandbox } from './sandbox/index.ts'
 
 /**
@@ -17,17 +18,7 @@ import { PROFILE, sandbox } from './sandbox/index.ts'
 export const TOOL_SERVER = 'core'
 
 /** Features that act beyond the core's tools, or remember beyond the core's memory. A thread keeps its sub-agents. */
-export const FEATURES_OFF = [
-  'apps',
-  'computer_use',
-  'browser_use',
-  'browser_use_external',
-  'in_app_browser',
-  'plugins',
-  'image_generation',
-  'multi_agent',
-  'memories'
-]
+const FEATURES_OFF = ['apps', 'computer_use', 'browser_use', 'browser_use_external', 'in_app_browser', 'plugins', 'image_generation', 'multi_agent', 'memories']
 
 /**
  * Settings given as `-c name=value`. Unlike a feature turned off by name, a setting Codex does not know is
@@ -71,7 +62,7 @@ export function codexComputer(holding: Holding): HarnessComputer {
 }
 
 /** What a profile holds commands to besides the scope: places of the person's programs, and of the adapter. */
-export interface Confinement {
+interface Confinement {
   /** Places never reached besides the scope's: the adapter's own folder. */
   never: readonly string[]
   /** Folders programs write to on their own while a command runs: package caches, the temporary folder. */
@@ -110,7 +101,7 @@ export function permissionProfile(scope: Scope, confinement: Confinement): Recor
  * reports no sandbox at all, without the whole computer to change, is not held, and must not run.
  */
 export function heldAsAsked(reported: unknown, scope: Scope): boolean {
-  const kind = typeof reported === 'object' && reported !== null ? (reported as { type?: unknown }).type : undefined
+  const kind = asObject(reported)?.type
   if (kind === 'readOnly' || kind === 'workspaceWrite') return true
   return kind === 'dangerFullAccess' && scope.computer === 'write'
 }
@@ -135,7 +126,7 @@ const settings = (values: string[]) => values.flatMap((value) => ['-c', value])
  * Codex's own sub-agents, which a thread may hand parts of its work to (docs/SPEC.md, section 6.2). Each runs as a
  * conversation of its own on the same server, under the same sandbox and the same questions to the core.
  */
-export const AGENTS_FEATURE = 'multi_agent'
+const AGENTS_FEATURE = 'multi_agent'
 
 /**
  * The arguments of a live session: Codex as a server that takes requests on its standard input. A thread's keeps its

@@ -11,13 +11,14 @@ import { asArray, asObject, asString, type JsonObject } from '../process/json.ts
 import { readJsonLines, writeJsonLine } from '../process/json-lines.ts'
 import { KEPT_OUTPUT, lastLines, saysSignedOut } from '../process/output.ts'
 import { platform } from '../process/platform/index.ts'
-import { start } from '../process/run.ts'
+import { start, stopGently } from '../process/run.ts'
+import { REPORTED_TOOLS } from '../tool-names.ts'
 import { commandLine, shownCommand } from './command.ts'
 import { appServerArguments, type Holding, heldAsAsked, shellAllowed, TOOL_SERVER, threadSettings, userToolServers, workingFolder } from './isolation.ts'
 import { codexHome, codexModels } from './models.ts'
 import { SIGNED_OUT } from './status.ts'
 
-export interface SessionContext {
+interface SessionContext {
   cli: Cli
   /** The adapter's working folder. */
   folder: string
@@ -29,11 +30,8 @@ export interface SessionContext {
 }
 
 /** Why a session that would have run unconfined was not started, in words for the person. */
-export const NOT_HELD =
+const NOT_HELD =
   "Codex would not hold its commands to what you granted: a sandbox_mode in your own Codex settings puts it on its older sandbox. Remove it from Codex's config.toml, or use Claude Code."
-
-/** How long Codex has to stop by itself once its input is closed, before it is stopped. */
-const CLOSE_GRACE_MS = 1500
 
 /** How this program names itself to Codex, which keeps it in its own records. */
 const CLIENT = { name: 'core', title: 'Core', version: '1' }
@@ -45,13 +43,6 @@ const input = (value: string, attachments: readonly Attachment[]) => [
   ...text(value),
   ...attachments.filter((attachment) => attachment.image).map((attachment) => ({ type: 'localImage', path: attachment.path }))
 ]
-
-/** The name the core reports a change of files under. */
-const WRITE_TOOL = 'computer_write'
-/** The name the core reports a command under, as it does Claude Code's. */
-const RUN_TOOL = 'computer_run'
-/** The name the core reports a call to a sub-agent under, as it does Claude Code's. */
-const AGENT_TOOL = 'subagent'
 
 /**
  * A live session with Codex, run as a server: requests and notifications go both ways as JSON lines, in
@@ -187,16 +178,10 @@ export function openSession(request: SessionRequest, context: SessionContext): S
   function shut(): void {
     closed = true
     withdraw()
-    const running = child
+    if (child) stopGently(child)
     child = undefined
     for (const pending of calls.values()) pending.reject(new Error('Codex stopped.'))
     calls.clear()
-    if (running && running.exitCode === null && running.signalCode === null) {
-      running.stdin?.end()
-      const timer = setTimeout(() => platform.terminate(running), CLOSE_GRACE_MS)
-      timer.unref()
-      running.once('exit', () => clearTimeout(timer))
-    }
   }
 
   /** Give a message to Codex: into the turn under way when there is one, else as a new turn. */
@@ -324,25 +309,21 @@ export function openSession(request: SessionRequest, context: SessionContext): S
   async function decide(found: ComputerUse | undefined, item: string | undefined): Promise<boolean> {
     const reach = request.computer
     if (!shell || !reach || !found) return false
-    const use = await checkUse(found, reach.scope(), [context.folder])
     const controller = new AbortController()
     asking.add(controller)
     const stopped = new Promise<false>((resolve) => controller.signal.addEventListener('abort', () => resolve(false), { once: true }))
     try {
+      const use = await checkUse(found, reach.scope(), [context.folder])
       const verdict = await Promise.race([reach.approve(use, controller.signal), stopped])
       if (verdict === false || !verdict.allow) return false
       if (verdict.use !== undefined && item !== undefined) allowedUses.set(item, verdict.use)
       return true
-    } catch {
+    } catch (error) {
+      log.error(`A use of the computer could not be decided: ${error instanceof Error ? error.message : String(error)}`)
       return false
     } finally {
       asking.delete(controller)
     }
-  }
-
-  /** The folder a change names its files from. */
-  function filesBase(): string {
-    return base
   }
 
   function withdraw(): void {
@@ -370,12 +351,9 @@ export function openSession(request: SessionRequest, context: SessionContext): S
   function notified(method: string, params: JsonObject): void {
     const item = asObject(params.item) ?? {}
     if (method === 'item/started' && item.type === 'fileChange') {
-      const touched = asArray(item.changes).map(asObject)
-      const kinds = touched.map((change) => asString(asObject(change?.kind)?.type) ?? asString(change?.kind))
-      const base = filesBase()
-      const paths = touched.map((change) => absolute(asString(change?.path) ?? '.', base))
-      const action = kinds.every((kind) => kind === 'add') ? 'create' : kinds.every((kind) => kind === 'delete') ? 'delete' : 'change'
-      if (paths.length > 0) changes.set(asString(item.id) ?? '', { action, tool: 'apply_patch', paths })
+      const touched = touchedFiles(item, base)
+      const action = touched.every(({ kind }) => kind === 'add') ? 'create' : touched.every(({ kind }) => kind === 'delete') ? 'delete' : 'change'
+      if (touched.length > 0) changes.set(asString(item.id) ?? '', { action, tool: 'apply_patch', paths: touched.map(({ path }) => path) })
     }
     const mine = own(params)
     // A sub-agent's commands and changes are reported as the session's, so the person sees what it did and the files it
@@ -419,23 +397,23 @@ export function openSession(request: SessionRequest, context: SessionContext): S
       }
       case 'item/started':
         if (ours !== undefined) events.emit({ type: 'tool', name: ours, phase: 'started', ...callOf(item) })
-        else if (delegation) events.emit({ type: 'tool', name: AGENT_TOOL, phase: 'started', ...delegation })
-        else if (item.type === 'fileChange') {
-          events.emit({ type: 'tool', name: WRITE_TOOL, phase: 'started', ...changeOf(item, filesBase()).call })
-        } else if (item.type === 'commandExecution') events.emit({ type: 'tool', name: RUN_TOOL, phase: 'started', ...runOf(item) })
+        else if (delegation) events.emit({ type: 'tool', name: REPORTED_TOOLS.subagent, phase: 'started', ...delegation })
+        else if (item.type === 'fileChange') events.emit({ type: 'tool', name: REPORTED_TOOLS.write, phase: 'started', ...changeOf(item, base).call })
+        else if (item.type === 'commandExecution') events.emit({ type: 'tool', name: REPORTED_TOOLS.run, phase: 'started', ...runOf(item) })
         return
       case 'item/completed': {
         const use = reportUse(item)
         if (ours !== undefined) events.emit({ type: 'tool', name: ours, phase: 'ended', ...callOf(item), ...outcomeOf(item) })
         else if (delegation)
-          events.emit({ type: 'tool', name: AGENT_TOOL, phase: 'ended', ...delegation, ...(item.status === 'failed' ? { failed: true } : {}) })
+          events.emit({ type: 'tool', name: REPORTED_TOOLS.subagent, phase: 'ended', ...delegation, ...(item.status === 'failed' ? { failed: true } : {}) })
         else if (item.type === 'fileChange') {
+          changes.delete(asString(item.id) ?? '')
           // A change made is named, so the person is shown the files; one declined or failed is not.
-          const { call, kept } = changeOf(item, filesBase())
+          const { call, kept } = changeOf(item, base)
           const done = item.status === 'completed'
           events.emit({
             type: 'tool',
-            name: WRITE_TOOL,
+            name: REPORTED_TOOLS.write,
             phase: 'ended',
             ...call,
             ...(done ? {} : { failed: true }),
@@ -443,7 +421,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
             ...(use === undefined ? {} : { use })
           })
         } else if (item.type === 'commandExecution') {
-          events.emit({ type: 'tool', name: RUN_TOOL, phase: 'ended', ...runOf(item), ...ranOf(item), ...(use === undefined ? {} : { use }) })
+          events.emit({ type: 'tool', name: REPORTED_TOOLS.run, phase: 'ended', ...runOf(item), ...ranOf(item), ...(use === undefined ? {} : { use }) })
         } else if (mine && item.type === 'agentMessage' && !streamed.has(asString(item.id) ?? '')) {
           paragraphDue = wrote
           say(asString(item.text) ?? '')
@@ -524,15 +502,19 @@ function ranOf(item: JsonObject): { output?: string; failed?: boolean } {
   return printed === '' ? {} : { output: printed }
 }
 
+/** The files a change of files touches, absolute, each with what is done to it: `add`, `delete` or `update`. */
+function touchedFiles(item: JsonObject, base: string): { path: string; kind: string | undefined }[] {
+  return asArray(item.changes)
+    .map(asObject)
+    .map((change) => ({ path: absolute(asString(change?.path) ?? '.', base), kind: asString(asObject(change?.kind)?.type) ?? asString(change?.kind) }))
+}
+
 /** A change of files as a call (which it is, and the files it touches), and the files it makes or keeps, absolute. */
 function changeOf(item: JsonObject, base: string): { call: { call?: string; input: { paths: string[] } }; kept: string[] } {
-  const touched = asArray(item.changes).map(asObject)
-  const paths = touched.map((change) => absolute(asString(change?.path) ?? '.', base))
-  const kept = touched.flatMap((change, index) => {
-    const kind = asString(asObject(change?.kind)?.type) ?? asString(change?.kind)
-    const path = paths[index]
-    return kind === 'delete' || path === undefined ? [] : [path]
-  })
+  const touched = touchedFiles(item, base)
   const id = asString(item.id)
-  return { call: { ...(id === undefined ? {} : { call: id }), input: { paths } }, kept }
+  return {
+    call: { ...(id === undefined ? {} : { call: id }), input: { paths: touched.map(({ path }) => path) } },
+    kept: touched.filter(({ kind }) => kind !== 'delete').map(({ path }) => path)
+  }
 }

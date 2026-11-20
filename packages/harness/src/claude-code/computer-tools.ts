@@ -2,6 +2,7 @@ import type { ComputerUse, Scope } from '@repo/core'
 import { absolute, kindAt } from '../computer/paths.ts'
 import { reachOf } from '../computer/scope.ts'
 import { asString, type JsonObject } from '../process/json.ts'
+import { REPORTED_TOOLS } from '../tool-names.ts'
 
 /** Claude Code's own tools for the computer, by what they do. */
 const READING = ['Read', 'Glob', 'Grep']
@@ -17,12 +18,12 @@ export function computerTools(scope: Scope | undefined): string[] {
 
 /** The name the core reports a use under, so the activity says what is going on. */
 export const COMPUTER_TOOL_NAMES: Record<string, string> = {
-  Read: 'computer_read',
-  Glob: 'computer_search',
-  Grep: 'computer_search',
-  Write: 'computer_write',
-  Edit: 'computer_write',
-  Bash: 'computer_run'
+  Read: REPORTED_TOOLS.read,
+  Glob: REPORTED_TOOLS.search,
+  Grep: REPORTED_TOOLS.search,
+  Write: REPORTED_TOOLS.write,
+  Edit: REPORTED_TOOLS.write,
+  Bash: REPORTED_TOOLS.run
 }
 
 /** Where a glob pattern stops being a plain path: its folders up to the first one with a wildcard. */
