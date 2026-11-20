@@ -110,7 +110,8 @@ export function PinnedDocksView({ controls, actions, docks }: { controls: Librar
   useEffect(() => {
     if (!floating) return
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') hide()
+      // Escape that closed a menu or a dialog over the widgets closes only that.
+      if (event.key === 'Escape' && !event.defaultPrevented) hide()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)

@@ -102,8 +102,17 @@ export function AppsGroup({ client, access, productName }: { client: Client; acc
               label="Apps open now"
               align="start"
               header={<span className="text-label text-text-faint">Open now</span>}
-              trigger={(open, toggle, trigger) => (
-                <Button size="sm" disabled={!usable || busy} onClick={() => (open ? toggle() : void read().then(toggle))} {...trigger.props}>
+              trigger={(props, { open }) => (
+                <Button
+                  size="sm"
+                  disabled={!usable || busy}
+                  {...props}
+                  onClick={(event) => {
+                    // The apps open now are read again as it opens, and the list follows when they arrive.
+                    if (!open) void read()
+                    props.onClick?.(event)
+                  }}
+                >
                   Add an app…
                 </Button>
               )}

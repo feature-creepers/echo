@@ -95,13 +95,13 @@ export function EngineIndicator({ client, onOpenSettings }: { client: Client; on
       align="end"
       label="The AI program, its model and how hard it reasons"
       className="w-[18.5rem]"
-      trigger={(_open, toggle, { props }) => (
+      trigger={(props) => (
         <button
           type="button"
           {...props}
-          onClick={() => {
+          onClick={(event) => {
             setFailed(false)
-            toggle()
+            props.onClick?.(event)
           }}
           className={BAR_LABEL}
         >

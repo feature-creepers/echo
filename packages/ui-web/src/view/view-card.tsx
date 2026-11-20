@@ -53,8 +53,8 @@ function SnoozeControl({ job, snooze, onSnoozed }: { job: string; snooze(job: st
       header={
         failed ? <span className="text-danger text-xs">It could not be snoozed.</span> : <span className="text-label text-text-faint">Remind me again in</span>
       }
-      trigger={(open, toggle, trigger) => (
-        <Button kind="quiet" size="sm" onClick={toggle} className={open ? 'text-text' : 'text-text-soft'} {...trigger.props}>
+      trigger={(props, { open }) => (
+        <Button kind="quiet" size="sm" className={open ? 'text-text' : 'text-text-soft'} {...props}>
           Snooze
         </Button>
       )}

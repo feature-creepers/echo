@@ -2,6 +2,10 @@
  * The one stylesheet of the interface. Everything else is utility classes on the components.
  * Colours, typefaces and radii come from @repo/tokens, as a Tailwind theme.
  */
+
+/* UI SDK adds the little CSS its controls need in this layer: declared first, so every style of the app wins over it. */
+@layer ui-sdk;
+
 @import "tailwindcss";
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/geist-mono";

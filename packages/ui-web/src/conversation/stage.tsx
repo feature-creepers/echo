@@ -440,7 +440,7 @@ export function Stage({
       if (talkKey !== '' && matchesShortcut(keyPress(event), talkKey, device.mac)) {
         event.preventDefault()
         toggle()
-      } else if (event.key === 'Escape' && listening) cancel()
+      } else if (event.key === 'Escape' && !event.defaultPrevented && listening) cancel()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)

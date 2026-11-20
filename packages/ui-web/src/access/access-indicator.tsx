@@ -36,13 +36,13 @@ export function AccessIndicator({ client, onOpenSettings }: { client: Client; on
       align="end"
       label="What the assistant may reach"
       className="w-[17.5rem]"
-      trigger={(_open, toggle, { props }) => (
+      trigger={(props) => (
         <button
           type="button"
           {...props}
-          onClick={() => {
+          onClick={(event) => {
             setFailed(undefined)
-            toggle()
+            props.onClick?.(event)
           }}
           aria-label={`What the assistant may reach: ${reach}, ${approvals}`}
           title={failed}

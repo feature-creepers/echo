@@ -59,7 +59,11 @@ export function InputLine({ name, stopAll, onSay, onStop, talk, persona, pause, 
     const onKey = (event: globalThis.KeyboardEvent) => {
       // Escape taken by something over the screen, a preview, is not a stop.
       if (event.key === 'Escape') return event.defaultPrevented ? undefined : onStop()
-      const elsewhere = document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement
+      // A letter typed in an open menu, list or dialog belongs to it: it finds an entry there.
+      const elsewhere =
+        document.activeElement instanceof HTMLInputElement ||
+        document.activeElement instanceof HTMLTextAreaElement ||
+        (event.target instanceof Element && event.target.closest('[role="menu"], [role="listbox"], [role="dialog"]') !== null)
       if (!elsewhere && event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) input.current?.focus()
     }
     window.addEventListener('keydown', onKey)
@@ -198,8 +202,8 @@ export function InputLine({ name, stopAll, onSay, onStop, talk, persona, pause, 
               { label: 'Files…', onSelect: pickFiles },
               { label: 'A folder…', detail: 'Read only', onSelect: () => void pickFolder() }
             ]}
-            trigger={(_open, toggle, trigger) => (
-              <button type="button" onClick={toggle} {...trigger.props} aria-label="Attach files or a folder" title="Attach" className={clipClass}>
+            trigger={(props) => (
+              <button type="button" {...props} aria-label="Attach files or a folder" title="Attach" className={clipClass}>
                 <PaperclipGlyph />
               </button>
             )}

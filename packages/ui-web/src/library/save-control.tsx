@@ -74,8 +74,8 @@ function Control({ view, controls }: { view: Saveable; controls: LibraryControls
             <span className="truncate text-sm">{saved.title}</span>
           </span>
         }
-        trigger={(open, toggle, trigger) => (
-          <IconButton label="Saved in the library" active={open} onClick={toggle} className="text-text-soft" {...trigger.props}>
+        trigger={(props, { open }) => (
+          <IconButton label="Saved in the library" active={open} className="text-text-soft" {...props}>
             <BookmarkGlyph filled />
           </IconButton>
         )}

@@ -1,6 +1,6 @@
-import { useId, useRef, useState } from 'react'
+import { SelectContent, SelectItem, SelectList, Select as SelectRoot, SelectTrigger, SelectValue } from '@ui-sdk/react/select'
 import { cn } from './cn.ts'
-import { Floating, Row } from './menu.tsx'
+import { FLOATING, FLOATING_LIST, FLOATING_SHADOW, GAP, MARGIN, Row, rowClass } from './menu.tsx'
 
 interface SelectOption<Value extends string> {
   value: Value
@@ -35,72 +35,60 @@ export const FIELD =
  * first letters, Enter picks and Escape closes.
  */
 export function Select<Value extends string>({ label, value, options, onChange, className, disabled = false }: SelectProps<Value>) {
-  const [open, setOpen] = useState(false)
-  const field = useRef<HTMLButtonElement>(null)
-  const list = useId()
-  const chosen = options.find((option) => option.value === value)
-
-  const close = (how: 'key' | 'outside') => {
-    setOpen(false)
-    if (how === 'key') field.current?.focus()
-  }
-
   return (
-    <div className={cn('relative min-w-0', className)}>
-      <button
-        ref={field}
-        type="button"
-        aria-label={label}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-controls={open ? list : undefined}
-        disabled={disabled}
-        onClick={() => setOpen((was) => !was)}
-        onKeyDown={(event) => {
-          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-            event.preventDefault()
-            setOpen(true)
+    <SelectRoot<Value>
+      value={value}
+      onValueChange={(next) => {
+        if (next !== null && next !== value) onChange(next)
+      }}
+      // The field names the choice in force before its list has ever been drawn.
+      itemToLabel={(one) => options.find((option) => option.value === one)?.label ?? one}
+      placeholder="Choose…"
+      disabled={disabled}
+    >
+      <div className={cn('relative min-w-0', className)}>
+        <SelectTrigger
+          aria-label={label}
+          className={(state) =>
+            cn(
+              FIELD,
+              'flex w-full min-w-0 items-center gap-2 pr-2 pl-2.5 text-left hover:not-disabled:bg-white/[0.11] disabled:opacity-45',
+              state.open && 'bg-white/[0.11]'
+            )
           }
-        }}
-        className={cn(
-          FIELD,
-          'flex w-full min-w-0 items-center gap-2 pr-2 pl-2.5 text-left hover:not-disabled:bg-white/[0.11] disabled:opacity-45',
-          open && 'bg-white/[0.11]'
-        )}
-      >
-        <span className={cn('min-w-0 flex-1 truncate', !chosen && 'text-text-faint')}>{chosen?.label ?? 'Choose…'}</span>
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 16 16"
-          className="size-3.5 shrink-0 text-text-soft"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.4"
-          strokeLinecap="round"
-          strokeLinejoin="round"
         >
-          <path d="m5.5 6 2.5-2.5L10.5 6M5.5 10l2.5 2.5 2.5-2.5" />
-        </svg>
-      </button>
-      {/* The list grows leftwards from the field's right edge, so it stays over the row the field sits at the end of. */}
-      <Floating anchor={field} open={open} onClose={close} align="end" matchWidth role="listbox" id={list} label={label} className="max-w-[19rem]">
-        {options.map((option) => (
-          <Row
-            key={option.value}
-            role="option"
-            label={option.label}
-            detail={option.description}
-            hint={option.hint}
-            checked={option.value === value}
-            ticks
-            disabled={option.disabled}
-            onSelect={() => {
-              close('key')
-              if (option.value !== value) onChange(option.value)
-            }}
-          />
-        ))}
-      </Floating>
-    </div>
+          <SelectValue className={(state) => cn('min-w-0 flex-1 truncate', state.placeholder && 'text-text-faint')} />
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 16 16"
+            className="size-3.5 shrink-0 text-text-soft"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="m5.5 6 2.5-2.5L10.5 6M5.5 10l2.5 2.5 2.5-2.5" />
+          </svg>
+        </SelectTrigger>
+        {/* The list grows leftwards from the field's right edge, so it stays over the row the field sits at the end of. */}
+        <SelectContent side="bottom" align="end" sideOffset={GAP} collisionPadding={MARGIN} aria-label={label} className={FLOATING}>
+          <span aria-hidden="true" className={FLOATING_SHADOW} />
+          <SelectList className={cn(FLOATING_LIST, 'min-w-(--anchor-width) max-w-[19rem]')}>
+            {options.map((option) => (
+              <SelectItem
+                key={option.value}
+                value={option.value}
+                label={option.label}
+                disabled={option.disabled === true}
+                className={rowClass({ detail: option.description, disabled: option.disabled })}
+              >
+                <Row label={option.label} detail={option.description} hint={option.hint} checked={option.value === value} ticks disabled={option.disabled} />
+              </SelectItem>
+            ))}
+          </SelectList>
+        </SelectContent>
+      </div>
+    </SelectRoot>
   )
 }
