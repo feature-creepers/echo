@@ -295,8 +295,8 @@ function name(word: Word, context: Context, options: { always?: boolean; windows
   const { always = false, windowsProgram = false, recursive = false } = options
   const { path } = found
   if (!always && !looksLikePath(path, context.shell, windowsProgram)) {
-    // A plain name is in the folder the command runs in, which matters only once `cd` moved elsewhere.
-    if (context.folders.every((folder) => folder === '') || /\s/.test(path) || /^[-/]/.test(path) || !/^[\w.@+-][\w .@+-]*$/.test(path)) return
+    // A plain name is in the folder the command runs in: a file there, or a link to anywhere.
+    if (/\s/.test(path) || /^[-/]/.test(path) || !/^[\w.@+-][\w .@+-]*$/.test(path)) return
   } else if (NOWHERE.test(path)) return
   for (const folder of context.folders) {
     const named = { path: from(folder, path), below: found.below || recursive }
@@ -1408,7 +1408,9 @@ function kindOf(program: string, args: readonly string[], context: Context): Kin
         recursive:
           ['tar', '7z'].includes(program) ||
           (['cp', 'zip', 'scp'].includes(program) && (short(args, 'r') || short(args, 'R') || short(args, 'a') || has(args, '--recursive'))),
-        windows: WINDOWS_PROGRAMS.has(program)
+        windows: WINDOWS_PROGRAMS.has(program),
+        // `tar czf a.tgz x`: a first word without a dash is tar's options, as it was first written.
+        ...(program === 'tar' && args[0] !== undefined && !args[0].startsWith('-') ? { notPaths: new Set([0]) } : {})
       }
     case 'eval':
     case 'source':

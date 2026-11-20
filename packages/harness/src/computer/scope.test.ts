@@ -132,6 +132,28 @@ describe('the scope', () => {
     expect(found.refused?.reason.toLowerCase()).toEqual(refused === undefined ? undefined : expect.stringContaining(refused))
   })
 
+  it('checks a plain name in the folder the command runs in, a link by its name included', async () => {
+    const { root, granted, linked } = machine()
+    const documents = join(root, 'Documents')
+    mkdirSync(documents)
+    // The places never reached of this system, with the temporary folder for a home.
+    const scope: Scope = {
+      places: [
+        { path: root, kind: 'folder', write: false },
+        { path: granted, kind: 'folder', write: false }
+      ],
+      computer: 'off',
+      protected: protectedPaths({ where: { home: root, env: {} }, workspace: join(root, 'workspace') })
+    }
+    const run = (command: string, folder: string, shell?: 'cmd'): ComputerUse => ({ action: 'run', tool: 'Bash', paths: [folder], command, shell })
+    expect(await outsideScope(run('cat .netrc', root), scope, [])).toContain('network passwords')
+    if (process.platform === 'win32') expect(await outsideScope(run('type _netrc', root, 'cmd'), scope, [])).toContain('network passwords')
+    expect(await outsideScope(run('cat vault.kdbx', documents), scope, [])).toContain('keepass databases')
+    const narrow: Scope = { ...scope, places: [{ path: granted, kind: 'folder', write: false }] }
+    if (linked) expect(await outsideScope(run('cat escape', granted), narrow, [])).toContain('outside what the person granted')
+    expect(await outsideScope(run('head -n 5 a.txt', granted), narrow, [])).toBeUndefined()
+  })
+
   it('says whether every place a command names may be changed', async () => {
     const { granted, secret } = machine()
     const scope: Scope = {

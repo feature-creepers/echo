@@ -402,13 +402,12 @@ describe('readCommand: paths it names', () => {
     ['cd ~/Documents && ls', ['~/Documents']],
     ['cd /tmp && cat notes.txt', ['/tmp', '/tmp/notes.txt']],
     ['cd sub && cat ../a.txt', ['sub', 'sub/../a.txt']],
-    ['cat a.txt > ~/out.txt', ['~/out.txt']],
+    ['cat a.txt > ~/out.txt', ['~/out.txt', 'a.txt']],
     ['find ~ -name "*.pdf"', ['~']],
     ['grep -r "/etc/passwd" .', ['.']],
     ['echo /etc/passwd', []],
     ['curl -o ~/Downloads/a.zip https://x/a.zip', ['~/Downloads/a.zip']],
     ['dd if=/dev/zero of=/dev/sda', ['/dev/sda']],
-    ['scp a.txt me@host:/tmp/', []],
     ['git commit -m "fix /etc handling"', []],
     ['echo $(cat ~/.ssh/id_rsa)', ['~/.ssh/id_rsa']],
     ['cat <<EOF > ~/x.txt\nhello\nEOF', ['~/x.txt']],
@@ -419,7 +418,7 @@ describe('readCommand: paths it names', () => {
     ['ls *.txt', ['.']],
     ['git -C ~ diff --no-index .ssh/id_rsa /dev/null', ['~', '~/.ssh/id_rsa']],
     ['env -C ~ cat .ssh/id_rsa', ['~', '~/.ssh/id_rsa']],
-    ['jq -f filter.jq ~/.ssh/id_rsa', ['~/.ssh/id_rsa']],
+    ['jq -f filter.jq ~/.ssh/id_rsa', ['filter.jq', '~/.ssh/id_rsa']],
     ['rg --files ~/.ssh', ['~/.ssh']]
   ])('`%s` names %j', (line, expected) => {
     expect(paths(line)).toEqual(expected)
@@ -447,8 +446,10 @@ describe('readCommand: paths it names', () => {
     expect(readCommand('grep -r x ~').paths).toEqual([{ path: '~', below: true }])
     expect(readCommand('ls ~').paths).toEqual([{ path: '~', below: false }])
     expect(readCommand('cat ~/.*').paths).toEqual([{ path: '~', below: true }])
-    // The archive is a plain name, in the folder the command runs in.
-    expect(readCommand('tar czf a.tgz ~/x').paths).toEqual([{ path: '~/x', below: true }])
+    expect(readCommand('tar czf a.tgz ~/x').paths).toEqual([
+      { path: 'a.tgz', below: true },
+      { path: '~/x', below: true }
+    ])
   })
 
   it('names the folder a wildcard picks from, the one it runs in when it names none', () => {
@@ -465,6 +466,23 @@ describe('readCommand: paths it names', () => {
   it('reads a variable the line set, used whole, as what its value named', () => {
     expect(readCommand('d=~/x; ls $d').unresolved).toBe(false)
     expect(paths('d=~/x; ls $d')).toEqual(['~/x'])
+  })
+})
+
+describe('readCommand: plain names, in the folder the command runs in', () => {
+  it.each([
+    ['cat .netrc', 'posix', ['.netrc']],
+    ['cat vault.kdbx', 'posix', ['vault.kdbx']],
+    ['tar czf a.tgz ~/x', 'posix', ['a.tgz', '~/x']],
+    ['scp a.txt me@host:/tmp/', 'posix', ['a.txt']],
+    ['git status', 'posix', []],
+    ['git commit -m "fix it"', 'posix', []],
+    ['echo hello', 'posix', []],
+    ['grep -r token .', 'posix', ['.']],
+    ['Get-Content _netrc', 'powershell', ['_netrc']],
+    ['type _netrc', 'cmd', ['_netrc']]
+  ] as const)('`%s` in %s names %j', (line, shell, expected) => {
+    expect(paths(line, shell)).toEqual(expected)
   })
 })
 
