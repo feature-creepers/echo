@@ -1,5 +1,5 @@
 import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { folder, removeFolders } from '../../test/sessions.ts'
 import { endingInside, matches } from './inside.ts'
@@ -33,6 +33,12 @@ describe('the paths a wildcard matches', () => {
     const { found, more } = await matches(work, pattern, 10)
     expect(found.sort()).toEqual(expected.map((path) => join(work, path)).sort())
     expect(more).toBe(false)
+  })
+
+  it('gives a match of an absolute brace alternative as it is', async () => {
+    const work = tree()
+    const notes = join(work, 'notes.txt')
+    expect((await matches(join(work, 'sub'), `{${notes.replaceAll(sep, '/')},none}`, 10)).found).toEqual([notes])
   })
 
   it('says when there are more than it gives', async () => {

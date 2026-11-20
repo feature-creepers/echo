@@ -484,6 +484,16 @@ describe('readCommand: paths it names', () => {
     }
   )
 
+  it.each([
+    ['cat {~/.ssh/id_rsa,x}', true],
+    ['cat {/etc/passwd,x}', true],
+    ['cat {x,C:/Users/ada/.ssh/id_rsa}', true],
+    ['cat {a,b}.txt', false],
+    ['cat sub/{a,b}.txt', false]
+  ])('cannot tell where a brace alternative that starts a path anew leads: `%s`: %s', (line, unresolved) => {
+    expect(readCommand(line).unresolved).toBe(unresolved)
+  })
+
   it('reads a variable the line set, used whole, as what its value named', () => {
     expect(readCommand('d=~/x; ls $d').unresolved).toBe(false)
     expect(paths('d=~/x; ls $d')).toEqual(['~/x'])

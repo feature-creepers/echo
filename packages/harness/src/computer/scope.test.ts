@@ -242,6 +242,7 @@ describe('the scope', () => {
     expect(await outsideScope(write(join(granted, 'vault.KDBX')), scope, [])).toContain('never reached')
     expect(await outsideScope(run(`cat '${keys}'/id`), scope, [])).toContain('never reached')
     expect(await outsideScope(run(`cat '${keys}'/*`), scope, [])).toContain('never reached')
+    expect(await outsideScope(run(`cat {'${keys.replaceAll(sep, '/')}'/id,x}`), scope, [])).toContain('never reached')
     // Going through a folder that holds one reaches it too; naming the folder alone does not.
     expect(await outsideScope(run(`grep -r password '${root}'`), scope, [])).toContain('would go through')
     expect(await outsideScope({ action: 'read', tool: 'Grep', paths: [root] }, scope, [])).toContain('would go through')

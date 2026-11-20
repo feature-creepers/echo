@@ -1,5 +1,5 @@
 import { glob, readdir } from 'node:fs/promises'
-import { join, sep } from 'node:path'
+import { isAbsolute, join, sep } from 'node:path'
 
 /**
  * What a use reaches inside a folder, looked for on the disk (docs/SPEC.md, section 12.2): the paths a wildcard
@@ -19,7 +19,8 @@ export async function matches(folder: string, pattern: string, limit: number): P
   // A backslash separates folders on Windows, where no shell escapes with it.
   for await (const match of glob(sep === '\\' ? pattern.replaceAll('\\', '/') : pattern, { cwd: folder })) {
     if (found.length === limit) return { found, more: true }
-    found.push(join(folder, match))
+    // An absolute alternative of a brace matches where it says, not in the folder.
+    found.push(isAbsolute(match) ? match : join(folder, match))
   }
   return { found, more: false }
 }

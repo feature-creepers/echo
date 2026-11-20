@@ -280,7 +280,8 @@ const from = (folder: string, path: string) => (folder === '' || isAbsolute(path
  * word is cut: it names the folder that part picks from, the folder the command runs in when it names none, with the
  * wildcard's pattern for the adapter to match, or what is below it when only the shell knows. `unresolved` when where
  * it leads cannot be told from the line: what cut it is only the shell's to know, or what follows may climb out of
- * that folder with `..`, written or matched (`{a,..}`, `.*`). Nothing for a word that is no path.
+ * that folder with `..`, written or matched (`{a,..}`, `.*`), or start a path anew from a brace (`{~/a,b}`, `{/etc,b}`),
+ * which the shell expands before it reads `~`. Nothing for a word that is no path.
  */
 function pathOf(word: Word, context: Context): { path: string; below: boolean; pattern?: string; unresolved: boolean } | undefined {
   // A script block given to a command is code, read on its own, and no path.
@@ -320,7 +321,11 @@ function pathOf(word: Word, context: Context): { path: string; below: boolean; p
     }
     const after = word.pieces.slice(index + 1)
     const segment = (/[^\\/]*$/.exec(path)?.[0] ?? '') + rest + textOf({ pieces: after })
-    const climbs = segment.includes('..') || /(^|[\\/{,])\.[*?[{]/.test(segment) || after.some((other) => other.kind !== 'text')
+    const climbs =
+      segment.includes('..') ||
+      /(^|[\\/{,])\.[*?[{]/.test(segment) ||
+      (segment.includes('{') && /[{,]([\\/~]|[A-Za-z]:)/.test(segment)) ||
+      after.some((other) => other.kind !== 'text')
     const folder = path.replace(/[^\\/]*$/, '').replace(/(.)[\\/]+$/, '$1')
     const picksFrom = folder === '' && wildcard ? '.' : folder
     // A wildcard of text alone is matched on the disk, from the folder it picks from.
