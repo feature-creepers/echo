@@ -103,6 +103,38 @@ export const importSchema = z.object({
 })
 export type MemoryImport = z.infer<typeof importSchema>
 
+/** How many records of a kind can be found by meaning, of those there are. */
+const meaningCountSchema = z.object({ done: z.number().int().nonnegative(), total: z.number().int().nonnegative() })
+
+/** The model search by meaning runs, as the person is told of it before downloading it. */
+const meaningModelSchema = z.object({
+  name: z.string(),
+  /** The size of its download. */
+  bytes: z.number().int().nonnegative(),
+  /** Where it is downloaded from. */
+  source: z.string(),
+  licence: z.string()
+})
+
+/**
+ * Search by meaning (docs/SPEC.md, section 10.4): whether its model is here, and how much of the memory it can find.
+ * Nothing is downloaded until the person asks.
+ */
+const meaningSchema = z.discriminatedUnion('state', [
+  z.object({
+    state: z.literal('absent'),
+    model: meaningModelSchema,
+    /** Why the last download failed, in words for the person. Left out once another starts. */
+    failed: z.string().optional()
+  }),
+  z.object({ state: z.literal('downloading'), model: meaningModelSchema, received: z.number().nonnegative(), total: z.number().nonnegative() }),
+  /** The lines of the log, and the facts, that have a vector: the rest is found by keyword until the next sleep. */
+  z.object({ state: z.literal('ready'), model: meaningModelSchema, lines: meaningCountSchema, facts: meaningCountSchema }),
+  /** It cannot run where the core runs, and why, in the core's words. */
+  z.object({ state: z.literal('unavailable'), model: meaningModelSchema, why: z.string() })
+])
+export type Meaning = z.infer<typeof meaningSchema>
+
 /** Everything the assistant knows about the user, as a client shows it. */
 export const memoryViewSchema = z.object({
   /** Goes up with each change, so a client holding two copies keeps the later one. */
@@ -115,7 +147,9 @@ export const memoryViewSchema = z.object({
   /** How many days the conversation's words are kept, or null to keep them for good. */
   retentionDays: retentionDaysSchema.nullable(),
   /** The latest import of what the proof of concept knew: when, and how much it brought in. Left out until one is done. */
-  imported: importSchema.optional()
+  imported: importSchema.optional(),
+  /** Search by meaning. Left out by a core that offers none. */
+  meaning: meaningSchema.optional()
 })
 export type MemoryView = z.infer<typeof memoryViewSchema>
 

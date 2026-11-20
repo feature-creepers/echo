@@ -32,12 +32,14 @@ import type { Timers } from './ports/clock.ts'
 import type { Computer } from './ports/computer.ts'
 import type { Desktop } from './ports/desktop.ts'
 import type { Drives } from './ports/drives.ts'
+import type { Embedder } from './ports/embedder.ts'
 import type { Harness } from './ports/harness.ts'
 import type { Log } from './ports/log.ts'
 import type { Printers } from './ports/printers.ts'
 import type { Records } from './ports/records.ts'
 import type { Search } from './ports/search.ts'
 import type { ToolHost } from './ports/tools.ts'
+import type { Vectors } from './ports/vectors.ts'
 import type { Web } from './ports/web.ts'
 import type { Workspace } from './ports/workspace.ts'
 import { inFolder } from './projects/folders.ts'
@@ -69,6 +71,9 @@ export interface CoreOptions {
   blobs: Blobs
   /** Search over the text of the records. Left out, they are searched in memory: for tests and small logs. */
   search?: Search
+  /** The model of search by meaning, and where the records' vectors are kept. Left out, memory is searched by keyword alone. */
+  embedder?: Embedder
+  vectors?: Vectors
   /** Timers, for the assistant to fall asleep after a quiet period. Left out, it sleeps only when told to. */
   timers?: Timers
   log: Log
@@ -301,6 +306,8 @@ export function createCore(options: CoreOptions): Core {
   const memory = createMemory({
     records: options.records,
     search: options.search ?? memorySearch(options.records),
+    embedder: options.embedder,
+    vectors: options.vectors,
     engines,
     log: options.log,
     now,
@@ -577,6 +584,9 @@ export function createCore(options: CoreOptions): Core {
       },
       'memory.sleep-settings.set': (input) => ({ ok: true, output: { memory: memory.setSleep(input) } }),
       'memory.retention.set': (input) => ({ ok: true, output: { memory: memory.setRetention(input.days) } }),
+      'memory.meaning.install': async () => ({ ok: true, output: { memory: await memory.installMeaning() } }),
+      'memory.meaning.cancel': async () => ({ ok: true, output: { memory: await memory.cancelMeaning() } }),
+      'memory.meaning.remove': async () => ({ ok: true, output: { memory: await memory.removeMeaning() } }),
       'memory.sleep-now': () => {
         const asked = memory.sleepNow()
         return asked.ok ? { ok: true, output: {} } : asked

@@ -130,6 +130,7 @@ export {
   type FactKind,
   factIdSchema,
   factKindSchema,
+  type Meaning,
   type MemoryImport,
   type MemoryView,
   RETENTION_CHOICES,

@@ -2,6 +2,7 @@ export { type CommandReading, type NamedPath, type ReadCommand, readCommand, typ
 export { decidePageAct, type PageAct, type PageVerdict } from './browser/policy.ts'
 export { type Core, type CoreOptions, createCore } from './core.ts'
 export type { Admission } from './devices/admission.ts'
+export { MEANING_FLOOR } from './memory/fusion.ts'
 export { createMemory, type Memory, type MemoryChange, type MemoryOptions, type SleepRequest } from './memory/memory.ts'
 export { keywordsOf, searchableText } from './memory/searchable.ts'
 export type {

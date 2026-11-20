@@ -48,8 +48,11 @@ export interface Abilities {
 export interface Remembering {
   /** Something was said or answered: the assistant wakes if it was asleep, and the quiet period starts again. */
   wake(): void
-  /** What to add ahead of what the user said. Lines of the log written from `knownSince` on are known to the session already. */
-  recall(said: string, knownSince?: string): string | undefined
+  /**
+   * What to add ahead of what the user said. Lines of the log written from `knownSince` on are known to the session
+   * already. It may wait a moment for search by meaning, never long.
+   */
+  recall(said: string, knownSince?: string): Promise<string | undefined>
   /**
    * What every session is told about the user. `version` changes only when sleep writes a new profile: sessions
    * are then opened again with it. Facts learned in between reach the next session opened for another reason.

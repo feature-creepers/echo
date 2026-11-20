@@ -58,6 +58,28 @@ export const memoryCommands = {
   },
 
   /**
+   * Download the model of search by meaning, continuing what an earlier download left. Answers once the download has
+   * started, or why it could not; its progress arrives as `memory.changed` events. Vectors are made while the
+   * assistant sleeps.
+   */
+  'memory.meaning.install': {
+    input: z.object({}),
+    output: memoryOutput
+  },
+
+  /** Stop the model's download. What was received stays for the next one. */
+  'memory.meaning.cancel': {
+    input: z.object({}),
+    output: memoryOutput
+  },
+
+  /** Delete the model of search by meaning, and every vector made with it. Keyword search answers alone again. */
+  'memory.meaning.remove': {
+    input: z.object({}),
+    output: memoryOutput
+  },
+
+  /**
    * Put the assistant to sleep now, to make sense of what it heard. Answers at once; the progress arrives
    * as `assistant.state` events. Refused with `sleep-off` when the user chose that it never sleeps.
    */

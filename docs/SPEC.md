@@ -727,7 +727,7 @@ The channel log is kept in full unless the person sets a retention period. Even 
 
 ### 10.3 Storage
 
-**One SQLite file, with its built-in full-text search (FTS5).** Not PostgreSQL with pgvector, which needs a database server beside a desktop app: the wrong weight for a weak machine and a burden to install on three systems. A heavy user produces a few hundred thousand turns in several years, which one SQLite file handles comfortably. One file is easy to back up, export and delete, and works the same on a hosted core.
+**One SQLite file, with its built-in full-text search (FTS5), and the records' vectors beside them (section 10.4).** Not PostgreSQL with pgvector, which needs a database server beside a desktop app: the wrong weight for a weak machine and a burden to install on three systems. A heavy user produces a few hundred thousand turns in several years, which one SQLite file handles comfortably. One file is easy to back up, export and delete, and works the same on a hosted core.
 
 **Records are immutable** (section 5.2). A turn, a fact, a view version or a file version is written once, with a global identifier, the core that wrote it and a sequence number. Correcting a fact writes a new record that replaces the old one. Tables that answer "what is true now" are indexes kept in step with the records, so later sync is an exchange of missing records.
 
@@ -736,12 +736,18 @@ The channel log is kept in full unless the person sets a retention period. Even 
 
 ### 10.4 Embeddings
 
-Vector search is not built: search and recall are by keyword alone, which fails across languages and on misheard words. Building it is approved (issue #10, 20 November 2026): multilingual-e5-small, downloaded once from Hugging Face, run with transformers.js in the core's process, vectors in sqlite-vec. The design asks of it: a small model running locally, since harnesses provide none and the product uses no API keys; multilingual, since the person mixes French and English; vectors kept in the same SQLite file (sqlite-vec), each with the name of its model so the index can be rebuilt; embedding during sleep, never delaying speech; and keyword search answering alone whenever vectors are missing.
+Keywords fail across languages ("la voiture" does not find "the car") and on a word the recogniser wrote wrongly. Search by meaning finds both. It needs a small model running locally, since harnesses provide none and the product uses no API keys, and one that reads several languages, since the person mixes French and English.
+
+- **The model.** multilingual-e5-small (intfloat, MIT): about 100 languages, 384 dimensions, in its 8-bit copy laid out for transformers.js (`Xenova/multilingual-e5-small`, 135 MB). The core downloads it once from Hugging Face into its own data folder, only when the person asks (section 10.7), with the checks and resume of the speech models (`packages/models`). The prefixes it was trained with are the adapter's: "query: " before what the person said, "passage: " before a record's text.
+- **Where it runs.** In the core's process, in a worker thread of `packages/embedder`, with transformers.js on ONNX Runtime: one processor thread on the light tier, two otherwise. ONNX Runtime blocks the thread that runs a model, so the core's own thread never does. Not in the speech process: vectors are the core's derived data (section 5.2), sherpa-onnx there carries another ONNX Runtime that Windows would not load beside this one, and speech must not wait. The worker starts when there are texts and closes after five minutes without use; before the model is downloaded, it is started once to see that its runtime runs here. transformers.js fetches nothing by itself.
+- **Where vectors are kept.** In the same SQLite file, in a `vec0` table of sqlite-vec, keyed by the record's row number, each with the name of its model, the record's type and date (`packages/store/src/search/vectors.ts`). The table is derived data, made when the extension loads rather than by a migration. An erasure takes the vectors of what it names in its own transaction, so forgetting and the retention period take them too. Vectors are never synced or exported: each core makes its own, with its own model.
+- **Limits.** onnxruntime-node has no build for macOS on Intel, nor sqlite-vec for Windows on Arm; neither is a release target, and there search by meaning is unavailable, with the reason on the Memory page. The model reads the first 512 tokens of a text: the rest of a long exchange is found by keyword only. Sleep's reconciliation of facts and forgetting by description stay on keywords.
 
 ### 10.5 Reading
 
-- **Automatic.** Before each turn, the core searches what was said by keyword, with no model call: up to four facts true now (half-life a year) and up to three lines of the log (half-life 45 days), leaving out what the session already knows. They go ahead of what the person said, in brackets, as something to use if it helps and not to mention otherwise; the exchange is recorded with the person's words alone. A search that fails never stops the answer.
-- **On demand.** The model calls `memory_search(query, after, before)` when it needs more ("what did we decide about the trip in March?").
+- **Automatic.** Before each turn, the core searches what was said, with no call to the AI program: by keyword, and by meaning when the vector of what was said is made within 150 milliseconds, a tenth of the time to the first sound (section 8.4). Up to four facts true now (half-life a year) and up to three lines of the log (half-life 45 days), leaving out what the session already knows. They go ahead of what the person said, in brackets, as something to use if it helps and not to mention otherwise; the exchange is recorded with the person's words alone. A search that fails never stops the answer.
+- **On demand.** The model calls `memory_search(query, after, before)` when it needs more ("what did we decide about the trip in March?"); the vector of the query is waited for up to two seconds.
+- **Both at once** (`packages/core/src/memory/fusion.ts`). Keyword hits and hits by meaning are merged by reciprocal rank fusion: a record scores the sum, over the lists it is in, of 1 / (60 + its rank), the constant of Cormack, Clarke and Büttcher (SIGIR 2009); ties go to the more recent. Each list is ranked by its own score, hits by meaning by their similarity divided by `1 + age / half-life`, and asked for three times what is kept. A hit by meaning counts only from a similarity of 0.815, so that a turn about nothing remembered recalls nothing: measured on pairs of English and French sentences (`packages/embedder/test/pairs.ts`), those saying the same thing scored 0.823 to 0.921, unrelated ones at most 0.810. With no model ready, no vector in time, or nowhere to keep vectors, keyword hits answer alone, exactly as they would without search by meaning.
 
 What sleep has not yet processed is still found: recall searches the log as well as the facts.
 
@@ -768,6 +774,8 @@ An answer that cannot be read is asked for once more, then the batch is passed o
 **The profile.** When the facts changed, sleep ends by writing a new profile: the most important facts in at most 250 words, overrides first. Every session is given the profile and the facts learned after it; a new profile opens a new session at the next turn.
 
 **Thread summaries.** Sleep then updates the summary of each thread used since, eight at most, the most recent first: one call per thread, given its summary so far and its latest 24 lines, answering in at most 100 words what the thread is about, what was done or decided, where it stands, what is open, and the people, places and files it names. The orchestrator reads each summary (240 characters) to know where a request belongs; a thread's new session is given its summary.
+
+**Vectors.** Last, once its model is ready, sleep gives a vector to each record that has text to search and none yet (section 10.4): 32 texts at a time, the newest first, each batch kept as it is made. Speaking stops it, and the next sleep goes on from there. Nothing is embedded while awake or during an answer, so what was said since the last sleep is found by keyword until the next. The first time the model is ready, the whole log is behind.
 
 **A fact** has a statement, a kind (person, preference, project, date, override, other), how it came (from conversation, told, edited), the turns it came from, and when it was first learned. A later version replaces it; a fact that replaces another ends it, as history. Overrides of the critical stance (section 11.4) are facts of the kind `override`.
 
@@ -1423,7 +1431,7 @@ packages/core/src/
 ├── engines/         which harnesses are ready, and the one the assistant runs on
 ├── speech/          reply text cut into sentences; the language a text is in
 ├── views/           views and the stage (screen.ts), the shapes a map names, live feeds, and the web readings both keep (readings.ts)
-├── memory/          facts, recall, sleep, extraction and reconciliation, the profile, retention, summaries
+├── memory/          facts, recall, sleep, extraction and reconciliation, the profile, retention, summaries, search by meaning (meaning.ts) and its merge with keywords (fusion.ts)
 ├── library/         saved widgets
 ├── personas/        the default personas (defaults.ts, the only place their names are written), the choice, objections
 ├── settings/        the defaults, then every choice recorded, in order

@@ -31,7 +31,7 @@ async function run<Name extends CommandName>(core: ReturnType<typeof start>['cor
 
 /** Lets what the core started without waiting for it come to its end. */
 async function settled(): Promise<void> {
-  for (let turn = 0; turn < 10; turn++) await Promise.resolve()
+  for (let turn = 0; turn < 20; turn++) await Promise.resolve()
 }
 
 describe('a core', () => {

@@ -22,7 +22,7 @@ export const MEMORY_INSTRUCTIONS = [
 
 /** What the tools need from the memory. */
 interface MemoryActions {
-  find(query: string, after?: string, before?: string): Recalled
+  find(query: string, after?: string, before?: string): Promise<Recalled>
   /** Keep a fact. Gives the fact as known, and whether it was known already. */
   remember(text: string, kind: FactKind): { fact: KnownFact; known: boolean }
   /** The facts true now that best match a description, best first. */
@@ -59,10 +59,10 @@ export function memoryTools(memory: MemoryActions): Tool[] {
           required: ['query']
         }
       },
-      run(input) {
+      async run(input) {
         const asked = searchInput.safeParse(input)
         if (!asked.success) return refuse('Give the words to look for as "query".')
-        const { facts, exchanges } = memory.find(asked.data.query, asked.data.after, asked.data.before)
+        const { facts, exchanges } = await memory.find(asked.data.query, asked.data.after, asked.data.before)
         if (facts.length === 0 && exchanges.length === 0) return { ok: true, text: 'Nothing in memory matches that.' }
         const parts: string[] = []
         if (facts.length > 0) parts.push(`Facts you know:\n${facts.map(listed).join('\n')}`)

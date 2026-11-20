@@ -296,13 +296,13 @@ describe('remembering, correcting and forgetting', () => {
     expect(records.read([FACT, PROFILE]).map((record) => record.payload)).toEqual([null, null, null])
     expect(records.read([ERASURE])).toHaveLength(1)
     expect(memory.profile()).toBeUndefined()
-    expect(memory.recall('where do I park')).toBeUndefined()
+    expect(await memory.recall('where do I park')).toBeUndefined()
     expect(setup({ records }).memory.facts()).toEqual([])
   })
 })
 
 describe('forgetting the words a fact came from', () => {
-  it('erases the lines it was learned from, their calls and the views closed since, and leaves the others', () => {
+  it('erases the lines it was learned from, their calls and the views closed since, and leaves the others', async () => {
     const records = memoryRecords({ now: () => NOW })
     const kept = say(records, 'What is the weather?', 'Sunny.')
     const learned = say(records, 'My locker code is 4521.', 'Noted.', 'gym')
@@ -326,7 +326,7 @@ describe('forgetting the words a fact came from', () => {
     expect(payloads(VIEW_SHOWN)).toEqual([null, { id: 'view-open', turn: learned.turn, title: 'Locker' }])
     expect(payloads(VIEW_CLEARED)).toEqual([{ view: 'view-closed' }])
     expect(told).toEqual([[learned.turn]])
-    expect(memory.recall('locker code')).toBeUndefined()
+    expect(await memory.recall('locker code')).toBeUndefined()
     expect(memorySearch(records).search({ text: 'weather', types: [EXCHANGE], limit: 5 })).toHaveLength(1)
     expect(memorySearch(records).search({ text: 'locker', types: [EXCHANGE], limit: 5 })).toEqual([])
   })
@@ -405,7 +405,7 @@ describe('what the proof of concept knew', () => {
     })
     const { memory } = setup({ records, harness })
     memory.bringIn(found)
-    expect(memory.recall('where is the boat moored')).toContain('On 2026-03-01, in conversation: "The boat is moored in Brest.')
+    expect(await memory.recall('where is the boat moored')).toContain('On 2026-03-01, in conversation: "The boat is moored in Brest.')
     await sleep(memory)
     expect(extracted).toEqual([])
   })
@@ -441,7 +441,7 @@ describe('forgetting and summaries', () => {
 describe('keeping the conversation for a period', () => {
   const DAY = 24 * 60 * 60_000
 
-  it('erases the words older than the period at once, keeps what was learned from them, and keeps the period', () => {
+  it('erases the words older than the period at once, keeps what was learned from them, and keeps the period', async () => {
     let clock = new Date('2026-09-01T10:00:00Z')
     const records = memoryRecords({ now: () => clock })
     const old = say(records, 'My locker code is pineapple.')
@@ -462,7 +462,7 @@ describe('keeping the conversation for a period', () => {
     expect(records.read([EXCHANGE]).map((record) => (record.payload as Exchange | null)?.turn ?? null)).toEqual([null, recent.turn])
     expect(records.read([VIEW_SHOWN]).map((record) => (record.payload as { id: string } | null)?.id ?? null)).toEqual([null, 'open'])
     expect(erased).toEqual([[old.turn]])
-    expect(opened.recall('pineapple') ?? '').not.toContain('locker code')
+    expect((await opened.recall('pineapple')) ?? '').not.toContain('locker code')
     expect(opened.read().groups[0]?.facts[0]).toMatchObject({ id: fact.fact, sources: [{ turn: old.turn }] })
     expect(opened.read().groups[0]?.facts[0]?.sources[0]?.said).toBeUndefined()
     expect(createMemory(setupOptions(records, scriptedHarness())).read().retentionDays).toBe(30)
@@ -506,25 +506,25 @@ describe('keeping the conversation for a period', () => {
 })
 
 describe('recall', () => {
-  it('brings the facts and the words that bear on what was said', () => {
+  it('brings the facts and the words that bear on what was said', async () => {
     const records = memoryRecords({ now: () => new Date('2026-10-01T09:00:00Z') })
     say(records, 'The plumber comes on Thursday about the leak.', 'I will remind you.')
     const { memory } = setup({ records })
     memory.remember('The user’s plumber is called Marco.', 'person')
 
-    const block = memory.recall('Has the plumber called back?')
+    const block = await memory.recall('Has the plumber called back?')
     expect(block).toContain('[From your memory')
     expect(block).toContain('- The user’s plumber is called Marco. (known since 2026-11-17)')
     expect(block).toContain('- On 2026-10-01, in conversation: "The plumber comes on Thursday about the leak.')
-    expect(memory.recall('What is the weather like?')).toBeUndefined()
+    expect(await memory.recall('What is the weather like?')).toBeUndefined()
   })
 
-  it('leaves out the lines the session already knows', () => {
+  it('leaves out the lines the session already knows', async () => {
     const records = memoryRecords({ now: () => NOW })
     say(records, 'The plumber comes on Thursday.')
     const { memory } = setup({ records })
-    expect(memory.recall('plumber', NOW.toISOString())).toBeUndefined()
-    expect(memory.recall('plumber', '2026-11-18T00:00:00Z')).toContain('plumber comes')
+    expect(await memory.recall('plumber', NOW.toISOString())).toBeUndefined()
+    expect(await memory.recall('plumber', '2026-11-18T00:00:00Z')).toContain('plumber comes')
   })
 })
 

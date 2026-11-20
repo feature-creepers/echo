@@ -802,7 +802,8 @@ export function createChannel(options: ChannelOptions): Channel {
         ? `(What you may do on the computer changed since your instructions were written. It now stands as follows, in place of what they said:)\n${told ?? 'You have no access to the computer.'}\n\n`
         : ''
     if (runtime.live) runtime.live.told = told
-    const recalled = memory?.recall(waiting.text, runtime.live?.knownSince)
+    const recalled = await memory?.recall(waiting.text, runtime.live?.knownSince)
+    if (waiting.turn.stopped) return skip('stopped')
     const { handed } = waiting.turn
     const images = engine.capabilities?.images === true
     const note = noteForThread(handed, waiting.text, images)
@@ -1008,7 +1009,13 @@ export function createChannel(options: ChannelOptions): Channel {
     const session = orchestratorSession(engine)
     // A briefing has nothing to recall by; a scheduled task is recalled by its request, as if the person had said it.
     const asked = turn.exchange.trigger === undefined || turn.exchange.trigger === 'task'
-    const recalled = asked ? memory?.recall(turn.exchange.said, orchestrator?.knownSince) : undefined
+    const recalled = asked ? await memory?.recall(turn.exchange.said, orchestrator?.knownSince) : undefined
+    if (deciding !== turn) return
+    if (turn.stopped) {
+      deciding = undefined
+      finish(turn, 'stopped')
+      return void decideNext()
+    }
     const images = engine.capabilities?.images === true
     const asking = day ? `${message(turn, images)}\n\n${day}` : message(turn, images)
     const text = recalled ? `${recalled}\n\n${asking}` : asking

@@ -18,18 +18,22 @@ import { z } from 'zod'
 import { EXCHANGE } from '../channel/channel.ts'
 import type { EngineRoom } from '../engines/engines.ts'
 import type { Timers } from '../ports/clock.ts'
-import type { Harness } from '../ports/harness.ts'
+import type { Embedder } from '../ports/embedder.ts'
+import type { Harness, Signal } from '../ports/harness.ts'
 import type { Log } from '../ports/log.ts'
 import { ERASURE, type NewRecord, type Records, type StoredRecord } from '../ports/records.ts'
-import type { Search } from '../ports/search.ts'
+import type { Search, SearchHit } from '../ports/search.ts'
+import type { Vectors } from '../ports/vectors.ts'
 import { shorten } from '../text.ts'
 import type { Tool } from '../tools/tools.ts'
 import { UnreadableAnswer } from './answer.ts'
 import { EARLIER_LINE, type EarlierFact, type EarlierLine, earlierLineSchema, IMPORTED, importedSchema } from './earlier.ts'
 import { type Candidate, extract } from './extract.ts'
 import { createFactBook, FACT, type FactRecord, type KnownFact } from './facts.ts'
+import { fuse } from './fusion.ts'
+import { createMeaningSearch, type Stopper, stopper } from './meaning.ts'
 import { basisOf, PROFILE, profileFor, readProfileRecord, writeProfile } from './profile.ts'
-import { recallBlock, recallFor } from './recall.ts'
+import { type NearestTo, type Recalled, recallBlock, recallFor } from './recall.ts'
 import { type Decision, reconcile } from './reconcile.ts'
 import { CONVERSATION_RECORDS, expiredNow, RETENTION_PASS_MS, RETENTION_SET, readRetention, wordsOfTurns } from './retention.ts'
 import { foldWord } from './searchable.ts'
@@ -42,8 +46,9 @@ import { MEMORY_INSTRUCTIONS, memoryTools } from './tools.ts'
  *
  * Awake, it keeps the words: the channel writes each exchange to the log, which the search index takes in at
  * once. Asleep, it makes sense of them: what was said since the last sleep is read in batches by a cheap
- * model, which picks out facts about the user and weighs each against the similar facts already known. Before
- * each turn, what bears on it is recalled from the facts and the log, with no model call.
+ * model, which picks out facts about the user and weighs each against the similar facts already known, and what has
+ * no vector yet is given one, for search by meaning. Before each turn, what bears on it is recalled from the facts and
+ * the log, with no call to the AI program.
  */
 
 /** The type of the record written after each batch a sleep made sense of: the last exchange it read. */
@@ -60,10 +65,23 @@ const SIMILAR_FACTS = 3
 const SOURCE_LENGTH = 200
 /** Two facts are both meant by a description when the second matches it nearly as well as the first. */
 const AMBIGUOUS = 0.8
+/**
+ * How long a vector of what was said is waited for: before each turn, within the 1.5 seconds from the end of speech to
+ * the first sound (docs/SPEC.md, section 8.4); for a search the model asked for, longer. Past it, keywords answer alone.
+ */
+const RECALL_BUDGET_MS = 150
+const SEARCH_WAIT_MS = 2000
+/** What a search the model asks for gives at most: facts, and lines of the log. */
+const SEARCHED_FACTS = 24
+const SEARCHED_LINES = 6
 
 export interface MemoryOptions {
   records: Records
   search: Search
+  /** The model of search by meaning. Left out, memory is searched by keyword alone. */
+  embedder?: Embedder | undefined
+  /** Where the records' vectors are kept. Left out, memory is searched by keyword alone. */
+  vectors?: Vectors | undefined
   /** Where the harness for the sleep's model calls comes from. */
   engines: Pick<EngineRoom, 'active'>
   log: Log
@@ -90,7 +108,7 @@ export type SleepRequest = { ok: true; done: Promise<void> } | { ok: false; erro
 
 export interface Memory {
   /** What to add ahead of what the user said: the memories that bear on it. Nothing when none does. */
-  recall(said: string, knownSince?: string): string | undefined
+  recall(said: string, knownSince?: string): Promise<string | undefined>
   /** The profile every session is given, and the version of the last one sleep wrote. Nothing while nothing is known. */
   profile(): { text: string; version?: string } | undefined
   /** What a thread is about and where it stands, as sleep last wrote it. Nothing before its first summary. */
@@ -114,6 +132,12 @@ export interface Memory {
   setSleep(input: CommandInput<'memory.sleep-settings.set'>): MemoryView
   /** Keep the conversation's words for so many days, or for good with null. What is older is erased at once. */
   setRetention(days: number | null): MemoryView
+  /** Download the model of search by meaning. Resolves once the download has started, or could not. */
+  installMeaning(): Promise<MemoryView>
+  /** Stop that download. */
+  cancelMeaning(): Promise<MemoryView>
+  /** Delete the model and every vector. */
+  removeMeaning(): Promise<MemoryView>
   /**
    * Keep what the proof of concept knew, found in its folder (`from`): facts not known yet, and lines of its history
    * not brought in before. Says how much was new.
@@ -192,6 +216,7 @@ export function createMemory(options: MemoryOptions): Memory {
     revision++
     emit({ type: 'event', name: 'memory.changed', memory: read() })
   }
+  const meaning = createMeaningSearch({ embedder: options.embedder, vectors: options.vectors, timers: options.timers, log, now, changed })
 
   /** Write records and take them in. */
   const write = (written: readonly NewRecord[]): StoredRecord[] => {
@@ -240,20 +265,64 @@ export function createMemory(options: MemoryOptions): Memory {
       return ofKind.length === 0 ? [] : [{ kind, facts: ofKind }]
     })
     const profile = profiles.at(-1)
-    return { revision, groups, ...(profile ? { profile: profile.text } : {}), sleep: settings, retentionDays, ...(imported ? { imported } : {}) }
+    const meant = meaning.view()
+    return {
+      revision,
+      groups,
+      ...(profile ? { profile: profile.text } : {}),
+      sleep: settings,
+      retentionDays,
+      ...(imported ? { imported } : {}),
+      ...(meant ? { meaning: meant } : {})
+    }
   }
 
-  const find = (query: string, after?: string, before?: string) => {
-    const at = now().toISOString()
-    const period = { ...(after === undefined ? {} : { after }), ...(before === undefined ? {} : { before }) }
-    const facts = unique(
-      search.search({ text: query, types: [FACT], limit: 24, ...period, recency: { now: at, halfLifeDays: 365 } }).flatMap((hit) => {
+  /** The facts true now among hits, each once, at its best score. */
+  const factsOf = (hits: readonly SearchHit[]) =>
+    unique(
+      hits.flatMap((hit) => {
         const fact = book.byRecord(hit.record)
         return fact ? [{ fact, score: hit.score }] : []
       })
     )
-    const said = search.search({ text: query, types: [EXCHANGE, EARLIER_LINE], limit: 6, ...period, recency: { now: at, halfLifeDays: 90 } })
+
+  /** By keyword alone: how a fact to forget is found by its description, and what a search finds with no vector. */
+  const find = (query: string, after?: string, before?: string) => {
+    const at = now().toISOString()
+    const period = { ...(after === undefined ? {} : { after }), ...(before === undefined ? {} : { before }) }
+    const facts = factsOf(search.search({ text: query, types: [FACT], limit: SEARCHED_FACTS, ...period, recency: { now: at, halfLifeDays: 365 } }))
+    const said = search.search({
+      text: query,
+      types: [EXCHANGE, EARLIER_LINE],
+      limit: SEARCHED_LINES,
+      ...period,
+      recency: { now: at, halfLifeDays: 90 }
+    })
     return { facts, said }
+  }
+
+  /** What the model searched for: by meaning too, when a vector of it comes within two seconds. */
+  const searchFor = async (query: string, after?: string, before?: string): Promise<Recalled> => {
+    const vector = await meaning.vectorOf(query, SEARCH_WAIT_MS)
+    if (!vector) {
+      const { facts, said } = find(query, after, before)
+      return { facts: facts.map(({ fact }) => fact), exchanges: said }
+    }
+    const at = now().toISOString()
+    const period = { ...(after === undefined ? {} : { after }), ...(before === undefined ? {} : { before }) }
+    const merged = (types: string[], wanted: number, halfLifeDays: number) => {
+      const recency = { now: at, halfLifeDays }
+      return fuse({
+        keyword: search.search({ text: query, types, limit: wanted * 3, ...period, recency }),
+        meaning: meaning.nearest(vector, { types, limit: wanted * 3, ...period }),
+        recency,
+        limit: wanted
+      })
+    }
+    return {
+      facts: factsOf(merged([FACT], SEARCHED_FACTS, 365)).map(({ fact }) => fact),
+      exchanges: merged([EXCHANGE, EARLIER_LINE], SEARCHED_LINES, 90)
+    }
   }
 
   /** The known facts most like a text, best first, each once. */
@@ -427,11 +496,21 @@ export function createMemory(options: MemoryOptions): Memory {
     })
   }
 
-  const dream = async (dreaming: number) => {
+  const dream = async (dreaming: number, signal: Signal) => {
     const woken = () => asleep?.generation !== dreaming
     const harness = await engines.active()
+    if (woken()) return
+    if (harness && (await makeSense(harness, woken))) return
+    // Last, each record with no vector yet is given one, the newest first: what is left waits for the next sleep.
+    await meaning.embedMissing(signal)
     if (woken() || !harness) return
+    work = undefined
+    lastSlept = now().toISOString()
+    announce()
+  }
 
+  /** Facts, the profile and the summaries, from what was said since the last sleep. True when woken meanwhile. */
+  const makeSense = async (harness: Harness, woken: () => boolean): Promise<boolean> => {
     const all = pending()
     work = { done: 0, total: all.length }
     announce()
@@ -443,7 +522,7 @@ export function createMemory(options: MemoryOptions): Memory {
       try {
         decisions = await understand(harness, batch)
       } catch (error) {
-        if (woken()) return
+        if (woken()) return true
         if (!(error instanceof UnreadableAnswer)) {
           // The harness could not be reached: the rest waits for the next sleep, from this batch on.
           log.error(`Sleep stopped: ${error instanceof Error ? error.message : String(error)}`)
@@ -458,7 +537,7 @@ export function createMemory(options: MemoryOptions): Memory {
         decisions = []
       }
       // Woken during the call: the batch is made sense of again at the next sleep.
-      if (woken()) return
+      if (woken()) return true
       retried = false
       const last = batch.at(-1) as LoggedExchange
       const learned = recordsFor(decisions, batch)
@@ -475,7 +554,7 @@ export function createMemory(options: MemoryOptions): Memory {
     if (facts.length > 0 && profile?.basis !== basisOf(facts)) {
       try {
         const text = await writeProfile(harness, facts, now())
-        if (woken()) return
+        if (woken()) return true
         if (text !== '') {
           const basis = basisOf(book.current())
           const [record] = records.append([{ type: PROFILE, payload: { text, basis } }])
@@ -483,14 +562,11 @@ export function createMemory(options: MemoryOptions): Memory {
           changed()
         }
       } catch (error) {
-        if (woken()) return
+        if (woken()) return true
         log.error(`The profile could not be written: ${error instanceof Error ? error.message : String(error)}`)
       }
     }
-    if (await summarise(harness, woken)) return
-    work = undefined
-    lastSlept = now().toISOString()
-    announce()
+    return summarise(harness, woken)
   }
 
   /**
@@ -520,12 +596,16 @@ export function createMemory(options: MemoryOptions): Memory {
     return false
   }
 
+  /** Stopped on waking: what the sleep is waiting for is no longer wanted. */
+  let sleeping: Stopper | undefined
+
   const fallAsleep = (): Promise<void> => {
     if (asleep) return running
     generation++
     asleep = { since: now().toISOString(), generation }
     announce()
-    running = dream(generation).catch((error: unknown) => {
+    sleeping = stopper()
+    running = dream(generation, sleeping.signal).catch((error: unknown) => {
       log.error(`Sleep failed: ${error instanceof Error ? error.message : String(error)}`)
     })
     return running
@@ -553,11 +633,9 @@ export function createMemory(options: MemoryOptions): Memory {
   })
 
   const tools = memoryTools({
-    find: (query, after, before) => {
-      const { facts, said } = find(query, after, before)
-      return { facts: facts.map(({ fact }) => fact), exchanges: said }
-    },
+    find: searchFor,
     remember,
+    // A fact to forget is found by keyword alone: its description names it.
     match(description) {
       const { facts } = find(description)
       const best = facts[0]
@@ -567,9 +645,13 @@ export function createMemory(options: MemoryOptions): Memory {
   })
 
   return {
-    recall(said, knownSince) {
+    async recall(said, knownSince) {
       try {
-        return recallBlock(recallFor({ search, facts: book, now }, { said, knownSince }))
+        const vector = await meaning.vectorOf(said, RECALL_BUDGET_MS)
+        const nearest: NearestTo | undefined = vector
+          ? (types, limit, before) => meaning.nearest(vector, { types, limit, ...(before === undefined ? {} : { before }) })
+          : undefined
+        return recallBlock(recallFor({ search, facts: book, now, nearest }, { said, knownSince }))
       } catch (error) {
         // A memory that cannot be searched must not stop the answer.
         log.error(`Recall failed: ${error instanceof Error ? error.message : String(error)}`)
@@ -589,6 +671,7 @@ export function createMemory(options: MemoryOptions): Memory {
       logGrew = true
       schedule.heard()
       if (!asleep) return
+      sleeping?.stop()
       asleep = undefined
       work = undefined
       announce()
@@ -630,6 +713,18 @@ export function createMemory(options: MemoryOptions): Memory {
       return read()
     },
     bringIn,
+    async installMeaning() {
+      await meaning.install()
+      return read()
+    },
+    async cancelMeaning() {
+      await meaning.cancel()
+      return read()
+    },
+    async removeMeaning() {
+      await meaning.remove()
+      return read()
+    },
     onEvent(listener) {
       listeners.add(listener)
       return () => void listeners.delete(listener)
@@ -637,6 +732,8 @@ export function createMemory(options: MemoryOptions): Memory {
     close() {
       schedule.close()
       cancelRetention()
+      sleeping?.stop()
+      void meaning.cancel()
     }
   }
 }
