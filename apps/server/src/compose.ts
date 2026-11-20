@@ -9,7 +9,7 @@ import { serveTools } from '@repo/tools'
 import manifest from '../package.json' with { type: 'json' }
 import { localToken } from './auth/local-token.ts'
 import type { Config } from './config.ts'
-import { publicWeb } from './web/public-web.ts'
+import { createPublicWeb } from './web/public-web.ts'
 
 export interface Composition {
   core: Core
@@ -46,7 +46,7 @@ export async function compose(config: Config): Promise<Composition> {
     log,
     harnesses: createHarnesses({ folder: join(config.data, 'harness'), log }),
     newId: randomUUID,
-    web: publicWeb,
+    web: createPublicWeb(),
     computer,
     browser,
     desktop,

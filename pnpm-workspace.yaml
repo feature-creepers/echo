@@ -57,6 +57,7 @@ catalog:
   tailwindcss: ^4.3.5
   turbo: ^2.11.11
   typescript: ^7.0.2
+  undici: ^8.12.4
   vite: ^8.3.8
   vitest: ^5.1.0
   xlsx: https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz

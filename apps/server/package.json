@@ -18,7 +18,8 @@
     "@repo/protocol": "workspace:*",
     "@repo/screen": "workspace:*",
     "@repo/store": "workspace:*",
-    "@repo/tools": "workspace:*"
+    "@repo/tools": "workspace:*",
+    "undici": "catalog:"
   },
   "devDependencies": {
     "@repo/tsconfig": "workspace:*",

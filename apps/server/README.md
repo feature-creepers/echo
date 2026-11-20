@@ -2,7 +2,7 @@
 
 The core as a process: it opens the user's data, wires the adapters into the core, and listens for clients on this machine. The desktop app builds it into its own bundle and starts it as an Electron utility process.
 
-`src/compose.ts` is the only file in the repository that knows both the core and the adapters.
+`src/compose.ts` is the only file in the repository that knows both the core and the adapters. What the core reads itself, live figures and map shapes, goes through `src/web/public-web.ts`: https only, from public addresses only, each name checked by the addresses it leads to and connected to one of those, at every redirect.
 
 - **Runs in:** Node
 - **May import:** `@repo/core`, the contracts and every adapter

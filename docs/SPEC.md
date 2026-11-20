@@ -599,7 +599,7 @@ A Metric, a Progress or a series of a Chart takes a `feed`: a public JSON addres
 
 - **A figure**: `path` leads to it, keys and indices joined by dots (`0.markets.2.outcomePrices.0`), reading through a string that holds JSON. `scale` multiplies it and `decimals` rounds it; a text is shown as it is.
 - **A series**: `path` leads to an array whose items give a label at `x` and a value at `y`. The latest 120 points are drawn.
-- **Reading.** Every 300 seconds by default, 60 at least. The core reads the address (https only, never a private address, 2 MB at most) and keeps each reading half a minute, so blocks and clients naming one address share it. The figure written in the view shows until the first reading, and the last one stays when a reading fails.
+- **Reading.** Every 300 seconds by default, 60 at least. The core reads the address (https only, 2 MB at most, and never a private address: neither by its name nor by the address the name leads to when it connects, at every redirect) and keeps each reading half a minute, so blocks and clients naming one address share it. The figure written in the view shows until the first reading, and the last one stays when a reading fails.
 - **Checked before shown.** Every feed is read when its view is shown; a path that finds nothing, an answer that is not JSON, or a Progress outside 0 to 1 goes back to the model to correct.
 
 ### 9.5 Actions
@@ -1048,6 +1048,8 @@ The files a command changed, created or deleted, 200 at most, are kept with thei
 | Map shapes and street tiles                                     | Fetched from public addresses: the GeoJSON by the core, the tiles by the window                                 |
 | The browser's profile: sign-ins, cookies, history, downloads    | Stay on the person's machine; downloads in the assistant's folder. Sites see the person as usual                |
 | What the assistant reads and sees in the browser                | The harness's vendor, as tool results: the text, outlines and pictures of the pages it opened. Never a password |
+
+What the core reads itself, live figures and map shapes, comes only from public addresses, never from this computer or its local network (section 9.4).
 
 Version 1 has no server of ours, no account and no analytics. With the later service, a person who chooses it has their records on their own hosted instance (section 5).
 
