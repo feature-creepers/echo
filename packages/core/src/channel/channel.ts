@@ -162,8 +162,11 @@ export interface Channel {
    * model is asked. Its card goes on top of the stream. Silent, it is shown and kept, and not said.
    */
   remind(reminder: { sentence: string; language: string | undefined; card: Checked; silent: boolean }): TurnId
-  /** Carry out a task the person scheduled, as if they had just asked it. Silent, its answer is shown and not said. */
-  task(task: { title: string; request: string; language: string | undefined; silent: boolean }): TurnId
+  /**
+   * Carry out a task the person scheduled, as if they had just asked it. Silent, its answer is shown and not said.
+   * What set it off, `arrived`, is sent with its request, and kept out of the transcript, recall and memory.
+   */
+  task(task: { title: string; request: string; arrived?: string | undefined; language: string | undefined; silent: boolean }): TurnId
   /**
    * Take up what the last run of the app left: each request a thread was answering when it stopped, and what a
    * thread asked to be woken with, each run by its thread out of sight, as if just asked. Once only.
@@ -968,7 +971,7 @@ export function createChannel(options: ChannelOptions): Channel {
   /** What the person said, or what the assistant starts on by itself, and what they handed over with it. */
   const what = (turn: Turn) => {
     if (turn.exchange.trigger === 'task')
-      return `A task the person scheduled is due now ("${turn.title ?? turn.exchange.said}"). Nobody has said anything: carry it out as if they had just asked it, and answer them as usual. They may be away from the screen: if something needs their approval, ask as usual; unanswered, it counts as no.\nThe request: ${turn.exchange.said}`
+      return `A task the person scheduled is due now ("${turn.title ?? turn.exchange.said}"). Nobody has said anything: carry it out as if they had just asked it, and answer them as usual. They may be away from the screen: if something needs their approval, ask as usual; unanswered, it counts as no.\nThe request: ${turn.exchange.said}${turn.arrived === undefined ? '' : `\n\n${turn.arrived}`}`
     if (turn.exchange.trigger === 'greeting')
       return 'The person has just opened the app; nobody has said anything yet. Greet them by their name if you know it, in one short sentence, then give a brief briefing for today: the day, the weather where they are if you can find it (their time zone says roughly where), and anything left pending from earlier topics. Keep it short. Either say it all yourself, or pass it whole to a thread if a view of the day would help, saying nothing yourself.'
     const note = noteForOrchestrator(turn.handed)
@@ -1232,7 +1235,7 @@ export function createChannel(options: ChannelOptions): Channel {
       return started
     },
 
-    task({ title, request, language, silent }) {
+    task({ title, request, arrived, language, silent }) {
       const exchange: Exchange = {
         turn: newId(),
         at: now().toISOString(),
@@ -1243,6 +1246,7 @@ export function createChannel(options: ChannelOptions): Channel {
         outcome: 'running'
       }
       const turn = newTurn(exchange, language, NOTHING_HANDED, silent, title)
+      turn.arrived = arrived
       transcript.push(exchange)
       current = turn
       if (deciding) pending = turn

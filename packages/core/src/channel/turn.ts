@@ -45,6 +45,11 @@ export interface Turn {
   silent: boolean
   /** What a notification calls it, for a turn the person did not start: the scheduled task's title. */
   title: string | undefined
+  /**
+   * What set a scheduled task off, the files or mails that arrived: sent with its request, never kept in the
+   * transcript, since others may have written it.
+   */
+  arrived: string | undefined
   /** A notification already told the person it is done. */
   noticed: boolean
   /**
@@ -123,6 +128,7 @@ export const newTurn = (exchange: Exchange, language: string | undefined, handed
   shown: false,
   silent,
   title,
+  arrived: undefined,
   noticed: false,
   working: false,
   narration: [],

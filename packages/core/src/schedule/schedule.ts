@@ -88,8 +88,11 @@ export interface Proactive {
   busy(): boolean
   /** Say a reminder, a turn of its own with nothing to work out, and show its card in the stream. */
   remind(reminder: { sentence: string; language: string | undefined; card: Checked; silent: boolean }): void
-  /** Carry out a task now, as if the person had just asked it. */
-  run(task: { title: string; request: string; language: string | undefined; silent: boolean }): void
+  /**
+   * Carry out a task now, as if the person had just asked it. What set it off, the files or mails that arrived, is
+   * `arrived`: others may have written it, so it is given to the model beside the request and never becomes part of it.
+   */
+  run(task: { title: string; request: string; arrived?: string | undefined; language: string | undefined; silent: boolean }): void
   /** Show a notification on the devices that can. */
   notify(notification: Notification): void
   /**
@@ -341,8 +344,8 @@ export function createSchedule(options: ScheduleOptions): Schedule {
       const told = paths.slice(0, FILES_TOLD).join(', ')
       const more = paths.length > FILES_TOLD ? `, and ${paths.length - FILES_TOLD} more` : ''
       const what = paths.length === 1 ? 'this file' : `these ${paths.length} files`
-      const request = `${record.request ?? record.title}\n\n(What set it off: ${what} arrived or changed in ${timing.folder}, written in full: ${told}${more}.)`
-      waiting.push(() => proactive.run({ title: record.title, request, language: record.language, silent }))
+      const arrived = `(What set it off: ${what} arrived or changed in ${timing.folder}, written in full: ${told}${more}.)`
+      waiting.push(() => proactive.run({ title: record.title, request: record.request ?? record.title, arrived, language: record.language, silent }))
     }
     sayWhenFree()
     changed()
@@ -370,8 +373,8 @@ export function createSchedule(options: ScheduleOptions): Schedule {
         .map((mail) => `- id ${mail.id} in ${mail.account} · from ${addressWords(mail.from)} · “${mail.subject}”`)
         .join('\n')
       const more = mails.length > MAILS_TOLD ? `\n${mails.length - MAILS_TOLD} more arrived.` : ''
-      const request = `${record.request ?? record.title}\n\n${fence('mail-list', MAILS_NOTICE, {}, lines)}${more}`
-      waiting.push(() => proactive.run({ title: record.title, request, language: record.language, silent }))
+      const arrived = `${fence('mail-list', MAILS_NOTICE, {}, lines)}${more}`
+      waiting.push(() => proactive.run({ title: record.title, request: record.request ?? record.title, arrived, language: record.language, silent }))
     }
     sayWhenFree()
     changed()

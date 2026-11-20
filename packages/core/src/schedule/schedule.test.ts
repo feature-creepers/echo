@@ -377,7 +377,7 @@ describe('a job on files', () => {
       proactive: {
         busy: () => false,
         remind: ({ sentence, card }) => done.push(`${sentence} | ${(card.spec.elements.when?.props as { text?: string } | undefined)?.text}`),
-        run: ({ request }) => done.push(request),
+        run: ({ request, arrived }) => done.push(`${request} | ${arrived}`),
         notify: () => undefined
       },
       files: {
@@ -420,7 +420,7 @@ describe('a job on files', () => {
       timing: { kind: 'files', folder: '/s', pattern: '*.pdf', repeat: true }
     })
     await arrive('/s', '/s/a.pdf')
-    expect(done[0]).toBe('File the new scans.\n\n(What set it off: this file arrived or changed in /s, written in full: /s/a.pdf.)')
+    expect(done[0]).toBe('File the new scans. | (What set it off: this file arrived or changed in /s, written in full: /s/a.pdf.)')
     expect(schedule.read().jobs[0]).toMatchObject({ state: 'active' })
   })
 

@@ -20,7 +20,7 @@ function setup(at = AFTERNOON) {
   const port = scriptedAccounts()
   const signInAgain = vi.fn()
   const said: { sentence: string; card: string | undefined; silent: boolean }[] = []
-  const ran: string[] = []
+  const ran: { request: string; arrived: string | undefined }[] = []
   const notified: { body: string; silent: boolean }[] = []
   let ids = 0
   const schedule = createSchedule({
@@ -32,7 +32,7 @@ function setup(at = AFTERNOON) {
     proactive: {
       busy: () => false,
       remind: ({ sentence, card, silent }) => said.push({ sentence, silent, card: (card.spec.elements.when?.props as { text?: string } | undefined)?.text }),
-      run: ({ request }) => ran.push(request),
+      run: ({ request, arrived }) => ran.push({ request, arrived }),
       notify: ({ body, silent }) => notified.push({ body, silent })
     },
     mail: { accounts: () => [ADA, WORK], arrived: port.arrived, signInAgain }
@@ -129,7 +129,7 @@ describe('a job on mail', () => {
     expect(notified[0]?.body).toMatch(/^A mail you wait for arrived\. \(From sender0/)
   })
 
-  it('carries out a task followed by the mails, fenced, to read with mail_read', async () => {
+  it('carries out a task given the mails apart from its request, fenced, to read with mail_read', async () => {
     const { schedule, arrive, look, ran } = setup()
     schedule.create(watching({ from: 'landlord' }, 'task'))
     await look()
@@ -137,9 +137,10 @@ describe('a job on mail', () => {
     await look()
 
     expect(ran).toHaveLength(1)
-    expect(ran[0]).toContain('Tell me what it says.\n\nThese mails arrived')
-    expect(ran[0]).toContain('- id m9 in ada@example.com · from Landlord <landlord@example.com> · “The lease')
-    expect(ran[0]?.match(/<\/mail-list>/g)).toHaveLength(1)
+    expect(ran[0]?.request).toBe('Tell me what it says.')
+    expect(ran[0]?.arrived).toMatch(/^These mails arrived/)
+    expect(ran[0]?.arrived).toContain('- id m9 in ada@example.com · from Landlord <landlord@example.com> · “The lease')
+    expect(ran[0]?.arrived?.match(/<\/mail-list>/g)).toHaveLength(1)
   })
 
   it('rings once and is done when it does not repeat', async () => {
