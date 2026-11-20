@@ -1,7 +1,8 @@
 import { COMMANDS, type CommandInput, type CommandName, type CommandOutput } from '@repo/protocol'
 import { describe, expect, it, vi } from 'vitest'
 import { createCore } from '../core.ts'
-import type { CalendarEvent, MailSummary } from '../ports/accounts.ts'
+import type { AccountFailure, CalendarEvent, MailSummary } from '../ports/accounts.ts'
+import type { Signal } from '../ports/harness.ts'
 import { memoryRecords } from '../records/memory.ts'
 import { manualTimers } from '../replay/manual-timers.ts'
 import { type ScriptedAccounts, scriptedAccounts } from '../replay/scripted-accounts.ts'
@@ -237,6 +238,34 @@ describe('the mail tools', () => {
 
     expect(result.text).toContain('- id forged in ada@example.com')
     expect(result.text).not.toMatch(/\n\s*- id forged/)
+  })
+
+  it.each<[string, (port: ScriptedAccounts, stall: (signal: Signal) => Promise<AccountFailure>) => void, string, object]>([
+    [
+      'the calendar',
+      (port, stall) => (port.events = (_account, _range, signal) => stall(signal)),
+      'calendar_events',
+      { from: '2026-12-04', until: '2026-12-04' }
+    ],
+    ['a search', (port, stall) => (port.searchMail = (_account, _search, signal) => stall(signal)), 'mail_search', { words: 'bank' }],
+    ['a mail', (port, stall) => (port.readMail = (_account, _id, signal) => stall(signal)), 'mail_read', { account: 'ada@example.com', id: 'm1' }]
+  ])('stop reading %s when everything is stopped', async (_case, slow, tool, input) => {
+    const started = start()
+    await connect(started, 'ada@example.com')
+    const reads: Signal[] = []
+    slow(started.port, (signal) => {
+      reads.push(signal)
+      return new Promise((resolve) => signal.addEventListener('abort', () => resolve({ ok: false, reason: 'The read was stopped.' })))
+    })
+    const { token } = await ask(started, 'What is there?')
+    const reading = started.core.toolHost.call(token, tool, input)
+    await settled()
+    expect(reads.map((signal) => signal.aborted)).toEqual([false])
+
+    await run(started.core, 'everything.stop', {})
+
+    expect(await reading).toMatchObject({ ok: false, text: expect.stringContaining('The read was stopped.') })
+    expect(reads.map((signal) => signal.aborted)).toEqual([true])
   })
 
   it('refuse a search with nothing to search by', async () => {

@@ -494,6 +494,7 @@ export function createCore(options: CoreOptions): Core {
     clipboard?.forget()
     device.forget()
     accounts.cancel()
+    accountTools.stop()
   })
 
   settings.onChange((changed) => {
