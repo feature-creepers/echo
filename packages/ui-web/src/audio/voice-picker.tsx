@@ -11,9 +11,9 @@ import type { DeviceSpeech } from './use-speech.ts'
 const LANGUAGE_OPTIONS = LANGUAGES.map((language) => ({ value: language.code as LanguageCode, label: language.name }))
 
 /** The language to show the voices of first: the one the assistant answers in, else the one the person speaks, else English. */
-export function firstLanguage(languages: Languages | undefined): LanguageCode {
-  if (languages && languages.answers !== 'spoken') return languages.answers
-  if (languages && languages.spoken !== 'auto') return languages.spoken
+export function firstLanguage(languages: Languages): LanguageCode {
+  if (languages.answers !== 'spoken') return languages.answers
+  if (languages.spoken !== 'auto') return languages.spoken
   return 'en'
 }
 
@@ -21,7 +21,7 @@ interface VoicePickerProps {
   speech: DeviceSpeech
   personas: readonly Persona[]
   /** The languages of the conversation, to show first the voices of the one the assistant speaks. */
-  languages?: Languages | undefined
+  languages: Languages
 }
 
 /**

@@ -25,7 +25,7 @@ const button = cva(
   }
 )
 
-export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof button> {}
+interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof button> {}
 
 export function Button({ kind, size, type = 'button', className, ...rest }: ButtonProps) {
   return <button type={type} className={cn(button({ kind, size }), className)} {...rest} />

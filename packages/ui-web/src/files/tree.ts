@@ -30,7 +30,7 @@ export function parentOf(path: string): string {
 }
 
 /** Where the keys move the selection in the tree, as a file manager's list moves it. */
-export type TreeMove =
+type TreeMove =
   | { to: string | undefined }
   /** Open or close a folder, keeping it selected. */
   | { toggle: string }

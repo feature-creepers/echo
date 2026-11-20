@@ -1,12 +1,12 @@
 import { LOOKS, type Look } from '@repo/protocol'
 import { useEffect, useRef } from 'react'
 import { cn } from '../primitives/cn.ts'
-import { readColor } from './color.ts'
+import { readAccent } from './color.ts'
 import { createGpuCore } from './gpu.ts'
 import { type Around, createLife, type Mood, type Pose } from './life.ts'
 import { createPainter } from './painter.ts'
 
-export interface OrbProps {
+interface OrbProps {
   mood: Mood
   /** The side of the square it is drawn in, in CSS pixels. */
   size: number
@@ -80,8 +80,7 @@ export function Orb({ mood, size, level, bands, gaze, load, around, onFrame, sca
 
   useEffect(() => {
     const element = box.current
-    const probe = document.createElement('canvas').getContext('2d', { willReadFrequently: true })
-    if (!element || !probe) return
+    if (!element) return
 
     // The canvas is made here rather than by React: one that gave the graphics card's context can never give a 2D
     // one, and one whose context was let go cannot be drawn on again, so each drawing gets its own.
@@ -98,7 +97,7 @@ export function Orb({ mood, size, level, bands, gaze, load, around, onFrame, sca
     const life = createLife(live.current.mood, look)
     const still = window.matchMedia('(prefers-reduced-motion: reduce)')
     // Each look keeps the accent it was last shown in, so while one gives way to the other, each fades in its own.
-    let target = readColor(probe, getComputedStyle(element).getPropertyValue('--accent').trim() || '#a4adbb')
+    let target = readAccent(element)
     const accents = Object.fromEntries(LOOKS.map((each) => [each, [...target]])) as Record<Look, [number, number, number]>
     const shown = Object.fromEntries(LOOKS.map((each) => [each, [...target]])) as Record<Look, [number, number, number]>
     let readAt = performance.now()
@@ -126,7 +125,7 @@ export function Orb({ mood, size, level, bands, gaze, load, around, onFrame, sca
       // the colour drawn eases towards each reading.
       const asked = readLook(element)
       if (asked !== look || now - readAt > 200 || fading) {
-        target = readColor(probe, getComputedStyle(element).getPropertyValue('--accent').trim() || '#a4adbb')
+        target = readAccent(element)
         // A look coming in starts in the accent it comes with; the one giving way keeps its own.
         if (asked !== look) accents[asked] = [...target]
         look = asked
@@ -176,8 +175,9 @@ export function Orb({ mood, size, level, bands, gaze, load, around, onFrame, sca
       previous = performance.now()
       run()
     }
-    const watch = new IntersectionObserver(([entry]) => {
-      onScreen = entry?.isIntersecting ?? true
+    // Several records can come at once for the one element; the last says where it is now.
+    const watch = new IntersectionObserver((entries) => {
+      onScreen = entries.at(-1)?.isIntersecting ?? true
       if (!onScreen) return pause()
       previous = performance.now()
       run()

@@ -5,14 +5,11 @@
  * its app shows that. Each library is loaded the first time a file of its kind is opened.
  */
 
-/** The extensions previewed here. Older binary documents and presentations (.doc, .ppt) are opened with their app. */
-export const OFFICE_EXTENSIONS = new Set(['docx', 'xlsx', 'xls', 'ods', 'pptx'])
-
 /** How much of a sheet is shown: enough to recognise it, little enough to draw at once. */
 export const MAX_ROWS = 500
-export const MAX_COLUMNS = 50
+const MAX_COLUMNS = 50
 
-export interface Sheet {
+interface Sheet {
   name: string
   /** What each cell shows, formatted as the spreadsheet formats it, row by row. */
   rows: string[][]
@@ -20,7 +17,7 @@ export interface Sheet {
   cut: boolean
 }
 
-export interface Slide {
+interface Slide {
   title: string
   /** The slide's other text, a paragraph per line, in the order the slide holds it. */
   lines: string[]

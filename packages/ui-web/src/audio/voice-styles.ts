@@ -2,17 +2,10 @@ import type { VoiceStyles } from '@repo/client'
 import type { Persona, Stance } from '@repo/protocol'
 
 /**
- * The voice style each stance speaks in until the user picks one for a language.
- *
- * Chosen on 19 November 2026 by measuring the voice's five men's styles in each of its 31 languages, the
- * same two sentences in each: their pitch, how much it moves, their pace, their brightness and how even their
- * loudness is, each set against the other styles of the language, then compared with the stance's manner.
- * Languages where a first measure was close were measured again, three times over, and the same style came
- * closest in every language, so a persona sounds like itself in each.
- * - The stance that goes along speaks as a polished, assured aide: crisp and quick, level in pitch and
- *   loudness, a light baritone. The polished, assured style comes closest.
- * - The stance that questions speaks calm and unhurried: soft, slow, warm rather than bright, level in pitch
- *   and loudness, a little lower. The warm, soothing style comes closest.
+ * The voice style each stance speaks in until the person picks one for a language. Each is the style that came
+ * closest to the stance's manner in every language the voice speaks, measured by pitch, pace, brightness and
+ * evenness, so a persona sounds like itself in each: the stance that goes along as a polished, assured aide,
+ * crisp and quick; the stance that questions calm and unhurried, soft and warm.
  */
 const STYLE_OF_STANCE: Record<Stance, string> = { accommodating: 'm3', critical: 'm5' }
 
@@ -24,12 +17,12 @@ export function languageOf(language: string): string {
   return language.toLowerCase().split(/[-_]/)[0] ?? ''
 }
 
-/** The style a stance speaks in, until the user picks one. */
+/** The style a stance speaks in, until the person picks one. */
 export function styleOfStance(stance: Stance): string {
   return STYLE_OF_STANCE[stance]
 }
 
-/** The voice style a persona speaks a language in: the one the user picked for it there, or its stance's. */
+/** The voice style a persona speaks a language in: the one the person picked for it there, or its stance's. */
 export function styleOf(persona: Persona | undefined, language: string, picked: VoiceStyles): string {
   if (!persona) return styleOfStance('accommodating')
   const code = languageOf(language)

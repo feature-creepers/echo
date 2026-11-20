@@ -119,7 +119,7 @@
 }
 
 /*
- * How wide the user made the side sheet. Not inherited: it is set on the few elements that read it, the sheet and
+ * How wide the person made the side sheet. Not inherited: it is set on the few elements that read it, the sheet and
  * what makes room beside it, so dragging the sheet's edge restyles those alone and not the whole window.
  */
 @property --sheet-width {

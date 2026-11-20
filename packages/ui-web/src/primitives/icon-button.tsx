@@ -1,16 +1,19 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { cn } from './cn.ts'
 
-export interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   /** What the button does, for a screen reader and as the tooltip. */
   label: string
   children: ReactNode
-  /** Shown as pressed: the thing it opens is open. */
+  /**
+   * Given, the button is a toggle, shown and announced as pressed while what it opens is open. Left out, it is a
+   * plain button, so a screen reader does not call every glyph a toggle.
+   */
   active?: boolean
 }
 
 /** A button that is only a glyph. Its label says what it does. */
-export function IconButton({ label, active = false, className, children, type = 'button', ...rest }: IconButtonProps) {
+export function IconButton({ label, active, className, children, type = 'button', ...rest }: IconButtonProps) {
   return (
     <button
       type={type}

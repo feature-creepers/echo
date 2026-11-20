@@ -2,7 +2,7 @@ import type { TurnId } from '@repo/protocol'
 import { useEffect, useState } from 'react'
 
 /** What attention needs to know of a view in the stream. */
-export interface Attendable {
+interface Attendable {
   id: string
   turn?: TurnId | undefined
 }
@@ -31,21 +31,21 @@ export function attendedView(
 }
 
 /** How long the core keeps looking at a view once it has stopped talking about it, in milliseconds: a glance stays a moment. */
-export const LINGER = 1600
+const LINGER = 1600
 
 /**
  * A value that stays a moment after it is gone: the view looked at stays looked at for `LINGER` after the core
  * stops talking about it, unless the view itself leaves the stream.
  */
-export function useLingering(value: string | undefined, present: (value: string) => boolean, linger = LINGER): string | undefined {
+export function useLingering(value: string | undefined, present: (value: string) => boolean): string | undefined {
   const [kept, setKept] = useState(value)
   useEffect(() => {
     if (value !== undefined) {
       setKept(value)
       return
     }
-    const timer = setTimeout(() => setKept(undefined), linger)
+    const timer = setTimeout(() => setKept(undefined), LINGER)
     return () => clearTimeout(timer)
-  }, [value, linger])
+  }, [value])
   return value ?? (kept !== undefined && present(kept) ? kept : undefined)
 }

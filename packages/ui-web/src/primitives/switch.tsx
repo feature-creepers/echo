@@ -1,6 +1,6 @@
 import { cn } from './cn.ts'
 
-export interface SwitchProps {
+interface SwitchProps {
   /** What it turns on, for a screen reader: the row's title. */
   label: string
   on: boolean

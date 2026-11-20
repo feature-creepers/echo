@@ -119,7 +119,7 @@ function field(radius: number) {
   return canvas.transferToImageBitmap()
 }
 
-export interface HudPainting {
+interface HudPainting {
   paint(context: CanvasRenderingContext2D, pose: Pose, accent: Rgb, side: number, scale: number): void
 }
 
@@ -129,7 +129,10 @@ export function createHudPainting(): HudPainting {
   return {
     paint(context, pose, accent, side, scale) {
       const radius = (side / 2) * HUD_SIZE
-      if (made?.side !== side) made = { side, shapes: shapes(radius), field: field(radius) }
+      if (made?.side !== side) {
+        made?.field.close()
+        made = { side, shapes: shapes(radius), field: field(radius) }
+      }
       const ring = made.shapes
       const { hud } = pose
       const color = accent.map((channel) => channel / 255) as [number, number, number]

@@ -1,6 +1,6 @@
 import type { AudioDevice } from '@repo/client'
 import { useEffect, useState } from 'react'
-import { openMicrophone } from './devices.ts'
+import { microphoneProblem, openMicrophone } from './devices.ts'
 
 /** What the meter hears. */
 export type Hearing =
@@ -17,31 +17,21 @@ const HEARD_PEAK = 0.02
 const SILENT_AFTER_MS = 2500
 
 /** Amplitude to a meter's 0 to 1, over 60 decibels, as a mixing desk shows it. */
-export function meterLevel(rms: number): number {
+function meterLevel(rms: number): number {
   if (rms <= 0) return 0
   return Math.max(0, Math.min(1, (20 * Math.log10(rms) + 60) / 60))
 }
 
-/** Why a microphone would not open, in words for the user. */
-export function microphoneProblem(error: unknown): string {
-  const name = error instanceof DOMException ? error.name : ''
-  if (name === 'NotAllowedError') return 'The microphone is not allowed. Allow it in the system settings.'
-  if (name === 'NotFoundError' || name === 'OverconstrainedError') return 'No microphone was found.'
-  if (name === 'NotReadableError') return 'The microphone is in use by another app, or unavailable.'
-  return 'The microphone could not be opened.'
-}
-
 /**
- * The live level of a microphone, while the component using it is shown: so the user sees that it hears
+ * The live level of a microphone, while the component using it is shown: so the person sees that it hears
  * them before they talk to the assistant. The microphone is closed as soon as it is not shown.
  */
-export function useLevel(microphone: AudioDevice, on = true): Hearing {
+export function useLevel(microphone: AudioDevice): Hearing {
   const [hearing, setHearing] = useState<Hearing>({ is: 'opening' })
   // Opened again when the device chosen changes, not each time the settings around it do.
   const { id, label } = microphone
 
   useEffect(() => {
-    if (!on) return
     let stopped = false
     let frame = 0
     let release: () => void = () => undefined
@@ -91,7 +81,7 @@ export function useLevel(microphone: AudioDevice, on = true): Hearing {
       cancelAnimationFrame(frame)
       release()
     }
-  }, [id, label, on])
+  }, [id, label])
 
   return hearing
 }

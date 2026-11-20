@@ -12,7 +12,13 @@ import { sizeWords, tableRows } from './words.ts'
 /** How much of a text is read to show it: enough for any document a person reads in a pane. */
 const TEXT_LIMIT = 1024 * 1024
 
-export interface FileContentProps {
+/**
+ * Whether a preview needs the whole file, up to the most a file can be: a picture, a PDF or an Office file. A text
+ * shows its start instead, however long it is.
+ */
+const readsWhole = (preview: string) => preview === 'image' || preview === 'pdf' || preview === 'office'
+
+interface FileContentProps {
   client: Client
   /** The file: its path in the assistant's folder, or where it is on the computer. */
   path: string
@@ -32,8 +38,9 @@ type Reading = { is: 'reading' } | { is: 'failed' } | { is: 'read'; bytes: Uint8
  */
 export function FileContent({ client, path, name, size, modified, className }: FileContentProps) {
   const kind = kindOf(name)
-  const limit = kind.preview === 'image' || kind.preview === 'pdf' || kind.preview === 'office' ? ATTACHMENT_MAX_BYTES : TEXT_LIMIT
-  const shown = kind.preview !== 'none' && (kind.preview === 'markdown' || kind.preview === 'text' || kind.preview === 'csv' || size <= limit)
+  const whole = readsWhole(kind.preview)
+  const limit = whole ? ATTACHMENT_MAX_BYTES : TEXT_LIMIT
+  const shown = kind.preview !== 'none' && (!whole || size <= limit)
   const [reading, setReading] = useState<Reading>({ is: 'reading' })
 
   // Read again when the file changes: a newer version of the same file.
@@ -59,10 +66,7 @@ export function FileContent({ client, path, name, size, modified, className }: F
 function Shown({ name, bytes, size, className }: { name: string; bytes: Uint8Array; size: number; className?: string | undefined }) {
   const kind = kindOf(name)
   const cut = bytes.length < size
-  const text = useMemo(
-    () => (kind.preview === 'image' || kind.preview === 'pdf' || kind.preview === 'office' ? '' : new TextDecoder().decode(bytes)),
-    [bytes, kind.preview]
-  )
+  const text = useMemo(() => (readsWhole(kind.preview) ? '' : new TextDecoder().decode(bytes)), [bytes, kind.preview])
   const url = useObjectUrl(kind.preview === 'image' || kind.preview === 'pdf' ? bytes : undefined, previewTypeOf(name))
   const note = cut ? (
     <p className="mt-4 text-text-faint text-xs">

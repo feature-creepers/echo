@@ -2,7 +2,8 @@ import { type Client, runsWhenOpened } from '@repo/client'
 import { useFollowed } from '@repo/client/react'
 import type { WorkspaceEntry } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { lastPart } from '../changes/words.ts'
 import { Button } from '../primitives/button.tsx'
 import { IconButton } from '../primitives/icon-button.tsx'
 import { CloseGlyph } from '../primitives/icons.tsx'
@@ -21,10 +22,15 @@ type Looked = { is: 'reading' } | { is: 'failed' } | { is: 'read'; entry: Worksp
  */
 export function QuickLook({ client }: { client: Client }) {
   const path = useFollowed(peeked)
+  const open = path !== undefined
   const close = () => peeked.set(undefined)
+  const box = useRef<HTMLDivElement>(null)
 
+  // The keyboard moves into the look as it opens, and goes back to what opened it once it is put away.
   useEffect(() => {
-    if (path === undefined) return
+    if (!open) return
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
+    box.current?.focus({ preventScroll: true })
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       // It closes the look and nothing behind it: the answer under way is not stopped.
@@ -33,12 +39,15 @@ export function QuickLook({ client }: { client: Client }) {
       peeked.set(undefined)
     }
     window.addEventListener('keydown', onKey, { capture: true })
-    return () => window.removeEventListener('keydown', onKey, { capture: true })
-  }, [path])
+    return () => {
+      window.removeEventListener('keydown', onKey, { capture: true })
+      if (opener?.isConnected) opener.focus({ preventScroll: true })
+    }
+  }, [open])
 
   return (
     <AnimatePresence>
-      {path !== undefined && (
+      {open && (
         <motion.div
           key="quick-look"
           className="fixed inset-0 z-50 flex items-center justify-center p-8"
@@ -49,14 +58,16 @@ export function QuickLook({ client }: { client: Client }) {
         >
           <button type="button" aria-label="Close the preview" tabIndex={-1} className="absolute inset-0 cursor-default bg-black/45" onClick={close} />
           <motion.div
+            ref={box}
             role="dialog"
             aria-modal="true"
             aria-label="Preview"
+            tabIndex={-1}
             initial={{ scale: 0.98, y: 6 }}
             animate={{ scale: 1, y: 0 }}
             exit={{ scale: 0.98, y: 6 }}
             transition={{ duration: DURATION.calm, ease: EASE }}
-            className="material shadow-float relative grid h-[min(46rem,100%)] w-[min(58rem,100%)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg"
+            className="material shadow-float relative grid h-[min(46rem,100%)] w-[min(58rem,100%)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg outline-none"
           >
             <Look client={client} path={path} onClose={close} />
           </motion.div>
@@ -82,13 +93,13 @@ function Look({ client, path, onClose }: { client: Client; path: string; onClose
     }
   }, [client, path])
 
-  const name = looked.is === 'read' ? looked.entry.name : (path.split(/[\\/]/).at(-1) ?? path)
+  const name = looked.is === 'read' ? looked.entry.name : lastPart(path)
   const entry = looked.is === 'read' ? looked.entry : undefined
   const opens = actions.open && !runsWhenOpened(name)
 
   return (
     <>
-      <header className="flex h-12 min-w-0 items-center gap-3 border-white/[0.07] border-b pr-2 pl-4">
+      <header className="flex h-12 min-w-0 items-center gap-3 border-line border-b pr-2 pl-4">
         <FileMark name={name} />
         <div className="grid min-w-0 flex-1">
           <span className="truncate font-medium text-[0.8125rem]">{name}</span>
@@ -111,7 +122,7 @@ function Look({ client, path, onClose }: { client: Client; path: string; onClose
               <DownloadGlyph />
             </IconButton>
           )}
-          <span className="mx-1 h-4 w-px bg-white/[0.08]" />
+          <span className="mx-1 h-4 w-px bg-line" />
           <IconButton label="Close" onClick={onClose}>
             <CloseGlyph />
           </IconButton>

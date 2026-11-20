@@ -1,3 +1,5 @@
+import { COVER, compile, link, sampleSmoothly } from './glsl.ts'
+
 /**
  * The bloom of the core's light: what is bright bleeds into a soft halo round it, as light does in a camera or in a
  * hologram, the brightest the widest. The core is drawn into a texture of its own; that texture is halved again
@@ -13,15 +15,6 @@
  */
 const LEVELS = 5
 const SMALLEST = 20
-
-const FULL = `#version 300 es
-out vec2 v_at;
-void main() {
-  // One triangle over the whole target, made from each vertex's number alone.
-  vec2 corner = vec2(float((gl_VertexID & 1) * 4 - 1), float((gl_VertexID & 2) * 2 - 1));
-  v_at = corner * 0.5 + 0.5;
-  gl_Position = vec4(corner, 0.0, 1.0);
-}`
 
 // Halving: the middle and four corners half a texel out, so each pass blurs as it shrinks. The first pass keeps
 // mostly what is bright, so faint lines glow little and bright ones much.
@@ -91,24 +84,7 @@ interface Target {
   side: number
 }
 
-function program(gl: WebGL2RenderingContext, vertex: WebGLShader, source: string) {
-  const fragment = gl.createShader(gl.FRAGMENT_SHADER)
-  const made = gl.createProgram()
-  if (!fragment || !made) return undefined
-  gl.shaderSource(fragment, source)
-  gl.compileShader(fragment)
-  gl.attachShader(made, vertex)
-  gl.attachShader(made, fragment)
-  gl.linkProgram(made)
-  gl.deleteShader(fragment)
-  if (!gl.getProgramParameter(made, gl.LINK_STATUS)) {
-    console.warn('The core’s bloom could not be drawn on the graphics card:', gl.getProgramInfoLog(made))
-    return undefined
-  }
-  return made
-}
-
-export interface Bloom {
+interface Bloom {
   /** Draw the core into the bloom's own texture from now on, for a canvas this many device pixels across. */
   begin(side: number): void
   /** Blur what was drawn and lay it, with its halo as strong as asked, over the canvas. */
@@ -117,15 +93,16 @@ export interface Bloom {
 }
 
 export function createBloom(gl: WebGL2RenderingContext): Bloom | undefined {
-  const vertex = gl.createShader(gl.VERTEX_SHADER)
+  const vertex = compile(gl, gl.VERTEX_SHADER, COVER)
   if (!vertex) return undefined
-  gl.shaderSource(vertex, FULL)
-  gl.compileShader(vertex)
-  const down = program(gl, vertex, DOWN)
-  const up = program(gl, vertex, UP)
-  const compose = program(gl, vertex, COMPOSE)
+  const down = link(gl, vertex, DOWN, 'The core’s bloom')
+  const up = link(gl, vertex, UP, 'The core’s bloom')
+  const compose = link(gl, vertex, COMPOSE, 'The core’s bloom')
   gl.deleteShader(vertex)
-  if (!down || !up || !compose) return undefined
+  if (!down || !up || !compose) {
+    for (const made of [down, up, compose]) if (made) gl.deleteProgram(made)
+    return undefined
+  }
   const at = (made: WebGLProgram, name: string) => gl.getUniformLocation(made, name)
   const where = {
     down: { from: at(down, 'u_from'), texel: at(down, 'u_texel'), first: at(down, 'u_first') },
@@ -140,10 +117,7 @@ export function createBloom(gl: WebGL2RenderingContext): Bloom | undefined {
     if (!texture || !frame) return undefined
     gl.bindTexture(gl.TEXTURE_2D, texture)
     gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, side, side)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+    sampleSmoothly(gl)
     gl.bindFramebuffer(gl.FRAMEBUFFER, frame)
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0)
     return { texture, frame, side }
@@ -161,7 +135,11 @@ export function createBloom(gl: WebGL2RenderingContext): Bloom | undefined {
     release()
     for (let level = 0, each = side; level <= LEVELS && (level < 2 || each >= SMALLEST); level++, each = Math.floor(each / 2)) {
       const target = make(each)
-      if (!target) return false
+      // Half a chain would lay a stale halo over the canvas: without all of it, the core is drawn without one.
+      if (!target) {
+        release()
+        return false
+      }
       targets.push(target)
     }
     return true

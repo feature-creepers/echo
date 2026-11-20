@@ -5,7 +5,7 @@ export interface Sound {
 }
 
 /** One set of models speech needs, and whether it is on this device. */
-export interface SpeechModel {
+interface SpeechModel {
   id: string
   name: string
   /** The size of its download, in bytes. */

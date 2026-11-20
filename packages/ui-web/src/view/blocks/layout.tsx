@@ -4,7 +4,7 @@ import { cn } from '../../primitives/cn.ts'
 import { Eyebrow } from '../../primitives/eyebrow.tsx'
 
 /** The three spacings a view is laid out with. One scale for every block, so views read as one family. */
-export const GAP = { tight: 'gap-1.5', normal: 'gap-3', loose: 'gap-5' } as const
+const GAP = { tight: 'gap-1.5', normal: 'gap-3', loose: 'gap-5' } as const
 
 export function Stack({ props, children }: { props: BlockProps<'Stack'>; children: ReactNode }) {
   const align = { start: 'items-start', center: 'items-center', end: 'items-end', stretch: 'items-stretch' }[props.align]

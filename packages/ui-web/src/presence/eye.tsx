@@ -26,20 +26,16 @@ const AROUND = 2 * Math.PI * 8.5
 
 /**
  * The persona's mark in the composer: a ring with a pupil, the core in miniature, drawn after the persona's look so
- * the two read as one: for the lens, a dark lens with the faintest cool rim, a red glow in it and a disc of amber at
- * its heart; for the instrument, a ring broken in four round a bright core. It is drawn as one picture so the pupil
- * sits exactly in the middle of its ring at every size and on every screen, and it lives as the core does: it
- * breathes and blinks at rest, leans in while listening, carries a circling arc while thinking, steps its arc round
- * and beats steadily while working, beats with the syllables while speaking, and asleep it closes and still
- * breathes, slower.
+ * the two read as one, and living as the core does in each mood. It is one picture so the pupil sits exactly in the
+ * middle of its ring at every size and on every screen.
  */
-export function Eye({ mood, look = 'hud', className }: { mood: Mood; look?: Look | undefined; className?: string }) {
+export function Eye({ mood, look }: { mood: Mood; look: Look }) {
   // Parts scale about their own centre, which in a drawing has to be asked for.
   const part = '[transform-box:fill-box] origin-center transition-opacity duration-(--duration-calm) motion-reduce:animate-none'
   const lens = look === 'lens'
   const glow = useId()
   return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className={cn('size-5 overflow-visible text-accent', className)}>
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="size-5 overflow-visible text-accent">
       {lens ? (
         <>
           <defs>

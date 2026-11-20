@@ -94,8 +94,7 @@ describe('the language whose voices are shown first', () => {
   it.each([
     ['the one answered in', { spoken: 'auto', answers: 'de' }, 'de'],
     ['the one spoken, when answers follow it', { spoken: 'it', answers: 'spoken' }, 'it'],
-    ['English, when both are found from what is said', { spoken: 'auto', answers: 'spoken' }, 'en'],
-    ['English, before the settings are known', undefined, 'en']
+    ['English, when both are found from what is said', { spoken: 'auto', answers: 'spoken' }, 'en']
   ] as const)('is %s', (_case, languages, language) => {
     expect(firstLanguage(languages)).toBe(language)
   })

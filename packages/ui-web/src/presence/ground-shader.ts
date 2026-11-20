@@ -17,22 +17,17 @@ import { ECHO_LENGTH, ECHO_STEP } from './life.ts'
  */
 
 /** The pitch of the dots, and where in each cell the dot sits, in CSS pixels, as the CSS ground draws them. */
-export const PITCH = 18
-export const DOT_AT = 9.5
+const PITCH = 18
+const DOT_AT = 9.5
 
 /** How far across the light's pools are, in CSS pixels, and how fast they drift, in their own widths a second. */
-export const POOL_WIDTH = 560
-export const DRIFT = 0.016
+const POOL_WIDTH = 560
+const DRIFT = 0.016
 
 /** The smallest radius a core's field is worked out from, in CSS pixels: a small core still fields a little way round it. */
-export const SMALLEST_FIELD = 40
+const SMALLEST_FIELD = 40
 
-export const GROUND_VERTEX = `#version 300 es
-void main() {
-  // One triangle over the whole canvas, made from each vertex's number alone.
-  vec2 corner = vec2(float((gl_VertexID & 1) * 4 - 1), float((gl_VertexID & 2) * 2 - 1));
-  gl_Position = vec4(corner, 0.0, 1.0);
-}`
+/** Drawn over the whole canvas, by the vertex shader that covers it (`COVER` in `glsl.ts`). */
 
 export const GROUND_FRAGMENT = `#version 300 es
 precision highp float;

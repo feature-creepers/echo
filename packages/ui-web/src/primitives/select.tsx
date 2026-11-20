@@ -2,7 +2,7 @@ import { useId, useRef, useState } from 'react'
 import { cn } from './cn.ts'
 import { Floating, Row } from './menu.tsx'
 
-export interface SelectOption<Value extends string> {
+interface SelectOption<Value extends string> {
   value: Value
   label: string
   /** What the choice means, in a few words, shown under it in the list. */
@@ -12,7 +12,7 @@ export interface SelectOption<Value extends string> {
   disabled?: boolean | undefined
 }
 
-export interface SelectProps<Value extends string> {
+interface SelectProps<Value extends string> {
   label: string
   value: Value
   options: readonly SelectOption<Value>[]

@@ -7,9 +7,9 @@
  * How a file is previewed: rendered as the Prose block renders, as text, as a table, as a picture, as a document, as
  * the content of an Office file (Word, Excel, PowerPoint or an OpenDocument spreadsheet), or not at all.
  */
-export type PreviewMode = 'markdown' | 'text' | 'csv' | 'image' | 'pdf' | 'office' | 'none'
+type PreviewMode = 'markdown' | 'text' | 'csv' | 'image' | 'pdf' | 'office' | 'none'
 
-export interface FileKind {
+interface FileKind {
   /** In words, sentence case: "PNG image", "PDF document". */
   label: string
   preview: PreviewMode

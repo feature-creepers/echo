@@ -8,7 +8,7 @@ import { Menu } from '../primitives/menu.tsx'
 import { type LibraryControls, useLibraryControls } from './library-context.ts'
 
 /** A view as the control needs it: which one it is, and the saved widget it shows again, if any. */
-export interface Saveable {
+interface Saveable {
   id: string
   widget?: string | undefined
   spec?: unknown
@@ -74,8 +74,8 @@ function Control({ view, controls }: { view: Saveable; controls: LibraryControls
             <span className="truncate text-sm">{saved.title}</span>
           </span>
         }
-        trigger={(open, toggle) => (
-          <IconButton label="Saved in the library" active={open} onClick={toggle} className="text-text-soft">
+        trigger={(open, toggle, trigger) => (
+          <IconButton label="Saved in the library" active={open} onClick={toggle} className="text-text-soft" {...trigger.props}>
             <BookmarkGlyph filled />
           </IconButton>
         )}

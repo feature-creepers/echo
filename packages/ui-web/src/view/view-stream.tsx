@@ -8,7 +8,7 @@ import { type Band, dialOf, maskOf, roomOf, sinkOf } from './dial.ts'
 import { createPush, scrollsUnder, wheelTravel } from './push.ts'
 import { ViewCard } from './view-card.tsx'
 
-export interface ViewStreamProps {
+interface ViewStreamProps {
   /** The views to show, newest first. */
   views: readonly ShownView[]
   /** The views that arrived while the app was open: they come in, where the ones read on opening are simply there. */

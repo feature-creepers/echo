@@ -3,7 +3,7 @@ import { createContext, type ReactNode, useCallback, useContext, useEffect, useM
 import type { DeviceHost } from './host.ts'
 
 /** The settings of this device, as the interface reads and changes them. */
-export interface Device {
+interface Device {
   settings: DeviceSettings
   change(change: DeviceSettingsChange): void
   /** The Command key stands for Control, as on a Mac. */
@@ -13,7 +13,7 @@ export interface Device {
 }
 
 /** Whether the window runs on a Mac, where the Command key does what Control does elsewhere. */
-export const ON_MAC = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform || navigator.userAgent)
+const ON_MAC = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform || navigator.userAgent)
 
 const DeviceContext = createContext<Device>({ settings: DEFAULT_DEVICE_SETTINGS, change: () => undefined, mac: ON_MAC, host: undefined })
 

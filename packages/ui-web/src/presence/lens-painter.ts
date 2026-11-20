@@ -3,10 +3,10 @@ import { SEAT as GLASS, LENS_SIZE } from './lens-shader.ts'
 import type { LensPose } from './life.ts'
 
 /**
- * The lens drawn the simpler way, on a 2D canvas, flat where the shader traces it in space (`lens-shader.ts`): what does
- * not move (the shadow, the seat, the smoky dome, its softboxes and glint and the line of its rim) is drawn
- * once for a size and kept; each frame adds the lamp's red and its disc of amber, the catchlights over it, and the
- * light the elements catch.
+ * The lens drawn the simpler way, on a 2D canvas, flat where the shader traces it in space (`lens-shader.ts`): what
+ * does not move (the shadow, the seat, the smoky dome, its softboxes and glint and the line of its rim) is drawn once
+ * for a size and kept; each frame adds the lamp's red and its disc of amber, the catchlights over it, and the light
+ * the elements catch.
  *
  * It draws in the shader's space: the origin in the middle and up as up, so angles turn counter-clockwise.
  */
@@ -174,7 +174,7 @@ function drawBase(side: number) {
   return canvas.transferToImageBitmap()
 }
 
-export interface LensPainting {
+interface LensPainting {
   paint(context: CanvasRenderingContext2D, lens: LensPose, accent: Rgb, side: number, scale: number): void
 }
 
@@ -183,7 +183,10 @@ export function createLensPainting(): LensPainting {
 
   return {
     paint(context, lens, accent, side, scale) {
-      if (base?.width !== side) base = drawBase(side)
+      if (base?.width !== side) {
+        base?.close()
+        base = drawBase(side)
+      }
       const glass = (side / 2) * LENS_SIZE * GLASS
       const hue = hueOf(accent)
       const red: [number, number, number] = [hue[0], hue[1] + 0.02, hue[2] + 0.012]

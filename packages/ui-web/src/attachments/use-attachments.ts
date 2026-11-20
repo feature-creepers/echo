@@ -76,13 +76,13 @@ export function copiedFile({ name, data }: { name: string; data: Uint8Array }): 
 }
 
 /** The largest file, as the person reads it: "25 MB". */
-const MOST = `${Math.round(ATTACHMENT_MAX_BYTES / (1024 * 1024))} MB`
+export const LARGEST_FILE = `${Math.round(ATTACHMENT_MAX_BYTES / (1024 * 1024))} MB`
 
 /** Why some of the files given cannot be added, or nothing when all can. */
 export function refusalOf(count: number, room: number, tooLarge: readonly string[]): string | undefined {
   const reasons = [
-    tooLarge.length === 1 ? `${tooLarge[0]} is over ${MOST}, the most a file can be.` : '',
-    tooLarge.length > 1 ? `${tooLarge.length} files are over ${MOST}, the most a file can be.` : '',
+    tooLarge.length === 1 ? `${tooLarge[0]} is over ${LARGEST_FILE}, the most a file can be.` : '',
+    tooLarge.length > 1 ? `${tooLarge.length} files are over ${LARGEST_FILE}, the most a file can be.` : '',
     count > room ? `Only ${ATTACHMENTS_PER_TURN} files can go with one message.` : ''
   ]
   return reasons.filter(Boolean).join(' ') || undefined

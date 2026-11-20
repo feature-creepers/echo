@@ -11,9 +11,9 @@ export type { Mood } from './life.ts'
  * Each look is drawn as its shader draws it, with less detail, from the same life (`life.ts`), so the two ways
  * move alike: what changes is only how finely the light is worked out.
  */
-export interface Painter {
+interface Painter {
   /** Draws one frame, as `GpuCore.paint` does. */
-  paint(context: CanvasRenderingContext2D, pose: Pose, accents: Record<Look, Rgb>, side: number, scale?: number): void
+  paint(context: CanvasRenderingContext2D, pose: Pose, accents: Record<Look, Rgb>, side: number, scale: number): void
 }
 
 export function createPainter(): Painter {
@@ -21,7 +21,7 @@ export function createPainter(): Painter {
   const hud = createHudPainting()
 
   return {
-    paint(context, pose, accents, side, zoom = 1) {
+    paint(context, pose, accents, side, zoom) {
       context.setTransform(1, 0, 0, 1, 0, 0)
       context.globalCompositeOperation = 'source-over'
       context.globalAlpha = 1

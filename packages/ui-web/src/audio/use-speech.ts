@@ -10,10 +10,7 @@ import { namesAsWords } from './names.ts'
 import { engineVoice, type SpeakingVoice } from './voice.ts'
 import { paceOf, styleOf, withPick } from './voice-styles.ts'
 
-/** Where earlier versions kept the voices picked, one for every language: let go, since a style is now picked by language. */
-const EARLIER_PICKS = 'echo.voices'
-
-export type Install = { is: 'idle' } | { is: 'running'; progress: InstallProgress | undefined } | { is: 'failed'; reason: string }
+type Install = { is: 'idle' } | { is: 'running'; progress: InstallProgress | undefined } | { is: 'failed'; reason: string }
 
 export interface DeviceSpeech {
   /** Where the device's speech stands. Nothing until it has been asked, or when the device has no engines. */
@@ -102,14 +99,6 @@ export function useDeviceSpeech(engine: SpeechEngine | undefined, client: Client
       .catch(() => undefined)
   }, [ready])
 
-  useEffect(() => {
-    try {
-      localStorage.removeItem(EARLIER_PICKS)
-    } catch {
-      // Nothing kept there to let go of.
-    }
-  }, [])
-
   const pick = useCallback(
     (persona: Persona, language: string, style: string) => {
       change({ voice: { styles: withPick(speaking.current.picked, persona, language, style) } })
@@ -117,21 +106,31 @@ export function useDeviceSpeech(engine: SpeechEngine | undefined, client: Client
     [change]
   )
 
-  const preview = useCallback(
-    (persona: Persona, text: string, how: { language?: string; speed?: number } = {}) => {
-      if (!ready) return
-      const sample = engineVoice(ready, {
-        style: (language) => styleOf(persona, language, speaking.current.picked),
-        speed: () => paceOf(persona, how.speed ?? manner.current.speed),
+  // One voice says every sample, as the persona and the pace of the sample asked: read as each sentence is made.
+  const sampled = useRef<{ persona: Persona; speed: number | undefined } | undefined>(undefined)
+  const sampleVoice = useMemo(
+    () =>
+      ready &&
+      engineVoice(ready, {
+        style: (language) => styleOf(sampled.current?.persona, language, speaking.current.picked),
+        speed: () => paceOf(sampled.current?.persona, sampled.current?.speed ?? manner.current.speed),
         sink: () => manner.current.sink,
         spoken
-      })
-      sample.say({ turn: 'preview', text, language: how.language })
-    },
+      }),
     [ready, spoken]
   )
+  useEffect(() => () => sampleVoice?.close(), [sampleVoice])
 
-  // Answers are spoken once the voice is installed, unless the user wants them only shown.
+  const preview = useCallback(
+    (persona: Persona, text: string, how: { language?: string; speed?: number } = {}) => {
+      if (!sampleVoice) return
+      sampled.current = { persona, speed: how.speed }
+      sampleVoice.say({ turn: 'preview', text, language: how.language })
+    },
+    [sampleVoice]
+  )
+
+  // Answers are spoken once the voice is installed, unless the person wants them only shown.
   useEffect(() => {
     if (!ready || !aloud) return
     const made = engineVoice(ready, {
@@ -145,6 +144,7 @@ export function useDeviceSpeech(engine: SpeechEngine | undefined, client: Client
     return () => {
       voice.current = undefined
       client.speech.use(silentVoice())
+      made.close()
     }
   }, [ready, aloud, client, spoken])
 

@@ -51,7 +51,7 @@ export function Media({ props }: { props: BlockProps<'Media'> }) {
               type="button"
               aria-label={`Play ${props.title}`}
               onClick={() => player.play(source)}
-              className="absolute inset-0 m-auto flex size-11 items-center justify-center rounded-md bg-accent text-accent-ink transition hover:brightness-110 [&_svg]:size-5"
+              className="absolute inset-0 m-auto flex size-11 items-center justify-center rounded-md bg-accent text-accent-ink transition duration-(--duration-quick) ease-soft hover:brightness-110 [&_svg]:size-5"
             >
               <PlayGlyph />
             </button>
@@ -160,7 +160,7 @@ function Artwork({ url, sounding }: { url: string | undefined; sounding: boolean
   )
 }
 
-/** "Live", with a dot that glows while it is heard. */
+/** "Live", with a dot that pulses while it is heard. */
 function Live({ on }: { on: boolean }) {
   return (
     <span

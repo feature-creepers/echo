@@ -37,7 +37,7 @@ export function spansTheWorld(regions: Regions): boolean {
 /** How strongly a colour shows, from the faintest that still reads on the ground to the colour itself. */
 const LOWEST = 14
 
-export interface Scale {
+interface Scale {
   kind: 'sequential' | 'diverging'
   domain: [number, number]
   midpoint: number
@@ -87,7 +87,7 @@ export function mercator(lon: number, lat: number): [number, number] {
   return [((lon + 180) / 360) * TILE, (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * TILE]
 }
 
-export interface Frame {
+interface Frame {
   zoom: number
   /** The top left corner of the frame, in pixels of the world at that zoom. */
   left: number
@@ -132,7 +132,7 @@ export function tilesFor(at: Frame, width: number, height: number): { x: number;
 }
 
 /** Where a marker's label goes: beside it on the right or the left, above or below, or nowhere. */
-export interface LabelPlace {
+interface LabelPlace {
   dx: number
   dy: number
   anchor: 'start' | 'end' | 'middle'

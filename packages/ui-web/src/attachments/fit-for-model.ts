@@ -1,6 +1,9 @@
-import { MODEL_IMAGE_MAX_BYTES, MODEL_IMAGE_MAX_SIDE, MODEL_IMAGE_TYPES } from '@repo/protocol'
+import { MODEL_IMAGE_MAX_BYTES, MODEL_IMAGE_MAX_SIDE } from '@repo/protocol'
 
-/** The ways a picture is written again, smallest last: its own kind first, so a screenshot keeps its sharp text. */
+/**
+ * The ways a picture is written again, smallest last: its own kind first, so a screenshot keeps its sharp text. Only
+ * the kinds a model takes that are still pictures; a GIF, which may move, is never written again.
+ */
 const ATTEMPTS: Record<string, { type: string; quality?: number }[]> = {
   'image/png': [{ type: 'image/png' }, { type: 'image/webp', quality: 0.92 }, { type: 'image/webp', quality: 0.82 }, { type: 'image/jpeg', quality: 0.72 }],
   'image/jpeg': [
@@ -31,12 +34,12 @@ export function fittedSize(width: number, height: number, longest = MODEL_IMAGE_
 }
 
 /**
- * A picture as a model takes it: one larger than about 5 MB, or with more than 2000 pixels on its long side, is made
- * smaller and written again before it is sent. Anything else, an animation included, goes as it is.
+ * A picture as a model takes it: one larger than a model takes, or longer than its longest side, is made smaller and
+ * written again before it is sent. Anything else, an animation included, goes as it is.
  */
 export async function fitForModel(file: File): Promise<File> {
   const attempts = ATTEMPTS[file.type]
-  if (!attempts || !(MODEL_IMAGE_TYPES as readonly string[]).includes(file.type)) return file
+  if (!attempts) return file
   let bitmap: ImageBitmap
   try {
     bitmap = await createImageBitmap(file)

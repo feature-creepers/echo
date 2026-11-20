@@ -2,32 +2,32 @@ import { pauseMs } from '@repo/client'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDevice } from '../device/device.tsx'
 import { playCue } from './cues.ts'
-import { findDevice } from './devices.ts'
+import { findDevice, microphoneProblem } from './devices.ts'
 import type { SpeechEngine } from './engine.ts'
 import { record, type Take } from './recorder.ts'
 
 /** Where talking stands. */
-export type Talk =
+type Talk =
   | { is: 'idle' }
   | { is: 'listening' }
   /** The recording is being turned into text. */
   | { is: 'transcribing' }
-  /** Something went wrong, in words for the user. */
+  /** Something went wrong, in words for the person. */
   | { is: 'failed'; reason: string }
 
-/** How quiet counts as silence. How long a silence ends a take once the user has spoken is a setting of the device. */
+/** How quiet counts as silence. How long a silence ends a take once the person has spoken is a setting of the device. */
 const SILENCE_LEVEL = 0.06
 /** A take shorter than this is a slip of the key, not something said. */
 const SHORTEST_MS = 350
 /** Nothing heard for this long after starting: the take ends empty. */
 const NOTHING_MS = 8000
-/** What is heard this soon after starting is the cue that marks it, not the user. */
+/** What is heard this soon after starting is the cue that marks it, not the person. */
 const CUE_MS = 260
 
 /**
  * Push to talk: `start` opens the microphone chosen for this device, `finish` turns what was said into text
  * and hands it to `onHeard`. A take also finishes by itself after a silence that follows speech, unless the
- * user set it to wait for the key.
+ * person set it to wait for the key.
  */
 export function useTalk(engine: SpeechEngine | undefined, onHeard: (text: string, language: string | undefined) => void) {
   const [talk, setTalk] = useState<Talk>({ is: 'idle' })
@@ -60,26 +60,31 @@ export function useTalk(engine: SpeechEngine | undefined, onHeard: (text: string
     }
   }, [engine, cue])
 
-  /** The microphone is being opened: a second press meanwhile must not open another one. */
-  const opening = useRef(false)
+  /**
+   * The microphone being opened: a second press meanwhile must not open another one, and a take cancelled
+   * meanwhile, or left behind when the stage goes, is closed as soon as it opens.
+   */
+  const opening = useRef<object | undefined>(undefined)
 
   const start = useCallback(async () => {
     if (!engine || take.current || opening.current) return
-    opening.current = true
+    const attempt = {}
+    opening.current = attempt
     try {
       cue('open')
       const opened = await record(device.current.microphone)
+      if (opening.current !== attempt) return opened.cancel()
       take.current = { take: opened, started: Date.now(), spoke: false, quietSince: Date.now() }
       setTalk({ is: 'listening' })
     } catch (error) {
-      const denied = error instanceof DOMException && error.name === 'NotAllowedError'
-      setTalk({ is: 'failed', reason: denied ? 'The microphone is not allowed. Allow it in the system settings.' : 'No microphone could be opened.' })
+      if (opening.current === attempt) setTalk({ is: 'failed', reason: microphoneProblem(error) })
     } finally {
-      opening.current = false
+      if (opening.current === attempt) opening.current = undefined
     }
   }, [engine, cue])
 
   const cancel = useCallback(() => {
+    opening.current = undefined
     take.current?.take.cancel()
     take.current = undefined
     setTalk({ is: 'idle' })

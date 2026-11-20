@@ -59,7 +59,6 @@ describe('the media player', () => {
     player.play(song)
     expect(player.current().source).toBe(song)
     expect(log).toEqual(['load', `play ${radio.url}`, 'load', `play ${song.url}`])
-    expect(player.holds(radio)).toBe(false)
   })
 
   it('resumes a file where it was, and a live stream from what is on now', () => {

@@ -72,7 +72,7 @@ export interface Language {
 }
 
 /** What one line leaves open for the next. */
-export interface LineState {
+interface LineState {
   open?: Enclosure
 }
 
@@ -124,7 +124,7 @@ function matchAt(pattern: RegExp, line: string, at: number): string | undefined 
 }
 
 /** What reading one line found: its runs, what it leaves open, and whether it opened a comment or met one's end alone. */
-export interface LineRead {
+interface LineRead {
   painted: Painted[]
   state: LineState
   /** It opened a comment that may run over lines, whether or not it closed it. */
@@ -137,7 +137,7 @@ export interface LineRead {
  * One line read with its language, from what the line before left open. `watchOrphans` asks it to report a block
  * comment's end met in plain code, which only means something while the hunk has opened none.
  */
-export function paintLine(line: string, language: Language, state: LineState, watchOrphans = false): LineRead {
+function paintLine(line: string, language: Language, state: LineState, watchOrphans = false): LineRead {
   const painted: Painted[] = []
   const paint = (start: number, end: number, role: Role) => {
     if (end > start) painted.push([start, end, role])
@@ -303,14 +303,14 @@ export function paintHunk(lines: readonly { kind: 'context' | 'added' | 'removed
 }
 
 /** A part of a line drawn in one colour, plain when it has no role. */
-export interface Piece {
+interface Piece {
   start: number
   end: number
   role?: Role
 }
 
 /** Pieces drawn together, inside one mark of words changed or outside any. */
-export interface TextRun {
+interface TextRun {
   marked: boolean
   pieces: Piece[]
 }

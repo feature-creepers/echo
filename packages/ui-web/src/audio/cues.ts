@@ -1,7 +1,7 @@
 import { route } from './devices.ts'
 
 /** The sounds that mark the microphone opening and closing, and an answer ready in the background. */
-export type Cue = 'open' | 'close' | 'ready'
+type Cue = 'open' | 'close' | 'ready'
 
 /**
  * Each cue's notes, in hertz: rising as the app starts to listen, falling as it stops, and higher, a step apart, for
@@ -13,7 +13,7 @@ let context: AudioContext | undefined
 
 /**
  * Play a cue: two short soft notes, made on the spot rather than shipped as recordings. Quiet, so that it
- * marks the moment without startling, and short, so that it is over before the user speaks.
+ * marks the moment without startling, and short, so that it is over before the person speaks.
  */
 export function playCue(cue: Cue, sink: string | undefined): void {
   context ??= new AudioContext()

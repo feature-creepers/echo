@@ -3,7 +3,7 @@ import { useId } from 'react'
 import { glide } from '../styles/motion.ts'
 import { cn } from './cn.ts'
 
-export interface ChoiceProps<Value extends string | number> {
+interface ChoiceProps<Value extends string | number> {
   /** What is being chosen, for a screen reader. */
   label: string
   value: Value

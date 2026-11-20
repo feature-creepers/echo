@@ -4,6 +4,7 @@ import { motion } from 'motion/react'
 import { type PointerEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { cn } from '../../primitives/cn.ts'
 import { Eyebrow } from '../../primitives/eyebrow.tsx'
+import { DURATION, EASE } from '../../styles/motion.ts'
 import { useViewActions } from '../context.ts'
 import { TONE_COLOR } from '../tones.ts'
 import { formatValue, frame, inFrame, placeLabels, position, rewoundAll, scaleOf, shade, spansTheWorld, TILE, tilesFor } from './map-geometry.ts'
@@ -185,7 +186,7 @@ export function RegionMap({ props }: { props: BlockProps<'RegionMap'> }) {
             height={drawn.height}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ duration: 0.4 }}
+            transition={{ duration: DURATION.slow, ease: EASE }}
             className="block"
             role="img"
             aria-label={props.legend ?? 'Map'}
@@ -277,7 +278,7 @@ export function PlaceMap({ props }: { props: BlockProps<'PlaceMap'> }) {
             width={TILE}
             height={TILE}
             onLoad={(event) => event.currentTarget.classList.remove('opacity-0')}
-            className="absolute max-w-none opacity-0 brightness-[0.62] transition-opacity duration-500"
+            className="absolute max-w-none opacity-0 brightness-[0.62] transition-opacity duration-(--duration-slow) ease-soft"
             style={{ left: tile.left, top: tile.top }}
           />
         ))}
@@ -305,11 +306,11 @@ export function PlaceMap({ props }: { props: BlockProps<'PlaceMap'> }) {
                   <circle
                     cx={x}
                     cy={y}
-                    r={active ? 6.5 : 5}
+                    r={5}
                     fill={TONE_COLOR[place.tone]}
                     stroke="var(--color-ground)"
                     strokeWidth={2}
-                    className="transition-[r] duration-150"
+                    className={cn('origin-center transition-transform duration-(--duration-quick) ease-soft [transform-box:fill-box]', active && 'scale-[1.3]')}
                   />
                   {labels[index] && (
                     <text

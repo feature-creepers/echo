@@ -5,7 +5,8 @@ import type { SavedWidget } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { cn } from '../primitives/cn.ts'
-import { BookmarkGlyph, PinGlyph, SearchGlyph } from '../primitives/icons.tsx'
+import { BookmarkGlyph, PinGlyph } from '../primitives/icons.tsx'
+import { SearchField } from '../primitives/search-field.tsx'
 import { EASE } from '../styles/motion.ts'
 import type { ViewActions } from '../view/context.ts'
 import { ViewRenderer } from '../view/view-renderer.tsx'
@@ -29,6 +30,9 @@ export interface WidgetsSectionProps {
 
 const day = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' })
 
+/** Text as a search compares it: without accents, in lower case. */
+const plain = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+
 /** The words of a widget a search looks in: its title, its collection, and every text it shows. */
 function wordsOf(widget: SavedWidget): string {
   const texts: string[] = [widget.title, widget.collection ?? '']
@@ -38,7 +42,7 @@ function wordsOf(widget: SavedWidget): string {
     else if (typeof value === 'object' && value !== null) for (const item of Object.values(value)) walk(item)
   }
   for (const element of Object.values(widget.spec.elements)) walk(element.props)
-  return texts.join(' ').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+  return plain(texts.join(' '))
 }
 
 /**
@@ -58,7 +62,7 @@ export function WidgetsSection({ controls, actions, selected, onAsk, onShown }: 
   useEffect(() => setOpen(selected), [selected])
 
   const shown = useMemo(() => {
-    const words = query.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().split(/\s+/).filter(Boolean)
+    const words = plain(query).split(/\s+/).filter(Boolean)
     return widgets.filter((widget) => {
       if (shelf.is === 'pinned' && !widget.pinned) return false
       if (shelf.is === 'unfiled' && widget.collection) return false
@@ -76,17 +80,13 @@ export function WidgetsSection({ controls, actions, selected, onAsk, onShown }: 
 
   return (
     <div className="grid gap-4">
-      <label className="flex h-8 items-center gap-2 rounded-md bg-white/[0.06] px-2.5 text-text-faint shadow-[inset_0_0_0_0.5px_rgb(255_255_255/0.08)] transition-shadow duration-(--duration-quick) focus-within:text-text-soft focus-within:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_55%,transparent)] [&_svg]:size-3.5">
-        <SearchGlyph />
-        <input
-          type="search"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search by title, collection or anything a widget shows"
-          aria-label="Search the widgets"
-          className="min-w-0 flex-1 bg-transparent text-[0.8125rem] text-text outline-none placeholder:text-text-faint focus-visible:outline-none [&::-webkit-search-cancel-button]:hidden"
-        />
-      </label>
+      <SearchField
+        value={query}
+        onChange={setQuery}
+        placeholder="Search by title, collection or anything a widget shows"
+        label="Search the widgets"
+        className="h-8"
+      />
 
       {/* A scope bar, as in a native browser of files: every shelf in sight, the chosen one raised. */}
       <div role="toolbar" aria-label="Shelves" className="flex flex-wrap items-center gap-1">

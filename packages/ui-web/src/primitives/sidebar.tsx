@@ -2,7 +2,10 @@ import type { ReactNode } from 'react'
 import { cn } from './cn.ts'
 import { BackGlyph } from './icons.tsx'
 
-export interface SidebarProps {
+/** The shape every row of a sidebar shares: the back row and the entries. */
+const ROW = 'group flex h-7 shrink-0 items-center rounded-md px-2.5 text-left text-[0.8125rem] transition-colors duration-(--duration-quick) ease-soft'
+
+interface SidebarProps {
   /** What the list is, for a screen reader. */
   label: string
   /** The way back to where the screen was opened from, at the top of the pane. */
@@ -56,32 +59,22 @@ export function SidebarGroup({ title, children }: { title?: string | undefined; 
   )
 }
 
-/** The shape every row of a sidebar shares: the back row and the entries. */
-const ROW = 'group flex h-7 shrink-0 items-center rounded-md px-2.5 text-left text-[0.8125rem] transition-colors duration-(--duration-quick) ease-soft'
-
-export interface SidebarItemProps {
+interface SidebarItemProps {
   on: boolean
   onClick(): void
-  /** A count or a state, on the right. */
-  detail?: ReactNode
   children: ReactNode
 }
 
 /** One entry of a sidebar: the chosen one sits on a quiet raised row, as macOS marks a selection in a sidebar. */
-export function SidebarItem({ on, onClick, detail, children }: SidebarItemProps) {
+export function SidebarItem({ on, onClick, children }: SidebarItemProps) {
   return (
     <button
       type="button"
       aria-current={on ? 'page' : undefined}
       onClick={onClick}
-      className={cn(
-        ROW,
-        'justify-between gap-3',
-        on ? 'bg-white/[0.1] text-text' : 'text-text-soft hover:bg-white/[0.04] hover:text-text active:bg-white/[0.07]'
-      )}
+      className={cn(ROW, on ? 'bg-white/[0.1] text-text' : 'text-text-soft hover:bg-white/[0.04] hover:text-text active:bg-white/[0.07]')}
     >
       <span className="truncate">{children}</span>
-      {detail !== undefined && <span className={cn('text-xs tabular-nums', on ? 'text-text-soft' : 'text-text-faint')}>{detail}</span>}
     </button>
   )
 }

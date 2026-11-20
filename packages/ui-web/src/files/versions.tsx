@@ -1,6 +1,6 @@
 import type { Client } from '@repo/client'
 import type { FileVersion } from '@repo/protocol'
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Changes } from '../changes/changes.tsx'
 import { Counts } from '../changes/diff-view.tsx'
 import { lastPart } from '../changes/words.ts'
@@ -22,25 +22,20 @@ export function Versions({ client, location, modified }: { client: Client; locat
   const [open, setOpen] = useState<string>()
   const [busy, setBusy] = useState<string>()
   const [problem, setProblem] = useState<string>()
-
-  const read = useCallback(
-    (live: () => boolean) => {
-      client.session.run('activity.versions', { path: location }).then(
-        ({ versions }) => live() && setReading({ is: 'read', versions }),
-        () => live() && setReading({ is: 'failed' })
-      )
-    },
-    [client, location]
-  )
+  // Counts the person's tries after a failed reading, each of which reads again.
+  const [attempt, setAttempt] = useState(0)
 
   // Read again whenever the file changes, though the reading does not use when: what is kept may have moved on.
   useEffect(() => {
     let live = true
-    read(() => live)
+    client.session.run('activity.versions', { path: location }).then(
+      ({ versions }) => live && setReading({ is: 'read', versions }),
+      () => live && setReading({ is: 'failed' })
+    )
     return () => {
       live = false
     }
-  }, [read, modified])
+  }, [client, location, modified, attempt])
 
   const putBack = async (version: FileVersion) => {
     setBusy(keyOf(version))
@@ -74,7 +69,7 @@ export function Versions({ client, location, modified }: { client: Client; locat
           size="sm"
           onClick={() => {
             setReading({ is: 'reading' })
-            read(() => true)
+            setAttempt((count) => count + 1)
           }}
         >
           Try again
@@ -99,7 +94,7 @@ export function Versions({ client, location, modified }: { client: Client; locat
           const key = keyOf(version)
           const shown = open === key
           return (
-            <li key={key} className="grid gap-2 rounded-md border border-white/[0.07] px-3 py-2">
+            <li key={key} className="grid gap-2 rounded-md border border-line px-3 py-2">
               <div className="flex min-w-0 items-center gap-3">
                 <div className="grid min-w-0 flex-1">
                   <span className="truncate text-[0.8125rem]">{versionWords(version)}</span>

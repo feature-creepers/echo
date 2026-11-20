@@ -1,10 +1,10 @@
 import type { DeviceSettings, DeviceSettingsChange, UpdateState } from '@repo/client'
 import type { Accent } from '@repo/protocol'
-import type { Mood } from '../presence/painter.ts'
+import type { Mood } from '../presence/life.ts'
 
 export type ShortcutName = keyof DeviceSettings['shortcuts']
 
-/** A shortcut given, or refused and why, in words for the user. */
+/** A shortcut given, or refused and why, in words for the person. */
 export type ShortcutChange = { ok: true; settings: DeviceSettings } | { ok: false; problem: string }
 
 /** The app, as the settings show it. */
@@ -21,10 +21,6 @@ export interface About {
 }
 
 /**
- * What the interface needs from the app that hosts it to show and change the settings of this device. The
- * desktop app supplies it; the interface never knows how it keeps them.
- */
-/**
  * What a folder or a file is picked for, which words the system's picker: giving access to several, the one folder a
  * project works in, the proof of concept's folder to import, or a folder to hand over with what is said.
  */
@@ -40,6 +36,10 @@ export interface CopiedFiles {
   more: number
 }
 
+/**
+ * What the interface needs from the app that hosts it to show and change the settings of this device. The
+ * desktop app supplies it; the interface never knows how it keeps them.
+ */
 export interface DeviceHost {
   settings: {
     read(): Promise<DeviceSettings>
@@ -47,7 +47,7 @@ export interface DeviceHost {
     onChange(listener: (settings: DeviceSettings) => void): () => void
     /** Give an action new keys. The app asks the system first for the one it takes from every app. */
     setShortcut(name: ShortcutName, accelerator: string): Promise<ShortcutChange>
-    /** Let go of the app's shortcuts while the user records a new one, so that pressing them records them. */
+    /** Let go of the app's shortcuts while the person records a new one, so that pressing them records them. */
     suspendShortcuts(suspended: boolean): void
     /** Why the shortcuts taken from any app that do not work now are refused, by action. */
     shortcutProblems(): Promise<Partial<Record<ShortcutName, string>>>
@@ -63,12 +63,12 @@ export interface DeviceHost {
    * the core looks as it does on a computer at rest.
    */
   load?(listener: (load: number) => void): () => void
-  /** The files of this computer, picked by the user for the assistant. Left out, folders cannot be picked here. */
+  /** The files of this computer, picked by the person for the assistant. Left out, folders cannot be picked here. */
   files?: {
     /**
      * The system's own picker: folders or files to give access to; for a project, the one folder it works in; to
      * import, the proof of concept's folder; to attach, one folder to hand over with what is said. Nothing when the
-     * user cancels.
+     * person cancels.
      */
     pick(kind: 'folder' | 'file', purpose?: PickPurpose): Promise<string[]>
     /** Show a folder or a file in the system's file manager. */

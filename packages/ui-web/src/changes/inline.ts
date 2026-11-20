@@ -11,7 +11,7 @@
 import type { DrawnLine } from './words.ts'
 
 /** Where a mark starts and ends in a line, in characters, the end left out. */
-export type Mark = readonly [start: number, end: number]
+type Mark = readonly [start: number, end: number]
 
 /** The cells a comparison of two lines' middles may fill, past which their middle is marked whole. */
 export const PAIR_CELLS = 40_000
@@ -41,7 +41,7 @@ function tokens(line: string): Token[] {
 }
 
 /** What comparing two lines found: the marks in each, and the cells it filled. */
-export interface LineMarks {
+interface LineMarks {
   before: Mark[]
   after: Mark[]
   cells: number

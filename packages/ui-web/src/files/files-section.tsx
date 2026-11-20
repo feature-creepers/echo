@@ -25,8 +25,9 @@ export function FilesSection({ client, productName }: { client: Client; productN
   const [listings, setListings] = useState<ReadonlyMap<string, Listing>>(new Map([['', { is: 'reading' }]]))
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set())
   const [selected, setSelected] = useState<string>()
-  const latest = useRef({ listings, open })
-  latest.current = { listings, open }
+  // The folders open now, for a refresh that reads them again without being made anew each time one opens.
+  const opened = useRef(open)
+  opened.current = open
 
   const read = useCallback(
     async (path: string) => {
@@ -43,7 +44,7 @@ export function FilesSection({ client, productName }: { client: Client; productN
   /** Read again the top and every folder open, keeping what was shown until the new listing arrives. */
   const refresh = useCallback(() => {
     void read('')
-    for (const path of latest.current.open) void read(path)
+    for (const path of opened.current) void read(path)
   }, [read])
 
   useEffect(() => {
@@ -293,7 +294,7 @@ function Preview({ client, entry, onOpenFolder }: { client: Client; entry: Works
 
   return (
     <>
-      <header className="flex h-14 min-w-0 items-center gap-3 border-white/[0.06] border-b pr-2 pl-4">
+      <header className="flex h-14 min-w-0 items-center gap-3 border-line border-b pr-2 pl-4">
         {folder ? (
           <span className="flex h-6 w-7 shrink-0 items-center justify-center text-text-faint">
             <FolderGlyph />

@@ -9,7 +9,7 @@ import { Menu } from '../primitives/menu.tsx'
 import type { ViewActions } from './context.ts'
 import { ViewRenderer } from './view-renderer.tsx'
 
-export interface ViewCardProps {
+interface ViewCardProps {
   view: ShownView
   /** What the view's blocks can do: speak to the assistant, read its files, start what they play. */
   actions: ViewActions
@@ -69,10 +69,10 @@ function SnoozeControl({ job, snooze, onSnoozed }: { job: string; snooze(job: st
   )
 }
 
-/** The bar on top of a view, wherever it is shown: its name on the left, what can be done with it on the right. */
-export function PanelBar({ title, lead, children }: { title: string; lead?: string | undefined; children: ReactNode }) {
+/** The bar on top of a view: its name on the left, what can be done with it on the right. */
+function PanelBar({ title, lead, children }: { title: string; lead?: string | undefined; children: ReactNode }) {
   return (
-    <header className="flex h-9 min-w-0 items-center justify-between gap-3 border-white/[0.06] border-b pr-1 pl-4">
+    <header className="flex h-9 min-w-0 items-center justify-between gap-3 border-line border-b pr-1 pl-4">
       <span className="flex min-w-0 items-baseline gap-2 text-xs">
         {lead && <span className="shrink-0 text-[0.6875rem] text-text-faint">{lead}</span>}
         <span className="truncate font-medium text-text-soft">{title}</span>

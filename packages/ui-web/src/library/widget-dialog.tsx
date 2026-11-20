@@ -1,8 +1,9 @@
 import type { ViewSpec } from '@repo/catalog'
 import { COLLECTION_MAX_LENGTH, type SavedWidget, WIDGET_TITLE_MAX_LENGTH } from '@repo/protocol'
 import { motion } from 'motion/react'
-import { type FormEvent, useEffect, useId, useState } from 'react'
+import { type FormEvent, useEffect, useId, useRef, useState } from 'react'
 import { Button } from '../primitives/button.tsx'
+import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { IconButton } from '../primitives/icon-button.tsx'
 import { CloseGlyph, SendGlyph } from '../primitives/icons.tsx'
@@ -12,7 +13,7 @@ import type { ViewActions } from '../view/context.ts'
 import { ViewRenderer } from '../view/view-renderer.tsx'
 import type { LibraryControls } from './library-context.ts'
 
-export interface WidgetDialogProps {
+interface WidgetDialogProps {
   widget: SavedWidget
   /** The collections there are, to pick one by its first letters. */
   collections: readonly string[]
@@ -27,6 +28,9 @@ export interface WidgetDialogProps {
 
 const when = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'long', year: 'numeric' })
 
+/** The look of the dialog's fields: a sunken box with a hairline. */
+const FIELD = 'h-8 rounded-md border border-line-strong bg-black/25 px-2.5 text-[0.8125rem] shadow-[inset_0_1px_1px_rgb(0_0_0/0.25)] transition-colors'
+
 /**
  * One saved widget, open: drawn at full size and usable, beside what can be done with it. Its name and
  * collection are the user's to change here; its content is the assistant's, so changing it is asked for.
@@ -38,6 +42,16 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
   const [deleting, setDeleting] = useState(false)
   const [problem, setProblem] = useState<string>()
   const ids = useId()
+  const box = useRef<HTMLDivElement>(null)
+
+  // The keyboard moves into the dialog as it opens, and goes back to what opened it once it is closed.
+  useEffect(() => {
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
+    box.current?.focus({ preventScroll: true })
+    return () => {
+      if (opener?.isConnected) opener.focus({ preventScroll: true })
+    }
+  }, [])
 
   // Escape closes the dialog and nothing under it: heard first, and marked as handled for the library around it.
   useEffect(() => {
@@ -83,14 +97,16 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
       }}
     >
       <motion.div
+        ref={box}
         role="dialog"
         aria-modal="true"
         aria-label={widget.title}
+        tabIndex={-1}
         initial={{ opacity: 0, y: 8, scale: 0.99 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 4, scale: 0.99, transition: { duration: DURATION.quick, ease: EASE } }}
         transition={{ duration: DURATION.calm, ease: EASE }}
-        className="shadow-float flex max-h-full w-full max-w-4xl overflow-hidden rounded-lg bg-surface ring-1 ring-white/[0.08]"
+        className="shadow-float flex max-h-full w-full max-w-4xl overflow-hidden rounded-lg bg-surface outline-none ring-1 ring-white/[0.08]"
       >
         <div className="scroll-quiet grid min-w-0 flex-1 content-start overflow-y-auto">
           <div className="sticky top-0 z-10 flex h-10 items-center border-line border-b bg-surface/90 px-5 text-text-soft text-xs backdrop-blur-xl">
@@ -121,7 +137,7 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
                 onChange={(event) => setTitle(event.target.value)}
                 onBlur={keepTitle}
                 onKeyDown={(event) => event.key === 'Enter' && event.currentTarget.blur()}
-                className="h-8 rounded-md border border-line-strong bg-black/25 shadow-[inset_0_1px_1px_rgb(0_0_0/0.25)] px-2.5 font-medium text-[0.8125rem] transition-colors"
+                className={cn(FIELD, 'font-medium')}
               />
             </div>
             <div className="grid gap-1.5">
@@ -137,7 +153,7 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
                 onChange={(event) => setCollection(event.target.value)}
                 onBlur={keepCollection}
                 onKeyDown={(event) => event.key === 'Enter' && event.currentTarget.blur()}
-                className="h-8 rounded-md border border-line-strong bg-black/25 shadow-[inset_0_1px_1px_rgb(0_0_0/0.25)] px-2.5 text-[0.8125rem] transition-colors placeholder:text-text-faint"
+                className={cn(FIELD, 'placeholder:text-text-faint')}
               />
               <datalist id={`${ids}-collections`}>
                 {collections.map((name) => (
@@ -170,7 +186,8 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
                 placeholder="Add the weekend, bigger title…"
                 onChange={(event) => setChange(event.target.value)}
                 onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !event.shiftKey) ask(event)
+                  // Enter that ends a composition (an accent, a word in Japanese) belongs to the composition.
+                  if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) ask(event)
                 }}
                 className="min-w-0 flex-1 resize-none bg-transparent text-[0.8125rem] outline-none placeholder:text-text-faint focus-visible:outline-none"
               />

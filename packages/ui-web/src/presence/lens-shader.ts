@@ -1,4 +1,4 @@
-import { type Drawing, PRELUDE } from './glsl.ts'
+import { type Drawing, glsl, PRELUDE } from './glsl.ts'
 
 /**
  * The lens look: the eye of 2001: A Space Odyssey, as a real lens in a real room. Nothing in it is painted on: each
@@ -6,11 +6,11 @@ import { type Drawing, PRELUDE } from './glsl.ts'
  *
  * The ray first meets a dome of glass standing out of a thin flat seat of dark polished metal. The dome reflects the
  * room it is in: a nearly dark room with a row of light panels in its ceiling, as on the film's set, which its curve
- * draws out along its upper rim; and, of the screen it lives on, the view it looks at as a faint lit pane. The ray then bends into the glass and goes down the barrel: a tunnel of stops, each a dark
- * ring whose inner edge the lamp lights red, narrower the deeper it is, and in the deeper ones a lens element whose
- * curved face reflects the ceiling's panels again, small: the film's catchlights, which here are what they were on
- * the set. At the bottom is the lamp: a disc of amber yellow in a saturated red that fills the glass round it and
- * sinks to black towards the edge.
+ * draws out along its upper rim; and, of the screen it lives on, the view it looks at as a faint lit pane. The ray
+ * then bends into the glass and goes down the barrel: a tunnel of stops, each a dark ring whose inner edge the lamp
+ * lights red, narrower the deeper it is, and in the deeper ones a lens element whose curved face reflects the
+ * ceiling's panels again, small: the film's catchlights. At the bottom is the lamp: a disc of amber yellow in a
+ * saturated red that fills the glass round it and sinks to black towards the edge.
  *
  * Because it is traced, it turns as a thing does: the room slides over the dome, the stops part by their depth, and
  * the lamp is seen down the tunnel from the side.
@@ -44,7 +44,7 @@ const widthFor = (seen: number, depth: number) => seen * (1 - ((1 - 1 / INDEX) /
  * bulging towards the front, and how much of the room that face reflects. The curve says where the ceiling's panels
  * show in it and how small: the tighter, the nearer the lamp and the smaller.
  */
-export const STOPS = [
+const STOPS = [
   { seen: 0.83, depth: 0.05, curve: 0, mirror: 0 },
   { seen: 0.7, depth: 0.17, curve: 0, mirror: 0 },
   { seen: 0.57, depth: 0.31, curve: 1.1, mirror: 0.035 },
@@ -89,15 +89,13 @@ const LAMP_WIDTH = widthFor(0.1, LAMP_DEPTH) / 0.1
  * its ends: so a polished dome shows it as one soft crescent under its upper rim, clean on the rim's side and melting
  * into the glass on the other, and each element behind the dome as a small arc.
  */
-export const SOFTBOX = { at: [-0.22, 0.06], half: 0.95, reach: 0.2, bright: 5.5 } as const
+const SOFTBOX = { at: [-0.22, 0.06], half: 0.95, reach: 0.2, bright: 5.5 } as const
 
 /** How low over the lens's rim the light that goes round it while it thinks is, in radians from the lens's axis. */
 const SCAN_LOW = 1.5
 
 /** How far in front of the lens the screen it lives on is taken to be, in its radii, for what of it the glass reflects. */
 const SCREEN = 2.2
-
-const glsl = (value: number) => value.toFixed(4)
 
 const FRAGMENT = `${PRELUDE}
 uniform float u_lamp;

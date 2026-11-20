@@ -1,7 +1,7 @@
 import type { Look } from '@repo/protocol'
 import { createBloom } from './bloom.ts'
 import type { Rgb } from './color.ts'
-import { type Drawing, SIDES, VERTEX } from './glsl.ts'
+import { compile, type Drawing, link, SIDES, sampleSmoothly, VERTEX } from './glsl.ts'
 import { HUD } from './hud-shader.ts'
 import { LENS } from './lens-shader.ts'
 import { BANDS, ECHO_LENGTH, LOOK_SHRINK, type Pose } from './life.ts'
@@ -13,20 +13,20 @@ import { BANDS, ECHO_LENGTH, LOOK_SHRINK, type Pose } from './life.ts'
  * (`bloom.ts`), each look as much as it asks.
  */
 
-/** Each look's drawing on the graphics card. */
-export const DRAWINGS: Record<Look, Drawing> = { lens: LENS, hud: HUD }
+const DRAWINGS: Record<Look, Drawing> = { lens: LENS, hud: HUD }
 
-export interface GpuCore {
+interface GpuCore {
   /**
    * Draws one frame: the pose from the life behind it, each look's accent as red, green and blue from 0 to 255 (a
-   * look giving way keeps the accent it had), and the canvas's side in device pixels.
+   * look giving way keeps the accent it had), the canvas's side in device pixels, and how large the core is drawn in
+   * it, from 0 to 1.
    */
-  paint(pose: Pose, accents: Record<Look, Rgb>, side: number, scale?: number): void
+  paint(pose: Pose, accents: Record<Look, Rgb>, side: number, scale: number): void
   /** Lets the graphics card go at once, rather than when the page is collected. */
   dispose(): void
 }
 
-const SHARED = ['extent', 'center', 'radius', 'accent', 'weight', 'grain', 'echoShift', 'gaze', 'power', 'tilt', 'time'] as const
+const SHARED = ['extent', 'center', 'radius', 'accent', 'weight', 'grain', 'echoShift', 'tilt', 'time'] as const
 
 interface Program {
   program: WebGLProgram
@@ -34,26 +34,9 @@ interface Program {
   own: Record<string, WebGLUniformLocation | null>
 }
 
-function compile(gl: WebGL2RenderingContext, type: number, source: string) {
-  const shader = gl.createShader(type)
-  if (!shader) return undefined
-  gl.shaderSource(shader, source)
-  gl.compileShader(shader)
-  return shader
-}
-
-function link(gl: WebGL2RenderingContext, vertex: WebGLShader, drawing: Drawing): Program | undefined {
-  const fragment = compile(gl, gl.FRAGMENT_SHADER, drawing.fragment)
-  const program = gl.createProgram()
-  if (!fragment || !program) return undefined
-  gl.attachShader(program, vertex)
-  gl.attachShader(program, fragment)
-  gl.linkProgram(program)
-  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    console.warn('The core could not be drawn on the graphics card:', gl.getShaderInfoLog(fragment) || gl.getProgramInfoLog(program))
-    return undefined
-  }
-  gl.deleteShader(fragment)
+function build(gl: WebGL2RenderingContext, vertex: WebGLShader, drawing: Drawing): Program | undefined {
+  const program = link(gl, vertex, drawing.fragment, 'The core')
+  if (!program) return undefined
   gl.useProgram(program)
   gl.uniform1i(gl.getUniformLocation(program, 'u_echo'), 0)
   const locate = (names: readonly string[]) => Object.fromEntries(names.map((name) => [name, gl.getUniformLocation(program, `u_${name}`)]))
@@ -66,18 +49,15 @@ function prepare(gl: WebGL2RenderingContext) {
   const echo = gl.createTexture()
   if (!vertex || !echo) return undefined
   // Both looks are made at once, so a change of persona never waits on the graphics card.
-  const lens = link(gl, vertex, LENS)
-  const hud = link(gl, vertex, HUD)
+  const lens = build(gl, vertex, LENS)
+  const hud = build(gl, vertex, HUD)
   gl.deleteShader(vertex)
   if (!lens || !hud) return undefined
 
   gl.bindTexture(gl.TEXTURE_2D, echo)
   // Two rows: the voice's past, and its spectrum now.
   gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RG8, ECHO_LENGTH, 2)
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+  sampleSmoothly(gl)
   const programs: Record<Look, Program> = { lens, hud }
   // Without a bloom, the core is drawn straight onto the canvas, sharp and without its halo.
   const bloom = createBloom(gl)
@@ -89,7 +69,7 @@ function prepare(gl: WebGL2RenderingContext) {
  * a 2D canvas of its own (`painter.ts`). A machine without a usable graphics card is refused too, unless `force`
  * says otherwise: drawing on the processor would cost far more than the 2D drawing, every frame.
  */
-export function createGpuCore(canvas: HTMLCanvasElement, force = false): GpuCore | undefined {
+export function createGpuCore(canvas: HTMLCanvasElement, force: boolean): GpuCore | undefined {
   const gl = canvas.getContext('webgl2', {
     alpha: true,
     premultipliedAlpha: true,
@@ -119,11 +99,13 @@ export function createGpuCore(canvas: HTMLCanvasElement, force = false): GpuCore
   canvas.addEventListener('webglcontextrestored', onRestored)
 
   return {
-    paint(pose, accents, side, scale = 1) {
+    paint(pose, accents, side, scale) {
       if (!ready || gl.isContextLost()) return
       gl.viewport(0, 0, side, side)
       gl.clearColor(0, 0, 0, 0)
       gl.clear(gl.COLOR_BUFFER_BIT)
+      // The bloom makes its textures first: making them binds each, which would take the voice's place.
+      ready.bloom?.begin(side)
       // Each look gives its light already weighted, so adding them is the cross-fade.
       gl.enable(gl.BLEND)
       gl.blendFunc(gl.ONE, gl.ONE)
@@ -135,11 +117,6 @@ export function createGpuCore(canvas: HTMLCanvasElement, force = false): GpuCore
       gl.activeTexture(gl.TEXTURE0)
       gl.bindTexture(gl.TEXTURE_2D, ready.echo)
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, ECHO_LENGTH, 2, gl.RG, gl.UNSIGNED_BYTE, echo)
-      if (ready.bloom) {
-        ready.bloom.begin(side)
-        gl.enable(gl.BLEND)
-        gl.blendFunc(gl.ONE, gl.ONE)
-      }
       let glow = 0
 
       for (const look of Object.keys(DRAWINGS) as Look[]) {
@@ -158,8 +135,6 @@ export function createGpuCore(canvas: HTMLCanvasElement, force = false): GpuCore
         gl.uniform1f(shared.weight, weight)
         gl.uniform1f(shared.grain, grain)
         gl.uniform1f(shared.echoShift, pose.echoShift)
-        gl.uniform2f(shared.gaze, pose.gaze[0], pose.gaze[1])
-        gl.uniform1f(shared.power, pose.power)
         const turn = drawing.turn(pose)
         gl.uniform2f(shared.tilt, turn[0], turn[1])
         // The clock comes round every few hours, so its small steps stay exact.

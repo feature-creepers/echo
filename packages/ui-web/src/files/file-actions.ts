@@ -14,7 +14,7 @@ import type { FileActions } from '../view/context.ts'
 export const peeked = cell<string | undefined>(undefined)
 
 /** Show a file in the quick look over the main screen. */
-export const peek = (path: string) => peeked.set(path)
+const peek = (path: string) => peeked.set(path)
 
 /** The file actions views are given: what this app can do, and the quick look. */
 export function useFileActions(): FileActions {
@@ -48,13 +48,19 @@ export async function copyText(text: string): Promise<boolean> {
   }
 }
 
-/** Save a copy of a file where the person chooses: the window offers it as a download. */
-export async function saveCopy(client: Client, path: string, name: string): Promise<void> {
-  const read = await readFile(client.session, path, ATTACHMENT_MAX_BYTES * 4)
-  const url = URL.createObjectURL(new Blob([read.bytes as Uint8Array<ArrayBuffer>]))
+/** Save bytes where the person chooses, with the system's own dialog: the window offers them as a download. */
+export function offerDownload(blob: Blob, name: string): void {
+  const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
   link.download = name
   link.click()
+  // The download has started from the address by then; it is let go of a while later, not at once.
   setTimeout(() => URL.revokeObjectURL(url), 10_000)
+}
+
+/** Save a copy of a file where the person chooses. */
+export async function saveCopy(client: Client, path: string, name: string): Promise<void> {
+  const read = await readFile(client.session, path, ATTACHMENT_MAX_BYTES * 4)
+  offerDownload(new Blob([read.bytes as Uint8Array<ArrayBuffer>]), name)
 }

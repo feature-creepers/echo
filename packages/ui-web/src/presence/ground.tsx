@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { cn } from '../primitives/cn.ts'
-import { readColor } from './color.ts'
-import { GROUND_FRAGMENT, GROUND_VERTEX } from './ground-shader.ts'
+import { readAccent } from './color.ts'
+import { COVER, compile, link, sampleSmoothly } from './glsl.ts'
+import { GROUND_FRAGMENT } from './ground-shader.ts'
 import { ECHO_LENGTH } from './life.ts'
 import { useCoreLight } from './light.ts'
 
@@ -13,6 +14,7 @@ const FRAMES_A_SECOND = 30
 
 const UNIFORMS = ['size', 'ratio', 'time', 'live', 'accent', 'core', 'glow', 'spot', 'voice', 'voiceShift', 'fine', 'voices', 'travel'] as const
 
+/** Sets the ground up on a canvas, or gives nothing, its context let go, where the graphics card cannot draw it. */
 function setUp(canvas: HTMLCanvasElement) {
   const gl = canvas.getContext('webgl2', {
     alpha: true,
@@ -25,40 +27,22 @@ function setUp(canvas: HTMLCanvasElement) {
     failIfMajorPerformanceCaveat: true
   })
   if (!gl) return undefined
-  const shader = (type: number, source: string) => {
-    const made = gl.createShader(type)
-    if (!made) return undefined
-    gl.shaderSource(made, source)
-    gl.compileShader(made)
-    return made
-  }
-  const vertex = shader(gl.VERTEX_SHADER, GROUND_VERTEX)
-  const fragment = shader(gl.FRAGMENT_SHADER, GROUND_FRAGMENT)
-  const program = gl.createProgram()
+  const vertex = compile(gl, gl.VERTEX_SHADER, COVER)
+  const program = vertex ? link(gl, vertex, GROUND_FRAGMENT, 'The ground') : undefined
+  if (vertex) gl.deleteShader(vertex)
   // The voice's recent past, as the core's own drawing keeps it: one texel a sample, blended between neighbours.
   const voice = gl.createTexture()
-  if (!vertex || !fragment || !program || !voice) return undefined
-  gl.attachShader(program, vertex)
-  gl.attachShader(program, fragment)
-  gl.linkProgram(program)
-  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    console.warn('The ground could not be drawn on the graphics card:', gl.getShaderInfoLog(fragment) || gl.getProgramInfoLog(program))
+  if (!program || !voice) {
+    // A context left alive would count against the few the page may hold until it is collected.
+    gl.getExtension('WEBGL_lose_context')?.loseContext()
     return undefined
   }
-  gl.deleteShader(vertex)
-  gl.deleteShader(fragment)
   gl.useProgram(program)
   gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1)
   gl.activeTexture(gl.TEXTURE0)
   gl.bindTexture(gl.TEXTURE_2D, voice)
   gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RG8, ECHO_LENGTH, 1)
-  for (const [name, value] of [
-    [gl.TEXTURE_MIN_FILTER, gl.LINEAR],
-    [gl.TEXTURE_MAG_FILTER, gl.LINEAR],
-    [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE],
-    [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]
-  ] as const)
-    gl.texParameteri(gl.TEXTURE_2D, name, value)
+  sampleSmoothly(gl)
   const at = Object.fromEntries(UNIFORMS.map((name) => [name, gl.getUniformLocation(program, `u_${name}`)])) as Record<
     (typeof UNIFORMS)[number],
     WebGLUniformLocation | null
@@ -70,19 +54,17 @@ function setUp(canvas: HTMLCanvasElement) {
 /**
  * The ground of every screen: fine, faint dots under a light that lives. Pools of light drift over them, the core
  * lights the dots round it, where it looks a pool of its light falls, and its voice goes on through the dots round
- * it (`ground-shader.ts`). Where the graphics card cannot
- * draw it, or less motion is asked for and nothing would move, the still CSS ground is drawn instead. Nothing is
- * drawn while the window is hidden.
+ * it (`ground-shader.ts`). Where the graphics card cannot draw it, the still CSS ground is drawn instead; with less
+ * motion asked for, it is drawn only when the core's light changes. Nothing is drawn while the window is hidden.
  */
-export function LivingGround({ className }: { className?: string }) {
+export function LivingGround() {
   const box = useRef<HTMLDivElement>(null)
   const light = useCoreLight()
   const [flat, setFlat] = useState(false)
 
   useEffect(() => {
     const element = box.current
-    const probe = document.createElement('canvas').getContext('2d', { willReadFrequently: true })
-    if (!element || !probe) return
+    if (!element) return
     const canvas = document.createElement('canvas')
     canvas.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block'
     const ready = setUp(canvas)
@@ -93,6 +75,18 @@ export function LivingGround({ className }: { className?: string }) {
     element.append(canvas)
     const { gl, program, at, voice } = ready
     const still = window.matchMedia('(prefers-reduced-motion: reduce)')
+    let accent: [number, number, number] = [0.64, 0.68, 0.73]
+    let target = accent
+    let readAt = -Infinity
+    let time = 0
+    let previous = performance.now()
+    let drawnAt = -Infinity
+    let dirty = true
+    let frame = 0
+    let lost = false
+    let lastLight = ''
+    const heard = new Uint8Array(ECHO_LENGTH * 2)
+
     // The canvas has exactly the window's device pixels, so every dot lands on whole ones.
     let pixels = { width: 0, height: 0, ratio: 1 }
     const measure = (entry?: ResizeObserverEntry) => {
@@ -115,24 +109,13 @@ export function LivingGround({ className }: { className?: string }) {
       watch.observe(element)
     }
 
-    let accent: [number, number, number] = [0.64, 0.68, 0.73]
-    let target = accent
-    let readAt = -Infinity
-    let time = 0
-    let previous = performance.now()
-    let drawnAt = -Infinity
-    let dirty = true
-    let frame = 0
-    let lastLight = ''
-    const heard = new Uint8Array(ECHO_LENGTH * 2)
-
     const draw = (now: number) => {
       frame = 0
       const delta = Math.min(0.1, (now - previous) / 1000)
       previous = now
       const moving = !still.matches
       if (now - readAt > 250) {
-        const [red, green, blue] = readColor(probe, getComputedStyle(element).getPropertyValue('--accent').trim() || '#a4adbb')
+        const [red, green, blue] = readAccent(element)
         target = [red / 255, green / 255, blue / 255]
         readAt = now
       }
@@ -184,7 +167,7 @@ export function LivingGround({ className }: { className?: string }) {
       run()
     }
     const run = () => {
-      if (!frame && document.visibilityState === 'visible') frame = requestAnimationFrame(draw)
+      if (!frame && !lost && document.visibilityState === 'visible') frame = requestAnimationFrame(draw)
     }
     const onVisibility = () => {
       if (document.visibilityState !== 'visible') {
@@ -195,8 +178,10 @@ export function LivingGround({ className }: { className?: string }) {
       previous = performance.now()
       run()
     }
-    // A lost context (the graphics card reset) leaves the still CSS ground, rather than a blank one.
+    // A lost context (the graphics card reset) leaves the still CSS ground, rather than a blank one, for good: a resize
+    // or the window shown again must not start drawing on it.
     const onLost = () => {
+      lost = true
       cancelAnimationFrame(frame)
       frame = 0
       canvas.remove()
@@ -217,5 +202,5 @@ export function LivingGround({ className }: { className?: string }) {
     }
   }, [light])
 
-  return <div ref={box} aria-hidden="true" className={cn('pointer-events-none absolute inset-0', flat && 'dot-ground', className)} />
+  return <div ref={box} aria-hidden="true" className={cn('pointer-events-none absolute inset-0', flat && 'dot-ground')} />
 }

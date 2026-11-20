@@ -1,7 +1,9 @@
+import { ATTACHMENTS_PER_TURN } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { PaperclipGlyph } from '../files/glyphs.tsx'
 import { DURATION, EASE } from '../styles/motion.ts'
+import { LARGEST_FILE } from './use-attachments.ts'
 
 /** What was dropped: files, and folders by where they are, when the window can tell. */
 export interface Dropped {
@@ -115,7 +117,9 @@ export function DropState({ over, name }: { over: boolean; name: string }) {
               <span className="font-medium text-[0.9375rem] tracking-[-0.01em]">Drop to give these to {name}</span>
               <span className="grid text-text-faint text-xs leading-relaxed">
                 <span>They go with what you say next.</span>
-                <span>Up to 10 files of 25 MB each; a folder is given to read.</span>
+                <span>
+                  Up to {ATTACHMENTS_PER_TURN} files of {LARGEST_FILE} each; a folder is given to read.
+                </span>
               </span>
             </motion.div>
           </div>

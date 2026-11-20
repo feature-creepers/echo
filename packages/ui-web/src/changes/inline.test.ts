@@ -35,15 +35,13 @@ describe('the words changed within a line', () => {
     const found = lineMarks(before, after)
     // Rewritten whole in its middle: nothing is marked, as the line's tint says it.
     expect(found).toEqual({ before: [], after: [], cells: 0 })
-    const near = lineMarks(`keep ${'word '.repeat(400)}one`, `keep ${'word '.repeat(400)}two`)
-    expect(marked(`keep ${'word '.repeat(400)}one`, near.before)).toEqual(['one'])
-    expect(near.cells).toBe(1)
+    const long = `keep ${'word '.repeat(400)}one`
+    expect(marked(long, lineMarks(long, `keep ${'word '.repeat(400)}two`).before)).toEqual(['one'])
   })
 
-  it('compares a middle word by word only within the cells given', () => {
-    expect(lineMarks('a b c d', 'a x c y', 0).cells).toBe(0)
-    // Past the shared "a ", five tokens against five.
-    expect(lineMarks('a b c d', 'a x c y', PAIR_CELLS).cells).toBe(25)
+  it('compares a middle word by word only within the cells given, and reads it as rewritten past them', () => {
+    expect(marked('a b c d', lineMarks('a b c d', 'a x c y', PAIR_CELLS).before)).toEqual(['b', 'd'])
+    expect(lineMarks('a b c d', 'a x c y', 0)).toEqual({ before: [], after: [], cells: 0 })
   })
 })
 

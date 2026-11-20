@@ -7,8 +7,9 @@ const VOLUME = 'echo.media-volume'
 
 function readVolume(): number {
   try {
-    const kept = Number(localStorage.getItem(VOLUME))
-    return localStorage.getItem(VOLUME) !== null && Number.isFinite(kept) ? Math.max(0, Math.min(1, kept)) : 0.8
+    const kept = localStorage.getItem(VOLUME)
+    const level = Number(kept)
+    return kept !== null && Number.isFinite(level) ? Math.max(0, Math.min(1, level)) : 0.8
   } catch {
     return 0.8
   }
@@ -16,6 +17,8 @@ function readVolume(): number {
 
 interface Playback {
   player: MediaPlayer
+  /** Where the element waits while no block draws it: off screen, at the end of the page. */
+  holder: HTMLElement
   /** Lend the element to a block that draws the video. Gives a function that takes it back. */
   lend(container: HTMLElement): () => void
 }
@@ -37,12 +40,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     element.preload = 'none'
     element.className = 'size-full object-contain'
     holder.append(element)
-    document.body.append(holder)
     const player = createMediaPlayer({ element, volume: readVolume() })
     /** The containers that borrowed the element, the latest last: it goes back to the one before when one lets go. */
     const borrowers: HTMLElement[] = []
     return {
       player,
+      holder,
       lend(container) {
         borrowers.push(container)
         container.append(element)
@@ -55,25 +58,43 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   })
 
-  // The level the user set is kept for the next launch.
-  useEffect(
-    () =>
-      playback.player.subscribe(() => {
-        try {
-          localStorage.setItem(VOLUME, String(playback.player.current().volume))
-        } catch {
-          // Not kept: the level lasts until the app closes.
-        }
-      }),
-    [playback]
-  )
+  // The holder is put on the page here rather than as the player is made, so it leaves with the provider, and what
+  // plays stops with it.
+  useEffect(() => {
+    document.body.append(playback.holder)
+    return () => {
+      playback.player.stop()
+      playback.holder.remove()
+    }
+  }, [playback])
+
+  // The level the user set is kept for the next launch, written when it changes rather than at each tick of what plays.
+  useEffect(() => {
+    let kept = playback.player.current().volume
+    return playback.player.subscribe(() => {
+      const { volume } = playback.player.current()
+      if (volume === kept) return
+      kept = volume
+      try {
+        localStorage.setItem(VOLUME, String(volume))
+      } catch {
+        // Not kept: the level lasts until the app closes.
+      }
+    })
+  }, [playback])
 
   // The system's media keys and its "now playing" panel control the player too.
   useEffect(() => {
     if (!('mediaSession' in navigator)) return
     const session = navigator.mediaSession
     const handlers: [MediaSessionAction, () => void][] = [
-      ['play', () => playback.player.current().source && playback.player.play(playback.player.current().source as MediaSource)],
+      [
+        'play',
+        () => {
+          const { source } = playback.player.current()
+          if (source) playback.player.play(source)
+        }
+      ],
       ['pause', () => playback.player.pause()],
       ['stop', () => playback.player.stop()]
     ]

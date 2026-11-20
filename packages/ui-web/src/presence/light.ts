@@ -6,7 +6,7 @@ import { type Field, restingField } from './field.ts'
  * and the ground reads it on every frame it draws, so the dots near the core, and round what it looks at, light up
  * with it and nothing on the page is drawn again for it.
  */
-export interface CoreLight {
+interface CoreLight {
   /** Where the core is on the screen and how large, in CSS pixels from the top left of the window; nothing while no core is shown. */
   core: { x: number; y: number; radius: number } | undefined
   /** How much light it casts, from 0: more while it hears or speaks and as the computer works harder, little asleep. */

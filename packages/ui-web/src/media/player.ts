@@ -11,7 +11,7 @@ export interface MediaSource {
   live: boolean
 }
 
-export type PlayerStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'failed'
+type PlayerStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'failed'
 
 export interface PlayerState {
   /** What is loaded. Nothing once stopped. */
@@ -72,8 +72,6 @@ export interface MediaPlayer extends Followed<PlayerState> {
    * again (another screen, the side sheet) does not start it a second time.
    */
   autoplay(key: string, source: MediaSource): void
-  /** Whether this source is the one loaded. */
-  holds(source: MediaSource): boolean
 }
 
 /** How much of the user's level is heard under the assistant's voice. */
@@ -90,7 +88,7 @@ const PROBLEMS: Record<number, string> = {
   4: 'This address is not a stream this app can play.'
 }
 
-export interface PlayerOptions {
+interface PlayerOptions {
   /** The one element everything plays through. A video element plays sound too, so one is enough. */
   element: MediaElement
   /** The level to start at. */
@@ -154,10 +152,11 @@ export function createMediaPlayer({ element, volume = 0.8, later = (step, ms) =>
     element.play().then(
       () => undefined,
       (error: unknown) => {
+        // Interrupted by a newer source or by a load, or failed with an error the element reports itself.
         if (!same(state.current().source, source)) return
-        // Refused before any sound, most often because nothing was pressed yet: it waits for the user.
         if (error instanceof Error && error.name === 'AbortError') return
         if (element.error) return
+        // Refused before any sound, most often because nothing was pressed yet: it waits for the user.
         set({ status: 'paused' })
       }
     )
@@ -270,9 +269,7 @@ export function createMediaPlayer({ element, volume = 0.8, later = (step, ms) =>
       if (autoplayed.has(key)) return
       autoplayed.add(key)
       player.play(source)
-    },
-
-    holds: (source) => same(state.current().source, source)
+    }
   }
   return player
 }

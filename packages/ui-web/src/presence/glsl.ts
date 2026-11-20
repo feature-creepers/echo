@@ -1,18 +1,66 @@
 import { BANDS, ECHO_LENGTH, ECHO_STEP, type Pose } from './life.ts'
 
 /**
- * What the two drawings of the core share on the graphics card: the polygon they are shaded in, the camera they are
- * seen through, the helpers every pixel uses, and the voice's recent past.
+ * What the drawings on the graphics card share: how a program is built, the polygon the core's two looks are shaded
+ * in, the camera they are seen through, the helpers every pixel uses, and the voice's recent past.
  *
- * Both drawings are things in space, seen by a small camera in front of them: each pixel is a ray from that camera,
+ * Both looks are things in space, seen by a small camera in front of them: each pixel is a ray from that camera,
  * and what it shows is what the ray meets. That is what gives them depth as they turn.
  */
+
+/** A number as GLSL reads a float. */
+export const glsl = (value: number) => value.toFixed(4)
+
+/** Compiles a shader. Whether it compiled is read once its program is linked, where an error is reported. */
+export function compile(gl: WebGL2RenderingContext, type: GLenum, source: string): WebGLShader | undefined {
+  const shader = gl.createShader(type)
+  if (!shader) return undefined
+  gl.shaderSource(shader, source)
+  gl.compileShader(shader)
+  return shader
+}
+
+/**
+ * Links a program from a compiled vertex shader and a fragment shader's source, or warns, naming what could not be
+ * drawn, and gives nothing. The vertex shader stays the caller's to delete.
+ */
+export function link(gl: WebGL2RenderingContext, vertex: WebGLShader, fragmentSource: string, what: string): WebGLProgram | undefined {
+  const fragment = compile(gl, gl.FRAGMENT_SHADER, fragmentSource)
+  const program = gl.createProgram()
+  if (!fragment || !program) return undefined
+  gl.attachShader(program, vertex)
+  gl.attachShader(program, fragment)
+  gl.linkProgram(program)
+  const linked = gl.getProgramParameter(program, gl.LINK_STATUS) === true
+  if (!linked) console.warn(`${what} could not be drawn on the graphics card:`, gl.getShaderInfoLog(fragment) || gl.getProgramInfoLog(program))
+  gl.deleteShader(fragment)
+  if (linked) return program
+  gl.deleteProgram(program)
+  return undefined
+}
+
+/** Samples the bound texture smoothly between texels, and never wraps it round at its edges. */
+export function sampleSmoothly(gl: WebGL2RenderingContext) {
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+}
+
+/** One triangle over the whole target, made from each vertex's number alone, with where a pixel is on it, from 0 to 1. */
+export const COVER = `#version 300 es
+out vec2 v_at;
+void main() {
+  vec2 corner = vec2(float((gl_VertexID & 1) * 4 - 1), float((gl_VertexID & 2) * 2 - 1));
+  v_at = corner * 0.5 + 0.5;
+  gl_Position = vec4(corner, 0.0, 1.0);
+}`
 
 /** How many sides the polygon drawn round the core has: enough that it hugs the circle, few enough to cost nothing. */
 export const SIDES = 32
 
 /** How far in front of a drawing the camera stands, in the drawing's radii: near enough that what comes forward grows. */
-export const CAMERA = 5
+const CAMERA = 5
 
 /**
  * A polygon just round the drawing, as a fan from the centre, made from each vertex's number alone so no buffer is
@@ -27,13 +75,12 @@ void main() {
 }`
 
 /**
- * A turn in space by the angles a thing faces right and up, as the nine numbers of a matrix, a column after the
- * other: what the shaders' `turned` gives. A point of the thing, times it, is where the point is once turned.
+ * Writes a turn in space by the angles a thing faces right and up into `into` at `at`, as the nine numbers of a
+ * matrix, a column after the other: what the shaders' `turned` gives.
  */
-export function turned(right: number, up: number, into: Float32Array = new Float32Array(9), at = 0): Float32Array {
+export function turned(right: number, up: number, into: Float32Array, at: number) {
   const [cosRight, sinRight, cosUp, sinUp] = [Math.cos(right), Math.sin(right), Math.cos(up), Math.sin(up)]
   into.set([cosRight, -sinUp * sinRight, -cosUp * sinRight, 0, cosUp, -sinUp, sinRight, sinUp * cosRight, cosUp * cosRight], at)
-  return into
 }
 
 /**
@@ -55,10 +102,6 @@ uniform float u_grain;
 // texture's own filtering blends neighbouring samples.
 uniform sampler2D u_echo;
 uniform float u_echoShift;
-// Where the core looks, as a direction across the screen, up as up, each from -1 to 1.
-uniform vec2 u_gaze;
-// How hard the computer works, from 0 to 1, followed over a few seconds.
-uniform float u_power;
 // How far the drawing is turned, in radians: x to face right, y to face up.
 uniform vec2 u_tilt;
 // The life's own clock, in seconds.

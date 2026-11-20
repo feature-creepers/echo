@@ -28,9 +28,9 @@ export function loudness(samples: Float32Array): number {
 
 /**
  * Start recording from the microphone chosen for this device, or the system's when it is gone. The system
- * asks the user's permission the first time.
+ * asks the person's permission the first time.
  */
-export async function record(microphone: AudioDevice = { id: '', label: '' }): Promise<Take> {
+export async function record(microphone: AudioDevice): Promise<Take> {
   const stream = await openMicrophone(microphone)
   const context = new AudioContext()
   try {

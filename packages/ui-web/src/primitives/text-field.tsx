@@ -2,7 +2,7 @@ import { useId } from 'react'
 import { cn } from './cn.ts'
 import { Eyebrow } from './eyebrow.tsx'
 
-export interface TextFieldProps {
+interface TextFieldProps {
   label: string
   value: string
   onChange(value: string): void

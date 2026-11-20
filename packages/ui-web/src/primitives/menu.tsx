@@ -6,9 +6,9 @@ import { cn } from './cn.ts'
 import { CheckGlyph } from './icons.tsx'
 
 /** Which side of what opens it a floating list appears on. It turns to the other side when it does not fit. */
-export type Side = 'top' | 'bottom'
+type Side = 'top' | 'bottom'
 /** Which edge of what opens it a floating list lines up with. */
-export type Align = 'start' | 'end'
+type Align = 'start' | 'end'
 
 /** The space kept between a floating list and what opens it, and between the list and the window's edges. */
 const GAP = 4
@@ -17,7 +17,7 @@ const MARGIN = 8
 /** What a floating list's entries are found by, for the keys that move between them. */
 const ENTRY = '[data-entry]:not([aria-disabled="true"])'
 
-export interface FloatingProps {
+interface FloatingProps {
   /** What it opens from: it is placed against this, and pressing it is not pressing outside. */
   anchor: RefObject<HTMLElement | null>
   open: boolean
@@ -219,7 +219,7 @@ export function Floating({
   )
 }
 
-export interface RowProps {
+interface RowProps {
   role: AriaRole
   label: string
   onSelect(): void
@@ -285,7 +285,7 @@ export function Row({ role, label, onSelect, detail, hint, mark, checked, ticks 
   )
 }
 
-export interface MenuItem {
+interface MenuItem {
   label: string
   onSelect(): void
   detail?: ReactNode
@@ -293,8 +293,6 @@ export interface MenuItem {
   mark?: ReactNode
   /** One of a group of choices: ticked when it is the one in force. */
   checked?: boolean
-  /** With `checked`: on or off, a choice of its own, rather than one of a group. */
-  toggle?: boolean
   danger?: boolean
   warn?: boolean
   /** Shown, but cannot be picked: its hint says why. */
@@ -304,25 +302,25 @@ export interface MenuItem {
 }
 
 /** The name over a group of entries. */
-export interface MenuHeading {
+interface MenuHeading {
   heading: string
 }
 
 /** A hairline between two groups. */
-export interface MenuDivider {
+interface MenuDivider {
   divider: true
 }
 
 export type MenuEntry = MenuItem | MenuHeading | MenuDivider
 
 /** What the button that opens a menu is given: how it says to a screen reader that it opens one. */
-export interface MenuTrigger {
+interface MenuTrigger {
   open: boolean
   toggle(): void
   props: { 'aria-haspopup': 'menu'; 'aria-expanded': boolean; 'aria-controls': string | undefined }
 }
 
-export interface MenuProps {
+interface MenuProps {
   /** The button that opens it, given whether it is open and how to open it. */
   trigger(open: boolean, toggle: () => void, trigger: MenuTrigger): ReactNode
   items: readonly MenuEntry[]
@@ -346,8 +344,8 @@ export function Menu({ trigger, items, align = 'end', side = 'bottom', header, l
   const [open, setOpen] = useState(false)
   const anchor = useRef<HTMLDivElement>(null)
   const id = useId()
-  /** Opened from the keyboard: the first entry takes it. Opened with the pointer, no entry looks picked until one is pointed at. */
-  const keyed = useRef(false)
+  // Opened from the keyboard, the first entry takes it. Opened with the pointer, no entry looks picked until one is pointed at.
+  const [keyed, setKeyed] = useState(false)
 
   const close = useCallback((how: 'key' | 'outside') => {
     setOpen(false)
@@ -361,11 +359,9 @@ export function Menu({ trigger, items, align = 'end', side = 'bottom', header, l
     <div
       ref={anchor}
       className="relative inline-flex"
-      onPointerDown={() => {
-        keyed.current = false
-      }}
+      onPointerDown={() => setKeyed(false)}
       onKeyDown={(event) => {
-        keyed.current = true
+        setKeyed(true)
         if ((event.key === 'ArrowDown' && side === 'bottom') || (event.key === 'ArrowUp' && side === 'top')) {
           event.preventDefault()
           setOpen(true)
@@ -379,7 +375,7 @@ export function Menu({ trigger, items, align = 'end', side = 'bottom', header, l
         onClose={close}
         side={side}
         align={align}
-        focus={keyed.current ? 'entry' : 'list'}
+        focus={keyed ? 'entry' : 'list'}
         role="menu"
         id={id}
         label={label}
@@ -396,7 +392,7 @@ export function Menu({ trigger, items, align = 'end', side = 'bottom', header, l
           ) : (
             <Row
               key={`${index}-${item.label}`}
-              role={item.checked === undefined ? 'menuitem' : item.toggle ? 'menuitemcheckbox' : 'menuitemradio'}
+              role={item.checked === undefined ? 'menuitem' : 'menuitemradio'}
               label={item.label}
               detail={item.detail}
               hint={item.hint}

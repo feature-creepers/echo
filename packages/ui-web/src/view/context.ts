@@ -9,7 +9,7 @@ export interface FileContent {
   text: string
 }
 
-/** What a block can do besides draw: say something to the assistant on the user's behalf, and read its files. */
+/** What a block can do besides draw: say something to the assistant on the person's behalf, and read its files. */
 export interface ViewActions {
   say(text: string): void
   readFile(file: string): Promise<FileContent>

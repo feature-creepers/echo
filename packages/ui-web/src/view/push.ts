@@ -4,7 +4,7 @@
  * and only when it starts there: a quick scroll that reaches the edge and runs on is the end of that scroll, not a
  * push, however long it runs on.
  */
-export interface Push {
+interface Push {
   /**
    * One turn of the wheel: how far it goes towards the edge, in CSS pixels, away from it when negative; when, in
    * milliseconds; and whether it is free, which is to say that the edge is reached and nothing under the pointer

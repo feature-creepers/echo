@@ -1,4 +1,4 @@
-import { type Drawing, PRELUDE, turned } from './glsl.ts'
+import { type Drawing, glsl, PRELUDE, turned } from './glsl.ts'
 import { HUD_DECKS, HUD_RINGS } from './life.ts'
 
 /**
@@ -59,7 +59,6 @@ export function meterBars(radius: number): number {
  */
 const FOCUS = 0.02
 
-const glsl = (value: number) => value.toFixed(4)
 const R = HUD_RADII
 
 const FRAGMENT = `${PRELUDE}

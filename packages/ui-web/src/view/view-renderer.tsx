@@ -45,6 +45,9 @@ const DRAWERS: Drawers = {
   FileList
 }
 
+/** Deeper than the catalogue lets a view nest: a guard against one that contains itself, never reached by a checked view. */
+const DEEPEST = 32
+
 /**
  * Draws a view the core has checked. The format is json-render's; the drawing is ours, so every block
  * looks like the rest of the app.
@@ -52,7 +55,7 @@ const DRAWERS: Drawers = {
 export function ViewRenderer({ spec, actions }: { spec: ViewSpec; actions: ViewActions }) {
   const draw = (id: string, depth: number): ReactNode => {
     const element = spec.elements[id]
-    if (!element || depth > 32) return null
+    if (!element || depth > DEEPEST) return null
     const Drawer = DRAWERS[element.type] as (args: { props: unknown; children: ReactNode }) => ReactNode
     return <Drawer key={id} props={element.props} children={element.children.map((child) => draw(child, depth + 1))} />
   }

@@ -1,7 +1,8 @@
 import { type BlockProps, feedFigure, feedPoints } from '@repo/catalog'
+import { useId } from 'react'
 import { cn } from '../../primitives/cn.ts'
 import { Eyebrow } from '../../primitives/eyebrow.tsx'
-import { TONE_COLOR, TONE_TEXT } from '../tones.ts'
+import { markColor, TONE_COLOR, TONE_TEXT } from '../tones.ts'
 import { useFeedDocument, useFeedDocuments } from '../use-feed.ts'
 
 const TREND = { up: '↑', down: '↓', flat: '→' } as const
@@ -80,10 +81,7 @@ export function Timeline({ props }: { props: BlockProps<'Timeline'> }) {
         <li key={index} className="contents">
           <span className="text-right text-[0.6875rem] text-text-faint tabular-nums leading-5">{item.time}</span>
           <div className="flex flex-col items-center">
-            <span
-              className="mt-[0.4375rem] size-1.5 shrink-0 rounded-full"
-              style={{ background: item.tone === 'normal' ? 'var(--accent)' : TONE_COLOR[item.tone] }}
-            />
+            <span className="mt-[0.4375rem] size-1.5 shrink-0 rounded-full" style={{ background: markColor(item.tone) }} />
             {index < props.items.length - 1 && <span className="my-1 w-px flex-1 bg-line-strong" />}
           </div>
           <div className="grid content-start gap-0.5 pb-3 last:pb-0">
@@ -108,9 +106,10 @@ export function Progress({ props }: { props: BlockProps<'Progress'> }) {
         </div>
       )}
       <div className="h-1 overflow-hidden rounded-full bg-white/[0.06]">
+        {/* The whole bar slides in from the left rather than growing, so it moves by transform and keeps its round end. */}
         <div
-          className="h-full origin-left rounded-full transition-[width] duration-700 ease-soft"
-          style={{ width: `${value * 100}%`, background: TONE_COLOR[props.tone] }}
+          className="h-full rounded-full transition-transform duration-(--duration-slow) ease-soft"
+          style={{ transform: `translateX(${(value - 1) * 100}%)`, background: TONE_COLOR[props.tone] }}
         />
       </div>
     </div>
@@ -119,11 +118,11 @@ export function Progress({ props }: { props: BlockProps<'Progress'> }) {
 
 const HEIGHT = { short: 110, normal: 170, tall: 250 } as const
 
-/** Round numbers for an axis: a step of 1, 2 or 5 times a power of ten, so the scale reads at a glance. */
 /** An axis's value as a person reads it: 2.5M rather than 2500000, 12,000 with its separator. */
 const axisNumber = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 })
 const formatTick = (value: number) => (Math.abs(value) >= 10_000 ? axisNumber.format(value) : value.toLocaleString())
 
+/** Round numbers for an axis: a step of 1, 2 or 5 times a power of ten, so the scale reads at a glance. */
 function niceScale(min: number, max: number, ticks = 4): { low: number; high: number; step: number } {
   const span = max - min || Math.abs(max) || 1
   const raw = span / ticks
@@ -133,6 +132,9 @@ function niceScale(min: number, max: number, ticks = 4): { low: number; high: nu
 }
 
 export function Chart({ props: given }: { props: BlockProps<'Chart'> }) {
+  // The gradients of an area chart are named for this chart alone: a name shared by two charts on the page would
+  // fill both with the first one's colour.
+  const id = useId()
   // A fed series draws the points its feed gives once read, and the ones it was given until then.
   const documents = useFeedDocuments(given.series.map((series) => series.feed))
   const props = {
@@ -161,7 +163,6 @@ export function Chart({ props: given }: { props: BlockProps<'Chart'> }) {
     props.kind === 'bar' ? pad.left + slot * index + slot / 2 : pad.left + (labels.length <= 1 ? innerWidth / 2 : (innerWidth / (labels.length - 1)) * index)
   const ticks: number[] = []
   for (let tick = low; tick <= high + step / 2; tick += step) ticks.push(Number(tick.toFixed(10)))
-  const color = (tone: string) => (tone === 'normal' ? 'var(--accent)' : TONE_COLOR[tone as keyof typeof TONE_COLOR])
   const everyNth = Math.ceil(labels.length / 8)
 
   return (
@@ -173,7 +174,7 @@ export function Chart({ props: given }: { props: BlockProps<'Chart'> }) {
           {props.series.length > 1 &&
             props.series.map((series) => (
               <span key={series.name} className="flex items-center gap-1.5 text-[0.6875rem] text-text-soft">
-                <span className="h-0.5 w-3 rounded-full" style={{ background: color(series.tone) }} />
+                <span className="h-0.5 w-3 rounded-full" style={{ background: markColor(series.tone) }} />
                 {series.name}
               </span>
             ))}
@@ -201,7 +202,7 @@ export function Chart({ props: given }: { props: BlockProps<'Chart'> }) {
           ) : null
         )}
         {props.series.map((series, seriesIndex) => {
-          const stroke = color(series.tone)
+          const stroke = markColor(series.tone)
           if (props.kind === 'bar') {
             const barWidth = Math.min(36, (slot * 0.7) / props.series.length)
             return series.points.map((point, index) => {
@@ -222,7 +223,7 @@ export function Chart({ props: given }: { props: BlockProps<'Chart'> }) {
             })
           }
           const path = series.points.map((point, index) => `${index === 0 ? 'M' : 'L'}${x(index).toFixed(1)},${y(point.y).toFixed(1)}`).join(' ')
-          const gradient = `fill-${seriesIndex}`
+          const gradient = `${id}-fill-${seriesIndex}`
           return (
             <g key={series.name}>
               {props.kind === 'area' && (

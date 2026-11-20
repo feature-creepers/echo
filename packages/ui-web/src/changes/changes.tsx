@@ -12,17 +12,17 @@ type Reading = { is: 'reading' } | { is: 'failed' } | { is: 'read'; files: FileD
  */
 export function Changes({ client, of, relative, version }: { client: Client; of: { use: string } | { turn: string }; relative: Relative; version?: string }) {
   const [reading, setReading] = useState<Reading>({ is: 'reading' })
-  const key = 'use' in of ? `use:${of.use}` : `turn:${of.turn}`
+  // Read by what it is and its identifier rather than by `of`, which a parent makes anew at each render.
+  const [kind, id] = 'use' in of ? (['use', of.use] as const) : (['turn', of.turn] as const)
 
   const read = useCallback(
     (live: () => boolean) => {
-      const asked = key.startsWith('use:') ? { use: key.slice(4) } : { turn: key.slice(5) }
-      client.session.run('activity.diff', asked).then(
+      client.session.run('activity.diff', kind === 'use' ? { use: id } : { turn: id }).then(
         ({ files }) => live() && setReading({ is: 'read', files }),
         () => live() && setReading({ is: 'failed' })
       )
     },
-    [client, key]
+    [client, kind, id]
   )
 
   // Read again whenever `version` changes, though the reading does not use it: it says the change moved on.

@@ -60,7 +60,7 @@ export const FOCUS_PERIOD = 2.6
 export const WORK_PERIOD = 2
 
 /** The instrument's core breathes at rest once in this many seconds, as the eye in the composer does. */
-export const HUD_BREATH_PERIOD = 4.2
+const HUD_BREATH_PERIOD = 4.2
 
 /**
  * How the computer's load is read when nothing says: about what a computer at rest with an app open does, so the
@@ -188,7 +188,7 @@ export const HUD_DECKS = [
 ] as const
 
 /** Asleep, and before it has woken, the instrument's decks lie folded this far back, in radians: a thin ellipse. */
-export const HUD_FOLD = 1.22
+const HUD_FOLD = 1.22
 
 /** How fast the scan sweeps round while thinking, in radians a second, clockwise: a turn in about six seconds. */
 const SCAN_PACE = 1.05
@@ -282,7 +282,7 @@ export interface LensPose {
 }
 
 /** What the instrument is drawn with in one frame. */
-export interface HudPose {
+interface HudPose {
   core: number
   size: number
   rings: number
@@ -340,7 +340,7 @@ export interface Pose {
   spectrum: Float32Array
 }
 
-export interface Life {
+interface Life {
   step(input: Input): Pose
 }
 
@@ -397,10 +397,12 @@ export function createLife(initial: Mood = 'idle', look: Look = 'hud'): Life {
       // Each band of the spectrum is followed the same way, a little quicker, so the notes stay apart.
       const read = bands ?? spectrumOf(voiced, clock, made)
       for (let band = 0; band < BANDS; band++) {
-        const value = still ? 0 : Math.min(1, Math.max(0, Number(read[band] ?? 0)))
-        heardBands[band] = (heardBands[band] ?? 0) + (value - (heardBands[band] ?? 0)) * (1 - Math.exp(-delta * (value > (heardBands[band] ?? 0) ? 26 : 9)))
-        spectrum[band * 2] = (heardBands[band] ?? 0) * weights.speaking
-        spectrum[band * 2 + 1] = (heardBands[band] ?? 0) * weights.listening
+        const value = still ? 0 : Math.min(1, Math.max(0, read[band] ?? 0))
+        const was = heardBands[band] ?? 0
+        const followed = was + (value - was) * (1 - Math.exp(-delta * (value > was ? 26 : 9)))
+        heardBands[band] = followed
+        spectrum[band * 2] = followed * weights.speaking
+        spectrum[band * 2 + 1] = followed * weights.listening
       }
 
       // The computer's load is followed over a few seconds, rising quicker than it falls, so a burst of work shows

@@ -1,6 +1,6 @@
 import type { TONES } from '@repo/catalog'
 
-export type Tone = (typeof TONES)[number]
+type Tone = (typeof TONES)[number]
 
 /** A tone as a CSS colour, for drawings and charts. */
 export const TONE_COLOR: Record<Tone | 'none', string> = {
@@ -13,6 +13,9 @@ export const TONE_COLOR: Record<Tone | 'none', string> = {
   danger: 'var(--color-danger)',
   none: 'none'
 }
+
+/** A tone as the colour of a mark on a chart or a timeline, where the normal one is the accent rather than the text. */
+export const markColor = (tone: Tone): string => (tone === 'normal' ? 'var(--accent)' : TONE_COLOR[tone])
 
 /** A tone as a text colour class. */
 export const TONE_TEXT: Record<Tone, string> = {

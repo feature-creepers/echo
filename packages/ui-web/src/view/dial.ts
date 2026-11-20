@@ -36,7 +36,7 @@ export function dialOf(middle: number, height: number, band: Band): { scale: num
 }
 
 /** Where a card leaves the stream, in pixels from the top of the stream's box, and over how far it fades out there. */
-export interface Edges {
+interface Edges {
   /** The room under the top of the box over which what rises fades out. */
   inset: number
   /** Where the composer's top is: nothing of a card is seen below it. */
@@ -46,7 +46,7 @@ export interface Edges {
 }
 
 /** The mask of a card that has sunk wholly under the composer's top: nothing of it is seen. */
-export const UNSEEN = 'linear-gradient(transparent,transparent)'
+const UNSEEN = 'linear-gradient(transparent,transparent)'
 
 /**
  * The mask that fades a card out where it leaves the stream, in the card's own coordinates before it is scaled: as it

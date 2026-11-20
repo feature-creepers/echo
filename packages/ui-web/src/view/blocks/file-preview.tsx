@@ -1,5 +1,7 @@
 import type { BlockProps } from '@repo/catalog'
 import { useEffect, useState } from 'react'
+import { offerDownload } from '../../files/file-actions.ts'
+import { tableRows } from '../../files/words.ts'
 import { Button } from '../../primitives/button.tsx'
 import { cn } from '../../primitives/cn.ts'
 import { Eyebrow } from '../../primitives/eyebrow.tsx'
@@ -9,23 +11,7 @@ import { Markdown } from './markdown.tsx'
 const HEIGHT = { short: 'max-h-56', normal: 'max-h-96', tall: 'max-h-[36rem]' } as const
 const EXTENSION = { markdown: 'md', text: 'txt', csv: 'csv' } as const
 
-/** Saves the file with the system's own dialog: the window offers it as a download. */
-function download(file: FileContent): void {
-  const url = URL.createObjectURL(new Blob([file.text], { type: `${file.mime};charset=utf-8` }))
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `${file.name}.${EXTENSION[file.format]}`
-  link.click()
-  setTimeout(() => URL.revokeObjectURL(url), 10_000)
-}
-
-/** Rows of a CSV file, read simply: commas, and quotes around a value that holds one. */
-function rows(text: string): string[][] {
-  return text
-    .trim()
-    .split(/\r?\n/)
-    .map((line) => [...line.matchAll(/("([^"]|"")*"|[^,]*)(,|$)/g)].map((match) => (match[1] ?? '').replace(/^"|"$/g, '').replace(/""/g, '"')).slice(0, -1))
-}
+const download = (file: FileContent) => offerDownload(new Blob([file.text], { type: `${file.mime};charset=utf-8` }), `${file.name}.${EXTENSION[file.format]}`)
 
 export function FilePreview({ props }: { props: BlockProps<'FilePreview'> }) {
   const { readFile } = useViewActions()
@@ -66,7 +52,7 @@ export function FilePreview({ props }: { props: BlockProps<'FilePreview'> }) {
         ) : file.format === 'csv' ? (
           <table className="w-full text-[0.8125rem]">
             <tbody>
-              {rows(file.text).map((row, index) => (
+              {tableRows(file.text).map((row, index) => (
                 <tr key={index} className={cn('border-line border-b last:border-0', index === 0 && 'text-label text-text-faint')}>
                   {row.map((value, column) => (
                     <td key={column} className="px-2 py-1.5">

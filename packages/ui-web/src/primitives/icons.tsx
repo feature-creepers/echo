@@ -33,12 +33,6 @@ export const LibraryGlyph = () => (
   </Glyph>
 )
 
-export const TranscriptGlyph = () => (
-  <Glyph>
-    <path d="M3 4h10M3 8h7M3 12h9" />
-  </Glyph>
-)
-
 export const MicGlyph = ({ size }: { size?: number }) => (
   <Glyph {...(size === undefined ? {} : { size })}>
     <rect x="6" y="2" width="4" height="7.5" rx="2" />
@@ -109,14 +103,6 @@ export const SheetGlyph = () => (
   </Glyph>
 )
 
-export const MoreGlyph = () => (
-  <Glyph>
-    <circle cx="3.5" cy="8" r="0.6" fill="currentColor" />
-    <circle cx="8" cy="8" r="0.6" fill="currentColor" />
-    <circle cx="12.5" cy="8" r="0.6" fill="currentColor" />
-  </Glyph>
-)
-
 export const SearchGlyph = () => (
   <Glyph>
     <circle cx="7" cy="7" r="4" />
@@ -172,14 +158,6 @@ export const ChevronGlyph = () => (
 export const ExpandGlyph = () => (
   <Glyph>
     <path d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9" />
-  </Glyph>
-)
-
-/** Fold a panel away to the edge it came from. */
-export const CollapseGlyph = () => (
-  <Glyph>
-    <rect x="2" y="3" width="12" height="10" rx="1.5" />
-    <path d="M10 3v10M5.5 6.5 7 8l-1.5 1.5" />
   </Glyph>
 )
 

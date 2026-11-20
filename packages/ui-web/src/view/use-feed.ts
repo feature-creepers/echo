@@ -4,6 +4,9 @@ import { useViewActions } from './context.ts'
 
 type Wanted = { url: string; every?: number | undefined } | undefined
 
+/** Read for no feed yet. */
+const NONE: unknown[] = []
+
 /**
  * The documents some feeds name, each read again every `every` seconds while the block is drawn (docs/SPEC.md,
  * section 9.4). Each is undefined until its first reading, and kept as last read when a reading fails, so a figure
@@ -12,9 +15,10 @@ type Wanted = { url: string; every?: number | undefined } | undefined
  */
 export function useFeedDocuments(feeds: Wanted[]): unknown[] {
   const { readFeed } = useViewActions()
-  const [documents, setDocuments] = useState<unknown[]>([])
   // The feeds as one key, so a view drawn again with the same feeds does not read them again.
   const key = JSON.stringify(feeds.map((feed) => (feed ? [feed.url, feed.every ?? null] : null)))
+  // What was read, and for which feeds: once the feeds change, what their earlier addresses gave is not theirs.
+  const [read, setRead] = useState<{ key: string; documents: unknown[] }>({ key, documents: NONE })
   useEffect(() => {
     const wanted = JSON.parse(key) as ([string, number | null] | null)[]
     if (!readFeed || wanted.every((feed) => feed === null)) return
@@ -22,26 +26,26 @@ export function useFeedDocuments(feeds: Wanted[]): unknown[] {
     const timers = wanted.map((feed, index) => {
       if (feed === null) return undefined
       const [url, every] = feed
-      const read = () =>
+      const once = () =>
         readFeed(url).then(
           (document) =>
             current &&
-            setDocuments((before) => {
-              const after = [...before]
-              after[index] = document
-              return after
+            setRead((before) => {
+              const documents = before.key === key ? [...before.documents] : []
+              documents[index] = document
+              return { key, documents }
             }),
           () => undefined
         )
-      void read()
-      return setInterval(read, Math.max(FEED_MIN_SECONDS, every ?? FEED_DEFAULT_SECONDS) * 1000)
+      void once()
+      return setInterval(once, Math.max(FEED_MIN_SECONDS, every ?? FEED_DEFAULT_SECONDS) * 1000)
     })
     return () => {
       current = false
       for (const timer of timers) if (timer) clearInterval(timer)
     }
   }, [key, readFeed])
-  return documents
+  return read.key === key ? read.documents : NONE
 }
 
 /** The document one feed names, as `useFeedDocuments` reads it. */

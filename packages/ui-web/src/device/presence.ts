@@ -1,6 +1,6 @@
 import type { Accent } from '@repo/protocol'
 import { useEffect } from 'react'
-import type { Mood } from '../presence/painter.ts'
+import type { Mood } from '../presence/life.ts'
 import { useDevice } from './device.tsx'
 
 /**

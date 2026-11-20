@@ -83,6 +83,15 @@ export async function openMicrophone(chosen: AudioDevice): Promise<MediaStream> 
   }
 }
 
+/** Why a microphone would not open, in words for the person. */
+export function microphoneProblem(error: unknown): string {
+  const name = error instanceof DOMException ? error.name : ''
+  if (name === 'NotAllowedError') return 'The microphone is not allowed. Allow it in the system settings.'
+  if (name === 'NotFoundError' || name === 'OverconstrainedError') return 'No microphone was found.'
+  if (name === 'NotReadableError') return 'The microphone is in use by another app, or unavailable.'
+  return 'The microphone could not be opened.'
+}
+
 /** An AudioContext that can be sent to other speakers: Chromium has this, and the DOM's types do not yet. */
 interface RoutableContext {
   setSinkId?: (id: string) => Promise<void>
