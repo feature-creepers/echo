@@ -32,11 +32,12 @@ describe('how pressed for memory the computer is', () => {
 
 describe('the load', () => {
   it.each([
-    { case: 'the processor is the busiest', parts: { processor: 0.6, memory: 0.1, graphics: 0.2 }, load: 0.6 },
-    { case: 'the graphics card is the busiest', parts: { processor: 0.1, memory: 0, graphics: 0.9 }, load: 0.9 },
+    { case: 'the processors are the busier', parts: { processor: 0.6, memory: 0.1 }, load: 0.6 },
     { case: 'memory runs short', parts: { processor: 0.2, memory: 0.7 }, load: 0.7 },
-    { case: 'the graphics card is not known', parts: { processor: 0.3, memory: 0 }, load: 0.3 },
-    { case: 'what is out of range is held to it', parts: { processor: 1.4, memory: -1, graphics: Number.NaN }, load: 1 }
+    { case: 'memory is not known', parts: { processor: 0.3, memory: 0 }, load: 0.3 },
+    { case: 'a computer at rest', parts: { processor: 0, memory: 0 }, load: 0 },
+    { case: 'what is out of range is held to it', parts: { processor: 1.4, memory: -1 }, load: 1 },
+    { case: 'what is not a number counts for nothing', parts: { processor: Number.NaN, memory: 0.4 }, load: 0.4 }
   ])('$case', ({ parts, load }) => {
     expect(loadOf(parts)).toBeCloseTo(load, 6)
   })

@@ -58,8 +58,8 @@ export interface DeviceHost {
   /** Show how the assistant is outside the window: the desktop app's tray. Left out, nothing does. */
   showPresence?(presence: { accent: Accent | undefined; mood: Mood }): void
   /**
-   * Be told how hard this computer works, from 0 to 1: the busiest of its processor, its graphics card and its
-   * memory, about once a second. Returns a function that stops the telling. Left out, the load is not known, and
+   * Be told how hard this computer works, from 0 to 1: the larger of how busy its processors are and how pressed its
+   * memory is, about once a second. Returns a function that stops the telling. Left out, the load is not known, and
    * the core looks as it does on a computer at rest.
    */
   load?(listener: (load: number) => void): () => void

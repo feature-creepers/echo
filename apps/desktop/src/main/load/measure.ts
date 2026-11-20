@@ -43,15 +43,14 @@ export function memoryPressure(free: number, total: number): number {
   return share * share * (3 - 2 * share)
 }
 
-/** What the load is made of, each from 0 to 1; the graphics card's is missing where the system does not say. */
+/** What the load is made of, each from 0 to 1. */
 export interface LoadParts {
   processor: number
   memory: number
-  graphics?: number | undefined
 }
 
-/** How hard the computer works, from 0 to 1: the busiest of its processor, its graphics card and its memory. */
-export function loadOf({ processor, memory, graphics }: LoadParts): number {
+/** How hard the computer works, from 0 to 1: the larger of how busy its processors are and how pressed its memory is. */
+export function loadOf({ processor, memory }: LoadParts): number {
   const clamp = (value: number) => Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0))
-  return Math.max(clamp(processor), clamp(memory), clamp(graphics ?? 0))
+  return Math.max(clamp(processor), clamp(memory))
 }
