@@ -127,13 +127,20 @@ const HARMLESS_VARIABLES = /^(LANG|LANGUAGE|LC_[A-Z]+|TZ|TERM|COLUMNS|LINES|NO_C
 const PAGERS = /^(PAGER|GIT_PAGER|MANPAGER)$/
 
 /**
+ * Names in lower case a program's environment may hold already: Windows' own `windir`, and the settings npm, pnpm and
+ * yarn give the scripts they run. Assigning one changes it for every program the line runs after.
+ */
+const EXPORTED_LOWER = /^(windir|npm_config_[a-z0-9_]+)$/
+
+/**
  * Whether setting a variable leaves the line reading only. `exported`: the programs the line runs are given it, as a
  * prefix, `export`, `env`, `set -a` or the environment's own scope give it. A variable the shell keeps to itself
- * matters only when the system exported it already: on macOS and Linux those are written in capitals. Windows finds a
- * variable whatever its capitals (`node_options` is `NODE_OPTIONS`) and exports some in lower case, so there any may be.
+ * matters only when the environment holds one of that very name already, since the shell's names are case-sensitive:
+ * those are written in capitals, but for the few of `EXPORTED_LOWER`. Exported, a name reaches Windows, which finds a
+ * variable whatever its capitals (`node_options` is `NODE_OPTIONS`).
  */
 function harmless(variable: string, value: string, exported: boolean, windows: boolean): boolean {
-  if (!exported && !windows && /^[a-z_][a-z0-9_]*$/.test(variable)) return true
+  if (!exported && /^[a-z_][a-z0-9_]*$/.test(variable) && !EXPORTED_LOWER.test(variable)) return true
   const name = windows ? variable.toUpperCase() : variable
   return HARMLESS_VARIABLES.test(name) || (PAGERS.test(name) && /^(cat)?$/.test(value.trim()))
 }

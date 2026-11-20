@@ -603,12 +603,19 @@ describe('readCommand: variables it gives the programs it runs', () => {
     ['shopt -so allexport; foo=1; npm run build', 'posix', undefined, ['foo']],
     ['set -a; for npm_config_script_shell in ./x.sh; do npm run build; done', 'posix', undefined, ['npm_config_script_shell']],
     ["bash -ac 'npm_config_script_shell=./x.sh; npm run build'", 'posix', undefined, ['npm_config_script_shell']],
-    ["bash -c 'npm_config_script_shell=./x.sh; npm run build'", 'posix', undefined, []],
+    ["bash -ac 'foo=1; npm run build'", 'posix', undefined, ['foo']],
+    ["bash -c 'foo=1; npm run build'", 'posix', undefined, []],
     // What `read` reads into, whose value the line does not show.
     ['read PATH < list.txt; npm run build', 'posix', undefined, ['PATH']],
     ['read -r f < list.txt; npm run build', 'posix', undefined, []],
-    // Windows finds a variable whatever its capitals, and exported some in lower case (`windir`).
+    // An exported name reaches Windows, which finds a variable whatever its capitals. A name the shell keeps to itself
+    // matters only when the environment holds that very name: Windows' `windir`, npm's settings on every system.
     ['windir=C:/x; npm run build', 'posix', 'C:\\Users\\ada\\work', ['windir']],
+    ['x=1; npm run build', 'posix', 'C:\\Users\\ada\\work', []],
+    ['while read -r f; do cat "$f"; done < list.txt', 'posix', 'C:\\Users\\ada\\work', []],
+    ['node_options=x; npm run build', 'posix', 'C:\\Users\\ada\\work', []],
+    ['npm_config_script_shell=./x.sh; npm run build', 'posix', '/home/ada/work', ['npm_config_script_shell']],
+    ["bash -c 'npm_config_script_shell=./x.sh; npm run build'", 'posix', 'C:\\Users\\ada\\work', ['npm_config_script_shell']],
     ['lang=C git log', 'posix', 'C:\\Users\\ada\\work', []],
     ['lang=C git log', 'posix', '/home/ada/work', ['lang']],
     ['New-Item -Path Env: -Name NODE_OPTIONS -Value x; npm run build', 'powershell', undefined, ['NODE_OPTIONS']],
