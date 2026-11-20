@@ -6,6 +6,8 @@ import { type Rgba, rgba, trayMark } from './mark.ts'
 /** What the tray's menu does. */
 export interface TrayActions {
   show(): void
+  /** Make the window Mini, or the full window again: ticked while it is Mini. */
+  mini: { on: boolean; toggle(): void }
   talk(): void
   /** Interrupt everything the assistant is doing, withdraw its questions, forget what was allowed for the session. */
   stopEverything(): void
@@ -57,8 +59,8 @@ function icon({ accent, state }: TrayLook): Electron.NativeImage {
 
 /**
  * The app in the system tray (the menu bar on macOS), where it waits for its shortcut while the window is
- * closed. A click shows the window; the menu talks, stops everything the assistant does, opens the settings,
- * restarts for an update, or quits.
+ * closed. A click shows the window; the menu makes it Mini, talks, stops everything the assistant does, opens the
+ * settings, restarts for an update, or quits.
  */
 export function createTray(keys: TrayKeys, actions: TrayActions): TrayMenu {
   let shown: TrayLook = { accent: undefined, state: 'awake' }
@@ -71,6 +73,7 @@ export function createTray(keys: TrayKeys, actions: TrayActions): TrayMenu {
   const menu = (shown: TrayKeys, doing: TrayActions) => {
     const items: MenuItemConstructorOptions[] = [
       { label: `Show ${app.getName()}`, click: () => doing.show() },
+      { label: 'Mini window', type: 'checkbox', checked: doing.mini.on, click: () => doing.mini.toggle() },
       { label: withKeys('Talk', shown.talk), click: () => doing.talk() },
       { label: withKeys('Stop everything', shown.stopEverything), click: () => doing.stopEverything() },
       { label: 'Settings…', click: () => doing.settings() },

@@ -48,6 +48,7 @@ import { openDeviceSettings } from './device-settings.ts'
 import { createGlobalShortcuts } from './global-shortcut.ts'
 import { followLoad } from './load/index.ts'
 import { appIcon } from './mark.ts'
+import { createMini } from './mini/index.ts'
 import { serveNotifications } from './notifications.ts'
 import { checkSettings } from './self-check.ts'
 import { type SpeechProcess, startSpeech } from './speech-process.ts'
@@ -115,6 +116,9 @@ const DEVICE_SETTINGS_FILE = 'settings.json'
 /** Built files sit next to this one: out/main/index.js, out/main/core.js, out/preload, out/renderer. */
 const built = (path: string) => join(import.meta.dirname, path)
 
+/** The smallest the full window may be made, in pixels. */
+const FULL_LEAST = { width: 720, height: 560 } as const
+
 function openWindow(visible: boolean): BrowserWindow {
   // The system's buttons take the soft text colour of the row's own buttons, on no ground of their own.
   const look = chrome({ symbols: color.textSoft, height: frame.titleBar })
@@ -122,8 +126,8 @@ function openWindow(visible: boolean): BrowserWindow {
     title: app.getName(),
     width: 1320,
     height: 860,
-    minWidth: 720,
-    minHeight: 560,
+    minWidth: FULL_LEAST.width,
+    minHeight: FULL_LEAST.height,
     show: false,
     backgroundColor: color.ground,
     autoHideMenuBar: true,
@@ -294,8 +298,17 @@ function start(): void {
     bringForward()
     toWindow(TALK_CHANNEL)
   }
+  // Mini: the window made small and kept over the other apps, from its key, the tray and its button. What needs more
+  // room than Mini has goes back to the full window first: the settings, a notification pressed.
+  const mini = createMini(window, device, FULL_LEAST)
+  const toFullWindow = () => {
+    mini.set(false)
+    bringForward()
+  }
+  calls.handle(APP_CHANNELS.mini, () => mini.on())
+  calls.on(APP_CHANNELS.miniSet, (_event, on) => mini.set(on === true))
   // Reminders, scheduled answers and answers finished out of sight, as the system's notifications.
-  serveNotifications(core, window, bringForward)
+  serveNotifications(core, window, toFullWindow)
   // A frame around the window of another app the assistant operates, while it does.
   const marker = serveDesktopMarker(core)
   // A picture the person allowed, taken in the window, with a marker on the screen while the camera is on.
@@ -319,16 +332,27 @@ function start(): void {
   const updater = createUpdater(settings.updates.automatic)
   const trayActions = (): TrayActions => ({
     show: bringForward,
+    mini: {
+      on: mini.on(),
+      toggle: () => {
+        mini.set(!mini.on())
+        bringForward()
+      }
+    },
     talk,
     stopEverything,
     settings: () => {
-      bringForward()
+      toFullWindow()
       toWindow(APP_CHANNELS.openSettings)
     },
     quit: () => app.quit(),
     restartToUpdate: updater.state().is === 'ready' ? () => updater.install() : undefined
   })
   const tray = createTray(trayKeys(), trayActions())
+  mini.onChange((on) => {
+    toWindow(APP_CHANNELS.miniChanged, on)
+    tray.refresh(trayKeys(), trayActions())
+  })
 
   // Closing the window leaves the app in the tray, ready for its shortcut, unless the user wants it to quit.
   window.on('close', (event) => {
@@ -350,8 +374,9 @@ function start(): void {
   })
 
   calls.handle(APP_CHANNELS.deviceRead, () => device.read())
-  // Shortcuts change only through their own call, which checks them first. The rest is read back into usable settings.
-  calls.handle(APP_CHANNELS.deviceChange, (_event, change) => device.change({ ...(change as DeviceSettingsChange), shortcuts: {} }))
+  // Shortcuts change only through their own call, which checks them first, and Mini's bounds as the window is moved. The
+  // rest is read back into usable settings.
+  calls.handle(APP_CHANNELS.deviceChange, (_event, change) => device.change({ ...(change as DeviceSettingsChange), shortcuts: {}, window: {} }))
   calls.handle(APP_CHANNELS.shortcutSet, (_event, name, accelerator): ShortcutChange => {
     if (typeof name !== 'string' || !Object.hasOwn(device.read().shortcuts, name)) return { ok: false, problem: 'There is no such shortcut.' }
     if (typeof accelerator !== 'string' || (accelerator !== '' && !isShortcut(accelerator)))

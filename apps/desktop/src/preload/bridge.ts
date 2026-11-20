@@ -31,6 +31,17 @@ export interface DesktopBridge {
   files: FilesBridge
   /** The camera, used only when the app asks for a picture the person allowed. */
   camera: CameraBridge
+  /** Mini: the window made small and kept over the other apps, or the full window. */
+  mini: MiniBridge
+}
+
+export interface MiniBridge {
+  /** Whether the window is Mini now. */
+  read(): Promise<boolean>
+  /** Make the window Mini, or the full window again. */
+  set(on: boolean): void
+  /** Be told each time it changes, from the window's key, the tray or a button. Returns a function that stops the telling. */
+  onChange(listener: (on: boolean) => void): () => void
 }
 
 export interface CameraBridge {
@@ -158,7 +169,10 @@ export const APP_CHANNELS = {
   filesPick: 'files:pick',
   filesReveal: 'files:reveal',
   filesOpen: 'files:open',
-  filesTakeCopied: 'files:take-copied'
+  filesTakeCopied: 'files:take-copied',
+  mini: 'window:mini',
+  miniSet: 'window:mini-set',
+  miniChanged: 'window:mini-changed'
 } as const
 
 /** The channel the global shortcut to talk comes on. */
