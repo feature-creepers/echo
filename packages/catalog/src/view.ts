@@ -39,10 +39,3 @@ export interface ViewSpec {
   root: string
   elements: Record<string, ViewElement>
 }
-
-/** A view as it is shown: what it is about, and its content. */
-export interface View {
-  /** A few words saying what the view is about. Shown above it, and in the list of earlier views. */
-  title: string
-  spec: ViewSpec
-}

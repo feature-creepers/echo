@@ -1,8 +1,7 @@
 import { availableParallelism, totalmem } from 'node:os'
 import { engineThreads, type Hardware, type Tier, tierFor } from './tier.ts'
 
-export type { Hardware, Tier } from './tier.ts'
-export { engineThreads, TIERS, tierFor } from './tier.ts'
+export { TIERS, type Tier } from './tier.ts'
 
 /** The processors and memory of this machine. Node reports both the same way on every system. */
 export function readHardware(): Hardware {

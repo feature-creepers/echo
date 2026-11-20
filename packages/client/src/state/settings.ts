@@ -1,6 +1,6 @@
 import type { Settings } from '@repo/protocol'
 import type { Session } from '../session.ts'
-import type { Followed } from './followed.ts'
+import { cell, type Followed } from './followed.ts'
 
 /** What a client knows of the user's settings. */
 export type SettingsSnapshot =
@@ -12,7 +12,7 @@ export type SettingsSnapshot =
 
 /** The user's settings, kept current for as long as the session lasts. */
 export interface SettingsState extends Followed<SettingsSnapshot> {
-  stop(): void
+  unfollow(): void
 }
 
 /**
@@ -21,18 +21,13 @@ export interface SettingsState extends Followed<SettingsSnapshot> {
  * Two copies can cross on the way, one read and one announced. The later revision wins, whatever order they arrive in.
  */
 export function followSettings(session: Session): SettingsState {
-  let snapshot: SettingsSnapshot = { state: 'loading' }
-  const listeners = new Set<() => void>()
+  const state = cell<SettingsSnapshot>({ state: 'loading' })
   let stopped = false
 
-  const set = (next: SettingsSnapshot) => {
-    if (stopped) return
-    snapshot = next
-    for (const listener of listeners) listener()
-  }
   const accept = (settings: Settings) => {
-    if (snapshot.state === 'ready' && snapshot.settings.revision >= settings.revision) return
-    set({ state: 'ready', settings })
+    const known = state.current()
+    if (stopped || (known.state === 'ready' && known.settings.revision >= settings.revision)) return
+    state.set({ state: 'ready', settings })
   }
 
   const stopEvents = session.onEvent((event) => {
@@ -41,20 +36,16 @@ export function followSettings(session: Session): SettingsState {
   session.run('settings.read', {}).then(
     ({ settings }) => accept(settings),
     (error: unknown) => {
-      if (snapshot.state === 'loading') set({ state: 'failed', reason: error instanceof Error ? error.message : String(error) })
+      if (!stopped && state.current().state === 'loading') state.set({ state: 'failed', reason: error instanceof Error ? error.message : String(error) })
     }
   )
 
   return {
-    current: () => snapshot,
-    subscribe(listener) {
-      listeners.add(listener)
-      return () => void listeners.delete(listener)
-    },
-    stop() {
+    current: state.current,
+    subscribe: state.subscribe,
+    unfollow() {
       stopped = true
       stopEvents()
-      listeners.clear()
     }
   }
 }

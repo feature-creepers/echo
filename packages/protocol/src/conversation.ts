@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { attachedSchema } from './files.ts'
 import { personaIdSchema } from './personas.ts'
+import { threadIdSchema } from './threads.ts'
 
 /**
  * The one conversation between the user and the assistant, as a client sees it: what was said, what was
@@ -17,7 +18,7 @@ export const UTTERANCE_MAX_LENGTH = 8000
 export const languageSchema = z.string().regex(/^[a-z]{2}$/)
 
 /** How a turn ended, or that it has not yet. */
-export const TURN_OUTCOMES = [
+const TURN_OUTCOMES = [
   /** The assistant is still answering. */
   'running',
   /** It answered. */
@@ -36,7 +37,7 @@ export const PLAN_STEP_MAX_LENGTH = 500
  * A step of the plan a thread keeps while it works through a request (docs/SPEC.md, section 7.11): the harness's own
  * to-do list, what it is and where it stands. The one under way is `current`.
  */
-export const planStepSchema = z.object({
+const planStepSchema = z.object({
   text: z.string().min(1).max(PLAN_STEP_MAX_LENGTH),
   state: z.enum(['todo', 'current', 'done'])
 })
@@ -50,7 +51,7 @@ export const exchangeSchema = z.object({
   /** The persona that answered. */
   persona: personaIdSchema,
   /** The thread that answered. Left out when the assistant answered at once, without one. */
-  thread: z.string().min(1).max(64).optional(),
+  thread: threadIdSchema.optional(),
   /** What the user said. Empty when the assistant started the turn itself: see `trigger`. */
   said: z.string(),
   /** What the user handed over with it: files and folders. */
@@ -82,16 +83,15 @@ export type Exchange = z.infer<typeof exchangeSchema>
 export const inConversation = (exchange: Exchange): boolean => exchange.trigger !== 'delegated'
 
 /** How hard a model reasons before it answers: a level the user can choose, described in plain words. */
-export const harnessEffortSchema = z.object({
+const harnessEffortSchema = z.object({
   /** What the harness's program is given for it: "high", "xhigh". */
   id: z.string().min(1).max(32),
   name: z.string(),
   description: z.string()
 })
-export type HarnessEffort = z.infer<typeof harnessEffortSchema>
 
 /** A model the user can choose for the assistant's answers, described in plain words. */
-export const harnessModelSchema = z.object({
+const harnessModelSchema = z.object({
   /** What the harness's program is given to run on it. */
   id: z.string().min(1).max(100),
   name: z.string(),
@@ -102,10 +102,9 @@ export const harnessModelSchema = z.object({
   /** The level it reasons at when the user has not chosen, when the harness says. */
   defaultEffort: z.string().optional()
 })
-export type HarnessModel = z.infer<typeof harnessModelSchema>
 
 /** An AI agent program the assistant can run on, and whether it can be used. */
-export const harnessStateSchema = z.object({
+const harnessStateSchema = z.object({
   /** Identifies it: 'claude-code', 'codex'. */
   id: z.string().min(1).max(64),
   /** Its name, as the user knows it. */
@@ -152,7 +151,7 @@ export const stepSchema = z.object({
   call: z.string().min(1).max(128),
   turn: turnIdSchema,
   /** The thread that made it. Left out for the session that hears every turn. */
-  thread: z.string().min(1).max(64).optional(),
+  thread: threadIdSchema.optional(),
   /** The tool, by the name the core serves it under: 'web_search', 'ui_render'. */
   tool: z.string(),
   /** What the tool was given, as the session wrote it. */

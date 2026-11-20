@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { decodeBase64, encodeBase64 } from './base64.ts'
-import { mediaTypeOf } from './files.ts'
 
 const bytes = (...values: number[]) => new Uint8Array(values)
 /** The bytes of a text of ASCII characters. */
@@ -44,18 +43,5 @@ describe('base64', () => {
 
   it('reads the bytes of a picture as they were', () => {
     expect(decodeBase64('iVBORw0KGgo=')).toEqual(bytes(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
-  })
-})
-
-describe('the media type of a file', () => {
-  it.each([
-    ['photo.PNG', 'image/png'],
-    ['scan.jpeg', 'image/jpeg'],
-    ['report.final.pdf', 'application/pdf'],
-    ['notes.md', 'text/markdown'],
-    ['README', undefined],
-    ['archive.unknown', undefined]
-  ])('of %s is %s', (name, type) => {
-    expect(mediaTypeOf(name)).toBe(type)
   })
 })

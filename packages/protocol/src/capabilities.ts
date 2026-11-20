@@ -4,7 +4,7 @@ import { z } from 'zod'
  * What a device can offer the core. The core owns no hardware: it reaches the microphone, the screen
  * or the user's files only through a client that declared the matching capability when it connected.
  */
-export const CAPABILITIES = [
+const CAPABILITIES = [
   /** It can draw views. */
   'display',
   /** It can capture the user's voice. */

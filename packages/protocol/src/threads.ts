@@ -6,7 +6,7 @@ import { z } from 'zod'
  */
 export const threadIdSchema = z.string().min(1).max(64)
 
-export const THREAD_KINDS = [
+const THREAD_KINDS = [
   /**
    * A topic the conversation can come back to: a recipe, a form, a trip. A side question is one too, opened beside the
    * topic on the stage without taking its place (`beside`).
@@ -19,7 +19,7 @@ export const THREAD_KINDS = [
   'subthread'
 ] as const
 
-export const THREAD_STATES = [
+const THREAD_STATES = [
   /** It is answering. */
   'working',
   /** It finished while another topic was in focus: its answer is waiting to be seen. */

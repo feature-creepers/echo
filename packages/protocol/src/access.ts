@@ -60,13 +60,13 @@ export const DEFAULT_APPROVAL_WAIT = 10
 export const MAX_APPROVAL_WAIT = 24 * 60
 
 /** The most words a confirmation phrase has. */
-export const MAX_PHRASE_WORDS = 8
+const MAX_PHRASE_WORDS = 8
 
 /**
  * A confirmation phrase as the core keeps it: the SHA-256 of its words as heard (small letters, no punctuation,
  * one space between), and how many words it has, so it can be found in what is said around it.
  */
-export const confirmationPhraseSchema = z.object({ hash: z.string().regex(/^[0-9a-f]{64}$/), words: z.number().int().min(1).max(MAX_PHRASE_WORDS) })
+const confirmationPhraseSchema = z.object({ hash: z.string().regex(/^[0-9a-f]{64}$/), words: z.number().int().min(1).max(MAX_PHRASE_WORDS) })
 export type ConfirmationPhrase = z.infer<typeof confirmationPhraseSchema>
 
 export const accessSchema = z.object({

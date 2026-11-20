@@ -116,13 +116,13 @@ describe('followSettings', () => {
     expect(state.current()).toEqual({ state: 'ready', settings: at(1) })
   })
 
-  it('hears nothing more once stopped', async () => {
+  it('hears nothing more once unfollowed', async () => {
     const core = fakeSession()
     const state = followSettings(core.session)
     const changed = vi.fn()
     state.subscribe(changed)
 
-    state.stop()
+    state.unfollow()
     core.announce(at(1))
     core.answer(at(2))
     await settled()

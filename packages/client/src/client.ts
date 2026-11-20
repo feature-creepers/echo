@@ -70,7 +70,7 @@ export function openClient(link: SessionLink, voice: DeviceVoice): Client {
       engines.unfollow()
       activity.unfollow()
       channel.unfollow()
-      settings.stop()
+      settings.unfollow()
       session.close()
     }
   }

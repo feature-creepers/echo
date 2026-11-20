@@ -7,7 +7,7 @@ import { capabilitySchema } from './capabilities.ts'
  * The client says hello; the core answers with a welcome or a refusal. Nothing else is accepted before it.
  */
 
-export const CLIENT_KINDS = ['desktop', 'mobile'] as const
+const CLIENT_KINDS = ['desktop', 'mobile'] as const
 
 /**
  * The part of a hello that never changes, whatever the protocol version. A core reads it first, so it can
@@ -32,14 +32,14 @@ export const helloSchema = helloPrefixSchema.extend({
 })
 export type Hello = z.infer<typeof helloSchema>
 
-export const welcomeSchema = z.object({
+const welcomeSchema = z.object({
   type: z.literal('welcome'),
   protocol: z.number().int().positive(),
   core: z.object({ version: z.string().min(1) })
 })
 export type Welcome = z.infer<typeof welcomeSchema>
 
-export const REFUSAL_REASONS = [
+const REFUSAL_REASONS = [
   /** The message was not a hello this core could read. */
   'malformed',
   /** Client and core speak different protocol versions. */
@@ -48,7 +48,7 @@ export const REFUSAL_REASONS = [
   'credential'
 ] as const
 
-export const refusalSchema = z.object({
+const refusalSchema = z.object({
   type: z.literal('refusal'),
   reason: z.enum(REFUSAL_REASONS),
   /** The core's protocol version, so the client can say which side needs updating. */
@@ -59,4 +59,3 @@ export type RefusalReason = Refusal['reason']
 
 /** What a core answers to a hello. */
 export const handshakeReplySchema = z.discriminatedUnion('type', [welcomeSchema, refusalSchema])
-export type HandshakeReply = z.infer<typeof handshakeReplySchema>

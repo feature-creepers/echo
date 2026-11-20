@@ -1,18 +1,7 @@
-export {
-  type Act,
-  type ActStep,
-  actSchema,
-  actStepSchema,
-  appLinkSchema,
-  linkProblem,
-  MAX_ACT_SECONDS,
-  MAX_ACT_STEPS,
-  SYSTEM_KEYS,
-  type SystemKey
-} from './act.ts'
-export { type Block, TONES } from './block.ts'
-export { type Shape, shapeSchema } from './blocks/drawing.ts'
-export { BLOCKS, type BlockName, isBlockName } from './catalog.ts'
+export { type ActStep, actSchema, type SystemKey } from './act.ts'
+export { TONES } from './block.ts'
+export type { Shape } from './blocks/drawing.ts'
+export type { BlockName } from './catalog.ts'
 export {
   FEED_DEFAULT_SECONDS,
   FEED_MIN_SECONDS,
@@ -20,13 +9,10 @@ export {
   type FeedRead,
   feedFigure,
   feedPoints,
-  feedSchema,
   feedsOf,
-  type SeriesFeed,
-  seriesFeedSchema,
-  valueAt
+  type SeriesFeed
 } from './feed.ts'
-export { checkJoin, type Feature, type JoinCheck, MAX_REGIONS, propertyText, type Regions, readRegions } from './geo.ts'
+export { checkJoin, type Feature, type JoinCheck, propertyText, type Regions, readRegions } from './geo.ts'
 export { CLEAR_TOOL, describeCatalog, EXAMPLE_VIEW, MEDIA_TOOL, SHOW_TOOL, SHOW_TOOL_INPUT } from './instructions.ts'
-export { MAX_DEPTH, MAX_ELEMENTS, type Validation, validateView } from './validate.ts'
-export { type BlockProps, type View, type ViewElement, type ViewSpec, viewSpecSchema } from './view.ts'
+export { type Validation, validateView } from './validate.ts'
+export type { BlockProps, ViewSpec } from './view.ts'

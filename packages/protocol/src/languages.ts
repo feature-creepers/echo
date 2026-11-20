@@ -45,8 +45,6 @@ const heardCodes = LANGUAGES.filter((language) => language.heard).map((language)
 
 /** Every language's code, in the order to offer them. */
 export const LANGUAGE_CODES: readonly LanguageCode[] = codes
-/** The codes of the languages the speech recognition hears. */
-export const HEARD_LANGUAGES: readonly LanguageCode[] = heardCodes
 
 /** The name of a language, from its code; the code itself for one the product does not know. */
 export function languageName(code: string): string {

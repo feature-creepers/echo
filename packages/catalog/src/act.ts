@@ -11,12 +11,12 @@ import { z } from 'zod'
  * Keys of the whole system, pressed without bringing any window to the front: the media keys, which the app that
  * plays answers whichever it is, and the sound's.
  */
-export const SYSTEM_KEYS = ['MediaPlayPause', 'MediaNext', 'MediaPrevious', 'MediaStop', 'VolumeUp', 'VolumeDown', 'VolumeMute'] as const
+const SYSTEM_KEYS = ['MediaPlayPause', 'MediaNext', 'MediaPrevious', 'MediaStop', 'VolumeUp', 'VolumeDown', 'VolumeMute'] as const
 export type SystemKey = (typeof SYSTEM_KEYS)[number]
 
 /** The most steps one press carries out, and the longest it may wait in all, in seconds: a press is a gesture, not a script. */
-export const MAX_ACT_STEPS = 6
-export const MAX_ACT_SECONDS = 20
+const MAX_ACT_STEPS = 6
+const MAX_ACT_SECONDS = 20
 
 /**
  * Schemes a link opened from a widget may never have: they name a file, run a script, reach the system's own
@@ -42,7 +42,7 @@ const REFUSED_SCHEMES = new Set([
 ])
 
 /** Why a link may not be opened from a widget, in words a model acts on; nothing when it may. */
-export function linkProblem(link: string): string | undefined {
+function linkProblem(link: string): string | undefined {
   const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(link)?.[1]?.toLowerCase()
   if (scheme === undefined || /\s/.test(link))
     return "Give a link with its scheme and no spaces: an app's own link, such as spotify:playlist:<id>, or an https:// page."
@@ -53,7 +53,7 @@ export function linkProblem(link: string): string | undefined {
 }
 
 /** A link opened with the app that takes it: `spotify:playlist:<id>`, `zoommtg:…`, `https://…`. */
-export const appLinkSchema = z
+const appLinkSchema = z
   .string()
   .max(2048)
   .superRefine((link, context) => {
@@ -61,7 +61,7 @@ export const appLinkSchema = z
     if (problem) context.addIssue({ code: 'custom', message: problem })
   })
 
-export const actStepSchema = z.union([
+const actStepSchema = z.union([
   z.strictObject({
     /** A key of the whole system. */
     key: z.enum(SYSTEM_KEYS),
@@ -92,4 +92,3 @@ export const actSchema = z
     if (seconds > MAX_ACT_SECONDS)
       context.addIssue({ code: 'custom', message: `A press waits ${MAX_ACT_SECONDS} seconds at most in all; these steps wait ${seconds}.` })
   })
-export type Act = z.infer<typeof actSchema>

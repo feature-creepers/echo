@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { feedFigure, feedPoints, feedsOf, valueAt } from './feed.ts'
+import { FEED_MAX_POINTS, feedFigure, feedPoints, feedsOf, valueAt } from './feed.ts'
 import { validateView } from './validate.ts'
 
 const market = [{ title: 'Election', markets: [{ outcome: 'A', outcomePrices: '["0.2351", "0.7649"]', volume: 1200 }] }]
@@ -64,8 +64,8 @@ describe('feedPoints', () => {
   it('keeps the latest points of a long array', () => {
     const many = Array.from({ length: 300 }, (_, index) => ({ t: String(index), p: index }))
     const read = feedPoints(many, { path: '', x: 't', y: 'p' })
-    expect(read.ok && read.value.length).toBe(120)
-    expect(read.ok && read.value[0]).toEqual({ x: '180', y: 180 })
+    expect(read.ok && read.value.length).toBe(FEED_MAX_POINTS)
+    expect(read.ok && read.value[0]).toEqual({ x: String(300 - FEED_MAX_POINTS), y: 300 - FEED_MAX_POINTS })
   })
 })
 

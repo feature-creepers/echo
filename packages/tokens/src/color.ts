@@ -36,8 +36,6 @@ export const color = {
   black: '#000000'
 } as const
 
-export type ColorName = keyof typeof color
-
 /**
  * The colours of code in a diff, by what each word is to its language. Quiet hues of their own, used nowhere
  * else: none is the ok or danger of the lines added and removed, nor an accent, so code reads over either tint
@@ -52,5 +50,3 @@ export const code = {
   type: '#7ed6c8',
   function: '#e0d9a6'
 } as const
-
-export type CodeColorName = keyof typeof code

@@ -16,7 +16,7 @@ export const desktopStateSchema = z.object({
 export type DesktopState = z.infer<typeof desktopStateSchema>
 
 /** A rectangle of the screen, in the system's pixels. */
-export const boundsSchema = z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() })
+const boundsSchema = z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() })
 export type Bounds = z.infer<typeof boundsSchema>
 
 /** The window the assistant is operating, for the device to mark it while it does: nothing when it has let go. */

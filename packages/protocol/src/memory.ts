@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { turnIdSchema } from './conversation.ts'
+import { clockTimeSchema } from './schedule.ts'
 
 /**
  * What the assistant knows about the user, as a client sees it: the facts true now, where each was
@@ -25,7 +26,6 @@ export const factKindSchema = z.enum(FACT_KINDS)
 export type FactKind = z.infer<typeof factKindSchema>
 
 export const factIdSchema = z.string().min(1).max(64)
-export type FactId = z.infer<typeof factIdSchema>
 
 /** The longest a fact can be, in characters. A fact is one short statement. */
 export const FACT_MAX_LENGTH = 500
@@ -43,17 +43,16 @@ export const FACT_ORIGINS = [
 ] as const
 
 /** A turn a fact was learned from: when, and what the user said, shortened. */
-export const factSourceSchema = z.object({
+const factSourceSchema = z.object({
   turn: turnIdSchema,
   /** When it was said: an ISO 8601 date in UTC. */
   at: z.string(),
   /** What the user said, shortened. Left out when the line is no longer in the log. */
   said: z.string().optional()
 })
-export type FactSource = z.infer<typeof factSourceSchema>
 
 /** A short statement about the user, true now. */
-export const factSchema = z.object({
+const factSchema = z.object({
   id: factIdSchema,
   text: z.string().min(1).max(FACT_MAX_LENGTH),
   kind: factKindSchema,
@@ -67,7 +66,7 @@ export const factSchema = z.object({
 export type Fact = z.infer<typeof factSchema>
 
 /** When the assistant falls asleep to make sense of what it heard. */
-export const SLEEP_MODES = [
+const SLEEP_MODES = [
   /** After a quiet period with no exchange. */
   'quiet',
   /** At a set time of day. */
@@ -86,7 +85,7 @@ export const sleepSettingsSchema = z.object({
   /** How long a quiet period lasts before it sleeps, in minutes. */
   quietMinutes: z.number().int().min(1).max(1440),
   /** The time of day it sleeps at, as HH:MM on the core's clock. */
-  time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/)
+  time: clockTimeSchema
 })
 export type SleepSettings = z.infer<typeof sleepSettingsSchema>
 

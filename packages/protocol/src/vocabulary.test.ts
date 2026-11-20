@@ -3,7 +3,7 @@ import { cleanVocabulary, MAX_WORD_LENGTH, MAX_WORDS } from './vocabulary.ts'
 
 describe('the person’s own words, as they are kept', () => {
   it.each([
-    [['Barbanneau'], ['Barbanneau']],
+    [['Okonkwo'], ['Okonkwo']],
     [['  Maëlys   Kerjean  '], ['Maëlys Kerjean']],
     [['json-render', 'JSON-render', 'Json-Render'], ['json-render']],
     [['', '   ', '\t'], []],

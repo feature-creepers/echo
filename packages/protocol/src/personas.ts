@@ -15,12 +15,12 @@ export const STANCES = [
   /** Stops before acting on a serious problem, proposes the better way, and complies once the user confirms. */
   'critical'
 ] as const
-export const stanceSchema = z.enum(STANCES)
+const stanceSchema = z.enum(STANCES)
 export type Stance = z.infer<typeof stanceSchema>
 
 /** The colour a persona shows. The values behind each name are design values, known to the renderers. */
-export const ACCENTS = ['cyan', 'red'] as const
-export const accentSchema = z.enum(ACCENTS)
+const ACCENTS = ['cyan', 'red'] as const
+const accentSchema = z.enum(ACCENTS)
 export type Accent = z.infer<typeof accentSchema>
 
 /**
@@ -33,7 +33,7 @@ export const LOOKS = [
   /** A holographic instrument: fine rings of arcs and ticks turning round a small bright core. */
   'hud'
 ] as const
-export const lookSchema = z.enum(LOOKS)
+const lookSchema = z.enum(LOOKS)
 export type Look = z.infer<typeof lookSchema>
 
 /** The look of a persona written before personas had one: the look its accent first came with. */
@@ -75,7 +75,7 @@ const KEPT = /^[A-Z0-9]+(?:-[A-Z0-9]+)*$/
  * A name in the form a persona carries it, as far as typing can be turned into it: accents dropped, capitals,
  * and a hyphen where there were spaces. What is left may still not be a name; `readPersonaName` says.
  */
-export function personaNameForm(typed: string): string {
+function personaNameForm(typed: string): string {
   return typed
     .normalize('NFKD')
     .replace(/\p{M}+/gu, '')

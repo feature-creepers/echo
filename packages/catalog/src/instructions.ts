@@ -8,8 +8,11 @@ export const CLEAR_TOOL = 'ui_clear'
 /** The name of the tool that drives the media player: pause, resume, stop, volume, seeking and the queue. */
 export const MEDIA_TOOL = 'media_control'
 
-/** A small view, complete, to show a model the format and the manner. Its subject is arbitrary on purpose. */
-const EXAMPLE = {
+/**
+ * A small view, complete, to show a model the format and the manner. Its subject is arbitrary on purpose. Tests use
+ * it too, as a view that is real.
+ */
+export const EXAMPLE_VIEW = {
   root: 'all',
   elements: {
     all: { type: 'Stack', props: {}, children: ['title', 'now', 'week'] },
@@ -97,7 +100,7 @@ export function describeCatalog(): string {
     `- If ${SHOW_TOOL} answers with problems, correct the view and call it again.`,
     '',
     'An example of the format and the manner (the subject is arbitrary):',
-    JSON.stringify(EXAMPLE)
+    JSON.stringify(EXAMPLE_VIEW)
   ].join('\n')
 }
 
@@ -115,6 +118,3 @@ export const SHOW_TOOL_INPUT = {
   },
   required: ['title', 'view']
 } as const
-
-/** The example view, for tests and for showing a renderer something real. */
-export const EXAMPLE_VIEW = EXAMPLE

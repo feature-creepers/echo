@@ -8,7 +8,7 @@ const stroke = { stroke: paint.default('normal'), strokeWidth: z.number().min(0)
 const fill = { fill: paint.default('none') }
 
 /** One shape of a drawing, in the drawing's own coordinates. */
-export const shapeSchema = z.discriminatedUnion('shape', [
+const shapeSchema = z.discriminatedUnion('shape', [
   z.object({ shape: z.literal('line'), x1: z.number(), y1: z.number(), x2: z.number(), y2: z.number(), ...stroke, dashed: z.boolean().default(false) }),
   z.object({ shape: z.literal('circle'), cx: z.number(), cy: z.number(), r: z.number().min(0), ...stroke, ...fill }),
   z.object({

@@ -51,7 +51,6 @@ export const attachedSchema = z.object({
   /** A file's place in the assistant's folder. */
   path: z.string().optional()
 })
-export type Attached = z.infer<typeof attachedSchema>
 
 /** Something in the assistant's folder. */
 export const workspaceEntrySchema = z.object({

@@ -3,9 +3,9 @@ import { z } from 'zod'
 /**
  * The agreement between a core and the program that starts it on the same machine.
  *
- * The starter runs the core with a token in its environment and a folder for the user's data. The core picks where it listens,
- * and says so with one line on its standard output once it accepts connections. Everything else
- * the core prints goes to its standard error.
+ * The starter runs the core with a token in its environment and a folder for the user's data. The core picks where
+ * it listens, and says so with one line on its standard output once it accepts connections. Everything else the
+ * core prints goes to its standard error.
  */
 
 /** The environment variable that carries the token a local client must present. */

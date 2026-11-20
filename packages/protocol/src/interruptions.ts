@@ -12,7 +12,7 @@ export type BackgroundResult = (typeof BACKGROUND_RESULTS)[number]
 export const MAX_INTERRUPTIONS_PER_HOUR = 60
 
 /** Until the person sets it: the assistant speaks up by itself at most this often in an hour. */
-export const DEFAULT_INTERRUPTIONS_PER_HOUR = 12
+const DEFAULT_INTERRUPTIONS_PER_HOUR = 12
 
 /** When the assistant speaks up by itself, as the person set it. */
 export const interruptionsSchema = z.object({

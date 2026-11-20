@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 /**
  * The person's own words, for the recogniser (docs/SPEC.md, section 12.4): names, places and terms it would not know
- * or would write otherwise ("Barbanneau", "json-render"), heard as they are written. Each is a word or a few, as
+ * or would write otherwise ("Okonkwo", "json-render"), heard as they are written. Each is a word or a few, as
  * the person writes it, capitals included.
  */
 

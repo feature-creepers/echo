@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { turnIdSchema } from './conversation.ts'
+import { threadIdSchema } from './threads.ts'
 
 /**
  * A view as it travels to a client: what the assistant shows for an answer. The core has already checked
@@ -19,7 +20,7 @@ export const viewSchema = z.object({
   /** The turn it was shown in. */
   turn: turnIdSchema.optional(),
   /** The thread it belongs to. */
-  thread: z.string().min(1).max(64).optional(),
+  thread: threadIdSchema.optional(),
   /**
    * The answer to a side question (docs/SPEC.md, section 7.5): a card marked "By the way", on top of the stream while
    * the topic keeps the stage. It leaves by itself a while after it was shown, when the person says thanks, and on

@@ -18,7 +18,7 @@ export const collectionSchema = z.string().trim().min(1).max(COLLECTION_MAX_LENG
 
 /** The two docks of the main screen, on either side of the conversation, where pinned widgets sit. */
 export const DOCK_SIDES = ['left', 'right'] as const
-export const dockSideSchema = z.enum(DOCK_SIDES)
+const dockSideSchema = z.enum(DOCK_SIDES)
 export type DockSide = z.infer<typeof dockSideSchema>
 
 /** A view the user saved. */
@@ -52,7 +52,7 @@ export const savedWidgetSchema = z.object({
 export type SavedWidget = z.infer<typeof savedWidgetSchema>
 
 /** The dock a pinned widget sits in. */
-export const sideOf = (widget: Pick<SavedWidget, 'side'>): DockSide => widget.side ?? 'right'
+const sideOf = (widget: Pick<SavedWidget, 'side'>): DockSide => widget.side ?? 'right'
 
 /**
  * The pinned widgets of each dock, from its top: by the place the user dragged them to, then, for those with

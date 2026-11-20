@@ -1,6 +1,12 @@
 import { z } from 'zod'
 import { viewSchema } from '../views.ts'
 
+/** An address the core reads for a client: https only. */
+const httpsAddress = z
+  .string()
+  .regex(/^https:\/\/\S+$/)
+  .max(2048)
+
 export const viewCommands = {
   /** Read a file the assistant wrote: its latest version, for a preview or a download. */
   'file.read': {
@@ -13,12 +19,7 @@ export const viewCommands = {
    * PlaceMap's outline draws. The client needs no access of its own to the address.
    */
   'shapes.read': {
-    input: z.object({
-      url: z
-        .string()
-        .regex(/^https:\/\/\S+$/)
-        .max(2048)
-    }),
+    input: z.object({ url: httpsAddress }),
     output: z.object({ shapes: z.unknown() })
   },
 
@@ -27,12 +28,7 @@ export const viewCommands = {
    * a Chart's series kept current shows (docs/SPEC.md, section 9.4).
    */
   'feed.read': {
-    input: z.object({
-      url: z
-        .string()
-        .regex(/^https:\/\/\S+$/)
-        .max(2048)
-    }),
+    input: z.object({ url: httpsAddress }),
     output: z.object({ document: z.unknown() })
   },
 

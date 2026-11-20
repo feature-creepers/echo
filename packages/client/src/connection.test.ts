@@ -83,6 +83,19 @@ describe('connect', () => {
     link.drop()
     expect(causes).toEqual([undefined])
   })
+
+  it('reports an end that came before anyone listened', async () => {
+    const link = fakeTransport()
+    const connecting = connect(link.transport, identity)
+    link.receive({ type: 'welcome', protocol: PROTOCOL_VERSION, core: { version: '1.2.3' } })
+    const cause = new Error('gone')
+    link.drop(cause)
+    const connection = await connecting
+    const causes: (Error | undefined)[] = []
+    connection.onClose((ended) => causes.push(ended))
+    expect(causes).toEqual([cause])
+  })
+
   it('carries what follows the welcome, both ways, without reading it', async () => {
     const link = fakeTransport()
     const connecting = connect(link.transport, identity)

@@ -44,10 +44,6 @@ export const accessCommands = {
   },
 
   /**
-   * What each turn given changed on the computer: its uses that created, changed or deleted a file, and the files
-   * as the turn left them, each once, with the lines it added and removed in all.
-   */
-  /**
    * The versions the core kept of one file, by where it is: the one each change left, the latest first, and the one
    * before the first change kept.
    */
@@ -65,6 +61,10 @@ export const accessCommands = {
     output: z.object({ outcome: z.enum(['done', 'gone']), versions: z.array(fileVersionSchema) })
   },
 
+  /**
+   * What each turn given changed on the computer: its uses that created, changed or deleted a file, and the files
+   * as the turn left them, each once, with the lines it added and removed in all.
+   */
   'activity.changes': {
     input: z.object({ turns: z.array(turnIdSchema).max(50) }),
     output: z.object({

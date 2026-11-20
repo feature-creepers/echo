@@ -3,8 +3,8 @@
  * wrong (a property that does not exist, codes that match no area) instead of the person seeing an empty map.
  */
 
-export type Position = [number, number, ...number[]]
-export type Geometry = { type: 'Polygon'; coordinates: Position[][] } | { type: 'MultiPolygon'; coordinates: Position[][][] }
+type Position = [number, number, ...number[]]
+type Geometry = { type: 'Polygon'; coordinates: Position[][] } | { type: 'MultiPolygon'; coordinates: Position[][][] }
 export interface Feature {
   type: 'Feature'
   geometry: Geometry
@@ -16,7 +16,7 @@ export interface Regions {
 }
 
 /** The most areas a map draws. A file with more is too detailed for an answer. */
-export const MAX_REGIONS = 5000
+const MAX_REGIONS = 5000
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
 
@@ -36,7 +36,7 @@ const ring = (value: unknown): Position[] | undefined => {
 const polygon = (value: unknown): Position[][] | undefined => {
   if (!Array.isArray(value)) return undefined
   const rings = value.map(ring)
-  return rings.every((one) => one !== undefined) ? (rings as Position[][]) : undefined
+  return rings.every((one): one is Position[] => one !== undefined) ? rings : undefined
 }
 
 /**
@@ -66,7 +66,7 @@ export function readRegions(json: unknown): { ok: true; regions: Regions } | { o
       if (rings) read.push({ type: 'Feature', geometry: { type, coordinates: rings }, properties })
     } else if (type === 'MultiPolygon' && Array.isArray(coordinates)) {
       const polygons = coordinates.map(polygon)
-      if (polygons.every((one) => one !== undefined)) read.push({ type: 'Feature', geometry: { type, coordinates: polygons as Position[][][] }, properties })
+      if (polygons.every((one): one is Position[][] => one !== undefined)) read.push({ type: 'Feature', geometry: { type, coordinates: polygons }, properties })
     }
   }
   if (read.length === 0) return { ok: false, problem: 'it holds no areas (no Polygon or MultiPolygon features), so it cannot be coloured.' }

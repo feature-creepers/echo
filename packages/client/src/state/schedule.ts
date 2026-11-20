@@ -28,6 +28,8 @@ export function followSchedule(session: Session): ScheduleState {
   const unread = cell(false)
   const accept = (view: ScheduleView) => {
     const known = schedule.current()
+    // An equal revision is taken too: when each job rings next is worked out as the schedule is read, so the later
+    // read is the more accurate.
     if (known && known.revision > view.revision) return
     schedule.set(view)
   }

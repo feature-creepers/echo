@@ -7,7 +7,7 @@ import { turnIdSchema } from './conversation.ts'
  */
 
 /** What was decided: it ran without asking, the person approved it, or it was refused. */
-export const USE_DECISIONS = ['ran', 'approved', 'refused'] as const
+const USE_DECISIONS = ['ran', 'approved', 'refused'] as const
 
 /** Why, for each decision. */
 export const USE_REASONS = [
@@ -124,7 +124,7 @@ export type AccessUse = z.infer<typeof accessUseSchema>
  * before a line removed. A line that is only `\\` says the line before it has no end of line, as the last line of
  * a file may not.
  */
-export const hunkSchema = z.object({
+const hunkSchema = z.object({
   /** Where it starts in the version before and in the version after, as a line number counting from 1, and how many lines of each it spans. */
   before: z.object({ start: z.number().int().nonnegative(), count: z.number().int().nonnegative() }),
   after: z.object({ start: z.number().int().nonnegative(), count: z.number().int().nonnegative() }),

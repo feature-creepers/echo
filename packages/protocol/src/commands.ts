@@ -13,7 +13,7 @@ import { threadCommands } from './commands/threads.ts'
 import { viewCommands } from './commands/views.ts'
 
 /** A command: what it takes and what it gives back. */
-export interface CommandDefinition {
+interface CommandDefinition {
   input: z.ZodType
   output: z.ZodType
 }

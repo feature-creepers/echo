@@ -1,4 +1,4 @@
-import { type Event, onTop, type ShownView } from '@repo/protocol'
+import { type EventOf, onTop, type ShownView } from '@repo/protocol'
 import type { Session } from '../session.ts'
 import { cell, type Followed } from './followed.ts'
 
@@ -25,7 +25,7 @@ const ARRIVED = 12
 
 export function followView(session: Session): ViewState {
   const state = cell<Shown>({ stage: undefined, stream: [], arrived: [] })
-  type ViewEvent = Extract<Event, { name: 'view.shown' | 'view.cleared' }>
+  type ViewEvent = EventOf<'view.shown' | 'view.cleared'>
   /** What arrived while the first read was on its way, in order: applied again on top of what the read returns. */
   let early: ViewEvent[] | undefined = []
 

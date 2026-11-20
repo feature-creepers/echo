@@ -48,8 +48,9 @@ export function connect(transport: Transport, identity: Identity): Promise<Conne
   return new Promise((resolve, reject) => {
     let closeListener: ((cause?: Error) => void) | undefined
     let messageListener: ((message: unknown) => void) | undefined
-    /** What the core sent after its welcome, before anyone listened. */
+    /** What the core sent after its welcome, and whether the link then ended, before anyone listened. */
     const waiting: unknown[] = []
+    let ended: { cause?: Error } | undefined
     let settled = false
 
     const fail = (error: Error) => {
@@ -60,8 +61,9 @@ export function connect(transport: Transport, identity: Identity): Promise<Conne
     }
 
     transport.onClose((cause) => {
-      if (settled) closeListener?.(cause)
-      else fail(new HandshakeFailed('the link closed before the core answered', cause))
+      if (!settled) return fail(new HandshakeFailed('the link closed before the core answered', cause))
+      ended = cause ? { cause } : {}
+      closeListener?.(cause)
     })
 
     transport.onMessage((message) => {
@@ -85,6 +87,7 @@ export function connect(transport: Transport, identity: Identity): Promise<Conne
         },
         onClose: (listener) => {
           closeListener = listener
+          if (ended) listener(ended.cause)
         },
         close: () => transport.close()
       })

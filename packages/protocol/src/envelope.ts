@@ -20,9 +20,8 @@ export const commandSchema = z.object({
   /** Checked against the command's definition by the core. A command sent without one is answered, not dropped. */
   input: z.unknown().optional()
 })
-export type Command = z.infer<typeof commandSchema>
 
-export const COMMAND_ERRORS = [
+const COMMAND_ERRORS = [
   /** No command has that name on this core. */
   'unknown-command',
   /** The input is not what the command takes. */
@@ -48,7 +47,7 @@ export const COMMAND_ERRORS = [
   /** The core could not carry the command out, for a reason that is not the client's doing. */
   'failed'
 ] as const
-export const commandErrorSchema = z.object({
+const commandErrorSchema = z.object({
   code: z.enum(COMMAND_ERRORS),
   /** For logs and developers. What the user reads is written by the client, from the code. */
   message: z.string()

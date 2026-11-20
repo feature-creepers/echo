@@ -89,13 +89,12 @@ async function install(folder: string, set: ModelSet, { onProgress, signal }: In
   if (isInstalled(folder, set)) return
 
   const directory = modelSetFolder(folder, set)
-  const places = set.files.map((file) => placeOf(directory, file))
+  const files = set.files.map((file) => ({ file, place: placeOf(directory, file) }))
   await mkdir(directory, { recursive: true })
 
   // What is on disk for each file. A file already in place counts as whole until its turn comes to be checked.
   const received = await Promise.all(
-    set.files.map(async (file, index) => {
-      const place = places[index] as Place
+    files.map(async ({ file, place }) => {
       if ((await sizeOf(place.final)) === file.bytes) return file.bytes
       return Math.min(await sizeOf(place.part), file.bytes)
     })
@@ -111,8 +110,7 @@ async function install(folder: string, set: ModelSet, { onProgress, signal }: In
   }
 
   try {
-    for (const [index, file] of set.files.entries()) {
-      const place = places[index] as Place
+    for (const [index, { file, place }] of files.entries()) {
       await settle(set, file, place, signal, (bytes) => {
         received[index] = bytes
         report(bytes === file.bytes)

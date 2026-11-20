@@ -10,17 +10,17 @@ import { languageSchema } from './conversation.ts'
 export const jobIdSchema = z.string().min(1).max(64)
 
 /** What a job does at its time. */
-export const JOB_KINDS = [
+const JOB_KINDS = [
   /** Say a sentence, written when it was set, in the language of the conversation. No model is needed. */
   'reminder',
   /** Carry out a request, as if the person had just asked it. */
   'task'
 ] as const
-export const jobKindSchema = z.enum(JOB_KINDS)
+const jobKindSchema = z.enum(JOB_KINDS)
 export type JobKind = z.infer<typeof jobKindSchema>
 
 /** Where a job stands. */
-export const JOB_STATES = [
+const JOB_STATES = [
   /** It will ring at its next time. */
   'active',
   /** The person paused it: it rings again once resumed, from then on. */
@@ -30,12 +30,12 @@ export const JOB_STATES = [
   /** A one-time job whose time passed while the app was not running, too long ago to ring late. */
   'missed'
 ] as const
-export const jobStateSchema = z.enum(JOB_STATES)
+const jobStateSchema = z.enum(JOB_STATES)
 export type JobState = z.infer<typeof jobStateSchema>
 
 /** The days of the week, Monday first, as a recurring job names them. */
 export const WEEKDAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const
-export const weekdaySchema = z.enum(WEEKDAYS)
+const weekdaySchema = z.enum(WEEKDAYS)
 export type Weekday = z.infer<typeof weekdaySchema>
 
 /** A time of day on the person's clock, as HH:MM. */
@@ -169,7 +169,7 @@ const DAY_NAMES: Record<Weekday, string> = {
 }
 
 /** "1st", "2nd", "23rd", "11th". */
-export function ordinal(number: number): string {
+function ordinal(number: number): string {
   const tens = number % 100
   const suffix = tens >= 11 && tens <= 13 ? 'th' : (({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[number % 10] ?? 'th')
   return `${number}${suffix}`

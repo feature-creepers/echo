@@ -40,8 +40,9 @@ export const settingsCommands = {
   /**
    * What the assistant may reach on the computer: its own folder, the folders and files granted, the whole
    * computer, whether changes are asked first, whether what destroys or publishes is always asked, how long a
-   * question waits, whether it may drive a browser, and whether it may use other apps, and which. What is left out keeps its value. A place is checked by the
-   * core, which refuses one that does not exist. Takes effect at once, for the session under way too.
+   * question waits, whether it may drive a browser, and whether it may use other apps, and which. What is left out
+   * keeps its value. A place is checked by the core, which refuses one that does not exist. Takes effect at once,
+   * for the session under way too.
    */
   'access.set': {
     input: z.object({

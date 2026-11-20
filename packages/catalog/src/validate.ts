@@ -1,9 +1,9 @@
 import type { Block } from './block.ts'
-import { BLOCKS, type BlockName, isBlockName } from './catalog.ts'
+import { BLOCKS, isBlockName } from './catalog.ts'
 import { type ViewElement, type ViewSpec, viewSpecSchema } from './view.ts'
 
 /** The most elements a view may have, and the deepest they may nest. A view is an answer, not a document. */
-export const MAX_ELEMENTS = 300
+const MAX_ELEMENTS = 300
 export const MAX_DEPTH = 12
 
 export type Validation = { ok: true; spec: ViewSpec } | { ok: false; problems: string[] }
@@ -49,7 +49,7 @@ export function validateView(written: unknown): Validation {
       else if (element.type === 'Card' && elements[child]?.type === 'Card')
         problems.push(`"${id}" is a Card directly inside a Card ("${child}"). Use a Section, or put the cards side by side.`)
     }
-    checked[id] = { type: element.type as BlockName, props: props.success ? props.data : {}, children: element.children }
+    checked[id] = { type: element.type, props: props.success ? props.data : {}, children: element.children }
   }
 
   // Walk from the root: nothing may contain itself, nest too deep, sit in two places, or be left out.

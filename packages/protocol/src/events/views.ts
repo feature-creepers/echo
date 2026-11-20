@@ -17,21 +17,24 @@ export const viewClearedSchema = eventPrefixSchema.extend({
   view: z.string().min(1).max(64).optional()
 })
 
+/** What the assistant can do to the media player. */
+export const MEDIA_ACTIONS = ['pause', 'resume', 'stop', 'volume', 'seek', 'queue', 'next', 'clear-queue'] as const
+
+/** A stream or a file to add to the media player's queue. */
+export const mediaSourceSchema = z.object({
+  url: z.url().max(2048),
+  kind: z.enum(['audio', 'video']),
+  title: z.string().min(1).max(200),
+  subtitle: z.string().max(200).optional(),
+  artwork: z.url().max(2048).optional(),
+  live: z.boolean()
+})
+
 /**
  * The assistant drives the media player, on every client: pause, resume or stop it; set its volume (`level`, from
  * 0 to 1) or change it (`step`, from -1 to 1); seek a file (`to` a position, or `by` seconds from where it is); add
  * a stream or a file to the queue (`source`), skip to what is next, or empty the queue.
  */
-export const MEDIA_ACTIONS = ['pause', 'resume', 'stop', 'volume', 'seek', 'queue', 'next', 'clear-queue'] as const
-export const mediaSourceSchema = z.object({
-  url: z.string().url().max(2048),
-  kind: z.enum(['audio', 'video']),
-  title: z.string().min(1).max(200),
-  subtitle: z.string().max(200).optional(),
-  artwork: z.string().url().max(2048).optional(),
-  live: z.boolean()
-})
-export type MediaSourceShown = z.infer<typeof mediaSourceSchema>
 export const mediaControlSchema = eventPrefixSchema.extend({
   name: z.literal('media.control'),
   action: z.enum(MEDIA_ACTIONS),
