@@ -74,8 +74,9 @@ export interface CommandReading {
   /** The keys of its commands that are not read-only: what a session approval of this line would cover. */
   keys: string[]
   /**
-   * The variables it gives the programs it runs, harmless ones aside, each once: `NODE_OPTIONS` of
-   * `NODE_OPTIONS=… npm run build`. Such a line is never covered by a yes for the session.
+   * The variables it gives the programs it runs, harmless ones aside, and the settings that do the same, each once:
+   * `NODE_OPTIONS` of `NODE_OPTIONS=… npm run build`, `core.pager` of `git -c core.pager=less log`. Such a line is
+   * never covered by a yes for the session.
    */
   variables: string[]
   /** It runs a program as another user, the administrator by default: `sudo`, `doas`. Never covered by a yes for the session. */
@@ -122,21 +123,43 @@ const PAGERS = /^(PAGER|GIT_PAGER|MANPAGER)$/
 
 /**
  * Whether setting a variable leaves the line reading only. `exported`: the programs the line runs are given it, as a
- * prefix, `export`, `env` or the environment's own scope give it. A variable the shell keeps to itself matters only
- * when the system exported it already, and those are written in capitals.
+ * prefix, `export`, `env`, `set -a` or the environment's own scope give it. A variable the shell keeps to itself
+ * matters only when the system exported it already: on macOS and Linux those are written in capitals. Windows finds a
+ * variable whatever its capitals (`node_options` is `NODE_OPTIONS`) and exports some in lower case, so there any may be.
  */
-function harmless(variable: string, value: string, exported: boolean): boolean {
-  if (!exported && /^[a-z_][a-z0-9_]*$/.test(variable)) return true
-  return HARMLESS_VARIABLES.test(variable) || (PAGERS.test(variable) && /^(cat)?$/.test(value.trim()))
+function harmless(variable: string, value: string, exported: boolean, windows: boolean): boolean {
+  if (!exported && !windows && /^[a-z_][a-z0-9_]*$/.test(variable)) return true
+  const name = windows ? variable.toUpperCase() : variable
+  return HARMLESS_VARIABLES.test(name) || (PAGERS.test(name) && /^(cat)?$/.test(value.trim()))
 }
 
-/** The variables among `NAME=value` words that are not harmless, given to programs when `exported`. */
-function variablesSet(words: readonly string[], exported: boolean): string[] {
+/** The variables among `NAME=value` words that are not harmless, given to programs when `exported` or after `set -a`. */
+function variablesSet(words: readonly string[], exported: boolean, context: Context): string[] {
   return words.flatMap((word) => {
     if (word.startsWith('-')) return []
     const [variable = '', ...value] = word.split('=')
-    return harmless(variable, value.join('='), exported) ? [] : [variable]
+    return harmless(variable, value.join('='), exported || context.exporting, context.windows) ? [] : [variable]
   })
+}
+
+/**
+ * Whether `set` or `shopt -o` turns on (true) or off (false) the exporting of every variable set after it: `set -a`,
+ * `set -o allexport`, `set +a`. Undefined when it leaves it as it was.
+ */
+function allexportOf(program: string, args: readonly string[]): boolean | undefined {
+  if (program === 'shopt') return short(args, 'o') && args.includes('allexport') ? (short(args, 's') ? true : short(args, 'u') ? false : undefined) : undefined
+  let exporting: boolean | undefined
+  for (let index = 0; index < args.length; index++) {
+    const word = args[index] as string
+    if (word === '--') break
+    if (word.startsWith('--')) continue
+    // Its options end at the first word that is none: what follows sets the line's own words (`set x -a`).
+    if (!/^[-+][A-Za-z]+$/.test(word)) break
+    const on = word.startsWith('-')
+    if (word.includes('a')) exporting = on
+    if (word.includes('o') && args[++index] === 'allexport') exporting = on
+  }
+  return exporting
 }
 
 /** Paths that are no file: where output is thrown away, the terminal, standard streams. */
@@ -161,6 +184,10 @@ interface Context {
   depth: number
   /** The drive of the folder it runs in, in capitals, when it is on one: Windows keeps a location for each drive. */
   drive: string | undefined
+  /** It runs on Windows, which finds a variable whatever its capitals. */
+  windows: boolean
+  /** After `set -a`: every variable the line sets is given to the programs it runs after it. */
+  exporting: boolean
 }
 
 /**
@@ -185,7 +212,8 @@ export function readCommand(line: string, shell: Shell = 'posix', folder?: strin
     elevated: false
   }
   const drive = /^([A-Za-z]):[\\/]/.exec(folder ?? '')?.[1]?.toUpperCase()
-  readLine(line, { shell, folders: [''], aside: [], moved: false, bound: new Set(), reading, depth: 0, drive })
+  const windows = drive !== undefined || shell !== 'posix'
+  readLine(line, { shell, folders: [''], aside: [], moved: false, bound: new Set(), reading, depth: 0, drive, windows, exporting: false })
   reading.programs = [...new Set(reading.commands.map((command) => command.program))]
   reading.keys = [...new Set(reading.commands.filter((command) => !command.readOnly).map((command) => command.key))]
   reading.readOnly = reading.readOnly && !reading.opaque && !reading.unresolved && reading.commands.every((command) => command.readOnly)
@@ -432,8 +460,11 @@ interface Kind {
   onlyPaths?: Set<number>
   /** Its words that move where it works, in order, as `cd` would: `git -C repo`. Its paths are read from there. */
   folders?: number[]
-  /** Lines it runs, read as commands of their own: `bash -c "…"`, `find -exec rm {} ;`, a script block. */
-  nested?: { line: string; shell: Shell }[]
+  /**
+   * Lines it runs, read as commands of their own: `bash -c "…"`, `find -exec rm {} ;`, a script block. `exporting`:
+   * a shell started with `-a` exports every variable they set.
+   */
+  nested?: { line: string; shell: Shell; exporting?: true }[]
   /** It only starts what it nests, which decides for it. */
   launcher?: boolean
   /** It takes Windows-style `/switches`. */
@@ -954,13 +985,16 @@ const parameter = (args: readonly string[], name: string, shortest = 1) =>
     return written.startsWith('-') && written.length > shortest && name.startsWith(written.slice(1))
   })
 
+/** npm's settings that take the next word as their value when given without `=`, and set what its scripts run. */
+const NPM_RUNNING_SETTINGS = ['--node-options', '--script-shell', '--userconfig', '--globalconfig']
+
 /** The subcommand of a program with subcommands, past its global options and their values. */
 function subcommandOf(program: string, args: readonly string[]): { sub: string | undefined; at: number } {
   const values: Record<string, readonly string[]> = {
     git: ['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--exec-path', '--config-env'],
-    npm: ['--prefix', '-w', '--workspace'],
-    pnpm: ['-C', '--dir', '--filter', '-F'],
-    yarn: ['--cwd'],
+    npm: ['--prefix', '-w', '--workspace', ...NPM_RUNNING_SETTINGS],
+    pnpm: ['-C', '--dir', '--filter', '-F', ...NPM_RUNNING_SETTINGS],
+    yarn: ['--cwd', ...NPM_RUNNING_SETTINGS],
     docker: ['-H', '--host', '--context', '-c', '--config'],
     kubectl: ['-n', '--namespace', '--context', '--kubeconfig'],
     uv: ['--directory', '--project'],
@@ -979,7 +1013,8 @@ function git(args: readonly string[]): Kind {
   // The subcommand, `-m "message"` and the like are words, never paths; `-C repo` moves where git works, named as
   // `cd` names it.
   const notPaths = new Set<number>(at < 0 ? [] : [at])
-  for (const [index, word] of args.entries()) if (['-m', '--message', '--author', '--format', '--pretty', '-c'].includes(word)) notPaths.add(index + 1)
+  for (const [index, word] of args.entries())
+    if (['-m', '--message', '--author', '--format', '--pretty', '-c', '--config-env'].includes(word)) notPaths.add(index + 1)
   const folders = globals.flatMap((word, index) => (word === '-C' ? [index + 1] : []))
   for (const index of folders) notPaths.add(index)
   kind.notPaths = notPaths
@@ -1087,9 +1122,40 @@ function git(args: readonly string[]): Kind {
       kind.network = rest[0] === 'update' || rest[0] === 'add' || rest[0] === 'sync'
       break
   }
-  // Configuration given on the line can make any subcommand run a program: `-c core.pager=…`, `-c core.fsmonitor=…`.
-  if (globals.some((word) => word === '-c' || word.startsWith('--config-env') || word.startsWith('--exec-path='))) kind.readOnly = false
+  // Settings given on the line, and where git finds its own programs, can make any subcommand run a program, as a
+  // variable can: `-c core.pager=…`, `-c core.fsmonitor=…`, `--exec-path=./bin`.
+  const settings = globals.flatMap((word, index) => {
+    const setting = word === '-c' || word === '--config-env' ? globals[index + 1] : /^--config-env=(.*)$/.exec(word)?.[1]
+    if (setting !== undefined) return [setting.replace(/=.*$/, '')]
+    return word.startsWith('--exec-path=') ? ['--exec-path'] : []
+  })
+  if (settings.length > 0) {
+    kind.variables = settings
+    kind.readOnly = false
+  }
   return kind
+}
+
+/** Options of npm, pnpm and yarn that only pick what runs, where, or how it is shown. */
+const NPM_HARMLESS_OPTIONS = /^(filter|filter-prod|dir|prefix|workspace|cwd|loglevel|reporter|color|workspace-concurrency)$/
+
+/**
+ * The settings npm, pnpm and yarn are given as options, as the variables they give the scripts they run:
+ * `--name=value` is `npm_config_name` there, and some say what runs node or the scripts (`--node-options`,
+ * `--script-shell`, `--userconfig`). What follows `--` goes to the script, and so does what follows the name of
+ * what pnpm and yarn run.
+ */
+function npmSettings(program: string, args: readonly string[]): string[] {
+  const named = positionals(args, NPM_RUNNING_SETTINGS)
+  const runs = program !== 'npm' && ['run', 'run-script', 'exec', 'dlx'].includes(named[0]?.word ?? '') ? named[1]?.index : undefined
+  const settings: string[] = []
+  for (const [index, word] of args.entries()) {
+    if (word === '--' || index === runs) break
+    const [, name = '', value] = /^--([\w.-]+)(=?)/.exec(word) ?? []
+    if (value === '=' ? !NPM_HARMLESS_OPTIONS.test(name) : NPM_RUNNING_SETTINGS.includes(word) && args[index + 1] !== undefined)
+      settings.push(`npm_config_${name.replaceAll('-', '_')}`)
+  }
+  return settings
 }
 
 /** Package managers: installing reaches the network; removing one installed for the whole system destroys. */
@@ -1138,6 +1204,8 @@ function packages(program: string, args: readonly string[]): Kind {
         (program === 'yarn' &&
           !['add', 'install', 'remove', 'upgrade', 'info', 'why', 'list', 'config', 'init', 'outdated'].includes(word) &&
           sub !== undefined)
+      if (program !== 'bun') kind.variables = npmSettings(program, args)
+      if (kind.variables?.length) kind.readOnly = false
       break
     case 'pip':
     case 'pip3':
@@ -1504,10 +1572,15 @@ function kindOf(program: string, args: readonly string[], context: Context): Kin
     case 'local':
     case 'readonly':
       // Given `-x`, a variable goes to every program the line runs after it; one the system exported already does anyway.
-      return { variables: variablesSet(args, program !== 'readonly' && short(args, 'x')) }
+      return { variables: variablesSet(args, program !== 'readonly' && short(args, 'x'), context) }
+    case 'read': {
+      // The variables it reads into, whose values the line does not show: `read PATH < list`.
+      const names = positionals(args, ['-a', '-d', '-i', '-n', '-N', '-p', '-t', '-u']).map(({ word }) => word)
+      return { variables: names.filter((variable) => !harmless(variable, '?', context.exporting, context.windows)) }
+    }
   }
 
-  if (READING.has(program)) return readingKind(program, args, context.shell)
+  if (READING.has(program)) return readingKind(program, args, context)
   if (context.shell === 'cmd' && ['for', 'if'].includes(program)) return { opaque: true }
   return {}
 }
@@ -1566,7 +1639,8 @@ function sedActs(script: string): boolean {
 }
 
 /** Programs that read, unless an option makes them write, and whose first word may be a pattern rather than a path. */
-function readingKind(program: string, args: readonly string[], shell: Shell): Kind {
+function readingKind(program: string, args: readonly string[], context: Context): Kind {
+  const { shell } = context
   const kind: Kind = { readOnly: true }
   const first = positionals(args, ['-e', '-f', '-m', '-A', '-B', '-C', '-d', '-D', '-g', '-t', '-T', '--glob', '--type', '--include', '--exclude'])[0]
   switch (program) {
@@ -1657,7 +1731,7 @@ function readingKind(program: string, args: readonly string[], shell: Shell): Ki
       return kind
     case 'export':
       // A variable exported goes to every program the line runs after it.
-      kind.variables = variablesSet(args, true)
+      kind.variables = variablesSet(args, true, context)
       kind.readOnly = kind.variables.length === 0
       return kind
     case 'set':
@@ -1665,7 +1739,8 @@ function readingKind(program: string, args: readonly string[], shell: Shell): Ki
       if (shell !== 'cmd') return kind
       kind.variables = variablesSet(
         args.filter((word) => word.includes('=')).map((word) => word.replace(/^[^=]*/, (variable) => variable.trim().toUpperCase())),
-        true
+        true,
+        context
       )
       kind.readOnly = kind.variables.length === 0
       return kind
@@ -1687,7 +1762,7 @@ function readingKind(program: string, args: readonly string[], shell: Shell): Ki
       // What it prints is no path: what it writes to, after `>`, is checked as one. `printf -v NAME` sets a variable.
       kind.notPaths = new Set(args.keys())
       const set = program === 'printf' ? args.indexOf('-v') : -1
-      if (set >= 0) kind.variables = variablesSet([args[set + 1] ?? ''], false)
+      if (set >= 0) kind.variables = variablesSet([args[set + 1] ?? ''], false, context)
       kind.readOnly = (kind.variables ?? []).length === 0
       return kind
     }
@@ -1750,7 +1825,8 @@ const quoted = (word: string) => (/^[\w./~:=@%+-]+$/.test(word) ? word : `'${wor
 function nestedShell(program: string, shell: Shell, args: readonly string[]): Kind {
   if (shell === 'posix') {
     const at = args.findIndex((word) => /^-[A-Za-z]*c[A-Za-z]*$/.test(word))
-    if (at >= 0) return { launcher: true, nested: [{ line: args[at + 1] ?? '', shell }], notPaths: new Set([at + 1]) }
+    const exporting = allexportOf('set', args.slice(0, at + 1)) ? { exporting: true as const } : {}
+    if (at >= 0) return { launcher: true, nested: [{ line: args[at + 1] ?? '', shell, ...exporting }], notPaths: new Set([at + 1]) }
     // A script file, or code read from what it is fed.
     return { opaque: true }
   }
@@ -1799,8 +1875,34 @@ function nestedShell(program: string, shell: Shell, args: readonly string[]): Ki
   return { opaque: true }
 }
 
+/** The value given to a PowerShell parameter, `-Name x` or `-Name:x`, its name shortened or not. */
+function parameterValue(args: readonly string[], name: string): string | undefined {
+  const at = args.findIndex((word) => parameter([word], name))
+  if (at < 0) return undefined
+  const word = args[at] as string
+  return word.includes(':') ? word.slice(word.indexOf(':') + 1) : args[at + 1]
+}
+
+/** PowerShell commands that make, set or move an item: on the environment's drive, a variable. */
+const ITEM_WRITING = new Set(['set-item', 'new-item', 'set-content', 'add-content', 'copy-item', 'move-item', 'rename-item'])
+
+/**
+ * The variables a PowerShell command sets on the environment's drive, harmless ones aside: `Set-Item env:NAME x`,
+ * `New-Item -Path Env: -Name NAME -Value x`, `Rename-Item env:A NAME`. `Env:` when it cannot tell which.
+ */
+function environmentSet(lower: string, args: readonly string[], windows: boolean): string[] {
+  const drive = args.findIndex((word) => /^(-\w+:)?env:/i.test(word))
+  if (!ITEM_WRITING.has(lower) || drive < 0) return []
+  const names = [
+    ...args.flatMap((word) => /^(?:-\w+:)?env:[\\/]?(\w+)$/i.exec(word)?.[1] ?? []),
+    ...['name', 'newname'].flatMap((one) => parameterValue(args, one) ?? [])
+  ]
+  const value = parameterValue(args, 'value') ?? args.slice(drive + 1).find((word) => !word.startsWith('-')) ?? ''
+  return (names.length > 0 ? names.map((one) => one.toUpperCase()) : ['Env:']).filter((variable) => !harmless(variable, value, true, windows))
+}
+
 /** What a PowerShell command does: by its name, then its parameters. `name` is its full name, in its own capitals. */
-function powershellKind(name: string, args: readonly string[]): Kind {
+function powershellKind(name: string, args: readonly string[], windows: boolean): Kind {
   const lower = name.toLowerCase()
   const text = args.join(' ')
   const kind: Kind = {}
@@ -1818,13 +1920,8 @@ function powershellKind(name: string, args: readonly string[]): Kind {
     kind.readOnly = args.every((word) => word.startsWith('-') || word === '{…}') || lower === 'where-object'
   }
   if (lower === 'start-process' && parameter(args, 'verb', 2)) kind.opaque = true
-  // `Set-Item env:NAME value` sets a variable of the environment, given to every program the line runs after it.
-  const environment = ['set-item', 'new-item', 'set-content', 'add-content'].includes(lower) ? args.findIndex((word) => /^env:[\\/]?\w+$/i.test(word)) : -1
-  if (environment >= 0) {
-    const variable = (args[environment] as string).replace(/^env:[\\/]?/i, '').toUpperCase()
-    const value = args.slice(environment + 1).find((word) => !word.startsWith('-')) ?? ''
-    kind.variables = harmless(variable, value, true) ? [] : [variable]
-  }
+  // A variable of the environment is given to every program the line runs after it.
+  kind.variables = environmentSet(lower, args, windows)
   kind.recursive = parameter(args, 'recurse', 2) || parameter(args, 'depth', 2)
   if (lower === 'get-childitem' && parameter(args, 'recurse')) kind.recursive = true
   if (lower === 'get-childitem' && kind.recursive) kind.here = 'always'
@@ -1872,13 +1969,13 @@ function readStage(stage: Stage, context: Context): void {
       const value = assignedValue(assigned)
       if (value) name(value, context)
       // Before a command, it is given to that command.
-      if (!harmless(variable, value ? textOf(value) : '', words.length > 0)) given(variable, reading)
+      if (!harmless(variable, value ? textOf(value) : '', words.length > 0 || context.exporting, context.windows)) given(variable, reading)
     }
   } else if (context.shell === 'powershell' && words[1] && /^(\?\?|[-+*/%])?=$/.test(textOf(words[1]))) {
     const target = words[0]?.pieces[0]
     if (target?.kind === 'variable') {
       context.bound.add(target.name)
-      if (target.environment && !harmless(target.name, textOf(words[2] ?? { pieces: [] }), true)) given(target.name, reading)
+      if (target.environment && !harmless(target.name, textOf(words[2] ?? { pieces: [] }), true, context.windows)) given(target.name, reading)
     }
     words = words.slice(2)
     // A value given to it is named, as it is wherever it is used next.
@@ -1896,8 +1993,10 @@ function readStage(stage: Stage, context: Context): void {
 
   const head = textOf(words[0] as Word)
   if (context.shell === 'posix' && (head === 'for' || head === 'select')) {
-    // `for f in a b c`: the words it goes through are named; the name it sets is the line's own.
-    context.bound.add(textOf(words[1] ?? { pieces: [] }))
+    // `for f in a b c`: the words it goes through are named; the name it sets is the line's own, unless after `set -a`.
+    const variable = textOf(words[1] ?? { pieces: [] })
+    context.bound.add(variable)
+    if (context.exporting && !harmless(variable, words.slice(3).map(textOf).join(' '), true, context.windows)) given(variable, reading)
     // A command's output in the list was read on its own; its words are values, checked wherever they are used.
     for (const word of words.slice(3)) if (isPlain(word)) name(word, context)
     return
@@ -1931,7 +2030,7 @@ function readStage(stage: Stage, context: Context): void {
       const word = textOf(words[at] as Word)
       if (program === 'env' && /^[A-Za-z_]\w*=/.test(word)) {
         const [variable = '', ...value] = word.split('=')
-        if (!harmless(variable, value.join('='), true)) given(variable, reading)
+        if (!harmless(variable, value.join('='), true, context.windows)) given(variable, reading)
         at++
         continue
       }
@@ -2034,12 +2133,13 @@ function readStage(stage: Stage, context: Context): void {
   // `find` in cmd searches for text in files: its first word is what it looks for.
   const cmdFind = context.shell === 'cmd' && found.name === 'find'
   const kind = alias
-    ? powershellKind(alias, argTexts)
+    ? powershellKind(alias, argTexts, context.windows)
     : cmdFind
       ? { readOnly: true, windows: true, notPaths: new Set([positionals(argTexts)[0]?.index ?? -1]) }
       : kindOf(found.name, argTexts, context)
   if (elevated) kind.readOnly = false
   for (const variable of kind.variables ?? []) given(variable, reading)
+  if (context.shell === 'posix' && (program === 'set' || program === 'shopt')) context.exporting = allexportOf(program, argTexts) ?? context.exporting
   // A shell or an interpreter that reads what it is fed runs code that is not read here: `curl … | sh`, `python - <<EOF`.
   if ((stage.join === 'pipe' || stage.fed) && (INTERPRETERS.has(found.name) || (SHELLS[found.name] && !kind.launcher))) kind.opaque = true
 
@@ -2056,12 +2156,15 @@ function readStage(stage: Stage, context: Context): void {
       reading.unresolved = true
     } else if (target !== undefined) moveTo(target, context)
     else if (context.shell === 'posix') moveAside(context, ['~'])
+    // On the environment's drive, an item made where the line is is a variable, whatever names it.
+    if (context.shell === 'powershell' && target !== undefined && /^env:/i.test(textOf(target))) given('Env:', reading)
     context.moved = true
     reading.commands.push(command(program, program, argTexts, { readOnly: true }))
     return
   }
 
-  for (const nested of kind.nested ?? []) readLine(nested.line, { ...nestedIn(context), shell: nested.shell })
+  for (const nested of kind.nested ?? [])
+    readLine(nested.line, { ...nestedIn(context), shell: nested.shell, exporting: context.exporting || nested.exporting === true })
 
   // `git -C repo …`: its paths are read from there.
   if (kind.folders) {

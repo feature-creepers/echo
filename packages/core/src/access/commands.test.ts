@@ -558,6 +558,54 @@ describe('readCommand: variables it gives the programs it runs', () => {
   ] as const)('`%s` in %s gives %j', (line, shell, expected) => {
     expect(readCommand(line, shell).variables).toEqual(expected)
   })
+
+  it.each([
+    // Git's settings given on the line, and where it finds its own programs.
+    ['git -c core.pager=less log', 'posix', undefined, ['core.pager']],
+    ['git --config-env=core.pager=PAGER log', 'posix', undefined, ['core.pager']],
+    ['git --config-env core.fsmonitor=X status', 'posix', undefined, ['core.fsmonitor']],
+    ['git --exec-path=./bin status', 'posix', undefined, ['--exec-path']],
+    ['git -C sub status', 'posix', undefined, []],
+    ['git commit -c HEAD~1', 'posix', undefined, []],
+    // npm's settings given as options: what runs node and the scripts among them.
+    ['npm run build --script-shell=./x.sh', 'posix', undefined, ['npm_config_script_shell']],
+    ['npm --script-shell ./x.sh run build', 'posix', undefined, ['npm_config_script_shell']],
+    ['pnpm --node-options=--require=./x.js build', 'posix', undefined, ['npm_config_node_options']],
+    ['yarn --userconfig=./npmrc build', 'posix', undefined, ['npm_config_userconfig']],
+    ['pnpm --filter=@repo/core build', 'posix', undefined, []],
+    ['npm run build -- --script-shell=./x.sh', 'posix', undefined, []],
+    // pnpm and yarn give the script what follows its name.
+    ['pnpm run build --node-options=x', 'posix', undefined, []],
+    ['pnpm --node-options=x run build', 'posix', undefined, ['npm_config_node_options']],
+    ['npm test --reporter=dot', 'posix', undefined, []],
+    // Everything set after `set -a` is exported.
+    ['set -a; foo=1; npm run build', 'posix', undefined, ['foo']],
+    ['set -o allexport; foo=1; npm run build', 'posix', undefined, ['foo']],
+    ['set -ea; declare foo=1; npm run build', 'posix', undefined, ['foo']],
+    ['set -a; set +a; foo=1; npm run build', 'posix', undefined, []],
+    ['echo $(set -a); foo=1; npm run build', 'posix', undefined, []],
+    ['set -- -a; foo=1; npm run build', 'posix', undefined, []],
+    ['shopt -so allexport; foo=1; npm run build', 'posix', undefined, ['foo']],
+    ['set -a; for npm_config_script_shell in ./x.sh; do npm run build; done', 'posix', undefined, ['npm_config_script_shell']],
+    ["bash -ac 'npm_config_script_shell=./x.sh; npm run build'", 'posix', undefined, ['npm_config_script_shell']],
+    ["bash -c 'npm_config_script_shell=./x.sh; npm run build'", 'posix', undefined, []],
+    // What `read` reads into, whose value the line does not show.
+    ['read PATH < list.txt; npm run build', 'posix', undefined, ['PATH']],
+    ['read -r f < list.txt; npm run build', 'posix', undefined, []],
+    // Windows finds a variable whatever its capitals, and exported some in lower case (`windir`).
+    ['windir=C:/x; npm run build', 'posix', 'C:\\Users\\ada\\work', ['windir']],
+    ['lang=C git log', 'posix', 'C:\\Users\\ada\\work', []],
+    ['lang=C git log', 'posix', '/home/ada/work', ['lang']],
+    ['New-Item -Path Env: -Name NODE_OPTIONS -Value x; npm run build', 'powershell', undefined, ['NODE_OPTIONS']],
+    ['New-Item -Path Env:\\ -Name no_color -Value 1; npm run build', 'powershell', undefined, []],
+    ['ni -Path:Env: -Name:NODE_OPTIONS -Value:x; npm run build', 'powershell', undefined, ['NODE_OPTIONS']],
+    ['New-Item -Path Env: -Name PAGER -Value cat; git log', 'powershell', undefined, []],
+    ['Set-Location Env:; New-Item -Name NODE_OPTIONS -Value x; npm run build', 'powershell', undefined, ['Env:']],
+    ["$env:lang = 'C'; git log", 'powershell', undefined, []],
+    ['set node_options=x && npm run build', 'cmd', undefined, ['NODE_OPTIONS']]
+  ] as const)('`%s` in %s, run in %s, gives %j', (line, shell, folder, expected) => {
+    expect(readCommand(line, shell, folder).variables).toEqual(expected)
+  })
 })
 
 describe('readCommand: elevated', () => {

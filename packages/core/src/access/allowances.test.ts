@@ -21,9 +21,21 @@ describe('a yes for the session on a command', () => {
     ['LANG=C npm run build', true],
     ['NODE_OPTIONS=x npm run build', false],
     ['env NODE_OPTIONS=x npm run build', false],
+    ['npm run build --script-shell=./x.sh', false],
+    ['npm --node-options=--require=./x.js run build', false],
+    ['set -a; foo=1; npm run build', false],
     ['npm install', false]
   ])('on `npm run build`, covers `%s`: %s', (line, expected) => {
     expect(covered(allowing('npm run build'), line)).toBe(expected)
+  })
+
+  it.each([
+    ['git commit -m x', true],
+    ["git -c core.fsmonitor='./x.sh' commit -m x", false],
+    ['git --config-env=core.hooksPath=HOOKS commit -m x', false],
+    ['git --exec-path=./bin commit -m x', false]
+  ])('on `git commit`, covers `%s`: %s', (line, expected) => {
+    expect(covered(allowing('git commit -m y'), line)).toBe(expected)
   })
 
   it('never covers a line that exports a variable, even with export allowed', () => {
