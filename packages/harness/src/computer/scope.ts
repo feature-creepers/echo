@@ -162,7 +162,7 @@ export async function checkUse(
     }
     // A wildcard: each path it matches is checked as one the line names. With none, the folder it picks from was.
     if (pattern === undefined) continue
-    const matched = await matches(target, pattern, MAX_MATCHES)
+    const matched = await matches(target, pattern, MAX_MATCHES, use.shell)
     if (matched.more) unwalked = true
     for (const match of matched.found) {
       const refused = await checked(match, await real(match), named.below, false)

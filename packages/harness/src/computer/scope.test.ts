@@ -294,16 +294,26 @@ describe('the scope', () => {
 
 describe('places never reached by their ending, through a wildcard or a recursive use', () => {
   /**
-   * A granted folder holding `notes.txt`, `vault.kdbx` and `sub/old.kdb`, `sub2`, holding nothing of the kind, and
-   * `sub3`, holding a 1Password vault, a folder.
+   * A granted folder holding `notes.txt`, `vault.kdbx` and `sub/old.kdb`, `sub2`, holding nothing of the kind, `sub3`,
+   * holding a 1Password vault, a folder, `hidden/.old.kdbx`, and `linked`, holding a link to `sub`.
    */
   function documents() {
     const root = realpathSync.native(folder())
     mkdirSync(join(root, 'sub'))
     mkdirSync(join(root, 'sub2'))
+    mkdirSync(join(root, 'hidden'))
+    mkdirSync(join(root, 'linked'))
     mkdirSync(join(root, 'sub3', 'Vault.opvault', 'default'), { recursive: true })
-    for (const file of ['notes.txt', 'vault.kdbx', join('sub', 'old.kdb'), join('sub2', 'list.txt'), join('sub3', 'Vault.opvault', 'default', 'profile.js')])
+    for (const file of [
+      'notes.txt',
+      'vault.kdbx',
+      join('sub', 'old.kdb'),
+      join('sub2', 'list.txt'),
+      join('sub3', 'Vault.opvault', 'default', 'profile.js'),
+      join('hidden', '.old.kdbx')
+    ])
       writeFileSync(join(root, file), '')
+    symlinkSync(join(root, 'sub'), join(root, 'linked', 'to-sub'), 'junction')
     const scope: Scope = {
       places: [{ path: root, kind: 'folder', write: false }],
       computer: 'off',
@@ -337,6 +347,17 @@ describe('places never reached by their ending, through a wildcard or a recursiv
     const found = await checkUse({ action: 'run', tool: 'Bash', paths: [root], command: line }, scope, [])
     expect(found.refused?.reason.toLowerCase()).toEqual(refused === undefined ? undefined : expect.stringContaining(refused.toLowerCase()))
     expect(found.unwalked).toBeUndefined()
+  })
+
+  it.each([
+    // PowerShell and cmd match a name starting with a dot too; the POSIX shell does not.
+    ['cat hidden/*.kdbx', 'posix', undefined],
+    ['Get-Content hidden/*.kdbx', 'powershell', 'keepass databases'],
+    ['type hidden\\*.kdbx', 'cmd', 'keepass databases']
+  ] as const)('`%s` in %s: %s', async (line, shell, refused) => {
+    const { root, scope } = documents()
+    const found = await checkUse({ action: 'run', tool: 'Bash', paths: [root], command: line, shell }, scope, [])
+    expect(found.refused?.reason.toLowerCase()).toEqual(refused === undefined ? undefined : expect.stringContaining(refused))
   })
 
   it('refuses Grep on the folder', async () => {

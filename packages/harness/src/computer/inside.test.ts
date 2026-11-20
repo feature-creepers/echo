@@ -21,16 +21,26 @@ function tree() {
 
 describe('the paths a wildcard matches', () => {
   it.each([
-    ['*.txt', ['notes.txt']],
-    // A name starting with a dot only when the pattern's part does, as the shell has it.
-    ['*.kdbx', system.caseless ? ['Vault.KDBX'] : []],
-    ['.*.kdbx', ['.hidden.kdbx']],
-    ['?ault.*', ['Vault.KDBX']],
-    ['sub/*.kdb', [join('sub', 'old.kdb')]],
-    ['*.none', []]
-  ])('matches %s with %j', async (pattern, expected) => {
+    ['*.txt', 'posix', ['notes.txt']],
+    // A name starting with a dot only when the pattern's part does, as the POSIX shell has it.
+    ['*.kdbx', 'posix', system.caseless ? ['Vault.KDBX'] : []],
+    ['.*.kdbx', 'posix', ['.hidden.kdbx']],
+    ['?ault.*', 'posix', ['Vault.KDBX']],
+    ['sub/*.kdb', 'posix', [join('sub', 'old.kdb')]],
+    ['*.none', 'posix', []],
+    // PowerShell and cmd match any name, one starting with a dot too, whatever its capitals.
+    ['*.kdbx', 'powershell', ['.hidden.kdbx', 'Vault.KDBX']],
+    ['*.KDBX', 'cmd', ['.hidden.kdbx', 'Vault.KDBX']],
+    ['?ault.*', 'powershell', ['Vault.KDBX']],
+    ['[uv]ault.kdbx', 'powershell', ['Vault.KDBX']],
+    ['[uv]ault.kdbx', 'cmd', []],
+    ['sub\\*.kdb', 'powershell', [join('sub', 'old.kdb')]],
+    ['*/old.kdb', 'cmd', [join('sub', 'old.kdb')]],
+    ['*.txt', 'powershell', ['notes.txt']],
+    ['*.none', 'powershell', []]
+  ] as const)('matches %s in %s with %j', async (pattern, shell, expected) => {
     const work = tree()
-    const { found, more } = await matches(work, pattern, 10)
+    const { found, more } = await matches(work, pattern, 10, shell)
     expect(found.sort()).toEqual(expected.map((path) => join(work, path)).sort())
     expect(more).toBe(false)
   })
