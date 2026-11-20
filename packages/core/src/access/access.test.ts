@@ -678,10 +678,16 @@ describe('the activity', () => {
     expect((await access.diff({ use: ran.use }))?.[0]).toMatchObject({ path: plan, unknown: true, hunks: [] })
   })
 
-  it('looks at no folder for a command that only reads', async () => {
-    const { reach, access, settings, files } = setup()
+  it.each([
+    ['run at once', command('ls', 'read')],
+    ['asked, since it goes through more than was looked through', { ...command('grep -r token big', 'read'), unwalked: true as const }]
+  ])('looks at no folder for a command that only reads, %s', async (_, use) => {
+    const { reach, access, settings, files, screen } = setup()
     settings.setAccess({ approvals: 'auto' })
-    const ran = await reach.approve(command('ls', 'read'), signal())
+    const verdict = reach.approve(use, signal())
+    await settle()
+    if (screen.current()) access.hear('yes')
+    const ran = await verdict
     if (!ran.allow || !ran.use) throw new Error('The command is expected to go ahead.')
     files.set(`${WORKSPACE}/meanwhile.md`, text('x\n'))
     reach.report?.(ran.use, { ok: true })

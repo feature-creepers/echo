@@ -432,7 +432,7 @@ export function createAccess({ settings, screen, computer, timers, records, vers
     // A command that may change files: its folder is looked at first, with the places it names outside it, to find
     // what it changed once it ended; the places it may change are watched while it runs, for the files a program
     // works out once it runs.
-    const folder = use.action === 'run' && reason !== 'read-only' ? use.paths[0] : undefined
+    const folder = use.action === 'run' && reason !== 'read-only' && reading?.readOnly !== true ? use.paths[0] : undefined
     const current = scope()
     const changeable = { places: current.places.filter((place) => place.write).map((place) => place.path), everywhere: current.computer === 'write' }
     const snapshot = folder === undefined ? undefined : await computer?.snapshot?.(folder, use.named ?? [], changeable).catch(() => undefined)
