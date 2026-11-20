@@ -21,8 +21,9 @@ const wordsOf = (error: unknown) => (error instanceof Error ? error.message : St
 /**
  * A thread as the side sheet reads it: its latest page first, read again a moment after anything that concerns the
  * thread, so a working thread fills in as it goes, and its earlier pages one at a time, when asked for.
+ * `beforeEarlier` runs just before earlier requests are added above the ones shown.
  */
-export function useThreadPages(client: Client, thread: string): ThreadPagesState {
+export function useThreadPages(client: Client, thread: string, beforeEarlier: () => void): ThreadPagesState {
   const [pages, setPages] = useState<ThreadPages>()
   const [problem, setProblem] = useState<string>()
   const [earlier, setEarlier] = useState<EarlierReading>(IDLE)
@@ -78,12 +79,13 @@ export function useThreadPages(client: Client, thread: string): ThreadPagesState
     latest.current = { pages: read, earlier: { state: 'reading' } }
     client.threads.read(thread, first).then(
       (page) => {
+        beforeEarlier()
         setPages((was) => (was === undefined || was.entries[0]?.exchange.turn !== first ? was : withEarlier(was, page)))
         setEarlier(IDLE)
       },
       (error: unknown) => setEarlier({ state: 'failed', problem: wordsOf(error) })
     )
-  }, [client, thread])
+  }, [client, thread, beforeEarlier])
 
   return { pages, problem, earlier, readEarlier }
 }

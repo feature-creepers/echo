@@ -48,8 +48,8 @@ interface ThreadViewProps {
  * handed work to.
  */
 export function ThreadView({ client, thread, threads, personas, onBack, onOpenThread }: ThreadViewProps) {
-  const { pages, problem, earlier, readEarlier } = useThreadPages(client, thread)
-  const scroll = useFollowLatest(pages?.entries[0]?.exchange.turn)
+  const scroll = useFollowLatest()
+  const { pages, problem, earlier, readEarlier } = useThreadPages(client, thread, scroll.prepend)
 
   // The list is current as the thread's state changes; the page read may be a moment behind it.
   const header = threads.find((one) => one.id === thread) ?? pages?.thread

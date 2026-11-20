@@ -27,7 +27,7 @@ const clock = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-d
 export function Transcript({ exchanges, threads, personas, onOpenAnswer, onOpenThread }: TranscriptProps) {
   // Only its own box scrolls: bringing a line into view would also scroll every box around it, the window's
   // included, while the sheet still slides in.
-  const scroll = useFollowLatest(exchanges[0]?.turn)
+  const scroll = useFollowLatest()
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
