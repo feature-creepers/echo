@@ -15,6 +15,11 @@ export interface ComputerSystem {
   /** Whether names are found whatever their capitals. */
   caseless: boolean
   /**
+   * Whether `..` goes up from where a link leads, as macOS and Linux follow a path part by part. Windows takes `..`
+   * away as words before it follows a junction.
+   */
+  upFromLinks: boolean
+  /**
    * Whether the system watches a folder with all its subfolders at once (Windows, macOS). Linux watches each folder
    * on its own, so a large tree is watched only in part.
    */

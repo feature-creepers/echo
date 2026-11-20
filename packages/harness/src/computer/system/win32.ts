@@ -33,6 +33,7 @@ export const win32: ComputerSystem = {
     return `${(drive[1] as string).toUpperCase()}:\\${(drive[2] ?? '').slice(1).replace(/\//g, '\\')}`
   },
   caseless: true,
+  upFromLinks: false,
   watchesTrees: true,
   watchesLate: false,
   appData: ({ home }) => [path.join(home, 'AppData')],

@@ -1,5 +1,5 @@
 import type { ComputerUse, Scope } from '@repo/core'
-import { absolute, kindAt } from '../computer/paths.ts'
+import { asWritten, kindAt } from '../computer/paths.ts'
 import { reachOf } from '../computer/scope.ts'
 import { asString, type JsonObject } from '../process/json.ts'
 import { REPORTED_TOOLS } from '../tool-names.ts'
@@ -34,17 +34,17 @@ function fixedPart(pattern: string): string {
 }
 
 /**
- * What a use of one of these tools does, and to what, from its input. A use that names no path works in the
- * session's folder, as the tool does. Nothing for a tool that is not one of them.
+ * What a use of one of these tools does, and to what, from its input, its paths as written for the check to follow
+ * them. A use that names no path works in the session's folder, as the tool does. Nothing for a tool that is not one of them.
  */
 export async function useOf(tool: string, input: JsonObject, folder: string): Promise<ComputerUse | undefined> {
-  const path = (value: unknown) => absolute(asString(value) ?? '.', folder)
+  const path = (value: unknown) => asWritten(asString(value) ?? '.', folder)
   switch (tool) {
     case 'Read':
       return { action: 'read', tool, paths: [path(input.file_path)] }
     case 'Glob': {
       const base = path(input.path)
-      return { action: 'read', tool, paths: [...new Set([base, absolute(fixedPart(asString(input.pattern) ?? ''), base)])] }
+      return { action: 'read', tool, paths: [...new Set([base, asWritten(fixedPart(asString(input.pattern) ?? ''), base)])] }
     }
     case 'Grep':
       return { action: 'read', tool, paths: [path(input.path)] }

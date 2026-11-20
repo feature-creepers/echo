@@ -1,6 +1,6 @@
 import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 import type { ComputerUse, Scope } from '@repo/core'
 import { afterEach, describe, expect, it } from 'vitest'
 import { folder, removeFolders } from '../../test/sessions.ts'
@@ -52,6 +52,26 @@ describe('paths', () => {
   it('finds where a path that does not exist yet would be', async () => {
     const { granted } = machine()
     expect(await real(join(granted, 'new', 'file.md'))).toBe(join(granted, 'new', 'file.md'))
+  })
+
+  /** A folder `work` holding `out`, a link to a folder elsewhere: a symbolic link on macOS and Linux, a junction on Windows. */
+  function linkedWork() {
+    const root = realpathSync.native(folder())
+    mkdirSync(join(root, 'work'))
+    mkdirSync(join(root, 'elsewhere', 'inner'), { recursive: true })
+    symlinkSync(join(root, 'elsewhere', 'inner'), join(root, 'work', 'out'), 'junction')
+    return root
+  }
+
+  it.each([
+    // macOS and Linux go up from where the link leads; Windows takes `..` away first.
+    ['work/out/../secret', system.upFromLinks ? 'elsewhere/secret' : 'work/secret'],
+    ['work/out/./a/../b', 'elsewhere/inner/b'],
+    ['work/missing/../a', 'work/a'],
+    ['work/a/b', 'work/a/b']
+  ])('follows %s to %s, as this system does', async (path, expected) => {
+    const root = linkedWork()
+    expect(await real(`${root}${sep}${path.replaceAll('/', sep)}`)).toBe(join(root, ...expected.split('/')))
   })
 
   it('tells a place and what is inside it from what is beside it', () => {
@@ -131,6 +151,22 @@ describe('the scope', () => {
     }
     const found = await checkUse({ action: 'run', tool: 'Bash', paths: [work], command: line }, scope, [])
     expect(found.refused?.reason.toLowerCase()).toEqual(refused === undefined ? undefined : expect.stringContaining(refused))
+  })
+
+  it('follows a link before the `..` after it, where the system does', async () => {
+    const root = realpathSync.native(folder())
+    const work = join(root, 'work')
+    mkdirSync(work)
+    mkdirSync(join(root, 'elsewhere', 'inner'), { recursive: true })
+    symlinkSync(join(root, 'elsewhere', 'inner'), join(work, 'out'), 'junction')
+    const scope: Scope = { places: [{ path: work, kind: 'folder', write: false }], computer: 'off' }
+    const refused = await outsideScope({ action: 'run', tool: 'Bash', paths: [work], command: 'cat out/../secret' }, scope, [])
+    if (system.upFromLinks) expect(refused).toContain('outside what the person granted')
+    else expect(refused).toBeUndefined()
+    // A file tool's path is followed the same way, and the core is told it as the system names it.
+    const read = await checkUse({ action: 'read', tool: 'Read', paths: [`${work}${sep}out${sep}..${sep}secret`] }, scope, [])
+    expect(read.refused !== undefined).toBe(system.upFromLinks)
+    expect(read.paths).toEqual([join(work, 'secret')])
   })
 
   it('checks a plain name in the folder the command runs in, a link by its name included', async () => {
@@ -273,15 +309,18 @@ describe('git’s own files', () => {
 })
 
 describe('paths a command names', () => {
-  it('gives variables their values here, and reads a relative path from the folder the command runs in', () => {
+  it('gives variables their values here, and reads a relative path from the folder the command runs in, its .. kept', () => {
     const env = { HOME: '/home/ada', APPDATA: '/home/ada/.data' }
-    expect(namedPath(`\${HOME}/x`, '/work', env, '/home/ada')).toBe(resolve('/home/ada/x'))
-    expect(namedPath(`\${APPDATA}/a.json`, '/work', env, '/home/ada')).toBe(resolve('/home/ada/.data/a.json'))
-    expect(namedPath(`\${PWD}/a`, '/work', env, '/home/ada')).toBe(resolve('/work/a'))
+    const named = (path: string, folder: string, home = '/home/ada') => resolve(namedPath(path, folder, env, home))
+    expect(named(`\${HOME}/x`, '/work')).toBe(resolve('/home/ada/x'))
+    expect(named(`\${APPDATA}/a.json`, '/work')).toBe(resolve('/home/ada/.data/a.json'))
+    expect(named(`\${PWD}/a`, '/work')).toBe(resolve('/work/a'))
     // An unset variable is empty, as the shell has it. (A one-letter top folder would be a drive in Git Bash.)
-    expect(namedPath(`\${UNSET}/ab`, '/work', env, '/home/ada')).toBe(resolve('/ab'))
-    expect(namedPath('~/Documents', '/work', env, homedir())).toBe(join(homedir(), 'Documents'))
-    expect(namedPath('../b', '/work/sub', env, '/home/ada')).toBe(resolve('/work/b'))
+    expect(named(`\${UNSET}/ab`, '/work')).toBe(resolve('/ab'))
+    expect(named('~/Documents', '/work', homedir())).toBe(join(homedir(), 'Documents'))
+    expect(named('../b', '/work/sub')).toBe(resolve('/work/b'))
+    // Only the disk tells where `..` after a link leads: it is left for `real` to follow.
+    expect(namedPath('out/../b', '/work', env, '/home/ada').split(/[\\/]/)).toEqual(['', 'work', 'out', '..', 'b'])
   })
 
   it('reads Git Bash’s way of writing a drive on Windows, and nowhere else', () => {

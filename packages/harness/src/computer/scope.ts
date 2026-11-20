@@ -1,4 +1,5 @@
 import { homedir } from 'node:os'
+import { resolve } from 'node:path'
 import { type ComputerUse, type NamedPlace, type ProtectedPath, readCommand, type Scope } from '@repo/core'
 import { gitReads } from './git-files.ts'
 import { namedPath, real, within } from './paths.ts'
@@ -68,7 +69,9 @@ export async function checkUse(
 ): Promise<ComputerUse> {
   const kept = await keptPlaces(scope, never)
   const places = await Promise.all(scope.places.map(async (place) => ({ ...place, real: await real(place.path) })))
-  const refuse = (why: 'outside' | 'protected', reason: string): ComputerUse => ({ ...use, refused: { why, reason } })
+  // The core is told each path as the system names it; each is checked where it leads as written, `..` after a link too.
+  const told: ComputerUse = { ...use, paths: use.paths.map((path) => resolve(path)) }
+  const refuse = (why: 'outside' | 'protected', reason: string): ComputerUse => ({ ...told, refused: { why, reason } })
 
   /** Why a path may not be reached, reading only or changing it too. */
   const problem = (path: string, target: string, writes: boolean, below: boolean): { why: 'outside' | 'protected'; reason: string } | undefined => {
@@ -95,13 +98,13 @@ export async function checkUse(
     // Grep reads what is in every file of the folder it searches.
     const below = use.tool === 'Grep'
     let changesGit = false
-    for (const path of use.paths) {
+    for (const [index, path] of use.paths.entries()) {
       const target = await real(path)
-      const found = problem(path, target, writes, below)
+      const found = problem(told.paths[index] ?? path, target, writes, below)
       if (found) return refuse(found.why, found.reason)
       if (writes && !changesGit) changesGit = await gitReads(target, where)
     }
-    return changesGit ? { ...use, changesGit: true } : use
+    return changesGit ? { ...told, changesGit: true } : told
   }
 
   // A command: the folder it runs in, then every path it names, read from that folder.
@@ -123,7 +126,7 @@ export async function checkUse(
       outside.set(target, { path: target, below: named.below || known?.below === true })
     }
   }
-  return { ...use, reach: changes ? 'write' : 'read', ...(outside.size > 0 ? { named: [...outside.values()] } : {}) }
+  return { ...told, reach: changes ? 'write' : 'read', ...(outside.size > 0 ? { named: [...outside.values()] } : {}) }
 }
 
 /** Whether a scope reaches anything at all, and whether it can change anything. */

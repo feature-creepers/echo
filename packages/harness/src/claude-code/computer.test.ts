@@ -1,5 +1,5 @@
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import type { ComputerUse, Reach, Scope, Session } from '@repo/core'
 import { afterEach, describe, expect, it } from 'vitest'
 import { eventually, fake, folder, follow, recordingLog, removeFolders } from '../../test/sessions.ts'
@@ -252,10 +252,11 @@ describe('the tools on the computer', () => {
   it('name every folder a search reaches, so a pattern cannot climb out of its folder', async () => {
     const base = realpathSync.native(folder())
     const use = await useOf('Glob', { pattern: '../../**/*.key' }, base)
-    expect(use?.paths).toEqual([base, join(base, '..', '..')])
+    // As written, for the check to follow each link before a `..`.
+    expect(use?.paths.map((path) => resolve(path))).toEqual([base, join(base, '..', '..')])
     const elsewhere = realpathSync.native(folder())
     const anywhere = await useOf('Glob', { pattern: `${elsewhere}/**/*.conf`, path: base }, base)
-    expect(anywhere?.paths).toEqual([base, elsewhere])
+    expect(anywhere?.paths.map((path) => resolve(path))).toEqual([base, elsewhere])
   })
 
   it('tell a new file from a change to one', async () => {

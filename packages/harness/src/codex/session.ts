@@ -1,7 +1,8 @@
 import type { ChildProcess } from 'node:child_process'
 import { mkdir } from 'node:fs/promises'
+import { resolve } from 'node:path'
 import type { Attachment, ComputerUse, Log, Role, Session, SessionRequest } from '@repo/core'
-import { absolute } from '../computer/paths.ts'
+import { asWritten } from '../computer/paths.ts'
 import { checkUse } from '../computer/scope.ts'
 import { system } from '../computer/system/index.ts'
 import { planFromCodex } from '../plan.ts'
@@ -288,7 +289,7 @@ export function openSession(request: SessionRequest, context: SessionContext): S
           result: { decision: yes ? 'approved' : 'denied' }
         }))
       case 'applyPatchApproval': {
-        const paths = Object.keys(asObject(params.fileChanges) ?? {}).map((path) => absolute(path, folder))
+        const paths = Object.keys(asObject(params.fileChanges) ?? {}).map((path) => asWritten(path, folder))
         return decide(paths.length > 0 ? { action: 'change', tool: 'apply_patch', paths } : undefined, asString(params.callId)).then((yes) => ({
           result: { decision: yes ? 'approved' : 'denied' }
         }))
@@ -502,16 +503,19 @@ function ranOf(item: JsonObject): { output?: string; failed?: boolean } {
   return printed === '' ? {} : { output: printed }
 }
 
-/** The files a change of files touches, absolute, each with what is done to it: `add`, `delete` or `update`. */
+/**
+ * The files a change of files touches, absolute and as written, for the check to follow them, each with what is done
+ * to it: `add`, `delete` or `update`.
+ */
 function touchedFiles(item: JsonObject, base: string): { path: string; kind: string | undefined }[] {
   return asArray(item.changes)
     .map(asObject)
-    .map((change) => ({ path: absolute(asString(change?.path) ?? '.', base), kind: asString(asObject(change?.kind)?.type) ?? asString(change?.kind) }))
+    .map((change) => ({ path: asWritten(asString(change?.path) ?? '.', base), kind: asString(asObject(change?.kind)?.type) ?? asString(change?.kind) }))
 }
 
 /** A change of files as a call (which it is, and the files it touches), and the files it makes or keeps, absolute. */
 function changeOf(item: JsonObject, base: string): { call: { call?: string; input: { paths: string[] } }; kept: string[] } {
-  const touched = touchedFiles(item, base)
+  const touched = touchedFiles(item, base).map(({ path, kind }) => ({ path: resolve(path), kind }))
   const id = asString(item.id)
   return {
     call: { ...(id === undefined ? {} : { call: id }), input: { paths: touched.map(({ path }) => path) } },
