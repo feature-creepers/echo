@@ -1,8 +1,14 @@
 # @repo/tools
 
-The tool server a harness calls, and the gate that checks scope and approval at every call. Built so far: the server.
+The tool server a harness calls. Reply text is speech; tool calls are the screen and every action.
 
-Reply text is speech; tool calls are the screen and every action. `serveTools` serves the tools of a `ToolHost` (a port of `@repo/core`) to harnesses on this machine and carries every call to it. The server knows nothing about what the tools do.
+`serveTools` serves the tools of a `ToolHost` (a port of `@repo/core`) to harnesses on this machine and carries every call to it. The server knows nothing about what the tools do: the core decides what a session may see and whether a call is allowed (`core/src/access/`).
+
+- **Runs in:** Node
+- **May import:** `@repo/core`, `@repo/catalog`
+- **Entry points:** `@repo/tools`
+
+The import rule is enforced by `biome.jsonc` (docs/SPEC.md, section 14.3).
 
 ```ts
 const tools = await serveTools(host, { version, log })
@@ -38,9 +44,3 @@ Any program on the machine, and any web page open in a browser, can reach a loop
 ```bash
 REAL_HARNESS=1 pnpm --filter @repo/tools test
 ```
-
-- **Runs in:** Node
-- **May import:** `@repo/core`, `@repo/catalog`
-- **Entry points:** `@repo/tools`
-
-The import rule is enforced by `biome.jsonc` and explained in [docs/SPEC.md](../../docs/SPEC.md), section 14.3.

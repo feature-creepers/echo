@@ -8,7 +8,7 @@ What the assistant may do in the browser, and what is asked or refused first, is
 - **May import:** `@repo/core`
 - **Entry points:** `@repo/browser`
 
-The import rule is enforced by `biome.jsonc` and explained in [docs/SPEC.md](../../docs/SPEC.md), section 14.3.
+The import rule is enforced by `biome.jsonc` (docs/SPEC.md, section 14.3).
 
 ## Use
 
@@ -41,23 +41,6 @@ await browser.close()
 - **Reading.** The main content: the marked main region or article holding the most text, or the whole page when that is less than a third of it; without navigation, side columns, banners, footers and what is hidden.
 - **Errors** reject with a message written for a model ("There is no element e12 on the page now. Take a new browser_snapshot…"), never Playwright's call log.
 - **Launch.** Headed, sandboxed, the page following the window's size. Playwright's switches that would stop Widevine, mark the browser as automated, refuse extensions or keep sign-ins under a known key are left out: `src/launch.ts` says which and why. Playwright's own handling of SIGINT, SIGTERM and SIGHUP is off: the core closes the browser when it stops.
-
-## Layout
-
-```
-src/
-├── index.ts
-├── browser.ts      the adapter
-├── launch.ts       how the browser is started
-├── outline.ts      the outline of a page, and what an action changed
-├── page/           functions run inside the page, so they stand alone
-│   ├── readable.ts the main content as text
-│   └── element.ts  what an element is
-└── find/           which browser this computer has, per system
-test/
-├── real.test.ts    against a real browser and a local page
-└── pages/
-```
 
 ## Tests
 

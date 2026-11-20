@@ -1,9 +1,32 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, isAbsolute, join } from 'node:path'
-import { type DeviceSettingsChange, GLOBAL_SHORTCUTS, type GlobalShortcutName, isGlobalShortcut, isShortcut, runsWhenOpened, shortcutClash } from '@repo/client'
+import {
+  type DeviceSettingsChange,
+  GLOBAL_SHORTCUTS,
+  type GlobalShortcutName,
+  isGlobalShortcut,
+  isShortcut,
+  runsWhenOpened,
+  type ShortcutName,
+  shortcutClash
+} from '@repo/client'
 import { type AccentName, accents, color, frame } from '@repo/tokens'
-import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, nativeTheme, type OpenDialogOptions, session, shell, type WebContents } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  clipboard,
+  dialog,
+  type IpcMainEvent,
+  type IpcMainInvokeEvent,
+  ipcMain,
+  nativeImage,
+  nativeTheme,
+  type OpenDialogOptions,
+  session,
+  shell,
+  type WebContents
+} from 'electron'
 import {
   type About,
   APP_CHANNELS,
@@ -11,7 +34,6 @@ import {
   CORE_LINK_CHANNEL,
   CORE_MESSAGE_CHANNEL,
   type ShortcutChange,
-  type ShortcutName,
   SPEECH_CHANNELS,
   TALK_CHANNEL
 } from '../preload/bridge.ts'
@@ -54,14 +76,12 @@ const scratch = selfChecking ? mkdtempSync(join(tmpdir(), 'self-check-')) : unde
 if (scratch) app.setPath('userData', scratch)
 else if (!app.isPackaged) app.setPath('userData', `${app.getPath('userData')} (development)`)
 
-/** What a folder or a file is picked for: the system's picker is worded for it. */
-type PickPurpose = 'access' | 'project' | 'import' | 'attach'
-
 /**
- * The system's picker for each purpose: several folders or files to give access to, the one folder a project works
- * in, the proof of concept's folder to import, or one folder to hand over with what is said.
+ * The system's picker for each purpose: several folders or files to give access to (what any other purpose falls
+ * back to), the one folder a project works in, the proof of concept's folder to import, or one folder to hand over
+ * with what is said.
  */
-function pickerFor(kind: 'folder' | 'file', purpose: PickPurpose): OpenDialogOptions {
+function pickerFor(kind: 'folder' | 'file', purpose: unknown): OpenDialogOptions {
   switch (purpose) {
     case 'project':
       return { title: 'Open a project', buttonLabel: 'Open', properties: ['openDirectory'] }
@@ -69,7 +89,7 @@ function pickerFor(kind: 'folder' | 'file', purpose: PickPurpose): OpenDialogOpt
       return { title: "Choose the proof of concept's folder", buttonLabel: 'Import', properties: ['openDirectory'] }
     case 'attach':
       return { title: 'Hand over a folder', buttonLabel: 'Attach', properties: ['openDirectory'] }
-    case 'access':
+    default:
       return {
         title: kind === 'folder' ? 'Give access to folders' : 'Give access to files',
         buttonLabel: 'Give access',
@@ -95,7 +115,7 @@ const DEVICE_SETTINGS_FILE = 'settings.json'
 /** Built files sit next to this one: out/main/index.js, out/main/core.js, out/preload, out/renderer. */
 const built = (path: string) => join(import.meta.dirname, path)
 
-function openWindow(core: CoreProcess, visible: boolean): BrowserWindow {
+function openWindow(visible: boolean): BrowserWindow {
   // The system's buttons take the soft text colour of the row's own buttons, on no ground of their own.
   const look = chrome({ symbols: color.textSoft, height: frame.titleBar })
   const window = new BrowserWindow({
@@ -127,15 +147,6 @@ function openWindow(core: CoreProcess, visible: boolean): BrowserWindow {
     return { action: 'deny' }
   })
 
-  const toWindow = (channel: string, payload: unknown) => {
-    if (!window.isDestroyed()) window.webContents.send(channel, payload)
-  }
-  core.onLink((link) => toWindow(CORE_LINK_CHANNEL, link))
-  core.onMessage((message) => toWindow(CORE_MESSAGE_CHANNEL, message))
-  ipcMain.on(CORE_MESSAGE_CHANNEL, (event, message: unknown) => {
-    if (event.sender === window.webContents) core.send(message)
-  })
-
   // In development the page is served by the bundler, so a change shows without a rebuild.
   // The page is told whether the system draws a material behind it, so it can let it through.
   const query = look.vibrant ? { material: 'vibrant' } : {}
@@ -143,6 +154,23 @@ function openWindow(core: CoreProcess, visible: boolean): BrowserWindow {
   if (served) void window.loadURL(`${served}?${new URLSearchParams(query)}`)
   else void window.loadFile(built('../renderer/index.html'), { query })
   return window
+}
+
+/** The window's calls, each answered only when it comes from the window's page: no other page may ask the app anything. */
+interface WindowCalls {
+  handle(channel: string, answer: (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown): void
+  on(channel: string, hear: (event: IpcMainEvent, ...args: unknown[]) => void): void
+}
+
+function windowCalls(window: BrowserWindow): WindowCalls {
+  const fromWindow = (event: IpcMainEvent | IpcMainInvokeEvent) => !window.isDestroyed() && event.sender === window.webContents
+  return {
+    handle: (channel, answer) => ipcMain.handle(channel, (event, ...args) => (fromWindow(event) ? answer(event, ...args) : undefined)),
+    on: (channel, hear) =>
+      ipcMain.on(channel, (event, ...args) => {
+        if (fromWindow(event)) hear(event, ...args)
+      })
+  }
 }
 
 /** What the tray shows of the assistant, from what the window says of it. */
@@ -168,26 +196,29 @@ async function selfCheck(core: CoreProcess): Promise<void> {
   app.exit(passed ? 0 : 1)
 }
 
-/** Answer the window's speech calls with the engines' process. Errors cross as their message, written for the user. */
-function serveSpeech(speech: SpeechProcess): void {
+/**
+ * Answer the window's speech calls with the engines' process. Errors cross as their message, written for the user;
+ * what the window sends is checked by the speech service itself.
+ */
+function serveSpeech(speech: SpeechProcess, calls: WindowCalls): void {
   const { service } = speech
-  ipcMain.handle(SPEECH_CHANNELS.status, () => service.status())
-  ipcMain.handle(SPEECH_CHANNELS.install, (event) => service.install((progress) => event.sender.send(SPEECH_CHANNELS.progress, progress)))
-  ipcMain.handle(SPEECH_CHANNELS.transcribe, (_event, sound: BridgeSound, words: unknown) =>
-    service.transcribe(
-      { sampleRate: sound.sampleRate, samples: new Float32Array(sound.samples) },
+  calls.handle(SPEECH_CHANNELS.status, () => service.status())
+  calls.handle(SPEECH_CHANNELS.install, (event) => service.install((progress) => event.sender.send(SPEECH_CHANNELS.progress, progress)))
+  calls.handle(SPEECH_CHANNELS.transcribe, (_event, sound, words) => {
+    const { sampleRate, samples } = sound as BridgeSound
+    return service.transcribe(
+      { sampleRate, samples: new Float32Array(samples) },
       // The person's own words, as their settings keep them: anything else the window sends is not taken.
       { words: Array.isArray(words) ? words.filter((word): word is string => typeof word === 'string') : [] }
     )
-  )
-  ipcMain.handle(SPEECH_CHANNELS.speak, (_event, text: string, how: { style: string; language: string; speed?: number }) => service.speak(text, how))
-  ipcMain.handle(SPEECH_CHANNELS.styles, () => service.styles())
+  })
+  calls.handle(SPEECH_CHANNELS.speak, (_event, text, how) => service.speak(text as string, how as { style: string; language: string; speed?: number }))
+  calls.handle(SPEECH_CHANNELS.styles, () => service.styles())
   // Load the engines while the user looks at the window, so the first sentence does not wait for them.
   void service
     .status()
     .then((status) => (status.ready ? service.warmUp() : undefined))
     .catch(() => undefined)
-  app.on('will-quit', () => speech.stop())
 }
 
 function start(): void {
@@ -216,9 +247,6 @@ function start(): void {
     client: { kind: 'desktop', version: app.getVersion(), device: deviceId(data) },
     capabilities: ['display', 'notify', 'screen', 'camera']
   })
-  ipcMain.handle(CORE_LINK_CHANNEL, () => core.link())
-
-  if (!selfChecking) serveSpeech(startSpeech(built('speech.js'), join(data, 'models')))
 
   // Quitting waits for the core to stop first, then goes ahead.
   let coreStopped = false
@@ -238,14 +266,24 @@ function start(): void {
     return
   }
 
+  const speech = startSpeech(built('speech.js'), join(data, 'models'))
   const device = openDeviceSettings(join(data, DEVICE_SETTINGS_FILE))
   const settings = device.read()
   // Started at login, or set to start out of sight: the app waits in the tray for its shortcut.
   const hidden = startedAtLogin() || settings.app.startHidden
-  const window = openWindow(core, !hidden)
+  const window = openWindow(!hidden)
+  const calls = windowCalls(window)
   const toWindow = (channel: string, payload?: unknown) => {
     if (!window.isDestroyed()) window.webContents.send(channel, payload)
   }
+
+  // The window's session with the core: the app passes the messages on unread, both ways.
+  core.onLink((link) => toWindow(CORE_LINK_CHANNEL, link))
+  core.onMessage((message) => toWindow(CORE_MESSAGE_CHANNEL, message))
+  calls.handle(CORE_LINK_CHANNEL, () => core.link())
+  calls.on(CORE_MESSAGE_CHANNEL, (_event, message) => core.send(message))
+  serveSpeech(speech, calls)
+
   const bringForward = () => {
     if (window.isDestroyed()) return
     if (window.isMinimized()) window.restore()
@@ -311,24 +349,28 @@ function start(): void {
     tray.refresh(trayKeys(), trayActions())
   })
 
-  ipcMain.handle(APP_CHANNELS.deviceRead, () => device.read())
-  // Shortcuts change only through their own call, which checks them first.
-  ipcMain.handle(APP_CHANNELS.deviceChange, (_event, change: DeviceSettingsChange) => device.change({ ...change, shortcuts: {} }))
-  ipcMain.handle(APP_CHANNELS.shortcutSet, (_event, name: ShortcutName, accelerator: string): ShortcutChange => {
-    if (!Object.hasOwn(device.read().shortcuts, name)) return { ok: false, problem: 'There is no such shortcut.' }
-    if (accelerator !== '' && !isShortcut(accelerator)) return { ok: false, problem: 'These keys cannot be used as a shortcut.' }
-    const clash = shortcutClash(device.read().shortcuts, name, accelerator, process.platform === 'darwin')
+  calls.handle(APP_CHANNELS.deviceRead, () => device.read())
+  // Shortcuts change only through their own call, which checks them first. The rest is read back into usable settings.
+  calls.handle(APP_CHANNELS.deviceChange, (_event, change) => device.change({ ...(change as DeviceSettingsChange), shortcuts: {} }))
+  calls.handle(APP_CHANNELS.shortcutSet, (_event, name, accelerator): ShortcutChange => {
+    if (typeof name !== 'string' || !Object.hasOwn(device.read().shortcuts, name)) return { ok: false, problem: 'There is no such shortcut.' }
+    if (typeof accelerator !== 'string' || (accelerator !== '' && !isShortcut(accelerator)))
+      return { ok: false, problem: 'These keys cannot be used as a shortcut.' }
+    const shortcut = name as ShortcutName
+    const clash = shortcutClash(device.read().shortcuts, shortcut, accelerator, process.platform === 'darwin')
     if (clash) return { ok: false, problem: clash }
-    if (isGlobalShortcut(name)) {
-      const tried = shortcuts.take(name, accelerator)
+    if (isGlobalShortcut(shortcut)) {
+      const tried = shortcuts.take(shortcut, accelerator)
       if (!tried.ok) return tried
-      delete shortcutProblems[name]
+      delete shortcutProblems[shortcut]
     }
-    return { ok: true, settings: device.change({ shortcuts: { [name]: accelerator } }) }
+    return { ok: true, settings: device.change({ shortcuts: { [shortcut]: accelerator } }) }
   })
+  calls.on(APP_CHANNELS.shortcutsSuspend, (_event, suspended) => shortcuts.suspend(suspended === true))
+  calls.handle(APP_CHANNELS.shortcutProblems, () => ({ ...shortcutProblems }))
   // The tray's mark shows the persona's accent, and whether the assistant listens or sleeps. Whatever else the
   // window says is ignored: the mark changes only between the looks it has.
-  ipcMain.on(APP_CHANNELS.presence, (_event, presence: unknown) => {
+  calls.on(APP_CHANNELS.presence, (_event, presence) => {
     const look = trayLook(presence)
     tray.look(look)
     marker.accent(look.accent)
@@ -336,16 +378,12 @@ function start(): void {
   })
   // How hard the computer works, for the window's core: read only while the window asks for it and is seen.
   const load = followLoad(() => !window.isDestroyed() && window.isVisible() && !window.isMinimized())
-  ipcMain.on(APP_CHANNELS.loadFollow, (event, on: unknown) => {
-    if (event.sender !== window.webContents) return
+  calls.on(APP_CHANNELS.loadFollow, (_event, on) => {
     if (on === true) load.start((value) => toWindow(APP_CHANNELS.load, value))
     else load.stop()
   })
   window.webContents.on('render-process-gone', () => load.stop())
-  app.on('will-quit', () => load.stop())
-  ipcMain.on(APP_CHANNELS.shortcutsSuspend, (_event, suspended: boolean) => shortcuts.suspend(suspended === true))
-  ipcMain.handle(APP_CHANNELS.shortcutProblems, () => ({ ...shortcutProblems }))
-  ipcMain.handle(
+  calls.handle(
     APP_CHANNELS.about,
     (): About => ({
       name: app.getName(),
@@ -356,42 +394,45 @@ function start(): void {
       ...(releasesPage() ? { releases: true } : {})
     })
   )
-  ipcMain.handle(APP_CHANNELS.openDataFolder, async () => void (await shell.openPath(data)))
-  ipcMain.handle(APP_CHANNELS.openReleases, async () => {
+  calls.handle(APP_CHANNELS.openDataFolder, async () => void (await shell.openPath(data)))
+  calls.handle(APP_CHANNELS.openReleases, async () => {
     const page = releasesPage()
     if (page) await shell.openExternal(page)
   })
   // Folders and files for the assistant are picked by the user in the system's own picker, never typed by the window.
-  ipcMain.handle(APP_CHANNELS.filesPick, async (_event, kind: 'folder' | 'file', purpose?: PickPurpose) => {
-    const picked = await dialog.showOpenDialog(window, pickerFor(kind, purpose ?? 'access'))
+  calls.handle(APP_CHANNELS.filesPick, async (_event, kind, purpose) => {
+    if (kind !== 'folder' && kind !== 'file') return []
+    const picked = await dialog.showOpenDialog(window, pickerFor(kind, purpose))
     return picked.canceled ? [] : picked.filePaths
   })
   // Shown in its folder, never opened: opening a file could run it.
-  ipcMain.handle(APP_CHANNELS.filesReveal, (_event, path: string) => {
-    if (typeof path === 'string' && path !== '') shell.showItemInFolder(path)
+  calls.handle(APP_CHANNELS.filesReveal, (_event, path) => {
+    if (typeof path === 'string' && isAbsolute(path)) shell.showItemInFolder(path)
   })
   // Opened with the app the system gives its kind, or a folder in the file manager. What would run a program when
   // opened is shown in its folder instead, so a file the assistant wrote never runs by a click.
-  ipcMain.handle(APP_CHANNELS.filesOpen, async (_event, path: string) => {
-    if (typeof path !== 'string' || path === '' || !isAbsolute(path)) return
+  calls.handle(APP_CHANNELS.filesOpen, async (_event, path) => {
+    if (typeof path !== 'string' || !isAbsolute(path)) return
     if (runsWhenOpened(basename(path))) return shell.showItemInFolder(path)
     const problem = await shell.openPath(path)
     if (problem !== '') shell.showItemInFolder(path)
   })
   // Files copied in a Linux file manager, which puts their addresses on the clipboard: read as the person pastes, and
   // only those the clipboard names.
-  ipcMain.handle(APP_CHANNELS.filesTakeCopied, async () =>
+  calls.handle(APP_CHANNELS.filesTakeCopied, async () =>
     process.platform === 'linux' ? readCopied(copiedPaths(await copiedLists(await clipboard.read()))) : { files: [], folders: [], tooLarge: [], more: 0 }
   )
-  ipcMain.handle(APP_CHANNELS.updateState, () => updater.state())
-  ipcMain.handle(APP_CHANNELS.updateCheck, () => updater.check())
-  ipcMain.handle(APP_CHANNELS.updateDownload, () => updater.download())
-  ipcMain.handle(APP_CHANNELS.updateInstall, () => {
+  calls.handle(APP_CHANNELS.updateState, () => updater.state())
+  calls.handle(APP_CHANNELS.updateCheck, () => updater.check())
+  calls.handle(APP_CHANNELS.updateDownload, () => updater.download())
+  calls.handle(APP_CHANNELS.updateInstall, () => {
     quitting = true
     updater.install()
   })
 
   app.on('will-quit', () => {
+    load.stop()
+    speech.stop()
     shortcuts.release()
     tray.destroy()
   })

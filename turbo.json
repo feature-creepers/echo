@@ -5,6 +5,13 @@
       "dependsOn": ["^build"],
       "outputs": ["dist/**", "out/**"]
     },
-    "test": {}
+    // Packages import each other's sources, so a package's tests depend on the packages it imports. This task runs
+    // nothing; it only ties each package's cache to theirs, and the tests still run in parallel.
+    "transit": {
+      "dependsOn": ["^transit"]
+    },
+    "test": {
+      "dependsOn": ["transit"]
+    }
   }
 }

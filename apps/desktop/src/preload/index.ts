@@ -1,4 +1,3 @@
-import type { CoreLink } from '@repo/client'
 import { contextBridge, type IpcRendererEvent, ipcRenderer, webUtils } from 'electron'
 import { APP_CHANNELS, CAMERA_CHANNELS, CORE_LINK_CHANNEL, CORE_MESSAGE_CHANNEL, type DesktopBridge, SPEECH_CHANNELS, TALK_CHANNEL } from './bridge.ts'
 
@@ -21,11 +20,7 @@ ipcRenderer.on(CORE_MESSAGE_CHANNEL, (_event, message: unknown) => onCoreMessage
 
 const bridge: DesktopBridge = {
   coreLink: () => ipcRenderer.invoke(CORE_LINK_CHANNEL),
-  onCoreLink: (listener) => {
-    const handler = (_event: IpcRendererEvent, link: CoreLink) => listener(link)
-    ipcRenderer.on(CORE_LINK_CHANNEL, handler)
-    return () => ipcRenderer.removeListener(CORE_LINK_CHANNEL, handler)
-  },
+  onCoreLink: (listener) => listen(CORE_LINK_CHANNEL, listener),
   core: {
     send: (message) => ipcRenderer.send(CORE_MESSAGE_CHANNEL, message),
     onMessage: (listener) => {
@@ -78,12 +73,11 @@ const bridge: DesktopBridge = {
   speech: {
     status: () => ipcRenderer.invoke(SPEECH_CHANNELS.status),
     async install(onProgress) {
-      const handler = (_event: IpcRendererEvent, progress: Parameters<typeof onProgress>[0]) => onProgress(progress)
-      ipcRenderer.on(SPEECH_CHANNELS.progress, handler)
+      const stop = listen(SPEECH_CHANNELS.progress, onProgress)
       try {
         await ipcRenderer.invoke(SPEECH_CHANNELS.install)
       } finally {
-        ipcRenderer.removeListener(SPEECH_CHANNELS.progress, handler)
+        stop()
       }
     },
     transcribe: (sound, words) => ipcRenderer.invoke(SPEECH_CHANNELS.transcribe, sound, words === undefined ? [] : [...words]),

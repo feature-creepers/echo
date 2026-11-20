@@ -26,6 +26,16 @@ export function isPrivateHost(host: string): boolean {
   return false
 }
 
+/** How many redirects an address may lead through before it is given up. */
+const MAX_REDIRECTS = 5
+
+/** Why an address is not read, or nothing when it is a public https address. */
+function refusal(address: URL): string | undefined {
+  if (address.protocol !== 'https:') return 'only https:// addresses are read.'
+  if (isPrivateHost(address.hostname)) return 'it is not a public address.'
+  return undefined
+}
+
 /** The public web as the core reads it: https only, never a private address, within a size and a time. */
 export const publicWeb: Web = {
   async read(url, { maxBytes, timeoutMs }) {
@@ -35,22 +45,28 @@ export const publicWeb: Web = {
     } catch {
       return { ok: false, reason: 'it is not a web address.' }
     }
-    if (address.protocol !== 'https:') return { ok: false, reason: 'only https:// addresses are read.' }
-    if (isPrivateHost(address.hostname)) return { ok: false, reason: 'it is not a public address.' }
+    const signal = AbortSignal.timeout(timeoutMs)
     try {
-      const response = await fetch(address, {
-        signal: AbortSignal.timeout(timeoutMs),
-        redirect: 'follow',
-        headers: { accept: 'application/geo+json, application/json;q=0.9, */*;q=0.5' }
-      })
-      if (response.url && isPrivateHost(new URL(response.url).hostname)) return { ok: false, reason: 'it leads to an address that is not public.' }
+      let response: Response
+      // Each redirect is checked before it is followed, so a public address never sends the request to a private one,
+      // nor off https.
+      for (let redirects = 0; ; redirects++) {
+        const refused = refusal(address)
+        if (refused) return { ok: false, reason: redirects === 0 ? refused : 'it leads to an address that is not public.' }
+        response = await fetch(address, { signal, redirect: 'manual', headers: { accept: 'application/geo+json, application/json;q=0.9, */*;q=0.5' } })
+        const location = response.headers.get('location')
+        if (response.status < 300 || response.status > 399 || location === null) break
+        await response.body?.cancel()
+        if (redirects === MAX_REDIRECTS) return { ok: false, reason: 'it redirects too many times.' }
+        address = new URL(location, address)
+      }
       if (!response.ok)
         return {
           ok: false,
           reason: `the address answered ${response.status}${response.statusText ? ` ${response.statusText}` : ''}. Check it, or find another source.`
         }
       const declared = Number(response.headers.get('content-length') ?? 0)
-      if (declared > maxBytes) return { ok: false, reason: tooLarge(declared, maxBytes) }
+      if (declared > maxBytes) return { ok: false, reason: tooLarge(maxBytes) }
       // Read piece by piece, so a file larger than it said stops being read at the limit.
       const reader = response.body?.getReader()
       if (!reader) return { ok: true, text: '' }
@@ -62,7 +78,7 @@ export const publicWeb: Web = {
         received += value.byteLength
         if (received > maxBytes) {
           await reader.cancel()
-          return { ok: false, reason: tooLarge(received, maxBytes) }
+          return { ok: false, reason: tooLarge(maxBytes) }
         }
         pieces.push(value)
       }
@@ -77,4 +93,4 @@ export const publicWeb: Web = {
   }
 }
 
-const tooLarge = (_bytes: number, maxBytes: number) => `the file is over ${Math.round(maxBytes / 1024 / 1024)} MB. Find a simplified, lower-resolution version.`
+const tooLarge = (maxBytes: number) => `the file is over ${Math.round(maxBytes / 1024 / 1024)} MB. Find a simplified, lower-resolution version.`

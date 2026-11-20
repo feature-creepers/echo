@@ -137,7 +137,7 @@ export function appIconPixels(size: number, shape: 'round' | 'tile'): Buffer {
 }
 
 /** Pixels in red, green, blue and opacity, one byte each, as a PNG file. */
-export function png(width: number, height: number, rgbaPixels: Buffer): Buffer {
+function png(width: number, height: number, rgbaPixels: Buffer): Buffer {
   // Each row starts with the byte that says it is not filtered.
   const rows = Buffer.alloc((width * 4 + 1) * height)
   for (let y = 0; y < height; y++) rgbaPixels.copy(rows, y * (width * 4 + 1) + 1, y * width * 4, (y + 1) * width * 4)

@@ -6,9 +6,10 @@ import { parseArgs } from 'node:util'
 import { appIcon, appIconPixels, icns, ico } from '../src/main/mark.ts'
 
 /**
- * Lays out what the packager turns into an app, in `stage/`: the built program, a manifest with no
- * development dependencies and with the repository whose releases it updates from, the one native library the speech engines load at run time, for the system
- * the package is for, and the library that drives the browser, which the core loads at run time. That system need not be this one: a Windows package can be made on Linux.
+ * Lays out what the packager turns into an app, in `stage/`: the built program, its icons, a manifest with no
+ * development dependencies and with the repository whose releases it updates from, and the two libraries loaded at run
+ * time: the speech engines' native library, for the system the package is for, and the one that drives the browser.
+ * That system need not be this one: a Windows package can be made on Linux.
  *
  *   node build/stage.ts --os win32 --arch x64
  */

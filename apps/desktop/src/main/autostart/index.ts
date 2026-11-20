@@ -1,5 +1,6 @@
 import { app } from 'electron'
 import { setLaunchAtLogin as darwin } from './darwin.ts'
+import { HIDDEN_FLAG } from './flag.ts'
 import { setLaunchAtLogin as linux } from './linux.ts'
 import { setLaunchAtLogin as win32 } from './win32.ts'
 
@@ -9,8 +10,6 @@ import { setLaunchAtLogin as win32 } from './win32.ts'
  * register the development copy of Electron.
  */
 export const setLaunchAtLogin: (on: boolean) => void = process.platform === 'darwin' ? darwin : process.platform === 'win32' ? win32 : linux
-
-import { HIDDEN_FLAG } from './flag.ts'
 
 /** Whether the system started the app at the user's login, when it should open out of sight. */
 export function startedAtLogin(): boolean {

@@ -46,7 +46,7 @@ export interface FilesBridge {
    * a project in, the proof of concept's folder to import, or a folder to hand over with what is said. Nothing when
    * they cancel.
    */
-  pick(kind: 'folder' | 'file', purpose?: 'access' | 'project' | 'import' | 'attach'): Promise<string[]>
+  pick(kind: 'folder' | 'file', purpose?: PickPurpose): Promise<string[]>
   /** Show a folder or a file in the system's file manager. Nothing is opened or run. */
   reveal(path: string): Promise<void>
   /** Open a file with the app the system gives its kind, or a folder in the file manager. A file that would run a program is shown in its folder instead. */
@@ -61,6 +61,9 @@ export interface FilesBridge {
    */
   takeCopied?(): Promise<CopiedFiles>
 }
+
+/** What a folder or a file is picked for: the system's picker is worded for it. */
+export type PickPurpose = 'access' | 'project' | 'import' | 'attach'
 
 /** Files copied in a file manager, read by the app. */
 export interface CopiedFiles {

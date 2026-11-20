@@ -15,7 +15,7 @@ import { DEFAULT_PERSONAS } from '../packages/core/src/personas/defaults.ts'
 
 /** Where the default names are written, and so the one file the check leaves alone. */
 const DEFAULTS_FILE = 'packages/core/src/personas/defaults.ts'
-const CODE = /\.(ts|tsx|js|mjs|cjs|css|html|json|jsonc|yml|yaml|swift)$/
+const CODE = /\.(ts|tsx|js|mjs|cjs|css|html|json|jsonc|yml|yaml)$/
 const SKIPPED = /(^|\/)pnpm-lock\.yaml$/
 
 const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')

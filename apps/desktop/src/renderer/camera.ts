@@ -65,9 +65,12 @@ async function take(request: CameraRequest): Promise<CameraAnswer> {
     if (!video) return { id: request.id, problem: 'The camera gave no picture.' }
     await pause(SETTLE_MS)
     const frame = await new ImageCapture(video).grabFrame()
-    const { bytes, width, height } = await jpeg(frame)
-    frame.close()
-    return { id: request.id, picture: { bytes, width, height, ...(video.label ? { camera: video.label } : {}) } }
+    try {
+      const { bytes, width, height } = await jpeg(frame)
+      return { id: request.id, picture: { bytes, width, height, ...(video.label ? { camera: video.label } : {}) } }
+    } finally {
+      frame.close()
+    }
   } catch (error) {
     const name = error instanceof DOMException ? error.name : ''
     const problem =

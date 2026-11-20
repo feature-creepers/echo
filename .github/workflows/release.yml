@@ -34,11 +34,14 @@ jobs:
             targets: --linux AppImage --x64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Nothing here pushes: the token is not left in .git/config for the scripts that run next.
+          persist-credentials: false
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
           cache: pnpm
@@ -55,7 +58,10 @@ jobs:
             exit 1
           fi
 
+      # As in CI: a Linux runner's sandbox helper is not set up, so the browser's tests run without the sandbox there.
       - run: pnpm check
+        env:
+          ASSISTANT_BROWSER_SANDBOX: ${{ runner.os == 'Linux' && 'off' || '' }}
 
       - run: pnpm build
 

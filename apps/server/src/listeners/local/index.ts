@@ -1,14 +1,12 @@
 import { createServer, type Socket } from 'node:net'
 import type { Core } from '@repo/core'
 import { createLineDecoder, encodeEvent, encodeLine, encodeResult } from '@repo/protocol'
-import { createEndpoint, type Endpoint } from './endpoint/index.ts'
+import { createEndpoint } from './endpoint/index.ts'
 
 /** How long a client has to say hello before it is disconnected. */
-export const HANDSHAKE_TIMEOUT_MS = 5000
+const HANDSHAKE_TIMEOUT_MS = 5000
 
 export interface LocalListenerOptions {
-  /** Where to listen. Left out, a fresh endpoint is created, and removed when the listener closes. */
-  address?: string | undefined
   handshakeTimeoutMs?: number
 }
 
@@ -27,7 +25,8 @@ export interface LocalListener {
  * the client's commands to the core, each result back to that client, and every event to all of them.
  */
 export function listenLocal(core: Core, options: LocalListenerOptions = {}): Promise<LocalListener> {
-  const endpoint: Endpoint = options.address === undefined ? createEndpoint() : { address: options.address, remove: () => undefined }
+  // A fresh endpoint, removed when the listener closes.
+  const endpoint = createEndpoint()
   const handshakeTimeoutMs = options.handshakeTimeoutMs ?? HANDSHAKE_TIMEOUT_MS
   const sockets = new Set<Socket>()
   const admitted = new Set<Socket>()

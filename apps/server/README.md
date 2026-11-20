@@ -1,11 +1,14 @@
 # @repo/server
 
-The core as a process. The desktop app starts it and connects to it; a remote server will run the same program.
+The core as a process: it opens the user's data, wires the adapters into the core, and listens for clients on this machine. The desktop app builds it into its own bundle and starts it as an Electron utility process.
 
-It is the composition root: `src/compose.ts` is the only file in the repository that knows both the core and the adapters it runs on.
+`src/compose.ts` is the only file in the repository that knows both the core and the adapters.
 
 - **Runs in:** Node
 - **May import:** `@repo/core`, the contracts and every adapter
+- **Entry points:** `@repo/server/main` (`src/main.ts`)
+
+The import rule is enforced by `biome.jsonc` (docs/SPEC.md, section 14.3).
 
 ## Running it
 
@@ -13,22 +16,24 @@ It is the composition root: `src/compose.ts` is the only file in the repository 
 ASSISTANT_CORE_TOKEN=<token> pnpm --filter @repo/server start --data <folder>
 ```
 
-`--data` names the folder that holds the user's data: one SQLite file, `store.sqlite`. The core creates the folder when it is missing. Only one core may use a folder at a time.
+| Option               | Meaning                                                                                                   |
+| -------------------- | --------------------------------------------------------------------------------------------------------- |
+| `--data <folder>`    | Required. The folder that holds the user's data, created when missing. Only one core may use it at a time |
+| `--exit-with-parent` | Stop when standard input closes, so a core started as a child never outlives its parent                   |
 
-Once it accepts connections it prints one line on standard output saying where it listens:
+The token a client must present is read from `ASSISTANT_CORE_TOKEN`, then removed from the environment, so no program the core starts inherits it. Once the core accepts connections it prints one line on standard output saying where it listens, a Unix socket in a new private folder or a named pipe with a random name:
 
 ```json
 { "type": "ready", "endpoint": "/tmp/core-ab12cd/core.sock" }
 ```
 
-Everything else it prints goes to standard error. A client then connects to that endpoint and says hello with the token. Once admitted it sends commands, gets one result for each, and receives every event (see `@repo/protocol`).
+Everything else goes to standard error. A client connects to that endpoint and says hello with the token; once admitted it sends commands, gets one result for each, and receives every event (`@repo/protocol`). The core exits with code 2 when it was started wrongly, and with code 1 when it could not open the user's data, for instance because a more recent version wrote it.
 
-| Option                | Meaning                                                                                         |
-| --------------------- | ----------------------------------------------------------------------------------------------- |
-| `--data <folder>`     | Required. The folder that holds the user's data                                                 |
-| `--listen <endpoint>` | Where to listen: a Unix socket path, or a named pipe on Windows. Left out, it picks a fresh one |
-| `--exit-with-parent`  | Stop when standard input closes. An app that starts the core as its child passes it             |
+## Tests
 
-It exits with code 2 when it was started wrongly, and with code 1 when it could not open the user's data, for instance because a more recent version of the app wrote it.
+```bash
+pnpm --filter @repo/server test                    # the process, the listener and the public web reader
+REAL_HARNESS=1 pnpm --filter @repo/server test     # also the whole core against the signed-in Claude Code
+```
 
-`pnpm --filter @repo/server build` bundles it into one file, `dist/main.js`, which is what the desktop app ships.
+The second spends a few calls of the user's allowance.

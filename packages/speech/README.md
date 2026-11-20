@@ -6,7 +6,7 @@ Speech recognition, a voice, and detection of the start and end of speech, runni
 - **May import:** `@repo/models`
 - **Entry points:** `@repo/speech`, and `@repo/speech/process`, the speech service as a program
 
-The import rule is enforced by `biome.jsonc` and explained in [docs/SPEC.md](../../docs/SPEC.md), section 14.3.
+The import rule is enforced by `biome.jsonc` (docs/SPEC.md, section 14.3).
 
 ## Engines
 

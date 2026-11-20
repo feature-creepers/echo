@@ -6,7 +6,7 @@ Catalogue and download of model files, and detection of the hardware tier.
 - **May import:** Nothing from this repository
 - **Entry points:** `@repo/models`
 
-The import rule is enforced by `biome.jsonc` and explained in [docs/SPEC.md](../../docs/SPEC.md), section 14.3.
+The import rule is enforced by `biome.jsonc` (docs/SPEC.md, section 14.3).
 
 ## Model sets
 
@@ -45,7 +45,7 @@ Two processes downloading the same set into the same folder at the same time are
 | Performance | Eight processors or more, and 30 GB or more | 6 at most                  |
 | Standard    | Everything between                          | 4 at most                  |
 
-`engineThreads(tier, processors)` never gives more than half the processors. The limits were measured: the recogniser is fastest with 6 threads on a 6-core machine and slower beyond, the voice gains nothing past 4. The graphics card is not looked at: the engines of this version run on the processor.
+`detectEngineThreads(tier)` never gives more than half the processors. The limits were measured: the recogniser is fastest with 6 threads on a 6-core machine and slower beyond, the voice gains nothing past 4. The graphics card is not looked at: the engines of this version run on the processor.
 
 Node reports processors and memory the same way on Windows, macOS and Linux, so there is no per-system code here.
 

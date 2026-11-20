@@ -2,6 +2,7 @@ import { readFile, stat } from 'node:fs/promises'
 import { basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { ATTACHMENT_MAX_BYTES, ATTACHMENTS_PER_TURN } from '@repo/protocol'
+import type { CopiedFiles } from '../preload/bridge.ts'
 
 /**
  * Files copied in a file manager, where the window is not given them when the person pastes (docs/SPEC.md, section
@@ -10,7 +11,7 @@ import { ATTACHMENT_MAX_BYTES, ATTACHMENTS_PER_TURN } from '@repo/protocol'
  */
 
 /** The clipboard's formats that name copied files: GNOME's own list, then the one every file manager writes. */
-export const COPIED_FORMATS = ['x-special/gnome-copied-files', 'text/uri-list'] as const
+const COPIED_FORMATS = ['x-special/gnome-copied-files', 'text/uri-list'] as const
 
 /** An entry of the clipboard, as Electron reads it. */
 export interface ClipboardEntry {
@@ -34,16 +35,6 @@ export async function copiedLists(entries: readonly ClipboardEntry[]): Promise<s
     }
   }
   return lists
-}
-
-/** What was copied, read: each file's name and bytes, each folder by where it is, and what could not go. */
-export interface CopiedFiles {
-  files: { name: string; data: Uint8Array }[]
-  folders: { name: string; path: string }[]
-  /** The names of files over the most a file can be. */
-  tooLarge: string[]
-  /** How many more files and folders were copied than can go with one message. */
-  more: number
 }
 
 /**

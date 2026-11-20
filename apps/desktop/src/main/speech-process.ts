@@ -1,4 +1,4 @@
-import { connectSpeech, type InstallProgress, type SpeechService, type SpeechStatus } from '@repo/speech'
+import { connectSpeech, type SpeechService } from '@repo/speech'
 import { utilityProcess } from 'electron'
 
 export interface SpeechProcess {
@@ -25,5 +25,3 @@ export function startSpeech(script: string, models: string): SpeechProcess {
     }
   }
 }
-
-export type { InstallProgress, SpeechStatus }

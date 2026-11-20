@@ -2,6 +2,7 @@ import { fileURLToPath } from 'node:url'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'electron-vite'
+import type { Plugin } from 'vite'
 
 /**
  * The core is a program of its own. The app ships it beside its main process and starts it at launch,
@@ -13,6 +14,17 @@ const coreEntry = fileURLToPath(import.meta.resolve('@repo/server/main'))
 const speechEntry = fileURLToPath(import.meta.resolve('@repo/speech/process'))
 
 const here = (path: string) => fileURLToPath(new URL(path, import.meta.url))
+
+/**
+ * The development server runs React's refresh preamble as an inline script and reloads the page over a WebSocket.
+ * Only there does the page's security policy allow them: the built page runs its own files and nothing else.
+ */
+const developmentPolicy: Plugin = {
+  name: 'development-content-security-policy',
+  apply: 'serve',
+  transformIndexHtml: (html) =>
+    html.replace("script-src 'self'", "script-src 'self' 'unsafe-inline'").replace("connect-src 'self'", "connect-src 'self' ws://localhost:*")
+}
 
 export default defineConfig({
   main: {
@@ -28,7 +40,7 @@ export default defineConfig({
   },
   renderer: {
     root: here('src/renderer'),
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), developmentPolicy],
     build: {
       // Every asset stays a file of the app: the page's security policy loads nothing from a data: address,
       // which is what small assets would otherwise become (the microphone's audio worklet among them).

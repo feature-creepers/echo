@@ -3,15 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <!--
-      Scripts come only from the app. What the assistant shows may load pictures and play sound or video from
-      https addresses it found (an Image, a Media block): those are data, never code, and never over plain http.
-      HLS playlists are played by Chromium itself, which fetches their segments as media. A map's shapes are read
-      through the core; connect-src allows https so a map can still read them itself where there is no core to ask.
-      A PDF from the assistant's folder is shown in the window's own viewer, from its bytes: frame-src allows blob.
+      Scripts come only from the app's own files. What the assistant shows may load pictures and play media from https
+      addresses (an Image, a Media block): data, never code. A map may read its shapes from https where there is no core
+      to ask. A PDF is shown in the window's own viewer, from its bytes: frame-src allows blob. The development server
+      loosens this policy for itself (electron.vite.config.ts).
     -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws://localhost:* https:; img-src 'self' https: data: blob:; media-src 'self' https: blob:; frame-src blob:"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https:; img-src 'self' https: data: blob:; media-src 'self' https: blob:; frame-src blob:; base-uri 'none'"
     />
   </head>
   <body>

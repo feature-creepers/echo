@@ -1,8 +1,6 @@
 # @repo/client
 
-Client logic with no interface: the connection to a core, the state derived from its events (settings, conversation, harnesses, view, memory and whether the assistant is asleep, the library of saved widgets), speech playback, and the memory as Markdown. Shared by the desktop app and, later, the phone app.
-
-It also holds the settings of a device (`device/settings.ts`): their shape, their defaults, and `readDeviceSettings`, which makes usable settings out of anything read back; and shortcuts written as Electron writes them (`device/shortcuts.ts`): recorded from a key press, checked, matched against a key press, and shown as each system labels its keys. The app keeps the settings where it likes; the desktop app keeps them in a file of its data folder.
+Client logic with no interface: the connection to a core and its handshake, the state derived from the core's events (settings, conversation, threads, memory, library, schedule), speech playback, and the memory exported as Markdown. It also holds the settings of a device (`src/device/settings.ts`: their shape, their defaults, and `readDeviceSettings`, which makes usable settings out of anything read back) and shortcuts written as Electron writes them (`src/device/shortcuts.ts`). Where a device keeps its settings is the app's choice.
 
 - **Runs in:** Anywhere: Node, a browser, a phone. No Node API, no DOM
 - **May import:** `@repo/protocol`, `@repo/catalog`
@@ -10,4 +8,10 @@ It also holds the settings of a device (`device/settings.ts`): their shape, thei
 
 `@repo/client/transports/local` is the one part that needs Node. It is compiled as a project of its own (`tsconfig.node.json`), so the rest of the package cannot use a Node API by accident.
 
-The import rule is enforced by `biome.jsonc` and explained in [docs/SPEC.md](../../docs/SPEC.md), section 14.3.
+The import rule is enforced by `biome.jsonc` (docs/SPEC.md, section 14.3).
+
+## Tests
+
+```bash
+pnpm --filter @repo/client test
+```
