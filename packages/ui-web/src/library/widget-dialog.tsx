@@ -1,14 +1,13 @@
 import type { ViewSpec } from '@repo/catalog'
 import { COLLECTION_MAX_LENGTH, type SavedWidget, WIDGET_TITLE_MAX_LENGTH } from '@repo/protocol'
-import { motion } from 'motion/react'
-import { type FormEvent, useEffect, useId, useRef, useState } from 'react'
+import { Dialog, DialogBackdrop, DialogClose, DialogContent } from '@ui-sdk/react/dialog'
+import { type FormEvent, useId, useState } from 'react'
 import { Button } from '../primitives/button.tsx'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { IconButton } from '../primitives/icon-button.tsx'
 import { CloseGlyph, SendGlyph } from '../primitives/icons.tsx'
 import { Switch } from '../primitives/switch.tsx'
-import { DURATION, EASE } from '../styles/motion.ts'
 import type { ViewActions } from '../view/context.ts'
 import { ViewRenderer } from '../view/view-renderer.tsx'
 import type { LibraryControls } from './library-context.ts'
@@ -23,6 +22,7 @@ interface WidgetDialogProps {
   onAsk(text: string): void
   /** It was put on the stage: the library goes back to the conversation to show it. */
   onShown(): void
+  /** It was closed, and has faded out. */
   onClose(): void
 }
 
@@ -33,7 +33,9 @@ const FIELD = 'h-8 rounded-md border border-line-strong bg-black/25 px-2.5 text-
 
 /**
  * One saved widget, open: drawn at full size and usable, beside what can be done with it. Its name and
- * collection are the user's to change here; its content is the assistant's, so changing it is asked for.
+ * collection are the user's to change here; its content is the assistant's, so changing it is asked for. While it
+ * is open the keyboard stays in it, and goes back to what opened it once it is closed; Escape closes it and
+ * nothing under it.
  */
 export function WidgetDialog({ widget, collections, controls, actions, onAsk, onShown, onClose }: WidgetDialogProps) {
   const [title, setTitle] = useState(widget.title)
@@ -42,27 +44,6 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
   const [deleting, setDeleting] = useState(false)
   const [problem, setProblem] = useState<string>()
   const ids = useId()
-  const box = useRef<HTMLDivElement>(null)
-
-  // The keyboard moves into the dialog as it opens, and goes back to what opened it once it is closed.
-  useEffect(() => {
-    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
-    box.current?.focus({ preventScroll: true })
-    return () => {
-      if (opener?.isConnected) opener.focus({ preventScroll: true })
-    }
-  }, [])
-
-  // Escape closes the dialog and nothing under it: heard first, and marked as handled for the library around it.
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
-      event.preventDefault()
-      onClose()
-    }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
-  }, [onClose])
 
   const act = (work: Promise<unknown>) => {
     setProblem(undefined)
@@ -86,27 +67,19 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
   }
 
   return (
-    // The dimming reaches up over the title row too, so the window darkens as one surface with no bar left bright.
-    <motion.div
-      className="absolute inset-x-0 top-[calc(-1*env(titlebar-area-height,var(--frame-title-bar)))] bottom-0 z-40 flex items-center justify-center bg-black/55 p-6"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1, transition: { duration: DURATION.calm, ease: EASE } }}
-      exit={{ opacity: 0, transition: { duration: DURATION.quick, ease: EASE } }}
-      onPointerDown={(event) => {
-        if (event.target === event.currentTarget) onClose()
+    // Open from the start, it tells the library it is closed once it has faded out.
+    <Dialog
+      defaultOpen
+      onOpenChangeComplete={(open) => {
+        if (!open) onClose()
       }}
     >
-      <motion.div
-        ref={box}
-        role="dialog"
-        aria-modal="true"
+      {/* The dimming covers the whole window, the title row too, so it darkens as one surface with no bar left bright. */}
+      <DialogBackdrop className="fixed inset-0 bg-black/55 transition-opacity duration-(--duration-calm) ease-soft data-starting-style:opacity-0 data-ending-style:opacity-0 data-ending-style:duration-(--duration-quick)" />
+      <DialogContent
         aria-label={widget.title}
-        tabIndex={-1}
-        initial={{ opacity: 0, y: 8, scale: 0.99 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 4, scale: 0.99, transition: { duration: DURATION.quick, ease: EASE } }}
-        transition={{ duration: DURATION.calm, ease: EASE }}
-        className="shadow-float flex max-h-full w-full max-w-4xl overflow-hidden rounded-lg bg-surface outline-none ring-1 ring-white/[0.08]"
+        initialFocus="content"
+        className="shadow-float fixed inset-6 m-auto flex h-fit max-h-[calc(100%-3rem)] w-[calc(100%-3rem)] max-w-4xl overflow-hidden rounded-lg bg-surface outline-none ring-1 ring-white/[0.08] transition-[opacity,translate,scale] duration-(--duration-calm) ease-soft data-starting-style:translate-y-2 data-starting-style:scale-99 data-starting-style:opacity-0 data-ending-style:translate-y-1 data-ending-style:scale-99 data-ending-style:opacity-0 data-ending-style:duration-(--duration-quick)"
       >
         <div className="scroll-quiet grid min-w-0 flex-1 content-start overflow-y-auto">
           <div className="sticky top-0 z-10 flex h-10 items-center border-line border-b bg-surface/90 px-5 text-text-soft text-xs backdrop-blur-xl">
@@ -120,9 +93,13 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
         <aside className="scroll-quiet flex w-72 shrink-0 flex-col gap-5 overflow-y-auto border-black/40 border-l bg-white/[0.025] px-4 pb-4 *:shrink-0">
           <div className="-mx-4 flex h-10 shrink-0 items-center justify-between border-line border-b pr-1.5 pl-4">
             <Eyebrow>Saved {when.format(new Date(widget.since))}</Eyebrow>
-            <IconButton label="Close" onClick={onClose}>
-              <CloseGlyph />
-            </IconButton>
+            <DialogClose
+              render={
+                <IconButton label="Close">
+                  <CloseGlyph />
+                </IconButton>
+              }
+            />
           </div>
 
           <div className="grid gap-3.5">
@@ -232,7 +209,7 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
             )}
           </div>
         </aside>
-      </motion.div>
-    </motion.div>
+      </DialogContent>
+    </Dialog>
   )
 }

@@ -133,23 +133,21 @@ export function WidgetsSection({ controls, actions, selected, onAsk, onShown }: 
         </ul>
       )}
 
-      <AnimatePresence>
-        {openWidget && (
-          <WidgetDialog
-            key={openWidget.id}
-            widget={openWidget}
-            collections={collections.map((collection) => collection.name)}
-            controls={controls}
-            actions={actions}
-            onAsk={(text) => {
-              setOpen(undefined)
-              onAsk(text)
-            }}
-            onShown={onShown}
-            onClose={() => setOpen(undefined)}
-          />
-        )}
-      </AnimatePresence>
+      {openWidget && (
+        <WidgetDialog
+          key={openWidget.id}
+          widget={openWidget}
+          collections={collections.map((collection) => collection.name)}
+          controls={controls}
+          actions={actions}
+          onAsk={(text) => {
+            setOpen(undefined)
+            onAsk(text)
+          }}
+          onShown={onShown}
+          onClose={() => setOpen(undefined)}
+        />
+      )}
     </div>
   )
 }
