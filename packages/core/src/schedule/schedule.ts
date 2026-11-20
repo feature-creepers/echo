@@ -14,7 +14,7 @@ import {
   type Timing
 } from '@repo/protocol'
 import { z } from 'zod'
-import { addressWords, senderName } from '../accounts/mail.ts'
+import { addressWords, oneLine, senderName } from '../accounts/mail.ts'
 import { fence } from '../browser/untrusted.ts'
 import type { Timers } from '../ports/clock.ts'
 import type { Log } from '../ports/log.ts'
@@ -370,7 +370,7 @@ export function createSchedule(options: ScheduleOptions): Schedule {
     } else {
       const lines = mails
         .slice(0, MAILS_TOLD)
-        .map((mail) => `- id ${mail.id} in ${mail.account} · from ${addressWords(mail.from)} · “${mail.subject}”`)
+        .map((mail) => `- id ${mail.id} in ${mail.account} · from ${oneLine(addressWords(mail.from))} · “${oneLine(mail.subject)}”`)
         .join('\n')
       const more = mails.length > MAILS_TOLD ? `\n${mails.length - MAILS_TOLD} more arrived.` : ''
       const arrived = `${fence('mail-list', MAILS_NOTICE, {}, lines)}${more}`

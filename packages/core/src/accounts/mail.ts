@@ -53,7 +53,8 @@ export function dayWords(day: string): string {
   return new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'long' }).format(Date.UTC(year, month - 1, date))
 }
 
-const oneLine = (text: string) => text.replace(/\s+/g, ' ').trim()
+/** Words a stranger wrote, on one line, so a line break cannot start what reads as another mail. */
+export const oneLine = (text: string) => text.replace(/\s+/g, ' ').trim()
 
 /** The mails a search found, the latest first, for a model. */
 export function mailLines(mails: readonly FoundMail[], zone: string): string {
@@ -68,7 +69,7 @@ export function mailLines(mails: readonly FoundMail[], zone: string): string {
       const snippet = oneLine(mail.snippet)
       return [
         `- id ${mail.id} in ${mail.account}`,
-        `  ${dateWords(mail.date, zone)} · from ${addressWords(mail.from)} · “${oneLine(mail.subject)}”${mail.unread ? ' · unread' : ''}${files}`,
+        `  ${dateWords(mail.date, zone)} · from ${oneLine(addressWords(mail.from))} · “${oneLine(mail.subject)}”${mail.unread ? ' · unread' : ''}${files}`,
         ...(snippet ? [`  ${snippet.length > SNIPPET_LENGTH ? `${snippet.slice(0, SNIPPET_LENGTH)}…` : snippet}`] : [])
       ].join('\n')
     })
