@@ -19,5 +19,7 @@ export const system: MiniSystem = {
   float(window, on) {
     window.setVisibleOnAllWorkspaces(on)
   },
-  placed: () => !waylandClient()
+  placed: () => !waylandClient(),
+  // A window manager may apply the bounds later, so what Electron reads back at once says nothing yet.
+  place: (window, bounds) => window.setBounds(bounds)
 }

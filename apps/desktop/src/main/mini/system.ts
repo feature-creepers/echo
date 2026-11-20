@@ -1,4 +1,4 @@
-import type { BrowserWindow } from 'electron'
+import type { BrowserWindow, Rectangle } from 'electron'
 
 /** What Mini asks of this system beyond its size and staying on top, and what the system does not let it have. */
 export interface MiniSystem {
@@ -6,4 +6,6 @@ export interface MiniSystem {
   float(window: BrowserWindow, on: boolean): void
   /** Whether the app may read and set where its window is. A Wayland client may not: the desktop places it. */
   placed(): boolean
+  /** Give the window these bounds, as exactly as this system lets it. */
+  place(window: BrowserWindow, bounds: Rectangle): void
 }

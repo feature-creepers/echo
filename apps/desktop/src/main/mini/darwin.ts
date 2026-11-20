@@ -6,5 +6,6 @@ export const system: MiniSystem = {
     window.setWindowButtonVisibility(!on)
     window.setVisibleOnAllWorkspaces(on, { visibleOnFullScreen: on })
   },
-  placed: () => true
+  placed: () => true,
+  place: (window, bounds) => window.setBounds(bounds)
 }

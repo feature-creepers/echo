@@ -76,7 +76,7 @@ export function createMini(window: BrowserWindow, device: DeviceSettingsStore, l
     if (was.maximized) window.unmaximize()
     // The smallest size is lifted before the window is made small, and the largest set once it is, so it never jumps.
     window.setMinimumSize(MINI_SIZE.least.width, MINI_SIZE.least.height)
-    if (system.placed()) window.setBounds(bounds)
+    if (system.placed()) system.place(window, bounds)
     else window.setSize(bounds.width, bounds.height)
     window.setMaximumSize(MINI_SIZE.most.width, MINI_SIZE.most.height)
     window.setMaximizable(false)
@@ -109,7 +109,7 @@ export function createMini(window: BrowserWindow, device: DeviceSettingsStore, l
     window.setFullScreenable(true)
     // No largest size (0), before the window is made large again; the full window's smallest once it is.
     window.setMaximumSize(0, 0)
-    window.setBounds(was.bounds)
+    system.place(window, was.bounds)
     window.setMinimumSize(least.width, least.height)
     if (was.fullScreen) window.setFullScreen(true)
     else if (was.maximized) window.maximize()
