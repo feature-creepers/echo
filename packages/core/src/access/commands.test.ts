@@ -442,6 +442,30 @@ describe('readCommand: paths it names', () => {
     expect(paths('powershell -Command "Get-Content C:\\Users\\me\\a.txt"')).toEqual(['C:\\Users\\me\\a.txt'])
   })
 
+  it.each([
+    ['rg token', 'posix', ['.']],
+    ['grep -r token', 'posix', ['.']],
+    ['grep -R -e token', 'posix', ['.']],
+    ['fd kdbx', 'posix', ['.']],
+    ['find -name "*.kdbx"', 'posix', ['.']],
+    ['tree', 'posix', ['.']],
+    ['du -sh', 'posix', ['.']],
+    ['ls -R', 'posix', ['.']],
+    ['cd sub && rg token', 'posix', ['sub', 'sub/.']],
+    ['Get-ChildItem -Recurse', 'powershell', ['.']],
+    ['gci -r', 'powershell', ['.']],
+    ['dir /s', 'cmd', ['.']],
+    // A path named, nothing recursive, or what it is fed searched instead.
+    ['grep -r token sub', 'posix', ['sub']],
+    ['grep token', 'posix', []],
+    ['ls', 'posix', []],
+    ['cat a.txt | rg token', 'posix', ['a.txt']]
+  ] as const)('goes through the folder it runs in when it names none: `%s` in %s names %j', (line, shell, expected) => {
+    const reading = readCommand(line, shell)
+    expect(reading.paths.map((named) => named.path)).toEqual(expected)
+    expect(reading.paths.filter((named) => named.path.endsWith('.')).every((named) => named.below)).toBe(true)
+  })
+
   it('says when it goes through what it names', () => {
     expect(readCommand('grep -r x ~').paths).toEqual([{ path: '~', below: true }])
     expect(readCommand('ls ~').paths).toEqual([{ path: '~', below: false }])

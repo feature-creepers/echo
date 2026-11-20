@@ -350,21 +350,25 @@ function pathOf(word: Word, context: Context): { path: string; below: boolean; p
   return path === '' ? undefined : { path, below: false, unresolved: false }
 }
 
-/** Note a path the line names, read from every folder the line may be in. Words that are not paths are left alone. */
-function name(word: Word, context: Context, options: { always?: boolean; windowsProgram?: boolean; recursive?: boolean } = {}): void {
+/**
+ * Note a path the line names, read from every folder the line may be in. Words that are not paths are left alone.
+ * Whether the word is a path, one the line cannot tell included.
+ */
+function name(word: Word, context: Context, options: { always?: boolean; windowsProgram?: boolean; recursive?: boolean } = {}): boolean {
   const found = pathOf(word, context)
-  if (!found) return
+  if (!found) return false
   if (found.unresolved) context.reading.unresolved = true
-  if (found.path === '') return
+  if (found.path === '') return found.unresolved
   const { always = false, windowsProgram = false, recursive = false } = options
   const { path } = found
-  if (always ? NOWHERE.test(path) : noPath(path, context.shell, windowsProgram)) return
+  if (always ? NOWHERE.test(path) : noPath(path, context.shell, windowsProgram)) return false
   for (const folder of context.folders) {
     const named: NamedPath = { path: from(folder, path), below: found.below || recursive, ...(found.pattern === undefined ? {} : { pattern: found.pattern }) }
     const known = context.reading.paths.find((other) => other.path === named.path && other.pattern === named.pattern)
     if (known) known.below ||= named.below
     else context.reading.paths.push(named)
   }
+  return true
 }
 
 /** A word's value after `--name=` or `name=`, as a word of its own, when it has one. */
@@ -433,6 +437,11 @@ interface Kind {
   windows?: boolean
   /** The variables it gives the programs the line runs after it, harmless ones aside: `export LD_PRELOAD=x`. */
   variables?: string[]
+  /**
+   * It goes through the folder it runs in when it names no path: `always`, or `unfed`, unless it is given something
+   * to search through a pipe or a file (`rg`).
+   */
+  here?: 'always' | 'unfed'
 }
 
 /** PowerShell's aliases of the commands it reads, to their names. */
@@ -1571,6 +1580,8 @@ function readingKind(program: string, args: readonly string[], shell: Shell): Ki
       if (program === 'findstr' && first) notPaths.add(first.index)
       kind.notPaths = notPaths
       kind.recursive = ['rg', 'ag', 'ack'].includes(program) || short(args, 'r') || short(args, 'R') || has(args, '--recursive', '/s', '/S')
+      // With no path, grep searches where it runs; rg and its kin search what they are fed, when they are.
+      if (kind.recursive && program !== 'findstr') kind.here = ['rg', 'ag', 'ack'].includes(program) ? 'unfed' : 'always'
       kind.windows = program === 'findstr'
       // A program of its choosing to read each file through, or to page what it found.
       kind.readOnly = !args.some((word) => /^--(pre|pager)(=|$)/.test(word))
@@ -1613,6 +1624,7 @@ function readingKind(program: string, args: readonly string[], shell: Shell): Ki
       // Where it writes what it shows: `tree -o out.txt`, `less -o log`.
       kind.readOnly = !args.some((word) => /^-[A-Za-z]*[oO]/.test(word) || /^--log-file/i.test(word))
       kind.recursive = program === 'tree'
+      if (program === 'tree') kind.here = 'always'
       kind.windows = program === 'tree'
       return kind
     case 'file':
@@ -1677,6 +1689,7 @@ function readingKind(program: string, args: readonly string[], shell: Shell): Ki
     case 'dir':
     case 'du':
       kind.recursive = program === 'du' || short(args, 'R') || has(args, '--recursive', '/s', '/S')
+      if (kind.recursive) kind.here = 'always'
       kind.windows = program === 'dir'
       return kind
     case 'diff':
@@ -1685,6 +1698,7 @@ function readingKind(program: string, args: readonly string[], shell: Shell): Ki
     case 'fd':
     case 'fdfind':
       kind.recursive = true
+      kind.here = 'always'
       kind.readOnly = !has(args, '-x', '-X', '--exec', '--exec-batch')
       if (first) kind.notPaths = new Set([first.index])
       return kind
@@ -1719,7 +1733,8 @@ function findKind(args: readonly string[]): Kind {
       index = end < 0 ? args.length : end
     }
   }
-  return { readOnly, destructive, recursive: true, onlyPaths, nested }
+  // With no starting point, it starts where it runs.
+  return { readOnly, destructive, recursive: true, onlyPaths, nested, ...(at === 0 ? { here: 'always' as const } : {}) }
 }
 
 /** A word written back into a line, quoted so the shell reads it as the one word it was. */
@@ -1806,6 +1821,7 @@ function powershellKind(name: string, args: readonly string[]): Kind {
   }
   kind.recursive = parameter(args, 'recurse', 2) || parameter(args, 'depth', 2)
   if (lower === 'get-childitem' && parameter(args, 'recurse')) kind.recursive = true
+  if (lower === 'get-childitem' && kind.recursive) kind.here = 'always'
   if (lower === 'write-output' || lower === 'write-host') kind.notPaths = new Set(args.keys())
   if (lower === 'select-string') {
     const pattern = args.findIndex((word) => parameter([word], 'pattern', 2))
@@ -2052,14 +2068,17 @@ function readStage(stage: Stage, context: Context): void {
   // `sort --files0-from=list` reads the files a list names, which the line does not.
   if (argTexts.some((text) => text.startsWith('--files0-from'))) reading.unresolved = true
 
+  const options = { windowsProgram: kind.windows === true, recursive: kind.recursive === true }
+  let named = false
   for (const [index, word] of args.entries()) {
     if (kind.notPaths?.has(index)) continue
     if (kind.onlyPaths && !kind.onlyPaths.has(index)) continue
     const value = assignedValue(word)
-    const options = { windowsProgram: kind.windows === true, recursive: kind.recursive === true }
-    if (value) name(value, context, options)
-    else if (!textOf(word).startsWith('-')) name(word, context, options)
+    if (value) named = name(value, context, options) || named
+    else if (!textOf(word).startsWith('-')) named = name(word, context, options) || named
   }
+  const fed = stage.join === 'pipe' || stage.fed || stage.redirects.some((redirect) => !redirect.writes)
+  if (!named && (kind.here === 'always' || (kind.here === 'unfed' && !fed))) name(HERE, context, { ...options, always: true })
 
   // What it sends to another machine: the files an upload or a copy to a server carries, and what it is fed from a
   // file or a pipe when it sends its input. A file it is fed is said by its name.
@@ -2093,6 +2112,9 @@ function given(variable: string, reading: CommandReading): void {
   reading.readOnly = false
   reading.variables.push(variable)
 }
+
+/** The folder the line is in, as a word. */
+const HERE: Word = { pieces: [{ kind: 'text', text: '.', quoted: false }] }
 
 const firstText = (word: Word) => {
   const first: Piece | undefined = word.pieces[0]

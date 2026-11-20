@@ -325,7 +325,11 @@ describe('places never reached by their ending, through a wildcard or a recursiv
     // A part of the path ending so, a format kept as a folder.
     ['cat sub3/Vault.opvault/default/profile.js', '1password vaults'],
     ['cat sub3/*/default/profile.js', '1password vaults'],
-    ['cd sub3/Vault.opvault && cat default/profile.js', '1password vaults']
+    ['cd sub3/Vault.opvault && cat default/profile.js', '1password vaults'],
+    // A recursive command that names no path goes through the folder it runs in.
+    ['rg token', 'would go through'],
+    ['grep -r token', 'would go through'],
+    ['cd sub2 && grep -r token', undefined]
   ])('`%s`: %s', async (line, refused) => {
     const { root, scope } = documents()
     const found = await checkUse({ action: 'run', tool: 'Bash', paths: [root], command: line }, scope, [])
