@@ -15,7 +15,7 @@ import type { Screen, Showing } from '../views/screen.ts'
 export const DECISION = 'decision'
 
 const decisionSchema = z.object({ matter: z.string(), concern: z.string(), chosen: z.enum(['proceed', 'alternative']), at: z.string() })
-export type Decision = z.infer<typeof decisionSchema>
+type Decision = z.infer<typeof decisionSchema>
 
 const raiseInput = z.object({
   concern: z.string().trim().min(1).max(400),

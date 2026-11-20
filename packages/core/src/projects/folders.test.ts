@@ -5,6 +5,7 @@ describe('inFolder and folderName', () => {
   it.each([
     ['/home/ada/echo', 'AGENTS.md', '/home/ada/echo/AGENTS.md'],
     ['/home/ada/echo/', 'AGENTS.md', '/home/ada/echo/AGENTS.md'],
+    ['/', 'AGENTS.md', '/AGENTS.md'],
     ['C:\\dev\\echo', 'AGENTS.md', 'C:\\dev\\echo\\AGENTS.md'],
     ['C:\\dev\\echo\\', 'CLAUDE.md', 'C:\\dev\\echo\\CLAUDE.md']
   ])('puts %s and %s together as %s', (folder, name, path) => {
@@ -25,6 +26,7 @@ describe('partsFrom', () => {
     ['/p', '/p/src/a.ts', ['src', 'a.ts']],
     ['/p/', '/p/a.ts', ['a.ts']],
     ['/p', '/p', []],
+    ['/', '/home/a.ts', ['home', 'a.ts']],
     ['/p', '/pp/a.ts', undefined],
     ['/p', '/q/a.ts', undefined],
     ['C:\\dev\\echo', 'C:\\dev\\echo\\src\\a.ts', ['src', 'a.ts']],

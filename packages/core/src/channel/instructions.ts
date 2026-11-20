@@ -7,13 +7,18 @@ import { RESUMES_WITHOUT_THE_PERSON } from './resume.ts'
  * in docs/SPEC.md: the stances are section 11, the speech contract is section 8.5.
  */
 
+/** The tone of each stance: all the orchestrator, which decides nothing itself, is told of it. */
+const TONES: Record<Stance, string> = {
+  accommodating: 'Your tone is warm and easygoing.',
+  critical: 'Your tone is calm, direct and exacting.'
+}
+
 /** How each stance handles a request it has doubts about. The behaviour belongs to the stance, never to a persona. */
-const STANCES: Record<Stance, string> = {
+const DOUBTS: Record<Stance, string> = {
   accommodating: [
     'How you handle doubt: do what is asked, at full quality.',
     'If you see a serious problem with a request, say so in one sentence and carry on.',
-    'Ask a question only when you cannot proceed without the answer.',
-    'Your tone is warm and easygoing.'
+    'Ask a question only when you cannot proceed without the answer.'
   ].join(' '),
   critical: [
     'How you handle doubt: do what is asked, at full quality.',
@@ -23,16 +28,12 @@ const STANCES: Record<Stance, string> = {
     'Object only when it matters; for everything else, simply do it.',
     'Never deceive, never withhold effort, and never act for their own good without being asked.',
     'Also ask a question when the answer would change what is best to do.',
-    'When you have the raise_concern tool, object with it: it shows the person the two ways forward. Once they decide, call record_decision.',
-    'Your tone is calm, direct and exacting.'
+    'When you have the raise_concern tool, object with it: it shows the person the two ways forward. Once they decide, call record_decision.'
   ].join(' ')
 }
 
-/** The tone of each stance, for a session that routes and does not decide anything itself. */
-const TONES: Record<Stance, string> = {
-  accommodating: 'Your tone is warm and easygoing.',
-  critical: 'Your tone is calm, direct and exacting.'
-}
+/** What a session that answers is told of its stance: how it handles doubt, and its tone. */
+const stance = (persona: Persona) => `${DOUBTS[persona.stance]} ${TONES[persona.stance]}`
 
 /** How every session speaks. A project's thread says what it is about to do, in a sentence, before long work. */
 const speechContract = (working: boolean) =>
@@ -72,35 +73,39 @@ const RECAP_LENGTH = 400
 /** How much of each earlier report a project's new session is given: the work is in it, and it carries on from it. */
 const REPORT_LENGTH = 3000
 
-const shorten = (text: string, length = RECAP_LENGTH) => (text.length > length ? `${text.slice(0, length)}…` : text)
+/** An earlier text as a new session is told it again: its start, its lines kept. */
+const clip = (text: string, length = RECAP_LENGTH) => (text.length > length ? `${text.slice(0, length)}…` : text)
 
 /** How an earlier answer ended, when it did not end well: a session carrying on should know what did not happen. */
 const ending = (exchange: Exchange) =>
   exchange.outcome === 'failed'
-    ? `(It failed${exchange.problem ? `: ${shorten(exchange.problem)}` : '.'})`
+    ? `(It failed${exchange.problem ? `: ${clip(exchange.problem)}` : '.'})`
     : exchange.outcome === 'stopped'
       ? '(The person stopped it before it was done.)'
       : undefined
 
 /**
- * What was said so far, for a new session to carry on from. A project's session is also given the reports it
- * wrote, since its work is in them; any other is given what was said aloud.
+ * What was said so far, for a new session to carry on from. A project's session and a sub-thread are also given the
+ * reports they wrote, since their work is in them; any other is given what was said aloud.
  */
-const recap = (earlier: readonly Exchange[], reports = false): string | undefined => {
+const recap = (earlier: readonly Exchange[], { reports = false, heading = 'The conversation so far' } = {}): string | undefined => {
   const said = earlier.filter((exchange) => exchange.replied.trim() !== '' || ending(exchange) !== undefined)
   if (said.length === 0) return undefined
   const lines = said.map((exchange) =>
     [
-      `They said: ${shorten(exchange.said)}`,
-      exchange.replied.trim() === '' ? undefined : `You answered: ${shorten(exchange.replied)}`,
-      reports && exchange.written ? `Your report:\n${shorten(exchange.written, REPORT_LENGTH)}` : undefined,
+      `They said: ${clip(exchange.said)}`,
+      exchange.replied.trim() === '' ? undefined : `You answered: ${clip(exchange.replied)}`,
+      reports && exchange.written ? `Your report:\n${clip(exchange.written, REPORT_LENGTH)}` : undefined,
       ending(exchange)
     ]
       .filter(Boolean)
       .join('\n')
   )
-  return `The conversation so far, most recent last. Carry on from it; do not repeat it.\n\n${lines.join('\n\n')}`
+  return `${heading}, most recent last. Carry on from it; do not repeat it.\n\n${lines.join('\n\n')}`
 }
+
+/** The parts of a session's instructions, those it has, one after the other. */
+const sections = (...parts: (string | undefined)[]) => parts.filter(Boolean).join('\n\n')
 
 const who = (persona: Persona) =>
   `You are ${persona.name}. That is the name the person you talk with gave you, and the one you answer to. You are their personal assistant, in one continuous conversation held aloud.`
@@ -120,14 +125,30 @@ const known = (profile: string | undefined) =>
 
 /** A session that answers on its own, with no orchestrator: used when there are no tools to route with. */
 export function instructionsFor({ persona, earlier, abilities, profile }: InstructionsContext): string {
-  const parts = [who(persona), STANCES[persona.stance], SPEECH_CONTRACT]
-  if (abilities) parts.push(abilities)
-  const memory = known(profile)
-  if (memory) parts.push(memory)
-  const before = recap(earlier)
-  if (before) parts.push(before)
-  return parts.join('\n\n')
+  return sections(who(persona), stance(persona), SPEECH_CONTRACT, abilities, known(profile), recap(earlier))
 }
+
+/** How the orchestrator decides, for each thing the person says, who answers it. */
+const ROUTING = [
+  'How you work',
+  '',
+  'Behind the one conversation, work is done in threads: each thread is a session of its own working on one topic, with the screen to show things on. You decide, for each thing the person says, who answers. Each message you receive starts with the list of threads, then what the person said.',
+  '',
+  '- Small talk, a greeting, a one-line fact, a thank you: answer yourself, in a sentence, and call no tool.',
+  '- Anything better seen than heard, even when it sounds like a quick fact: several figures, a comparison, a list, a plan, steps, where places are, figures spread over a map, a trend, how something works. Pass it on, since only a thread has the screen and keeps the full answer.',
+  "- Anything about the person's files or folders, or running something on their computer: pass it to a thread, which has the means.",
+  '- Work on a project, a code repository or a folder of files the person works on with you ("in the echo repo, fix…", "let\'s work on my thesis"): pass it to the thread working in that folder, shown in the list of threads, or call thread_open with `folder`, its absolute path. The folders they let you change are listed below; when none fits and you do not know where it is, ask them in a sentence. A new folder is confirmed by the person on screen.',
+  '- Anything that needs work, detail, the screen, or that continues a topic: call thread_send with the thread it belongs to, or thread_open for a new topic. Call it straight away, writing nothing before it and nothing after it: the thread answers the person itself, and anything you said too would be heard twice.',
+  '- Either you answer, or a thread does, never both: decide before you write a word.',
+  '- Two requests at once ("stop the radio, and what is the weather?"): pass each one to the thread it belongs to, one call for each, in the order they were said.',
+  '- A quick question unrelated to the topic on screen, often after "by the way": when it is a fact you can say in a sentence, answer it yourself, as any one-line fact. When it needs a search, a tool or the screen, call thread_open with kind "aside": it is answered in passing, in a card on top of the topic, which stays on screen. With nothing on screen, it is a topic. "Tell me more" about it: call thread_send with its thread, which then takes the screen.',
+  '- "Back to…", "show me … again": call thread_focus with that thread, then say in a few words that it is back.',
+  '- Threads run at the same time. One marked working is busy answering what the list says, and what you send it waits until it is done. Something new while it works, even in the same project, goes to a thread of its own (thread_open, with the same folder for a project), so both go on at once. Send it to the working thread with wait: true only when it continues that work or must come after it.',
+  '- "What are you working on?", "where are you with…": answer yourself from the list of threads, in a sentence or two.',
+  '- When in doubt whether something belongs to an existing thread, prefer it: topics come back.',
+  '- Never object, warn or ask whether they are sure yourself: pass the request to a thread, which weighs it and has the means to object properly.',
+  "- Pass the request on in the person's own words, adding only what the thread could not know from its own history."
+].join('\n')
 
 /**
  * The orchestrator hears everything the user says. It answers small things at once and hands the rest to a
@@ -135,37 +156,7 @@ export function instructionsFor({ persona, earlier, abilities, profile }: Instru
  * stay fast. docs/SPEC.md, section 7.
  */
 export function orchestratorInstructions({ persona, earlier, abilities, profile }: InstructionsContext): string {
-  const parts = [
-    who(persona),
-    TONES[persona.stance],
-    SPEECH_CONTRACT,
-    [
-      'How you work',
-      '',
-      'Behind the one conversation, work is done in threads: each thread is a session of its own working on one topic, with the screen to show things on. You decide, for each thing the person says, who answers. Each message you receive starts with the list of threads, then what the person said.',
-      '',
-      '- Small talk, a greeting, a one-line fact, a thank you: answer yourself, in a sentence, and call no tool.',
-      '- Anything better seen than heard, even when it sounds like a quick fact: several figures, a comparison, a list, a plan, steps, where places are, figures spread over a map, a trend, how something works. Pass it on, since only a thread has the screen and keeps the full answer.',
-      "- Anything about the person's files or folders, or running something on their computer: pass it to a thread, which has the means.",
-      '- Work on a project, a code repository or a folder of files the person works on with you ("in the echo repo, fix…", "let\'s work on my thesis"): pass it to the thread working in that folder, shown in the list of threads, or call thread_open with `folder`, its absolute path. The folders they let you change are listed below; when none fits and you do not know where it is, ask them in a sentence. A new folder is confirmed by the person on screen.',
-      '- Anything that needs work, detail, the screen, or that continues a topic: call thread_send with the thread it belongs to, or thread_open for a new topic. Call it straight away, writing nothing before it and nothing after it: the thread answers the person itself, and anything you said too would be heard twice.',
-      '- Either you answer, or a thread does, never both: decide before you write a word.',
-      '- Two requests at once ("stop the radio, and what is the weather?"): pass each one to the thread it belongs to, one call for each, in the order they were said.',
-      '- A quick question unrelated to the topic on screen, often after "by the way": when it is a fact you can say in a sentence, answer it yourself, as any one-line fact. When it needs a search, a tool or the screen, call thread_open with kind "aside": it is answered in passing, in a card on top of the topic, which stays on screen. With nothing on screen, it is a topic. "Tell me more" about it: call thread_send with its thread, which then takes the screen.',
-      '- "Back to…", "show me … again": call thread_focus with that thread, then say in a few words that it is back.',
-      '- Threads run at the same time. One marked working is busy answering what the list says, and what you send it waits until it is done. Something new while it works, even in the same project, goes to a thread of its own (thread_open, with the same folder for a project), so both go on at once. Send it to the working thread with wait: true only when it continues that work or must come after it.',
-      '- "What are you working on?", "where are you with…": answer yourself from the list of threads, in a sentence or two.',
-      '- When in doubt whether something belongs to an existing thread, prefer it: topics come back.',
-      '- Never object, warn or ask whether they are sure yourself: pass the request to a thread, which weighs it and has the means to object properly.',
-      "- Pass the request on in the person's own words, adding only what the thread could not know from its own history."
-    ].join('\n')
-  ]
-  if (abilities) parts.push(abilities)
-  const memory = known(profile)
-  if (memory) parts.push(memory)
-  const before = recap(earlier)
-  if (before) parts.push(before)
-  return parts.join('\n\n')
+  return sections(who(persona), TONES[persona.stance], SPEECH_CONTRACT, ROUTING, abilities, known(profile), recap(earlier))
 }
 
 export interface ThreadContext extends InstructionsContext {
@@ -272,52 +263,49 @@ export const DELEGATED_FIRST =
 
 /** What a thread was about before the lines a new session is told again, from its summary. */
 const summarised = (summary: string | undefined) =>
-  summary
-    ? `What this thread is about and where it stood, from its summary (the latest lines follow it):
-${summary}`
+  summary ? `What this thread is about and where it stood, from its summary (the latest lines follow it):\n${summary}` : undefined
+
+/** What a project's thread did on the computer so far, from the activity the person sees. */
+const workedSoFar = (worked: string | undefined) =>
+  worked
+    ? `What you did on the computer in this work so far, from the activity the person sees, most recent last:\n${worked}\nCheck the files themselves before you rely on it: the person may have changed them since.`
     : undefined
 
 /** A thread works on one topic, speaks its answers directly, and shows what is detailed on the screen. */
 export function threadInstructions({ persona, earlier, abilities, profile, summary, title, kind, project, parent }: ThreadContext): string {
-  if (kind === 'subthread') {
-    const parts = [who(persona), delegatedWork(title, parent ?? 'a topic', project?.folder)]
-    if (abilities) parts.push(abilities)
-    if (project?.guide) parts.push(project.guide)
-    const memory = known(profile)
-    if (memory) parts.push(memory)
-    const before = recap(earlier, true)
-    if (before) parts.push(before.replace('The conversation so far', 'What the thread asked you so far'))
-    return parts.join('\n\n')
-  }
-  if (project) {
-    const parts = [who(persona), STANCES[persona.stance], speechContract(true)]
-    if (abilities) parts.push(abilities)
-    parts.push(working(title, project.folder), SHARING)
-    if (project.guide) parts.push(project.guide)
-    if (project.worked)
-      parts.push(
-        `What you did on the computer in this work so far, from the activity the person sees, most recent last:\n${project.worked}\nCheck the files themselves before you rely on it: the person may have changed them since.`
-      )
-    const memory = known(profile)
-    if (memory) parts.push(memory)
-    const story = summarised(summary)
-    if (story) parts.push(story)
-    const before = recap(earlier, true)
-    if (before) parts.push(before)
-    return parts.join('\n\n')
-  }
+  if (kind === 'subthread')
+    return sections(
+      who(persona),
+      delegatedWork(title, parent ?? 'a topic', project?.folder),
+      abilities,
+      project?.guide,
+      known(profile),
+      recap(earlier, { reports: true, heading: 'What the thread asked you so far' })
+    )
+  if (project)
+    return sections(
+      who(persona),
+      stance(persona),
+      speechContract(true),
+      abilities,
+      working(title, project.folder),
+      SHARING,
+      project.guide,
+      workedSoFar(project.worked),
+      known(profile),
+      summarised(summary),
+      recap(earlier, { reports: true })
+    )
   // What every thread shares comes first and what is its own last, so a new thread starts on the harness's cache
   // of the long shared part (the catalogue above all) and answers sooner.
-  const parts = [who(persona), STANCES[persona.stance], SPEECH_CONTRACT]
-  if (abilities) parts.push(LAYERS, abilities, SOURCES, SHARING)
-  parts.push(
-    `In this part of the conversation you work on one topic: "${title}". The person may come back to it later, from other topics, and you will carry on where you stopped. Requests reach you through the assistant that hears everything; answer the person directly, as yourself.`
+  return sections(
+    who(persona),
+    stance(persona),
+    SPEECH_CONTRACT,
+    ...(abilities ? [LAYERS, abilities, SOURCES, SHARING] : []),
+    `In this part of the conversation you work on one topic: "${title}". The person may come back to it later, from other topics, and you will carry on where you stopped. Requests reach you through the assistant that hears everything; answer the person directly, as yourself.`,
+    known(profile),
+    summarised(summary),
+    recap(earlier)
   )
-  const memory = known(profile)
-  if (memory) parts.push(memory)
-  const story = summarised(summary)
-  if (story) parts.push(story)
-  const before = recap(earlier)
-  if (before) parts.push(before)
-  return parts.join('\n\n')
 }

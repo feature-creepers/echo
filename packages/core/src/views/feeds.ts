@@ -1,5 +1,6 @@
 import { type Feed, feedFigure, feedPoints, feedsOf, type SeriesFeed, type ViewSpec } from '@repo/catalog'
 import type { Web } from '../ports/web.ts'
+import { keptReadings } from './readings.ts'
 
 /** The largest document a feed may name: a feed is a few figures, not a dataset. */
 const MAX_BYTES = 2 * 1024 * 1024
@@ -27,13 +28,12 @@ export interface Feeds {
  * it is shown, so a path that finds nothing is corrected by the model, not seen by the person.
  */
 export function createFeeds(web: Web | undefined, now: () => Date): Feeds {
-  const kept = new Map<string, { at: number; reading: Promise<ReadFeed> }>()
+  const kept = keptReadings<ReadFeed>(KEPT, { ms: FRESH_MS, now })
 
-  const read = (url: string): Promise<ReadFeed> => {
-    const known = kept.get(url)
-    if (known && now().getTime() - known.at < FRESH_MS) return known.reading
-    if (!web) return Promise.resolve({ ok: false, problem: 'this core cannot read the web.' })
-    const reading = web.read(url, { maxBytes: MAX_BYTES, timeoutMs: TIMEOUT_MS }).then((answer): ReadFeed => {
+  const read = (url: string): Promise<ReadFeed> =>
+    kept(url, async () => {
+      if (!web) return { ok: false, problem: 'this core cannot read the web.' }
+      const answer = await web.read(url, { maxBytes: MAX_BYTES, timeoutMs: TIMEOUT_MS })
       if (!answer.ok) return { ok: false, problem: answer.reason }
       try {
         return { ok: true, document: JSON.parse(answer.text) }
@@ -41,15 +41,6 @@ export function createFeeds(web: Web | undefined, now: () => Date): Feeds {
         return { ok: false, problem: 'it is not JSON. A feed names an address that answers JSON (an API), not a page.' }
       }
     })
-    kept.delete(url)
-    kept.set(url, { at: now().getTime(), reading })
-    // A failure is not kept: the address may answer the next time.
-    void reading.then((answer) => {
-      if (!answer.ok && kept.get(url)?.reading === reading) kept.delete(url)
-    })
-    while (kept.size > KEPT) kept.delete(kept.keys().next().value as string)
-    return reading
-  }
 
   return {
     read,

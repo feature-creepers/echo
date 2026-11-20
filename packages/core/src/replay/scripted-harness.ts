@@ -1,9 +1,6 @@
 import type { Attachment, Harness, HarnessModels, HarnessStatus, OneShot, Session, SessionEvent, SessionRequest } from '../ports/harness.ts'
 
-/**
- * A harness that plays a script instead of running a model. For tests, and for replaying a recorded
- * conversation through the core.
- */
+/** A session of the scripted harness: what it was sent, and the events the test makes it produce. */
 export interface ScriptedSession {
   request: SessionRequest
   /** Everything sent to the session, in order. */
@@ -30,16 +27,14 @@ export interface ScriptedHarness extends Harness {
 
 export interface ScriptOptions {
   id?: string
-  name?: string
   status?: HarnessStatus
   /** Answers one-shot questions. Left out, they are answered with an empty text. */
   complete?: (request: OneShot) => string
-  /** The models it offers. Left out, a fast one by default and a strong one. */
-  models?: HarnessModels
   /** Whether its sessions show the model pictures. Left out, they do not. */
   images?: boolean
 }
 
+/** The models it offers: a fast one by default, and a strong one with two levels of reasoning. */
 const SCRIPTED_MODELS: HarnessModels = {
   models: [
     { id: 'quick', name: 'Quick', description: 'Fast and inexpensive.' },
@@ -57,11 +52,12 @@ const SCRIPTED_MODELS: HarnessModels = {
   default: 'quick'
 }
 
+/** A harness that plays a script instead of running a model, for tests: each session says what the test makes it say. */
 export function scriptedHarness(options: ScriptOptions = {}): ScriptedHarness {
   let status: HarnessStatus = options.status ?? { installed: true, signedIn: true, version: '1.0.0' }
   const harness: ScriptedHarness = {
     id: options.id ?? 'scripted',
-    name: options.name ?? 'Scripted',
+    name: 'Scripted',
     ...(options.images ? { capabilities: { images: true } } : {}),
     sessions: [],
     completions: [],
@@ -70,7 +66,7 @@ export function scriptedHarness(options: ScriptOptions = {}): ScriptedHarness {
       status = next
     },
     status: async () => status,
-    models: async () => options.models ?? SCRIPTED_MODELS,
+    models: async () => SCRIPTED_MODELS,
     signIn: async () => {
       harness.signIns++
     },

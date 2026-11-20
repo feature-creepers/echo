@@ -1,6 +1,6 @@
 import type { Exchange, ShownView, Step } from '@repo/protocol'
 import { describe, expect, it } from 'vitest'
-import { cutInput, cutText, fitThread, previewInput, STEP_PREVIEW_TEXT, stepPreview, stepWhole, THREAD_READ_BUDGET } from './fit.ts'
+import { cutInput, fitThread, previewInput, STEP_PREVIEW_TEXT, stepPreview, stepWhole, THREAD_READ_BUDGET } from './fit.ts'
 
 const exchange = (turn: string, said = 'Work on it.'): Exchange => ({
   turn,
@@ -34,16 +34,6 @@ const view = (id: string, turn: string | undefined, elements = 1): ShownView => 
   }
 })
 const turns = (count: number, from = 0) => Array.from({ length: count }, (_, index) => exchange(`t${from + index}`))
-
-describe('cutting a text', () => {
-  it.each([
-    ['short', 'abc', 5, 'abc'],
-    ['exactly at the limit', 'abcde', 5, 'abcde'],
-    ['over the limit', 'abcdefg', 5, 'abcde\n[…cut]']
-  ])('%s', (_name, text, most, expected) => {
-    expect(cutText(text, most)).toBe(expected)
-  })
-})
 
 describe('cutting what a tool was given', () => {
   it.each([

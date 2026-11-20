@@ -1,4 +1,5 @@
 import type { Exchange, ShownView, Step } from '@repo/protocol'
+import { cutText } from '../text.ts'
 
 /**
  * How long a text of a step's preview stays whole: the sheet lists calls folded, by what each was about, and reads
@@ -7,10 +8,10 @@ import type { Exchange, ShownView, Step } from '@repo/protocol'
 export const STEP_PREVIEW_TEXT = 300
 
 /** How many items of a list a step's preview keeps: the files a change named, the options a page was given. */
-export const STEP_PREVIEW_ITEMS = 20
+const STEP_PREVIEW_ITEMS = 20
 
 /** How long a text of a step read whole stays whole, at first: shorter only if the step would not fit one message. */
-export const STEP_WHOLE_TEXT = 200_000
+const STEP_WHOLE_TEXT = 200_000
 
 /**
  * The most a page of a thread, or one step read whole, may weigh, in characters of JSON. Well under the line a
@@ -30,11 +31,6 @@ export interface ThreadPage {
   earlier: number
   /** How many of the first request's calls are left out, when it alone is too long for a page. */
   earlierSteps: number
-}
-
-/** Cut a text to `most` characters, saying so. */
-export function cutText(text: string, most: number): string {
-  return text.length > most ? `${text.slice(0, most)}\n[…cut]` : text
 }
 
 /** Cut every long text inside what a tool was given, keeping its shape, so a command or a path is still read from it. */
@@ -85,15 +81,15 @@ export function stepPreview(step: Step): Step {
  * A step read whole, as the sheet opens it: whole as recorded, unless what it was given is so long, a file written
  * whole for instance, that it would not fit one message. Its texts are then cut, shorter and shorter until it fits.
  */
-export function stepWhole(step: Step, budget = THREAD_READ_BUDGET): Step {
+export function stepWhole(step: Step): Step {
   const weight = (one: Step) => JSON.stringify(one).length
-  if (weight(step) <= budget) return step
+  if (weight(step) <= THREAD_READ_BUDGET) return step
   let most = STEP_WHOLE_TEXT
   for (;;) {
     const cut: Step = { ...step }
     if (step.input !== undefined) cut.input = cutInput(step.input, most)
     if (step.output !== undefined) cut.output = cutText(step.output, most)
-    if (weight(cut) <= budget || most <= STEP_PREVIEW_TEXT) return cut
+    if (weight(cut) <= THREAD_READ_BUDGET || most <= STEP_PREVIEW_TEXT) return cut
     most = Math.floor(most / 2)
   }
 }

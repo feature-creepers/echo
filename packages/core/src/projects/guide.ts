@@ -13,7 +13,7 @@ import { inFolder, partsFrom } from './folders.ts'
  */
 
 /** The files read, in this order: the shared convention first, then Claude Code's own. */
-export const GUIDE_FILES = ['AGENTS.md', 'CLAUDE.md'] as const
+const GUIDE_FILES = ['AGENTS.md', 'CLAUDE.md'] as const
 
 /** The most read of them all, in characters: beyond it, the rest is left out and the thread is told so. */
 export const GUIDE_LIMIT = 40_000

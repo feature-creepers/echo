@@ -1,5 +1,5 @@
 /** The window the cap on interruptions counts over. */
-export const INTERRUPTION_WINDOW_MS = 60 * 60_000
+const INTERRUPTION_WINDOW_MS = 60 * 60_000
 
 /** How often the assistant may speak up by itself, as the person set it (docs/SPEC.md, section 7.10). */
 export interface InterruptionCap {

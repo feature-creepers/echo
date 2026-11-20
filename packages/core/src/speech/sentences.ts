@@ -12,13 +12,16 @@ export interface SentenceCutter {
 /** Short words that end with a full stop without ending a sentence, in English and French. */
 const ABBREVIATIONS = new Set(['mr', 'mrs', 'ms', 'dr', 'prof', 'st', 'vs', 'etc', 'no', 'approx', 'm', 'mme', 'mlle', 'e.g', 'i.e', 'cf', 'env'])
 
-/** The end of a sentence: its closing mark, any closing quote or bracket after it, then the space that follows. */
+/**
+ * The end of a sentence: its closing mark, any closing quote or bracket after it, then the space that follows. The
+ * space must have arrived, so a mark at the very end of what arrived ("..." dot by dot) waits for what follows.
+ */
 const BOUNDARY = /([.!?…]+["'”’»)\]*_]*)(\s+)|(\n+)/g
 
 export function createSentenceCutter(): SentenceCutter {
   let pending = ''
 
-  /** Whether the full stop at `end` belongs to an abbreviation, an initial or a numbered item, not to the end of a sentence. */
+  /** Whether the full stop ending `upTo` belongs to an abbreviation, an initial or a numbered item, not to the end of a sentence. */
   const continues = (upTo: string, mark: string): boolean => {
     if (mark !== '.') return false
     const word = /([\p{L}\p{N}.]+)$/u.exec(upTo)?.[1] ?? ''
@@ -34,7 +37,6 @@ export function createSentenceCutter(): SentenceCutter {
     BOUNDARY.lastIndex = 0
     for (let match = BOUNDARY.exec(pending); match; match = BOUNDARY.exec(pending)) {
       const mark = match[1]
-      // A mark at the very end of what arrived may still grow ("..." arriving dot by dot): wait for what follows.
       if (mark !== undefined && continues(pending.slice(start, match.index), mark)) continue
       const sentence = pending.slice(start, match.index + (mark?.length ?? 0)).trim()
       if (sentence) sentences.push(sentence)

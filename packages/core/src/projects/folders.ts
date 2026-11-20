@@ -6,8 +6,8 @@
 
 /** A file in a folder, written with the folder's own separator. */
 export function inFolder(folder: string, name: string): string {
-  const separator = folder.includes('\\') && !folder.includes('/') ? '\\' : '/'
-  return `${trimmed(folder)}${separator}${name}`
+  const base = trimmed(folder)
+  return /[\\/]$/.test(base) ? `${base}${name}` : `${base}${separatorOf(folder)}${name}`
 }
 
 /** A folder's own name: the last part of its path. */
@@ -24,20 +24,21 @@ export function partsFrom(folder: string, path: string): string[] | undefined {
   const same = (one: string, other: string) => (windows ? one.toLowerCase() === other.toLowerCase() : one === other)
   const base = trimmed(folder)
   if (same(path, base)) return []
-  const head = path.slice(0, base.length)
-  const separator = path.charAt(base.length)
-  if (!same(head, base) || (separator !== '/' && separator !== '\\')) return undefined
-  return path
-    .slice(base.length + 1)
-    .split(/[\\/]/)
-    .filter(Boolean)
+  // The root, "/", ends with its separator already.
+  const separated = /[\\/]$/.test(base) || /^[\\/]/.test(path.slice(base.length))
+  if (!same(path.slice(0, base.length), base) || !separated) return undefined
+  return path.slice(base.length).split(/[\\/]/).filter(Boolean)
 }
 
 /** A path as written from a folder it is in, with the folder's separator: `src/a.ts`, `.` for the folder. Nothing when it is not in it. */
 export function fromFolder(folder: string, path: string): string | undefined {
   const parts = partsFrom(folder, path)
   if (parts === undefined) return undefined
-  return parts.length === 0 ? '.' : parts.join(folder.includes('\\') && !folder.includes('/') ? '\\' : '/')
+  return parts.length === 0 ? '.' : parts.join(separatorOf(folder))
 }
 
+/** A folder without the separators it may end with, unless it is the root. */
 const trimmed = (folder: string) => (/^[\\/]+$/.test(folder) ? folder : folder.replace(/[\\/]+$/, ''))
+
+/** The separator a folder is written with: a backslash for a Windows path, a slash otherwise. */
+const separatorOf = (folder: string) => (folder.includes('\\') && !folder.includes('/') ? '\\' : '/')

@@ -1,4 +1,21 @@
-import type { Exchange } from '@repo/protocol'
+import { type Exchange, exchangeSchema } from '@repo/protocol'
+import { z } from 'zod'
+import type { Records } from '../ports/records.ts'
+
+/**
+ * The type of the record written when a thread starts on a request: what it was asked, so that work the app's
+ * restart cut short is taken up again when it opens.
+ */
+export const WORK = 'channel.work'
+
+/** The type of the record a thread writes to be woken when the app opens again: what to carry on with. */
+export const RESUME = 'channel.resume'
+
+/** The type of the record written once work cut short, or planned for after a restart, is taken up again. */
+export const RESUMED = 'channel.resumed'
+
+/** Work cut short longer ago than this is not taken up again by itself: the person has moved on. */
+const RESUME_WITHIN_MS = 24 * 60 * 60_000
 
 /**
  * How many times in a row a thread may be woken by the app's restart, to carry its work on by itself, before the
@@ -7,6 +24,46 @@ import type { Exchange } from '@repo/protocol'
  * itself what to do next, its work can drift far from what the person asked.
  */
 export const RESUMES_WITHOUT_THE_PERSON = 3
+
+const workRecord = z.object({ thread: z.string().min(1), request: z.string(), exchange: exchangeSchema })
+const resumeRecord = z.object({ id: z.string().min(1), thread: z.string().min(1), request: z.string() })
+const resumedRecord = z.object({ id: z.string().min(1) })
+
+/** Work to take up again when the app opens: a request cut short by the restart, or one a thread planned for it. */
+export interface Resumption {
+  /** The turn cut short, or the plan's own identifier. */
+  id: string
+  thread: string
+  /** What the thread is told. */
+  request: string
+  /** For a request cut short: its line of the transcript, recorded as stopped once it is taken up. */
+  cut?: Exchange | undefined
+}
+
+/**
+ * What the last run of the app left to do, from the records: the requests its threads were answering when it
+ * stopped, and what a thread asked to be woken with, recent enough and not taken up yet, for threads still known.
+ */
+export function readResumptions(records: Records, transcript: readonly Exchange[], now: Date, known: (thread: string) => boolean): Resumption[] {
+  const answered = new Set(transcript.map((line) => line.turn))
+  const done = new Set<string>()
+  const found = new Map<string, Resumption>()
+  const recent = (at: string) => now.getTime() - Date.parse(at) <= RESUME_WITHIN_MS
+  for (const record of records.read([WORK, RESUME, RESUMED])) {
+    if (record.type === RESUMED) {
+      const read = resumedRecord.safeParse(record.payload)
+      if (read.success) done.add(read.data.id)
+    } else if (record.type === WORK) {
+      const read = workRecord.safeParse(record.payload)
+      if (read.success && !answered.has(read.data.exchange.turn) && recent(record.at))
+        found.set(read.data.exchange.turn, { id: read.data.exchange.turn, thread: read.data.thread, request: read.data.request, cut: read.data.exchange })
+    } else {
+      const read = resumeRecord.safeParse(record.payload)
+      if (read.success && recent(record.at)) found.set(read.data.id, read.data)
+    }
+  }
+  return [...found.values()].filter((one) => !done.has(one.id) && known(one.thread))
+}
 
 /**
  * How many turns in a row a thread took up by itself after a restart, since the person last spoke to it. Each counts

@@ -1,9 +1,3 @@
-/**
- * Whether what the person said is a thank you and nothing more: "thanks", "merci Ada", "ok, thank you so much". The
- * aside cards leave then, their question answered (docs/SPEC.md, section 7.5). Said with anything else ("thanks, and
- * the weather?"), it is not: the person is going on.
- */
-
 /** The words that thank, in the languages the core knows them in. */
 const THANKING = new Set([
   'thanks',
@@ -84,7 +78,12 @@ const WITH_THANKS = new Set([
   'hartelijk'
 ])
 
-export function isThanks(said: string, names: readonly string[] = []): boolean {
+/**
+ * Whether what the person said is a thank you and nothing more: "thanks", "merci Ada", "ok, thank you so much". The
+ * aside cards leave then, their question answered (docs/SPEC.md, section 7.5). Said with anything else ("thanks, and
+ * the weather?"), it is not: the person is going on. The personas' `names` are not words of the sentence.
+ */
+export function isThanks(said: string, names: readonly string[]): boolean {
   const named = new Set(names.flatMap((name) => words(name)))
   const left = words(said).filter((word) => !named.has(word))
   return left.some((word) => THANKING.has(word)) && left.every((word) => THANKING.has(word) || WITH_THANKS.has(word))

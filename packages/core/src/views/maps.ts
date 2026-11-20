@@ -1,5 +1,6 @@
 import { checkJoin, type Regions, readRegions, type ViewSpec } from '@repo/catalog'
 import type { Web } from '../ports/web.ts'
+import { keptReadings } from './readings.ts'
 
 /** The largest GeoJSON a map may name. A detailed file of every commune is bigger, and too heavy to draw. */
 const MAX_BYTES = 25 * 1024 * 1024
@@ -25,17 +26,12 @@ export interface Maps {
  * to the clients, which then need no access of their own to the address.
  */
 export function createMaps(web: Web | undefined): Maps {
-  const kept = new Map<string, Promise<ReadRegions>>()
+  const kept = keptReadings<ReadRegions>(KEPT)
 
-  const regions = (url: string): Promise<ReadRegions> => {
-    const known = kept.get(url)
-    if (known) {
-      kept.delete(url)
-      kept.set(url, known)
-      return known
-    }
-    if (!web) return Promise.resolve({ ok: false, problem: 'this core cannot read the web.' })
-    const reading = web.read(url, { maxBytes: MAX_BYTES, timeoutMs: TIMEOUT_MS }).then((read): ReadRegions => {
+  const regions = (url: string): Promise<ReadRegions> =>
+    kept(url, async () => {
+      if (!web) return { ok: false, problem: 'this core cannot read the web.' }
+      const read = await web.read(url, { maxBytes: MAX_BYTES, timeoutMs: TIMEOUT_MS })
       if (!read.ok) return { ok: false, problem: read.reason }
       try {
         const found = readRegions(JSON.parse(read.text))
@@ -44,14 +40,6 @@ export function createMaps(web: Web | undefined): Maps {
         return { ok: false, problem: 'it is not JSON. Give the address of the GeoJSON file itself, not of a page about it.' }
       }
     })
-    kept.set(url, reading)
-    // A failure is not kept: the address may answer the next time.
-    void reading.then((read) => {
-      if (!read.ok && kept.get(url) === reading) kept.delete(url)
-    })
-    while (kept.size > KEPT) kept.delete(kept.keys().next().value as string)
-    return reading
-  }
 
   return {
     regions,

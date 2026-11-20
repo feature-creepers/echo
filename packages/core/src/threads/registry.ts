@@ -1,10 +1,11 @@
 import { type Event, type Thread, type Threads, threadSchema } from '@repo/protocol'
 import type { Records } from '../ports/records.ts'
+import { shorten } from '../text.ts'
 
 /** The type of the record written each time a thread is opened or changes. Its payload is the thread whole. */
 export const THREAD = 'thread'
 /** The type of the record written when the focus moves to another topic. */
-export const FOCUS = 'thread.focus'
+const FOCUS = 'thread.focus'
 
 /** How many threads the orchestrator is told about. Older ones are still kept, and searched later. */
 const INDEXED = 12
@@ -32,16 +33,13 @@ export interface RegistryOptions {
   newId: () => string
 }
 
-/** The threads, built from their records, and kept current as they open, work, finish and take the focus. */
 /** How much of a thread's summary the orchestrator reads beside its line: enough to know where a request belongs. */
 const ABOUT_LENGTH = 240
 
 /** A thread's summary, as the orchestrator reads it on the thread's line. */
 const about = (summary: string | undefined): string => {
-  const text = summary?.replace(/\s+/g, ' ').trim()
-  if (!text) return ''
-  return `
-  about: ${text.length > ABOUT_LENGTH ? `${text.slice(0, ABOUT_LENGTH - 1)}…` : text}`
+  const text = shorten(summary ?? '', ABOUT_LENGTH)
+  return text === '' ? '' : `\n  about: ${text}`
 }
 
 /**
@@ -54,6 +52,7 @@ const fromRecord = (payload: unknown): unknown => {
   return { ...rest, kind: 'topic', ...(parent === undefined ? {} : { beside: parent }) }
 }
 
+/** The threads, built from their records, and kept current as they open, work, finish and take the focus. */
 export function createThreadRegistry({ records, now, newId }: RegistryOptions): ThreadRegistry {
   const threads = new Map<string, Thread>()
   let focus: string | undefined
@@ -121,10 +120,19 @@ export function createThreadRegistry({ records, now, newId }: RegistryOptions): 
         .slice(0, INDEXED)
       if (recent.length === 0) return 'There are no threads yet.'
       return recent
-        .map(
-          (thread) =>
-            `- ${thread.id}: "${thread.title}" (${thread.kind}${thread.beside === undefined ? '' : `, a side question asked beside ${thread.beside}`}, ${thread.state}${thread.folder === undefined ? '' : `, working in ${thread.folder}`}${thread.id === focus ? ', on screen' : ''}${thread.state === 'working' && doing?.(thread.id) ? `, answering: ${doing(thread.id)}` : ''}, last used ${thread.at.slice(0, 16).replace('T', ' ')})${about(summary?.(thread.id))}`
-        )
+        .map((thread) => {
+          const answering = thread.state === 'working' ? doing?.(thread.id) : undefined
+          const facts = [
+            thread.kind,
+            thread.beside === undefined ? undefined : `a side question asked beside ${thread.beside}`,
+            thread.state,
+            thread.folder === undefined ? undefined : `working in ${thread.folder}`,
+            thread.id === focus ? 'on screen' : undefined,
+            answering ? `answering: ${answering}` : undefined,
+            `last used ${thread.at.slice(0, 16).replace('T', ' ')}`
+          ]
+          return `- ${thread.id}: "${thread.title}" (${facts.filter(Boolean).join(', ')})${about(summary?.(thread.id))}`
+        })
         .join('\n')
     },
     onEvent(listener) {

@@ -1,4 +1,4 @@
-import { CLEAR_TOOL, MEDIA_TOOL, SHOW_TOOL } from '@repo/catalog'
+import { SHOW_TOOL } from '@repo/catalog'
 import {
   type Event,
   type Exchange,
@@ -16,83 +16,42 @@ import {
   type Threads,
   type TurnId
 } from '@repo/protocol'
-import { z } from 'zod'
 import { attachmentsFor, type Handed, handedAny, NOTHING_HANDED, noteForOrchestrator, noteForThread } from '../attachments/framing.ts'
 import type { EngineRoom } from '../engines/engines.ts'
 import type { Timers } from '../ports/clock.ts'
-import type { Harness, HarnessComputer, Reach, Scope, Session, SessionEvent } from '../ports/harness.ts'
+import type { Harness, Reach, Scope, Session, SessionEvent } from '../ports/harness.ts'
 import type { Log } from '../ports/log.ts'
 import type { Records } from '../ports/records.ts'
 import type { ToolResult } from '../ports/tools.ts'
 import { folderName, partsFrom } from '../projects/folders.ts'
 import type { UserSettings } from '../settings/settings.ts'
 import { languageOf } from '../speech/language.ts'
-import { createSentenceCutter, type SentenceCutter, speakable } from '../speech/sentences.ts'
+import { createSentenceCutter, speakable } from '../speech/sentences.ts'
+import { cutText, shorten } from '../text.ts'
 import { fitThread, stepWhole, type ThreadPage } from '../threads/fit.ts'
 import { createThreadRegistry } from '../threads/registry.ts'
-import type { Grant, Tool } from '../tools/tools.ts'
 import { ASIDE_STAYS_MS, type Checked, type Screen, type Showing } from '../views/screen.ts'
+import type { Abilities, Remembering } from './abilities.ts'
 import { DELEGATED_FIRST, instructionsFor, orchestratorInstructions, SIDE_QUESTION, SPEAK_FIRST, threadInstructions, WORK_FIRST } from './instructions.ts'
 import { readySentence } from './ready.ts'
-import { lastRequest, RESUMES_WITHOUT_THE_PERSON, resumesInARow, wakeRequest } from './resume.ts'
+import { lastRequest, RESUMED, RESUMES_WITHOUT_THE_PERSON, type Resumption, readResumptions, resumesInARow, WORK, wakeRequest } from './resume.ts'
+import { routingTools } from './routing.ts'
+import { createSubthreads } from './subthreads.ts'
 import { isThanks } from './thanks.ts'
+import { createThreadTools, SPOKEN_FIRST } from './tools.ts'
+import { type Live, newRuntime, newTurn, type Runtime, type Turn } from './turn.ts'
+
+/** The records of work to take up after a restart, which the retention period erases with the channel's own. */
+export { RESUME, RESUMED, WORK } from './resume.ts'
 
 /** The type of the record written when a turn is over: one line of the channel log, word for word. */
 export const EXCHANGE = 'channel.exchange'
 
 /** The type of the record written each time the assistant greets the user. */
-export const GREETING = 'channel.greeting'
+const GREETING = 'channel.greeting'
 
 /** The type of the record written when a tool call ends: what went in and what came out, for the side sheet. */
 export const STEP = 'channel.step'
-
-/**
- * The type of the record written when a thread starts on a request: what it was asked, so that work the app's
- * restart cut short is taken up again when it opens.
- */
-export const WORK = 'channel.work'
-
-/** The type of the record a thread writes to be woken when the app opens again: what to carry on with. */
-export const RESUME = 'channel.resume'
-
-/** The type of the record written once work cut short, or planned for after a restart, is taken up again. */
-export const RESUMED = 'channel.resumed'
-
-/** Work cut short longer ago than this is not taken up again by itself: the person has moved on. */
-export const RESUME_WITHIN_MS = 24 * 60 * 60_000
-
-/** The name of the tool a thread writes its full answer with. */
-export const ANSWER_TOOL = 'answer_write'
-
-/** The name of the tool a thread reads what the other threads are doing with. */
-export const BESIDE_TOOL = 'threads_beside'
-
-/** The name of the tool a thread asks to be woken with when the app opens again. */
-export const RESUME_TOOL = 'resume_after_restart'
-
-/** The names of the tools a thread shares out its work with, to sub-threads of its own (docs/SPEC.md, section 7.3). */
-export const SUBTHREAD_OPEN_TOOL = 'subthread_open'
-export const SUBTHREAD_SEND_TOOL = 'subthread_send'
-export const SUBTHREAD_WAIT_TOOL = 'subthread_wait'
-
-/** How many sub-threads a thread may have at work at once: enough to share out a piece of work, few enough to follow. */
-export const SUBTHREADS_AT_ONCE = 4
-
-/** How long a thread waits for its sub-threads at most, in minutes, before it is told which are still at work. */
-const WAIT_MINUTES = 10
-const WAIT_MINUTES_MAX = 30
-
-/** How much of a sub-thread's result the thread that opened it is given, in characters. */
-const RESULT_KEPT = 20_000
-
-/** The tools a thread calls only once it has said its short answer. */
-const SPOKEN_FIRST = new Set([SHOW_TOOL, ANSWER_TOOL])
-
-/** Whether a tool shows something on the screen: a sub-thread, which nobody watches, is not given these. */
-const showsOnScreen = (tool: Tool) => SCREEN_TOOLS.has(tool.definition.name)
-
-/** The screen's tools: a view, clearing it, and the player. */
-const SCREEN_TOOLS = new Set([SHOW_TOOL, CLEAR_TOOL, MEDIA_TOOL])
 
 /** How much of a tool's output is kept, in characters. A page read whole can be far longer, and is not needed whole twice. */
 const OUTPUT_KEPT = 40_000
@@ -112,44 +71,8 @@ const LONG_ANSWER_MS = 20_000
 /** How much of an answer a notification carries, in characters. */
 const NOTICE_LENGTH = 240
 
-/** What sessions can do besides speak, given by the core. */
-export interface Abilities {
-  /** Where the tool server listens. Nothing while it is not running: there are then no threads, and one session answers. */
-  server(): string | undefined
-  /** Give a session the right to call these tools, under a token of its own. */
-  grant(tools: readonly Tool[]): Grant
-  /** The tools a thread works with, for the persona's stance: the screen, bound to where its views go, and more. */
-  threadTools(showing: () => Showing, stance: Persona['stance']): Tool[]
-  /** Tools the orchestrator works with itself, besides passing turns on: what needs no screen, such as setting a reminder. */
-  orchestratorTools?(): Tool[]
-  /** What a thread is told about its tools, added to its instructions. */
-  instructions: string
-  /** What every session must keep in mind, such as decisions already made and widgets saved. Read each time a session opens. */
-  standing?(role: 'orchestrator' | 'thread'): string | undefined
-  /**
-   * What a thread is told of what it may do on the computer, as it stands now. When it changes while a session is
-   * open (the person chose another approval level), the session is told the new one with its next message instead
-   * of being opened again, so work under way keeps its context.
-   */
-  told?(tools?: HarnessComputer): string | undefined
-  /**
-   * Have a folder for a project's thread to work in, asking the person on screen, where `showing` says, when it is
-   * not theirs to change yet. Gives back the folder as the system names it, or why not.
-   */
-  workIn?(path: string, showing: Showing): Promise<{ ok: true; folder: string } | { ok: false; text: string }>
-  /** What a project tells those who work in it: its own instructions, read from its folder each time a session opens. */
-  guide?(folder: string): Promise<string | undefined>
-  /** What a thread did on the computer so far, for a new session carrying on its work. Paths are written from `folder`. */
-  worked?(thread: string, folder?: string): string | undefined
-  /** The person's computer as a thread reaches it, its questions going where `showing` says. */
-  reach?(showing: () => Showing): Reach | undefined
-  /** Changes when what a thread is given changes, such as its access to the computer: its session is then opened again. */
-  version?(): string
-  /** Something the person said that answers a question on screen, taken before any turn. True when it did. */
-  hear?(said: string, spoken?: boolean): boolean
-  /** A thread made or changed files on the computer, at these places, absolute: they are shown where `showing` says. */
-  wrote?(showing: Showing, paths: readonly string[]): void
-}
+/** How much of what a working thread answers the orchestrator is told, in characters. */
+const DOING_LENGTH = 120
 
 export interface ChannelOptions {
   engines: EngineRoom
@@ -162,8 +85,8 @@ export interface ChannelOptions {
   newId: () => string
   /** What sessions can do besides speak. Left out, one session answers everything, and only speaks. */
   abilities?: Abilities
-  /** The user's time zone, as an IANA name. Left out, the machine's. */
-  timeZone?: string
+  /** The person's time zone, as an IANA name. Left out, the machine's. */
+  timeZone?: () => string
   /** What the assistant remembers. Left out, it knows only the latest lines of the transcript. */
   memory?: Remembering
   /**
@@ -181,23 +104,8 @@ export interface ChannelOptions {
   timers?: Timers | undefined
 }
 
-/** What the channel asks of the memory (docs/SPEC.md, section 10.5). */
-export interface Remembering {
-  /** Something was said or answered: the assistant wakes if it was asleep, and the quiet period starts again. */
-  wake(): void
-  /** What to add ahead of what the user said. Lines of the log written from `knownSince` on are known to the session already. */
-  recall(said: string, knownSince?: string): string | undefined
-  /**
-   * What every session is told about the user. `version` changes only when sleep writes a new profile: sessions
-   * are then opened again with it. Facts learned in between reach the next session opened for another reason.
-   */
-  profile(): { text: string; version?: string | undefined } | undefined
-  /** What a thread is about and where it stands, as sleep last wrote it. */
-  summary?(thread: string): string | undefined
-}
-
 /** A moment as a person says it, with its time zone: "Tuesday, 17 November 2026, 14:13 (Europe/Paris)". */
-export function moment(at: Date, timeZone?: string): string {
+function moment(at: Date, timeZone?: string): string {
   const zone = timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
   const written = new Intl.DateTimeFormat('en-GB', {
     weekday: 'long',
@@ -217,8 +125,7 @@ export function planProgress(plan: readonly PlanStep[]): string | undefined {
   const at = plan.findIndex((one) => one.state === 'current')
   const step = at >= 0 ? at : plan.findIndex((one) => one.state === 'todo')
   if (step < 0) return `all ${plan.length} steps done`
-  const text = plan[step]?.text ?? ''
-  return `step ${step + 1} of ${plan.length}: ${text.length > DOING_LENGTH ? `${text.slice(0, DOING_LENGTH - 1)}…` : text}`
+  return `step ${step + 1} of ${plan.length}: ${shorten(plan[step]?.text ?? '', DOING_LENGTH)}`
 }
 
 /** A line of the transcript without a plan: the session dropped its to-do list. */
@@ -296,168 +203,6 @@ export interface Channel {
   close(): void
 }
 
-interface Turn {
-  exchange: Exchange
-  language: string | undefined
-  /** The files and folders the person handed over with it. They follow it to the thread that answers. */
-  handed: Handed
-  /** Cuts the text of whoever is speaking into sentences. Each speaker gets its own, so one's words never run into another's. */
-  cutter: SentenceCutter
-  /** How many of its sentences were said aloud while it was on the stage. */
-  heard: number
-  /** Its sentences so far, as said: a model that repeats itself after its tool calls is not heard twice. */
-  sentences: Set<string>
-  /** A call to show or write was sent back once because nothing had been said yet. It is not sent back twice. */
-  urged: boolean
-  /** Its tool calls under way, by call, and how many it made. */
-  steps: Map<string, Step>
-  calls: number
-  /** The user stopped it: nothing more of it is said or kept. */
-  stopped: boolean
-  /** The thread answering it, once the orchestrator has passed it on. */
-  routed: Runtime | undefined
-  /**
-   * A side question (docs/SPEC.md, section 7.5): passed on without moving the focus, so the topic on the stage stays
-   * there, and answered in passing, its view an aside card.
-   */
-  aside: boolean
-  /**
-   * A second request in the same words ("stop the radio, and what is the weather?") is a turn of its own,
-   * answered by its own thread. It is heard after this one: `next` on the first, `after` on the second.
-   */
-  next: Turn | undefined
-  after: Turn | undefined
-  /** What a second request's thread said while the first was still being answered, said once it is. */
-  held: string[]
-  /** It has spoken and then shown its view: anything it writes after that would only say the answer again. */
-  shown: boolean
-  /** Its answer is kept and shown, and not said: a scheduled task during the quiet hours. */
-  silent: boolean
-  /** What a notification calls it, for a turn the person did not start: the scheduled task's title. */
-  title: string | undefined
-  /** A notification already told the person it is done. */
-  noticed: boolean
-  /**
-   * For a project's thread: a tool call has started. What it writes after that is held, since it is commentary on
-   * the way unless the turn ends after it: then it is how the work went, and it is said.
-   */
-  working: boolean
-  /** What it wrote since its last call, held. */
-  narration: string[]
-  /** How many sentences it had said when its work began: more must follow, saying how the work went. */
-  saidBeforeWork: number
-  /** The files its calls changed so far, for the other threads working beside it. */
-  touched: Set<string>
-  /**
-   * For part of a thread's work handed to a sub-thread: the thread that handed it. Nothing of it is said or shown, and
-   * its result goes back to that thread.
-   */
-  delegated: string | undefined
-  /** Told when it is stopped: a wait of its thread for its sub-threads ends with it. */
-  stopping: (() => void)[]
-}
-
-/** A live session, and what it was opened for. When any of that changes, the session is replaced. */
-interface Live {
-  session: Session
-  key: string
-  grant: Grant | undefined
-  /** The date of the oldest line the session was told about: recall leaves out what it already has. */
-  knownSince: string
-  /** What it was last told of what it may do on the computer. */
-  told?: string | undefined
-}
-
-/** A thread at work: its session, the turn it answers, and what waits for it. */
-interface Runtime {
-  thread: string
-  live: Live | undefined
-  answering: Turn | undefined
-  queue: { turn: Turn; text: string }[]
-  /** Files the person handed this thread, by where they are: it may read them, whatever else it may reach. */
-  readable: string[]
-  /** Where its views go, once its session is open. */
-  showing: (() => Showing) | undefined
-  /** Told once it has nothing left to answer: the thread that opened it, waiting for its result. */
-  idle: (() => void)[]
-  /**
-   * How long its session stays open once it has nothing to answer, after its latest request: a side question's, as long
-   * as its card. Left out, it stays open until the app quits, as a topic's does.
-   */
-  kept: number | undefined
-  /** Cancels the closing of its session, due once it was kept long enough with nothing to answer. */
-  closing: (() => void) | undefined
-}
-
-const openInput = z.object({
-  title: z.string().trim().min(1).max(80),
-  kind: z.enum(['topic', 'aside']).default('topic'),
-  request: z.string().optional(),
-  folder: z.string().trim().min(1).max(4096).optional()
-})
-const sendInput = z.object({ thread: z.string().min(1), request: z.string().optional(), wait: z.boolean().optional() })
-const subthreadOpenInput = z.object({
-  title: z.string().trim().min(1).max(80),
-  request: z.string().trim().min(1).max(20_000),
-  folder: z.string().trim().min(1).max(4096).optional()
-})
-const subthreadSendInput = z.object({ thread: z.string().min(1), request: z.string().trim().min(1).max(20_000) })
-const subthreadWaitInput = z.object({
-  threads: z
-    .array(z.string().min(1))
-    .max(SUBTHREADS_AT_ONCE * 4)
-    .optional(),
-  minutes: z.number().positive().max(WAIT_MINUTES_MAX).optional()
-})
-
-/** How much of what a working thread answers the orchestrator is told, in characters. */
-const DOING_LENGTH = 120
-const focusInput = z.object({ thread: z.string().min(1) })
-const answerInput = z.object({ text: z.string().trim().min(1) })
-const resumeInput = z.object({ request: z.string().trim().min(1).max(4000) })
-const workRecord = z.object({ thread: z.string().min(1), request: z.string(), exchange: exchangeSchema })
-const resumeRecord = z.object({ id: z.string().min(1), thread: z.string().min(1), request: z.string() })
-const resumedRecord = z.object({ id: z.string().min(1) })
-
-/** Work to take up again when the app opens: a request cut short by the restart, or one a thread planned for it. */
-interface Resumption {
-  /** The turn cut short, or the plan's own identifier. */
-  id: string
-  thread: string
-  /** What the thread is told. */
-  request: string
-  /** For a request cut short: its line of the transcript, recorded as stopped once it is taken up. */
-  cut?: Exchange | undefined
-}
-
-const newTurn = (exchange: Exchange, language: string | undefined, handed: Handed = NOTHING_HANDED, silent = false, title?: string): Turn => ({
-  exchange,
-  language,
-  handed,
-  cutter: createSentenceCutter(),
-  heard: 0,
-  sentences: new Set(),
-  urged: false,
-  steps: new Map(),
-  calls: 0,
-  stopped: false,
-  routed: undefined,
-  aside: false,
-  next: undefined,
-  after: undefined,
-  held: [],
-  shown: false,
-  silent,
-  title,
-  noticed: false,
-  working: false,
-  narration: [],
-  saidBeforeWork: 0,
-  touched: new Set(),
-  delegated: undefined,
-  stopping: []
-})
-
 /**
  * The channel hears every turn through the orchestrator, a warm session on a fast model, which answers small
  * things itself and passes the rest to threads. A thread answers the user directly, sentence by sentence.
@@ -487,30 +232,8 @@ export function createChannel(options: ChannelOptions): Channel {
     return thread?.kind === 'subthread' ? (thread.parent ?? id) : id
   }
 
-  /**
-   * What the last run of the app left to do: the requests its threads were answering when it stopped, and what a
-   * thread asked to be woken with. Taken up once, by `resume`, when a client is there.
-   */
-  const resumptions: Resumption[] = (() => {
-    const answered = new Set(transcript.map((line) => line.turn))
-    const done = new Set<string>()
-    const found = new Map<string, Resumption>()
-    const recent = (at: string) => now().getTime() - Date.parse(at) <= RESUME_WITHIN_MS
-    for (const record of records.read([WORK, RESUME, RESUMED])) {
-      if (record.type === RESUMED) {
-        const read = resumedRecord.safeParse(record.payload)
-        if (read.success) done.add(read.data.id)
-      } else if (record.type === WORK) {
-        const read = workRecord.safeParse(record.payload)
-        if (read.success && !answered.has(read.data.exchange.turn) && recent(record.at))
-          found.set(read.data.exchange.turn, { id: read.data.exchange.turn, thread: read.data.thread, request: read.data.request, cut: read.data.exchange })
-      } else {
-        const read = resumeRecord.safeParse(record.payload)
-        if (read.success && recent(record.at)) found.set(read.data.id, read.data)
-      }
-    }
-    return [...found.values()].filter((one) => !done.has(one.id) && registry.get(one.thread) !== undefined)
-  })()
+  /** What the last run of the app left to do: taken up once, by `resume`, when a client is there. */
+  const resumptions: Resumption[] = readResumptions(records, transcript, now(), (thread) => registry.get(thread) !== undefined)
   /**
    * Sentences of an answer written while another turn was on the stage, by turn: what is said when its thread is
    * brought back. Only what was not heard, so nothing is ever said twice.
@@ -521,8 +244,6 @@ export function createChannel(options: ChannelOptions): Channel {
    * section 7.4). One the person brings back first, from its chip or by asking, is not told again.
    */
   const toTell = new Set<string>()
-  /** Sub-threads whose result the thread that opened them has not read yet: it is given them when it waits for them. */
-  const unread = new Set<string>()
 
   /** The turn on the stage: what is said is said aloud. */
   let current: Turn | undefined
@@ -581,17 +302,18 @@ export function createChannel(options: ChannelOptions): Channel {
         : ([...turn.steps.values()].find((open) => open.tool === event.name)?.call ?? `${turn.exchange.turn}:${++turn.calls}`))
     const known = turn.steps.get(call)
     const at = now().toISOString()
+    const input = event.input ?? known?.input
     const next: Step = {
       call,
       turn: turn.exchange.turn,
       ...(thread === undefined ? {} : { thread }),
       tool: event.name,
       at: known?.at ?? at,
-      ...((event.input ?? known?.input) === undefined ? {} : { input: event.input ?? known?.input })
+      ...(input === undefined ? {} : { input })
     }
     if (event.phase === 'ended') {
       for (const file of event.wrote ?? []) turn.touched.add(file)
-      if (event.output !== undefined) next.output = event.output.length > OUTPUT_KEPT ? `${event.output.slice(0, OUTPUT_KEPT)}\n[…cut]` : event.output
+      if (event.output !== undefined) next.output = cutText(event.output, OUTPUT_KEPT)
       if (event.failed) next.failed = true
       if (event.use !== undefined) next.use = event.use
       next.ended = at
@@ -615,7 +337,7 @@ export function createChannel(options: ChannelOptions): Channel {
     // A scheduled task's answer, or one that took long, is told in a notification too: the person may have turned away.
     // A sub-thread's result goes to the thread that opened it, which tells the person.
     const long = now().getTime() - new Date(turn.exchange.at).getTime() > LONG_ANSWER_MS
-    if (turn.delegated !== undefined && turn.exchange.thread !== undefined) unread.add(turn.exchange.thread)
+    if (turn.delegated !== undefined && turn.exchange.thread !== undefined) subthreads.finished(turn.exchange.thread)
     else if (turn.exchange.outcome === 'done' && (turn.exchange.trigger === 'task' || long)) notice(turn)
     if (current === turn) {
       current = undefined
@@ -658,16 +380,8 @@ export function createChannel(options: ChannelOptions): Channel {
     if (ready.length === 0 || results === 'chip' || options.mayInterrupt?.() === false) return
     if (results === 'mention') {
       const language = answerLanguage() ?? conversationLanguage
-      byItself(
-        'ready',
-        [
-          readySentence(
-            ready.map((thread) => thread.title),
-            language
-          )
-        ],
-        language
-      )
+      const titles = ready.map((thread) => thread.title)
+      byItself('ready', [readySentence(titles, language)], language)
       return
     }
     for (const thread of ready) {
@@ -740,14 +454,11 @@ export function createChannel(options: ChannelOptions): Channel {
 
   /** Tell the person, in a notification, that an answer is there: once per turn, and only for an answer with words. */
   const notice = (turn: Turn) => {
-    const body = turn.exchange.replied.trim()
+    const body = shorten(turn.exchange.replied, NOTICE_LENGTH)
     if (turn.noticed || turn.stopped || body === '' || !options.notify) return
     turn.noticed = true
     const thread = turn.exchange.thread === undefined ? undefined : registry.get(turn.exchange.thread)
-    options.notify({
-      title: turn.title ?? thread?.title ?? activePersona().name,
-      body: body.length > NOTICE_LENGTH ? `${body.slice(0, NOTICE_LENGTH - 1).trimEnd()}…` : body
-    })
+    options.notify({ title: turn.title ?? thread?.title ?? activePersona().name, body })
   }
 
   /** The latest lines a new session is told: a thread's own, or the conversation's, which leaves out sub-threads' work. */
@@ -773,11 +484,81 @@ export function createChannel(options: ChannelOptions): Channel {
   const runtimeFor = (thread: string): Runtime => {
     let runtime = runtimes.get(thread)
     if (!runtime) {
-      runtime = { thread, live: undefined, answering: undefined, queue: [], readable: [], showing: undefined, idle: [], kept: undefined, closing: undefined }
+      runtime = newRuntime(thread)
       runtimes.set(thread, runtime)
     }
     return runtime
   }
+
+  /** What a thread is answering now, in the words it was given, and where its plan stands, for the others. */
+  const doing = (thread: string): string | undefined => {
+    const exchange = runtimes.get(thread)?.answering?.exchange
+    if (exchange === undefined) return undefined
+    const asked = shorten(exchange.said, DOING_LENGTH)
+    if (asked === '') return undefined
+    const where = exchange.plan ? planProgress(exchange.plan) : undefined
+    return where === undefined ? asked : `${asked} (${where})`
+  }
+
+  /** What a thread is about, from the summary sleep wrote, for the index the orchestrator reads. */
+  const summaryOf = (thread: string) => memory?.summary?.(thread)
+
+  /**
+   * Hand a sub-thread part of a thread's work: a line of its own, which no one hears, answered as soon as it is free.
+   * Files the person handed the thread may be read by its sub-threads too.
+   */
+  const handTo = (runtime: Runtime, thread: Thread, request: string) => {
+    const exchange: Exchange = {
+      turn: newId(),
+      at: now().toISOString(),
+      persona: activePersona().id,
+      thread: thread.id,
+      said: request,
+      trigger: 'delegated',
+      replied: '',
+      outcome: 'running'
+    }
+    const turn = newTurn(exchange, runtime.answering?.language, NOTHING_HANDED, true, thread.title)
+    turn.delegated = runtime.thread
+    const sub = runtimeFor(thread.id)
+    turn.routed = sub
+    for (const file of runtime.readable) if (!sub.readable.includes(file)) sub.readable.push(file)
+    transcript.push(exchange)
+    emit({ type: 'event', name: 'turn.started', exchange })
+    sub.queue.push({ turn, text: request })
+    void next(sub)
+  }
+
+  const subthreads = createSubthreads({
+    registry,
+    transcript,
+    timers: options.timers,
+    workIn: abilities?.workIn?.bind(abilities),
+    handTo,
+    // Resolves once a thread has nothing left to answer.
+    idle: (thread) =>
+      new Promise<void>((resolve) => {
+        const runtime = runtimeFor(thread)
+        if (!runtime.answering && runtime.queue.length === 0) return resolve()
+        runtime.idle.push(resolve)
+      })
+  })
+
+  const threadTools = createThreadTools({
+    registry,
+    records,
+    newId,
+    transcript,
+    subthreads,
+    ownerOf,
+    doing,
+    touched: (thread) => [...(runtimes.get(thread)?.answering?.touched ?? [])],
+    written: (turn, text) => {
+      turn.exchange = { ...turn.exchange, written: text }
+      replace(turn.exchange)
+      emit({ type: 'event', name: 'answer.written', exchange: turn.exchange })
+    }
+  })
 
   const threadSession = async (runtime: Runtime, engine: Harness, server: string): Promise<Session> => {
     const thread = registry.get(runtime.thread)
@@ -819,19 +600,7 @@ export function createChannel(options: ChannelOptions): Channel {
       aside: runtime.answering?.aside === true
     })
     runtime.showing = showing
-    // A topic shares out its work to sub-threads. A sub-thread has no screen and speaks to no one: its full answer is its
-    // result, and it opens no sub-thread of its own, so work never fans out beyond what the person can follow.
-    const own =
-      kind === 'subthread'
-        ? [...(abilities?.threadTools(showing, persona.stance) ?? []).filter((tool) => !showsOnScreen(tool)), answerTool(runtime), besideTool(runtime)]
-        : [
-            ...(abilities?.threadTools(showing, persona.stance) ?? []),
-            answerTool(runtime),
-            besideTool(runtime),
-            resumeTool(runtime),
-            ...(kind === 'topic' ? subthreadTools(runtime) : [])
-          ].map((tool) => (SPOKEN_FIRST.has(tool.definition.name) ? speakFirst(runtime, tool) : tool))
-    const grant = abilities?.grant(own)
+    const grant = abilities?.grant(threadTools.toolsOf(runtime, kind, abilities.threadTools(showing, persona.stance)))
     const earlier = recapFor(runtime.thread)
     const instructions = threadInstructions({
       persona,
@@ -910,8 +679,8 @@ export function createChannel(options: ChannelOptions): Channel {
         if (!turn) return
         // The harness's own to-do list for the work: the person sees where it stands, and the others are told.
         const plan = event.steps.slice(0, PLAN_STEPS_MAX).flatMap((one) => {
-          const text = one.text.replace(/\s+/g, ' ').trim()
-          return text === '' ? [] : [{ text: text.length > PLAN_STEP_MAX_LENGTH ? `${text.slice(0, PLAN_STEP_MAX_LENGTH - 1)}…` : text, state: one.state }]
+          const text = shorten(one.text, PLAN_STEP_MAX_LENGTH)
+          return text === '' ? [] : [{ text, state: one.state }]
         })
         turn.exchange = plan.length > 0 ? { ...turn.exchange, plan } : withoutPlan(turn.exchange)
         replace(turn.exchange)
@@ -999,25 +768,21 @@ export function createChannel(options: ChannelOptions): Channel {
     runtime.kept = waiting.turn.aside ? ASIDE_STAYS_MS : undefined
     runtime.answering = waiting.turn
     registry.setState(runtime.thread, 'working')
+    /** The request ends before its session hears it: the thread is free again for the next. */
+    const skip = (outcome: 'failed' | 'stopped', problem?: string) => {
+      runtime.answering = undefined
+      finish(waiting.turn, outcome, problem)
+      registry.setState(runtime.thread, 'parked')
+      return void next(runtime)
+    }
     const engine = await harness()
     const server = abilities?.server()
-    if (typeof engine === 'string' || server === undefined) {
-      runtime.answering = undefined
-      finish(waiting.turn, 'failed', typeof engine === 'string' ? engine : 'The tools are not running.')
-      return void next(runtime)
-    }
-    if (waiting.turn.stopped) {
-      runtime.answering = undefined
-      finish(waiting.turn, 'stopped')
-      return void next(runtime)
-    }
+    if (typeof engine === 'string') return skip('failed', engine)
+    if (server === undefined) return skip('failed', 'The tools are not running.')
+    if (waiting.turn.stopped) return skip('stopped')
     const live = runtime.live
     const session = await threadSession(runtime, engine, server)
-    if (waiting.turn.stopped) {
-      runtime.answering = undefined
-      finish(waiting.turn, 'stopped')
-      return void next(runtime)
-    }
+    if (waiting.turn.stopped) return skip('stopped')
     // A session kept open is told what changed of what it may do on the computer, rather than opened again.
     const told = abilities?.told?.(await engine.computer?.())
     const changed =
@@ -1035,300 +800,13 @@ export function createChannel(options: ChannelOptions): Channel {
     // beside it is told now, when it starts, rather than when it was asked: others may have started meanwhile. So are
     // its own sub-threads still at work, or done since it last read them.
     records.append([{ type: WORK, payload: { thread: runtime.thread, request: waiting.text, exchange: waiting.turn.exchange } }])
-    const beside = working ? `${besideIn(working)}${subthreadsOf(working)}` : ''
+    const beside = working ? `${threadTools.besideIn(working)}${subthreads.note(working.id)}` : ''
     // A side question is answered in passing; a request that follows it up is the topic's own, answered in full.
     const side = waiting.turn.aside ? `${SIDE_QUESTION}\n\n` : ''
     session.send(
       `${context()}\n${changed}${recalled ? `${recalled}\n\n` : ''}${waiting.text}${beside}\n\n${note ? `${note}\n\n` : ''}${side}${reminder}`,
       attachmentsFor(handed, images)
     )
-  }
-
-  /** A thread's sub-threads still at work, or done since it last read them, told to it when it starts on a request. */
-  const subthreadsOf = (thread: Thread): string => {
-    const own = registry
-      .read()
-      .threads.filter((other) => other.kind === 'subthread' && other.parent === thread.id && (other.state === 'working' || unread.has(other.id)))
-    if (own.length === 0) return ''
-    const lines = own.map((other) => `${other.id} "${other.title}" (${other.state === 'working' ? 'at work' : 'done, not read yet'})`)
-    return `\n\n(Your sub-threads: ${lines.join('; ')}. Call ${SUBTHREAD_WAIT_TOOL} for what they found before you rely on their part.)`
-  }
-
-  /** What a thread is about, from the summary sleep wrote, for the index the orchestrator reads. */
-  const summaryOf = (thread: string) => memory?.summary?.(thread)
-
-  /** What a thread is answering now, in the words it was given, for the index the orchestrator reads. */
-  const doing = (thread: string): string | undefined => {
-    const exchange = runtimes.get(thread)?.answering?.exchange
-    const said = exchange?.said.replace(/\s+/g, ' ').trim()
-    if (said === undefined || said === '') return undefined
-    const asked = said.length > DOING_LENGTH ? `${said.slice(0, DOING_LENGTH - 1)}…` : said
-    const where = exchange?.plan ? planProgress(exchange.plan) : undefined
-    return where === undefined ? asked : `${asked} (${where})`
-  }
-
-  /** The other threads at work in a folder now, told to a project's thread that starts beside them. */
-  const besideIn = (thread: Thread): string => {
-    if (thread.folder === undefined) return ''
-    const others = registry
-      .read()
-      .threads.filter((other) => other.id !== thread.id && other.folder === thread.folder && other.state === 'working')
-      .map((other) => `"${other.title}"${doing(other.id) ? `, on: ${doing(other.id)}` : ''}`)
-    if (others.length === 0) return ''
-    return `\n\n(Other threads are working in this folder at the same time: ${others.join('; ')}. Change only what your task needs, leave their files alone, and commit only your own changes, naming each file. Call ${BESIDE_TOOL} to see where they stand before you commit, and before anything that restarts the app.)`
-  }
-
-  /** The other threads at work now, wherever they work: what each answers, and the files it changed so far. */
-  const besideTool = (runtime: Runtime): Tool => ({
-    definition: {
-      name: BESIDE_TOOL,
-      description:
-        'What the other threads are doing now: each one at work, its folder, what it is answering and the files it changed so far. Call it before you commit, push or build, and before anything that restarts the app you run in, so that you neither undo nor cut short their work.',
-      inputSchema: { type: 'object', properties: {} }
-    },
-    run() {
-      const others = registry.read().threads.filter((other) => other.id !== runtime.thread && other.state === 'working')
-      if (others.length === 0) return { ok: true, text: 'No other thread is at work.' }
-      const own = registry.get(runtime.thread)?.folder
-      const lines = others.map((other) => {
-        const files = [...(runtimes.get(other.id)?.answering?.touched ?? [])]
-        const where = other.folder === undefined ? '' : ` in ${other.folder}${other.folder === own ? ' (your folder)' : ''}`
-        const answering = doing(other.id)
-        const yours = other.kind === 'subthread' && other.parent === runtime.thread ? ', your sub-thread' : ''
-        return [
-          `- "${other.title}"${yours}${where}`,
-          answering ? `  answering: ${answering}` : '',
-          files.length > 0 ? `  changed so far: ${files.slice(-20).join(', ')}` : '  changed no file so far'
-        ]
-          .filter(Boolean)
-          .join('\n')
-      })
-      return {
-        ok: true,
-        text: `${lines.join('\n')}\nLeave their files alone and commit only yours. Restarting or updating the app you run in cuts their work short: while they work, do it only if the person asked, and call ${RESUME_TOOL} first.`
-      }
-    }
-  })
-
-  /** Ask to be woken when the app opens again, with what to carry on with: for a thread about to restart it. */
-  const resumeTool = (runtime: Runtime): Tool => ({
-    definition: {
-      name: RESUME_TOOL,
-      description:
-        'Before you do something that restarts the app you run in (installing a new build of it, for instance), say what to carry on with once it opens again: you are then woken with it, without the person having to tell you. Work cut short by a restart is taken up again by itself; this is for what comes after, such as checking the new build and going on with the plan.',
-      inputSchema: {
-        type: 'object',
-        properties: { request: { type: 'string', description: 'What to do once the app has opened again, as the person would ask it.' } },
-        required: ['request']
-      }
-    },
-    run(input) {
-      const asked = resumeInput.safeParse(input)
-      if (!asked.success) return { ok: false, text: `${RESUME_TOOL} takes what to carry on with, as text.` }
-      const owner = ownerOf(runtime.thread)
-      if (resumesInARow(transcript, owner) >= RESUMES_WITHOUT_THE_PERSON)
-        return {
-          ok: false,
-          text: `You have already carried this work on by yourself across ${RESUMES_WITHOUT_THE_PERSON} restarts since the person last spoke to you. Do not restart the app: say where the work stands, write your report, and wait for them.`
-        }
-      records.append([{ type: RESUME, payload: { id: newId(), thread: runtime.thread, request: asked.data.request } }])
-      return { ok: true, text: 'Kept: when the app opens again, you are woken with it.' }
-    }
-  })
-
-  /** A thread's own sub-threads: all of them, or those at work or with a result it has not read. */
-  const subthreadsOfThread = (thread: string, which: 'all' | 'pending' = 'all') =>
-    registry
-      .read()
-      .threads.filter(
-        (other) => other.kind === 'subthread' && other.parent === thread && (which === 'all' || other.state === 'working' || unread.has(other.id))
-      )
-
-  /**
-   * Hand a sub-thread part of a thread's work: a line of its own, which no one hears, answered as soon as it is free.
-   * Files the person handed the thread may be read by its sub-threads too.
-   */
-  const handTo = (runtime: Runtime, thread: Thread, request: string) => {
-    const exchange: Exchange = {
-      turn: newId(),
-      at: now().toISOString(),
-      persona: activePersona().id,
-      thread: thread.id,
-      said: request,
-      trigger: 'delegated',
-      replied: '',
-      outcome: 'running'
-    }
-    const turn = newTurn(exchange, runtime.answering?.language, NOTHING_HANDED, true, thread.title)
-    turn.delegated = runtime.thread
-    const sub = runtimeFor(thread.id)
-    turn.routed = sub
-    for (const file of runtime.readable) if (!sub.readable.includes(file)) sub.readable.push(file)
-    transcript.push(exchange)
-    emit({ type: 'event', name: 'turn.started', exchange })
-    sub.queue.push({ turn, text: request })
-    void next(sub)
-  }
-
-  /** Resolves once a thread has nothing left to answer. */
-  const idleOf = (thread: string) =>
-    new Promise<void>((resolve) => {
-      const runtime = runtimeFor(thread)
-      if (!runtime.answering && runtime.queue.length === 0) return resolve()
-      runtime.idle.push(resolve)
-    })
-
-  /** What a sub-thread found, for the thread that opened it: its full answer, or what it wrote, and how it ended. */
-  const resultOf = (thread: Thread): string => {
-    const line = transcript.findLast((one) => one.thread === thread.id && one.outcome !== 'running')
-    if (!line) return `${thread.id} "${thread.title}": no result.`
-    const found = (line.written ?? line.replied).trim()
-    const kept = found.length > RESULT_KEPT ? `${found.slice(0, RESULT_KEPT)}\n[…cut]` : found
-    const ended = line.outcome === 'failed' ? ` (it failed${line.problem ? `: ${line.problem}` : ''})` : line.outcome === 'stopped' ? ' (it was stopped)' : ''
-    return `${thread.id} "${thread.title}"${ended}:\n${kept === '' ? '(It gave no result.)' : kept}`
-  }
-
-  /**
-   * The tools a topic's thread shares out its work with (docs/SPEC.md, section 7.3): sub-threads of its own, each
-   * working at the same time with the thread's tools, in its folder for a project, which it gives more to do and
-   * waits for. A sub-thread answers the thread, never the person.
-   */
-  const subthreadTools = (runtime: Runtime): Tool[] => {
-    const mine = (id: string) => {
-      const thread = registry.get(id)
-      return thread?.kind === 'subthread' && thread.parent === runtime.thread ? thread : undefined
-    }
-    const listing = () => {
-      const own = subthreadsOfThread(runtime.thread)
-      return own.length === 0
-        ? 'You have no sub-thread.'
-        : `Your sub-threads: ${own.map((one) => `${one.id} "${one.title}" (${one.state === 'working' ? 'at work' : 'idle'})`).join('; ')}.`
-    }
-    const full = () =>
-      subthreadsOfThread(runtime.thread).filter((one) => one.state === 'working').length >= SUBTHREADS_AT_ONCE
-        ? `You already have ${SUBTHREADS_AT_ONCE} sub-threads at work, the most at once. Wait for them with ${SUBTHREAD_WAIT_TOOL} first.`
-        : undefined
-    return [
-      {
-        definition: {
-          name: SUBTHREAD_OPEN_TOOL,
-          description: `Hand part of your work to a sub-thread: a thread of its own, with your tools, that works on it at the same time as you, in your folder for a project. Give it a short title and a complete request, since it knows only what you tell it. It never speaks to the person: carry on with your own part, then call ${SUBTHREAD_WAIT_TOOL} for what it found. ${SUBTHREADS_AT_ONCE} at work at once at most.`,
-          inputSchema: {
-            type: 'object',
-            properties: {
-              title: { type: 'string', description: 'Its part of the work, in a few words.' },
-              request: { type: 'string', description: 'What to do, completely: what it is for, what to find or change, and what to give back.' },
-              folder: {
-                type: 'string',
-                description:
-                  'A folder of the person to work in, other than yours: absolute, or from ~. Left out, yours. The person is asked first when it is not one they let you change.'
-              }
-            },
-            required: ['title', 'request']
-          }
-        },
-        async run(input) {
-          const turn = runtime.answering
-          const asked = subthreadOpenInput.safeParse(input)
-          if (!turn) return { ok: false, text: 'There is no work under way to share out.' }
-          if (!asked.success) return { ok: false, text: `${SUBTHREAD_OPEN_TOOL} takes a title and the request, and a folder for work elsewhere.` }
-          const refused = full()
-          if (refused) return { ok: false, text: refused }
-          let folder = registry.get(runtime.thread)?.folder
-          if (asked.data.folder !== undefined) {
-            if (!abilities?.workIn || !runtime.showing) return { ok: false, text: 'There is no computer to work on here.' }
-            const found = await abilities.workIn(asked.data.folder, runtime.showing())
-            if (!found.ok) return { ok: false, text: found.text }
-            folder = found.folder
-          }
-          if (runtime.answering !== turn || turn.stopped) return { ok: false, text: 'Your work was stopped: open nothing more.' }
-          const thread = registry.open({ title: asked.data.title, kind: 'subthread', parent: runtime.thread, folder })
-          handTo(runtime, thread, asked.data.request)
-          return {
-            ok: true,
-            text: `Sub-thread ${thread.id} "${thread.title}" is at work. Carry on with your own part, then call ${SUBTHREAD_WAIT_TOOL} for what it found.`
-          }
-        }
-      },
-      {
-        definition: {
-          name: SUBTHREAD_SEND_TOOL,
-          description: `Give one of your sub-threads more to do: it does it once it is done with what it is doing, remembering its earlier work. Then call ${SUBTHREAD_WAIT_TOOL} for what it found.`,
-          inputSchema: {
-            type: 'object',
-            properties: {
-              thread: { type: 'string', description: `The sub-thread's id, as ${SUBTHREAD_OPEN_TOOL} gave it.` },
-              request: { type: 'string', description: 'What to do next, completely.' }
-            },
-            required: ['thread', 'request']
-          }
-        },
-        run(input) {
-          const asked = subthreadSendInput.safeParse(input)
-          if (!runtime.answering) return { ok: false, text: 'There is no work under way to share out.' }
-          const thread = asked.success ? mine(asked.data.thread) : undefined
-          if (!asked.success || !thread) return { ok: false, text: `There is no such sub-thread of yours. ${listing()}` }
-          const busy = thread.state === 'working'
-          const refused = busy ? undefined : full()
-          if (refused) return { ok: false, text: refused }
-          handTo(runtime, thread, asked.data.request)
-          return {
-            ok: true,
-            text: busy
-              ? `Sub-thread ${thread.id} does it once it is done with what it is doing. Call ${SUBTHREAD_WAIT_TOOL} for what it found.`
-              : `Sub-thread ${thread.id} is at work on it. Call ${SUBTHREAD_WAIT_TOOL} for what it found.`
-          }
-        }
-      },
-      {
-        definition: {
-          name: SUBTHREAD_WAIT_TOOL,
-          description: `Wait until your sub-threads are done, and read what they found: each one's result, whole. Left out, all of yours at work or with a result you have not read. Gives back after ${WAIT_MINUTES} minutes at most, or the minutes you say, saying which are still at work: call it again to go on waiting.`,
-          inputSchema: {
-            type: 'object',
-            properties: {
-              threads: { type: 'array', items: { type: 'string' }, description: 'The sub-threads to wait for, by id.' },
-              minutes: { type: 'number', description: `How long to wait at most, up to ${WAIT_MINUTES_MAX}.` }
-            }
-          }
-        },
-        async run(input) {
-          const turn = runtime.answering
-          const asked = subthreadWaitInput.safeParse(input ?? {})
-          if (!turn) return { ok: false, text: 'There is no work under way.' }
-          if (!asked.success) return { ok: false, text: `${SUBTHREAD_WAIT_TOOL} takes the sub-threads to wait for, by id, and the minutes to wait at most.` }
-          const unknown = (asked.data.threads ?? []).filter((id) => mine(id) === undefined)
-          if (unknown.length > 0) return { ok: false, text: `Not sub-threads of yours: ${unknown.join(', ')}. ${listing()}` }
-          const awaited = asked.data.threads ?? subthreadsOfThread(runtime.thread, 'pending').map((one) => one.id)
-          if (awaited.length === 0) return { ok: true, text: `Nothing to wait for. ${listing()}` }
-          let cancel: (() => void) | undefined
-          await Promise.race([
-            Promise.all(awaited.map(idleOf)),
-            new Promise<void>((resolve) => {
-              cancel = options.timers?.after((asked.data.minutes ?? WAIT_MINUTES) * 60_000, resolve)
-            }),
-            new Promise<void>((resolve) => turn.stopping.push(resolve))
-          ])
-          cancel?.()
-          if (turn.stopped) return { ok: false, text: 'Your work was stopped, and your sub-threads with it.' }
-          const threads = awaited.flatMap((id) => mine(id) ?? [])
-          const done = threads.filter((one) => one.state !== 'working')
-          const still = threads.filter((one) => one.state === 'working')
-          for (const one of done) unread.delete(one.id)
-          return {
-            ok: true,
-            text: [
-              ...done.map(resultOf),
-              still.length > 0
-                ? `Still at work: ${still.map((one) => `${one.id} "${one.title}"`).join(', ')}. Call ${SUBTHREAD_WAIT_TOOL} again to go on waiting.`
-                : ''
-            ]
-              .filter(Boolean)
-              .join('\n\n')
-          }
-        }
-      }
-    ]
   }
 
   /**
@@ -1342,8 +820,7 @@ export function createChannel(options: ChannelOptions): Channel {
     for (const sentence of turn.cutter.flush()) say(turn, sentence)
     turn.cutter = createSentenceCutter()
     const said = turn.exchange.replied.trim()
-    const told = said === '' ? request : `${request}\n\n(You have already said this aloud: "${said}". Do not say it again; carry on from there.)`
-    const text = told
+    const text = said === '' ? request : `${request}\n\n(You have already said this aloud: "${said}". Do not say it again; carry on from there.)`
     turn.routed = runtime
     turn.exchange = { ...turn.exchange, thread: thread.id }
     replace(turn.exchange)
@@ -1379,160 +856,20 @@ export function createChannel(options: ChannelOptions): Channel {
     return { ok: true, text: `Thread ${thread.id} is answering that part. Write nothing more.` }
   }
 
-  /**
-   * The full answer, for reading. What a thread writes as text is spoken, so it is short; what it found, whole,
-   * goes through this tool once the spoken answer has started, and waits in the side sheet.
-   */
-  const answerTool = (runtime: Runtime): Tool => ({
-    definition: {
-      name: ANSWER_TOOL,
-      description:
-        'Keep the full answer, written for reading, beside the short one you say aloud: complete, in Markdown, with the figures, sources and details. The person reads it only if they want to. Call it after you have started speaking, and not for small talk or a one-line answer.',
-      inputSchema: {
-        type: 'object',
-        properties: { text: { type: 'string', description: 'The full answer, in Markdown.' } },
-        required: ['text']
-      }
-    },
-    run(input) {
-      const turn = runtime.answering
-      const asked = answerInput.safeParse(input)
-      if (!turn) return { ok: false, text: 'There is no answer under way.' }
-      if (!asked.success) return { ok: false, text: `${ANSWER_TOOL} takes the full answer as text.` }
-      turn.exchange = { ...turn.exchange, written: asked.data.text }
-      replace(turn.exchange)
-      emit({ type: 'event', name: 'answer.written', exchange: turn.exchange })
-      return { ok: true, text: 'Kept for the person to read. Do not mention it.' }
-    }
-  })
-
-  /**
-   * The voice comes first: a call to show or to write the full answer before anything was said is sent back once,
-   * asking for the short answer first. The model then speaks at once, and keeps that order for the rest of its
-   * thread. A project's thread that worked and goes straight to its report has not said how the work went: that
-   * is asked for once too. A second call is always taken, so nothing is ever lost.
-   */
-  const speakFirst = (runtime: Runtime, tool: Tool): Tool => ({
-    definition: tool.definition,
-    run(input) {
-      const turn = runtime.answering
-      if (turn && !turn.urged && turn.sentences.size === 0 && turn.exchange.replied === '') {
-        turn.urged = true
-        return {
-          ok: false,
-          text: `Nothing has been said yet. Write the short spoken answer first, as text, then call ${tool.definition.name} again with the same input.`
-        }
-      }
-      if (turn && !turn.urged && tool.definition.name === ANSWER_TOOL && turn.working && turn.sentences.size === turn.saidBeforeWork) {
-        turn.urged = true
-        return {
-          ok: false,
-          text: `You have not said how the work went. Say it in a sentence or two, as plain text, then call ${ANSWER_TOOL} again with the same input.`
-        }
-      }
-      return tool.run(input)
-    }
-  })
-
   // ---------------------------------------------------------------- the orchestrator
 
-  const orchestratorTools = (): Tool[] => [
-    {
-      definition: {
-        name: 'thread_open',
-        description:
-          'Open a new thread and pass it what the person said. kind "topic" for something to work on, "aside" for a quick side question that needs a search, a tool or the screen: it is answered beside the topic on screen, which stays there. For work on a project, a code repository or a folder of files the person works on with you, give `folder`: the thread works there.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            title: { type: 'string', description: 'The topic in a few words.' },
-            kind: { type: 'string', enum: ['topic', 'aside'] },
-            request: { type: 'string', description: 'What to pass on. Left out, what the person said.' },
-            folder: {
-              type: 'string',
-              description: 'For a project: its folder, absolute or from ~. The person is asked on screen first when it is not one they let you change.'
-            }
-          },
-          required: ['title']
-        }
-      },
-      async run(input) {
-        const turn = deciding
-        const asked = openInput.safeParse(input)
-        if (!turn) return { ok: false, text: 'There is nothing to pass on.' }
-        if (!asked.success) return { ok: false, text: 'thread_open takes a title, a kind ("topic" or "aside"), a request, and for a project its folder.' }
-        if (turn.next) return { ok: false, text: 'This has already been passed on. Write nothing more.' }
-        let folder: string | undefined
-        if (asked.data.folder !== undefined) {
-          if (!abilities?.workIn) return { ok: false, text: 'Projects cannot be worked on here: there is no computer to work on.' }
-          const found = await abilities.workIn(asked.data.folder, { thread: undefined, turn: turn.exchange.turn, focused: true })
-          if (!found.ok) return { ok: false, text: `${found.text} Tell the person in a sentence.` }
-          if (deciding !== turn || turn.stopped) return { ok: false, text: 'The person moved on. Write nothing more.' }
-          folder = found.folder
-        }
-        // A side question is a topic of its own, answered beside the topic on the stage, which keeps the focus. With no
-        // topic on the stage, there is nothing to answer it beside: it takes the stage as any topic. A project is
-        // never a side question.
-        const beside = registry.focused()
-        const aside = folder === undefined && asked.data.kind === 'aside' && beside !== undefined && screen.current() !== undefined
-        const thread = registry.open({ title: asked.data.title, kind: 'topic', beside: aside ? beside.id : undefined, folder })
-        return passOn(turn, thread, asked.data.request ?? turn.exchange.said, aside)
-      }
-    },
-    {
-      definition: {
-        name: 'thread_send',
-        description: 'Pass what the person said to an existing thread, which answers it.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            thread: { type: 'string', description: 'The thread id, from the list.' },
-            request: { type: 'string', description: 'What to pass on. Left out, what the person said.' },
-            wait: { type: 'boolean', description: 'For a thread at work: let this wait until it is done, rather than run beside it.' }
-          },
-          required: ['thread']
-        }
-      },
-      run(input) {
-        const turn = deciding
-        const asked = sendInput.safeParse(input)
-        if (!turn) return { ok: false, text: 'There is nothing to pass on.' }
-        const found = asked.success ? registry.get(asked.data.thread) : undefined
-        // A sub-thread answers the thread that opened it, never the person: what they say goes to that thread.
-        const thread = found?.kind === 'subthread' && found.parent !== undefined ? registry.get(found.parent) : found
-        if (!asked.success || !thread) return { ok: false, text: `There is no such thread. The threads are:\n${registry.index(doing, summaryOf)}` }
-        // A thread at work answers one thing at a time: what is sent to it waits until it is done. Unless the request
-        // follows from that work, it is better run beside it, in a thread of its own.
-        const busyWith = runtimes.get(thread.id)?.answering
-        if (busyWith && busyWith !== turn && asked.data.wait !== true)
-          return {
-            ok: false,
-            text: `Not sent: thread ${thread.id} is working now${doing(thread.id) ? ` on: ${doing(thread.id)}` : ''}, and would answer this only once that is done. If it continues that work or must come after it, call thread_send again with wait: true. Otherwise call thread_open, with the same folder for a project, so it runs at the same time.`
-          }
-        return passOn(turn, thread, asked.data.request ?? turn.exchange.said)
-      }
-    },
-    {
-      definition: {
-        name: 'thread_focus',
-        description:
-          'Bring an earlier topic back on screen, or one marked ready when the person asks for it. Then say in a few words that it is back, unless told its answer is being said.',
-        inputSchema: { type: 'object', properties: { thread: { type: 'string' } }, required: ['thread'] }
-      },
-      run(input) {
-        const turn = deciding
-        const asked = focusInput.safeParse(input)
-        const thread = asked.success ? registry.get(asked.data.thread) : undefined
-        if (thread?.kind !== 'topic') return { ok: false, text: `There is no such topic. The threads are:\n${registry.index()}` }
-        const missed = bringBack(thread)
-        if (!turn || !missed || missed.sentences.length === 0) return { ok: true, text: `"${thread.title}" is on screen.` }
-        // An answer that finished out of sight is said now, in this turn, after what was already written.
-        for (const sentence of turn.cutter.flush()) say(turn, sentence)
-        for (const sentence of missed.sentences) say(turn, sentence)
-        return { ok: true, text: `"${thread.title}" is on screen, and the part of its answer not heard yet is being said. Write nothing more.` }
-      }
-    }
-  ]
+  const routing = routingTools({
+    registry,
+    screen,
+    workIn: abilities?.workIn?.bind(abilities),
+    deciding: () => deciding,
+    answering: (thread) => runtimes.get(thread)?.answering,
+    doing,
+    summaryOf,
+    passOn,
+    bringBack,
+    say
+  })
 
   const orchestratorSession = (engine: Harness): Session => {
     const persona = activePersona()
@@ -1541,22 +878,19 @@ export function createChannel(options: ChannelOptions): Channel {
     const key = JSON.stringify([engine.id, persona.id, persona.name, persona.stance, server ?? null, profile?.version ?? null])
     if (orchestrator?.key === key) return orchestrator.session
     end(orchestrator)
-    const routing = abilities !== undefined && server !== undefined
+    const earlier = recapFor(undefined)
     const standing = abilities?.standing?.('orchestrator')
-    const grant = routing ? abilities.grant([...orchestratorTools(), ...(abilities.orchestratorTools?.() ?? [])]) : undefined
-    const session = grant
-      ? engine.open({
-          role: 'orchestrator',
-          instructions: orchestratorInstructions({
-            persona,
-            earlier: recapFor(undefined),
-            profile: profile?.text,
-            ...(standing ? { abilities: standing } : {})
-          }),
-          tools: { url: server as string, token: grant.token }
-        })
-      : engine.open({ role: 'thread', instructions: instructionsFor({ persona, earlier: recapFor(undefined), profile: profile?.text }) })
-    const live: Live = { session, key, grant, knownSince: recapFor(undefined)[0]?.at ?? now().toISOString() }
+    // With no tool server there is nothing to route with: one session answers everything.
+    const grant = abilities && server !== undefined ? abilities.grant([...routing, ...(abilities.orchestratorTools?.() ?? [])]) : undefined
+    const session =
+      grant && server !== undefined
+        ? engine.open({
+            role: 'orchestrator',
+            instructions: orchestratorInstructions({ persona, earlier, profile: profile?.text, ...(standing ? { abilities: standing } : {}) }),
+            tools: { url: server, token: grant.token }
+          })
+        : engine.open({ role: 'thread', instructions: instructionsFor({ persona, earlier, profile: profile?.text }) })
+    const live: Live = { session, key, grant, knownSince: earlier[0]?.at ?? now().toISOString() }
     orchestrator = live
     session.onEvent((event) => hearOrchestrator(live, event))
     return session
@@ -1587,7 +921,6 @@ export function createChannel(options: ChannelOptions): Channel {
     }
   }
 
-  /** The moment and the place a turn happens in: a model has no clock of its own. */
   /** The language the person last spoke in: what a sentence that does not say is taken to be in. */
   let conversationLanguage: string | undefined
 
@@ -1608,10 +941,10 @@ export function createChannel(options: ChannelOptions): Channel {
   const answerIn = (sentence: string, turnLanguage: string | undefined): string | undefined =>
     answerLanguage() ?? languageOf(sentence, LANGUAGE_CODES, turnLanguage ?? conversationLanguage)
 
-  /** What a session reads first with each message: the moment, and the language to answer in when the user set it. */
+  /** What a session reads first with each message, since a model has no clock: the moment, and the language to answer in when the user set it. */
   const context = () => {
     const language = answerLanguage()
-    return `(Now: ${moment(now(), options.timeZone)}${language === undefined ? '' : `. Answer in ${languageName(language)}.`})`
+    return `(Now: ${moment(now(), options.timeZone?.())}${language === undefined ? '' : `. Answer in ${languageName(language)}.`})`
   }
 
   /** What the person said, or what the assistant starts on by itself, and what they handed over with it. */
@@ -1716,7 +1049,7 @@ export function createChannel(options: ChannelOptions): Channel {
       if (turn.routed.answering === turn) {
         turn.routed.live?.session.interrupt()
         // Its sub-threads work for it: they stop with it.
-        for (const sub of subthreadsOfThread(turn.routed.thread)) if (sub.state === 'working') stopThreadWork(sub.id)
+        for (const sub of subthreads.of(turn.routed.thread)) if (sub.state === 'working') stopThreadWork(sub.id)
       } else {
         turn.routed.queue = turn.routed.queue.filter((waiting) => waiting.turn !== turn)
         finish(turn, 'stopped')
@@ -1766,13 +1099,8 @@ export function createChannel(options: ChannelOptions): Channel {
       if (!handedAny(handed) && abilities?.hear?.(text, aloud)) return current?.exchange.turn ?? newId()
       memory?.wake()
       // A thank you and nothing more: the side questions are answered, and their cards leave. It is still answered.
-      if (
-        isThanks(
-          text,
-          settings.read().personas.available.map((one) => one.name)
-        )
-      )
-        putAsidesAway()
+      const names = settings.read().personas.available.map((one) => one.name)
+      if (isThanks(text, names)) putAsidesAway()
       const turn = personsTurn(text, language, handed)
       if (deciding) pending = turn
       else void decide(turn)
@@ -1873,11 +1201,10 @@ export function createChannel(options: ChannelOptions): Channel {
     },
 
     task({ title, request, language, silent }) {
-      const persona = activePersona()
       const exchange: Exchange = {
         turn: newId(),
         at: now().toISOString(),
-        persona: persona.id,
+        persona: activePersona().id,
         said: request,
         trigger: 'task',
         replied: '',
@@ -1999,6 +1326,6 @@ const reads = (scope: Scope) => scope.computer !== 'off' || scope.places.length 
 function attachedOf(handed: Handed): NonNullable<Exchange['attached']> {
   return [
     ...handed.files.map((file) => ({ name: file.name, kind: file.image ? ('image' as const) : ('file' as const), size: file.size, path: file.path })),
-    ...handed.folders.map((folder) => ({ name: folder.split(/[\\/]/).filter(Boolean).at(-1) ?? folder, kind: 'folder' as const }))
+    ...handed.folders.map((folder) => ({ name: folderName(folder), kind: 'folder' as const }))
   ]
 }

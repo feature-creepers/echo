@@ -126,7 +126,8 @@ export function createCore(options: CoreOptions): Core {
 
   const now = options.now ?? (() => new Date())
   const zone = options.timeZone ?? (() => Intl.DateTimeFormat().resolvedOptions().timeZone)
-  const settings = createUserSettings(options.records, undefined, options.computer?.workspace)
+  const { computer } = options
+  const settings = createUserSettings(options.records, undefined, computer?.workspace)
   const engines = createEngineRoom(
     options.harnesses,
     {
@@ -217,7 +218,7 @@ export function createCore(options: CoreOptions): Core {
   const access = createAccess({
     settings,
     screen,
-    computer: options.computer,
+    computer,
     timers: options.timers,
     records: options.records,
     versions: options.versions ?? options.blobs,
@@ -231,7 +232,7 @@ export function createCore(options: CoreOptions): Core {
     ask: access.ask,
     records: options.records,
     uses: access,
-    computer: options.computer
+    computer
   })
   const desktop = createDesktopControl({
     desktop: options.desktop,
@@ -247,7 +248,7 @@ export function createCore(options: CoreOptions): Core {
   const device = createDeviceControl({
     access,
     level: () => settings.read().access.approvals,
-    computer: options.computer,
+    computer,
     printers: options.printers,
     drives: options.drives,
     camera: {
@@ -268,13 +269,13 @@ export function createCore(options: CoreOptions): Core {
   const workspaceChanged = (paths: string[]) => {
     if (paths.length > 0) emit({ type: 'event', name: 'workspace.changed', paths })
   }
-  const attachments = createAttachments({ workspace, now, newId: options.newId, onChange: (path) => workspaceChanged([path]) })
+  const attachments = createAttachments({ workspace, now, newId: options.newId, timeZone: zone, onChange: (path) => workspaceChanged([path]) })
   // What changes in the folders the person browses is told whoever changed it, a command included, where the computer
   // can watch a folder.
-  const watchFolder = options.computer?.watch?.bind(options.computer)
+  const watch = computer?.watch?.bind(computer)
   const folderWatch =
-    workspace && watchFolder
-      ? createFolderWatch({ watch: watchFolder, pathOf: (location) => workspace.pathOf(location), timers: options.timers, changed: workspaceChanged })
+    workspace && watch
+      ? createFolderWatch({ watch, pathOf: (location) => workspace.pathOf(location), timers: options.timers, changed: workspaceChanged })
       : undefined
   const browsing = createBrowsing({ workspace, settings, listed: folderWatch?.follow })
   const written = workspace
@@ -305,14 +306,12 @@ export function createCore(options: CoreOptions): Core {
   })
   memory.onEvent(emit)
 
-  // Reminders and scheduled tasks (docs/SPEC.md, section 7.10): they ring as turns the assistant starts itself, through
-  // the channel made below. Nothing rings before a client has sent a command, by which time the channel is there.
-  // A job may also ring when files arrive in a folder the person granted (section 7.10), when the computer can watch one.
-  // How often the assistant speaks up by itself, whatever makes it (section 7.10): reminders, scheduled tasks, answers
-  // finished out of sight. Past the cap the person set, what it would say is shown and not said.
+  // How often the assistant speaks up by itself, whatever makes it (docs/SPEC.md, section 7.10): reminders, scheduled
+  // tasks, answers finished out of sight. Past the cap the person set, what it would say is shown and not said.
   const interruptions = createInterruptionCap({ now: () => now().getTime(), perHour: () => settings.read().interruptions.perHour })
-  const { computer } = options
-  const watch = computer?.watch?.bind(computer)
+  // Reminders and scheduled tasks (section 7.10) ring as turns the assistant starts itself, through the channel made
+  // below: nothing rings before a client has sent a command, by which time the channel is there. A job may also ring
+  // when files arrive in a folder the person granted, where the computer can watch one.
   const fileAt = computer?.fileAt?.bind(computer)
   const schedule = createSchedule({
     records: options.records,
@@ -355,6 +354,7 @@ export function createCore(options: CoreOptions): Core {
     log: options.log,
     now,
     newId: options.newId,
+    timeZone: zone,
     abilities: {
       server: () => toolServer,
       grant: (granted) => tools.grant(granted),
@@ -395,8 +395,8 @@ export function createCore(options: CoreOptions): Core {
       },
       guide: async (folder) => {
         // Read only while the folder is still within reach: the person may have taken it back since the thread began.
-        if (!options.computer || !access.reaches(folder)) return undefined
-        const guide = await readGuide(options.computer, folder).catch(() => undefined)
+        if (!computer || !access.reaches(folder)) return undefined
+        const guide = await readGuide(computer, folder).catch(() => undefined)
         return guide && guideText(guide)
       },
       worked: (thread, folder) => access.worked(thread, folder),
@@ -426,7 +426,6 @@ export function createCore(options: CoreOptions): Core {
   const readEarlier = async (
     path: string
   ): Promise<{ ok: true; folder: string; facts: EarlierFact[]; lines: EarlierLine[] } | { ok: false; code: 'failed' | 'invalid-input'; text: string }> => {
-    const computer = options.computer
     if (!computer) return { ok: false, code: 'failed', text: 'There is no computer here to bring it in from.' }
     const found = await computer.locate(path)
     if (found?.kind !== 'folder') return { ok: false, code: 'invalid-input', text: `There is no folder at ${path}.` }
@@ -490,7 +489,7 @@ export function createCore(options: CoreOptions): Core {
         const named = input.attachments ?? []
         const gone = attachments.missing(named)
         if (gone.length > 0) return { ok: false, error: { code: 'invalid-input', message: 'A file handed over is no longer here: hand it over again.' } }
-        const folders = input.folders && input.folders.length > 0 ? await giveFolders(input.folders, { settings, computer: options.computer }) : []
+        const folders = input.folders && input.folders.length > 0 ? await giveFolders(input.folders, { settings, computer }) : []
         const handed = { files: attachments.take(named), folders }
         return { ok: true, output: { turn: channel.say(input.text, input.language, handed, input.spoken === true) } }
       },
@@ -630,7 +629,7 @@ export function createCore(options: CoreOptions): Core {
           ? { ok: true, output: {} }
           : { ok: false, error: { code: 'invalid-input', message: `There is no thread "${input.thread}".` } },
       'project.open': async (input) => {
-        if (toolServer === undefined || !options.computer)
+        if (toolServer === undefined || !computer)
           return { ok: false, error: { code: 'failed', message: 'Projects cannot be worked on here: the assistant has no computer to work on.' } }
         // The person chose the folder in the interface: that is their consent, and no card asks them again.
         const granted = await access.grant(

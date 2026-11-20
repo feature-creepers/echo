@@ -14,7 +14,7 @@ function setup() {
     workspace,
     now: () => new Date('2026-11-17T23:30:00Z'),
     newId: () => `a${++ids}`,
-    timeZone: 'Europe/Paris',
+    timeZone: () => 'Europe/Paris',
     onChange: (path) => changed.push(path)
   })
   /** Hand a file over whole, in one piece. */

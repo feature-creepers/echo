@@ -39,15 +39,54 @@ export const ACCESS_SET = 'access.set'
  */
 const ACCESS_LEVELS = 3
 /** The type of the record written when the user sets the languages of the conversation. It carries both. */
-export const LANGUAGES_SET = 'languages.set'
+const LANGUAGES_SET = 'languages.set'
 /** The type of the record written when the user sets when the assistant speaks up by itself. It carries all of it. */
 export const INTERRUPTIONS_SET = 'interruptions.set'
 /** The type of the record written when the user sets their own words for the recogniser. It carries all of them. */
-export const VOCABULARY_SET = 'vocabulary.set'
+const VOCABULARY_SET = 'vocabulary.set'
 
 const preferredSchema = z.object({ harness: z.string().min(1).nullable() })
 const modelSchema = z.object({ harness: z.string().min(1), model: z.string().min(1).nullable() })
 const effortSchema = z.object({ harness: z.string().min(1), effort: z.string().min(1).nullable() })
+
+/**
+ * How each record changes the settings, read back in order. A record this version cannot read changes nothing, so
+ * one written by another version never breaks this one.
+ */
+const READERS: Record<string, (settings: Settings, payload: unknown) => Settings> = {
+  [PERSONAS_SET]: (settings, payload) => {
+    const choice = readChoice(payload)
+    return choice ? choose(settings, choice) : settings
+  },
+  [ENGINES_PREFERRED]: (settings, payload) => {
+    const read = preferredSchema.safeParse(payload)
+    return read.success ? withPreferred(settings, read.data.harness) : settings
+  },
+  [ENGINES_MODEL]: (settings, payload) => {
+    const read = modelSchema.safeParse(payload)
+    return read.success ? withModel(settings, read.data.harness, read.data.model) : settings
+  },
+  [ENGINES_EFFORT]: (settings, payload) => {
+    const read = effortSchema.safeParse(payload)
+    return read.success ? withEffort(settings, read.data.harness, read.data.effort) : settings
+  },
+  [ACCESS_SET]: (settings, payload) => {
+    const read = accessSchema.omit({ folder: true }).safeParse(payload)
+    return read.success ? withAccess(settings, migrated(read.data, payload)) : settings
+  },
+  [LANGUAGES_SET]: (settings, payload) => {
+    const read = languagesSchema.safeParse(payload)
+    return read.success ? revised(settings, { languages: read.data }) : settings
+  },
+  [INTERRUPTIONS_SET]: (settings, payload) => {
+    const read = interruptionsSchema.safeParse(payload)
+    return read.success ? revised(settings, { interruptions: read.data }) : settings
+  },
+  [VOCABULARY_SET]: (settings, payload) => {
+    const read = vocabularySchema.safeParse(payload)
+    return read.success ? revised(settings, { vocabulary: read.data }) : settings
+  }
+}
 
 /** The user's settings, as the rest of the core reads and changes them. */
 export interface UserSettings {
@@ -94,46 +133,9 @@ export function createUserSettings(
     vocabulary: [],
     interruptions: DEFAULT_INTERRUPTIONS
   }
+  for (const record of records.read(Object.keys(READERS))) settings = READERS[record.type]?.(settings, record.payload) ?? settings
+
   const listeners = new Set<(settings: Settings) => void>()
-
-  // A record this version cannot read is skipped, so one written by another version never breaks this one.
-  for (const record of records.read([
-    PERSONAS_SET,
-    ENGINES_PREFERRED,
-    ENGINES_MODEL,
-    ENGINES_EFFORT,
-    ACCESS_SET,
-    LANGUAGES_SET,
-    INTERRUPTIONS_SET,
-    VOCABULARY_SET
-  ])) {
-    if (record.type === VOCABULARY_SET) {
-      const read = vocabularySchema.safeParse(record.payload)
-      if (read.success) settings = { ...settings, revision: settings.revision + 1, vocabulary: read.data }
-    } else if (record.type === INTERRUPTIONS_SET) {
-      const read = interruptionsSchema.safeParse(record.payload)
-      if (read.success) settings = { ...settings, revision: settings.revision + 1, interruptions: read.data }
-    } else if (record.type === LANGUAGES_SET) {
-      const read = languagesSchema.safeParse(record.payload)
-      if (read.success) settings = { ...settings, revision: settings.revision + 1, languages: read.data }
-    } else if (record.type === ACCESS_SET) {
-      const read = accessSchema.omit({ folder: true }).safeParse(record.payload)
-      if (read.success) settings = withAccess(settings, migrated(read.data, record.payload))
-    } else if (record.type === PERSONAS_SET) {
-      const choice = readChoice(record.payload)
-      if (choice) settings = choose(settings, choice)
-    } else if (record.type === ENGINES_PREFERRED) {
-      const read = preferredSchema.safeParse(record.payload)
-      if (read.success) settings = withPreferred(settings, read.data.harness)
-    } else if (record.type === ENGINES_EFFORT) {
-      const read = effortSchema.safeParse(record.payload)
-      if (read.success) settings = withEffort(settings, read.data.harness, read.data.effort)
-    } else {
-      const read = modelSchema.safeParse(record.payload)
-      if (read.success) settings = withModel(settings, read.data.harness, read.data.model)
-    }
-  }
-
   const change = (next: Settings, record: { type: string; payload: unknown }) => {
     records.append([record])
     settings = next
@@ -177,7 +179,7 @@ export function createUserSettings(
     setLanguages(asked) {
       const next: Languages = { spoken: asked.spoken ?? settings.languages.spoken, answers: asked.answers ?? settings.languages.answers }
       if (next.spoken === settings.languages.spoken && next.answers === settings.languages.answers) return settings
-      return change({ ...settings, revision: settings.revision + 1, languages: next }, { type: LANGUAGES_SET, payload: next })
+      return change(revised(settings, { languages: next }), { type: LANGUAGES_SET, payload: next })
     },
 
     setInterruptions(asked) {
@@ -186,13 +188,13 @@ export function createUserSettings(
         perHour: asked.perHour === undefined ? settings.interruptions.perHour : asked.perHour
       }
       if (next.results === settings.interruptions.results && next.perHour === settings.interruptions.perHour) return settings
-      return change({ ...settings, revision: settings.revision + 1, interruptions: next }, { type: INTERRUPTIONS_SET, payload: next })
+      return change(revised(settings, { interruptions: next }), { type: INTERRUPTIONS_SET, payload: next })
     },
 
     setVocabulary(words) {
       const next: Vocabulary = cleanVocabulary(words)
       if (JSON.stringify(next) === JSON.stringify(settings.vocabulary)) return settings
-      return change({ ...settings, revision: settings.revision + 1, vocabulary: next }, { type: VOCABULARY_SET, payload: next })
+      return change(revised(settings, { vocabulary: next }), { type: VOCABULARY_SET, payload: next })
     },
 
     onChange(listener) {
@@ -202,35 +204,36 @@ export function createUserSettings(
   }
 }
 
+/** The settings with a part changed, in a new revision. */
+function revised(settings: Settings, part: Partial<Omit<Settings, 'revision'>>): Settings {
+  return { ...settings, ...part, revision: settings.revision + 1 }
+}
+
 function choose(settings: Settings, choice: PersonaChoice): Settings {
   const cast = applyChoice(settings.personas, choice)
-  return { ...settings, revision: settings.revision + 1, personas: { available: [...cast.available], active: cast.active, confirmed: true } }
+  return revised(settings, { personas: { available: [...cast.available], active: cast.active, confirmed: true } })
 }
 
 function withPreferred(settings: Settings, harness: string | null): Settings {
   const { preferred: _, ...rest } = settings.engines
-  return { ...settings, revision: settings.revision + 1, engines: harness === null ? rest : { ...rest, preferred: harness } }
+  return revised(settings, { engines: harness === null ? rest : { ...rest, preferred: harness } })
 }
 
 function withModel(settings: Settings, harness: string, model: string | null): Settings {
   const { [harness]: _, ...others } = settings.engines.models
-  return { ...settings, revision: settings.revision + 1, engines: { ...settings.engines, models: model === null ? others : { ...others, [harness]: model } } }
+  return revised(settings, { engines: { ...settings.engines, models: model === null ? others : { ...others, [harness]: model } } })
 }
 
 function withEffort(settings: Settings, harness: string, effort: string | null): Settings {
   const { [harness]: _, ...others } = settings.engines.efforts
-  return {
-    ...settings,
-    revision: settings.revision + 1,
-    engines: { ...settings.engines, efforts: effort === null ? others : { ...others, [harness]: effort } }
-  }
+  return revised(settings, { engines: { ...settings.engines, efforts: effort === null ? others : { ...others, [harness]: effort } } })
 }
 
 /** What the user chose about access: all of it but where the assistant's folder is, which the core tells. */
 const chosen = ({ folder: _, ...choices }: Access) => choices
 
 /** Access as recorded before approvals had three levels, read as it behaved then. */
-export function migrated(access: Omit<Access, 'folder'>, payload: unknown): Omit<Access, 'folder'> {
+function migrated(access: Omit<Access, 'folder'>, payload: unknown): Omit<Access, 'folder'> {
   const levels = (payload as { levels?: unknown } | null)?.levels
   if (levels === undefined && access.approvals === 'trust' && access.computer === 'write') return { ...access, approvals: 'auto' }
   return access
@@ -238,7 +241,7 @@ export function migrated(access: Omit<Access, 'folder'>, payload: unknown): Omit
 
 function withAccess(settings: Settings, asked: AccessChange): Settings {
   const defined = Object.fromEntries(Object.entries(asked).filter(([, value]) => value !== undefined))
-  return { ...settings, revision: settings.revision + 1, access: { ...settings.access, ...defined } }
+  return revised(settings, { access: { ...settings.access, ...defined } })
 }
 
 function sameCast(one: Settings, other: Settings): boolean {

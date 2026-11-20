@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createInterruptionCap, INTERRUPTION_WINDOW_MS } from './interruptions.ts'
+import { createInterruptionCap } from './interruptions.ts'
 
 describe('the cap on interruptions', () => {
   const minutes = (count: number) => count * 60_000
@@ -25,6 +25,5 @@ describe('the cap on interruptions', () => {
     expect([interruptions.take(), interruptions.take()]).toEqual([true, false])
     cap = null
     expect(interruptions.take()).toBe(true)
-    expect(INTERRUPTION_WINDOW_MS).toBe(minutes(60))
   })
 })

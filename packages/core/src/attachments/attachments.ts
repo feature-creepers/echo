@@ -8,7 +8,7 @@ import type { NewFile, Workspace } from '../ports/workspace.ts'
  */
 
 /** The folder of the assistant's folder where handed-over files are kept, one folder a day under it. */
-export const INBOX = 'inbox'
+const INBOX = 'inbox'
 
 /** A file handed over, kept, and ready to go with a turn. */
 export interface HandedOver extends Attachment {
@@ -39,7 +39,7 @@ export interface AttachmentsOptions {
   now: () => Date
   newId: () => string
   /** The person's time zone, which says what day a file arrived on. Left out, the machine's. */
-  timeZone?: string | undefined
+  timeZone?: () => string
   /** Told when a file is kept in the folder or taken out of it, by its path there. */
   onChange?: (path: string) => void
 }
@@ -109,7 +109,7 @@ export function createAttachments({ workspace, now, newId, timeZone, onChange }:
       if (arriving.size >= OPEN_AT_ONCE) return invalid('Too many files are on their way at once.')
       const keptName = keepableName(name)
       try {
-        const file = await workspace.create(`${INBOX}/${dayOf(now(), timeZone)}`, keptName)
+        const file = await workspace.create(`${INBOX}/${dayOf(now(), timeZone?.())}`, keptName)
         const id = newId()
         arriving.set(id, { file, type: typeOf(keptName, type), size, received: 0, writing: Promise.resolve() })
         return { ok: true, output: { attachment: id } }

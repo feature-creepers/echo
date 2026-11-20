@@ -9,9 +9,11 @@ import { type ScriptedHarness, scriptedHarness } from '../replay/scripted-harnes
 import { createUserSettings } from '../settings/settings.ts'
 import { createTools } from '../tools/tools.ts'
 import { ASIDE_STAYS_MS, createScreen } from '../views/screen.ts'
-import { type Abilities, createChannel, EXCHANGE, planProgress, SUBTHREADS_AT_ONCE } from './channel.ts'
+import type { Abilities } from './abilities.ts'
+import { createChannel, EXCHANGE, planProgress } from './channel.ts'
 import { DELEGATED_FIRST, SIDE_QUESTION, SPEAK_FIRST, WORK_FIRST } from './instructions.ts'
 import { RESUMES_WITHOUT_THE_PERSON } from './resume.ts'
+import { SUBTHREADS_AT_ONCE } from './subthreads.ts'
 
 interface Setup {
   harness?: ScriptedHarness
@@ -52,7 +54,7 @@ function setup({ harness = scriptedHarness(), records = memoryRecords(), server 
     log,
     now: () => new Date('2026-11-17T08:00:00Z'),
     newId,
-    timeZone: 'Europe/Paris',
+    timeZone: () => 'Europe/Paris',
     abilities: {
       server: () => (server ? 'http://127.0.0.1:1/mcp' : undefined),
       grant: (granted) => tools.grant(granted),
@@ -777,6 +779,20 @@ describe('stopping', () => {
     expect(harness.sessions[1]?.interrupted).toBe(1)
     harness.sessions[1]?.emit({ type: 'turn-end' })
     expect(ended()).toMatchObject([{ outcome: 'stopped' }])
+  })
+
+  it('leaves a thread free when what it was passed is stopped before its session hears it', async () => {
+    const { channel, harness, call, ended } = setup()
+    channel.say('Plan a trip')
+    await settled()
+    const opened = call(0, 'thread_open', { title: 'Trip' })
+    channel.stop()
+    await opened
+    await settled()
+
+    expect(harness.sessions).toHaveLength(1)
+    expect(ended()).toMatchObject([{ said: 'Plan a trip', outcome: 'stopped' }])
+    expect(channel.threads().threads.map((thread) => thread.state)).toEqual(['parked'])
   })
 
   it('stops everything: the thread on the stage and one still working out of sight', async () => {

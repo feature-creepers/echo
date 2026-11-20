@@ -1,5 +1,6 @@
 import { MAX_PLACES } from '@repo/protocol'
 import type { Computer } from '../ports/computer.ts'
+import { partsFrom } from '../projects/folders.ts'
 import type { UserSettings } from '../settings/settings.ts'
 
 /**
@@ -13,7 +14,7 @@ export async function giveFolders(
   { settings, computer }: { settings: UserSettings; computer: Computer | undefined }
 ): Promise<string[]> {
   if (!computer) return []
-  const within = (path: string, place: string) => path === place || path.startsWith(`${place}/`) || path.startsWith(`${place}\\`)
+  const within = (path: string, place: string) => partsFrom(place, path) !== undefined
   const never = (path: string) =>
     computer.protected.some((place) => place.path !== undefined && within(path, place.path) && !(place.except ?? []).some((open) => within(path, open)))
   const given: string[] = []
@@ -22,7 +23,7 @@ export async function giveFolders(
     if (found?.kind === 'folder' && !never(found.path) && !given.includes(found.path)) given.push(found.path)
   }
   const { places, computer: reach } = settings.read().access
-  const covered = (path: string) => reach !== 'off' || places.some((place) => within(path, place.path.replace(/[\\/]+$/, '')))
+  const covered = (path: string) => reach !== 'off' || places.some((place) => within(path, place.path))
   // A folder that finds no room among the places is not given: the person is told of those that were.
   const added = given.filter((path) => !covered(path)).slice(0, Math.max(0, MAX_PLACES - places.length))
   if (added.length > 0) settings.setAccess({ places: [...places, ...added.map((path) => ({ path, kind: 'folder' as const, write: false }))] })
