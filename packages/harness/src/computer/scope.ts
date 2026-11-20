@@ -85,15 +85,19 @@ export async function checkUse(
   const refuse = (why: 'outside' | 'protected', reason: string): ComputerUse => ({ ...told, refused: { why, reason } })
   const endings = kept.flatMap((place) => (place.ending === undefined ? [] : [place.ending]))
   const budget = { left: MAX_WALKED }
-  const walked: string[] = []
+  /** The folders walked, and whether the walk was for a use that follows links. */
+  const walked: { root: string; links: boolean }[] = []
   /** A folder it goes through, or a wildcard, held more than was looked through. */
   let unwalked = false
 
-  /** Why a folder a use goes through may not be: it holds a file never reached, known by its ending. */
-  const holds = async (target: string): Promise<{ why: 'protected'; reason: string } | undefined> => {
-    if (endings.length === 0 || walked.some((root) => within(target, root))) return undefined
-    walked.push(target)
-    const found = await endingInside(target, endings, budget)
+  /**
+   * Why a folder a use goes through may not be: it holds a file never reached, known by its ending. One it goes through
+   * following links (`links`) is walked even with no ending to look for, for the links it holds.
+   */
+  const holds = async (target: string, links = false): Promise<{ why: 'protected'; reason: string } | undefined> => {
+    if ((endings.length === 0 && !links) || walked.some((one) => (one.links || !links) && within(target, one.root))) return undefined
+    walked.push({ root: target, links })
+    const found = await endingInside(target, endings, budget, links)
     if (found === 'unwalked') unwalked = true
     if (found === 'unwalked' || found === undefined) return undefined
     const label = kept.find((place) => place.ending === found.ending)?.label.toLowerCase()
@@ -144,8 +148,8 @@ export async function checkUse(
   // The places it names outside its folder, each once, so what it changes there is looked for too.
   const outside = new Map<string, NamedPlace>()
   /** Why a place it names, or a wildcard matches, may not be reached; and whether it may change it. */
-  const checked = async (written: string, target: string, below: boolean, picked: boolean) => {
-    const found = problem(written, target, false, below || picked) ?? (below ? await holds(target) : undefined)
+  const checked = async (written: string, target: string, below: boolean, picked: boolean, links = false) => {
+    const found = problem(written, target, false, below || picked) ?? (below ? await holds(target, links) : undefined)
     if (scope.computer !== 'write' && !places.some((place) => place.write && within(target, place.real))) changes = false
     return found
   }
@@ -153,7 +157,7 @@ export async function checkUse(
   for (const named of listed) {
     const target = await real(namedPath(named.path, folder))
     const { pattern } = named
-    const found = await checked(named.path, target, named.below, pattern !== undefined)
+    const found = await checked(named.path, target, named.below, pattern !== undefined, named.links)
     if (found) return refuse(found.why, found.reason)
     if (runsIn === undefined) runsIn = target
     else if (!within(target, runsIn)) {
@@ -165,7 +169,7 @@ export async function checkUse(
     const matched = await matches(target, pattern, MAX_MATCHES, use.shell)
     if (matched.more) unwalked = true
     for (const match of matched.found) {
-      const refused = await checked(match, await real(match), named.below, false)
+      const refused = await checked(match, await real(match), named.below, false, named.links)
       if (refused) return refuse(refused.why, refused.reason)
     }
   }

@@ -67,6 +67,14 @@ describe('a file never reached, by its ending, inside a folder', () => {
     expect(await endingInside(work, ['.opvault'], { left: 100 })).toBeUndefined()
   })
 
+  it('says when it met a link, for a use that follows links', async () => {
+    const work = tree()
+    expect(await endingInside(work, ['.opvault'], { left: 100 }, true)).toBe('unwalked')
+    expect(await endingInside(join(work, 'sub'), ['.opvault'], { left: 100 }, true)).toBeUndefined()
+    // What it finds before is still found.
+    expect(await endingInside(work, ['.kdb'], { left: 100 }, true)).toEqual({ path: join(work, 'sub', 'old.kdb'), ending: '.kdb' })
+  })
+
   it('stops past its budget, which the walks of one use share', async () => {
     const work = tree()
     const budget = { left: 3 }

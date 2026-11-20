@@ -360,6 +360,19 @@ describe('places never reached by their ending, through a wildcard or a recursiv
     expect(found.refused?.reason.toLowerCase()).toEqual(refused === undefined ? undefined : expect.stringContaining(refused))
   })
 
+  it.each([
+    ['grep -R token linked', true],
+    ['rg -L token linked', true],
+    ['find -L linked -name x', true],
+    ['grep -r token linked', false],
+    ['grep -R token sub2', false]
+  ])('`%s` goes past what was looked through when it follows a link it meets: %s', async (line, unwalked) => {
+    const { root, scope } = documents()
+    const found = await checkUse({ action: 'run', tool: 'Bash', paths: [root], command: line }, scope, [])
+    expect(found.refused).toBeUndefined()
+    expect(found.unwalked === true).toBe(unwalked)
+  })
+
   it('refuses Grep on the folder', async () => {
     const { root, scope } = documents()
     expect(await outsideScope({ action: 'read', tool: 'Grep', paths: [root] }, scope, [])).toContain('would go through')

@@ -491,6 +491,21 @@ describe('readCommand: paths it names', () => {
     ])
   })
 
+  it.each([
+    ['grep -R token .', [{ path: '.', below: true, links: true }]],
+    ['grep --dereference-recursive token', [{ path: '.', below: true, links: true }]],
+    ['rg -L token', [{ path: '.', below: true, links: true }]],
+    ['rg --follow token sub', [{ path: 'sub', below: true, links: true }]],
+    ['fd -L x', [{ path: '.', below: true, links: true }]],
+    ['find -L sub -name x', [{ path: 'sub', below: true, links: true }]],
+    ['find sub -follow -name x', [{ path: 'sub', below: true, links: true }]],
+    ['find -H sub -name x', [{ path: 'sub', below: true }]],
+    ['grep -r token .', [{ path: '.', below: true }]],
+    ['rg token sub', [{ path: 'sub', below: true }]]
+  ])('says when `%s` follows the links it meets in what it goes through: %j', (line, expected) => {
+    expect(readCommand(line).paths).toEqual(expected)
+  })
+
   it('names the folder a wildcard picks from, the one it runs in when it names none, with the pattern to match there', () => {
     expect(readCommand('cat .s*/id_rsa').paths).toEqual([{ path: '.', below: false, pattern: '.s*/id_rsa' }])
     expect(readCommand('cat ~/.*').paths).toEqual([{ path: '~', below: false, pattern: '.*' }])

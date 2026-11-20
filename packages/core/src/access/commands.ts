@@ -48,6 +48,8 @@ export interface NamedPath {
   below: boolean
   /** A wildcard picks from it: the rest of the word from there (`*.kdbx`, `sub/a*.txt`), for the adapter to match. */
   pattern?: string
+  /** What goes through it follows the links it meets there: `grep -R`, `rg -L`, `find -L`. */
+  links?: true
 }
 
 export interface CommandReading {
@@ -388,19 +390,32 @@ function pathOf(word: Word, context: Context): { path: string; below: boolean; p
  * Note a path the line names, read from every folder the line may be in. Words that are not paths are left alone.
  * Whether the word is a path, one the line cannot tell included.
  */
-function name(word: Word, context: Context, options: { always?: boolean; windowsProgram?: boolean; recursive?: boolean; remote?: boolean } = {}): boolean {
+function name(
+  word: Word,
+  context: Context,
+  options: { always?: boolean; windowsProgram?: boolean; recursive?: boolean; links?: boolean; remote?: boolean } = {}
+): boolean {
   const found = pathOf(word, context)
   if (!found) return false
   if (found.unresolved) context.reading.unresolved = true
   if (found.path === '') return found.unresolved
-  const { always = false, windowsProgram = false, recursive = false, remote = false } = options
+  const { always = false, windowsProgram = false, recursive = false, links = false, remote = false } = options
   const { path } = found
   if (always ? NOWHERE.test(path) : noPath(path, context.shell, windowsProgram, remote)) return false
+  const below = found.below || recursive
   for (const folder of context.folders) {
-    const named: NamedPath = { path: from(folder, path), below: found.below || recursive, ...(found.pattern === undefined ? {} : { pattern: found.pattern }) }
+    const named: NamedPath = {
+      path: from(folder, path),
+      below,
+      ...(found.pattern === undefined ? {} : { pattern: found.pattern }),
+      ...(below && links ? { links: true as const } : {})
+    }
     const known = context.reading.paths.find((other) => other.path === named.path && other.pattern === named.pattern)
-    if (known) known.below ||= named.below
-    else context.reading.paths.push(named)
+    if (!known) context.reading.paths.push(named)
+    else {
+      known.below ||= named.below
+      if (named.links) known.links = true
+    }
   }
   return true
 }
@@ -455,6 +470,8 @@ interface Kind {
   publishes?: boolean
   opaque?: boolean
   recursive?: boolean
+  /** It follows the links it meets in the folders it goes through. */
+  links?: boolean
   /** The subcommand that makes its key, when it has one: `commit` for `git commit`. */
   sub?: string
   /** Which of its words are not paths: patterns, scripts, messages. By index in its words. */
@@ -1714,7 +1731,14 @@ function readingKind(program: string, args: readonly string[], context: Context)
       if (first && !has(args, '-e', '-f', '--regexp', '--file', '--files') && program !== 'findstr') notPaths.add(first.index)
       if (program === 'findstr' && first) notPaths.add(first.index)
       kind.notPaths = notPaths
-      kind.recursive = ['rg', 'ag', 'ack'].includes(program) || short(args, 'r') || short(args, 'R') || has(args, '--recursive', '/s', '/S')
+      kind.recursive =
+        ['rg', 'ag', 'ack'].includes(program) || short(args, 'r') || short(args, 'R') || has(args, '--recursive', '--dereference-recursive', '/s', '/S')
+      // `grep -R`, `rg -L`, `ag -f`: the links it meets are followed.
+      kind.links =
+        has(args, '--follow', '--dereference-recursive') ||
+        (['grep', 'egrep', 'fgrep'].includes(program) && short(args, 'R')) ||
+        (program === 'rg' && short(args, 'L')) ||
+        (program === 'ag' && short(args, 'f'))
       // With no path, grep searches where it runs; rg and its kin search what they are fed, when they are.
       if (kind.recursive && program !== 'findstr') kind.here = ['rg', 'ag', 'ack'].includes(program) ? 'unfed' : 'always'
       kind.windows = program === 'findstr'
@@ -1834,6 +1858,7 @@ function readingKind(program: string, args: readonly string[], context: Context)
     case 'fd':
     case 'fdfind':
       kind.recursive = true
+      kind.links = short(args, 'L') || has(args, '--follow')
       kind.here = 'always'
       kind.readOnly = !has(args, '-x', '-X', '--exec', '--exec-batch')
       if (first) kind.notPaths = new Set([first.index])
@@ -1848,7 +1873,14 @@ function readingKind(program: string, args: readonly string[], context: Context)
 /** `find`: its starting points are its paths, and what it runs with `-exec` is a command of its own. */
 function findKind(args: readonly string[]): Kind {
   const onlyPaths = new Set<number>()
+  // Its options before its starting points: with `-L` it follows the links it meets, with `-H` or `-P` it does not.
   let at = 0
+  let links = false
+  for (; /^-([HLP]|D|O\d*)$/.test(args[at] ?? ''); at++) {
+    if (args[at] === '-D') at++
+    else if (/^-[HLP]$/.test(args[at] as string)) links = args[at] === '-L'
+  }
+  const start = at
   while (at < args.length && !/^[-(!)]/.test(args[at] as string)) onlyPaths.add(at++)
   const nested: { line: string; shell: Shell }[] = []
   let readOnly = true
@@ -1861,6 +1893,7 @@ function findKind(args: readonly string[]): Kind {
       readOnly = false
       destructive = true
     }
+    if (word === '-follow') links = true
     if (['-exec', '-execdir', '-ok', '-okdir'].includes(word)) {
       readOnly = false
       const end = args.findIndex((other, after) => after > index && (other === ';' || other === '+' || other === '\\;'))
@@ -1870,7 +1903,7 @@ function findKind(args: readonly string[]): Kind {
     }
   }
   // With no starting point, it starts where it runs.
-  return { readOnly, destructive, recursive: true, onlyPaths, nested, ...(at === 0 ? { here: 'always' as const } : {}) }
+  return { readOnly, destructive, recursive: true, links, onlyPaths, nested, ...(at === start ? { here: 'always' as const } : {}) }
 }
 
 /** A word written back into a line, quoted so the shell reads it as the one word it was. */
@@ -2253,7 +2286,12 @@ function readStage(stage: Stage, context: Context): void {
   // `sort --files0-from=list` reads the files a list names, which the line does not.
   if (argTexts.some((text) => text.startsWith('--files0-from'))) reading.unresolved = true
 
-  const options = { windowsProgram: kind.windows === true, recursive: kind.recursive === true, remote: REMOTE_PROGRAMS.has(found.name) }
+  const options = {
+    windowsProgram: kind.windows === true,
+    recursive: kind.recursive === true,
+    links: kind.links === true,
+    remote: REMOTE_PROGRAMS.has(found.name)
+  }
   // After `--`, every word is one it works on, even one that starts with a dash.
   const operands = argTexts.indexOf('--')
   let named = false

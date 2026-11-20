@@ -76,13 +76,16 @@ function wildcard(part: string, shell: Shell): string {
 /**
  * The first file or folder inside a folder whose name ends as one of `endings` does (in lower case), links not
  * followed, with the ending. `unwalked` once `budget` entries were looked at with more to look at: the budget is
- * shared by the walks of one use.
+ * shared by the walks of one use. For a use that follows links (`links`), `unwalked` too when it met one: what is past
+ * it was not looked through.
  */
 export async function endingInside(
   folder: string,
   endings: readonly string[],
-  budget: { left: number }
+  budget: { left: number },
+  links = false
 ): Promise<{ path: string; ending: string } | 'unwalked' | undefined> {
+  let linked = false
   let level = [folder]
   while (level.length > 0) {
     const next: string[] = []
@@ -97,9 +100,10 @@ export async function endingInside(
           const ending = endings.find((one) => entry.name.toLowerCase().endsWith(one))
           if (ending !== undefined) return { path, ending }
           if (entry.isDirectory()) next.push(path)
+          linked ||= entry.isSymbolicLink()
         }
     }
     level = next
   }
-  return undefined
+  return links && linked ? 'unwalked' : undefined
 }
