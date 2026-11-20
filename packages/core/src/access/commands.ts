@@ -264,10 +264,13 @@ function lost(context: Context): void {
  * escape. Any other word it takes as a path is one, whatever its characters: a plain name is in the folder it runs in,
  * a file there or a link to anywhere.
  */
-function noPath(path: string, shell: Shell, windowsProgram: boolean): boolean {
+function noPath(path: string, shell: Shell, windowsProgram: boolean, remote: boolean): boolean {
   if (path.trim() === '' || path.startsWith('-') || NOWHERE.test(path)) return true
-  // Addresses, remote places (`host:path`, `user@host:`), registry and other providers (`HKLM:\`, `env:`).
-  if (/^[A-Za-z][\w+.-]*:\/\//.test(path) || /^[\w.-]+@[\w.-]+:/.test(path) || /^[A-Za-z][\w.-]+:/.test(path)) return true
+  if (/^[A-Za-z][\w+.-]*:\/\//.test(path)) return true
+  // Remote places (`host:path`, `user@host:`) for a program that takes them; PowerShell's registry and other
+  // providers (`HKLM:\`, `env:`). To any other program, `ab:c/../x` is a folder's name like any other.
+  if (remote && (/^[\w.-]+@[\w.-]+:/.test(path) || /^[A-Za-z][\w.-]+:/.test(path))) return true
+  if (shell === 'powershell' && /^[A-Za-z][\w.-]+:/.test(path)) return true
   // Switches: `/s`, `/f`, `//c`, and for Windows' own programs any `/word`.
   if (/^\/[A-Za-z?]{1,2}$/.test(path) || /^\/\/[A-Za-z?]/.test(path)) return true
   if ((shell === 'cmd' || windowsProgram) && /^\/[A-Za-z][\w:-]*$/.test(path)) return true
@@ -354,14 +357,14 @@ function pathOf(word: Word, context: Context): { path: string; below: boolean; p
  * Note a path the line names, read from every folder the line may be in. Words that are not paths are left alone.
  * Whether the word is a path, one the line cannot tell included.
  */
-function name(word: Word, context: Context, options: { always?: boolean; windowsProgram?: boolean; recursive?: boolean } = {}): boolean {
+function name(word: Word, context: Context, options: { always?: boolean; windowsProgram?: boolean; recursive?: boolean; remote?: boolean } = {}): boolean {
   const found = pathOf(word, context)
   if (!found) return false
   if (found.unresolved) context.reading.unresolved = true
   if (found.path === '') return found.unresolved
-  const { always = false, windowsProgram = false, recursive = false } = options
+  const { always = false, windowsProgram = false, recursive = false, remote = false } = options
   const { path } = found
-  if (always ? NOWHERE.test(path) : noPath(path, context.shell, windowsProgram)) return false
+  if (always ? NOWHERE.test(path) : noPath(path, context.shell, windowsProgram, remote)) return false
   for (const folder of context.folders) {
     const named: NamedPath = { path: from(folder, path), below: found.below || recursive, ...(found.pattern === undefined ? {} : { pattern: found.pattern }) }
     const known = context.reading.paths.find((other) => other.path === named.path && other.pattern === named.pattern)
@@ -789,6 +792,9 @@ const WITH_SUBCOMMANDS = new Set([
   'launchctl',
   'port'
 ])
+
+/** Programs that take a remote place as `host:path` or `user@host:path`. */
+const REMOTE_PROGRAMS = new Set(['scp', 'sftp', 'rsync', 'ssh', 'sshfs', 'git', 'rclone', 'unison', 'docker', 'podman', 'kubectl'])
 
 /** Programs Windows ships, which take `/switches`. */
 const WINDOWS_PROGRAMS = new Set([
@@ -2068,13 +2074,16 @@ function readStage(stage: Stage, context: Context): void {
   // `sort --files0-from=list` reads the files a list names, which the line does not.
   if (argTexts.some((text) => text.startsWith('--files0-from'))) reading.unresolved = true
 
-  const options = { windowsProgram: kind.windows === true, recursive: kind.recursive === true }
+  const options = { windowsProgram: kind.windows === true, recursive: kind.recursive === true, remote: REMOTE_PROGRAMS.has(found.name) }
+  // After `--`, every word is one it works on, even one that starts with a dash.
+  const operands = argTexts.indexOf('--')
   let named = false
   for (const [index, word] of args.entries()) {
-    if (kind.notPaths?.has(index)) continue
+    if (kind.notPaths?.has(index) || index === operands) continue
     if (kind.onlyPaths && !kind.onlyPaths.has(index)) continue
     const value = assignedValue(word)
-    if (value) named = name(value, context, options) || named
+    if (operands >= 0 && index > operands) named = name(word, context, { ...options, always: true }) || named
+    else if (value) named = name(value, context, options) || named
     else if (!textOf(word).startsWith('-')) named = name(word, context, options) || named
   }
   const fed = stage.join === 'pipe' || stage.fed || stage.redirects.some((redirect) => !redirect.writes)

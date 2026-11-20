@@ -145,7 +145,9 @@ describe('the scope', () => {
     ['powershell -c "(cd ..); Get-Content ../.ssh/id_rsa"', 'work/project', 'ssh keys'],
     ['pwsh -c "& { Set-Location .. }; Get-Content ../.ssh/id_rsa"', 'work/project', 'ssh keys'],
     ['cat ~+/../../.ssh/id_rsa', 'work/project', 'ssh keys'],
-    ['cd .. && cat ~+/../.ssh/id_rsa', 'work/project', 'ssh keys']
+    ['cd .. && cat ~+/../.ssh/id_rsa', 'work/project', 'ssh keys'],
+    ['cat -- -x/../../../.ssh/id_rsa', 'work/project', 'ssh keys'],
+    ['cat ab:c/../../../.ssh/id_rsa', 'work/project', 'ssh keys']
   ])('reads `%s` from every folder it may be in, run in %s, with this system’s own paths', async (line, runsIn, refused) => {
     // Paths as this system writes them, there or not: the check reads them the way the system would.
     const home = process.platform === 'win32' ? 'C:\\Users\\ada' : process.platform === 'darwin' ? '/Users/ada' : '/home/ada'

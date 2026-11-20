@@ -466,6 +466,21 @@ describe('readCommand: paths it names', () => {
     expect(reading.paths.filter((named) => named.path.endsWith('.')).every((named) => named.below)).toBe(true)
   })
 
+  it.each([
+    ['cat -- -x/../../../.ssh/id_rsa', 'posix', ['-x/../../../.ssh/id_rsa']],
+    ['rm -- -rf', 'posix', ['-rf']],
+    ['grep -- -x a.txt', 'posix', ['a.txt']],
+    ['cat ab:c/../../x', 'posix', ['ab:c/../../x']],
+    ['cat me@host:c/../x', 'posix', ['me@host:c/../x']],
+    // Only a program that takes remote addresses takes `host:path` for one.
+    ['scp a.txt me@host:/tmp/', 'posix', ['a.txt']],
+    ['rsync -a src/ host:dst/', 'posix', ['src/']],
+    ['git clone git@github.com:x/y.git', 'posix', []],
+    ['Get-ChildItem HKLM:\\Software', 'powershell', []]
+  ] as const)('reads options up to `--`, and `host:path` as remote only for remote programs: `%s` in %s names %j', (line, shell, expected) => {
+    expect(paths(line, shell)).toEqual(expected)
+  })
+
   it('says when it goes through what it names', () => {
     expect(readCommand('grep -r x ~').paths).toEqual([{ path: '~', below: true }])
     expect(readCommand('ls ~').paths).toEqual([{ path: '~', below: false }])
