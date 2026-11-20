@@ -476,7 +476,7 @@ describe('approvals for the session', () => {
     const deep = reach.approve({ ...command('grep -r token big'), unwalked: true }, signal())
     await settle()
     expect(cardText(screen)).toContain('more files than could be looked through first')
-    expect(cardText(screen)).toContain('Any “grep” until you quit')
+    expect(cardText(screen)).toContain('Any “grep” through large folders until you quit')
     access.hear('no')
     expect(await deep).toMatchObject({ allow: false })
   })

@@ -276,12 +276,16 @@ export function AccessSection({ client, settings, productName }: { client: Clien
         ) : (
           rules.allowances.map((allowance) => (
             <div key={allowance.id} className="flex items-center gap-4 px-4 py-3">
-              <span className="shrink-0 text-text-faint">{allowance.kind === 'command' ? <CommandMark /> : <FolderMark kind="folder" />}</span>
+              <span className="shrink-0 text-text-faint">{allowance.kind === 'change' ? <FolderMark kind="folder" /> : <CommandMark />}</span>
               <div className="grid min-w-0 flex-1 gap-0.5">
-                {allowance.kind === 'command' ? (
+                {allowance.kind !== 'change' ? (
                   <>
                     <span className="truncate font-mono text-[0.8125rem]">{allowance.subject}</span>
-                    <span className="text-text-faint text-xs">Any use of this command, the places it names still checked</span>
+                    <span className="text-text-faint text-xs">
+                      {allowance.kind === 'walk'
+                        ? 'Any search with it through a folder too large to look through first, when it only reads'
+                        : 'Any use of this command, the places it names still checked'}
+                    </span>
                   </>
                 ) : (
                   <>

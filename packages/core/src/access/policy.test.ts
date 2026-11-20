@@ -40,6 +40,13 @@ const CASES: [string, ComputerUse, Policy, boolean, Decision][] = [
     RUNS('session')
   ],
   [
+    'a recursive read past the bound that writes to a file, asked at auto, with no yes for the session',
+    { ...run('grep -r token . > found.txt'), unwalked: true },
+    guarded('auto'),
+    false,
+    ASKS(false, false)
+  ],
+  [
     'a search with Grep of a folder past the bound, asked, a yes for the session offered',
     { action: 'read', tool: 'Grep', paths: [FOLDER], unwalked: true },
     guarded('auto'),

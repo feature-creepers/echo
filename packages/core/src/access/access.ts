@@ -10,7 +10,7 @@ import type { AccessChange, SettingsChange, UserSettings } from '../settings/set
 import type { Tool } from '../tools/tools.ts'
 import type { Screen, Showing } from '../views/screen.ts'
 import { type Activity, createActivity, type NewUse, type UndoResult } from './activity.ts'
-import { createAllowances, folderOf, sessionKeys, within } from './allowances.ts'
+import { createAllowances, folderOf, type SessionKey, sessionKeys, within } from './allowances.ts'
 import { type Answer, type Answered, type Approvals, createApprovals, type Question } from './approvals.ts'
 import { type CommandReading, readCommand } from './commands.ts'
 import { isLocalNetwork, isLoopback, listedHost } from './hosts.ts'
@@ -174,6 +174,14 @@ const UNWALKED_NOTE: NonNullable<Question['note']> = {
   tone: 'soft'
 }
 
+/** What a yes for the session on a command covers, for the card: its commands, then the searches past the walk. */
+function sessionWords(keys: readonly SessionKey[]): string {
+  const quoted = (kind: SessionKey['kind']) => keys.filter((key) => key.kind === kind).map((key) => `“${key.subject}”`)
+  const [commands, walks] = [quoted('command'), quoted('walk')]
+  const parts = [...(commands.length > 0 ? [commands.join(', ')] : []), ...(walks.length > 0 ? [`${walks.join(', ')} through large folders`] : [])]
+  return `Any${keys.length > 1 ? ' of' : ''} ${parts.join(', and ')} until you quit`
+}
+
 const DONE: Record<AccessUse['action'], string> = { read: 'read', create: 'created', change: 'changed', delete: 'deleted', run: 'ran' }
 const DOING: Record<AccessUse['action'], string> = { read: 'reading', create: 'creating', change: 'changing', delete: 'deleting', run: 'running' }
 
@@ -333,7 +341,7 @@ export function createAccess({ settings, screen, computer, timers, records, vers
           facts: [{ label: 'In', value: where(folder) }],
           note: UNWALKED_NOTE,
           allow: 'Search it',
-          ...session(`Any search with ${keys[0] ?? use.tool} until you quit`)
+          ...session(`Any search with ${use.tool} until you quit`)
         }
       case 'run': {
         const note = reading ? commandNote(reading, use.unwalked === true) : undefined
@@ -346,7 +354,7 @@ export function createAccess({ settings, screen, computer, timers, records, vers
           // What puts something before others, or sends a file of this computer away, reaches beyond it.
           ...(reading?.publishes || (reading && reading.sends.length > 0) ? { outward: true } : {}),
           allow: 'Run it',
-          ...session(keys.length === 1 ? `Any “${keys[0]}” until you quit` : `Any of ${keys.map((key) => `“${key}”`).join(', ')} until you quit`)
+          ...session(sessionWords(keys))
         }
       }
       case 'delete':

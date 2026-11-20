@@ -144,13 +144,14 @@ export const DEFAULT_ACCESS: Access = {
 
 /**
  * A yes that lasts until the app quits, the access changes, or the person stops everything: for a command, the
- * same program and subcommand (`git commit`); for a change, any change in the same folder. A command that
- * destroys is never covered.
+ * same program and subcommand (`git commit`); for a change, any change in the same folder; for a `walk`, a search
+ * through more than could be looked through first with the same program or tool, when it otherwise only reads. A
+ * command that destroys is never covered.
  */
 export const allowanceSchema = z.object({
   id: z.string().min(1).max(64),
-  kind: z.enum(['command', 'change']),
-  /** The program and subcommand, or the folder, as the person reads it. */
+  kind: z.enum(['command', 'change', 'walk']),
+  /** The program and subcommand, the tool, or the folder, as the person reads it. */
   subject: z.string().min(1).max(4096),
   /** When it was given: an ISO 8601 date. */
   at: z.string()

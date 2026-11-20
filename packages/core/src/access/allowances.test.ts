@@ -45,17 +45,38 @@ describe('a yes for the session on a command', () => {
     expect(covered(allowing('apt install'), line)).toBe(expected)
   })
 
-  it('covers a use that goes through more than was looked through by every command it runs, and a search by its tool', () => {
+  it.each([
+    ['grep -r token . | sort', 'grep -r other . | sort', true, true],
+    ['grep -r token . | sed s/a/b/', 'grep -r other . | sed s/x/y/', true, true],
+    // A walk's yes covers only a line that would read only apart from the walk.
+    ['grep -r token . | sed s/a/b/', "echo | sed '1e touch pwned'", false, false],
+    ['grep -r token . | sed s/a/b/', "echo | sed '1e touch pwned'", true, false],
+    ['grep -r token . | sed s/a/b/', 'sed -i s/a/b/ a.txt', false, false],
+    ['grep -r token . | sed s/a/b/', 'grep -r token . > out.txt', true, false],
+    ['grep -r token . | sed s/a/b/', 'grep -r token .', false, false],
+    // Nor does a command's yes cover a walk.
+    ['sed -i s/a/b/ a.txt', 'grep -r token . | sed s/x/y/', true, false],
+    ['grep -r token . && npm run build', 'grep -r other . && npm run test', true, true],
+    ['grep -r token . && npm run build', 'grep -r other .', true, true],
+    ['grep -r token . && npm run build', 'npm run build', false, true]
+  ] as const)('on `%s` past the walk, covers `%s` (past it: %s): %s', (allowed, line, unwalked, expected) => {
     const allowances = allowing()
-    const line = 'grep -r token . && ls'
-    const deep: ComputerUse = { ...run(line), unwalked: true }
-    allowances.allow(deep, readCommand(line))
-    expect(allowances.list().map((one) => one.subject)).toEqual(['grep', 'ls'])
-    expect(allowances.covers(deep, readCommand(line))).toBe(true)
+    allowances.allow({ ...run(allowed), unwalked: true }, readCommand(allowed))
+    expect(allowances.covers({ ...run(line), ...(unwalked ? { unwalked: true as const } : {}) }, readCommand(line))).toBe(expected)
+  })
+
+  it('keeps a walk’s yes apart from a command’s, and a search’s by its tool', () => {
+    const allowances = allowing()
+    allowances.allow({ ...run('grep -r token . | sed s/a/b/'), unwalked: true }, readCommand('grep -r token . | sed s/a/b/'))
+    expect(allowances.list().map(({ kind, subject }) => ({ kind, subject }))).toEqual([
+      { kind: 'walk', subject: 'grep' },
+      { kind: 'walk', subject: 'sed' }
+    ])
     const search: ComputerUse = { action: 'read', tool: 'Grep', paths: ['/home/ada/project'], unwalked: true }
     expect(allowances.covers(search, undefined)).toBe(false)
     allowances.allow(search, undefined)
     expect(allowances.covers(search, undefined)).toBe(true)
+    expect(allowances.list().at(-1)).toMatchObject({ kind: 'walk', subject: 'Grep' })
   })
 
   it('allows nothing for an elevated line', () => {
