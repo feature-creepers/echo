@@ -11,7 +11,10 @@ import type { CommandReading } from './commands.ts'
  */
 export interface Allowances {
   list(): Allowance[]
-  /** Whether a use is covered. A command that destroys never is while what destroys is always asked, nor one that gives a program a variable. */
+  /**
+   * Whether a use is covered. A command that destroys never is while what destroys is always asked, nor one that gives
+   * a program a variable, nor one run elevated.
+   */
   covers(use: ComputerUse, reading: CommandReading | undefined): boolean
   /** Allow for the session what this use is: its commands' keys, or the folders of its files. */
   allow(use: ComputerUse, reading: CommandReading | undefined): void
@@ -23,10 +26,10 @@ export interface Allowances {
 }
 
 /**
- * Whether a yes for the session may cover a command line: one with a command to cover, and none that gives a program
- * a variable, which can make a program allowed run something else (`NODE_OPTIONS`, `PATH`).
+ * Whether a yes for the session may cover a command line: one with a command to cover, none that gives a program a
+ * variable, which can make a program allowed run something else (`NODE_OPTIONS`, `PATH`), and none run elevated.
  */
-export const coverable = (reading: CommandReading) => reading.keys.length > 0 && reading.variables.length === 0
+export const coverable = (reading: CommandReading) => reading.keys.length > 0 && reading.variables.length === 0 && !reading.elevated
 
 /** The folder a file is in, whatever the system's separator. */
 export function folderOf(path: string): string {

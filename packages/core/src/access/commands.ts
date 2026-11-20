@@ -76,6 +76,8 @@ export interface CommandReading {
    * `NODE_OPTIONS=… npm run build`. Such a line is never covered by a yes for the session.
    */
   variables: string[]
+  /** It runs a program as another user, the administrator by default: `sudo`, `doas`. Never covered by a yes for the session. */
+  elevated: boolean
 }
 
 /**
@@ -172,7 +174,8 @@ export function readCommand(line: string, shell: Shell = 'posix'): CommandReadin
     keys: [],
     hosts: [],
     sends: [],
-    variables: []
+    variables: [],
+    elevated: false
   }
   readLine(line, { shell, folders: [''], aside: [], moved: false, bound: new Set(), reading, depth: 0 })
   reading.programs = [...new Set(reading.commands.map((command) => command.program))]
@@ -1855,7 +1858,10 @@ function readStage(stage: Stage, context: Context): void {
     const program = programOf(textOf(words[0] as Word)).name
     const wrapper = context.shell === 'posix' ? WRAPPERS[program] : undefined
     if (!wrapper || !isPlain(words[0] as Word)) break
-    if (program === 'sudo' || program === 'doas') elevated = true
+    if (program === 'sudo' || program === 'doas') {
+      elevated = true
+      reading.elevated = true
+    }
     let at = 1
     while (at < words.length) {
       const word = textOf(words[at] as Word)
@@ -1939,6 +1945,8 @@ function readStage(stage: Stage, context: Context): void {
   if (context.shell === 'powershell' && args.some((word) => word.pieces.some((piece) => piece.kind === 'inner' && piece.call))) reading.opaque = true
 
   const found = programOf(written)
+  // Windows' own `sudo`, from PowerShell or cmd, runs what follows it as the administrator too.
+  if (found.name === 'sudo' || found.name === 'doas') reading.elevated = true
   const alias = context.shell === 'powershell' ? (ALIASES[found.name] ?? (/^[a-z]+-[a-z]+$/i.test(written) ? written : undefined)) : undefined
 
   // A script run by its path, or a program given by its path: the path is named too.

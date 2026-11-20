@@ -36,4 +36,16 @@ describe('a yes for the session on a command', () => {
   it('allows nothing for a line that gives a program a variable', () => {
     expect(allowing('NODE_OPTIONS=x npm run build').list()).toEqual([])
   })
+
+  it.each([
+    ['apt install x', true],
+    ['sudo apt install x', false],
+    ['doas apt install x', false]
+  ])('on `apt install`, covers `%s`: %s', (line, expected) => {
+    expect(covered(allowing('apt install'), line)).toBe(expected)
+  })
+
+  it('allows nothing for an elevated line', () => {
+    expect(allowing('sudo apt install x').list()).toEqual([])
+  })
 })

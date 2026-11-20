@@ -490,6 +490,18 @@ describe('readCommand: variables it gives the programs it runs', () => {
   })
 })
 
+describe('readCommand: elevated', () => {
+  it.each([
+    ['sudo apt install x', 'posix', true],
+    ['doas apt install x', 'posix', true],
+    ['echo ok && sudo -u root ls', 'posix', true],
+    ['sudo winget install x', 'powershell', true],
+    ['apt install x', 'posix', false]
+  ] as const)('reads `%s` in %s as elevated: %s', (line, shell, elevated) => {
+    expect(readCommand(line, shell).elevated).toBe(elevated)
+  })
+})
+
 describe('readCommand: plain names, in the folder the command runs in', () => {
   it.each([
     ['cat .netrc', 'posix', ['.netrc']],
