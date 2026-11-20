@@ -2,18 +2,20 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { bytesOf, CATALOGUE, PARAKEET, SILERO, SUPERTONIC } from './catalogue.ts'
+import { bytesOf, E5_SMALL, PARAKEET, SILERO, SPEECH_SETS, SUPERTONIC } from './catalogue.ts'
 import { installModelSet, isInstalled } from './download.ts'
 import type { DownloadProgress } from './model-set.ts'
 
+const EVERY_SET = [...SPEECH_SETS, E5_SMALL]
+
 describe('the catalogue', () => {
-  it('lists one set for each thing speech needs', () => {
-    expect(CATALOGUE.map((set) => set.purpose).sort()).toEqual(['recognition', 'speech-detection', 'voice'])
-    expect(new Set(CATALOGUE.map((set) => set.id)).size).toBe(CATALOGUE.length)
+  it('lists one set for each thing speech needs, and keeps the model for search by meaning apart', () => {
+    expect(SPEECH_SETS.map((set) => set.purpose).sort()).toEqual(['recognition', 'speech-detection', 'voice'])
+    expect(new Set(EVERY_SET.map((set) => set.id)).size).toBe(EVERY_SET.length)
   })
 
   it('names folders and files that every system accepts', () => {
-    for (const set of CATALOGUE) {
+    for (const set of EVERY_SET) {
       expect(set.id).toMatch(/^[a-z0-9][a-z0-9.-]*$/)
       expect(new Set(set.files.map((file) => file.path)).size).toBe(set.files.length)
       for (const file of set.files) expect(file.path).toMatch(/^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/)
@@ -21,7 +23,7 @@ describe('the catalogue', () => {
   })
 
   it('records a size and a SHA-256 for every file, at an address that cannot change under them', () => {
-    for (const set of CATALOGUE) {
+    for (const set of EVERY_SET) {
       for (const file of set.files) {
         expect(file.bytes).toBeGreaterThan(0)
         expect(file.sha256).toMatch(/^[0-9a-f]{64}$/)
@@ -36,6 +38,7 @@ describe('the catalogue', () => {
     expect(bytesOf(SILERO)).toBe(2_313_101)
     expect(bytesOf(SUPERTONIC)).toBe(145_295_768)
     expect(bytesOf(PARAKEET)).toBe(670_576_784)
+    expect(bytesOf(E5_SMALL)).toBe(135_392_183)
   })
 })
 

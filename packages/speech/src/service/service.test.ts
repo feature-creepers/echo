@@ -1,5 +1,5 @@
 import { MessageChannel, type MessagePort } from 'node:worker_threads'
-import { type DownloadProgress, type InstallOptions, ModelDownloadError, type ModelSet } from '@repo/models'
+import { type DownloadProgress, type InstallOptions, ModelDownloadError, type ModelSet, type SpeechSet } from '@repo/models'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Listening, Sound, Speaking, SpeechEvent } from '../ports.ts'
 import { SpeechError } from '../speech-error.ts'
@@ -14,7 +14,7 @@ import { type SpeechServer, serveSpeech } from './server.ts'
  * what is tested here is everything between the app and the engines.
  */
 
-function set(id: string, purpose: ModelSet['purpose'], bytes: number): ModelSet {
+function set(id: string, purpose: SpeechSet['purpose'], bytes: number): SpeechSet {
   return {
     id,
     purpose,

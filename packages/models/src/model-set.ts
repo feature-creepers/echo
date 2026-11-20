@@ -1,6 +1,6 @@
 /**
- * A model set: the files one engine needs, downloaded once and kept in the device's model folder.
- * The catalogue lists the sets that exist; an engine asks for one by its identifier.
+ * A model set: the files one engine needs, downloaded once and kept in a model folder: the device's for speech, the
+ * core's for the memory's embeddings. The catalogue lists the sets that exist; an engine asks for one by its identifier.
  */
 export interface ModelFile {
   /** Where the file goes inside the set's folder. */
@@ -17,13 +17,16 @@ export interface ModelSet {
   /** Identifies the set, and names its folder. */
   id: string
   /** What it is for. */
-  purpose: 'recognition' | 'voice' | 'speech-detection'
+  purpose: 'recognition' | 'voice' | 'speech-detection' | 'embedding'
   /** What the user reads while it downloads. */
   name: string
   /** The licence its files are published under. */
   licence: string
   files: ModelFile[]
 }
+
+/** A set the speech engines need. */
+export type SpeechSet = ModelSet & { purpose: 'recognition' | 'voice' | 'speech-detection' }
 
 /** How far a download has got. */
 export interface DownloadProgress {

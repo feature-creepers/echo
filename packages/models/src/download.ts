@@ -84,6 +84,16 @@ export async function installModelSet(folder: string, set: ModelSet, options: In
   }
 }
 
+/**
+ * Delete the set's folder, with whatever was received of it. Waits for a download of it under way in this process to
+ * end first: the caller stops it with its signal.
+ */
+export async function removeModelSet(folder: string, set: ModelSet): Promise<void> {
+  const directory = modelSetFolder(folder, set)
+  await installing.get(directory)?.catch(() => undefined)
+  await rm(directory, { recursive: true, force: true, maxRetries: 5 })
+}
+
 async function install(folder: string, set: ModelSet, { onProgress, signal }: InstallOptions): Promise<void> {
   signal?.throwIfAborted()
   if (isInstalled(folder, set)) return

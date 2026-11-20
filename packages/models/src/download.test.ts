@@ -5,7 +5,8 @@ import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { installModelSet, isInstalled, MARKER_FILE, ModelDownloadError, modelSetFolder, PART_SUFFIX } from './download.ts'
+import { E5_SMALL } from './catalogue.ts'
+import { installModelSet, isInstalled, MARKER_FILE, ModelDownloadError, modelSetFolder, PART_SUFFIX, removeModelSet } from './download.ts'
 import type { DownloadProgress, ModelSet } from './model-set.ts'
 
 /** What the server holds, by path. Large enough to arrive in several pieces. */
@@ -401,5 +402,61 @@ describe('checking that a set is installed', () => {
     } finally {
       content['/nested/small.bin'] = SMALL
     }
+  })
+})
+
+/**
+ * The memory's model is laid out as transformers.js reads it: the weights in a folder of their own, the tokenizer's
+ * files beside them. The same download, run on that shape, with bytes of the catalogue's sizes scaled down.
+ */
+describe('a set laid out as the embedding model is', () => {
+  const served = new Map(E5_SMALL.files.map((file, index) => [file.path, randomBytes(index === 0 ? 400_000 : 1_000 + index)]))
+  function embeddingSet(): ModelSet {
+    seen = []
+    faults = { ignoreRange: false, cutAfter: undefined, damaged: 0, status: undefined, pause: false }
+    for (const [path, bytes] of served) content[`/e5/${path}`] = bytes
+    return {
+      ...E5_SMALL,
+      files: E5_SMALL.files.map((file) => {
+        const bytes = served.get(file.path) as Buffer
+        return { path: file.path, url: `${origin}/e5/${file.path}`, bytes: bytes.length, sha256: sha256(bytes) }
+      })
+    }
+  }
+
+  it('installs, picks up after a cut, is checked, and is removed whole', async () => {
+    const set = embeddingSet()
+    const at = folder()
+    faults.cutAfter = { bytes: 150_000, requests: 1 }
+
+    await installModelSet(at, set)
+
+    expect(seen.slice(0, 2)).toEqual([
+      { path: '/e5/onnx/model_quantized.onnx', range: undefined },
+      { path: '/e5/onnx/model_quantized.onnx', range: 'bytes=150000-' }
+    ])
+    expect(filesIn(modelSetFolder(at, set))).toEqual([...E5_SMALL.files.map((file) => file.path), MARKER_FILE].sort())
+    expect(isInstalled(at, set)).toBe(true)
+
+    writeFileSync(join(modelSetFolder(at, set), 'tokenizer.json'), 'damaged')
+    expect(isInstalled(at, set)).toBe(false)
+
+    await removeModelSet(at, set)
+    expect(existsSync(modelSetFolder(at, set))).toBe(false)
+    expect(readdirSync(at)).toEqual([])
+  })
+
+  it('is removed only once a download of it under way has stopped', async () => {
+    const set = embeddingSet()
+    const at = folder()
+    faults.pause = true
+    const stop = new AbortController()
+    const installing = installModelSet(at, set, { signal: stop.signal, onProgress: () => stop.abort() })
+
+    const removed = removeModelSet(at, set)
+    await expect(installing).rejects.toThrow()
+    await removed
+
+    expect(existsSync(modelSetFolder(at, set))).toBe(false)
   })
 })

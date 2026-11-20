@@ -1,4 +1,4 @@
-import type { ModelFile, ModelSet } from './model-set.ts'
+import type { ModelFile, ModelSet, SpeechSet } from './model-set.ts'
 
 /**
  * Every model set the product can download. Each file is fetched on its own from a Hugging Face repository,
@@ -15,7 +15,7 @@ function hosted(repository: string, commit: string, files: Array<[path: string, 
  * Recognition: NVIDIA's Parakeet TDT 0.6b v3, with weights reduced to 8 bits. It hears 25 European languages
  * and finds out by itself which one is spoken. The encoder is nearly all of the download.
  */
-export const PARAKEET: ModelSet = {
+export const PARAKEET: SpeechSet = {
   id: 'parakeet-tdt-0.6b-v3-int8',
   purpose: 'recognition',
   name: 'Speech recognition',
@@ -32,7 +32,7 @@ export const PARAKEET: ModelSet = {
  * Voice: Supertone's Supertonic 3, with weights reduced to 8 bits. It speaks 31 languages in 10 styles and
  * reads plain text, so it needs no pronunciation data beside the model.
  */
-export const SUPERTONIC: ModelSet = {
+export const SUPERTONIC: SpeechSet = {
   id: 'supertonic-3-int8',
   purpose: 'voice',
   name: 'Voice',
@@ -49,7 +49,7 @@ export const SUPERTONIC: ModelSet = {
 }
 
 /** Speech detection: Silero VAD, version 5. The file is the one its authors publish, byte for byte. */
-export const SILERO: ModelSet = {
+export const SILERO: SpeechSet = {
   id: 'silero-vad-v5',
   purpose: 'speech-detection',
   name: 'Speech detection',
@@ -59,8 +59,28 @@ export const SILERO: ModelSet = {
   ])
 }
 
-/** Every set, smallest first, so that the first one to finish downloading comes quickly. */
-export const CATALOGUE: readonly ModelSet[] = [SILERO, SUPERTONIC, PARAKEET]
+/** The sets speech needs, smallest first, so that the first one to finish downloading comes quickly. */
+export const SPEECH_SETS: readonly SpeechSet[] = [SILERO, SUPERTONIC, PARAKEET]
+
+/**
+ * Search by meaning: intfloat's multilingual-e5-small, with weights reduced to 8 bits, in the copy laid out for
+ * transformers.js (intfloat's own repository has no 8-bit file under the names it reads). It reads about 100
+ * languages, cuts a text at 512 tokens and gives 384 dimensions. The copy carries no licence of its own: it is a
+ * conversion of the MIT model. The core downloads it into its own model folder when the person asks, never speech.
+ */
+export const E5_SMALL: ModelSet = {
+  id: 'multilingual-e5-small-q8',
+  purpose: 'embedding',
+  name: 'Search by meaning',
+  licence: 'MIT',
+  files: hosted('Xenova/multilingual-e5-small', '761b726dd34fb83930e26aab4e9ac3899aa1fa78', [
+    ['onnx/model_quantized.onnx', 118_308_185, 'f80102d3f2a1229f387d3c81909990d8945513e347b0eab049f7de3c6f98c193'],
+    ['tokenizer.json', 17_082_730, '0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39'],
+    ['tokenizer_config.json', 443, 'a1d6bc8734a6f635dc158508bef000f8e2e5a759c7d92f984b2c86e5ff53425b'],
+    ['special_tokens_map.json', 167, 'd05497f1da52c5e09554c0cd874037a083e1dc1b9cfd48034d1c717f1afc07a7'],
+    ['config.json', 658, 'cb99455288675345e1a4f411438d5d0adbba5fbd3a67ea4fb03c015433b996c1']
+  ])
+}
 
 /** The size of a whole set, in bytes. */
 export function bytesOf(set: ModelSet): number {

@@ -17,8 +17,11 @@ A model set is the files one engine needs. The catalogue (`src/catalogue.ts`) re
 | `parakeet-tdt-0.6b-v3-int8` | Speech recognition | 671 MB   | CC BY 4.0  | [csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8](https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8)       | [NVIDIA](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)            |
 | `supertonic-3-int8`         | Voice              | 145 MB   | OpenRAIL-M | [csukuangfj2/sherpa-onnx-supertonic-3-tts-int8-2026-05-11](https://huggingface.co/csukuangfj2/sherpa-onnx-supertonic-3-tts-int8-2026-05-11) | [Supertone](https://huggingface.co/Supertone/supertonic-3)              |
 | `silero-vad-v5`             | Speech detection   | 2.3 MB   | MIT        | [csukuangfj/vad](https://huggingface.co/csukuangfj/vad)                                                                                     | [Silero](https://github.com/snakers4/silero-vad), the file they publish |
+| `multilingual-e5-small-q8`  | Search by meaning  | 135 MB   | MIT        | [Xenova/multilingual-e5-small](https://huggingface.co/Xenova/multilingual-e5-small)                                                         | [intfloat](https://huggingface.co/intfloat/multilingual-e5-small)       |
 
-Together: 818 MB, downloaded once. The two large sets are the models as converted for sherpa-onnx, the library `@repo/speech` runs them with, with weights reduced to 8 bits.
+`SPEECH_SETS` are the first three: 818 MB, downloaded once by the speech process. The two large ones are the models as converted for sherpa-onnx, the library `@repo/speech` runs them with, with weights reduced to 8 bits.
+
+`E5_SMALL` is the memory's model, downloaded by the core into its own model folder when the person asks (`@repo/embedder`), never by the speech process. It is the copy laid out for transformers.js, with weights reduced to 8 bits; the copy states no licence of its own, being a conversion of the MIT original.
 
 To change a model, record the new commit, sizes and hashes together. A set already on a device no longer matches the catalogue then, and is downloaded again: only the files that changed.
 
@@ -32,6 +35,8 @@ To change a model, record the new commit, sizes and hashes together. A set alrea
 - `signal` stops it. What was received stays on disk for the next call.
 - When every file is in place, `installed.json` is written in the set's folder. `isInstalled(folder, set)` reads it and the size of each file: nothing is hashed, so it can be asked at every launch.
 - Calling it again does nothing when the set is installed. Two calls at once for the same set download it once.
+
+`removeModelSet(folder, set)` deletes the set's folder, with whatever was received of it, once a download of it under way has stopped.
 
 Two processes downloading the same set into the same folder at the same time are not guarded against: one process should own the model folder.
 
