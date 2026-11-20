@@ -1,6 +1,6 @@
 import type { AccountPart, CalendarEvent, EventRange, MailAddress, MailArrival, MailMessage, MailSearch, MailSummary } from '@repo/core'
 import { z } from 'zod'
-import { type Call, CallFailed } from '../requests.ts'
+import { type Call, CallFailed, MAIL_BYTES } from '../requests.ts'
 import { addressesOf, attachmentsOf, type GmailPart, gmailContent, gmailPartSchema, headerOf, plainText } from './gmail-message.ts'
 import { MAX_PAGES, type Provider, quoted, scopeSet } from './provider.ts'
 
@@ -80,7 +80,7 @@ const fromOf = (payload: GmailPart): MailAddress => addressesOf(headerOf(payload
 const dateOf = (message: z.infer<typeof messageSchema>) =>
   new Date(message.internalDate ? Number(message.internalDate) : Date.parse(headerOf(message.payload, 'Date') ?? '') || 0).toISOString()
 
-const readMessage = (call: Call, id: string) => call(`${GMAIL_API}/messages/${encodeURIComponent(id)}?format=full`, messageSchema)
+const readMessage = (call: Call, id: string) => call(`${GMAIL_API}/messages/${encodeURIComponent(id)}?format=full`, messageSchema, { most: MAIL_BYTES })
 
 /**
  * The messages that match, the latest first, each read whole for how many files it carries; never their files, and

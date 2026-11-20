@@ -1,6 +1,6 @@
 import type { AccountPart, CalendarEvent, EventRange, MailAddress, MailArrival, MailMessage, MailSearch, MailSummary } from '@repo/core'
 import { z } from 'zod'
-import { type Call, CallFailed } from '../requests.ts'
+import { type Call, CallFailed, MAIL_BYTES } from '../requests.ts'
 import { MAX_PAGES, type Provider, quoted, scopeSet } from './provider.ts'
 
 /**
@@ -66,7 +66,7 @@ async function microsoftEvents(call: Call, range: EventRange): Promise<CalendarE
       })
       let page: string | undefined = `${GRAPH}/me/calendars/${encodeURIComponent(calendar.id)}/calendarView?${query}`
       for (let pages = 0; pages < MAX_PAGES && page !== undefined; pages++) {
-        const answer: z.infer<typeof viewSchema> = await call(page, viewSchema, { prefer: 'outlook.timezone="UTC"' })
+        const answer: z.infer<typeof viewSchema> = await call(page, viewSchema, { headers: { prefer: 'outlook.timezone="UTC"' } })
         found.push(...answer.value.filter((event) => event.isCancelled !== true).map((event) => microsoftEvent(event, calendar.name ?? 'Calendar')))
         page = answer['@odata.nextLink']
       }
@@ -130,7 +130,10 @@ async function graphMailSearch(call: Call, search: MailSearch): Promise<MailSumm
 
 async function graphMailRead(call: Call, id: string): Promise<MailMessage> {
   const at = `${GRAPH}/me/messages/${encodeURIComponent(id)}`
-  const mail = await call(`${at}?$select=${SUMMARY_FIELDS},toRecipients,ccRecipients,body`, fullMailSchema, { prefer: 'outlook.body-content-type="text"' })
+  const mail = await call(`${at}?$select=${SUMMARY_FIELDS},toRecipients,ccRecipients,body`, fullMailSchema, {
+    headers: { prefer: 'outlook.body-content-type="text"' },
+    most: MAIL_BYTES
+  })
   const files = mail.hasAttachments ? (await call(`${at}/attachments?$select=name,contentType,size`, attachmentsSchema)).value : []
   return {
     id: mail.id,
