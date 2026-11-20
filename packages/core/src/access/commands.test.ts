@@ -550,7 +550,13 @@ describe('readCommand: paths after a cd, from every folder the line may be in', 
     ['cd sub; echo "$(cat a.txt)"', 'posix', ['sub', 'sub/a.txt', 'a.txt']],
     ['cd sub && cat <<EOF\n$(cat a.txt)\nEOF', 'posix', ['sub', 'sub/a.txt']],
     ['echo $(cd sub && cat a.txt); cat b.txt', 'posix', ['sub', 'sub/a.txt', 'b.txt']],
-    ['Set-Location sub && Write-Output $(Get-Content a.txt)', 'powershell', ['sub', 'sub/a.txt']]
+    ['Set-Location sub && Write-Output $(Get-Content a.txt)', 'powershell', ['sub', 'sub/a.txt']],
+    // PowerShell keeps a location changed inside a group, a subexpression or a block; the POSIX shell does not.
+    ['(cd ..); Get-Content ..\\.ssh\\id_rsa', 'powershell', ['..', '..\\.ssh\\id_rsa', '../..\\.ssh\\id_rsa']],
+    ['$(Set-Location sub); Get-Content a.txt', 'powershell', ['sub', 'sub/a.txt', 'a.txt']],
+    ['& { Set-Location sub }; Get-Content a.txt', 'powershell', ['sub', 'sub/a.txt', 'a.txt']],
+    ['powershell -c "(cd ..); Get-Content ../a.txt"', 'posix', ['..', '../a.txt', '../../a.txt']],
+    ['echo $(cd ..); cat a.txt', 'posix', ['..', 'a.txt']]
   ] as const)('`%s` in %s names %j', (line, shell, expected) => {
     expect(paths(line, shell).sort()).toEqual([...expected].sort())
   })

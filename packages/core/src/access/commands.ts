@@ -208,7 +208,12 @@ function readLine(line: string, context: Context): void {
   for (const stage of scanned.stages) {
     follow(stage.join, context)
     // The commands inside its words run just before it, from where the line is then, apart from it.
-    for (const inner of stage.inner) readLine(inner, nestedIn(context))
+    for (const inner of stage.inner) {
+      const nested = nestedIn(context)
+      readLine(inner, nested)
+      // PowerShell's location holds for the whole session: one changed inside a group or a block holds after it.
+      if (context.shell === 'powershell') alsoIn(context, [...nested.folders, ...nested.aside])
+    }
     readStage(stage, context)
   }
 }
@@ -227,9 +232,15 @@ function follow(join: Join, context: Context): void {
   const keeps = join === 'and' || (join === 'pipe' && !context.moved)
   context.moved = false
   if (keeps || context.aside.length === 0) return
-  const folders = [...new Set([...context.folders, ...context.aside])]
+  const aside = context.aside
   context.aside = []
-  if (folders.length <= MAX_FOLDERS) context.folders = folders
+  alsoIn(context, aside)
+}
+
+/** The line may be in these folders too. */
+function alsoIn(context: Context, folders: readonly string[]): void {
+  const all = [...new Set([...context.folders, ...folders])]
+  if (all.length <= MAX_FOLDERS) context.folders = all
   else lost(context)
 }
 
