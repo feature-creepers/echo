@@ -210,6 +210,8 @@ describe('the scope', () => {
     expect(await outsideScope(run('cat .netrc', root), scope, [])).toContain('network passwords')
     if (process.platform === 'win32') expect(await outsideScope(run('type _netrc', root, 'cmd'), scope, [])).toContain('network passwords')
     expect(await outsideScope(run('cat vault.kdbx', documents), scope, [])).toContain('keepass databases')
+    expect(await outsideScope(run('cat "My Passwords.kdbx"', documents), scope, [])).toContain('keepass databases')
+    expect(await outsideScope(run('cat Passwörter,alt.kdbx', documents), scope, [])).toContain('keepass databases')
     const narrow: Scope = { ...scope, places: [{ path: granted, kind: 'folder', write: false }] }
     if (linked) expect(await outsideScope(run('cat escape', granted), narrow, [])).toContain('outside what the person granted')
     expect(await outsideScope(run('head -n 5 a.txt', granted), narrow, [])).toBeUndefined()

@@ -259,18 +259,20 @@ function lost(context: Context): void {
 
 // ---------------------------------------------------------------- paths
 
-/** Whether a text, once its variables are known, is a path on a disk rather than a word, an address or a switch. */
-function looksLikePath(path: string, shell: Shell, windowsProgram: boolean): boolean {
-  if (path === '' || NOWHERE.test(path)) return false
+/**
+ * Whether a text a program is given, once its variables are known, is no path on a disk: an address, a switch, an
+ * escape. Any other word it takes as a path is one, whatever its characters: a plain name is in the folder it runs in,
+ * a file there or a link to anywhere.
+ */
+function noPath(path: string, shell: Shell, windowsProgram: boolean): boolean {
+  if (path.trim() === '' || path.startsWith('-') || NOWHERE.test(path)) return true
   // Addresses, remote places (`host:path`, `user@host:`), registry and other providers (`HKLM:\`, `env:`).
-  if (/^[A-Za-z][\w+.-]*:\/\//.test(path) || /^[\w.-]+@[\w.-]+:/.test(path) || /^[A-Za-z][\w.-]+:/.test(path)) return false
+  if (/^[A-Za-z][\w+.-]*:\/\//.test(path) || /^[\w.-]+@[\w.-]+:/.test(path) || /^[A-Za-z][\w.-]+:/.test(path)) return true
   // Switches: `/s`, `/f`, `//c`, and for Windows' own programs any `/word`.
-  if (/^\/[A-Za-z?]{1,2}$/.test(path) || /^\/\/[A-Za-z?]/.test(path)) return false
-  if ((shell === 'cmd' || windowsProgram) && /^\/[A-Za-z][\w:-]*$/.test(path)) return false
+  if (/^\/[A-Za-z?]{1,2}$/.test(path) || /^\/\/[A-Za-z?]/.test(path)) return true
+  if ((shell === 'cmd' || windowsProgram) && /^\/[A-Za-z][\w:-]*$/.test(path)) return true
   // Escapes such as `\r\n`, `\t` or `\x1b`, given to `tr`, `printf` or `sed`: characters, not a folder of the drive.
-  if (shell === 'posix' && /^(\\([abefnrtv0\\]|x[0-9A-Fa-f]{1,2}|[0-7]{1,3}))+$/.test(path)) return false
-  if (/^(\/|\\|~|\$\{|[A-Za-z]:|\.\.?([\\/]|$))/.test(path)) return true
-  return !/\s/.test(path) && /[\\/]/.test(path)
+  return shell === 'posix' && /^(\\([abefnrtv0\\]|x[0-9A-Fa-f]{1,2}|[0-7]{1,3}))+$/.test(path)
 }
 
 const isAbsolute = (path: string) => /^(\/|\\|~|\$\{|[A-Za-z]:)/.test(path)
@@ -356,10 +358,7 @@ function name(word: Word, context: Context, options: { always?: boolean; windows
   if (found.path === '') return
   const { always = false, windowsProgram = false, recursive = false } = options
   const { path } = found
-  if (!always && !looksLikePath(path, context.shell, windowsProgram)) {
-    // A plain name is in the folder the command runs in: a file there, or a link to anywhere.
-    if (/\s/.test(path) || /^[-/]/.test(path) || !/^[\w.@+-][\w .@+-]*$/.test(path)) return
-  } else if (NOWHERE.test(path)) return
+  if (always ? NOWHERE.test(path) : noPath(path, context.shell, windowsProgram)) return
   for (const folder of context.folders) {
     const named: NamedPath = { path: from(folder, path), below: found.below || recursive, ...(found.pattern === undefined ? {} : { pattern: found.pattern }) }
     const known = context.reading.paths.find((other) => other.path === named.path && other.pattern === named.pattern)

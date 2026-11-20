@@ -544,7 +544,18 @@ describe('readCommand: plain names, in the folder the command runs in', () => {
     ['echo hello', 'posix', []],
     ['grep -r token .', 'posix', ['.']],
     ['Get-Content _netrc', 'powershell', ['_netrc']],
-    ['type _netrc', 'cmd', ['_netrc']]
+    ['type _netrc', 'cmd', ['_netrc']],
+    // Whatever its characters.
+    ['cat "My Passwords.kdbx"', 'posix', ['My Passwords.kdbx']],
+    ['cat My\\ Passwords.kdbx', 'posix', ['My Passwords.kdbx']],
+    ['cat Passwörter.kdbx', 'posix', ['Passwörter.kdbx']],
+    ['cat vault,old.kdbx', 'posix', ['vault,old.kdbx']],
+    ['cat "Old files/My Passwords.kdbx"', 'posix', ['Old files/My Passwords.kdbx']],
+    ["Get-Content 'My Passwords.kdbx'", 'powershell', ['My Passwords.kdbx']],
+    ['type "My Passwords.kdbx"', 'cmd', ['My Passwords.kdbx']],
+    ['grep "a pattern" "My notes.txt"', 'posix', ['My notes.txt']],
+    ['git commit -m "fix /etc handling"', 'posix', []],
+    ['echo "My Passwords.kdbx"', 'posix', []]
   ] as const)('`%s` in %s names %j', (line, shell, expected) => {
     expect(paths(line, shell)).toEqual(expected)
   })
