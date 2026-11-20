@@ -17,7 +17,7 @@ The assistant has personalities, and you call it by the name of the one in use. 
 
 ## Status
 
-Early, and working. See [docs/SPEC.md](docs/SPEC.md), section 14.8, for what is built, and [docs/ROADMAP.md](docs/ROADMAP.md) for what is planned and waiting for a decision. The original proof of concept, called JARVIS, is in the history of `main`, up to commit 197aa43. To work on Echo, read [AGENTS.md](AGENTS.md): Echo itself reads it when it works on its own code.
+Early, and working. See [docs/SPEC.md](docs/SPEC.md), section 14.8, for what is built, and the [issues](https://github.com/feature-creepers/echo/issues) for what is planned: those labelled `approved` are decided, the others wait for a decision. The original proof of concept, called JARVIS, is in the history of `main`, up to commit 197aa43. To work on Echo, read [AGENTS.md](AGENTS.md): Echo itself reads it when it works on its own code.
 
 Packages for Windows, macOS and Linux are built by CI on every push: open the latest run under Actions and download the one for your system from its Artifacts. Releases are on the Releases page, and installed copies update from them (see [apps/desktop/README.md](apps/desktop/README.md)). Nothing is signed yet, so your system will warn before the first start.
 
@@ -41,7 +41,7 @@ Each app and package has a README of its own.
 apps/        programs that are built and shipped
 packages/    libraries: contracts, the core, adapters, client side
 tooling/     shared compiler and lint configuration
-docs/        the spec and the roadmap
+docs/        the spec
 ```
 
 Which package may import which is declared in `biome.jsonc` and enforced by `pnpm lint`.

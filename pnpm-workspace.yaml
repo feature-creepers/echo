@@ -3,6 +3,13 @@ packages:
   - packages/*
   - tooling/*
 
+# Checks on every install. A version must be three days old, about the time a hijacked one takes to be found and
+# pulled. A package may not lose the publishing evidence its earlier versions had (a trusted publisher, provenance).
+# A dependency of a dependency must come from the registry, never from git or an address.
+minimumReleaseAge: 4320
+trustPolicy: no-downgrade
+blockExoticSubdeps: true
+
 # Install scripts of dependencies run only when allowed here. None of these needs its script:
 # Electron downloads its program the first time it is run, esbuild works without it, and
 # electron-winstaller builds a kind of Windows installer (Squirrel) that this project does not make.
