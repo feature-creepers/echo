@@ -92,8 +92,8 @@ function copied(places: readonly string[], remote: (word: string) => string | un
   return files.length > 0 ? { files, to: host === '' ? [] : [host] } : undefined
 }
 
-/** The value of an option, written apart (`-T file`), joined (`-Tfile`) or after `=` (`--upload-file=file`). */
-function* values(args: readonly string[], short: readonly string[], long: readonly string[], caseless = false): Generator<string> {
+/** The values of an option, written apart (`-T file`), joined (`-Tfile`) or after `=` (`--upload-file=file`). */
+export function* optionValues(args: readonly string[], short: readonly string[], long: readonly string[], caseless = false): Generator<string> {
   for (let index = 0; index < args.length; index++) {
     const written = args[index] ?? ''
     const word = caseless ? written.toLowerCase() : written
@@ -118,16 +118,16 @@ const atFile = (value: string) => (value.startsWith('@') && value.length > 1 ? v
 
 function curl(args: readonly string[]): string[] {
   const files: string[] = []
-  for (const value of values(args, ['-d'], ['--data', '--data-binary', '--data-urlencode', '--json'])) {
+  for (const value of optionValues(args, ['-d'], ['--data', '--data-binary', '--data-urlencode', '--json'])) {
     // `--data-urlencode name@file` reads the file too.
     const file = atFile(value) ?? /^[^=@]+@(.+)$/.exec(value)?.[1]
     if (file) files.push(file)
   }
-  for (const value of values(args, ['-F'], ['--form'])) {
+  for (const value of optionValues(args, ['-F'], ['--form'])) {
     const file = /^[^=]*=[@<]([^;]+)/.exec(value)?.[1]
     if (file) files.push(file)
   }
-  for (const value of values(args, ['-T'], ['--upload-file'])) files.push(value === '.' ? '-' : value)
+  for (const value of optionValues(args, ['-T'], ['--upload-file'])) files.push(value === '.' ? '-' : value)
   return files
 }
 
@@ -177,10 +177,10 @@ export function sentBy(program: string, args: readonly string[], fed: boolean): 
     case 'curl':
       return result(curl(args))
     case 'wget':
-      return result([...values(args, [], ['--post-file', '--body-file'])])
+      return result([...optionValues(args, [], ['--post-file', '--body-file'])])
     case 'invoke-webrequest':
     case 'invoke-restmethod':
-      return result([...values(args, [], ['-infile'], true)])
+      return result([...optionValues(args, [], ['-infile'], true)])
     case 'http':
     case 'https':
     case 'xh':
@@ -217,7 +217,7 @@ export function sentBy(program: string, args: readonly string[], fed: boolean): 
     }
     case 'az':
       if (lower[0] !== 'storage' || lower[1] !== 'blob' || !['upload', 'upload-batch'].includes(lower[2] ?? '')) return undefined
-      return result([...values(args, ['-f', '-s'], ['--file', '--source'])], ['blob.core.windows.net'])
+      return result([...optionValues(args, ['-f', '-s'], ['--file', '--source'])], ['blob.core.windows.net'])
     default:
       return undefined
   }

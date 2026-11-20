@@ -1,6 +1,6 @@
 import { isPlain, type Piece, type Shell, type Stage, scan, textOf, type Word } from './command-words.ts'
 import { hostsOf } from './hosts.ts'
-import { sentBy } from './sending.ts'
+import { optionValues, sentBy } from './sending.ts'
 
 export type { Shell }
 
@@ -52,7 +52,10 @@ export interface CommandReading {
   commands: ReadCommand[]
   /** The programs it runs, once each, in order. */
   programs: string[]
-  /** Every stage only reads, nothing is written to a file, and all of it could be read in advance. */
+  /**
+   * Every stage only reads, nothing is written to a file, no variable is set that changes what a program runs, and
+   * all of it could be read in advance.
+   */
   readOnly: boolean
   destructive: boolean
   network: boolean
@@ -99,6 +102,24 @@ const KNOWN_VARIABLES = new Set([
   'XDG_CACHE_HOME',
   'XDG_STATE_HOME'
 ])
+
+/**
+ * Variables that change only how a program shows what it shows: a line that sets one still only reads. Any other
+ * (`PATH`, `LD_PRELOAD`, `GIT_EXTERNAL_DIFF`, `LESSOPEN`) can make a program that reads run something else.
+ */
+const HARMLESS_VARIABLES = /^(LANG|LANGUAGE|LC_[A-Z]+|TZ|TERM|COLUMNS|LINES|NO_COLOR|FORCE_COLOR|CLICOLOR|CLICOLOR_FORCE|COLORTERM)$/
+/** Pagers, harmless when they page with `cat` or nothing: `GIT_PAGER=cat git log`. */
+const PAGERS = /^(PAGER|GIT_PAGER|MANPAGER)$/
+
+/**
+ * Whether setting a variable leaves the line reading only. `exported`: the programs the line runs are given it, as a
+ * prefix, `export`, `env` or the environment's own scope give it. A variable the shell keeps to itself matters only
+ * when the system exported it already, and those are written in capitals.
+ */
+function harmless(variable: string, value: string, exported: boolean): boolean {
+  if (!exported && /^[a-z_][a-z0-9_]*$/.test(variable)) return true
+  return HARMLESS_VARIABLES.test(variable) || (PAGERS.test(variable) && /^(cat)?$/.test(value.trim()))
+}
 
 /** Paths that are no file: where output is thrown away, the terminal, standard streams. */
 const NOWHERE = /^(\/dev\/(null|stdin|stdout|stderr|tty|zero|random|urandom|fd\/\d+)|nul|con|\$null|-)$/i
@@ -182,65 +203,58 @@ const isAbsolute = (path: string) => /^(\/|\\|~|\$\{|[A-Za-z]:)/.test(path)
 const joined = (folder: string, path: string) => `${folder.replace(/[\\/]+$/, '')}/${path}`
 
 /**
- * The path a word names, as far as the line tells it: cut where a wildcard, a variable only the shell knows or
- * a command's output starts. `unknown` when even its start cannot be told.
+ * The path a word names, as far as the line tells it. Where a wildcard, a variable or a command's output starts, the
+ * word is cut: it names the folder that part picks from and what is below it, the folder the command runs in when
+ * it names none. `unresolved` when where it leads cannot be told from the line: what cut it is only the shell's to
+ * know, or what follows may climb out of that folder with `..`, written or matched (`{a,..}`, `.*`). Nothing for a
+ * word that is no path.
  */
-function pathOf(word: Word, context: Context): { path: string; below: boolean } | 'unknown' | undefined {
+function pathOf(word: Word, context: Context): { path: string; below: boolean; unresolved: boolean } | undefined {
+  // A script block given to a command is code, read on its own, and no path.
+  if (word.pieces.length === 1 && word.pieces[0]?.kind === 'inner' && word.pieces[0].block) return undefined
   let path = ''
-  let cut = false
-  let unknown = false
   for (const [index, piece] of word.pieces.entries()) {
+    let rest = ''
+    let wildcard = false
     if (piece.kind === 'text') {
-      if (piece.quoted) {
-        path += piece.text
-        continue
-      }
+      // `~` is the home the line set, when it set one.
+      if (index === 0 && !piece.quoted && piece.text.startsWith('~') && context.bound.has('HOME')) return { path: '', below: true, unresolved: true }
       // A wildcard or a brace expansion: what is before it is the folder it picks from.
-      const wild = piece.text.search(context.shell === 'cmd' ? /[*?]/ : /[*?[{]/)
+      const wild = piece.quoted ? -1 : piece.text.search(context.shell === 'cmd' ? /[*?]/ : /[*?[{]/)
       if (wild < 0) {
         path += piece.text
         continue
       }
       path += piece.text.slice(0, wild)
-      cut = true
-      break
-    }
-    if (piece.kind === 'variable') {
+      rest = piece.text.slice(wild)
+      wildcard = true
+    } else if (piece.kind === 'variable') {
       // PowerShell's constants: `> $null` throws the output away.
       if (context.shell === 'powershell' && /^(null|true|false)$/i.test(piece.name)) return undefined
       const name = context.shell === 'posix' ? piece.name : piece.name.toUpperCase()
-      if (index === 0 && KNOWN_VARIABLES.has(name) && (context.shell !== 'posix' || name === piece.name)) {
+      const bound = context.bound.has(piece.name) || piece.name === '_' || piece.name.toLowerCase() === 'psitem'
+      if (index === 0 && !bound && KNOWN_VARIABLES.has(name) && (context.shell !== 'posix' || name === piece.name)) {
         path += `\${${name}}`
         continue
       }
-      cut = true
-      unknown = !(context.bound.has(piece.name) || piece.name === '_' || piece.name.toLowerCase() === 'psitem')
-      break
+      // A variable the line set names what its value named, when it is the whole word.
+      if (bound && word.pieces.length === 1) return undefined
     }
-    cut = true
-    unknown = true
-    break
-  }
-  // A script block given to a command is code, read on its own, and no path.
-  if (word.pieces.length === 1 && word.pieces[0]?.kind === 'inner' && word.pieces[0].block) return undefined
-  if (cut) {
-    // What is left is the folder: `~/Doc*` picks from `~`.
+    const after = word.pieces.slice(index + 1)
+    const segment = (/[^\\/]*$/.exec(path)?.[0] ?? '') + rest + textOf({ pieces: after })
+    const climbs = segment.includes('..') || /(^|[\\/{,])\.[*?[{]/.test(segment) || after.some((other) => other.kind !== 'text')
     const folder = path.replace(/[^\\/]*$/, '').replace(/(.)[\\/]+$/, '$1')
-    if (folder === '') return unknown && path === '' ? 'unknown' : undefined
-    path = folder
+    return { path: folder === '' && wildcard ? '.' : folder, below: true, unresolved: !wildcard || climbs }
   }
-  if (cut && unknown && path === '') return 'unknown'
-  return path === '' ? undefined : { path, below: cut }
+  return path === '' ? undefined : { path, below: false, unresolved: false }
 }
 
 /** Note a path the line names, read from the folder `cd` moved to. Words that are not paths are left alone. */
 function name(word: Word, context: Context, options: { always?: boolean; windowsProgram?: boolean; recursive?: boolean } = {}): void {
   const found = pathOf(word, context)
-  if (found === 'unknown') {
-    context.reading.unresolved = true
-    return
-  }
   if (!found) return
+  if (found.unresolved) context.reading.unresolved = true
+  if (found.path === '') return
   const { always = false, windowsProgram = false, recursive = false } = options
   let { path } = found
   if (!always && !looksLikePath(path, context.shell, windowsProgram)) {
@@ -259,9 +273,30 @@ function assignedValue(word: Word): Word | undefined {
   const first = word.pieces[0]
   if (first?.kind !== 'text' || first.quoted) return undefined
   const match = /^(--?[\w-]+=|[A-Za-z_]\w*=)/.exec(first.text)
-  if (!match) return undefined
-  const rest = first.text.slice(match[0].length)
-  return { pieces: [...(rest === '' ? [] : [{ ...first, text: rest }]), ...word.pieces.slice(1)] }
+  return match ? withoutStart(word, match[0].length) : undefined
+}
+
+/** A word without the first characters of its text: the value of `-Cdir`, `--chdir=dir`. */
+function withoutStart(word: Word, length: number): Word {
+  const [first, ...rest] = word.pieces
+  if (first?.kind !== 'text') return word
+  const text = first.text.slice(length)
+  return { pieces: [...(text === '' ? [] : [{ ...first, text }]), ...rest] }
+}
+
+/**
+ * Move the folder the line reads relative paths from, as `cd` does to a word: named, and unknown, the line no longer
+ * read as only reading, when the line cannot tell where it goes.
+ */
+function moveTo(target: Word, context: Context): void {
+  const found = pathOf(target, context)
+  if (found === undefined || found.unresolved || found.below || textOf(target) === '-') {
+    context.reading.unresolved = true
+    context.folder = undefined
+    return
+  }
+  name(target, context, { always: true })
+  context.folder = isAbsolute(found.path) || context.folder === undefined ? found.path : joined(context.folder, found.path)
 }
 
 // ---------------------------------------------------------------- programs
@@ -280,6 +315,8 @@ interface Kind {
   notPaths?: Set<number>
   /** Only these of its words are paths: `find`'s starting points. */
   onlyPaths?: Set<number>
+  /** Its words that move where it works, in order, as `cd` would: `git -C repo`. Its paths are read from there. */
+  folders?: number[]
   /** Lines it runs, read as commands of their own: `bash -c "…"`, `find -exec rm {} ;`, a script block. */
   nested?: { line: string; shell: Shell }[]
   /** It only starts what it nests, which decides for it. */
@@ -812,11 +849,16 @@ function subcommandOf(program: string, args: readonly string[]): { sub: string |
 function git(args: readonly string[]): Kind {
   const { sub, at } = subcommandOf('git', args)
   const rest = args.slice(at + 1)
+  const globals = at < 0 ? args : args.slice(0, at)
   const kind: Kind = sub === undefined ? { readOnly: true } : { sub }
-  // `-m "message"` and the like are words, never paths.
-  const notPaths = new Set<number>()
+  // The subcommand, `-m "message"` and the like are words, never paths; `-C repo` moves where git works, named as
+  // `cd` names it.
+  const notPaths = new Set<number>(at < 0 ? [] : [at])
   for (const [index, word] of args.entries()) if (['-m', '--message', '--author', '--format', '--pretty', '-c'].includes(word)) notPaths.add(index + 1)
+  const folders = globals.flatMap((word, index) => (word === '-C' ? [index + 1] : []))
+  for (const index of folders) notPaths.add(index)
   kind.notPaths = notPaths
+  if (folders.length > 0) kind.folders = folders
   switch (sub) {
     case 'status':
     case 'log':
@@ -843,7 +885,9 @@ function git(args: readonly string[]): Kind {
     case 'rev-list':
     case 'help':
     case 'version':
-      kind.readOnly = !has(rest, '--output') && !rest.some((word) => word.startsWith('--output='))
+      // `git grep -O` opens what it finds with a program of its choosing.
+      kind.readOnly =
+        !has(rest, '--output') && !rest.some((word) => word.startsWith('--output=') || (sub === 'grep' && /^(-O|--open-files-in-pager)/.test(word)))
       break
     case 'branch':
       // Listing only: no name to make, and nothing deleted, moved or copied.
@@ -918,6 +962,8 @@ function git(args: readonly string[]): Kind {
       kind.network = rest[0] === 'update' || rest[0] === 'add' || rest[0] === 'sync'
       break
   }
+  // Configuration given on the line can make any subcommand run a program: `-c core.pager=…`, `-c core.fsmonitor=…`.
+  if (globals.some((word) => word === '-c' || word.startsWith('--config-env') || word.startsWith('--exec-path='))) kind.readOnly = false
   return kind
 }
 
@@ -1328,13 +1374,66 @@ function kindOf(program: string, args: readonly string[], context: Context): Kin
       return findKind(args)
   }
 
-  if (READING.has(program)) return readingKind(program, args)
+  if (READING.has(program)) return readingKind(program, args, context.shell)
   if (context.shell === 'cmd' && ['for', 'if'].includes(program)) return { opaque: true }
   return {}
 }
 
+/**
+ * What a sed script does beyond editing the text it is given: write a file (`w`, `W`, the `w` flag of `s`), read one
+ * (`r`, `R`) or run a command (`e`, the `e` flag of `s`). A script it cannot follow counts as doing so.
+ */
+function sedActs(script: string): boolean {
+  let at = 0
+  /** Past a part closed by `delimiter`, escapes skipped. False when it is not closed. */
+  const closed = (delimiter: string) => {
+    for (; at < script.length; at++) {
+      if (script[at] === '\\') at++
+      else if (script[at] === delimiter) {
+        at++
+        return true
+      }
+    }
+    return false
+  }
+  /** Past an address: a line, `$`, `first~step`, or a pattern between slashes or `\cpatternc`, with its flags. */
+  const address = () => {
+    const c = script[at]
+    if (c === '/' || c === '\\') {
+      at += c === '/' ? 1 : 2
+      if (!closed(c === '/' ? '/' : (script[at - 1] ?? ''))) return false
+      while (/[IM]/.test(script[at] ?? '')) at++
+    } else while (/[\d$~+]/.test(script[at] ?? '')) at++
+    return true
+  }
+  while (at < script.length) {
+    while (/[\s;{}]/.test(script[at] ?? '')) at++
+    if (at >= script.length) break
+    if (!address()) return true
+    if (script[at] === ',') {
+      at++
+      if (!address()) return true
+    }
+    while (/[\s!]/.test(script[at] ?? '')) at++
+    const command = script[at++] ?? ''
+    if (command === 's' || command === 'y') {
+      const delimiter = script[at++] ?? ''
+      if (delimiter === '' || delimiter === '\\' || delimiter === '\n' || !closed(delimiter) || !closed(delimiter)) return true
+      const flags = /^[A-Za-z0-9]*/.exec(script.slice(at))?.[0] ?? ''
+      if (/[we]/.test(flags)) return true
+      at += flags.length
+    } else if ('aic#:btT'.includes(command)) {
+      // Text, a comment or a label, to the end of the line.
+      while (at < script.length && script[at] !== '\n' && !(command !== '#' && 'btT:'.includes(command) && script[at] === ';')) at++
+    } else if ('qQlL'.includes(command)) {
+      while (/[\s\d]/.test(script[at] ?? '') && script[at] !== '\n') at++
+    } else if (command === '' || !'=dDgGhHnNpPxzF{}'.includes(command)) return true
+  }
+  return false
+}
+
 /** Programs that read, unless an option makes them write, and whose first word may be a pattern rather than a path. */
-function readingKind(program: string, args: readonly string[]): Kind {
+function readingKind(program: string, args: readonly string[], shell: Shell): Kind {
   const kind: Kind = { readOnly: true }
   const first = positionals(args, ['-e', '-f', '-m', '-A', '-B', '-C', '-d', '-D', '-g', '-t', '-T', '--glob', '--type', '--include', '--exclude'])[0]
   switch (program) {
@@ -1349,33 +1448,92 @@ function readingKind(program: string, args: readonly string[]): Kind {
       const notPaths = new Set<number>()
       for (const [index, word] of args.entries())
         if (['-e', '-g', '--glob', '-t', '--type', '--include', '--exclude', '--regexp'].includes(word)) notPaths.add(index + 1)
-      if (first && !has(args, '-e', '-f', '--regexp', '--file') && program !== 'findstr') notPaths.add(first.index)
+      // `rg --files` lists files: its first word is a place, not a pattern.
+      if (first && !has(args, '-e', '-f', '--regexp', '--file', '--files') && program !== 'findstr') notPaths.add(first.index)
       if (program === 'findstr' && first) notPaths.add(first.index)
       kind.notPaths = notPaths
       kind.recursive = ['rg', 'ag', 'ack'].includes(program) || short(args, 'r') || short(args, 'R') || has(args, '--recursive', '/s', '/S')
       kind.windows = program === 'findstr'
+      // A program of its choosing to read each file through, or to page what it found.
+      kind.readOnly = !args.some((word) => /^--(pre|pager)(=|$)/.test(word))
       return kind
     }
-    case 'sed':
-      kind.readOnly = !args.some((word) => /^-[A-Za-z]*i/.test(word) || word.startsWith('--in-place'))
-      if (first && !has(args, '-e', '-f', '--expression', '--file')) kind.notPaths = new Set([first.index])
+    case 'sed': {
+      // The script is the first word, unless it is given with `-e` or read from a file, which the line does not show.
+      const notPaths = new Set<number>()
+      for (const [index, word] of args.entries()) if (word === '-e' || word === '--expression') notPaths.add(index + 1)
+      const fromFile = args.some((word) => /^-[A-Za-z]*f/.test(word) || word.startsWith('--file'))
+      const given = [...optionValues(args, ['-e'], ['--expression'])]
+      if (first && given.length === 0 && !fromFile) notPaths.add(first.index)
+      const scripts = given.length > 0 ? given : first && !fromFile ? [first.word] : []
+      kind.readOnly = !fromFile && !args.some((word) => /^-[A-Za-z]*i/.test(word) || word.startsWith('--in-place')) && !scripts.some(sedActs)
+      kind.notPaths = notPaths
       return kind
+    }
     case 'awk':
     case 'gawk':
     case 'mawk': {
-      const script = has(args, '-f') ? '' : (first?.word ?? '')
-      // Writing to a file or running a command from inside the script.
-      kind.readOnly = !/system\s*\(|\|\s*getline|print[f]?[^;}]*>\s*["$\w]|\|\s*"/.test(script) && !args.some((word) => word.startsWith('-i'))
-      if (first && !has(args, '-f')) kind.notPaths = new Set([first.index])
+      // A program read from a file, or a library loaded, is not on the line.
+      const loads = args.some((word) => /^(-[fEil]|--(file|exec|include|load|source))/.test(word))
+      // Writing to a file, or running a command, from inside the script.
+      kind.readOnly = !loads && !/system\s*\(|getline|@(include|load)|print[f]?[^;}]*[|>]/.test(first?.word ?? '')
+      if (first && !loads) kind.notPaths = new Set([first.index])
       return kind
     }
     case 'jq':
     case 'yq':
       kind.readOnly = !args.some((word) => /^-[A-Za-z]*i/.test(word) || word === '--inplace')
-      if (first) kind.notPaths = new Set([first.index])
+      // The filter is the first word, unless it is read from a file: then the first word is a file it reads.
+      if (first && !has(args, '-f', '--from-file')) kind.notPaths = new Set([first.index])
       return kind
     case 'sort':
-      kind.readOnly = !has(args, '-o', '--output') && !args.some((word) => word.startsWith('--output=') || /^-o./.test(word))
+      kind.readOnly =
+        !has(args, '-o', '--output') && !args.some((word) => word.startsWith('--output=') || /^-o./.test(word) || word.startsWith('--compress-program'))
+      return kind
+    case 'tree':
+    case 'less':
+      // Where it writes what it shows: `tree -o out.txt`, `less -o log`.
+      kind.readOnly = !args.some((word) => /^-[A-Za-z]*[oO]/.test(word) || /^--log-file/i.test(word))
+      kind.recursive = program === 'tree'
+      kind.windows = program === 'tree'
+      return kind
+    case 'file':
+      kind.readOnly = !short(args, 'C') && !has(args, '--compile')
+      return kind
+    case 'man':
+      // A pager or a browser of its choosing.
+      kind.readOnly = !args.some((word) => /^(-[A-Za-z]*[PH]|--(pager|html))/.test(word))
+      return kind
+    case 'history':
+      // `history -w file` writes the shell's history over a file.
+      kind.readOnly = args.every((word) => /^\d+$/.test(word))
+      return kind
+    case 'hash':
+      // `hash -p /some/where ls` makes `ls` run that program.
+      kind.readOnly = !short(args, 'p')
+      return kind
+    case 'alias':
+      kind.readOnly = !args.some((word) => word.includes('='))
+      return kind
+    case 'fc':
+      // cmd's `fc` compares files; the POSIX shell's runs commands again, or an editor of its choosing.
+      kind.readOnly = shell === 'cmd'
+      return kind
+    case 'export':
+      // A variable exported goes to every program the line runs after it.
+      kind.readOnly = args.every((word) => {
+        const [variable = '', ...value] = word.split('=')
+        return word.startsWith('-') || harmless(variable, value.join('='), true)
+      })
+      return kind
+    case 'set':
+      // In cmd, `set NAME=value` sets a variable of the environment, which every program after it is given.
+      kind.readOnly =
+        shell !== 'cmd' ||
+        args.every((word) => {
+          const [variable = '', ...value] = word.split('=')
+          return value.length === 0 || harmless(variable.trim().toUpperCase(), value.join('='), true)
+        })
       return kind
     case 'uniq':
       // A second file is where it writes.
@@ -1391,16 +1549,18 @@ function readingKind(program: string, args: readonly string[]): Kind {
       kind.readOnly = positionals(args).length === 0
       return kind
     case 'echo':
-    case 'printf':
-      // What it prints is no path: what it writes to, after `>`, is checked as one.
+    case 'printf': {
+      // What it prints is no path: what it writes to, after `>`, is checked as one. `printf -v NAME` sets a variable.
       kind.notPaths = new Set(args.keys())
+      const set = program === 'printf' ? args.indexOf('-v') : -1
+      if (set >= 0) kind.readOnly = harmless(args[set + 1] ?? '', '', false)
       return kind
+    }
     case 'ls':
     case 'dir':
-    case 'tree':
     case 'du':
-      kind.recursive = program === 'tree' || program === 'du' || short(args, 'R') || has(args, '--recursive', '/s', '/S')
-      kind.windows = program === 'dir' || program === 'tree'
+      kind.recursive = program === 'du' || short(args, 'R') || has(args, '--recursive', '/s', '/S')
+      kind.windows = program === 'dir'
       return kind
     case 'diff':
       kind.recursive = short(args, 'r') || has(args, '--recursive')
@@ -1555,17 +1715,25 @@ function readStage(stage: Stage, context: Context): void {
     if (redirect.writes && !NOWHERE.test(textOf(redirect.target).trim())) reading.readOnly = false
   }
 
-  // What the line sets for itself: `x=…` in the POSIX shell, `$x = …` in PowerShell, `set x=…` in cmd.
+  // What the line sets for itself: `x=…` in the POSIX shell, `$x = …` in PowerShell (cmd's `set` is a command). A
+  // variable a program is given can change what it runs: the line no longer only reads, unless it is a harmless one.
   if (context.shell === 'posix') {
-    while (words[0] && /^[A-Za-z_]\w*\+?=/.test(firstText(words[0]))) {
-      const assigned = words.shift() as Word
-      context.bound.add(firstText(assigned).replace(/\+?=.*$/, ''))
+    const assignments: Word[] = []
+    while (words[0] && /^[A-Za-z_]\w*\+?=/.test(firstText(words[0]))) assignments.push(words.shift() as Word)
+    for (const assigned of assignments) {
+      const variable = firstText(assigned).replace(/\+?=.*$/, '')
+      context.bound.add(variable)
       const value = assignedValue(assigned)
       if (value) name(value, context)
+      // Before a command, it is given to that command.
+      if (!harmless(variable, value ? textOf(value) : '', words.length > 0)) reading.readOnly = false
     }
-  } else if (context.shell === 'powershell' && words[1] && textOf(words[1]) === '=') {
+  } else if (context.shell === 'powershell' && words[1] && /^(\?\?|[-+*/%])?=$/.test(textOf(words[1]))) {
     const target = words[0]?.pieces[0]
-    if (target?.kind === 'variable') context.bound.add(target.name)
+    if (target?.kind === 'variable') {
+      context.bound.add(target.name)
+      if (target.environment && !harmless(target.name, textOf(words[2] ?? { pieces: [] }), true)) reading.readOnly = false
+    }
     words = words.slice(2)
     // A value given to it is named, as it is wherever it is used next.
     if (words[0]?.pieces[0]?.kind === 'text' && (words[0].pieces[0] as { quoted: boolean }).quoted) name(words[0], context)
@@ -1613,8 +1781,25 @@ function readStage(stage: Stage, context: Context): void {
     while (at < words.length) {
       const word = textOf(words[at] as Word)
       if (program === 'env' && /^[A-Za-z_]\w*=/.test(word)) {
+        const [variable = '', ...value] = word.split('=')
+        if (!harmless(variable, value.join('='), true)) reading.readOnly = false
         at++
         continue
+      }
+      // `env -C dir` runs the command in that folder; `env -S "…"` runs the line it is given, with the words after it.
+      const option = program === 'env' ? /^(-C|--chdir=?|-S|--split-string=?)/.exec(word)?.[0] : undefined
+      if (option !== undefined) {
+        const joined = word.length > option.length
+        const value = joined ? withoutStart(words[at] as Word, option.length) : words[at + 1]
+        at += joined ? 1 : 2
+        if (option.startsWith('-C') || option.startsWith('--chdir')) {
+          context = { ...context }
+          if (value) moveTo(value, context)
+          continue
+        }
+        readLine([textOf(value ?? { pieces: [] }), ...words.slice(at).map(textOf)].join(' '), { ...context, depth: context.depth + 1 })
+        reading.commands.push(command('env', 'env', [], { readOnly: true }))
+        return
       }
       if (!word.startsWith('-') || word === '-') break
       if (word === '--') {
@@ -1632,6 +1817,8 @@ function readStage(stage: Stage, context: Context): void {
     }
     if (program === 'xargs') {
       for (const value of words.slice(1, at)) name(value, context)
+      // The command it runs is given its words, paths among them, from what xargs reads.
+      if (at < words.length) reading.unresolved = true
     }
     if (at >= words.length) {
       // Alone, `env` lists the variables and `command -v` finds a program: both only read.
@@ -1704,26 +1891,30 @@ function readStage(stage: Stage, context: Context): void {
   // A shell or an interpreter that reads what it is fed runs code that is not read here: `curl … | sh`, `python - <<EOF`.
   if ((stage.piped || stage.fed) && (INTERPRETERS.has(found.name) || (SHELLS[found.name] && !kind.launcher))) kind.opaque = true
 
-  // `cd somewhere`: what follows is read from there.
-  if (['cd', 'pushd', 'chdir', 'set-location', 'push-location'].includes(program.toLowerCase())) {
+  // `cd somewhere`: what follows is read from there. `popd` goes back where the line cannot tell.
+  if (['cd', 'pushd', 'chdir', 'set-location', 'push-location', 'popd', 'pop-location'].includes(program.toLowerCase())) {
     const target = args.find((word) => !textOf(word).startsWith('-') && !/^\/d$/i.test(textOf(word)))
-    if (target === undefined) {
-      if (context.shell === 'posix') context.folder = '~'
-    } else {
-      const path = pathOf(target, context)
-      if (path === 'unknown' || textOf(target) === '-') {
-        reading.unresolved = true
-        context.folder = undefined
-      } else if (path) {
-        name(target, context, { always: true })
-        context.folder = isAbsolute(path.path) || context.folder === undefined ? path.path : joined(context.folder, path.path)
-      }
-    }
+    if (['popd', 'pop-location'].includes(program.toLowerCase())) {
+      reading.unresolved = true
+      context.folder = undefined
+    } else if (target !== undefined) moveTo(target, context)
+    else if (context.shell === 'posix') context.folder = '~'
     reading.commands.push(command(program, program, argTexts, { readOnly: true }))
     return
   }
 
   for (const nested of kind.nested ?? []) readLine(nested.line, { ...context, shell: nested.shell, depth: context.depth + 1 })
+
+  // `git -C repo …`: its paths are read from there.
+  if (kind.folders) {
+    context = { ...context }
+    for (const index of kind.folders) {
+      const folder = args[index]
+      if (folder) moveTo(folder, context)
+    }
+  }
+  // `sort --files0-from=list` reads the files a list names, which the line does not.
+  if (argTexts.some((text) => text.startsWith('--files0-from'))) reading.unresolved = true
 
   for (const [index, word] of args.entries()) {
     if (kind.notPaths?.has(index)) continue

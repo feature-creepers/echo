@@ -4,14 +4,13 @@ import type { Hunk } from '@repo/protocol'
  * Two versions of a text compared line by line, as unified hunks with three unchanged lines around each change,
  * so the person can review what the assistant changed on the computer (docs/SPEC.md, section 12.2).
  *
- * Written here rather than taken from a library, for three reasons. The core takes no dependency beyond its
- * contracts. The work stays bounded whatever the files: each distinct line is numbered once so lines compare as
- * numbers, the common start and end are set aside first (most changes touch a few lines of a long file), and
- * Myers' algorithm, which finds the shortest diff, runs only while the versions differ by a few hundred lines.
- * Beyond that, lines found exactly once in each version anchor the comparison, as patience diff does, and what
- * lies between two anchors is compared again the same way, so a long file rewritten in many places still gives a
- * readable diff in bounded time; a stretch with no anchor that is still too different is shown removed, then
- * added, which is what it reads as anyway.
+ * The work stays bounded whatever the files: each distinct line is numbered once so lines compare as numbers, the
+ * common start and end are set aside first (most changes touch a few lines of a long file), and Myers' algorithm,
+ * which finds the shortest diff, runs only while the versions differ by a few hundred lines. Beyond that, lines
+ * found exactly once in each version anchor the comparison, as patience diff does, and what lies between two
+ * anchors is compared again the same way, so a long file rewritten in many places still gives a readable diff in
+ * bounded time; a stretch with no anchor that is still too different is shown removed, then added, which is what
+ * it reads as anyway.
  *
  * Line endings are set aside for the comparison: a file turned from CRLF to LF is not a file whose every line
  * changed. That they changed is said apart.

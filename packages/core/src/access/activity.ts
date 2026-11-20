@@ -25,12 +25,12 @@ export const ACCESS_USE = 'access.use'
 /** The type of the record written when the harness says how a use went. */
 export const ACCESS_OUTCOME = 'access.outcome'
 /** The type of the record written when a use is undone. */
-export const ACCESS_UNDO = 'access.undo'
+const ACCESS_UNDO = 'access.undo'
 
 /** How long the activity is kept. */
 export const KEPT_MS = 30 * 24 * 60 * 60 * 1000
 /** The largest file whose previous version is kept: a larger one is changed without a way back. */
-export const VERSION_LIMIT = 20 * 1024 * 1024
+const VERSION_LIMIT = 20 * 1024 * 1024
 
 const keptSchema = z.object({ path: z.string(), hash: z.string(), size: z.number() })
 const leftSchema = z.object({
@@ -145,6 +145,9 @@ const TURNS_AT_HAND = 100
 /** The actions that change files, which have a diff. */
 const CHANGING = new Set<AccessUse['action']>(['create', 'change', 'delete'])
 
+/** The types of the activity's own records, its seals aside. */
+const KINDS = [ACCESS_USE, ACCESS_OUTCOME, ACCESS_UNDO]
+
 /**
  * A version of a file as far as it can be compared: its bytes, or why there are none: too large, no longer kept, or
  * never known, for a file a command was found to have changed where it was not looked at before it ran.
@@ -175,7 +178,6 @@ export function samePlace(one: string, other: string): boolean {
 export function createActivity({ records, versions, computer, now, newId }: ActivityOptions): Activity {
   const entries = new Map<string, Entry>()
   const listeners = new Set<(use: AccessUse) => void>()
-  const KINDS = [ACCESS_USE, ACCESS_OUTCOME, ACCESS_UNDO]
 
   // The chain goes on from the last seal kept; with none, or the last one erased, it starts again.
   let head = GENESIS
@@ -304,7 +306,7 @@ export function createActivity({ records, versions, computer, now, newId }: Acti
     return shown
   }
 
-  return {
+  const activity: Activity = {
     async keep(paths) {
       const kept: NonNullable<UseRecord['kept']> = []
       const created: string[] = []
@@ -481,30 +483,32 @@ export function createActivity({ records, versions, computer, now, newId }: Acti
     async restore(id, path, side) {
       const entry = entries.get(id)
       if (!entry || !computer) return 'gone'
-      const hash =
+      // The file is put back where the activity found it, whatever the capitals the version was asked with.
+      const version =
         side === 'before'
-          ? entry.use.kept?.find((one) => samePlace(one.path, path))?.hash
-          : entry.outcome?.after?.find((one) => samePlace(one.path, path) && one.status !== 'deleted')?.fingerprint
+          ? entry.use.kept?.find((one) => samePlace(one.path, path))
+          : entry.outcome?.after?.find((one) => samePlace(one.path, path) && one.status !== 'deleted')
+      const hash = version && ('hash' in version ? version.hash : version.fingerprint)
       const bytes = hash === undefined ? undefined : versions.get(hash)
-      if (!bytes) return 'gone'
+      if (!version || !bytes) return 'gone'
       // The person's own change, kept as any other: what the file held can be put back in turn.
-      const { kept, created } = await this.keep([path])
-      const restoring = this.record({
+      const { kept, created } = await activity.keep([version.path])
+      const restoring = activity.record({
         tool: RESTORE_TOOL,
         action: created.length > 0 ? 'create' : 'change',
-        paths: [path],
+        paths: [version.path],
         decision: 'approved',
         reason: 'pressed',
         ...(kept && kept.length > 0 ? { kept } : {}),
         ...(created.length > 0 ? { created } : {})
       })
       try {
-        await computer.write(path, bytes)
+        await computer.write(version.path, bytes)
       } catch (error) {
-        await this.outcome(restoring.id, { ok: false, error: error instanceof Error ? error.message : String(error) })
+        await activity.outcome(restoring.id, { ok: false, error: error instanceof Error ? error.message : String(error) })
         throw error
       }
-      await this.outcome(restoring.id, { ok: true })
+      await activity.outcome(restoring.id, { ok: true })
       return 'done'
     },
 
@@ -555,11 +559,11 @@ export function createActivity({ records, versions, computer, now, newId }: Acti
 
     export() {
       const at = now()
-      const kept = records.read([...KINDS, ACCESS_SEAL]).filter((record) => record.payload !== null)
+      const written = records.read([...KINDS, ACCESS_SEAL])
       const document = {
         exported: at.toISOString(),
-        check: checkChain(records.read([...KINDS, ACCESS_SEAL]), at.getTime() - KEPT_MS),
-        records: kept.map(({ type, at: written, payload }) => ({ type, at: written, payload }))
+        check: checkChain(written, at.getTime() - KEPT_MS),
+        records: written.filter((record) => record.payload !== null).map(({ type, at: when, payload }) => ({ type, at: when, payload }))
       }
       return {
         name: `activity-${at.toISOString().slice(0, 10)}.json`,
@@ -588,19 +592,20 @@ export function createActivity({ records, versions, computer, now, newId }: Acti
                 : []
           )
         )
-      const going = hashes(old)
-      const staying = hashes(all.filter((record) => !old.includes(record)))
+      const going = new Set(old)
+      const released = hashes(old)
+      const staying = hashes(all.filter((record) => !going.has(record)))
       // Each record goes with its seal, written just after it, so the chain is checked from the first seal kept.
-      const seals = old.flatMap((record) => {
-        const next = written[written.indexOf(record) + 1]
-        return next?.type === ACCESS_SEAL ? [next.id] : []
+      const seals = written.flatMap((record, index) => {
+        const next = written[index + 1]
+        return going.has(record) && next?.type === ACCESS_SEAL ? [next.id] : []
       })
       records.append([{ type: ERASURE, payload: { records: [...old.map((record) => record.id), ...seals] } }])
       for (const record of old) {
-        const id = (record.payload as { id?: unknown; use?: unknown }).id ?? (record.payload as { use?: unknown }).use
-        if (record.type === ACCESS_USE && typeof id === 'string') entries.delete(id)
+        const id = record.type === ACCESS_USE ? (record.payload as { id?: unknown }).id : undefined
+        if (typeof id === 'string') entries.delete(id)
       }
-      for (const hash of going) if (!staying.has(hash)) versions.remove?.(hash)
+      for (const hash of released) if (!staying.has(hash)) versions.remove?.(hash)
     },
 
     onUse(listener) {
@@ -608,11 +613,11 @@ export function createActivity({ records, versions, computer, now, newId }: Acti
       return () => void listeners.delete(listener)
     }
   }
+  return activity
 }
 
 const withFingerprint = (path: string, fingerprint: string | undefined) => (fingerprint === undefined ? { path } : { path, fingerprint })
 
-/** Whether a use made a change to files: allowed, and not reported failed. */
 /** Whether a use changed files: a tool's change made, or a command found to have changed some, though it failed. */
 const made = (entry: { use: UseRecord; outcome?: OutcomeRecord | undefined }) =>
   entry.use.action === 'run'

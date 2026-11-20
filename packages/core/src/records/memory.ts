@@ -22,7 +22,7 @@ export function memoryRecords({ origin = 'memory', now = () => new Date() }: Mem
           sequence,
           at: record.at ?? now().toISOString(),
           type: record.type,
-          payload: structuredCloneJson(record.payload)
+          payload: throughJson(record.payload)
         }
       })
       stored.push(...written)
@@ -31,12 +31,12 @@ export function memoryRecords({ origin = 'memory', now = () => new Date() }: Mem
       return written.map((record) => ({ ...record }))
     },
     read(types) {
-      return stored.filter((record) => types.includes(record.type)).map((record) => ({ ...record, payload: structuredCloneJson(record.payload) }))
+      return stored.filter((record) => types.includes(record.type)).map((record) => ({ ...record, payload: throughJson(record.payload) }))
     }
   }
 }
 
 /** A payload goes through JSON, as it would on its way to a file: what comes back is never the object that went in. */
-function structuredCloneJson(payload: unknown): unknown {
+function throughJson(payload: unknown): unknown {
   return JSON.parse(JSON.stringify(payload))
 }

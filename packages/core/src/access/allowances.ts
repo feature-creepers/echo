@@ -1,5 +1,6 @@
 import type { Allowance } from '@repo/protocol'
 import type { ComputerUse } from '../ports/harness.ts'
+import { partsFrom } from '../projects/folders.ts'
 import type { CommandReading } from './commands.ts'
 
 /**
@@ -27,22 +28,20 @@ export function folderOf(path: string): string {
   return at <= 0 ? path.slice(0, at + 1) || path : path.slice(0, at)
 }
 
-/** Whether a path is a folder or inside it, by its words. The adapter resolved both already. */
+/** Whether a path is a folder or inside it, by its words, a Windows path whatever its capitals. The adapter resolved both already. */
 export function within(path: string, folder: string): boolean {
-  const trim = (value: string) => value.replace(/[\\/]+$/, '')
-  const [one, other] = [trim(path), trim(folder)]
-  return one === other || one.startsWith(`${other}/`) || one.startsWith(`${other}\\`) || (other === '' && one.startsWith('/'))
+  return partsFrom(folder, path) !== undefined
 }
 
 export function createAllowances({
   newId,
   now,
-  destroyingAsked = () => true
+  destroyingAsked
 }: {
   newId: () => string
   now: () => Date
   /** Whether what destroys is asked every time, as the person set it: then no yes for the session covers it. */
-  destroyingAsked?: () => boolean
+  destroyingAsked: () => boolean
 }): Allowances {
   let allowances: Allowance[] = []
   const listeners = new Set<(allowances: Allowance[]) => void>()

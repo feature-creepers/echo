@@ -13,8 +13,8 @@ export type Shell = 'posix' | 'powershell' | 'cmd'
 /** A piece of a word: text as written with its quotes taken off, a variable, or a command inside it. */
 export type Piece =
   | { kind: 'text'; text: string; quoted: boolean }
-  /** `$HOME`, `${HOME}`, `$env:USERPROFILE`, `%APPDATA%`, by name. */
-  | { kind: 'variable'; name: string }
+  /** `$HOME`, `${HOME}`, `$env:USERPROFILE`, `%APPDATA%`, by name; `environment` for PowerShell's `env:` scope. */
+  | { kind: 'variable'; name: string; environment?: boolean }
   /**
    * `$(…)`, backticks, `<(…)`, a PowerShell group or script block: read as a command of its own. `call` when it
    * calls a method; `block` for a script block, which is code given to a command rather than a value.
@@ -67,7 +67,8 @@ function scanState() {
   let word: Piece[] | undefined
   /** An operator read, waiting for the word it applies to: a file, or what a here-document or here-string is. */
   let pending: { kind: 'file'; writes: boolean } | { kind: 'heredoc'; strip: boolean } | { kind: 'drop' } | undefined
-  const heredocs: { delimiter: string; strip: boolean }[] = []
+  /** The here-documents opened on the line, read after it. One whose delimiter is not quoted runs the commands in its text. */
+  const heredocs: { delimiter: string; strip: boolean; expands: boolean }[] = []
 
   return {
     scanned,
@@ -95,7 +96,8 @@ function scanState() {
       const done: Word = { pieces: word }
       word = undefined
       if (pending?.kind === 'file') stage.redirects.push({ target: done, writes: pending.writes })
-      else if (pending?.kind === 'heredoc') heredocs.push({ delimiter: textOf(done), strip: pending.strip })
+      else if (pending?.kind === 'heredoc')
+        heredocs.push({ delimiter: textOf(done), strip: pending.strip, expands: done.pieces.every((piece) => piece.kind !== 'text' || !piece.quoted) })
       else if (pending === undefined) stage.words.push(done)
       pending = undefined
     },
@@ -135,7 +137,7 @@ function closing(text: string, from: number, open = '(', close = ')'): number {
 // ---------------------------------------------------------------- the POSIX shell
 
 /** A line as bash and sh read it. */
-export function scanPosix(text: string): Scanned {
+function scanPosix(text: string): Scanned {
   const state = scanState()
   const { scanned } = state
   let at = 0
@@ -143,15 +145,34 @@ export function scanPosix(text: string): Scanned {
   /** After a newline, the bodies of the here-documents opened on the line before it. */
   const skipHeredocs = (from: number) => {
     let next = from
-    for (const { delimiter, strip } of state.heredocs.splice(0)) {
+    for (const { delimiter, strip, expands } of state.heredocs.splice(0)) {
       while (next < text.length) {
-        const end = text.indexOf('\n', next)
-        const line = text.slice(next, end < 0 ? text.length : end)
-        next = end < 0 ? text.length : end + 1
-        if ((strip ? line.replace(/^\t+/, '') : line) === delimiter) break
+        const found = text.indexOf('\n', next)
+        const end = found < 0 ? text.length : found
+        const ends = (strip ? text.slice(next, end).replace(/^\t+/, '') : text.slice(next, end)) === delimiter
+        if (!ends && expands) expanded(next, end)
+        next = Math.min(end + 1, text.length)
+        if (ends) break
       }
     }
     return next
+  }
+
+  /**
+   * Text the shell expands without cutting it into words, from `from` to `to`: an unquoted here-document's, or an
+   * arithmetic expression. None of it is a word of the command, but the commands it substitutes run.
+   */
+  const expanded = (from: number, to: number) => {
+    const word = state.word
+    state.word = undefined
+    for (let at = from; at < to; ) {
+      const c = text[at]
+      if (c === '\\') at += 2
+      else if (c === '$') at = dollar(at, true)
+      else if (c === '`') at = backticks(at)
+      else at += 1
+    }
+    state.word = word
   }
 
   /** `$…` at `from`, in a word or in double quotes. Returns where reading goes on. */
@@ -159,12 +180,13 @@ export function scanPosix(text: string): Scanned {
     const next = text[from + 1]
     if (next === '(') {
       if (text[from + 2] === '(') {
-        // Arithmetic: a number, and nothing that runs.
+        // Arithmetic: a number, though a command substituted in it runs.
         const end = closing(text, from + 3)
         if (end < 0 || text[end + 1] !== ')') {
           scanned.unreadable = true
           return text.length
         }
+        expanded(from + 3, end)
         state.text('0', true)
         return end + 2
       }
@@ -368,7 +390,7 @@ export function scanPosix(text: string): Scanned {
 // ---------------------------------------------------------------- PowerShell
 
 /** A line as PowerShell reads it: statements, pipelines, script blocks and groups read as lines of their own. */
-export function scanPowerShell(text: string): Scanned {
+function scanPowerShell(text: string): Scanned {
   const state = scanState()
   const { scanned } = state
   let at = 0
@@ -395,7 +417,7 @@ export function scanPowerShell(text: string): Scanned {
         scanned.unreadable = true
         return text.length
       }
-      state.piece({ kind: 'variable', name: variableName(text.slice(from + 2, end)) })
+      state.piece(variableOf(text.slice(from + 2, end)))
       return end + 1
     }
     const name = /^(?:[A-Za-z_][A-Za-z0-9_]*:)?[A-Za-z_][A-Za-z0-9_]*|^[_?^$]/.exec(text.slice(from + 1))?.[0]
@@ -403,7 +425,7 @@ export function scanPowerShell(text: string): Scanned {
       state.text('$', false)
       return from + 1
     }
-    state.piece({ kind: 'variable', name: variableName(name) })
+    state.piece(variableOf(name))
     return from + 1 + name.length
   }
 
@@ -453,12 +475,19 @@ export function scanPowerShell(text: string): Scanned {
       at = end + 1
     } else if (c === '"') at = doubleQuoted(at + 1)
     else if (c === '@' && (text[at + 1] === "'" || text[at + 1] === '"') && /[\r\n]/.test(text[at + 2] ?? '')) {
-      // A here-string: text to its closing line, nothing in it runs (a double-quoted one expands variables, kept as text).
+      // A here-string: text to its closing line, kept as text. A double-quoted one runs the subexpressions in it.
       const close = `\n${text[at + 1]}@`
-      const end = text.indexOf(close, at + 2)
-      if (end < 0) scanned.unreadable = true
-      state.text(text.slice(at + 3, end < 0 ? text.length : end), true)
-      at = end < 0 ? text.length : end + close.length
+      const found = text.indexOf(close, at + 2)
+      const end = found < 0 ? text.length : found
+      if (found < 0) scanned.unreadable = true
+      if (text[at + 1] === '"') {
+        const word = state.word
+        state.word = undefined
+        for (let next = at + 3; next < end; ) next = text[next] === '`' ? next + 2 : text[next] === '$' ? variable(next) : next + 1
+        state.word = word
+      }
+      state.text(text.slice(at + 3, end), true)
+      at = found < 0 ? text.length : end + close.length
     } else if (c === '@' && text[at + 1] === '(') at = group(at + 2, '(', ')')
     else if (c === '@' && text[at + 1] === '{') at = group(at + 2, '{', '}')
     else if (c === '$') at = variable(at)
@@ -499,8 +528,14 @@ export function scanPowerShell(text: string): Scanned {
       state.text('&', false)
       state.endWord()
       at += 1
-    } else if (c === '=' && state.word !== undefined && state.stage().words.length === 0 && /^\$?[\w:.]+$/.test(textOf({ pieces: state.word }))) {
-      // An assignment: `$x = …`, `name = 'value'` in a hashtable. `=` is a word of its own; in a later word (an address) it is text.
+    } else if (
+      c === '=' &&
+      state.word !== undefined &&
+      state.stage().words.length === 0 &&
+      /^\$?[\w:.]+(\?\?|[-+*/%])?$/.test(textOf({ pieces: state.word }))
+    ) {
+      // An assignment: `$x = …`, `$x+=…`, `name = 'value'` in a hashtable. `=` is a word of its own; in a later word (an
+      // address) it is text.
       state.endWord()
       state.text('=', false)
       state.endWord()
@@ -524,18 +559,16 @@ export function scanPowerShell(text: string): Scanned {
   return scanned
 }
 
-/** A PowerShell variable's name as the analysis knows it: `env:APPDATA` is APPDATA, any other scope is left out. */
-function variableName(written: string): string {
-  const scoped = /^(?:(env|global|script|local|private|using):)?(.*)$/i.exec(written)
-  const [, scope, name] = scoped ?? []
-  if (scope?.toLowerCase() === 'env') return (name ?? '').toUpperCase()
-  return name ?? written
+/** A PowerShell variable as the analysis knows it: `env:APPDATA` is the environment's APPDATA, any other scope is left out. */
+function variableOf(written: string): Piece {
+  const [, scope, name = written] = /^(?:(env|global|script|local|private|using):)?(.*)$/i.exec(written) ?? []
+  return scope?.toLowerCase() === 'env' ? { kind: 'variable', name: name.toUpperCase(), environment: true } : { kind: 'variable', name }
 }
 
 // ---------------------------------------------------------------- cmd
 
 /** A line as Windows' `cmd` reads it. */
-export function scanCmd(text: string): Scanned {
+function scanCmd(text: string): Scanned {
   const state = scanState()
   const { scanned } = state
   let at = 0

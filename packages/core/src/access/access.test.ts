@@ -500,6 +500,8 @@ describe('places never reached', () => {
     settings.setAccess({ computer: 'write' })
     expect(access.reaches('/home/ada/Music', true)).toBe(true)
     expect(access.reaches('/home/ada/.ssh/id_ed25519')).toBe(false)
+    expect(access.reaches('/home/ada/Music/Passwords.KDBX')).toBe(false)
+    expect(access.neverReached('/home/ada/Passwords.kdbx')).toBe('Password databases')
   })
 })
 
@@ -765,6 +767,10 @@ describe('the changes, reviewed as diffs', () => {
     expect(restoring).toMatchObject({ side: 'after', tool: 'Restore', change: { added: 0, removed: 2 }, restorable: true })
     expect(older).toHaveLength(3)
     expect(context.access.activity(1).uses[0]).toMatchObject({ tool: 'Restore', decision: 'approved', reason: 'pressed', undo: { kind: 'restore' } })
+
+    // The version goes back where it was kept, whatever the path it was asked with.
+    expect(await context.access.restore(first, `${path}/`, 'before')).toBe('done')
+    expect(context.files.has(`${path}/`)).toBe(false)
 
     // A version no longer kept, or of another file, cannot be put back.
     expect(await context.access.restore('nothing', path, 'after')).toBe('gone')

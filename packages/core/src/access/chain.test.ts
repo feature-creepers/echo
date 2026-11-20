@@ -36,10 +36,10 @@ function logged(count = 3) {
   let clock = Date.parse('2026-11-18T10:00:00Z')
   const now = () => new Date(clock)
   const records = memoryRecords({ now })
-  const blobs = new Map<string, Uint8Array>()
+  // With no computer, no version of a file is ever kept.
   const activity = createActivity({
     records,
-    versions: { put: (bytes) => (blobs.set(String(blobs.size), bytes), String(blobs.size - 1)), get: (hash) => blobs.get(hash) },
+    versions: { put: () => '', get: () => undefined },
     computer: undefined,
     now,
     newId: (() => {

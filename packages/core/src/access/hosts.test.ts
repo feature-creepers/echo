@@ -41,7 +41,9 @@ describe('kinds of hosts', () => {
     ['printer.local', false, true],
     ['router.home.arpa', false, true],
     ['github.com', false, false],
-    ['8.8.8.8', false, false]
+    ['8.8.8.8', false, false],
+    ['[::ffff:192.168.1.20]', false, true],
+    ['[::ffff:127.0.0.1]', true, false]
   ])('%s: this computer %s, the local network %s', (host, loopback, local) => {
     expect(isLoopback(host)).toBe(loopback)
     expect(isLocalNetwork(host)).toBe(local)

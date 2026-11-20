@@ -165,8 +165,9 @@ export function hostsOf(program: string, args: readonly string[]): string[] {
   return [...new Set(found.map(hostName))]
 }
 
+/** An IPv4 address's numbers, written plainly or mapped into IPv6 (`::ffff:192.168.1.20`). */
 const ipv4 = (host: string): number[] | undefined => {
-  const parts = host.split('.')
+  const parts = host.replace(/^::ffff:/, '').split('.')
   if (parts.length !== 4 || parts.some((part) => !/^\d{1,3}$/.test(part))) return undefined
   const numbers = parts.map(Number)
   return numbers.every((number) => number <= 255) ? numbers : undefined

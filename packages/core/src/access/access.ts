@@ -5,12 +5,12 @@ import type { Timers } from '../ports/clock.ts'
 import type { Computer, FolderSnapshot } from '../ports/computer.ts'
 import type { ComputerUse, HarnessComputer, Reach, Scope, Verdict } from '../ports/harness.ts'
 import type { Records } from '../ports/records.ts'
-import { fromFolder } from '../projects/folders.ts'
+import { folderName, fromFolder } from '../projects/folders.ts'
 import type { AccessChange, SettingsChange, UserSettings } from '../settings/settings.ts'
 import type { Tool } from '../tools/tools.ts'
 import type { Screen, Showing } from '../views/screen.ts'
 import { type Activity, createActivity, type NewUse, type UndoResult } from './activity.ts'
-import { createAllowances } from './allowances.ts'
+import { createAllowances, folderOf, within } from './allowances.ts'
 import { type Answer, type Answered, type Approvals, createApprovals, type Question } from './approvals.ts'
 import { type CommandReading, readCommand } from './commands.ts'
 import { isLocalNetwork, isLoopback, listedHost } from './hosts.ts'
@@ -145,19 +145,6 @@ const SNAPSHOTS_KEPT = 50
 /** How many of a thread's uses it is reminded of when a new session carries on its work. */
 const WORKED_LINES = 40
 
-/** The last part of a path, and the folder it is in, whatever the system's separator. */
-const parts = (path: string) => {
-  const at = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
-  return at < 0 ? { name: path, folder: '' } : { name: path.slice(at + 1) || path, folder: path.slice(0, at) || path.slice(0, at + 1) }
-}
-
-/** Whether a path is a place or inside it, by its words. The harness checks for real, links followed. */
-const inside = (path: string, place: string) => {
-  const trim = (value: string) => value.replace(/[\\/]+$/, '')
-  const [one, other] = [trim(path), trim(place)]
-  return one === other || one.startsWith(`${other}/`) || one.startsWith(`${other}\\`)
-}
-
 const REFUSED: Record<Exclude<Answer, 'yes' | 'session'>, string> = {
   no: 'The person said no. Do not try it again unless they ask.',
   'moved-on': 'The person moved on to something else without answering, so it was not done.',
@@ -241,7 +228,6 @@ function workedLine(use: AccessUse, path: (path: string) => string): string {
   return `${DONE[use.action]} ${what}${size}${outcome}${undone}`
 }
 
-/** Keeps nothing: for a core with no records, which has no computer either. */
 /**
  * How a program works with files when it does not say: with tools of its own for reading and writing files, and a
  * command line, reaching what was granted, its commands not held by the system.
@@ -254,6 +240,7 @@ export const DIRECT_TOOLS: HarnessComputer = {
   needs: 'grant'
 }
 
+/** Keeps nothing: for a core with no records, which has no computer either. */
 const NO_RECORDS: Records = { append: () => [], read: () => [] }
 const NO_VERSIONS: Blobs = { put: () => '', get: () => undefined }
 
@@ -296,36 +283,38 @@ export function createAccess({ settings, screen, computer, timers, records, vers
     }
   }
 
-  /** The place never reached that a path is in, if any. A place inside one that is reached all the same is not. */
+  /**
+   * The place never reached that a path is in, if any, as the adapter finds it: a file whose name ends a certain way,
+   * or a place inside one, unless it is inside a folder reached all the same.
+   */
   const neverReached = (path: string) =>
-    computer?.protected.find((place) => place.path !== undefined && inside(path, place.path) && !(place.except ?? []).some((open) => inside(path, open)))
+    computer?.protected.find((place) =>
+      place.ending !== undefined
+        ? path.toLowerCase().endsWith(place.ending.toLowerCase())
+        : place.path !== undefined && within(path, place.path) && !(place.except ?? []).some((open) => within(path, open))
+    )
+
+  /** Whether a place is within what was granted, by its words, for reading or, with `write`, for changing. */
+  const covered = (path: string, write: boolean) => {
+    const current = scope()
+    return (
+      current.computer === 'write' ||
+      (current.computer === 'read' && !write) ||
+      current.places.some((place) => within(path, place.path) && (place.write || !write))
+    )
+  }
 
   /** Where a path is, said for the person: the assistant's own folder by that name. */
-  const where = (path: string) => (computer && inside(path, computer.workspace) ? "The assistant's folder" : path)
+  const where = (path: string) => (computer && within(path, computer.workspace) ? "The assistant's folder" : path)
 
   const question = (use: ComputerUse, reading: CommandReading | undefined, offerSession: boolean): Question => {
     const path = use.paths[0] ?? ''
-    const { name, folder } = parts(path)
+    const [name, folder] = [folderName(path), folderOf(path)]
     const session = (text: string) => (offerSession ? { session: text } : {})
     switch (use.action) {
       case 'run': {
         const keys = reading?.keys ?? []
-        const { askDestroying, askPublishing } = access()
-        const guard = reading ? networkGuard(reading, access()) : undefined
-        const note = reading?.destructive
-          ? {
-              text: `It deletes or overwrites something for good, or changes the system.${askDestroying ? ' This is always asked.' : ''}`,
-              tone: 'danger' as const
-            }
-          : reading?.publishes
-            ? { text: `It puts something before others, beyond this computer.${askPublishing ? ' This is always asked.' : ''}`, tone: 'soft' as const }
-            : reading && reading.sends.length > 0
-              ? { text: `${sendsWords(reading.sends, reading.hosts)}${guard ? ' This is always asked.' : ''}`, tone: 'soft' as const }
-              : reading?.network
-                ? { text: `${reachesWords(reading.hosts)}${guard ? ' This is always asked.' : ''}`, tone: 'soft' as const }
-                : reading?.opaque
-                  ? { text: 'Part of what it runs cannot be read in advance.', tone: 'soft' as const }
-                  : undefined
+        const note = reading ? commandNote(reading) : undefined
         return {
           heading: 'Run this command?',
           subject: 'On your computer',
@@ -352,21 +341,34 @@ export function createAccess({ settings, screen, computer, timers, records, vers
           subject: name,
           facts: [{ label: 'In', value: where(folder) }],
           allow: 'Create it',
-          ...session(`Any change in ${folderName(folder)} until you quit`)
+          ...session(`Any change in ${namedFolder(folder)} until you quit`)
         }
       default:
         return {
           heading: use.paths.length > 1 ? `Change these ${use.paths.length} files?` : 'Change this file?',
-          subject: use.paths.length > 1 ? use.paths.map((one) => parts(one).name).join(', ') : name,
+          subject: use.paths.length > 1 ? use.paths.map(folderName).join(', ') : name,
           facts: [{ label: 'In', value: where(folder) }],
           allow: 'Change it',
-          ...session(`Any change in ${folderName(folder)} until you quit`)
+          ...session(`Any change in ${namedFolder(folder)} until you quit`)
         }
     }
   }
 
+  /** What the person should know of a command before answering, the most serious first. */
+  const commandNote = (reading: CommandReading): Question['note'] => {
+    const policy = access()
+    const always = (asked: boolean) => (asked ? ' This is always asked.' : '')
+    if (reading.destructive)
+      return { text: `It deletes or overwrites something for good, or changes the system.${always(policy.askDestroying)}`, tone: 'danger' }
+    if (reading.publishes) return { text: `It puts something before others, beyond this computer.${always(policy.askPublishing)}`, tone: 'soft' }
+    const guarded = networkGuard(reading, policy) !== undefined
+    if (reading.sends.length > 0) return { text: `${sendsWords(reading.sends, reading.hosts)}${always(guarded)}`, tone: 'soft' }
+    if (reading.network) return { text: `${reachesWords(reading.hosts)}${always(guarded)}`, tone: 'soft' }
+    return reading.opaque ? { text: 'Part of what it runs cannot be read in advance.', tone: 'soft' } : undefined
+  }
+
   /** A folder named for the person: the assistant's folder by that name, any other by its last part. */
-  const folderName = (folder: string) => (computer && inside(folder, computer.workspace) ? "the assistant's folder" : parts(folder).name || folder)
+  const namedFolder = (folder: string) => (computer && within(folder, computer.workspace) ? "the assistant's folder" : folderName(folder))
 
   /** Who made a use, as it is kept: the thread, and the turn it was answering. */
   const madeBy = ({ thread, turn }: Showing): Pick<NewUse, 'thread' | 'turn'> => ({
@@ -458,12 +460,7 @@ export function createAccess({ settings, screen, computer, timers, records, vers
     // A place never reached is not given either. A folder that holds one may be: what is inside stays refused.
     const never = neverReached(found.path)
     if (never) return { ok: false, text: `${found.path} holds ${never.label.toLowerCase()}, which is never reached, whatever is granted.` }
-    const current = scope()
-    const covered =
-      current.computer === 'write' ||
-      (current.computer === 'read' && !write) ||
-      current.places.some((place) => inside(found.path, place.path) && (place.write || !write))
-    if (covered) return { ok: true, path: found.path, kind: found.kind, already: true }
+    if (covered(found.path, write)) return { ok: true, path: found.path, kind: found.kind, already: true }
     // The places are kept to their number, so that the settings stay readable when the app opens again.
     const places = access().places.filter((place) => place.path !== found.path)
     if (places.length >= MAX_PLACES) return { ok: false, text: `${MAX_PLACES} places are granted already: one must be taken away in Settings, Access first.` }
@@ -639,15 +636,7 @@ export function createAccess({ settings, screen, computer, timers, records, vers
 
     neverReached: (path) => neverReached(path)?.label,
 
-    reaches(path, write = false) {
-      if (!computer || neverReached(path)) return false
-      const current = scope()
-      return (
-        current.computer === 'write' ||
-        (current.computer === 'read' && !write) ||
-        current.places.some((place) => inside(path, place.path) && (place.write || !write))
-      )
-    },
+    reaches: (path, write = false) => computer !== undefined && !neverReached(path) && covered(path, write),
 
     worked(thread, folder) {
       // Reading is left out: it changes nothing, and is quickly done again. What changed, ran or was refused is kept.
@@ -677,10 +666,9 @@ export function createAccess({ settings, screen, computer, timers, records, vers
 
     async set({ confirmationPhrase, ...given }) {
       // The phrase is kept as a fingerprint only: it is never stored, shown, or told to a session.
-      const phrase = confirmationPhrase === undefined || confirmationPhrase === null ? null : phraseOf(confirmationPhrase)
-      if (confirmationPhrase !== undefined && confirmationPhrase !== null && !phrase)
-        return { ok: false, error: { code: 'invalid-input', message: `A confirmation phrase has ${MIN_PHRASE_WORDS} words at least.` } }
-      const asked: AccessChange = confirmationPhrase === undefined ? given : { ...given, confirmation: phrase ?? null }
+      const phrase = typeof confirmationPhrase === 'string' ? phraseOf(confirmationPhrase) : null
+      if (phrase === undefined) return { ok: false, error: { code: 'invalid-input', message: `A confirmation phrase has ${MIN_PHRASE_WORDS} words at least.` } }
+      const asked: AccessChange = confirmationPhrase === undefined ? given : { ...given, confirmation: phrase }
       if (asked.places === undefined) return { ok: true, settings: settings.setAccess(asked) }
       if (!computer) return { ok: false, error: { code: 'invalid-input', message: 'This assistant runs where it cannot reach files.' } }
       const places: Place[] = []

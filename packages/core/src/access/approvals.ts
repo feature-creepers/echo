@@ -1,4 +1,4 @@
-import { type ConfirmationPhrase, DEFAULT_APPROVAL_WAIT } from '@repo/protocol'
+import type { ConfirmationPhrase } from '@repo/protocol'
 import type { Timers } from '../ports/clock.ts'
 import type { Signal } from '../ports/harness.ts'
 import type { Screen, Showing } from '../views/screen.ts'
@@ -33,7 +33,7 @@ export interface Question {
 }
 
 /** What the card of an outward question says, when the person set a confirmation phrase. */
-export const SAY_THE_PHRASE = 'To allow it aloud, say your confirmation phrase.'
+const SAY_THE_PHRASE = 'To allow it aloud, say your confirmation phrase.'
 
 export type Answer = 'yes' | 'session' | 'no' | 'moved-on' | 'stopped' | 'unanswered'
 
@@ -79,15 +79,15 @@ const fenced = (command: string) => {
 export function createApprovals({
   screen,
   timers,
-  wait = () => DEFAULT_APPROVAL_WAIT,
-  phrase = () => null
+  wait,
+  phrase
 }: {
   screen: Screen
   timers?: Timers | undefined
   /** How many minutes a question waits before it is taken as a no, as the person set it; `null` until they answer. */
-  wait?: () => number | null
+  wait: () => number | null
   /** The person's confirmation phrase, as the core keeps it; `null` when they set none. */
-  phrase?: () => ConfirmationPhrase | null
+  phrase: () => ConfirmationPhrase | null
 }): Approvals {
   const waiting: { view: string | undefined; outward: boolean; settle(answer: Answer, pressed?: boolean): void }[] = []
 
