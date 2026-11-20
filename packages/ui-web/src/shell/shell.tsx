@@ -4,13 +4,12 @@ import { useFollowed } from '@repo/client/react'
 import type { Accent, CommandInput, Look, PersonaId, TurnId } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-import { OPEN_ACCESS_EVENT } from '../access/access-indicator.tsx'
 import type { SpeechEngine } from '../audio/engine.ts'
 import { useDeviceSpeech } from '../audio/use-speech.ts'
 import { Stage } from '../conversation/stage.tsx'
+import { useCoreViewActions } from '../conversation/view-actions.ts'
 import { DeviceProvider, keyPress, useDevice } from '../device/device.tsx'
 import type { DeviceHost } from '../device/host.ts'
-import { useFileActions } from '../files/file-actions.ts'
 import { QuickLook } from '../files/quick-look.tsx'
 import { type HubPage, HubScreen } from '../hub/hub-screen.tsx'
 import { HUB_KEEPS, hubMakesRoom } from '../hub/room.ts'
@@ -26,7 +25,6 @@ import { IconButton } from '../primitives/icon-button.tsx'
 import { LibraryGlyph, SheetGlyph, WidgetsGlyph } from '../primitives/icons.tsx'
 import { accentStyle } from '../styles/accent.ts'
 import { DURATION, EASE } from '../styles/motion.ts'
-import type { ViewActions } from '../view/context.ts'
 import { FIRST_SHEET_PLACE, moveSheet, type SheetTab } from './sheet-place.ts'
 import { previewSheetWidth } from './sheet-width.ts'
 import { SideSheet } from './side-sheet.tsx'
@@ -38,7 +36,7 @@ export interface ShellProps {
   link: CoreLink
   /** What the app holds while it is connected to its core. */
   client: Client | undefined
-  /** The device's speech engines. Left out, the user types and the assistant's sentences are only shown. */
+  /** The device's speech engines. Left out, the person types and the assistant's sentences are only shown. */
   speech?: SpeechEngine | undefined
   /** The app's keeping of this device's settings, its version and its updates. Left out, the settings of the device last until the window closes. */
   device?: DeviceHost | undefined
@@ -47,12 +45,12 @@ export interface ShellProps {
 /** The event an app dispatches on the window to show the settings, on their general page: from its tray, for instance. */
 export const OPEN_SETTINGS_EVENT = 'echo:open-settings'
 
-/** What the title row's button to the hub, and the hub itself, are called where the user reads them. */
+/** What the title row's button to the hub, and the hub itself, are called where the person reads them. */
 const HUB_NAME = 'Library and settings'
 
 /**
  * The interface, whole: it decides what fills the window from where the app stands with its core and
- * from the user's settings.
+ * from the person's settings.
  */
 export function Shell({ device, ...rest }: ShellProps) {
   // The light the core casts on the ground: written by the core each frame it draws, read by the ground.
@@ -98,7 +96,10 @@ function Connected({ productName, client, engine }: { productName: string; clien
   const entered = useRef<Screen>(undefined)
   /** The page of the hub last shown in this run of the app, which its button opens on: the widgets at first. */
   const lastPage = useRef<HubPage>('widgets')
-  const openHub = useCallback((page: HubPage = lastPage.current, widget?: string) => setScreen({ is: 'hub', page, widget }), [])
+  const openHub = useCallback((page: HubPage = lastPage.current, widget?: string) => {
+    lastPage.current = page
+    setScreen({ is: 'hub', page, widget })
+  }, [])
 
   /**
    * Where the side sheet stands: open on a tab or closed, and where each tab is. It opens and closes over whatever
@@ -110,7 +111,7 @@ function Connected({ productName, client, engine }: { productName: string; clien
   const toggleSheet = useCallback((tab?: SheetTab) => moveSheetTo({ to: 'toggle', tab }), [])
   const openAnswer = useCallback((turn: TurnId) => moveSheetTo({ to: 'answer', turn }), [])
   const openThread = useCallback((thread: string | undefined) => moveSheetTo({ to: 'thread', thread }), [])
-  /** The persona the user is about to pick in a form, shown in its accent before anything is sent. */
+  /** The persona the person is about to pick in a form, shown in its accent before anything is sent. */
   const [picked, setPicked] = useState<PersonaId>()
 
   const settled = snapshot.state === 'ready' ? snapshot.settings.personas : undefined
@@ -179,19 +180,8 @@ function Connected({ productName, client, engine }: { productName: string; clien
     },
     [client]
   )
-  /** What the blocks of a pinned or saved widget can do. Nothing there starts playing by itself. */
-  const files = useFileActions()
-  const actions = useMemo<ViewActions>(
-    () => ({
-      say,
-      readFile: (file: string) => client.session.run('file.read', { file }),
-      readShapes: (url: string) => client.session.run('shapes.read', { url }).then((read) => read.shapes),
-      readFeed: (url: string) => client.session.run('feed.read', { url }).then((read) => read.document),
-      act: (act) => client.session.run('view.act', { act: [...act] }).then(() => undefined),
-      files
-    }),
-    [say, client, files]
-  )
+  /** What the blocks of a pinned or saved widget can do. */
+  const actions = useCoreViewActions(client, say)
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -207,17 +197,11 @@ function Connected({ productName, client, engine }: { productName: string; clien
   // The app asks for the settings: its tray's menu opens them on their general page.
   useEffect(() => {
     const onOpen = () => openHub('general')
-    // The access indicator under the composer opens its own page.
-    const onAccess = () => openHub('access')
     window.addEventListener(OPEN_SETTINGS_EVENT, onOpen)
-    window.addEventListener(OPEN_ACCESS_EVENT, onAccess)
-    return () => {
-      window.removeEventListener(OPEN_SETTINGS_EVENT, onOpen)
-      window.removeEventListener(OPEN_ACCESS_EVENT, onAccess)
-    }
+    return () => window.removeEventListener(OPEN_SETTINGS_EVENT, onOpen)
   }, [openHub])
 
-  // How wide the user made the side sheet, kept on this device. While its edge is dragged, the width is written
+  // How wide the person made the side sheet, kept on this device. While its edge is dragged, the width is written
   // straight to the page, once a frame, so nothing is drawn again; it is kept when the drag ends.
   const sheetWidth = device.settings.sheet.width
   const changeDevice = device.change
@@ -244,7 +228,7 @@ function Connected({ productName, client, engine }: { productName: string; clien
   const { personas } = snapshot.settings
   const shownPersona = personas.available.find((persona) => persona.id === (picked ?? personas.active))
   const { accent, look } = shownPersona ?? {}
-  // First launch is for someone whose personas were not confirmed when the app opened. Once in it, the user
+  // First launch is for someone whose personas were not confirmed when the app opened. Once in it, the person
   // stays in it until its last step, although the personas are confirmed halfway through.
   entered.current ??= personas.confirmed ? { is: 'main' } : { is: 'onboarding' }
   const showing: Screen = screen ?? entered.current
@@ -264,8 +248,6 @@ function Connected({ productName, client, engine }: { productName: string; clien
       </Frame>
     )
   }
-
-  if (showing.is === 'hub') lastPage.current = showing.page
 
   // Three buttons at most, from the left: the library and settings, the sidebar, and, while any is pinned, the
   // pinned widgets. Pressed from the hub, the widgets' button goes back to the main screen to show them.
@@ -352,6 +334,7 @@ function Connected({ productName, client, engine }: { productName: string; clien
                     personas={personas}
                     onSwitch={(persona) => setPersonas({ names: [], active: persona })}
                     onSetUpEngine={() => openHub('models')}
+                    onOpenAccess={() => openHub('access')}
                     speech={speech.ready}
                     voiceLevel={speech.ready ? speech.level : undefined}
                     voiceBands={speech.ready ? speech.bands : undefined}

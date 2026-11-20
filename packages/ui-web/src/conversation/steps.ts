@@ -1,4 +1,5 @@
 import type { AccessUse, Step } from '@repo/protocol'
+import type { Relative } from '../changes/diff-view.tsx'
 
 /** What each tool did, in a few words, for the list of calls. */
 const TOOL_TITLES: Record<string, string> = {
@@ -51,8 +52,7 @@ const TOOL_TITLES: Record<string, string> = {
   desktop_press: 'Pressed a key'
 }
 
-/** A path as the person reads it, relative to the folder the work is in. Whole when nothing says otherwise. */
-export type Relative = (path: string) => string
+/** A path whole, when nothing says what it is relative to. */
 const whole: Relative = (path) => path
 
 const fieldsOf = (step: Step): Record<string, unknown> | undefined =>
@@ -91,12 +91,15 @@ const quotedIn = (output: string | undefined) => output?.match(/“([^”]+)”/
 export function stepSummary(step: Step, relative: Relative = whole): string | undefined {
   const fields = fieldsOf(step)
   switch (step.tool) {
-    case 'computer_read':
-      return text(fields?.file_path) && relative(text(fields?.file_path) ?? '')
+    case 'computer_read': {
+      const file = text(fields?.file_path)
+      return file && relative(file)
+    }
     case 'computer_search': {
       const pattern = text(fields?.pattern)
+      const path = text(fields?.path)
       // A search of the folder the work is in names no folder: it is where everything else is named from.
-      const where = text(fields?.path) && relative(text(fields?.path) ?? '')
+      const where = path && relative(path)
       return pattern && where && where !== '.' ? `${pattern} in ${where}` : pattern
     }
     case 'computer_write': {

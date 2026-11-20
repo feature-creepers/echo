@@ -1,6 +1,8 @@
+import type { Mood } from '../presence/painter.ts'
+
 /**
  * What the assistant is doing, in a few words, from the tool it is using: shown in place of "Thinking" while
- * the user waits. A tool not named here is ordinary work; routing a turn is part of thinking.
+ * the person waits. A tool not named here is ordinary work; routing a turn is part of thinking.
  */
 const DOING: Record<string, string | undefined> = {
   web_search: 'Searching the web',
@@ -52,7 +54,54 @@ const DOING: Record<string, string | undefined> = {
 }
 
 /** The words for a tool at work, or nothing when "Thinking" says it already. */
-export function doing(tool: string | undefined): string | undefined {
+function doing(tool: string | undefined): string | undefined {
   if (tool === undefined) return undefined
   return Object.hasOwn(DOING, tool) ? DOING[tool] : 'Working'
+}
+
+/** What the core is doing, as the stage knows it. */
+export interface MoodFacts {
+  /** The assistant sleeps, working out what to remember. */
+  asleep: boolean
+  /** The person is talking. */
+  listening: boolean
+  /** What the person said is being written out. */
+  transcribing: boolean
+  /** A sentence is being heard. */
+  speaking: boolean
+  /** The turn on the stage is under way. */
+  running: boolean
+  /** The voice still has sentences to say. */
+  voicing: boolean
+  /** The tool the turn is using now, if any. */
+  tool: string | undefined
+}
+
+/**
+ * The core's mood: asleep only while nothing else is going on; then listening, writing out what was heard, and
+ * speaking; while a turn goes on, or its voice is about to speak, working when a tool works for the turn, and
+ * thinking otherwise. Routing a turn is part of thinking.
+ */
+export function moodOf({ asleep, listening, transcribing, speaking, running, voicing, tool }: MoodFacts): Mood {
+  if (asleep && !listening && !running && !speaking) return 'asleep'
+  if (listening) return 'listening'
+  if (transcribing) return 'thinking'
+  if (speaking) return 'speaking'
+  if (running && doing(tool) !== undefined) return 'working'
+  if (running || voicing) return 'thinking'
+  return 'idle'
+}
+
+const MOOD_WORDS: Record<Mood, string> = {
+  idle: 'Ready',
+  listening: 'Listening',
+  thinking: 'Thinking',
+  working: 'Working',
+  speaking: 'Speaking',
+  asleep: 'Asleep'
+}
+
+/** The word under the core: while it works, what it is doing, such as searching the web or preparing the view. */
+export function moodWord(mood: Mood, tool: string | undefined): string {
+  return (mood === 'working' ? doing(tool) : undefined) ?? MOOD_WORDS[mood]
 }

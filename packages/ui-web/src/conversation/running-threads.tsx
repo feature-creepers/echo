@@ -2,10 +2,10 @@ import type { Exchange, Thread } from '@repo/protocol'
 import { useId, useRef, useState } from 'react'
 import { BAR_LABEL } from '../access/access-indicator.tsx'
 import { lastPart } from '../changes/words.ts'
-import { ArrowGlyph } from '../primitives/icons.tsx'
 import { Floating } from '../primitives/menu.tsx'
+import { GoArrow } from './go-arrow.tsx'
 import { answeringOf, doingOf } from './plan.ts'
-import { kindWords, overOf, StateDot } from './thread-list.tsx'
+import { kindWords, overOf, StateDot, StopThread } from './thread-list.tsx'
 
 /** A thread at work as the list under the composer shows it: under the thread at work it does part of, if any. */
 interface WorkingRow {
@@ -107,15 +107,7 @@ export function RunningThreads({
                     <span className={nested ? 'truncate text-[0.75rem] text-text-soft' : 'truncate text-[0.8125rem] text-text'}>{thread.title}</span>
                     <span className="truncate text-label text-text-faint">{where.join(' · ')}</span>
                   </button>
-                  <button
-                    type="button"
-                    data-entry={`Stop ${thread.title}`}
-                    onClick={() => onStop(thread.id)}
-                    aria-label={`Stop ${thread.title}`}
-                    className="mr-1 h-6 shrink-0 rounded-sm px-2 text-label text-text-soft outline-none transition-colors duration-(--duration-quick) ease-soft hover:bg-danger/15 hover:text-danger focus-visible:bg-danger/15 focus-visible:text-danger"
-                  >
-                    Stop
-                  </button>
+                  <StopThread title={thread.title} data-entry={`Stop ${thread.title}`} onClick={() => onStop(thread.id)} className="mr-1" />
                 </div>
               </li>
             )
@@ -132,9 +124,7 @@ export function RunningThreads({
             className="group flex w-full items-center justify-between gap-2 rounded-sm px-2.5 py-1.5 text-left text-label text-text-soft outline-none transition-colors duration-(--duration-quick) ease-soft hover:bg-white/[0.05] hover:text-text focus-visible:bg-white/[0.07]"
           >
             All threads
-            <span className="transition-transform duration-(--duration-quick) ease-soft group-hover:translate-x-0.5 [&_svg]:size-3">
-              <ArrowGlyph />
-            </span>
+            <GoArrow />
           </button>
         </div>
       </Floating>

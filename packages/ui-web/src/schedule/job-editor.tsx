@@ -14,13 +14,11 @@ import { Button } from '../primitives/button.tsx'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { Select } from '../primitives/select.tsx'
+import { SMALL_FIELD, TEXT_AREA } from '../settings/field.ts'
 import { formOf, localNow, OFTEN, type Often, type TimingForm, timingOf } from './timing-form.ts'
 
-/** The fields of the editor: dark and inset, as the quiet hours' times are. */
-const FIELD =
-  'h-7 rounded-md border border-line-strong bg-black/25 px-2.5 text-[0.8125rem] text-text tabular-nums shadow-[inset_0_1px_1px_rgb(0_0_0/0.25)] [color-scheme:dark] transition duration-150 ease-soft aria-invalid:border-danger'
-
-const DAY_LETTERS: Record<Weekday, string> = {
+/** The days of the week, as the buttons that pick them say them. */
+const DAY_NAMES: Record<Weekday, string> = {
   monday: 'Mon',
   tuesday: 'Tue',
   wednesday: 'Wed',
@@ -35,7 +33,7 @@ const EVERY = Array.from({ length: MAX_EVERY_HOURS - MIN_EVERY_HOURS + 1 }, (_, 
   return { value: String(hours), label: hours === 1 ? 'Every hour' : `Every ${hours} hours` }
 })
 
-export interface JobEditorProps {
+interface JobEditorProps {
   job: Job
   /** The zone the jobs ring in: a single time is to come on its clock. */
   zone: string
@@ -105,7 +103,7 @@ export function JobEditor({ job, zone, now, onSave, onDone }: JobEditorProps) {
           // biome-ignore lint/a11y/noAutofocus: the job the person just asked to edit
           autoFocus
           onChange={(event) => setTitle(event.target.value)}
-          className={cn(FIELD, 'h-8 w-full px-3')}
+          className={cn(SMALL_FIELD, 'h-8 w-full px-3')}
         />
       </div>
       <div className="grid gap-1.5">
@@ -118,7 +116,7 @@ export function JobEditor({ job, zone, now, onSave, onDone }: JobEditorProps) {
           rows={2}
           maxLength={reminder ? JOB_SENTENCE_MAX_LENGTH : JOB_REQUEST_MAX_LENGTH}
           onChange={(event) => setSaid(event.target.value)}
-          className={cn(FIELD, 'h-auto w-full resize-none px-3 py-2 leading-relaxed')}
+          className={TEXT_AREA}
         />
       </div>
 
@@ -153,7 +151,13 @@ export function JobEditor({ job, zone, now, onSave, onDone }: JobEditorProps) {
 function When({ form, set }: { form: TimingForm; set(change: Partial<TimingForm>): void }) {
   const time = (label: string, field: 'time' | 'from' | 'until') => (
     <Labelled label={label}>
-      <input type="time" aria-label={label} value={form[field]} onChange={(event) => set({ [field]: event.target.value })} className={cn(FIELD, 'w-28')} />
+      <input
+        type="time"
+        aria-label={label}
+        value={form[field]}
+        onChange={(event) => set({ [field]: event.target.value })}
+        className={cn(SMALL_FIELD, 'w-28')}
+      />
     </Labelled>
   )
   switch (form.often) {
@@ -161,7 +165,7 @@ function When({ form, set }: { form: TimingForm; set(change: Partial<TimingForm>
       return (
         <>
           <Labelled label="On">
-            <input type="date" aria-label="On" value={form.date} onChange={(event) => set({ date: event.target.value })} className={cn(FIELD, 'w-36')} />
+            <input type="date" aria-label="On" value={form.date} onChange={(event) => set({ date: event.target.value })} className={cn(SMALL_FIELD, 'w-36')} />
           </Labelled>
           {time('at', 'time')}
         </>
@@ -186,7 +190,7 @@ function When({ form, set }: { form: TimingForm; set(change: Partial<TimingForm>
                     on ? 'bg-accent/20 text-text shadow-[inset_0_0_0_1px_rgb(255_255_255/0.14)]' : 'bg-white/[0.06] text-text-soft hover:text-text'
                   )}
                 >
-                  {DAY_LETTERS[day]}
+                  {DAY_NAMES[day]}
                 </button>
               )
             })}
@@ -205,7 +209,7 @@ function When({ form, set }: { form: TimingForm; set(change: Partial<TimingForm>
               max={31}
               value={form.day}
               onChange={(event) => set({ day: Number(event.target.value) })}
-              className={cn(FIELD, 'w-16')}
+              className={cn(SMALL_FIELD, 'w-16')}
             />
           </Labelled>
           {time('at', 'time')}

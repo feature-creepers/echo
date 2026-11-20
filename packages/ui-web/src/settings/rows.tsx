@@ -3,9 +3,9 @@ import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 
 /** A titled group of settings: the title above, the rows in one panel with hairlines between them. */
-export function SettingGroup({ title, note, children, className }: { title: string; note?: ReactNode; children: ReactNode; className?: string }) {
+export function SettingGroup({ title, note, children }: { title: string; note?: ReactNode; children: ReactNode }) {
   return (
-    <section aria-label={title} className={cn('grid gap-2', className)}>
+    <section aria-label={title} className="grid gap-2">
       <div className="flex items-baseline justify-between gap-4 px-0.5">
         <Eyebrow className="font-semibold text-text-soft">{title}</Eyebrow>
         {note && <span className="text-right text-text-faint text-xs">{note}</span>}
@@ -15,7 +15,7 @@ export function SettingGroup({ title, note, children, className }: { title: stri
   )
 }
 
-export interface SettingRowProps {
+interface SettingRowProps {
   title: string
   /** What the setting does, in a sentence. */
   detail?: ReactNode
@@ -23,7 +23,7 @@ export interface SettingRowProps {
   children?: ReactNode
   /** The control goes under the words, for one too wide to sit beside them. */
   stacked?: boolean
-  /** What went wrong with the setting, in words for the user, under what it does. */
+  /** What went wrong with the setting, in words for the person, under what it does. */
   problem?: string | undefined
 }
 

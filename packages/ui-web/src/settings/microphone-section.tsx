@@ -6,6 +6,7 @@ import { Choice } from '../primitives/choice.tsx'
 import { cn } from '../primitives/cn.ts'
 import { Select } from '../primitives/select.tsx'
 import { Switch } from '../primitives/switch.tsx'
+import { deviceChoice } from './device-choice.ts'
 import { SettingGroup, SettingRow } from './rows.tsx'
 
 const PAUSE_LABELS: Record<Pause, string> = { short: 'Short', normal: 'Normal', long: 'Long', never: 'Never' }
@@ -16,25 +17,12 @@ const PAUSE_DETAILS: Record<Pause, string> = {
   never: 'It listens until you press the shortcut again.'
 }
 
-/** The value of the list that stands for the system's own choice. */
-const SYSTEM = ''
-
 /** The microphone this computer listens with, what it hears right now, and how listening ends. */
 export function MicrophoneSection() {
   const { settings, change } = useDevice()
   const found = useAudioDevices('audioinput')
-  const chosen = settings.microphone
-  const hearing = useLevel(chosen)
-  // Found by its identifier, or by its name when the identifier changed: the same rule as when it is opened.
-  const present =
-    found?.devices.find((device) => device.id === chosen.id) ?? (chosen.label ? found?.devices.find((device) => device.label === chosen.label) : undefined)
-  const missing = chosen.id !== '' && found !== undefined && present === undefined
-
-  const options = [
-    { value: SYSTEM, label: found?.system ? `System default · ${found.system}` : 'System default' },
-    ...(found?.devices ?? []).map((device) => ({ value: device.id, label: device.label || 'Microphone' })),
-    ...(missing ? [{ value: chosen.id, label: `${chosen.label || 'Microphone'} · not connected` }] : [])
-  ]
+  const hearing = useLevel(settings.microphone)
+  const choice = deviceChoice(found, settings.microphone, 'Microphone')
 
   return (
     <div className="grid gap-10">
@@ -42,21 +30,13 @@ export function MicrophoneSection() {
         <SettingRow
           title="Listen with"
           detail={
-            missing
+            choice.missing
               ? 'This microphone is not connected. Until it is, the system default is used.'
               : 'The system default follows the microphone your computer uses. Pick one to keep to it.'
           }
           stacked
         >
-          <Select
-            label="Microphone"
-            value={present?.id ?? (missing ? chosen.id : SYSTEM)}
-            options={options}
-            onChange={(id) => {
-              const device = found?.devices.find((one) => one.id === id)
-              change({ microphone: device ? { id: device.id, label: device.label } : { id: '', label: '' } })
-            }}
-          />
+          <Select label="Microphone" value={choice.value} options={choice.options} onChange={(id) => change({ microphone: choice.pick(id) })} />
         </SettingRow>
         <div className="px-5 pt-1 pb-5">
           <LevelMeter hearing={hearing} />
@@ -122,7 +102,7 @@ function LevelMeter({ hearing }: { hearing: Hearing }) {
         )}
         aria-live="polite"
       >
-        {words.tone === 'ok' && <span className="size-1.5 rounded-full bg-ok shadow-[0_0_8px_var(--color-ok)]" />}
+        {words.tone === 'ok' && <span className="size-1.5 rounded-full bg-ok" />}
         {words.text}
       </p>
     </div>

@@ -1,14 +1,14 @@
 import type { Exchange, Persona } from '@repo/protocol'
-import { useEffect, useRef, useState } from 'react'
 import { Button } from '../primitives/button.tsx'
 import { BackGlyph, CheckGlyph } from '../primitives/icons.tsx'
 import { accentStyle } from '../styles/accent.ts'
 import { Markdown } from '../view/blocks/markdown.tsx'
 import { answerFileName } from './answer-file.ts'
+import { useCopy } from './use-copy.ts'
 
 const clock = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' })
 
-export interface FullAnswerProps {
+interface FullAnswerProps {
   /** The line whose full answer is shown. Nothing when it is no longer in the conversation. */
   exchange: Exchange | undefined
   /** What it is about: the title of the thread that wrote it. */
@@ -56,7 +56,7 @@ export function FullAnswer({ exchange, title, persona, onBack }: FullAnswerProps
   )
 }
 
-export interface AnswerActionsProps {
+interface AnswerActionsProps {
   /** The answer, in Markdown. */
   text: string
   /** What it is about, to name the file it is saved to. */
@@ -68,21 +68,7 @@ export interface AnswerActionsProps {
  * the system's own dialog to choose where.
  */
 export function AnswerActions({ text, about }: AnswerActionsProps) {
-  const [copied, setCopied] = useState<'copied' | 'failed'>()
-  const timer = useRef<number>(undefined)
-  useEffect(() => () => window.clearTimeout(timer.current), [])
-
-  const copy = () => {
-    const done = (how: 'copied' | 'failed') => {
-      setCopied(how)
-      window.clearTimeout(timer.current)
-      timer.current = window.setTimeout(() => setCopied(undefined), 1600)
-    }
-    navigator.clipboard.writeText(text).then(
-      () => done('copied'),
-      () => done('failed')
-    )
-  }
+  const { copied, copy } = useCopy(text)
   const save = () => {
     const url = URL.createObjectURL(new Blob([text.endsWith('\n') ? text : `${text}\n`], { type: 'text/markdown;charset=utf-8' }))
     const link = document.createElement('a')
@@ -96,11 +82,11 @@ export function AnswerActions({ text, about }: AnswerActionsProps) {
   return (
     <div className="-mr-1 flex shrink-0 items-center gap-0.5">
       <Button kind="quiet" size="sm" onClick={copy} aria-live="polite" className="min-w-[4.25rem] [&_svg]:size-3.5">
-        {copied === 'copied' ? (
+        {copied === true ? (
           <>
             <CheckGlyph size={14} /> Copied
           </>
-        ) : copied === 'failed' ? (
+        ) : copied === false ? (
           'Not copied'
         ) : (
           'Copy'

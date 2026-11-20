@@ -5,10 +5,17 @@ import { sectionThreads, underOf, underWords, usedWords } from './thread-list.ts
 const thread = (
   id: string,
   kind: Thread['kind'],
-  { parent, beside, state = 'parked', at = '12:00', folder }: { parent?: string; beside?: string; state?: Thread['state']; at?: string; folder?: string } = {}
+  {
+    title = id,
+    parent,
+    beside,
+    state = 'parked',
+    at = '12:00',
+    folder
+  }: { title?: string; parent?: string; beside?: string; state?: Thread['state']; at?: string; folder?: string } = {}
 ): Thread => ({
   id,
-  title: id,
+  title,
   kind,
   state,
   at: `2026-11-19T${at}:00.000Z`,
@@ -86,9 +93,9 @@ describe('the threads as the side sheet lists them', () => {
     const threads = [
       thread('Résumé', 'topic', { at: '13:00' }),
       thread('project', 'topic', { folder: 'C:\\GitHub\\echo' }),
-      thread('review project', 'subthread', { parent: 'project' }),
+      thread('review', 'subthread', { title: 'review project', parent: 'project' }),
       thread('drawings', 'subthread', { parent: 'project', folder: '/home/someone/echo-drawings' })
-    ].map((one) => (one.id === 'review project' ? { ...one, id: 'review' } : one))
+    ]
     expect(read(threads, query)).toEqual(sections)
   })
 })
@@ -134,7 +141,7 @@ describe('the threads under a thread, over its work', () => {
       under: ['side', 'part'],
       words: 'Under this thread'
     }
-  ])('lists ', ({ threads, under, words }) => {
+  ])('lists $name', ({ threads, under, words }) => {
     const found = underOf('project', threads)
     expect(found.map((one) => one.id)).toEqual(under)
     if (words !== undefined) expect(underWords(found)).toBe(words)

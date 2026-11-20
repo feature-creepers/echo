@@ -1,5 +1,5 @@
 import { motion } from 'motion/react'
-import { EASE } from '../styles/motion.ts'
+import { DURATION, EASE } from '../styles/motion.ts'
 
 /**
  * What a first-time user can try, shown under the core while nothing has been said yet. They show the range
@@ -21,7 +21,7 @@ export function Suggestions({ onSay }: { onSay(text: string): void }) {
           type="button"
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.12 + index * 0.05, duration: 0.32, ease: EASE }}
+          transition={{ delay: 0.12 + index * 0.05, duration: DURATION.calm, ease: EASE }}
           onClick={() => onSay(suggestion)}
           className="h-7 rounded-md border border-line bg-surface/80 px-2.5 text-[0.8125rem] text-text-soft transition-colors duration-(--duration-quick) hover:border-line-strong hover:bg-raised hover:text-text"
         >

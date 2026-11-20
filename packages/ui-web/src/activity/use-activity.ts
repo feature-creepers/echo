@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from 'react'
 /** How many uses are read at a time. */
 const PAGE = 200
 
-export interface ActivityState {
+interface ActivityState {
   /** The uses read so far, the latest first. Nothing while the first page is read. */
   uses: AccessUse[] | undefined
   /** Earlier uses are kept than those read. */

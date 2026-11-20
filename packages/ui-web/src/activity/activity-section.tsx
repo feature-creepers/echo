@@ -2,6 +2,7 @@ import type { Client } from '@repo/client'
 import type { AccessUse } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useCallback, useMemo, useState } from 'react'
+import { PathText } from '../access/path-text.tsx'
 import { Changes } from '../changes/changes.tsx'
 import { Counts, type Relative } from '../changes/diff-view.tsx'
 import { type Undo, UndoAction } from '../changes/undo-action.tsx'
@@ -17,15 +18,6 @@ import { useActivity } from './use-activity.ts'
 import { dayOf, decisionInWords, FILTER_LABELS, FILTERS, type Filter, shownUnder, summary, timeOf } from './words.ts'
 
 const TONE_DOT = { ok: 'bg-ok', accent: 'bg-accent', danger: 'bg-danger', soft: 'bg-text-faint' } as const
-
-/** A path shown in full when it fits, and by its end when it does not: the end says which file it is. */
-function PathText({ path }: { path: string }) {
-  return (
-    <span dir="rtl" title={path} className="block truncate text-left font-mono text-text-soft text-xs">
-      <bdi>{path}</bdi>
-    </span>
-  )
-}
 
 const Chevron = ({ open }: { open: boolean }) => (
   <svg
@@ -131,7 +123,11 @@ export function ActivitySection({ client, productName }: { client: Client; produ
             disabled={loading}
             onClick={() => {
               setLoading(true)
-              void activity.earlier().finally(() => setLoading(false))
+              // A page that could not be read leaves the button, to try again.
+              void activity
+                .earlier()
+                .catch(() => undefined)
+                .finally(() => setLoading(false))
             }}
           >
             {loading ? 'Reading…' : 'Show earlier'}
@@ -259,7 +255,6 @@ function UseRow({ use, open, onToggle, undo, client, relative }: UseRowProps) {
   )
 }
 
-/** Whether a use made a change to files whose diff can be shown: allowed, done, and not a command. */
 /** Whether a use has a diff: a change made to files, or a command found to have changed some, though it failed. */
 const showsChanges = (use: AccessUse) =>
   use.action === 'run'

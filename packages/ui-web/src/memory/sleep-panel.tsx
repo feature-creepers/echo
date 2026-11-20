@@ -2,25 +2,14 @@ import type { MemoryState } from '@repo/client'
 import { useFollowed } from '@repo/client/react'
 import type { SleepSettings } from '@repo/protocol'
 import { type KeyboardEvent, useEffect, useId, useState } from 'react'
+import { useNow } from '../hub/use-now.ts'
 import { Orb } from '../presence/orb.tsx'
 import { Button } from '../primitives/button.tsx'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { Select } from '../primitives/select.tsx'
+import { SMALL_FIELD } from '../settings/field.ts'
 import { SLEEP_CHOICES, sleepStatus } from './words.ts'
-
-/** The time now, again every half minute, so "last slept 3 minutes ago" stays true while the screen is open. */
-function useNow(): Date {
-  const [now, setNow] = useState(() => new Date())
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(new Date()), 30_000)
-    return () => window.clearInterval(timer)
-  }, [])
-  return now
-}
-
-const fieldClass =
-  'h-7 rounded-md border border-line-strong bg-black/25 px-2.5 text-[0.8125rem] text-text tabular-nums shadow-[inset_0_1px_1px_rgb(0_0_0/0.25)] transition duration-150 ease-soft'
 
 /**
  * Whether the assistant is asleep, the work its sleep is doing, and when it sleeps. The core on the main
@@ -58,9 +47,18 @@ export function SleepPanel({ memory, sleep }: { memory: MemoryState; sleep: Slee
   }
 
   return (
-    <div className={cn('grid gap-5 rounded-lg border bg-raised/95 p-5 transition duration-500 ease-soft', state.asleep ? 'border-line' : 'border-line-strong')}>
+    <div
+      className={cn(
+        'grid gap-5 rounded-lg border bg-raised/95 p-5 transition duration-(--duration-slow) ease-soft',
+        state.asleep ? 'border-line' : 'border-line-strong'
+      )}
+    >
       <div className="flex items-center gap-5">
-        <Orb size={64} mood={state.asleep ? 'asleep' : 'idle'} className={cn('-m-2 shrink-0 transition-opacity duration-700', state.asleep && 'opacity-70')} />
+        <Orb
+          size={64}
+          mood={state.asleep ? 'asleep' : 'idle'}
+          className={cn('-m-2 shrink-0 transition-opacity duration-(--duration-slow) ease-soft', state.asleep && 'opacity-70')}
+        />
         <div className="grid min-w-0 flex-1 gap-1" aria-live="polite">
           <Eyebrow accent={!state.asleep}>{status.title}</Eyebrow>
           <p className="text-sm text-text-soft leading-relaxed">{status.detail}</p>
@@ -72,7 +70,10 @@ export function SleepPanel({ memory, sleep }: { memory: MemoryState; sleep: Slee
 
       {working && (
         <div className="h-1 overflow-hidden rounded-full bg-white/[0.06]" role="progressbar" aria-label="Sleep" aria-valuenow={Math.round(progress * 100)}>
-          <div className="h-full rounded-full bg-accent/70 transition-[width] duration-700 ease-soft" style={{ width: `${Math.max(4, progress * 100)}%` }} />
+          <div
+            className="h-full origin-left bg-accent/70 transition-transform duration-(--duration-slow) ease-soft"
+            style={{ transform: `scaleX(${Math.max(0.04, progress)})` }}
+          />
         </div>
       )}
 
@@ -107,7 +108,7 @@ export function SleepPanel({ memory, sleep }: { memory: MemoryState; sleep: Slee
                   onChange={(event) => {
                     if (/^\d{2}:\d{2}$/.test(event.target.value)) change({ time: event.target.value })
                   }}
-                  className={cn(fieldClass, 'w-32 [color-scheme:dark]')}
+                  className={cn(SMALL_FIELD, 'w-32')}
                 />
                 <span>every day</span>
               </span>
@@ -153,7 +154,7 @@ function QuietMinutes({ id, value, onCommit }: { id: string; value: number; onCo
       onChange={(event) => setDraft(event.target.value)}
       onBlur={commit}
       onKeyDown={onKey}
-      className={cn(fieldClass, 'w-20 text-center')}
+      className={cn(SMALL_FIELD, 'w-20 text-center')}
     />
   )
 }

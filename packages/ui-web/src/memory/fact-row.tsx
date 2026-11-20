@@ -3,9 +3,10 @@ import { FACT_KINDS, FACT_MAX_LENGTH, type Fact, type FactKind } from '@repo/pro
 import { type KeyboardEvent, useState } from 'react'
 import { Button } from '../primitives/button.tsx'
 import { cn } from '../primitives/cn.ts'
+import { FIELD } from '../settings/field.ts'
 import { learnedFrom } from './words.ts'
 
-export interface FactRowProps {
+interface FactRowProps {
   fact: Fact
   onEdit(text: string, kind: FactKind): Promise<void>
   onForget(): Promise<void>
@@ -14,7 +15,7 @@ export interface FactRowProps {
 type Mode = { is: 'reading' } | { is: 'editing'; text: string; kind: FactKind } | { is: 'forgetting' }
 
 /**
- * One thing the assistant knows: what it says, where and when it was learned, and the user's way to correct
+ * One thing the assistant knows: what it says, where and when it was learned, and the person's way to correct
  * it or have it forgotten. Forgetting asks once, since the words are erased for good.
  */
 export function FactRow({ fact, onEdit, onForget }: FactRowProps) {
@@ -59,7 +60,7 @@ export function FactRow({ fact, onEdit, onForget }: FactRowProps) {
           value={mode.text}
           maxLength={FACT_MAX_LENGTH}
           rows={2}
-          // biome-ignore lint/a11y/noAutofocus: the field the user just asked to edit
+          // biome-ignore lint/a11y/noAutofocus: the field the person just asked to edit
           autoFocus
           onChange={(event) => setMode({ ...mode, text: event.target.value })}
           onKeyDown={(event) => keys(event, save)}
@@ -71,7 +72,7 @@ export function FactRow({ fact, onEdit, onForget }: FactRowProps) {
             value={mode.kind}
             onChange={(event) => setMode({ ...mode, kind: event.target.value as FactKind })}
             onKeyDown={(event) => keys(event)}
-            className="h-7 rounded-sm border border-line-strong bg-black/25 shadow-[inset_0_1px_1px_rgb(0_0_0/0.25)] px-2 text-text-soft text-xs outline-none"
+            className={cn(FIELD, 'h-7 rounded-sm px-2 text-text-soft text-xs outline-none')}
           >
             {FACT_KINDS.map((kind) => (
               <option key={kind} value={kind}>
@@ -95,7 +96,7 @@ export function FactRow({ fact, onEdit, onForget }: FactRowProps) {
   return (
     <li
       className={cn(
-        'group flex items-start gap-4 rounded-md border bg-raised/95 px-4 py-3.5 transition duration-150 ease-soft',
+        'group flex items-start gap-4 rounded-md border bg-raised/95 px-4 py-3.5 transition duration-(--duration-quick) ease-soft',
         mode.is === 'forgetting' ? 'border-danger/40' : 'border-line hover:border-line-strong'
       )}
     >
@@ -128,7 +129,7 @@ export function FactRow({ fact, onEdit, onForget }: FactRowProps) {
           </Button>
         </div>
       ) : (
-        <div className="flex shrink-0 gap-1 opacity-0 transition duration-150 ease-soft focus-within:opacity-100 group-hover:opacity-100">
+        <div className="flex shrink-0 gap-1 opacity-0 transition duration-(--duration-quick) ease-soft focus-within:opacity-100 group-hover:opacity-100">
           <Button kind="quiet" size="sm" onClick={() => setMode({ is: 'editing', text: fact.text, kind: fact.kind })}>
             Edit
           </Button>

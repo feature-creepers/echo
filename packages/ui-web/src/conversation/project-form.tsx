@@ -8,9 +8,10 @@ import { Button } from '../primitives/button.tsx'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { BackGlyph } from '../primitives/icons.tsx'
+import { TEXT_AREA } from '../settings/field.ts'
 import { projectFolders } from './project-folders.ts'
 
-export interface ProjectFormProps {
+interface ProjectFormProps {
   client: Client
   /** The project's thread answers: the side sheet shows its work. */
   onOpened(thread: string): void
@@ -148,7 +149,7 @@ export function ProjectForm({ client, onOpened, onBack }: ProjectFormProps) {
             maxLength={UTTERANCE_MAX_LENGTH}
             placeholder="Fix the failing test, then run the checks."
             onChange={(event) => setRequest(event.target.value)}
-            className="w-full resize-none rounded-md border border-line-strong bg-black/25 px-3 py-2 text-[0.8125rem] text-text leading-relaxed shadow-[inset_0_1px_1px_rgb(0_0_0/0.25)] transition duration-(--duration-quick) ease-soft placeholder:text-text-faint"
+            className={TEXT_AREA}
           />
         </div>
 

@@ -1,4 +1,5 @@
 import type { AccessUse, ActivityCheck } from '@repo/protocol'
+import { lastPart } from '../changes/words.ts'
 
 /** The filters of the activity: everything, what the person was asked, what was refused, and what changed something. */
 export const FILTERS = ['all', 'asked', 'refused', 'changes'] as const
@@ -20,16 +21,13 @@ export function shownUnder(use: AccessUse, filter: Filter): boolean {
   }
 }
 
-/** The last part of a path, whatever the system's separator. */
-const named = (path: string | undefined) => path?.split(/[\\/]/).filter(Boolean).at(-1) ?? path ?? ''
-
 /** What a use did, in a few words: "Created notes.txt", "Read 3 files", or its command. */
 export function summary(use: AccessUse): { text: string; code: boolean } {
   if (use.action === 'run') return { text: use.command?.trim().split('\n')[0] ?? 'A command', code: true }
   // A search names the folder it searches first.
-  if (['Glob', 'Grep'].includes(use.tool)) return { text: `Searched ${named(use.paths[0])}`, code: false }
+  if (['Glob', 'Grep'].includes(use.tool)) return { text: `Searched ${lastPart(use.paths[0] ?? '')}`, code: false }
   const paths = [...new Set(use.paths)]
-  const what = paths.length > 1 ? `${paths.length} files` : named(paths[0])
+  const what = paths.length > 1 ? `${paths.length} files` : lastPart(paths[0] ?? '')
   const verb = { read: 'Read', create: 'Created', change: 'Changed', delete: 'Deleted' }[use.action]
   return { text: `${verb} ${what}`, code: false }
 }

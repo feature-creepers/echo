@@ -12,7 +12,7 @@ import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { Kbd } from '../primitives/kbd.tsx'
 import { DURATION, EASE } from '../styles/motion.ts'
 
-export interface OnboardingProps {
+interface OnboardingProps {
   productName: string
   personas: Settings['personas']
   engines: EnginesState
@@ -20,7 +20,7 @@ export interface OnboardingProps {
   speech?: DeviceSpeech | undefined
   setPersonas(choice: CommandInput<'personas.set'>): Promise<void>
   onPick(persona: PersonaId): void
-  /** The user went through every step. */
+  /** The person went through every step. */
   onDone(): void
 }
 
@@ -28,25 +28,25 @@ const ALL_STEPS = ['welcome', 'personalities', 'voice', 'engine'] as const
 type Step = (typeof ALL_STEPS)[number]
 
 /**
- * First launch, one thing at a time: what this is, who the user will be talking to and what to call them,
+ * First launch, one thing at a time: what this is, who the person will be talking to and what to call them,
  * and what the assistant thinks with.
  */
 export function Onboarding({ productName, personas, engines, speech, setPersonas, onPick, onDone }: OnboardingProps) {
-  const STEPS = ALL_STEPS.filter((name) => name !== 'voice' || speech !== undefined)
+  const steps = ALL_STEPS.filter((name) => name !== 'voice' || speech !== undefined)
   // Someone who already named the personas, on this device or another, starts after that step.
   const [step, setStep] = useState<Step>(personas.confirmed ? 'engine' : 'welcome')
-  const at = STEPS.indexOf(step)
+  const at = steps.indexOf(step)
 
   return (
     <div className="relative flex h-full flex-col">
       <div className="mx-auto flex w-full max-w-3xl items-center gap-4 px-8 pt-7">
         <Eyebrow className="tabular-nums">
-          Step {at + 1} of {STEPS.length}
+          Step {at + 1} of {steps.length}
         </Eyebrow>
         <div className="h-px flex-1 bg-line">
           <motion.div
             className="h-px bg-accent"
-            animate={{ width: `${((at + 1) / STEPS.length) * 100}%` }}
+            animate={{ width: `${((at + 1) / steps.length) * 100}%` }}
             transition={{ duration: DURATION.slow, ease: EASE }}
           />
         </div>
@@ -72,7 +72,6 @@ export function Onboarding({ productName, personas, engines, speech, setPersonas
                   personas={personas.available}
                   active={personas.active}
                   submitLabel="Continue"
-                  busyLabel="Saving…"
                   onPick={onPick}
                   onSubmit={async (choice) => {
                     await setPersonas(choice)

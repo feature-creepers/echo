@@ -2,8 +2,8 @@ import { SHEET_WIDTH } from '@repo/client'
 import { type KeyboardEvent, type PointerEvent, useEffect, useRef, useState } from 'react'
 import { clampSheetWidth, type SheetBounds, sheetBounds, sheetWidthByKey } from './sheet-width.ts'
 
-export interface SheetHandleProps {
-  /** The width the user chose, in pixels. */
+interface SheetHandleProps {
+  /** The width the person chose, in pixels. */
   width: number
   /** The room the screen under the sheet keeps for itself beside it, in pixels. */
   keep: number

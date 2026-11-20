@@ -2,14 +2,13 @@ import { type CSSProperties, Fragment, useEffect, useLayoutEffect, useMemo, useR
 import { cn } from '../primitives/cn.ts'
 import { rollOf, SHOWN_LINES } from './roll.ts'
 
-export interface SpokenLineProps {
+interface SpokenLineProps {
   text: string
   /** When its sound started, by `Date.now()`, and how long it lasts in seconds. Left out, it is shown whole at once. */
   since: number | undefined
   seconds: number | undefined
   /** The voice is held: the words stop where it stopped. */
   paused: boolean
-  className?: string | undefined
 }
 
 /** A word's share of the time a sentence takes: its letters, and the short gap after it. */
@@ -29,7 +28,7 @@ const CUT: CSSProperties = { display: '-webkit-box', WebkitBoxOrient: 'vertical'
  * the voice reaches it: the caption follows the voice, word by word. It shows in two lines at most: a longer one
  * rolls up a line as the voice goes on to the next, so the words being said are always in sight.
  */
-export function SpokenLine({ text, since, seconds, paused, className }: SpokenLineProps) {
+export function SpokenLine({ text, since, seconds, paused }: SpokenLineProps) {
   const words = useMemo(() => text.split(/\s+/).filter((word) => word !== ''), [text])
   /** When each word is reached, as a share of the sentence. */
   const marks = useMemo(() => {
@@ -96,7 +95,7 @@ export function SpokenLine({ text, since, seconds, paused, className }: SpokenLi
   }, [timed, lit, width])
 
   return (
-    <span className={cn('block', className)} style={timed ? KEPT : undefined}>
+    <span className="block" style={timed ? KEPT : undefined}>
       <span
         ref={lines}
         className={cn('relative block', timed && 'transition-transform duration-(--duration-calm) ease-soft')}
@@ -107,7 +106,7 @@ export function SpokenLine({ text, since, seconds, paused, className }: SpokenLi
           // a word stays outside it, so a word never starts on the line before its own.
           <Fragment key={index}>
             {index > 0 ? ' ' : ''}
-            <span data-word="" className={cn('transition-opacity duration-200 ease-out', index < lit ? 'opacity-100' : 'opacity-30')}>
+            <span data-word="" className={cn('transition-opacity duration-(--duration-calm) ease-soft', index < lit ? 'opacity-100' : 'opacity-30')}>
               {word}
             </span>
           </Fragment>

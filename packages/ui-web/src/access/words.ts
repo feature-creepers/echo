@@ -57,8 +57,3 @@ export function reachInWords(access: Access): { reach: string; approvals: string
             : 'No files'
   return { reach, approvals: LEVELS[access.approvals].short }
 }
-
-/** The last part of a path, whatever the system's separator. */
-export function lastPart(path: string): string {
-  return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
-}

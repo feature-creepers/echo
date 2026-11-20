@@ -1,12 +1,12 @@
 import type { Exchange, Persona, Thread, TurnId } from '@repo/protocol'
 import { AttachedLine } from '../attachments/attached-line.tsx'
-import { ArrowGlyph } from '../primitives/icons.tsx'
 import { accentStyle } from '../styles/accent.ts'
 import { useFollowLatest } from './follow-latest.ts'
+import { GoArrow } from './go-arrow.tsx'
 import { LatestButton } from './latest-button.tsx'
 import { whoAsked } from './who-asked.ts'
 
-export interface TranscriptProps {
+interface TranscriptProps {
   exchanges: readonly Exchange[]
   /** The threads behind the lines, to name the one each line went to. */
   threads: readonly Thread[]
@@ -56,9 +56,7 @@ export function Transcript({ exchanges, threads, personas, onOpenAnswer, onOpenT
                             className="group ml-auto flex min-w-0 items-center gap-1 rounded-xs transition-colors hover:text-text-soft"
                           >
                             <span className="min-w-0 truncate">{thread.title}</span>
-                            <span className="shrink-0 transition-transform duration-(--duration-quick) ease-soft group-hover:translate-x-0.5 [&_svg]:size-3">
-                              <ArrowGlyph />
-                            </span>
+                            <GoArrow />
                           </button>
                         )}
                       </span>
@@ -75,9 +73,7 @@ export function Transcript({ exchanges, threads, personas, onOpenAnswer, onOpenT
                           className="group mt-1 flex w-fit items-center gap-1 rounded-xs text-label text-text-faint transition-colors hover:text-text-soft"
                         >
                           Full answer
-                          <span className="transition-transform duration-(--duration-quick) ease-soft group-hover:translate-x-0.5 [&_svg]:size-3">
-                            <ArrowGlyph />
-                          </span>
+                          <GoArrow />
                         </button>
                       )}
                       {exchange.outcome === 'running' && !exchange.replied && <p className="text-sm text-text-faint">…</p>}

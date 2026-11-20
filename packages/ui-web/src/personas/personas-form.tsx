@@ -1,6 +1,6 @@
 import { CommandFailed } from '@repo/client'
 import { type CommandInput, PERSONA_NAME_MAX_LENGTH, type Persona, type PersonaId } from '@repo/protocol'
-import { type FormEvent, type ReactNode, useId, useState } from 'react'
+import { type FormEvent, useId, useState } from 'react'
 import { Orb } from '../presence/orb.tsx'
 import { Button } from '../primitives/button.tsx'
 import { cn } from '../primitives/cn.ts'
@@ -10,29 +10,28 @@ import { accentStyle } from '../styles/accent.ts'
 import { nameProblemCopy, refusalCopy, stanceCopy } from './copy.ts'
 import { activeIn, asTyped, choiceOf, NO_EDITS, nameIn, type PersonaDraft, problemsOf } from './draft.ts'
 
-export interface PersonasFormProps {
+interface PersonasFormProps {
   personas: readonly Persona[]
   /** The persona that answers now. */
   active: PersonaId
-  /** What the button says, and what it says while the choice is on its way. */
-  submitLabel: ReactNode
-  busyLabel: string
+  /** What the button says. */
+  submitLabel: string
   /** Said beside the button once the core has kept the choice. Left out, nothing is said. */
   doneLabel?: string
   /** Send the choice to the core. Rejects with `CommandFailed` when the core does not keep it. */
   onSubmit(choice: CommandInput<'personas.set'>): Promise<void>
-  /** Told which persona is picked to answer each time the user changes it, before anything is sent. */
-  onPick?(persona: PersonaId): void
+  /** Told which persona is picked to answer each time the person changes it, before anything is sent. */
+  onPick(persona: PersonaId): void
 }
 
 /**
  * Name the personas and pick the one that answers. First launch and settings both show this.
  *
- * Every persona gets the same card, built from its data alone. The form holds only what the user changed,
- * so what they left alone keeps following the settings. Problems appear once the user has tried to send,
+ * Every persona gets the same card, built from its data alone. The form holds only what the person changed,
+ * so what they left alone keeps following the settings. Problems appear once the person has tried to send,
  * and then follow what they type.
  */
-export function PersonasForm({ personas, active, submitLabel, busyLabel, doneLabel, onSubmit, onPick }: PersonasFormProps) {
+export function PersonasForm({ personas, active, submitLabel, doneLabel, onSubmit, onPick }: PersonasFormProps) {
   const [draft, setDraft] = useState<PersonaDraft>(NO_EDITS)
   const [tried, setTried] = useState(false)
   const [state, setState] = useState<{ is: 'idle' } | { is: 'busy' } | { is: 'done' } | { is: 'refused'; why: string }>({ is: 'idle' })
@@ -72,7 +71,7 @@ export function PersonasForm({ personas, active, submitLabel, busyLabel, doneLab
               key={persona.id}
               style={accentStyle(persona.accent, persona.look)}
               className={cn(
-                'relative grid gap-4 rounded-lg border bg-raised/95 p-5 transition-colors duration-300 ease-soft',
+                'relative grid gap-4 rounded-lg border bg-raised/95 p-5 transition-colors duration-(--duration-calm) ease-soft',
                 answers ? 'border-accent/50 bg-accent/[0.03]' : 'border-line hover:border-line-strong'
               )}
             >
@@ -99,7 +98,7 @@ export function PersonasForm({ personas, active, submitLabel, busyLabel, doneLab
                   checked={answers}
                   onChange={() => {
                     change({ ...draft, active: persona.id })
-                    onPick?.(persona.id)
+                    onPick(persona.id)
                   }}
                   className="grid size-4 cursor-pointer appearance-none place-content-center rounded-full border border-line-strong transition before:size-2 before:scale-0 before:rounded-full before:bg-accent before:transition before:content-[''] checked:border-accent checked:before:scale-100"
                 />
@@ -112,7 +111,7 @@ export function PersonasForm({ personas, active, submitLabel, busyLabel, doneLab
 
       <div className="flex items-center gap-4">
         <Button kind="primary" size="lg" type="submit" disabled={state.is === 'busy'}>
-          {state.is === 'busy' ? busyLabel : submitLabel}
+          {state.is === 'busy' ? 'Saving…' : submitLabel}
         </Button>
         <span role="status" className={cn('text-sm', state.is === 'refused' ? 'text-danger' : 'text-text-soft text-xs')}>
           {state.is === 'refused' ? state.why : state.is === 'done' ? doneLabel : undefined}

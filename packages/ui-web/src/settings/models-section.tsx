@@ -2,7 +2,7 @@ import type { Client } from '@repo/client'
 import { useFollowed } from '@repo/client/react'
 import type { HarnessState, Settings } from '@repo/protocol'
 import { useState } from 'react'
-import { standing, TONES } from '../conversation/engine-rows.tsx'
+import { standing, TONES, useLookAgain } from '../conversation/engine-rows.tsx'
 import { Button } from '../primitives/button.tsx'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
@@ -13,27 +13,17 @@ import { SettingGroup, SettingRow } from './rows.tsx'
 const FIRST_READY = '*'
 
 /**
- * The AI programs the assistant runs on, signed in with the user's own accounts: which one it uses, and the
- * model each answers with. These follow the user: the core keeps them, not this computer.
+ * The AI programs the assistant runs on, signed in with the person's own accounts: which one it uses, and the
+ * model each answers with. These follow the person: the core keeps them, not this computer.
  */
 export function ModelsSection({ client, settings }: { client: Client; settings: Settings }) {
   const known = useFollowed(client.engines)
   const [problem, setProblem] = useState<string>()
-  const [checking, setChecking] = useState(false)
+  const { looking, look } = useLookAgain(client.engines)
 
   const run = (work: Promise<unknown>) => {
     setProblem(undefined)
     work.catch(() => setProblem('The choice could not be saved.'))
-  }
-  const check = async () => {
-    setChecking(true)
-    try {
-      await client.engines.refresh()
-    } catch {
-      // The rows keep what was last known.
-    } finally {
-      setChecking(false)
-    }
   }
 
   if (!known) return <p className="text-text-faint text-xs">Looking for the AI programs on this machine…</p>
@@ -66,11 +56,10 @@ export function ModelsSection({ client, settings }: { client: Client; settings: 
               value={settings.engines.preferred ?? FIRST_READY}
               options={[
                 { value: FIRST_READY, label: 'The first ready', description: 'In the order they are listed here' },
-                ...installed.map((harness) => ({
-                  value: harness.id,
-                  label: harness.name,
-                  hint: standing(harness).tone === 'ok' ? undefined : standing(harness).text
-                }))
+                ...installed.map((harness) => {
+                  const { tone, text } = standing(harness)
+                  return { value: harness.id, label: harness.name, hint: tone === 'ok' ? undefined : text }
+                })
               ]}
               onChange={(value) => run(client.session.run('engines.prefer', { harness: value === FIRST_READY ? null : value }))}
             />
@@ -79,8 +68,8 @@ export function ModelsSection({ client, settings }: { client: Client; settings: 
       )}
 
       <div className="flex flex-wrap items-center gap-3">
-        <Button kind="quiet" size="sm" disabled={checking} onClick={() => void check()}>
-          {checking ? 'Looking…' : 'Check again'}
+        <Button kind="quiet" size="sm" disabled={looking} onClick={look}>
+          {looking ? 'Looking…' : 'Check again'}
         </Button>
         {problem ? (
           <span role="alert" className="text-danger text-xs">

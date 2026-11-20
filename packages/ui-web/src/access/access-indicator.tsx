@@ -6,9 +6,6 @@ import { cn } from '../primitives/cn.ts'
 import { Menu } from '../primitives/menu.tsx'
 import { LEVELS, reachInWords } from './words.ts'
 
-/** The event that asks the app to show the Access settings. */
-export const OPEN_ACCESS_EVENT = 'echo:open-access'
-
 /** The look of the words under the composer that open a menu: quiet until pointed at, lit while their menu is open. */
 export const BAR_LABEL =
   'flex h-5 items-center gap-1.5 rounded-sm px-1.5 text-[0.6875rem] text-text-faint transition-colors duration-(--duration-quick) hover:bg-white/[0.06] hover:text-text-soft aria-expanded:bg-white/[0.07] aria-expanded:text-text-soft'
@@ -18,7 +15,7 @@ export const BAR_LABEL =
  * program. Pressed, it opens a menu right there to change how far it reaches and whether it asks first, the same
  * choices as the Access settings, which its last entry opens for the rest: folders and files to give.
  */
-export function AccessIndicator({ client }: { client: Client }) {
+export function AccessIndicator({ client, onOpenSettings }: { client: Client; onOpenSettings(): void }) {
   const snapshot = useFollowed(client.settings)
   const [failed, setFailed] = useState<string>()
   if (snapshot.state !== 'ready') return null
@@ -103,7 +100,7 @@ export function AccessIndicator({ client }: { client: Client }) {
           onSelect: () => change({ approvals: 'auto' })
         },
         { divider: true },
-        { label: 'Access settings…', onSelect: () => window.dispatchEvent(new Event(OPEN_ACCESS_EVENT)) }
+        { label: 'Access settings…', onSelect: onOpenSettings }
       ]}
     />
   )

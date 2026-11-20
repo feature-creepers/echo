@@ -3,8 +3,8 @@ import { PERSONA_NAME_MAX_LENGTH, type Stance } from '@repo/protocol'
 import type { NameProblem } from './draft.ts'
 
 /**
- * The words the user reads about personas. They are written for a stance, never for a persona:
- * a persona has no text of its own besides the name the user gave it.
+ * The words the person reads about personas. They are written for a stance, never for a persona:
+ * a persona has no text of its own besides the name the person gave it.
  */
 
 /** What each stance does, for someone choosing between them. */

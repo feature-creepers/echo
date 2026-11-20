@@ -2,7 +2,7 @@ import type { Client } from '@repo/client'
 import type { Allowance, ProtectedPlace } from '@repo/protocol'
 import { useEffect, useState } from 'react'
 
-export interface StandingRules {
+interface StandingRules {
   /** What was allowed for this session, until the app quits. */
   allowances: Allowance[]
   /** The places never reached on the core's computer. */

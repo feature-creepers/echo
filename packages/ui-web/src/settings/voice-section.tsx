@@ -23,6 +23,8 @@ import { Button } from '../primitives/button.tsx'
 import { Choice } from '../primitives/choice.tsx'
 import { Select } from '../primitives/select.tsx'
 import { Switch } from '../primitives/switch.tsx'
+import { deviceChoice } from './device-choice.ts'
+import { TEXT_AREA } from './field.ts'
 import { SettingGroup, SettingRow } from './rows.tsx'
 
 const PACES: Record<(typeof SPEEDS)[number], string> = { 0.85: 'Slower', 1: 'Natural', 1.15: 'Faster', 1.3: 'Fastest' }
@@ -42,9 +44,6 @@ const CAPS: readonly { value: number; label: string }[] = [
   { value: 0, label: 'No limit' }
 ]
 
-/** The value of the list that stands for the system's own choice. */
-const SYSTEM = ''
-
 /** The languages the person may speak in, those the speech recognition hears, after finding it by itself. */
 const SPOKEN = [
   { value: 'auto', label: 'Auto-detect', description: 'Found from what you say' },
@@ -58,11 +57,11 @@ const ANSWERS = [
 
 interface VoiceSectionProps {
   client: Client
-  /** The languages of the conversation: the user's, not this computer's. */
+  /** The languages of the conversation: the person's, not this computer's. */
   languages: Languages
-  /** When the assistant speaks up by itself: the user's, not this computer's. */
+  /** When the assistant speaks up by itself: the person's, not this computer's. */
   interruptions: Interruptions
-  /** The person's own words for the recogniser: the user's, not this computer's. */
+  /** The person's own words for the recogniser: the person's, not this computer's. */
   vocabulary: Vocabulary
   speech: DeviceSpeech | undefined
   personas: readonly Persona[]
@@ -113,7 +112,7 @@ function WordsRow({ client, words }: { client: Client; words: Vocabulary }) {
           onFocus={() => setTyping(true)}
           onChange={(event) => setText(event.target.value)}
           onBlur={keep}
-          className="w-full resize-none rounded-md border border-line-strong bg-black/25 px-3 py-2 text-[0.8125rem] text-text leading-relaxed shadow-[inset_0_1px_1px_rgb(0_0_0/0.25)] transition duration-(--duration-quick) ease-soft placeholder:text-text-faint"
+          className={TEXT_AREA}
         />
         <span className="text-text-faint text-xs tabular-nums">{count === 0 ? 'None yet' : `${count} of ${MAX_WORDS}`}</span>
       </div>
@@ -139,12 +138,8 @@ export function VoiceSection({ client, languages, interruptions, vocabulary, spe
       .run('interruptions.set', asked)
       .catch((error: unknown) => setInterruptionProblem(error instanceof Error ? error.message : 'The change could not be saved.'))
   }
-  const outputs = useAudioDevices('audiooutput')
   const speaker = settings.speaker
-  const present =
-    outputs?.devices.find((device) => device.id === speaker.id) ??
-    (speaker.label ? outputs?.devices.find((device) => device.label === speaker.label) : undefined)
-  const missing = speaker.id !== '' && outputs !== undefined && present === undefined
+  const speakers = deviceChoice(useAudioDevices('audiooutput'), speaker, 'Speakers')
 
   const test = () => {
     if (speech?.ready && active) speech.preview(active, `This is how ${active.name} sounds, on these speakers.`)
@@ -204,7 +199,7 @@ export function VoiceSection({ client, languages, interruptions, vocabulary, spe
         <SettingRow
           title="Speakers"
           detail={
-            missing
+            speakers.missing
               ? 'These speakers are not connected. Until they are, the system default is used.'
               : 'Where the voice plays. The system default follows your computer.'
           }
@@ -214,16 +209,9 @@ export function VoiceSection({ client, languages, interruptions, vocabulary, spe
             <Select
               label="Speakers"
               className="flex-1"
-              value={present?.id ?? (missing ? speaker.id : SYSTEM)}
-              options={[
-                { value: SYSTEM, label: outputs?.system ? `System default · ${outputs.system}` : 'System default' },
-                ...(outputs?.devices ?? []).map((device) => ({ value: device.id, label: device.label || 'Speakers' })),
-                ...(missing ? [{ value: speaker.id, label: `${speaker.label || 'Speakers'} · not connected` }] : [])
-              ]}
-              onChange={(id) => {
-                const device = outputs?.devices.find((one) => one.id === id)
-                change({ speaker: device ? { id: device.id, label: device.label } : { id: '', label: '' } })
-              }}
+              value={speakers.value}
+              options={speakers.options}
+              onChange={(id) => change({ speaker: speakers.pick(id) })}
             />
             <Button size="md" onClick={test}>
               Play a test

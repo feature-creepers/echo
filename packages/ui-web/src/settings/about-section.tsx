@@ -2,6 +2,7 @@ import type { UpdateState } from '@repo/client'
 import { useEffect, useState } from 'react'
 import { useDevice } from '../device/device.tsx'
 import type { DeviceHost } from '../device/host.ts'
+import { ago } from '../memory/words.ts'
 import { Orb } from '../presence/orb.tsx'
 import { Button } from '../primitives/button.tsx'
 import { cn } from '../primitives/cn.ts'
@@ -23,15 +24,6 @@ function useUpdates(host: DeviceHost | undefined): UpdateState | undefined {
     return stop
   }, [host])
   return state
-}
-
-/** "3 minutes ago", for when the last check was. */
-function ago(iso: string, now = Date.now()): string {
-  const minutes = Math.round((now - Date.parse(iso)) / 60_000)
-  if (minutes < 1) return 'just now'
-  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`
-  const hours = Math.round(minutes / 60)
-  return hours < 24 ? `${hours} hour${hours === 1 ? '' : 's'} ago` : `${Math.round(hours / 24)} days ago`
 }
 
 const SYSTEMS: Record<string, string> = { win32: 'Windows', darwin: 'macOS', linux: 'Linux' }
@@ -66,7 +58,10 @@ export function AboutSection({ productName }: { productName: string }) {
 
       {updates?.is === 'downloading' && (
         <div className="-mt-7 h-1 overflow-hidden rounded-full bg-white/[0.06]" role="progressbar" aria-label="Download" aria-valuenow={updates.percent}>
-          <div className="h-full rounded-full bg-accent transition-[width] duration-500 ease-soft" style={{ width: `${Math.max(3, updates.percent)}%` }} />
+          <div
+            className="h-full origin-left bg-accent transition-transform duration-(--duration-slow) ease-soft"
+            style={{ transform: `scaleX(${Math.max(3, updates.percent) / 100})` }}
+          />
         </div>
       )}
 
@@ -116,7 +111,7 @@ export function AboutSection({ productName }: { productName: string }) {
   )
 }
 
-/** An author's name, which opens their page in the user's browser. */
+/** An author's name, which opens their page in the person's browser. */
 function Author({ name, page }: { name: string; page: string }) {
   return (
     <a
@@ -142,7 +137,7 @@ function UpdateLine({ state }: { state: UpdateState }) {
       case 'checking':
         return ['Looking for a new version…', 'accent']
       case 'latest':
-        return [`Up to date · checked ${ago(state.checkedAt)}`, 'ok']
+        return [`Up to date · checked ${ago(state.checkedAt, new Date())}`, 'ok']
       case 'available':
         return [
           state.page
@@ -161,13 +156,10 @@ function UpdateLine({ state }: { state: UpdateState }) {
   return (
     <p
       aria-live="polite"
-      className={cn(
-        'flex items-center gap-2 text-sm leading-relaxed',
-        tone === 'ok' ? 'text-text-soft' : tone === 'accent' ? 'text-text' : tone === 'danger' ? 'text-danger' : 'text-text-soft'
-      )}
+      className={cn('flex items-center gap-2 text-sm leading-relaxed', tone === 'accent' ? 'text-text' : tone === 'danger' ? 'text-danger' : 'text-text-soft')}
     >
-      {tone === 'ok' && <span className="size-1.5 shrink-0 rounded-full bg-ok shadow-[0_0_8px_var(--color-ok)]" />}
-      {tone === 'accent' && <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-accent shadow-[0_0_8px_var(--accent)]" />}
+      {tone === 'ok' && <span className="size-1.5 shrink-0 rounded-full bg-ok" />}
+      {tone === 'accent' && <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-accent" />}
       {text}
     </p>
   )

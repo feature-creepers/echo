@@ -2,7 +2,7 @@ import type { ThreadRead } from '@repo/client'
 import type { Exchange, Step, Thread } from '@repo/protocol'
 
 /** A view as the sheet names it, under the request that showed it. */
-export type ViewTitle = ThreadRead['views'][number]
+type ViewTitle = ThreadRead['views'][number]
 
 /** One request as the sheet shows it: what was asked and answered, its calls, the views it showed. */
 export interface ThreadEntry {

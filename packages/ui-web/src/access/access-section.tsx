@@ -2,6 +2,7 @@ import type { Client } from '@repo/client'
 import { useFollowed } from '@repo/client/react'
 import type { CommandInput, Place, Settings } from '@repo/protocol'
 import { useState } from 'react'
+import { lastPart } from '../changes/words.ts'
 import { useDevice } from '../device/device.tsx'
 import { Button } from '../primitives/button.tsx'
 import { Choice } from '../primitives/choice.tsx'
@@ -14,17 +15,9 @@ import { AppsGroup } from './apps-group.tsx'
 import { BrowserGroup } from './browser-group.tsx'
 import { ConfirmationRow } from './confirmation-row.tsx'
 import { NetworkGroup } from './network-group.tsx'
+import { PathText } from './path-text.tsx'
 import { useStandingRules } from './use-standing-rules.ts'
-import { LEVELS, lastPart, WAITS, waitInWords } from './words.ts'
-
-/** A path shown in full when it fits, and by its end when it does not: the end says which folder it is. */
-function PathText({ path, className }: { path: string; className?: string }) {
-  return (
-    <span dir="rtl" title={path} className={cn('block truncate text-left font-mono text-text-soft text-xs', className)}>
-      <bdi>{path}</bdi>
-    </span>
-  )
-}
+import { LEVELS, WAITS, waitInWords } from './words.ts'
 
 const FolderMark = ({ kind }: { kind: Place['kind'] }) => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" aria-hidden="true">
@@ -59,7 +52,7 @@ const PROTECTED_SHOWN = 6
 
 /**
  * What the assistant may reach on this computer (docs/SPEC.md, section 12.2): its own folder, the folders and
- * files the user picks, or everything; what it asks first; what was allowed for this session; and the places it
+ * files the person picks, or everything; what it asks first; what was allowed for this session; and the places it
  * never reaches. The core keeps these and enforces them on every use, whatever the model asks.
  */
 export function AccessSection({ client, settings, productName }: { client: Client; settings: Settings; productName: string }) {

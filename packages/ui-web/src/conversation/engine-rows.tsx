@@ -15,24 +15,26 @@ export function standing(harness: HarnessState): { tone: 'ok' | 'warn' | 'off'; 
 
 export const TONES = { ok: 'bg-ok', warn: 'bg-warn', off: 'bg-text-faint/50' }
 
+/** Look for the AI programs again, and whether a look is under way. One that fails leaves what was last known. */
+export function useLookAgain(engines: EnginesState): { looking: boolean; look(): void } {
+  const [looking, setLooking] = useState(false)
+  const look = () => {
+    setLooking(true)
+    engines
+      .refresh()
+      .catch(() => undefined)
+      .finally(() => setLooking(false))
+  }
+  return { looking, look }
+}
+
 /**
  * The AI programs the assistant can run on, one row each: whether it is installed and signed in, with a way
  * to sign in and to look again. Used at first launch and in settings.
  */
 export function EngineRows({ engines }: { engines: EnginesState }) {
   const known = useFollowed(engines)
-  const [checking, setChecking] = useState(false)
-
-  const check = async () => {
-    setChecking(true)
-    try {
-      await engines.refresh()
-    } catch {
-      // The rows keep what was last known.
-    } finally {
-      setChecking(false)
-    }
-  }
+  const { looking, look } = useLookAgain(engines)
 
   if (!known) return <p className="text-text-faint text-xs">Looking for the AI programs on this machine…</p>
 
@@ -64,8 +66,8 @@ export function EngineRows({ engines }: { engines: EnginesState }) {
         })}
       </ul>
       <div className="flex items-center gap-3">
-        <Button kind="quiet" size="sm" disabled={checking} onClick={() => void check()}>
-          {checking ? 'Looking…' : 'Check again'}
+        <Button kind="quiet" size="sm" disabled={looking} onClick={look}>
+          {looking ? 'Looking…' : 'Check again'}
         </Button>
         {known.active === undefined && <span className="text-text-soft text-xs">Install Claude Code or Codex and sign in with your own account.</span>}
       </div>

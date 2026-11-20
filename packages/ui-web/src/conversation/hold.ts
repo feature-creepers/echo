@@ -2,20 +2,16 @@
 export const HOLD_MS = 2_000
 
 /** A press shorter than this is a tap: the button then says it must be held. */
-export const TAP_MS = 400
+const TAP_MS = 400
 
-export interface HoldOptions {
+interface HoldOptions {
   /** Called once the press has lasted the whole time. */
   onDone(): void
   /** Called when holding starts or stops, so the fill can follow. */
   onChange?(held: boolean): void
-  ms?: number
-  /** The clock, given by tests. */
-  now?: () => number
-  timers?: { set(run: () => void, ms: number): unknown; clear(timer: unknown): void }
 }
 
-export interface Hold {
+interface Hold {
   /** The pointer or the key went down. */
   press(): void
   /** It came up, or went away. Says how it ended: done already, let go early, or a tap. */
@@ -27,26 +23,24 @@ export interface Hold {
  * Press and hold: what is done only after a press that lasts. Letting go before the end does nothing, so a stray
  * click never stops a piece of work.
  */
-export function createHold({ onDone, onChange, ms = HOLD_MS, now = Date.now, timers }: HoldOptions): Hold {
-  const set = timers?.set ?? ((run: () => void, wait: number) => setTimeout(run, wait))
-  const clear = timers?.clear ?? ((timer: unknown) => clearTimeout(timer as ReturnType<typeof setTimeout>))
-  let timer: unknown
+export function createHold({ onDone, onChange }: HoldOptions): Hold {
+  let timer: ReturnType<typeof setTimeout> | undefined
   let since: number | undefined
   let done = false
 
   return {
     press() {
       if (since !== undefined) return
-      since = now()
+      since = Date.now()
       done = false
       onChange?.(true)
-      timer = set(() => {
+      timer = setTimeout(() => {
         timer = undefined
         since = undefined
         done = true
         onChange?.(false)
         onDone()
-      }, ms)
+      }, HOLD_MS)
     },
     release() {
       if (since === undefined) {
@@ -54,8 +48,8 @@ export function createHold({ onDone, onChange, ms = HOLD_MS, now = Date.now, tim
         done = false
         return was ? 'done' : 'idle'
       }
-      const lasted = now() - since
-      clear(timer)
+      const lasted = Date.now() - since
+      clearTimeout(timer)
       timer = undefined
       since = undefined
       onChange?.(false)

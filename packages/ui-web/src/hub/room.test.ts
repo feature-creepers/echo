@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { HUB_KEEPS, hubMakesRoom } from './room.ts'
+import { hubMakesRoom } from './room.ts'
 
 describe('the hub making room for the side sheet', () => {
   it.each([
-    // window, the width the user chose, makes room
+    // window, the width the person chose, makes room
     [1900, 432, true],
     [1320, 432, true],
     [1168, 432, true],
@@ -16,9 +16,5 @@ describe('the hub making room for the side sheet', () => {
     [2000, 960, true]
   ])('in a window %i wide with a sheet of %i: %s', (window, width, wanted) => {
     expect(hubMakesRoom(window, width)).toBe(wanted)
-  })
-
-  it('keeps the sidebar and a readable page', () => {
-    expect(HUB_KEEPS).toBe(736)
   })
 })

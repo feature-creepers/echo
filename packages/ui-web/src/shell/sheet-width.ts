@@ -47,7 +47,7 @@ export function sheetWidthByKey(key: string, width: number, bounds: SheetBounds)
 }
 
 /**
- * The width the sheet is drawn at, written for CSS from the width the user chose: it follows the window as it is
+ * The width the sheet is drawn at, written for CSS from the width the person chose: it follows the window as it is
  * resized without anything else being drawn again, and comes back to the chosen width once there is room. The
  * element that uses it carries the chosen width itself, as `sheetWidthStyle` writes it.
  */

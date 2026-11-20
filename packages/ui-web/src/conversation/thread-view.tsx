@@ -12,23 +12,24 @@ import { changedInWords, lastPart, relativePath, totalOf } from '../changes/word
 import { Button } from '../primitives/button.tsx'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
-import { ArrowGlyph, BackGlyph } from '../primitives/icons.tsx'
+import { BackGlyph } from '../primitives/icons.tsx'
 import { accentStyle } from '../styles/accent.ts'
 import { settle } from '../styles/motion.ts'
 import { Markdown } from '../view/blocks/markdown.tsx'
 import { useFollowLatest } from './follow-latest.ts'
 import { AnswerActions } from './full-answer.tsx'
+import { GoArrow } from './go-arrow.tsx'
 import { LatestButton } from './latest-button.tsx'
 import { PlanList } from './plan-list.tsx'
 import { commandOf, stepSummary, stepTitle } from './steps.ts'
-import { kindWords, overOf, STATE, StateDot, underOf, underWords, usedWords } from './thread-list.tsx'
+import { kindWords, overOf, STATE, StateDot, StopThread, underOf, underWords, usedWords } from './thread-list.tsx'
 import type { ThreadEntry } from './thread-pages.ts'
 import { type EarlierReading, useThreadPages } from './use-thread-pages.ts'
 import { whoAsked } from './who-asked.ts'
 
 const clock = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' })
 
-export interface ThreadViewProps {
+interface ThreadViewProps {
   client: Client
   thread: string
   /** Every thread, to show the one this thread is part of and those it handed work to. */
@@ -170,16 +171,7 @@ function ThreadHeader({ header, threads, onBack, onOpenThread, onStop, onFocus }
               Show on screen
             </Button>
           )}
-          {working && (
-            <button
-              type="button"
-              onClick={onStop}
-              aria-label={`Stop ${header.title}`}
-              className="h-6 rounded-sm px-2 text-label text-text-soft outline-none transition-colors duration-(--duration-quick) ease-soft hover:bg-danger/15 hover:text-danger focus-visible:bg-danger/15 focus-visible:text-danger"
-            >
-              Stop
-            </button>
-          )}
+          {working && <StopThread title={header.title} onClick={onStop} />}
         </span>
       </div>
       {header && (
@@ -207,9 +199,7 @@ function ThreadHeader({ header, threads, onBack, onOpenThread, onStop, onFocus }
                 >
                   <StateDot state={thread.state} />
                   <span className="min-w-0 truncate">{thread.title}</span>
-                  <span className="shrink-0 text-text-faint transition-transform duration-(--duration-quick) ease-soft group-hover:translate-x-0.5 [&_svg]:size-3">
-                    <ArrowGlyph />
-                  </span>
+                  <GoArrow className="text-text-faint" />
                 </button>
               </li>
             ))}
@@ -378,7 +368,7 @@ function Opening({ open, children }: { open: boolean; children: ReactNode }) {
 }
 
 const Chevron = ({ open }: { open: boolean }) => (
-  <span aria-hidden="true" className={cn('w-2 shrink-0 text-text-faint transition-transform duration-150', open && 'rotate-90')}>
+  <span aria-hidden="true" className={cn('w-2 shrink-0 text-text-faint transition-transform duration-(--duration-quick) ease-soft', open && 'rotate-90')}>
     ›
   </span>
 )

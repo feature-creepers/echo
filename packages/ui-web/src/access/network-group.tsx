@@ -4,6 +4,7 @@ import { cn } from '../primitives/cn.ts'
 import { IconButton } from '../primitives/icon-button.tsx'
 import { CloseGlyph } from '../primitives/icons.tsx'
 import { Switch } from '../primitives/switch.tsx'
+import { FIELD } from '../settings/field.ts'
 import { SettingGroup, SettingRow } from '../settings/rows.tsx'
 
 interface NetworkGroupProps {
@@ -126,9 +127,7 @@ function HostList({ label, hosts, busy, onChange }: { label: string; hosts: read
           setProblem(undefined)
         }}
         onKeyDown={onKey}
-        className={cn(
-          'h-7 w-full max-w-sm rounded-md border border-line-strong bg-black/25 px-2.5 font-mono text-text text-xs shadow-[inset_0_1px_1px_rgb(0_0_0/0.25)] transition duration-(--duration-quick) ease-soft placeholder:font-sans placeholder:text-text-faint aria-invalid:border-danger'
-        )}
+        className={cn(FIELD, 'h-7 w-full max-w-sm px-2.5 font-mono text-xs placeholder:font-sans')}
       />
       {problem && (
         <p role="alert" className="text-danger text-xs">

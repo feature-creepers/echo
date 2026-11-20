@@ -9,7 +9,7 @@ import { SleepPanel } from './sleep-panel.tsx'
 
 const TITLE = 'What I know about you'
 
-/** Hand the user a file, as a download from this window. */
+/** Hand the person a file, as a download from this window. */
 function download(name: string, text: string): void {
   const url = URL.createObjectURL(new Blob([text], { type: 'text/markdown;charset=utf-8' }))
   const link = document.createElement('a')
@@ -21,8 +21,8 @@ function download(name: string, text: string): void {
 }
 
 /**
- * The memory, as the user sees and corrects it (docs/SPEC.md, section 10.7): when the assistant sleeps and
- * what it is doing asleep, the portrait it keeps of the user, and every fact by kind, each with where it was
+ * The memory, as the person sees and corrects it (docs/SPEC.md, section 10.7): when the assistant sleeps and
+ * what it is doing asleep, the portrait it keeps of the person, and every fact by kind, each with where it was
  * learned, to edit or forget. The whole of it exports to Markdown.
  */
 export function MemorySection({ memory, productName }: { memory: MemoryState; productName: string }) {

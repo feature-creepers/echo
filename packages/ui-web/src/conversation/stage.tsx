@@ -1,7 +1,7 @@
 import type { Client } from '@repo/client'
 import { matchesShortcut } from '@repo/client'
 import { useFollowed } from '@repo/client/react'
-import type { Look, PersonaId, Settings, ShownView, TurnId } from '@repo/protocol'
+import type { PersonaId, Settings, ShownView, TurnId } from '@repo/protocol'
 import { AnimatePresence, animate, motion, useMotionValue } from 'motion/react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { AccessIndicator } from '../access/access-indicator.tsx'
@@ -12,42 +12,42 @@ import { useTalk } from '../audio/use-talk.ts'
 import { keyPress, useDevice } from '../device/device.tsx'
 import { useLoad } from '../device/load.ts'
 import { useShownPresence } from '../device/presence.ts'
-import { useFileActions } from '../files/file-actions.ts'
 import { usePlayer } from '../media/player-provider.tsx'
 import { refusalCopy } from '../personas/copy.ts'
 import { attendedView, useLingering } from '../presence/attention.ts'
-import { fieldOf } from '../presence/field.ts'
-import { gazeAt, middleOf, type Point } from '../presence/gaze.ts'
-import { MOODS as ALL_MOODS, type Around, BANDS, type Pose } from '../presence/life.ts'
-import { useCoreLight } from '../presence/light.ts'
-import { Orb } from '../presence/orb.tsx'
+import { middleOf } from '../presence/gaze.ts'
+import { BANDS } from '../presence/life.ts'
 import type { Mood } from '../presence/painter.ts'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
-import { ArrowGlyph } from '../primitives/icons.tsx'
 import { DURATION, EASE, settle } from '../styles/motion.ts'
 import type { ViewActions } from '../view/context.ts'
 import { createPush, scrollsUnder, wheelTravel } from '../view/push.ts'
 import { HOME_PEEK, ViewStream } from '../view/view-stream.tsx'
-import { doing } from './activity.ts'
 import { captionOf, useLastHeard } from './caption.ts'
 import { EngineIndicator } from './engine-indicator.tsx'
+import { GoArrow } from './go-arrow.tsx'
 import { InputLine } from './input-line.tsx'
+import { moodOf, moodWord } from './mood.ts'
 import { ReadyChips } from './ready-chips.tsx'
 import { RunningThreads } from './running-threads.tsx'
 import { type ScrollEdges, useScrollEdges } from './scroll-edges.ts'
-import { SpokenLine } from './spoken-line.tsx'
+import { Caption } from './stage-caption.tsx'
+import { Core, LARGEST, type Sight } from './stage-core.tsx'
 import { Suggestions } from './suggestions.tsx'
-import { arrivedAt, restOn, TRAVEL, travelTowards } from './travel.ts'
+import { TRAVEL } from './travel.ts'
+import { useCoreViewActions } from './view-actions.ts'
 
-export interface StageProps {
+interface StageProps {
   client: Client
   personas: Settings['personas']
   /** Make another persona the one that answers. */
   onSwitch(persona: PersonaId): Promise<void>
   /** Open the settings, on the engine, when the assistant has nothing to think with. */
   onSetUpEngine(): void
-  /** The device's speech engines. Left out, the user types and the assistant's sentences are only shown. */
+  /** Open the settings, on what the assistant may reach. */
+  onOpenAccess(): void
+  /** The device's speech engines. Left out, the person types and the assistant's sentences are only shown. */
   speech?: SpeechEngine | undefined
   /** How loud the assistant's voice is right now, when the device speaks it. */
   voiceLevel?: (() => number) | undefined
@@ -63,6 +63,9 @@ export interface StageProps {
 
 /** The event an app dispatches on the window to start talking, or to send what was said: its global shortcut. */
 export const TALK_EVENT = 'echo:talk'
+
+/** The places the stage keeps for the core: the middle of an empty stage, home, and the top of the column. */
+type CorePlace = 'empty' | 'home' | 'top'
 
 /** The width of the centred column, for everything the assistant shows and for the composer. */
 const COLUMN = 'max-w-[45rem]'
@@ -81,32 +84,6 @@ const FADES = {
 } as const
 const fade = ({ above, below }: ScrollEdges) => FADES[above ? (below ? 'both' : 'above') : below ? 'below' : 'none']
 
-const MOODS: Record<Mood, string> = { idle: 'Ready', listening: 'Listening', thinking: 'Thinking', working: 'Working', speaking: 'Speaking', asleep: 'Asleep' }
-
-/** How strongly the light around the core shows in each mood: brighter while it hears or speaks, dim asleep. */
-const HALO: Record<Mood, number> = { idle: 0.7, listening: 1, thinking: 0.85, working: 0.9, speaking: 1, asleep: 0.3 }
-
-/**
- * How much of its light each look casts on the ground round it. The lens keeps its light inside its glass, as the
- * eye it is after does: a red cast on everything round it would read as a warning light.
- */
-const CASTS: Record<Look, number> = { hud: 1, lens: 0.35 }
-
-/** How far the core looks: at this many pixels away, its eye is turned about seven tenths of the way. */
-const GAZE_REACH = 460
-
-/** What the core looks at on the screen: the view it talks about, its box and the middle of it. */
-export interface Sight {
-  point: Point
-  box: DOMRect
-}
-
-/**
- * The largest the core is drawn, in CSS pixels. Its canvas is always this size, and draws the core at the size it is
- * at, so it stays sharp at every size on its way from one place to another.
- */
-const LARGEST = 280
-
 /**
  * How firmly the person must scroll on down at home to go on to the stream: this many pixels of wheel within this
  * many milliseconds.
@@ -118,194 +95,9 @@ const HOME_DIM = 0.45
 
 /** The room between what is written under the core at home and the top of the view that waits under it. */
 const HOME_AIR = 20
+
+/** The spring the core travels on, for its name and its state, which go with it. */
 const travel = { type: 'spring', stiffness: TRAVEL.stiffness, damping: TRAVEL.damping, mass: 1 } as const
-
-interface CoreProps {
-  mood: Mood
-  level: () => number
-  bands: () => ArrayLike<number> | undefined
-  load: () => number | undefined
-  /** Where the core looks now, read on every frame; nothing when it has nothing to look at. */
-  sight: () => Sight | undefined
-  /** The place kept for the core on the screen now, read on every frame: it travels there, and rests there. */
-  place: () => HTMLElement | null
-  /** Told when the core arrives at its place, and when it leaves it: what is written under it waits for it. */
-  onArrive(arrived: boolean): void
-}
-
-/**
- * The core, one for the whole stage, never drawn twice: it travels between the places the stage keeps for it (the
- * middle of an empty stage, home, the top of the column) on a spring, and is drawn again at each size on its way, so
- * nothing is stretched or swapped. With it goes the soft light it casts on the ground: the accent, faint, fading to
- * nothing well before any edge, leaning a little towards where the core looks, a little brighter as the computer
- * works harder. All of it is written on every frame the core draws, as a transform and an opacity only, so it costs
- * no layout and React draws nothing for it. The same frame tells the ground where the core is, how much light it
- * casts and where it looks, so the dots round it and round what it looks at light up with it.
- */
-function Core({ mood, level, bands, load, sight, place, onArrive }: CoreProps) {
-  const box = useRef<HTMLDivElement>(null)
-  const halo = useRef<HTMLSpanElement>(null)
-  const light = useCoreLight()
-  const seen = useRef<Sight | undefined>(undefined)
-  // Where the core is, from the top left of the stage, and how large, with how fast each is changing; the place it
-  // rests on, once it has arrived there; and where the stage itself is on the screen, as last read.
-  const at = useRef({
-    x: 0,
-    y: 0,
-    size: LARGEST,
-    speedX: 0,
-    speedY: 0,
-    growth: 0,
-    time: 0,
-    placed: false,
-    arrived: true,
-    rested: null as HTMLElement | null,
-    left: 0,
-    top: 0
-  })
-  const arrive = useRef(onArrive)
-  arrive.current = onArrive
-  const still = useMemo(() => window.matchMedia('(prefers-reduced-motion: reduce)'), [])
-  // From what the last frame read, so that looking costs no reading of the layout.
-  const middle = useCallback((): Point | undefined => {
-    const here = at.current
-    return here.placed ? { x: here.left + here.x, y: here.top + here.y } : undefined
-  }, [])
-  /**
-   * Puts the core where it belongs now. On the place it rests on, it is simply there: when that place scrolls,
-   * resizes or is pushed by what is laid out round it, the core moves with it and has nothing to chase. On its way
-   * to another place, it goes one step further on its spring, when a frame is being drawn.
-   */
-  const settleCore = useCallback(
-    (drawing: boolean) => {
-      const element = box.current
-      const slot = place()
-      const stage = element?.offsetParent?.getBoundingClientRect()
-      const here = at.current
-      if (!element || !slot || !stage) return
-      const kept = slot.getBoundingClientRect()
-      const spot = { x: kept.left - stage.left + kept.width / 2, y: kept.top - stage.top + kept.height / 2, size: kept.width }
-      const now = performance.now()
-      if (!here.placed || still.matches) {
-        restOn(here, slot, spot)
-        here.placed = true
-      } else if (!travelTowards(here, slot, spot, drawing ? (now - here.time) / 1000 : undefined)) {
-        return
-      }
-      here.time = now
-      here.left = stage.left
-      here.top = stage.top
-      const arrived = arrivedAt(here, slot, spot)
-      if (arrived !== here.arrived) {
-        here.arrived = arrived
-        arrive.current(arrived)
-      }
-      // On whole device pixels, so its finest lines stay one pixel sharp.
-      const ratio = window.devicePixelRatio || 1
-      const left = Math.round((here.x - LARGEST / 2) * ratio) / ratio
-      const top = Math.round((here.y - LARGEST / 2) * ratio) / ratio
-      element.style.transform = `translate3d(${left}px,${top}px,0)`
-    },
-    [place, still]
-  )
-  // No frame is drawn while the core is out of sight. What scrolls or resizes still moves its place then, so the
-  // core is kept on it there too, and is drawn again as soon as its place is back in sight.
-  useEffect(() => {
-    const keep = () => settleCore(false)
-    window.addEventListener('scroll', keep, { capture: true, passive: true })
-    window.addEventListener('resize', keep)
-    return () => {
-      window.removeEventListener('scroll', keep, { capture: true })
-      window.removeEventListener('resize', keep)
-    }
-  }, [settleCore])
-  const gaze = useCallback((): readonly [number, number] | undefined => {
-    const now = sight()
-    seen.current = now
-    const from = middle()
-    if (!now || !from) return undefined
-    return gazeAt(from, now.point, GAZE_REACH)
-  }, [sight, middle])
-  const scale = useCallback(() => at.current.size / LARGEST, [])
-  // What is round it, for its glass to reflect: the view it looks at, told from the core's middle in its own radii,
-  // up as up.
-  const around = useCallback((): Around | undefined => {
-    const now = seen.current
-    const from = middle()
-    if (!now || !from) return undefined
-    const radius = at.current.size / 2
-    const told = (point: Point): [number, number] => [(point.x - from.x) / radius, (from.y - point.y) / radius]
-    return { view: [...told(middleOf(now.box)), now.box.width / 2 / radius, now.box.height / 2 / radius] }
-  }, [middle])
-  const onFrame = useCallback(
-    (pose: Pose) => {
-      settleCore(true)
-      const here = at.current
-      const cast = (Object.keys(CASTS) as Look[]).reduce((sum, look) => sum + CASTS[look] * pose.looks[look], 0)
-      const glow = ALL_MOODS.reduce((sum, each) => sum + HALO[each] * pose.weights[each], 0) * (0.85 + 0.3 * pose.power)
-      const shown = here.size / LARGEST
-      if (halo.current) {
-        halo.current.style.opacity = (glow * cast).toFixed(3)
-        halo.current.style.transform = `translate3d(${(pose.gaze[0] * here.size * 0.12).toFixed(1)}px,${(-pose.gaze[1] * here.size * 0.12).toFixed(1)}px,0) scale(${shown.toFixed(4)})`
-      }
-      const from = middle()
-      if (!light || !from) return
-      light.core = { x: from.x, y: from.y, radius: here.size / 2 }
-      light.glow = glow * (0.4 + 0.6 * cast)
-      light.power = pose.power
-      // Its voice goes on through the ground round it.
-      fieldOf(pose, light.field)
-      light.voice = pose.echo
-      light.voiceShift = pose.echoShift
-      const target = seen.current?.box
-      light.spot =
-        target && pose.attention > 0.01
-          ? {
-              x: target.left + target.width / 2,
-              y: target.top + target.height / 2,
-              radius: Math.max(target.width, target.height) * 0.62,
-              strength: pose.attention
-            }
-          : undefined
-    },
-    [light, settleCore, middle]
-  )
-  // When the core leaves the screen, it lights nothing round it any more.
-  useEffect(
-    () => () => {
-      if (light) {
-        light.core = undefined
-        light.spot = undefined
-      }
-    },
-    [light]
-  )
-  return (
-    <div
-      ref={box}
-      aria-hidden="true"
-      className="pointer-events-none absolute top-0 left-0 z-[5] will-change-transform"
-      style={{ width: LARGEST, height: LARGEST }}
-    >
-      <span
-        ref={halo}
-        className="pointer-events-none absolute -inset-[42%] bg-[radial-gradient(closest-side,color-mix(in_oklab,var(--accent)_15%,transparent),color-mix(in_oklab,var(--accent)_6%,transparent)_45%,transparent)] will-change-[transform,opacity]"
-      />
-      <Orb
-        size={LARGEST}
-        scale={scale}
-        mood={mood}
-        level={level}
-        bands={bands}
-        gaze={gaze}
-        load={load}
-        around={around}
-        onFrame={onFrame}
-        className="relative"
-      />
-    </div>
-  )
-}
 
 /**
  * The core's size over the stream: large enough to read as the presence at the top of the screen, small enough to
@@ -360,7 +152,19 @@ function syllables(): number {
  * The main screen: the assistant, present. The core in the middle, what it is saying under it as it says
  * it, and the line to talk to it at the bottom.
  */
-export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voiceLevel, voiceBands, onSetUpVoice, onOpenAnswer, onOpenThread }: StageProps) {
+export function Stage({
+  client,
+  personas,
+  onSwitch,
+  onSetUpEngine,
+  onOpenAccess,
+  speech,
+  voiceLevel,
+  voiceBands,
+  onSetUpVoice,
+  onOpenAnswer,
+  onOpenThread
+}: StageProps) {
   const channel = useFollowed(client.channel)
   const speaking = useFollowed(client.speech)
   const activity = useFollowed(client.activity)
@@ -407,25 +211,21 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
     },
     [client, attachments]
   )
-  const files = useFileActions()
-  const actions = useMemo(
+  // The cards of the stream can also snooze the reminder they show.
+  const coreActions = useCoreViewActions(client, say)
+  const actions = useMemo<ViewActions>(
     () => ({
-      say,
-      readFile: (file: string) => client.session.run('file.read', { file }),
-      readShapes: (url: string) => client.session.run('shapes.read', { url }).then((read) => read.shapes),
-      readFeed: (url: string) => client.session.run('feed.read', { url }).then((read) => read.document),
-      act: (act: readonly Record<string, unknown>[]) => client.session.run('view.act', { act: [...act] }).then(() => undefined),
-      snooze: (job: string, minutes: number) => client.session.run('schedule.snooze', { job, minutes }).then(() => undefined),
-      files
+      ...coreActions,
+      snooze: (job: string, minutes: number) => client.session.run('schedule.snooze', { job, minutes }).then(() => undefined)
     }),
-    [say, client, files]
+    [coreActions, client]
   )
   // Files and folders dropped anywhere on the main screen wait in the composer. A folder needs the desktop, which knows where it is.
-  const { host } = useDevice()
+  const device = useDevice()
   const dropping = useWindowDrop((dropped: Dropped) => {
     attachments.add(dropped.files, dropped.folders)
     if (dropped.unplaced > 0) attachments.refuse('A folder can be given only in the desktop app, which knows where it is.')
-  }, host?.files?.pathOf)
+  }, device.host?.files?.pathOf)
   /**
    * Only a view shown in answer to what the person just asked may start what it plays. One read on opening,
    * or an earlier topic's view brought back on screen, never does: the person may have stopped it.
@@ -463,9 +263,8 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
     client.channel.say(text, language, undefined, true).catch(() => setProblem(refusalCopy('failed')))
   })
   const listening = talk.is === 'listening'
-  // A tool at work for the answer: the core works rather than thinks. Routing a turn is part of thinking.
+  // A tool at work for the answer: the core works rather than thinks.
   const tool = activity.running.at(-1)?.tool
-  const atWork = running && doing(tool) !== undefined
   const [stageScroll, stageEdges] = useScrollEdges()
   const coreSize = useTopCoreSize()
   // With views, the stream has a notch above its newest view: home, where the core rests large in the middle as on
@@ -479,7 +278,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
   }, [newest, newestArrived])
   const atHome = streaming && home
   // The places kept for the core: it travels to the one in use and rests there.
-  const places = useRef<Record<'empty' | 'home' | 'top', HTMLElement | null>>({ empty: null, home: null, top: null })
+  const places = useRef<Record<CorePlace, HTMLElement | null>>({ empty: null, home: null, top: null })
   const keepers = useRef({
     empty: (element: HTMLElement | null) => {
       places.current.empty = element
@@ -491,8 +290,8 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
       places.current.top = element
     }
   })
-  const keep = (where: 'empty' | 'home' | 'top') => keepers.current[where]
-  const placeIn = useRef<'empty' | 'home' | 'top'>('empty')
+  const keep = (where: CorePlace) => keepers.current[where]
+  const placeIn = useRef<CorePlace>('empty')
   placeIn.current = !streaming ? 'empty' : atHome ? 'home' : 'top'
   const placeOf = useCallback(() => places.current[placeIn.current], [])
   // What is written under the core waits for it to arrive, so it never crosses the core on its way.
@@ -555,23 +354,17 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
     player.duck('listening', listening)
     return () => player.duck('listening', false)
   }, [player, listening])
-  const mood: Mood =
-    asleep && !listening && !running && !speaking.sentence
-      ? 'asleep'
-      : listening
-        ? 'listening'
-        : talk.is === 'transcribing'
-          ? 'thinking'
-          : speaking.sentence
-            ? 'speaking'
-            : running || voicing
-              ? atWork
-                ? 'working'
-                : 'thinking'
-              : 'idle'
+  const mood = moodOf({
+    asleep,
+    listening,
+    transcribing: talk.is === 'transcribing',
+    speaking: speaking.sentence !== undefined,
+    running,
+    voicing,
+    tool
+  })
   useShownPresence(active?.accent, mood)
-  // While it works, the word under the core says what it is doing: searching the web, preparing the view.
-  const moodWord = (mood === 'working' ? doing(tool) : undefined) ?? MOODS[mood]
+  const word = moodWord(mood, tool)
   const failed =
     talk.is === 'failed' ? talk.reason : !running && !speaking.sentence && last?.outcome === 'failed' ? (last.problem ?? 'It could not answer.') : undefined
 
@@ -609,7 +402,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
     stop()
     void start()
   }, [listening, finish, start, stop])
-  // Once the assistant can think, it greets the user when the app opens: the core decides whether it is time to.
+  // Once the assistant can think, it greets the person when the app opens: the core decides whether it is time to.
   const greeted = useRef(false)
   const canThink = engines?.active !== undefined
   useEffect(() => {
@@ -625,7 +418,6 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
     return () => window.removeEventListener(TALK_EVENT, onTalk)
   }, [toggle])
   // The key to talk inside the window is a setting of this device.
-  const device = useDevice()
   const talkKey = device.settings.shortcuts.talkInWindow
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -642,8 +434,6 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
 
   // Over the stream, what is said is smaller; at home and on an empty stage, as large as the core is.
   const compact = streaming && !home
-  // Where what was asked came from, when not from the person just now.
-  const origin = last?.trigger === 'task' ? 'Scheduled' : last?.trigger === 'resume' ? 'Resumed' : undefined
   const line = captionOf({
     hearing: speaking.sentence !== undefined,
     busy: running || voicing,
@@ -655,59 +445,15 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
     problem: failed !== undefined || problem !== undefined
   })
   const caption = (
-    <AnimatePresence mode="wait">
-      {(line === 'sentence' || line === 'heard') && heard ? (
-        // The sentence heard stays as it ended once the voice moves on, under the same key, so it does not blink
-        // between sentences and stays there once all is said.
-        <motion.p
-          key={`${heard.sentence.turn}:${heard.sentence.text}`}
-          initial={{ opacity: 0, y: 4 }}
-          animate={{ opacity: 1, y: 0 }}
-          // A sentence leaves quickly, so the next one is shown as its sound starts.
-          exit={{ opacity: 0, y: -3, transition: { duration: 0.12 } }}
-          transition={settle}
-          className={cn('text-balance', compact ? 'text-[0.9375rem] leading-relaxed' : 'text-xl leading-snug tracking-[-0.01em]')}
-        >
-          <SpokenLine text={heard.sentence.text} since={heard.since} seconds={heard.seconds} paused={line === 'sentence' && speaking.paused} />
-        </motion.p>
-      ) : line === 'asked' && last ? (
-        <motion.p
-          key={`said:${last.turn}`}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0, transition: { duration: 0.12 } }}
-          // What was asked is a reminder of what the core works on until it says something, not something to read
-          // again: two quiet lines at most, wherever it is shown, however long it was.
-          className={cn('line-clamp-2 text-balance text-text-faint', compact ? 'text-[0.9375rem] leading-relaxed' : 'text-base leading-relaxed')}
-        >
-          {origin && <span className="font-medium text-text-soft">{origin} · </span>}
-          {/* Files handed over without a word are named instead. */}
-          {last.said === '' ? (last.attached?.map((one) => one.name).join(', ') ?? '') : `“${last.said}”`}
-        </motion.p>
-      ) : line === 'problem' ? (
-        <motion.div key="problem" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="grid justify-items-center gap-3">
-          <p className="text-balance text-danger text-sm leading-relaxed">{failed ?? problem}</p>
-          {noEngine && (
-            <button type="button" onClick={onSetUpEngine} className="w-fit text-accent text-xs hover:underline hover:underline-offset-4">
-              Set up an AI program
-            </button>
-          )}
-        </motion.div>
-      ) : line === 'replied' && last ? (
-        // The reply, when none of its sentences was heard here: on opening, or once the voice was cut.
-        <motion.p
-          key={`last:${last.turn}`}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          // Two lines at most: over the stream, the room kept for the caption, so it never runs onto the cards; at
-          // home, so what rests under the core stays a few lines, whatever was said.
-          className={cn('line-clamp-2 text-balance text-text-soft', compact ? 'text-[0.9375rem] leading-relaxed' : 'text-lg leading-snug')}
-        >
-          {last.replied}
-        </motion.p>
-      ) : null}
-    </AnimatePresence>
+    <Caption
+      line={line}
+      heard={heard}
+      last={last}
+      paused={speaking.paused}
+      compact={compact}
+      problem={failed ?? problem}
+      onSetUpEngine={noEngine ? onSetUpEngine : undefined}
+    />
   )
 
   // The last reply's full answer, when its thread wrote one: a quiet link under what is said opens it whole.
@@ -768,9 +514,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
               {active.name}
             </motion.span>
             <motion.span {...(atHome ? {} : { layoutId: 'stage-mood' })} transition={travel} className={cn('mt-1', atHome && 'invisible')}>
-              <Eyebrow accent={mood !== 'idle'} className="transition-colors duration-(--duration-calm)">
-                {moodWord}
-              </Eyebrow>
+              <MoodWord mood={mood} word={word} />
             </motion.span>
             {/* Two lines are kept for what is said, and every line shown there holds to them, so it never moves the
                 stream under it nor runs onto the chips. Only a problem may take more room, and then pushes the chips
@@ -804,16 +548,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
         >
           <div className="flex min-h-0 w-full flex-1 flex-col items-center justify-center">
             <div ref={keep('home')} aria-hidden="true" className="-my-7" style={{ width: LARGEST, height: LARGEST }} />
-            <div className="grid justify-items-center gap-2">
-              <motion.h1 layoutId="stage-name" transition={travel} className="font-semibold text-[1.875rem] leading-none tracking-[-0.025em]">
-                {active.name}
-              </motion.h1>
-              <motion.span layoutId="stage-mood" transition={travel}>
-                <Eyebrow accent={mood !== 'idle'} className="transition-colors duration-(--duration-calm)">
-                  {moodWord}
-                </Eyebrow>
-              </motion.span>
-            </div>
+            <Presence name={active.name} mood={mood} word={word} />
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: arrived ? 1 : 0 }}
@@ -891,16 +626,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
           <div ref={stageScroll} className={cn('scroll-none h-full overflow-y-auto px-8', fade(stageEdges))}>
             <div className="flex min-h-full w-full flex-col items-center justify-center pt-6 pb-32">
               <div ref={keep('empty')} aria-hidden="true" className="-my-7" style={{ width: LARGEST, height: LARGEST }} />
-              <div className="grid justify-items-center gap-2">
-                <motion.h1 layoutId="stage-name" transition={travel} className="font-semibold text-[1.875rem] leading-none tracking-[-0.025em]">
-                  {active.name}
-                </motion.h1>
-                <motion.span layoutId="stage-mood" transition={travel}>
-                  <Eyebrow accent={mood !== 'idle'} className="transition-colors duration-(--duration-calm)">
-                    {moodWord}
-                  </Eyebrow>
-                </motion.span>
-              </div>
+              <Presence name={active.name} mood={mood} word={word} />
               <div className={cn('mt-7 flex min-h-[6.75rem] w-full flex-col items-center gap-1.5 text-center', COLUMN)}>
                 <div className="flex w-full justify-center" aria-live="polite">
                   {caption}
@@ -910,7 +636,7 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
               {chips ? (
                 <div className={cn('mt-2 w-full', COLUMN)}>{chips}</div>
               ) : (
-                // Until the user has said anything, a few things to try.
+                // Until the person has said anything, a few things to try.
                 !noEngine && !running && !speaking.sentence && channel.exchanges.every((line) => line.trigger !== undefined) && <Suggestions onSay={say} />
               )}
             </div>
@@ -947,13 +673,39 @@ export function Stage({ client, personas, onSwitch, onSetUpEngine, speech, voice
               )}
             </AnimatePresence>
             <div className="ml-auto flex shrink-0 gap-2">
-              <AccessIndicator client={client} />
+              <AccessIndicator client={client} onOpenSettings={onOpenAccess} />
               <EngineIndicator client={client} onOpenSettings={onSetUpEngine} />
             </div>
           </div>
         </div>
       </div>
       <DropState over={dropping} name={active.name} />
+    </div>
+  )
+}
+
+/** What the core is doing, in a word, lit in the accent unless it is simply ready. */
+function MoodWord({ mood, word }: { mood: Mood; word: string }) {
+  return (
+    <Eyebrow accent={mood !== 'idle'} className="transition-colors duration-(--duration-calm)">
+      {word}
+    </Eyebrow>
+  )
+}
+
+/**
+ * The persona's name and what it is doing, large under the core in the middle of the stage: at home and on an empty
+ * stage. They glide to and from their places over the stream with the core.
+ */
+function Presence({ name, mood, word }: { name: string; mood: Mood; word: string }) {
+  return (
+    <div className="grid justify-items-center gap-2">
+      <motion.h1 layoutId="stage-name" transition={travel} className="font-semibold text-[1.875rem] leading-none tracking-[-0.025em]">
+        {name}
+      </motion.h1>
+      <motion.span layoutId="stage-mood" transition={travel}>
+        <MoodWord mood={mood} word={word} />
+      </motion.span>
     </div>
   )
 }
@@ -971,9 +723,7 @@ function FullAnswerLink({ onOpen }: { onOpen(): void }) {
       className="group inline-flex h-6 shrink-0 items-center gap-1 rounded-sm px-1.5 text-text-faint text-xs transition-colors duration-(--duration-quick) hover:text-text-soft"
     >
       Full answer
-      <span className="transition-transform duration-(--duration-quick) ease-soft group-hover:translate-x-0.5 [&_svg]:size-3">
-        <ArrowGlyph />
-      </span>
+      <GoArrow />
     </motion.button>
   )
 }

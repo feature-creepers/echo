@@ -5,7 +5,7 @@ import { cn } from '../primitives/cn.ts'
 import { Kbd } from '../primitives/kbd.tsx'
 import { FIELD } from '../primitives/select.tsx'
 
-export interface ShortcutRecorderProps {
+interface ShortcutRecorderProps {
   /** What the shortcut does, for a screen reader. */
   label: string
   value: string
@@ -26,7 +26,6 @@ export function ShortcutRecorder({ label, value, onRecord, onProblem, onClear }:
   const { mac, host } = useDevice()
   const [recording, setRecording] = useState(false)
   const [held, setHeld] = useState<string[]>([])
-  const button = useRef<HTMLButtonElement>(null)
   const latest = useRef({ onRecord, onProblem })
   latest.current = { onRecord, onProblem }
 
@@ -40,7 +39,7 @@ export function ShortcutRecorder({ label, value, onRecord, onProblem, onClear }:
       if (event.key === 'Escape' && !press.ctrl && !press.meta && !press.alt && !press.shift) return setRecording(false)
       const recorded = recordShortcut(press, mac)
       if (recorded.is === 'waiting') {
-        // Show the modifiers held so far, as the user builds the shortcut.
+        // Show the modifiers held so far, as the person builds the shortcut.
         return setHeld(
           [
             press.ctrl && (mac ? '⌃' : 'Ctrl'),
@@ -80,7 +79,6 @@ export function ShortcutRecorder({ label, value, onRecord, onProblem, onClear }:
       )}
     >
       <button
-        ref={button}
         type="button"
         aria-label={recording ? `${label}: press the new keys, or Escape to cancel` : `${label}: ${said || 'not set'}. Press to change.`}
         aria-pressed={recording}

@@ -1,7 +1,8 @@
-import type { Logged } from '@repo/client'
+import type { Client, Logged } from '@repo/client'
+import { useFollowed } from '@repo/client/react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { copyText } from '../files/file-actions.ts'
+import { useMemo, useRef, useState } from 'react'
+import { useCopy } from '../conversation/use-copy.ts'
 import { Button } from '../primitives/button.tsx'
 import { Choice } from '../primitives/choice.tsx'
 import { cn } from '../primitives/cn.ts'
@@ -18,7 +19,9 @@ const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-di
  * they are about and found by their words, and held still to be read: opening one holds the log, so what is read
  * does not move as others arrive, and a line at the top says how many came since and lets them in.
  */
-export function Inspector({ events }: { events: readonly Logged[] }) {
+export function Inspector({ client }: { client: Client }) {
+  // Followed here rather than by the sheet, so the events that keep arriving draw only the tab that shows them.
+  const events = useFollowed(client.events)
   const [group, setGroup] = useState<EventGroup>('all')
   const [query, setQuery] = useState('')
   const [held, setHeld] = useState<readonly Logged[]>()
@@ -126,15 +129,7 @@ function EventLine({ logged, open, onToggle }: { logged: Logged; open: boolean; 
 /** An event opened: all it holds, wrapped rather than scrolled sideways, and a way to copy it. */
 function EventWhole({ logged }: { logged: Logged }) {
   const text = useMemo(() => JSON.stringify(logged.event, null, 2), [logged])
-  const [copied, setCopied] = useState<boolean>()
-  const timer = useRef<number>(undefined)
-  useEffect(() => () => window.clearTimeout(timer.current), [])
-  const copy = () =>
-    void copyText(text).then((done) => {
-      setCopied(done)
-      window.clearTimeout(timer.current)
-      timer.current = window.setTimeout(() => setCopied(undefined), 1600)
-    })
+  const { copied, copy } = useCopy(text)
   return (
     <div className="relative mx-4 mb-2">
       <Button kind="quiet" size="sm" onClick={copy} aria-live="polite" className="absolute top-1.5 right-1.5 font-sans">

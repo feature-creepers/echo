@@ -5,7 +5,7 @@ import { type ThreadPages, withEarlier, withLatest } from './thread-pages.ts'
 /** Where reading the earlier requests stands. */
 export type EarlierReading = { state: 'idle' } | { state: 'reading' } | { state: 'failed'; problem: string }
 
-export interface ThreadPagesState {
+interface ThreadPagesState {
   /** What has been read of the thread, the latest request included. Undefined until the first page arrives. */
   pages: ThreadPages | undefined
   /** Why the thread could not be read at all. */

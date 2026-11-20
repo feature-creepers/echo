@@ -1,5 +1,5 @@
 import type { Exchange, Thread, Threads } from '@repo/protocol'
-import { useMemo, useState } from 'react'
+import { type ComponentProps, useMemo, useState } from 'react'
 import { lastPart } from '../changes/words.ts'
 import { Button } from '../primitives/button.tsx'
 import { cn } from '../primitives/cn.ts'
@@ -31,17 +31,17 @@ export function underWords(under: readonly Thread[]): string {
 export const STATE = { working: 'working', ready: 'ready', parked: 'idle' } as const
 
 /** A thread listed on its own row, with the side questions asked beside it and the sub-threads it handed work to under it. */
-export interface ThreadGroup {
+interface ThreadGroup {
   head: Thread
   under: Thread[]
 }
 
 /** The parts of the list, in order: what is at work, what has an answer waiting, and the rest. */
-export const SECTIONS = ['working', 'ready', 'earlier'] as const
-export type SectionName = (typeof SECTIONS)[number]
+const SECTIONS = ['working', 'ready', 'earlier'] as const
+type SectionName = (typeof SECTIONS)[number]
 const SECTION_TITLE: Record<SectionName, string> = { working: 'At work', ready: 'Ready', earlier: 'Earlier' }
 
-export interface ThreadSection {
+interface ThreadSection {
   name: SectionName
   groups: ThreadGroup[]
 }
@@ -58,9 +58,8 @@ const matches = (thread: Thread, words: readonly string[]) => {
 /**
  * The threads as the side sheet lists them: each topic with the side questions asked while it was on the stage and
  * the sub-threads it opened under it, one level deep; one whose topic is gone, or is itself under another, stands on
- * its own row, so none is ever left out. A group is
- * listed at work when any of its threads works, ready when any has an answer waiting, else with the rest, and the
- * groups used most recently come first. Words typed keep the threads whose title or folder holds them all, each
+ * its own row, so none is ever left out. A group is listed at work when any of its threads works, ready when any has
+ * an answer waiting, else with the rest, and the groups used most recently come first. Words typed keep the threads whose title or folder holds them all, each
  * under its topic, and everything under a topic found.
  */
 export function sectionThreads(threads: readonly Thread[], query = ''): ThreadSection[] {
@@ -107,7 +106,7 @@ export function usedWords(iso: string, now: Date, locale?: string): string {
 const EARLIER_SHOWN = 20
 const EARLIER_FOLDED = 5
 
-export interface ThreadListProps {
+interface ThreadListProps {
   threads: Threads
   /** The conversation's lines, to say what each thread at work is doing. */
   exchanges: readonly Exchange[]
@@ -239,17 +238,25 @@ function Row({ thread, nested, onScreen, selected, doing, used, onOpen, onStop }
         </span>
         {!working && <span className="shrink-0 text-[0.6875rem] text-text-faint tabular-nums">{used}</span>}
       </button>
-      {working && (
-        <button
-          type="button"
-          onClick={() => onStop(thread.id)}
-          aria-label={`Stop ${thread.title}`}
-          className="mr-1.5 h-6 shrink-0 rounded-sm px-2 text-label text-text-soft outline-none transition-colors duration-(--duration-quick) ease-soft hover:bg-danger/15 hover:text-danger focus-visible:bg-danger/15 focus-visible:text-danger"
-        >
-          Stop
-        </button>
-      )}
+      {working && <StopThread title={thread.title} onClick={() => onStop(thread.id)} className="mr-1.5" />}
     </div>
+  )
+}
+
+/** The way to stop one thread at work, beside it: quiet until pointed at, then in the danger colour. */
+export function StopThread({ title, className, ...rest }: { title: string } & Omit<ComponentProps<'button'>, 'children'>) {
+  return (
+    <button
+      type="button"
+      aria-label={`Stop ${title}`}
+      className={cn(
+        'h-6 shrink-0 rounded-sm px-2 text-label text-text-soft outline-none transition-colors duration-(--duration-quick) ease-soft hover:bg-danger/15 hover:text-danger focus-visible:bg-danger/15 focus-visible:text-danger',
+        className
+      )}
+      {...rest}
+    >
+      Stop
+    </button>
   )
 }
 

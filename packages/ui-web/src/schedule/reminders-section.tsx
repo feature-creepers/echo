@@ -4,26 +4,18 @@ import { type CommandInput, type Job, lastName, type QuietHours, type ScheduleVi
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useEffect, useId, useState } from 'react'
 import { useDevice } from '../device/device.tsx'
+import { useNow } from '../hub/use-now.ts'
 import { Button } from '../primitives/button.tsx'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { IconButton } from '../primitives/icon-button.tsx'
 import { ChevronGlyph, EditGlyph, TrashGlyph } from '../primitives/icons.tsx'
 import { Switch } from '../primitives/switch.tsx'
+import { SMALL_FIELD } from '../settings/field.ts'
 import { SettingGroup, SettingRow } from '../settings/rows.tsx'
 import { glide, settle } from '../styles/motion.ts'
 import { JobEditor } from './job-editor.tsx'
 import { clockWords, dayOf, howOften, KIND_WORDS, timeOf, whatItDoes, whenPast } from './words.ts'
-
-/** The time now, again every half minute, so "Today" turns to "Tomorrow" while the page is open. */
-function useNow(): Date {
-  const [now, setNow] = useState(() => new Date())
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(new Date()), 30_000)
-    return () => window.clearInterval(timer)
-  }, [])
-  return now
-}
 
 /** The schedule, followed for as long as the page is open. */
 function useSchedule(client: Client): ScheduleState | undefined {
@@ -318,8 +310,7 @@ function Past({ jobs, view, now, onDelete }: { jobs: Job[]; view: ScheduleView; 
   )
 }
 
-const timeField =
-  'h-7 w-28 rounded-md border border-line-strong bg-black/25 px-2.5 text-[0.8125rem] text-text tabular-nums shadow-[inset_0_1px_1px_rgb(0_0_0/0.25)] [color-scheme:dark] transition duration-150 ease-soft'
+const timeField = cn(SMALL_FIELD, 'w-28')
 
 /** The quiet hours: on or off, and from when to when. */
 function QuietPanel({ quiet, onChange }: { quiet: QuietHours; onChange(quiet: Partial<QuietHours>): void }) {

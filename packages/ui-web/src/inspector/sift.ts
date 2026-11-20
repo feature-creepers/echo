@@ -38,8 +38,6 @@ const GROUP_OF: Record<EventName, Exclude<EventGroup, 'all'>> = {
   'schedule.changed': 'state'
 }
 
-export const groupOf = (name: EventName): Exclude<EventGroup, 'all'> => GROUP_OF[name]
-
 /** What an event says in a few words, after its name: empty when its name says it all. */
 export function eventSummary(event: Event): string {
   switch (event.name) {
@@ -77,7 +75,7 @@ export function siftEvents(events: readonly Logged[], group: EventGroup, query: 
   const kept: Logged[] = []
   for (let index = events.length - 1; index >= 0; index--) {
     const logged = events[index] as Logged
-    if (group !== 'all' && groupOf(logged.event.name) !== group) continue
+    if (group !== 'all' && GROUP_OF[logged.event.name] !== group) continue
     if (words.length > 0) {
       const text = plain(`${logged.event.name} ${eventSummary(logged.event)}`)
       if (!words.every((word) => text.includes(word))) continue

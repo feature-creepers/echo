@@ -5,13 +5,7 @@ import { Button } from '../primitives/button.tsx'
 import { cn } from '../primitives/cn.ts'
 import { Switch } from '../primitives/switch.tsx'
 import { SettingGroup, SettingRow } from '../settings/rows.tsx'
-
-/** A path shown in full when it fits, and by its end when it does not: the end says which program it is. */
-const PathText = ({ path }: { path: string }) => (
-  <span dir="rtl" title={path} className="block truncate text-left font-mono text-text-faint text-xs">
-    <bdi>{path}</bdi>
-  </span>
-)
+import { PathText } from './path-text.tsx'
 
 /** A small globe, drawn as the system's symbols are: a circle, its meridian and two parallels. */
 const GlobeMark = () => (
@@ -106,7 +100,7 @@ export function BrowserGroup({ client, access, productName }: { client: Client; 
                 </span>
               )}
             </span>
-            {browser.path && <PathText path={browser.path} />}
+            {browser.path && <PathText path={browser.path} className="text-text-faint" />}
           </div>
         </div>
       )}

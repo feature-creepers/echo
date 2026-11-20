@@ -1,7 +1,7 @@
 import type { Place, Thread } from '@repo/protocol'
 
 /** A folder the person may open a project in, and whether a project's thread already works there. */
-export interface ProjectFolder {
+interface ProjectFolder {
   path: string
   /** A thread works there already: what is asked goes to it when it is free. */
   known: boolean

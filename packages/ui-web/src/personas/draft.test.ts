@@ -23,7 +23,7 @@ describe('a draft with no edit', () => {
 })
 
 describe('a draft with edits', () => {
-  it('shows what the user typed and picked', () => {
+  it('shows what the person typed and picked', () => {
     const draft = { names: { second: 'Marv' }, active: 'second' }
     expect(nameIn(draft, first)).toBe('Ada')
     expect(nameIn(draft, second)).toBe('Marv')
@@ -34,7 +34,7 @@ describe('a draft with edits', () => {
     expect(choiceOf(personas, 'first', { names: { second: '  Marvin ' } })).toEqual({ names: [{ persona: 'second', name: '  Marvin ' }], active: 'first' })
   })
 
-  it('does not send back the name of a persona the user left alone, even when it changed elsewhere', () => {
+  it('does not send back the name of a persona the person left alone, even when it changed elsewhere', () => {
     const renamedElsewhere = [{ ...first, name: 'Alan' }, second]
     expect(choiceOf(renamedElsewhere, 'first', { names: { second: 'Marvin' } }).names).toEqual([{ persona: 'second', name: 'Marvin' }])
   })

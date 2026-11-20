@@ -24,12 +24,12 @@ import { slide } from '../styles/motion.ts'
 import { asksToGoBack, BACK_BUTTON } from './going-back.ts'
 
 /** Everything a page of the hub may draw with. */
-export interface HubContext {
+interface HubContext {
   productName: string
   client: Client
-  /** The user's settings, from the core. */
+  /** The person's settings, from the core. */
   settings: Settings
-  /** What the assistant knows about the user, and when it sleeps. */
+  /** What the assistant knows about the person, and when it sleeps. */
   memory: MemoryState
   /** The device's speech. Left out, the device has none and the page says so. */
   speech: DeviceSpeech | undefined
@@ -123,7 +123,6 @@ const PAGES = {
         personas={hub.settings.personas.available}
         active={hub.settings.personas.active}
         submitLabel="Save"
-        busyLabel="Saving…"
         doneLabel="Saved"
         onSubmit={hub.setPersonas}
         onPick={hub.onPick}
@@ -150,11 +149,10 @@ const PAGES = {
 } satisfies Record<string, HubPageEntry>
 
 export type HubPage = keyof typeof PAGES
-export const HUB_PAGES = Object.keys(PAGES) as HubPage[]
 
 /**
- * The groups of the sidebar, in order. The library holds what the assistant keeps for the user; the settings are
- * split by where each is kept: on this computer, or with the assistant, which follows the user from one device
+ * The groups of the sidebar, in order. The library holds what the assistant keeps for the person; the settings are
+ * split by where each is kept: on this computer, or with the assistant, which follows the person from one device
  * to the next (docs/SPEC.md, section 5.2).
  */
 const GROUPS: { title: string; pages: HubPage[] }[] = [
@@ -166,7 +164,7 @@ const GROUPS: { title: string; pages: HubPage[] }[] = [
 /** What stands apart, at the bottom of the sidebar. */
 const APART: HubPage[] = ['about']
 
-export interface HubScreenProps extends HubContext {
+interface HubScreenProps extends HubContext {
   /** The page open. */
   page: HubPage
   onPage(page: HubPage): void

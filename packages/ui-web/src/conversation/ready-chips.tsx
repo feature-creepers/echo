@@ -5,9 +5,9 @@ import { playCue } from '../audio/cues.ts'
 import { findDevice } from '../audio/devices.ts'
 import { useDevice } from '../device/device.tsx'
 import { ArrowGlyph } from '../primitives/icons.tsx'
-import { EASE } from '../styles/motion.ts'
+import { DURATION, EASE } from '../styles/motion.ts'
 
-export interface ReadyChipsProps {
+interface ReadyChipsProps {
   /** Topics that finished while another was in focus. */
   ready: readonly Thread[]
   onFocus(thread: string): void
@@ -38,7 +38,7 @@ export function ReadyChips({ ready, onFocus }: ReadyChipsProps) {
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.98 }}
-            transition={{ duration: 0.24, ease: EASE }}
+            transition={{ duration: DURATION.calm, ease: EASE }}
             onClick={() => onFocus(thread.id)}
             className="group flex h-7 max-w-full items-center gap-2 rounded-md bg-white/[0.07] pr-2 pl-2.5 shadow-[0_1px_2px_rgb(0_0_0/0.3),inset_0_0_0_0.5px_rgb(255_255_255/0.1)] transition-colors duration-(--duration-quick) hover:bg-white/[0.1]"
           >
