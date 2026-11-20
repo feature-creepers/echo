@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { readdir, readFile, stat } from 'node:fs/promises'
-import { dirname, join, relative, sep } from 'node:path'
+import { dirname, join, relative, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import type { Changeable, FolderSnapshot, FoundChange, NamedPlace } from '@repo/core'
 import { within } from './paths.ts'
@@ -298,11 +298,12 @@ export function createSnapshots({ never = () => false, home, appData = [], trees
 
   /** A folder, from its work tree's top when it is in one; else by its files, and its subfolders' only when `deep`. */
   const folderPart = async (folder: string, deep: boolean): Promise<Part> => {
-    const top = text(await git(folder, ['rev-parse', '--show-toplevel']).catch(() => new Uint8Array())).trim()
-    // Git names the top with "/" on every system.
-    if (top !== '') {
-      const local = top.split('/').join(sep)
-      return { covers: local, snapshot: await inGit(local) }
+    // The top is found from the folder as it was named, not as git names it: git resolves links, so on macOS a folder
+    // under /var would have its top under /private/var, and every path made relative to it would be wrong.
+    const up = await git(folder, ['rev-parse', '--show-cdup']).then(text, () => undefined)
+    if (up !== undefined) {
+      const top = resolve(folder, up.trim())
+      return { covers: top, snapshot: await inGit(top) }
     }
     return deep ? { covers: folder, snapshot: await outsideGit(folder) } : { snapshot: await outsideGit(folder, false) }
   }
