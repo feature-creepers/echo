@@ -89,6 +89,11 @@ export interface ComputerUse {
    */
   named?: readonly NamedPlace[] | undefined
   /**
+   * For a file created, changed or deleted: git reads its settings, its hooks or a repository from it, so a git
+   * command that only reads could run a program written there.
+   */
+  changesGit?: true | undefined
+  /**
    * The adapter found it beyond what was granted, or reaching a place never reached: the core refuses it with
    * this reason, and keeps the refusal in the activity.
    */

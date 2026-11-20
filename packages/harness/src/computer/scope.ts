@@ -1,5 +1,8 @@
+import { homedir } from 'node:os'
 import { type ComputerUse, type NamedPlace, type ProtectedPath, readCommand, type Scope } from '@repo/core'
+import { gitReads } from './git-files.ts'
 import { namedPath, real, within } from './paths.ts'
+import type { Where } from './system/index.ts'
 
 /**
  * Whether a use of a tool falls within what the person granted, the same way for every tool (docs/SPEC.md,
@@ -54,9 +57,15 @@ const describe = (scope: Scope) => {
 
 /**
  * A use as the core is asked about it: refused with the reason when it reaches beyond what was granted or a
- * place never reached, and for a command, whether every place it names may be changed.
+ * place never reached; for a file changed, whether git reads it; and for a command, whether every place it names
+ * may be changed. `where` is where the person's own git settings are.
  */
-export async function checkUse(use: ComputerUse, scope: Scope, never: readonly string[]): Promise<ComputerUse> {
+export async function checkUse(
+  use: ComputerUse,
+  scope: Scope,
+  never: readonly string[],
+  where: Where = { home: homedir(), env: process.env }
+): Promise<ComputerUse> {
   const kept = await keptPlaces(scope, never)
   const places = await Promise.all(scope.places.map(async (place) => ({ ...place, real: await real(place.path) })))
   const refuse = (why: 'outside' | 'protected', reason: string): ComputerUse => ({ ...use, refused: { why, reason } })
@@ -85,11 +94,14 @@ export async function checkUse(use: ComputerUse, scope: Scope, never: readonly s
     const writes = use.action !== 'read'
     // Grep reads what is in every file of the folder it searches.
     const below = use.tool === 'Grep'
+    let changesGit = false
     for (const path of use.paths) {
-      const found = problem(path, await real(path), writes, below)
+      const target = await real(path)
+      const found = problem(path, target, writes, below)
       if (found) return refuse(found.why, found.reason)
+      if (writes && !changesGit) changesGit = await gitReads(target, where)
     }
-    return use
+    return changesGit ? { ...use, changesGit: true } : use
   }
 
   // A command: the folder it runs in, then every path it names, read from that folder.

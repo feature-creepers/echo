@@ -162,6 +162,12 @@ const REASON_OF: Record<Exclude<Answer, 'yes' | 'session'>, NewUse['reason']> = 
 /** A path as a thread working in `folder` writes it: from that folder when it is inside it. */
 const relative = (path: string, folder: string | undefined) => (folder === undefined ? path : (fromFolder(folder, path) ?? path))
 
+/** Why a change to one of git's own files is asked, whatever the level. */
+const GIT_NOTE: NonNullable<Question['note']> = {
+  text: 'Git reads its settings and hooks from this file: a git command that only reads could run a program written here. This is always asked.',
+  tone: 'danger'
+}
+
 const DONE: Record<AccessUse['action'], string> = { read: 'read', create: 'created', change: 'changed', delete: 'deleted', run: 'ran' }
 const DOING: Record<AccessUse['action'], string> = { read: 'reading', create: 'creating', change: 'changing', delete: 'deleting', run: 'running' }
 
@@ -311,6 +317,7 @@ export function createAccess({ settings, screen, computer, timers, records, vers
     const path = use.paths[0] ?? ''
     const [name, folder] = [folderName(path), folderOf(path)]
     const session = (text: string) => (offerSession ? { session: text } : {})
+    const git = use.changesGit ? { note: GIT_NOTE } : {}
     switch (use.action) {
       case 'run': {
         const keys = reading?.keys ?? []
@@ -333,6 +340,7 @@ export function createAccess({ settings, screen, computer, timers, records, vers
           subject: name,
           facts: [{ label: 'In', value: where(folder) }],
           note: { text: 'Its last version is kept: you can restore it from Activity.', tone: 'soft' },
+          ...git,
           allow: 'Delete it'
         }
       case 'create':
@@ -340,6 +348,7 @@ export function createAccess({ settings, screen, computer, timers, records, vers
           heading: 'Create this file?',
           subject: name,
           facts: [{ label: 'In', value: where(folder) }],
+          ...git,
           allow: 'Create it',
           ...session(`Any change in ${namedFolder(folder)} until you quit`)
         }
@@ -348,6 +357,7 @@ export function createAccess({ settings, screen, computer, timers, records, vers
           heading: use.paths.length > 1 ? `Change these ${use.paths.length} files?` : 'Change this file?',
           subject: use.paths.length > 1 ? use.paths.map(folderName).join(', ') : name,
           facts: [{ label: 'In', value: where(folder) }],
+          ...git,
           allow: 'Change it',
           ...session(`Any change in ${namedFolder(folder)} until you quit`)
         }
@@ -609,6 +619,7 @@ export function createAccess({ settings, screen, computer, timers, records, vers
         askPublishing
           ? '- A command that puts something before others, beyond this computer, is always asked too, whatever they chose: a git push, a package published, a release, a pull request, an issue or a comment, a deployment. They may allow it for the session.'
           : '- They chose not to have what publishes asked every time: a git push, a package published, a release, a pull request, an issue or a comment, or a deployment follows the level above, like any other command.',
+        "- A change to git's own files (.git, .gitconfig, git's settings folder) is always asked, whatever they chose, and never covered for the session: say why it is needed.",
         ...networkLines({ askNetwork, askLocalNetwork, askSending, allowedHosts, refusedHosts }),
         `- When a card asks them, your call returns once they answered${approvalWait === null ? '' : `, or after ${approvalWait} minutes without an answer, which counts as a no`}. They can allow it once, or for the session: the same program and subcommand (git commit, npm run, python), or any change in the same folder, then runs at once until the app quits.`,
         '- Every use is checked first against what they granted. A command is checked by the paths it names, with ~, variables and .. read: one that names a place outside, or a place never reached, is refused before anyone is asked. This reads what the command names, not what a program works out once it runs, so never use a command to reach around it: name the places you work on.',

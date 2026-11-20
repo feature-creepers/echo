@@ -8,6 +8,7 @@ import { createComputer, protectedPaths } from './computer.ts'
 import { absolute, expandHome, namedPath, real, within } from './paths.ts'
 import { checkUse, reachOf } from './scope.ts'
 import { darwin } from './system/darwin.ts'
+import { system } from './system/index.ts'
 import { linux } from './system/linux.ts'
 import { win32 } from './system/win32.ts'
 
@@ -223,6 +224,51 @@ describe('the scope', () => {
     expect(reachOf({ places: [], computer: 'off' })).toEqual({ reads: false, writes: false })
     expect(reachOf({ places: [{ path: '/a', kind: 'folder', write: false }], computer: 'off' })).toEqual({ reads: true, writes: false })
     expect(reachOf({ places: [], computer: 'write' })).toEqual({ reads: true, writes: true })
+  })
+})
+
+describe('git’s own files', () => {
+  /** A repository, a folder git would take for a bare one, and git's settings in a home and an XDG folder, all on this disk. */
+  function repositories() {
+    const { root } = machine()
+    const repo = join(root, 'repo')
+    for (const made of ['repo/.git/hooks', 'repo/vendor/lib', 'repo/.github/workflows', 'repo/src', 'bare/refs/heads', 'home/.config/git', 'xdg/git'])
+      mkdirSync(join(root, made), { recursive: true })
+    writeFileSync(join(repo, 'vendor', 'lib', '.git'), 'gitdir: ../../.git/modules/lib')
+    writeFileSync(join(root, 'bare', 'HEAD'), 'ref: refs/heads/main')
+    const where = { home: join(root, 'home'), env: { XDG_CONFIG_HOME: join(root, 'xdg') } }
+    return { root, repo, where }
+  }
+
+  it.each([
+    ['.git/config', true],
+    ['.git/hooks/post-index-change', true],
+    ['.GIT/config', system.caseless],
+    ['vendor/lib/.git', true],
+    ['.gitconfig', true],
+    ['../home/.gitconfig', true],
+    ['../home/.config/git/config', true],
+    ['../xdg/git/attributes', true],
+    ['../bare/HEAD', true],
+    ['../bare/config', true],
+    ['../bare/refs/heads/main', true],
+    ['.gitattributes', false],
+    ['.gitmodules', false],
+    ['.github/workflows/ci.yml', false],
+    ['src/config.ts', false]
+  ])('marks a change to <repo>/%s as one git reads: %s', async (path, reads) => {
+    const { repo, where } = repositories()
+    const scope: Scope = { places: [], computer: 'write' }
+    const target = resolve(repo, path)
+    for (const action of ['create', 'change', 'delete'] as const) {
+      const found = await checkUse({ action, tool: 'Write', paths: [target] }, scope, [], where)
+      expect(found.changesGit === true).toBe(reads)
+    }
+  })
+
+  it('leaves a read of them alone', async () => {
+    const { repo, where } = repositories()
+    expect((await checkUse(read(join(repo, '.git', 'config')), { places: [], computer: 'write' }, [], where)).changesGit).toBeUndefined()
   })
 })
 

@@ -17,7 +17,8 @@ import { isLocalNetwork, isLoopback, listedHost } from './hosts.ts'
  * destroys is asked at every level and never covered by a yes for the session. With `askPublishing`, what
  * publishes, putting something before others beyond this computer (a push, a release, a post), is asked at
  * every level too; a yes for the session covers it, for those who push often. The person may turn either off:
- * what it guarded then follows the level like any other change.
+ * what it guarded then follows the level like any other change. A change to a file git reads its settings, hooks or
+ * repository from is asked at every level and never for the session: a rule, not a setting.
  *
  * The network has two guardrails of its own. With `askLocalNetwork`, on by default, a command that reaches a device
  * of the local network is asked at every level. With `askNetwork`, off by default, so is a command that reaches
@@ -52,6 +53,8 @@ export function networkGuard(reading: CommandReading, policy: Policy): 'sending'
 export function decide(use: ComputerUse, policy: Policy, reading: CommandReading | undefined, coveredForSession: boolean): Decision {
   const level = policy.approvals
   if (use.action === 'read') return { run: true, because: 'read-only' }
+  // A program written in git's own files would run on a git command that only reads, unseen: always asked, as a rule.
+  if (use.changesGit) return { run: false, destructive: false, session: false }
   if (use.action === 'delete') {
     if (policy.askDestroying) return { run: false, destructive: true, session: false }
     return changeFile(level, coveredForSession)

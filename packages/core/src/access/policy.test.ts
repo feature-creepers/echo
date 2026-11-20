@@ -95,4 +95,15 @@ describe('deciding a use', () => {
     const reading = use.action === 'run' ? readCommand(use.command ?? '', 'posix') : undefined
     expect(decide(use, policy, reading, covered)).toEqual(expected)
   })
+
+  it.each([
+    ['create', guarded('ask')],
+    ['change', guarded('trust')],
+    ['change', open('auto')],
+    ['delete', open('auto')],
+    ['delete', guarded('trust')]
+  ] as const)('asks to %s one of git’s own files, at %j, and never for the session', (action, policy) => {
+    const use: ComputerUse = { action, tool: 'Write', paths: [`${FOLDER}/.git/config`], changesGit: true }
+    for (const covered of [false, true]) expect(decide(use, policy, undefined, covered)).toEqual(ASKS(false, false))
+  })
 })

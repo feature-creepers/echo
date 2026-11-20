@@ -322,6 +322,25 @@ describe('the three levels', () => {
     expect(access.standingRules().allowances).toEqual([])
   })
 
+  it('always asks before a change to git’s own files, says why, and offers no answer for the session, even in a folder allowed', async () => {
+    const { reach, access, settings, screen } = setup()
+    const first = reach.approve(create, signal())
+    await settle()
+    access.hear('yes, for the session')
+    await first
+    const git: ComputerUse = { action: 'change', tool: 'Edit', paths: [`${WORKSPACE}/.git/config`], changesGit: true }
+    const verdict = reach.approve(git, signal())
+    await settle()
+    expect(cardText(screen)).toContain('Git reads its settings and hooks from this file')
+    expect(cardText(screen)).not.toContain('Allow for this session')
+    access.hear('yes, for the session')
+    expect(await verdict).toMatchObject({ allow: true })
+    settings.setAccess({ approvals: 'auto', computer: 'write' })
+    reach.approve(git, signal())
+    await settle()
+    expect(cardText(screen)).toContain('This is always asked.')
+  })
+
   it('asks before what publishes at every level, says why, and lets a yes for the session cover the next push', async () => {
     const { reach, access, settings, screen } = setup()
     settings.setAccess({ approvals: 'auto' })
@@ -992,6 +1011,7 @@ describe('what a thread is told', () => {
     expect(access.standing()).toContain('Commands may use the network when the task needs it')
     expect(access.standing()).toContain('a git push')
     expect(access.standing()).toContain('a cd lasts only for the command it is in')
+    expect(access.standing()).toContain("A change to git's own files (.git, .gitconfig, git's settings folder) is always asked")
     expect(access.standing()).not.toContain('never use them to reach the web')
     settings.setAccess({ approvals: 'auto' })
     expect(access.standing()).toContain('Everything within what they granted runs at once')
