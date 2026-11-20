@@ -304,15 +304,15 @@ export function createAccess({ settings, screen, computer, timers, records, vers
   }
 
   /**
-   * The place never reached that a path is in, if any, as the adapter finds it: a file whose name ends a certain way,
-   * or a place inside one, unless it is inside a folder reached all the same.
+   * The place never reached that a path is in, if any, as the adapter finds it: a file or a folder whose name ends a
+   * certain way (some formats are folders), or a place inside one, unless it is inside a folder reached all the same.
    */
   const neverReached = (path: string) =>
-    computer?.protected.find((place) =>
-      place.ending !== undefined
-        ? path.toLowerCase().endsWith(place.ending.toLowerCase())
-        : place.path !== undefined && within(path, place.path) && !(place.except ?? []).some((open) => within(path, open))
-    )
+    computer?.protected.find((place) => {
+      const { ending } = place
+      if (ending !== undefined) return path.split(/[\\/]/).some((part) => part.toLowerCase().endsWith(ending.toLowerCase()))
+      return place.path !== undefined && within(path, place.path) && !(place.except ?? []).some((open) => within(path, open))
+    })
 
   /** Whether a place is within what was granted, by its words, for reading or, with `write`, for changing. */
   const covered = (path: string, write: boolean) => {

@@ -540,6 +540,9 @@ describe('places never reached', () => {
     expect(access.reaches('/home/ada/.ssh/id_ed25519')).toBe(false)
     expect(access.reaches('/home/ada/Music/Passwords.KDBX')).toBe(false)
     expect(access.neverReached('/home/ada/Passwords.kdbx')).toBe('Password databases')
+    // A format kept as a folder: what is inside it too.
+    expect(access.neverReached('/home/ada/Vault.kdbx/default/profile.js')).toBe('Password databases')
+    expect(access.reaches('/home/ada/Music/Vault.kdbx/default')).toBe(false)
   })
 })
 

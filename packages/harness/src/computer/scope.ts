@@ -46,10 +46,11 @@ async function keptPlaces(scope: Scope, never: readonly string[]): Promise<Kept[
   )
 }
 
-/** The place never reached that a real path is in, when it is in one. */
+/** The place never reached that a real path is in, when it is in one: by its ending, any part of it, as some formats are folders. */
 function keptAt(target: string, kept: readonly Kept[]): Kept | undefined {
+  const parts = target.toLowerCase().split(/[\\/]/)
   return kept.find((place) => {
-    if (place.ending !== undefined) return target.toLowerCase().endsWith(place.ending)
+    if (place.ending !== undefined) return parts.some((part) => part.endsWith(place.ending as string))
     return place.path !== undefined && within(target, place.path) && !place.except.some((open) => within(target, open))
   })
 }

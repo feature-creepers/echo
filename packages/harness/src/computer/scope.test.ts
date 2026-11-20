@@ -291,18 +291,24 @@ describe('the scope', () => {
 })
 
 describe('places never reached by their ending, through a wildcard or a recursive use', () => {
-  /** A granted folder holding `notes.txt`, `vault.kdbx` and `sub/old.kdb`, and `sub2`, holding nothing of the kind. */
+  /**
+   * A granted folder holding `notes.txt`, `vault.kdbx` and `sub/old.kdb`, `sub2`, holding nothing of the kind, and
+   * `sub3`, holding a 1Password vault, a folder.
+   */
   function documents() {
     const root = realpathSync.native(folder())
     mkdirSync(join(root, 'sub'))
     mkdirSync(join(root, 'sub2'))
-    for (const file of ['notes.txt', 'vault.kdbx', join('sub', 'old.kdb'), join('sub2', 'list.txt')]) writeFileSync(join(root, file), '')
+    mkdirSync(join(root, 'sub3', 'Vault.opvault', 'default'), { recursive: true })
+    for (const file of ['notes.txt', 'vault.kdbx', join('sub', 'old.kdb'), join('sub2', 'list.txt'), join('sub3', 'Vault.opvault', 'default', 'profile.js')])
+      writeFileSync(join(root, file), '')
     const scope: Scope = {
       places: [{ path: root, kind: 'folder', write: false }],
       computer: 'off',
       protected: [
         { label: 'KeePass databases', ending: '.kdbx' },
-        { label: 'KeePass databases', ending: '.kdb' }
+        { label: 'KeePass databases', ending: '.kdb' },
+        { label: '1Password vaults', ending: '.opvault' }
       ]
     }
     return { root, scope }
@@ -315,7 +321,11 @@ describe('places never reached by their ending, through a wildcard or a recursiv
     ['cat *.none', undefined],
     ['grep -r token .', 'would go through'],
     ['grep -r token sub', `sub${sep}old.kdb`],
-    ['grep -r token sub2', undefined]
+    ['grep -r token sub2', undefined],
+    // A part of the path ending so, a format kept as a folder.
+    ['cat sub3/Vault.opvault/default/profile.js', '1password vaults'],
+    ['cat sub3/*/default/profile.js', '1password vaults'],
+    ['cd sub3/Vault.opvault && cat default/profile.js', '1password vaults']
   ])('`%s`: %s', async (line, refused) => {
     const { root, scope } = documents()
     const found = await checkUse({ action: 'run', tool: 'Bash', paths: [root], command: line }, scope, [])
@@ -327,6 +337,11 @@ describe('places never reached by their ending, through a wildcard or a recursiv
     const { root, scope } = documents()
     expect(await outsideScope({ action: 'read', tool: 'Grep', paths: [root] }, scope, [])).toContain('would go through')
     expect(await outsideScope({ action: 'read', tool: 'Grep', paths: [join(root, 'sub2')] }, scope, [])).toBeUndefined()
+  })
+
+  it('refuses a file tool inside a format kept as a folder', async () => {
+    const { root, scope } = documents()
+    expect(await outsideScope(read(join(root, 'sub3', 'Vault.opvault', 'default', 'profile.js')), scope, [])).toContain('1password vaults')
   })
 })
 
