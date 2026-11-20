@@ -18,7 +18,7 @@ pnpm --filter @repo/desktop self-check   # what a first launch does, with no win
 pnpm --filter @repo/desktop test
 ```
 
-`self-check` starts the core, connects to it, reads a new user's settings, names a persona and reads the change back, in a temporary folder of its own. It exits with code 1 when any of that failed. CI runs it on the three systems. On Linux without Chromium's sandbox helper or a display, run it as CI does:
+`self-check` starts the core, connects to it, reads a new user's settings, names a persona and reads the change back, in a temporary folder of its own. It then sees that search by meaning can run: the store loaded sqlite-vec, and the worker of the memory's model starts and loads its runtime, which the core does before downloading the model; the download that follows is stopped at once. It exits with code 1 when any of that failed. CI runs it on the three systems. On Linux without Chromium's sandbox helper or a display, run it as CI does:
 
 ```bash
 xvfb-run -a pnpm --filter @repo/desktop exec electron . --self-check --no-sandbox
@@ -35,11 +35,11 @@ If the terminal belongs to another Electron app (an editor, for instance), unset
 
 ## Where it keeps things
 
-The data folder is `%APPDATA%\Echo`, `~/Library/Application Support/Echo` or `~/.config/Echo`. A build run from the sources uses the same path followed by ` (development)`, so trying a change never touches real data. Inside it: the core's data in `core/`, the speech models in `models/`, this device's settings in `settings.json`, and its identifier in `device-id`. Deleting the folder brings back the first launch.
+The data folder is `%APPDATA%\Echo`, `~/Library/Application Support/Echo` or `~/.config/Echo`. A build run from the sources uses the same path followed by ` (development)`, so trying a change never touches real data. Inside it: the core's data in `core/` (with the model of search by meaning in `core/models/`, once downloaded), the speech models in `models/`, this device's settings in `settings.json`, and its identifier in `device-id`. Deleting the folder brings back the first launch.
 
 ## Packaging and releases
 
-`build/stage.ts` lays out in `stage/` what is packaged: the built program, the app's icons, a manifest naming the GitHub repository updates come from, `playwright-core`, and `sherpa-onnx-node` with its native part for the target system, fetched from the registry. `build/electron-builder.yml` then makes the packages from it. A package for another system can be made from this one.
+`build/stage.ts` lays out in `stage/` what is packaged: the built program, the app's icons, a manifest naming the GitHub repository updates come from, `playwright-core`, `sherpa-onnx-node` with its native part for the target system, fetched from the registry, and for search by meaning `@huggingface/transformers` with `onnxruntime-node` (only the target system's binaries of the 300 MB it carries) and `sharp` with its target package, and `sqlite-vec` with its target package. Native files are unpacked beside the archive. `build/electron-builder.yml` then makes the packages from it. A package for another system can be made from this one.
 
 ```bash
 pnpm build

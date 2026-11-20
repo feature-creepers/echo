@@ -13,6 +13,9 @@ const coreEntry = fileURLToPath(import.meta.resolve('@repo/server/main'))
 /** The speech engines run in a process of their own too: out/main/speech.js. */
 const speechEntry = fileURLToPath(import.meta.resolve('@repo/speech/process'))
 
+/** The model of search by meaning runs in a worker thread of the core, out/main/embedder-worker.js, beside core.js, where the core looks for it. */
+const embedderWorker = fileURLToPath(import.meta.resolve('@repo/embedder/worker'))
+
 const here = (path: string) => fileURLToPath(new URL(path, import.meta.url))
 
 /**
@@ -38,7 +41,7 @@ export default defineConfig({
   main: {
     define: registrations,
     build: {
-      rollupOptions: { input: { index: here('src/main/index.ts'), core: coreEntry, speech: speechEntry } }
+      rollupOptions: { input: { index: here('src/main/index.ts'), core: coreEntry, speech: speechEntry, 'embedder-worker': embedderWorker } }
     }
   },
   preload: {

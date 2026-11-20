@@ -189,6 +189,9 @@ importers:
       '@repo/client':
         specifier: workspace:*
         version: link:../../packages/client
+      '@repo/embedder':
+        specifier: workspace:*
+        version: link:../../packages/embedder
       '@repo/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol

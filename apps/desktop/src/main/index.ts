@@ -50,7 +50,7 @@ import { followLoad } from './load/index.ts'
 import { appIcon } from './mark.ts'
 import { createMini } from './mini/index.ts'
 import { serveNotifications } from './notifications.ts'
-import { checkSettings } from './self-check.ts'
+import { checkMeaning, checkSettings } from './self-check.ts'
 import { type SpeechProcess, startSpeech } from './speech-process.ts'
 import { createTray, type TrayActions, type TrayLook } from './tray.ts'
 import { createUpdater, releasesPage } from './updater.ts'
@@ -63,8 +63,8 @@ import { createUpdater, releasesPage } from './updater.ts'
  *                   when the app is already running: stop everything the assistant does, as the tray's menu does.
  *                   Started with it and not running, the app has nothing to stop, and quits at once.
  *   --hidden        start out of sight, in the tray, ready for the shortcut: how the app starts at login.
- *   --self-check    start the core, connect to it, do what a first launch does, print the outcome as one line
- *                   and quit. Exit code 1 when something failed. No window is opened, and nothing of the
+ *   --self-check    start the core, connect to it, do what a first launch does, see that search by meaning can run
+ *                   (sqlite-vec loads, the model's worker starts), print the outcome as one line and quit. Exit code 1 when something failed. No window is opened, and nothing of the
  *                   user's is read or written: the check runs in a folder of its own, removed afterwards.
  */
 const selfChecking = process.argv.includes('--self-check')
@@ -189,8 +189,9 @@ function trayLook(presence: unknown): TrayLook {
 async function selfCheck(core: CoreProcess): Promise<void> {
   const link = await core.settled()
   const settings = link.state === 'connected' ? await checkSettings(core) : 'not checked'
-  const passed = link.state === 'connected' && settings === 'ok'
-  process.stdout.write(`${JSON.stringify({ selfCheck: passed ? 'ok' : 'failed', link, settings })}\n`)
+  const meaning = link.state === 'connected' ? await checkMeaning(core) : 'not checked'
+  const passed = link.state === 'connected' && settings === 'ok' && meaning === 'ok'
+  process.stdout.write(`${JSON.stringify({ selfCheck: passed ? 'ok' : 'failed', link, settings, meaning })}\n`)
   await core.stop()
   try {
     if (scratch) rmSync(scratch, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })

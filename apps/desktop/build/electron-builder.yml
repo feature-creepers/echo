@@ -10,9 +10,10 @@ directories:
   buildResources: build
 electronVersion: 45.3.2
 
-# The app is bundled by electron-vite into out/. Two things are read from node_modules at run time: the
-# speech library, whose native part must sit outside the archive to be loaded, and Playwright, which the core
-# loads from the archive to drive the browser (the browser itself is the one installed on the computer).
+# The app is bundled by electron-vite into out/. What is read from node_modules at run time: the speech
+# library; Playwright, which the core loads from the archive to drive the browser (the browser itself is the one
+# installed on the computer); and for search by meaning, transformers.js with ONNX Runtime and sharp, and
+# sqlite-vec. Their native parts must sit outside the archive to be loaded.
 files:
   - out/**
   - package.json
@@ -20,6 +21,9 @@ files:
   - "!**/*.map"
 asarUnpack:
   - node_modules/sherpa-onnx-*-*/**
+  - node_modules/onnxruntime-node/bin/**
+  - node_modules/@img/sharp-*/**
+  - node_modules/sqlite-vec-*/**
 npmRebuild: false
 
 # Electron's switches, set in the packaged program: it cannot be started as plain Node, takes no Node

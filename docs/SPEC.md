@@ -1554,7 +1554,7 @@ Built:
 - **Voice.** Local recognition, voice and speech detection, downloaded once, with the person's own words favoured (section 8.2).
 - **Interface.** First launch, the main screen, the composer and its menus, the pinned docks, Library and settings, the side sheet with the transcript, threads and inspector, and Mini (sections 13.2 and 13.3).
 - **Library.** Views saved, searched, filed, pinned, ordered in the docks, shown again, changed by asking, deleted (section 9.8).
-- **Memory.** Every word kept and searchable with keywords; facts extracted, reconciled and summarised into a profile while the assistant sleeps; retention; recall into each request; shown, edited, forgotten and exported (section 10).
+- **Memory.** Every word kept and searchable with keywords, and by meaning once its model is downloaded (section 10.4); facts extracted, reconciled and summarised into a profile while the assistant sleeps; retention; recall into each request; shown, edited, forgotten and exported (section 10).
 - **Access to the computer.** Scopes and grants, three approval levels, approvals for the session, places never reached, commands held by the paths they name, the network policy, the activity with diffs and undo, stop everything, the confirmation phrase and the signed log (section 12.2).
 - **Browser and other apps.** The installed browser driven with its own profile and rules; other apps read through accessibility and operated by element, with the allowlist, the frame and the pause (sections 12.1 and 12.2).
 - **Projects.** A thread bound to a folder, working in it as a senior developer would (section 7.11).
@@ -1564,7 +1564,7 @@ Built:
 - **Settings**, in the hub and in the menus under the composer (section 13.2).
 - **Packaging and updates** for the three systems, made in CI and published from a tag (section 14.7).
 
-Not built: the open issues, among them vector search, confinement of Claude Code's commands on Windows (macOS and Linux have it; on Windows, Codex's commands are confined by its own sandbox), elevation, signed builds, the phone app and the paid service; and, in this part of the spec, the pill (13.2), the inspector's actions, themes and easter eggs (13.3). None of these is started without an owner's approval on its issue.
+Not built: the open issues, among them confinement of Claude Code's commands on Windows (macOS and Linux have it; on Windows, Codex's commands are confined by its own sandbox), elevation, signed builds, the phone app and the paid service; and, in this part of the spec, the pill (13.2), the inspector's actions, themes and easter eggs (13.3). None of these is started without an owner's approval on its issue.
 
 ## 15. Decisions
 
