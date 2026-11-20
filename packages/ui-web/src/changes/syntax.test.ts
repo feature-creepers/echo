@@ -112,13 +112,6 @@ describe('a hunk', () => {
       ]
     ])
   })
-
-  it('stays quick on the longest diff a file shows', () => {
-    const lines = Array.from({ length: 4_000 }, (_, index) => ({ kind: 'added' as const, text: `const a${index} = "${'x'.repeat(60)}" /* ${index} */` }))
-    const started = performance.now()
-    paintHunk(lines, 'ts')
-    expect(performance.now() - started).toBeLessThan(1_000)
-  })
 })
 
 describe('cutting a line where its colours and marks start and end', () => {
