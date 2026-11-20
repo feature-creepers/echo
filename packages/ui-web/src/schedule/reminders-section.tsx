@@ -123,18 +123,19 @@ function Row({ first, children }: { first: boolean; children: ReactNode }) {
   )
 }
 
-/** The clock time a job shows when it has no next time: the one it is set for. Nothing for a job on files, which has none. */
+/** The clock time a job shows when it has no next time: the one it is set for. Nothing for a job on files or mail, which has none. */
 const setFor = (job: Job) => {
   const { timing } = job
-  if (timing.kind === 'files') return undefined
+  if (timing.kind === 'files' || timing.kind === 'mail') return undefined
   if (timing.kind === 'once') return timing.at.slice(11, 16)
   return timing.kind === 'hourly' ? timing.from : timing.time
 }
 
-/** What a job shows where its time goes: its next time, the time it is set for, or for a job on files, the folder it watches. */
+/** What a job shows where its time goes: its next time, the time it is set for, or for a job on files or mail, what it watches. */
 function whenShown(job: Job, view: ScheduleView, now: Date): { top: string; under: string } {
   const paused = job.state === 'paused'
   if (job.timing.kind === 'files') return { top: lastName(job.timing.folder), under: paused ? 'Paused' : 'Watching' }
+  if (job.timing.kind === 'mail') return { top: 'Mail', under: paused ? 'Paused' : 'Watching' }
   const set = setFor(job)
   return {
     top: job.next ? timeOf(job.next, view.timeZone) : set === undefined ? '—' : clockWords(set),

@@ -35,6 +35,10 @@ describe('the words of the Reminders page', () => {
     expect(howOften({ kind: 'monthly', time: '19:00', day: 1 }, 'en-GB')).toBe('On the 1st of every month at 19:00')
     expect(howOften({ kind: 'hourly', every: 2, from: '10:00', until: '18:00' }, 'en-GB')).toBe('Every 2 hours from 10:00 to 18:00')
     expect(howOften({ kind: 'once', at: '2026-11-19T08:00' }, 'en-GB')).toBe('Once')
+    expect(howOften({ kind: 'mail', from: 'Bank', repeat: false }, 'en-GB')).toBe('When a mail from Bank arrives')
+    expect(howOften({ kind: 'mail', subject: 'lease', account: 'ada@example.com', repeat: true }, 'en-GB')).toBe(
+      'Each time a mail about “lease” arrives in ada@example.com'
+    )
   })
 
   it('says when a past job was due', () => {

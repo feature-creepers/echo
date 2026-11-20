@@ -7,7 +7,13 @@ import { SCHEDULE_CANCEL_TOOL, SCHEDULE_CREATE_TOOL, SCHEDULE_LIST_TOOL, SCHEDUL
 /** Wednesday 18 November 2026, 14:13 in Paris. */
 const START = Date.parse('2026-11-18T13:13:00Z')
 
-function setup({ folders }: { folders?: { locate(path: string): Promise<string | undefined>; reaches(path: string): boolean } } = {}) {
+function setup({
+  folders,
+  mail
+}: {
+  folders?: { locate(path: string): Promise<string | undefined>; reaches(path: string): boolean }
+  mail?: { addresses(): string[] }
+} = {}) {
   const timers = manualTimers()
   const now = () => new Date(START + timers.elapsed())
   let ids = 0
@@ -19,7 +25,7 @@ function setup({ folders }: { folders?: { locate(path: string): Promise<string |
     newId: () => `job-${++ids}`,
     proactive: { busy: () => false, remind: () => undefined, run: () => undefined, notify: () => undefined }
   })
-  const tools = scheduleTools({ schedule, now, zone: () => 'Europe/Paris', ...(folders ? { folders } : {}) })
+  const tools = scheduleTools({ schedule, now, zone: () => 'Europe/Paris', ...(folders ? { folders } : {}), ...(mail ? { mail } : {}) })
   const call = async (name: string, input: unknown) => {
     const tool = tools.find((one) => one.definition.name === name)
     if (!tool) throw new Error(`No tool ${name}`)
@@ -127,5 +133,33 @@ describe('the schedule tools', () => {
     expect(await call(SCHEDULE_CANCEL_TOOL, { job: 'job-1' })).toMatchObject({ ok: true })
     expect(schedule.read().jobs.map((job) => job.title)).toEqual(['Buy cat food'])
     expect((await call(SCHEDULE_CANCEL_TOOL, { description: 'piano lesson' })).ok).toBe(false)
+  })
+})
+
+describe('a job on mail, set by a tool', () => {
+  const landlord = {
+    kind: 'reminder',
+    title: 'Landlord',
+    sentence: 'The landlord wrote.',
+    timing: { kind: 'mail', from: 'landlord', account: 'ada@example.com' }
+  }
+
+  it.each([
+    ['no account gives its mail', [], 'No connected account gives its mail'],
+    [
+      'the account named is not connected',
+      ['ada@work.example'],
+      '"ada@example.com" is not a connected account giving its mail. The accounts are: ada@work.example.'
+    ]
+  ])('is refused when %s', async (_case, addresses, problem) => {
+    const { call } = setup({ mail: { addresses: () => addresses } })
+    expect(await call(SCHEDULE_CREATE_TOOL, landlord)).toEqual({ ok: false, text: expect.stringContaining(problem) })
+  })
+
+  it('watches the account named, and says so', async () => {
+    const { call, schedule } = setup({ mail: { addresses: () => ['Ada@Example.com'] } })
+    const set = await call(SCHEDULE_CREATE_TOOL, landlord)
+    expect(set).toMatchObject({ ok: true, text: expect.stringContaining('when a mail from landlord arrives in ada@example.com') })
+    expect(schedule.read().jobs[0]?.timing).toEqual({ kind: 'mail', account: 'ada@example.com', from: 'landlord', repeat: false })
   })
 })

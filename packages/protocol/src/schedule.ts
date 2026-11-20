@@ -52,10 +52,15 @@ export const MAX_EVERY_HOURS = 12
 export const WATCHED_FOLDER_MAX_LENGTH = 1024
 export const FILE_PATTERN_MAX_LENGTH = 120
 
+/** The longest the words of a sender or a subject a job on mail looks for can be, and an account's address. */
+export const MAIL_WORDS_MAX_LENGTH = 200
+export const MAIL_ADDRESS_MAX_LENGTH = 320
+
 /**
  * When a job rings, always on the person's clock in their time zone, so 8:00 stays 8:00 when the clocks change.
  * A day of the month a month does not have (the 31st in April) rings on its last day. A job can also ring when
- * files arrive or change in a folder the person granted, rather than at a time: a download finished, a scan.
+ * files arrive or change in a folder the person granted, rather than at a time: a download finished, a scan; or when
+ * a mail arrives in an account the person connected.
  */
 export const timingSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('once'), at: localDateTimeSchema }),
@@ -73,6 +78,18 @@ export const timingSchema = z.discriminatedUnion('kind', [
     kind: z.literal('files'),
     folder: z.string().min(1).max(WATCHED_FOLDER_MAX_LENGTH),
     pattern: z.string().min(1).max(FILE_PATTERN_MAX_LENGTH).optional(),
+    repeat: z.boolean()
+  }),
+  /**
+   * When a mail arrives in the inbox of a connected account giving its mail: the account's address (left out, every
+   * such account), words of the sender's address or name, words of the subject, and whether it rings each time or
+   * only the first.
+   */
+  z.object({
+    kind: z.literal('mail'),
+    account: z.string().min(1).max(MAIL_ADDRESS_MAX_LENGTH).optional(),
+    from: z.string().min(1).max(MAIL_WORDS_MAX_LENGTH).optional(),
+    subject: z.string().min(1).max(MAIL_WORDS_MAX_LENGTH).optional(),
     repeat: z.boolean()
   })
 ])
@@ -188,7 +205,7 @@ export function lastName(path: string): string {
 /**
  * A recurring job's timing in plain words, "every weekday at 07:30", for the person and for a model, each side
  * writing the times its own way through `time`. Nothing for a one-time job, whose words depend on the day it is. A
- * job on files is said by what sets it off: "each time a file arrives in Downloads".
+ * job on files or mail is said by what sets it off: "each time a file arrives in Downloads", "when a mail from Bank arrives".
  */
 export function recurrenceWords(timing: Timing, time: (clock: string) => string = (clock) => clock): string | undefined {
   switch (timing.kind) {
@@ -210,5 +227,7 @@ export function recurrenceWords(timing: Timing, time: (clock: string) => string 
       return `every ${timing.every === 1 ? 'hour' : `${timing.every} hours`} from ${time(timing.from)} to ${time(timing.until)}`
     case 'files':
       return `${timing.repeat ? 'each time' : 'when'} a file${timing.pattern ? ` named ${timing.pattern}` : ''} arrives in ${lastName(timing.folder)}`
+    case 'mail':
+      return `${timing.repeat ? 'each time' : 'when'} a mail${timing.from ? ` from ${timing.from}` : ''}${timing.subject ? ` about “${timing.subject}”` : ''} arrives${timing.account ? ` in ${timing.account}` : ''}`
   }
 }

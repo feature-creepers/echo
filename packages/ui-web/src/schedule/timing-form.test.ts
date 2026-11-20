@@ -1,6 +1,6 @@
 import type { Timing } from '@repo/protocol'
 import { describe, expect, it } from 'vitest'
-import { formOf, localNow, type TimingForm, timingOf } from './timing-form.ts'
+import { type Clocked, formOf, localNow, type TimingForm, timingOf } from './timing-form.ts'
 
 const NOW = '2026-11-19T01:30'
 const base: TimingForm = formOf({ kind: 'daily', time: '08:00' }, '2026-11-19')
@@ -24,7 +24,7 @@ describe('the timing the editor reads back', () => {
     expect(read).toEqual(typeof expected === 'string' ? { ok: false, problem: expected } : { ok: true, timing: expected })
   })
 
-  it.each<Exclude<Timing, { kind: 'files' }>>([
+  it.each<Clocked>([
     { kind: 'once', at: '2026-12-24T19:00' },
     { kind: 'weekdays', time: '07:30' },
     { kind: 'weekly', time: '18:00', days: ['tuesday', 'thursday'] },

@@ -322,6 +322,8 @@ export function createCore(options: CoreOptions): Core {
   // below: nothing rings before a client has sent a command, by which time the channel is there. A job may also ring
   // when files arrive in a folder the person granted, where the computer can watch one.
   const fileAt = computer?.fileAt?.bind(computer)
+  // Mail arriving in a connected account, where there are accounts.
+  const accountPort = options.accounts
   const schedule = createSchedule({
     records: options.records,
     now,
@@ -336,12 +338,18 @@ export function createCore(options: CoreOptions): Core {
       notify: (notification) => emit({ type: 'event', name: 'device.notify', notification })
     },
     files: watch && fileAt ? { watch, fileAt, reaches: (folder) => access.reaches(folder) } : undefined,
+    mail: accountPort && {
+      accounts: () => accounts.ready('mail').map((account) => ({ id: account.id, address: account.address })),
+      arrived: (account, cursor, signal) => accountPort.arrived(account, cursor, signal),
+      signInAgain: (account) => accounts.signInAgain(account)
+    },
     log: options.log
   })
   const timeTools = scheduleTools({
     schedule,
     now,
     zone,
+    mail: { addresses: () => accounts.ready('mail').map((account) => account.address) },
     ...(computer && watch
       ? {
           folders: {
@@ -600,9 +608,10 @@ export function createCore(options: CoreOptions): Core {
       'schedule.change': (input) => {
         const { job, timing: asked, ...words } = input
         const refused = (message: string) => ({ ok: false as const, error: { code: 'invalid-input' as const, message } })
-        // A folder is checked against what the person granted when a job on files is set, which this does not do.
-        if (asked !== undefined && (asked.kind === 'files' || schedule.get(job)?.timing.kind === 'files'))
-          return refused('A job that rings on files is changed by asking, so its folder is checked.')
+        // A folder, or an account, is checked when a job on files or mail is set, which this does not do.
+        const watching = (kind: string | undefined) => kind === 'files' || kind === 'mail'
+        if (asked !== undefined && (watching(asked.kind) || watching(schedule.get(job)?.timing.kind)))
+          return refused('A job that rings on files or mail is changed by asking, so its folder or its account is checked.')
         const timing = asked === undefined ? undefined : readTiming(asked, now().getTime(), zone())
         if (timing && !timing.ok) return refused(timing.problem)
         const changed = schedule.change(job, { ...words, ...(timing?.ok ? { timing: timing.timing } : {}) })

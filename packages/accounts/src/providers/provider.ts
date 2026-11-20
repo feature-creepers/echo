@@ -1,4 +1,4 @@
-import type { AccountPart, CalendarEvent, EventRange, MailMessage, MailSearch, MailSummary } from '@repo/core'
+import type { AccountPart, CalendarEvent, EventRange, MailArrival, MailMessage, MailSearch, MailSummary } from '@repo/core'
 import type { Call } from '../requests.ts'
 
 /**
@@ -40,6 +40,8 @@ export interface Provider {
   searchMail(call: Call, search: MailSearch): Promise<MailSummary[]>
   /** One mail, whole. */
   readMail(call: Call, id: string): Promise<MailMessage>
+  /** The mails that arrived in the inbox since a cursor, and the next cursor; with none, or one too old, the cursor of now. */
+  arrived(call: Call, cursor: string | undefined): Promise<{ cursor: string; mails: MailArrival[] }>
   /** Why a sign-in was refused, from the error the provider sent back, in words for the person. */
   refusal(error: string, description: string | undefined): string
   /** What the person should know before connecting an account, as the Accounts page says it. */

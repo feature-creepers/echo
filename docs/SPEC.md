@@ -387,15 +387,16 @@ The person asks for something later, and it happens at its time: "remind me at 8
 
 **Timing.** On the person's clock, in the time zone of the machine the core runs on (`timeZone` in the core's options, for a hosted core).
 
-| Kind     | Rings                                            | Given as                 |
-| -------- | ------------------------------------------------ | ------------------------ |
-| Once     | At a local date and time, or in a few minutes    | `at`, or `inMinutes`     |
-| Daily    | Every day at a time                              | `time`                   |
-| Weekdays | Monday to Friday at a time                       | `time`                   |
-| Weekly   | On the days named, at a time                     | `time`, `days`           |
-| Monthly  | On a day of the month; a shorter month, its last | `time`, `day` (1 to 31)  |
-| Hourly   | Every 1 to 12 hours, between two times of a day  | `every`, `from`, `until` |
-| Files    | When files arrive or change in a folder (below)  | `files`                  |
+| Kind     | Rings                                              | Given as                 |
+| -------- | -------------------------------------------------- | ------------------------ |
+| Once     | At a local date and time, or in a few minutes      | `at`, or `inMinutes`     |
+| Daily    | Every day at a time                                | `time`                   |
+| Weekdays | Monday to Friday at a time                         | `time`                   |
+| Weekly   | On the days named, at a time                       | `time`, `days`           |
+| Monthly  | On a day of the month; a shorter month, its last   | `time`, `day` (1 to 31)  |
+| Hourly   | Every 1 to 12 hours, between two times of a day    | `every`, `from`, `until` |
+| Files    | When files arrive or change in a folder (below)    | `files`                  |
+| Mail     | When a mail arrives in a connected account (below) | `mail`                   |
 
 - 8:00 stays 8:00 when the clocks change. A time skipped when they go forward rings that long after (2:30 on the night 2:00 becomes 3:00 rings at 3:30); a time shown twice when they go back rings the first time, as phones' alarms do. `Intl` knows every zone's rules, so no date library is needed.
 - The core refuses, with a reason the model relays or corrects: a day that does not exist, a moment past, more than five years ahead, less than an hour between hourly times, more than a hundred jobs waiting.
@@ -412,7 +413,7 @@ The person asks for something later, and it happens at its time: "remind me at 8
 
 **What the person gets.** A reminder: a notification at once, then at the next pause its sentence said and a card on top of the stream (section 7.8). A task: a turn marked as scheduled, its answer said and shown, and a notification when the window is not in front. A Windows notification needs the app's identity, which the installer gives its shortcut, so a copy run from the sources may show none; macOS may show none until the app is signed (section 14.7).
 
-**Snoozing.** A reminder that rang is snoozed from its card (10 minutes, 30 minutes or 1 hour) or its notification ("Snooze 10 min", "Snooze 1 hour", where the system shows buttons: Windows, and macOS once the app is signed). Its card leaves, and `schedule.snooze` rings it once more at that time, worded as itself, its card then reading "14:25 · snoozed". Its own times go on; a one-time reminder is done again once it has rung for the snooze. A snooze missed while the app was closed rings late within twelve hours and is dropped past them; a new timing drops it. A task, a reminder on files, one not rung yet and a paused one cannot be snoozed. By voice, "remind me again in ten minutes" sets a new reminder.
+**Snoozing.** A reminder that rang is snoozed from its card (10 minutes, 30 minutes or 1 hour) or its notification ("Snooze 10 min", "Snooze 1 hour", where the system shows buttons: Windows, and macOS once the app is signed). Its card leaves, and `schedule.snooze` rings it once more at that time, worded as itself, its card then reading "14:25 · snoozed". Its own times go on; a one-time reminder is done again once it has rung for the snooze. A snooze missed while the app was closed rings late within twelve hours and is dropped past them; a new timing drops it. A task, a reminder on files or mail, one not rung yet and a paused one cannot be snoozed. By voice, "remind me again in ten minutes" sets a new reminder.
 
 **Quiet hours.** 23:00 to 07:30 by default, kept by the core and changed on the Reminders page. During them a reminder shows only its card and a silent notification, and is not said; a task runs, and its answer is shown, not said; every notification is silent.
 
@@ -435,7 +436,13 @@ The person asks for something later, and it happens at its time: "remind me at 8
 - A reminder names the files in its card and notification ("film.mkv · in Downloads"); a task runs its request followed by the files that set it off, so its thread can read them.
 - On the Reminders page, it shows the folder it watches where a time would be, with "Watching", and how often as "When a file arrives in Downloads".
 
-Mail does not trigger a reminder or a task.
+**On mail.** A job can ring when a mail arrives: "tell me when the landlord's mail arrives", "each time the bank writes, tell me what it says".
+
+- Its timing is `mail`: the address of a connected account giving its mail (left out, every such account), words of the sender's address or name (`from`), words of the subject (`subject`), and whether it rings each time (`repeat`) or only once. `schedule_create` refuses it, with a reason the model relays, when no account gives its mail or the account named is not connected.
+- Each account a job watches is asked what arrived every two minutes (`schedule/mail.ts`), while a client is connected, the job is active and nothing is held. Its first look takes only the cursor of now, so mail that arrived while the app was closed rings nothing; a cursor the provider no longer knows (Gmail's history after about a week) is replaced by one of now, and the gap rings nothing. The cursors are in memory only.
+- A mail matches when it is in the inbox, was not sent by the account itself, its sender's address or name contains `from`, and its subject contains every word of `subject`, case and accents set aside. What one look finds is one ring for each job it matches.
+- A reminder's card and notification name the mails ("From Bank · Your statement is ready", five at most, then "and 3 more"); a task's request is followed by the mails (account, identifier, sender, subject), fenced, so its thread can read them with `mail_read`. Both count in the most per hour and follow the quiet hours.
+- On the Reminders page, it shows "Mail" where a time would be, with "Watching", and how often as "When a mail from Bank arrives". Its account and words are changed by asking, as a job on files keeps its folder.
 
 ### 7.11 Projects
 
@@ -1420,7 +1427,7 @@ packages/core/src/
 ├── library/         saved widgets
 ├── personas/        the default personas (defaults.ts, the only place their names are written), the choice, objections
 ├── settings/        the defaults, then every choice recorded, in order
-├── schedule/        reminders and scheduled tasks, on the person's clock; quiet hours; files arriving
+├── schedule/        reminders and scheduled tasks, on the person's clock; quiet hours; files and mail arriving
 ├── access/          what the assistant may reach: policy.ts decides, commands.ts reads a command line; approvals, activity, undo, the signed log
 ├── accounts/        the person's accounts: the list, kept as user settings, their sign-in, the calendar's and the mail's tools, and the briefing's day
 ├── browser/  desktop/  clipboard/  device/   the browser, other apps, the clipboard, printers, drives and the camera, and their rules
@@ -1537,13 +1544,13 @@ Built:
 - **Access to the computer.** Scopes and grants, three approval levels, approvals for the session, places never reached, commands held by the paths they name, the network policy, the activity with diffs and undo, stop everything, the confirmation phrase and the signed log (section 12.2).
 - **Browser and other apps.** The installed browser driven with its own profile and rules; other apps read through accessibility and operated by element, with the allowlist, the frame and the pause (sections 12.1 and 12.2).
 - **Projects.** A thread bound to a folder, working in it as a senior developer would (section 7.11).
-- **Reminders and scheduled tasks**, on the person's clock or on files arriving, with quiet hours and notifications (section 7.10).
+- **Reminders and scheduled tasks**, on the person's clock or on files or mail arriving, with quiet hours and notifications (section 7.10).
 - **Accounts.** Google and Microsoft accounts connected on the Accounts page, their sign-ins sealed in a vault with the system's own store, their calendars and mail read by threads, their calendars by the briefing (sections 7.8, 12.1 and 12.4).
 - **Files.** Documents written as versioned files; pictures, files and folders handed over; the Files page with previews and a quick look (section 9.7). Web search and page reading through the harness's own tools; a greeting and briefing when the app opens.
 - **Settings**, in the hub and in the menus under the composer (section 13.2).
 - **Packaging and updates** for the three systems, made in CI and published from a tag (section 14.7).
 
-Not built: the open issues, among them vector search, confinement of Claude Code's commands on Windows (macOS and Linux have it; on Windows, Codex's commands are confined by its own sandbox), mail arriving as a trigger (issue #9, under way), elevation, signed builds, the phone app and the paid service; and, in this part of the spec, the pill (13.2), the inspector's actions, themes and easter eggs (13.3). None of these is started without an owner's approval on its issue.
+Not built: the open issues, among them vector search, confinement of Claude Code's commands on Windows (macOS and Linux have it; on Windows, Codex's commands are confined by its own sandbox), elevation, signed builds, the phone app and the paid service; and, in this part of the spec, the pill (13.2), the inspector's actions, themes and easter eggs (13.3). None of these is started without an owner's approval on its issue.
 
 ## 15. Decisions
 

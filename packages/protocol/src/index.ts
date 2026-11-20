@@ -168,6 +168,8 @@ export {
   lastName,
   listed,
   localDateTimeSchema,
+  MAIL_ADDRESS_MAX_LENGTH,
+  MAIL_WORDS_MAX_LENGTH,
   MAX_EVERY_HOURS,
   MIN_EVERY_HOURS,
   type Notification,

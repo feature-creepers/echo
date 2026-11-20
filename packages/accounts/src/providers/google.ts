@@ -1,6 +1,6 @@
-import type { AccountPart, CalendarEvent, EventRange, MailAddress, MailMessage, MailSearch, MailSummary } from '@repo/core'
+import type { AccountPart, CalendarEvent, EventRange, MailAddress, MailArrival, MailMessage, MailSearch, MailSummary } from '@repo/core'
 import { z } from 'zod'
-import type { Call } from '../requests.ts'
+import { type Call, CallFailed } from '../requests.ts'
 import { addressesOf, type GmailPart, gmailContent, gmailPartSchema, headerOf, plainText } from './gmail-message.ts'
 import { MAX_PAGES, type Provider, quoted, scopeSet } from './provider.ts'
 
@@ -113,6 +113,63 @@ async function gmailRead(call: Call, id: string): Promise<MailMessage> {
   }
 }
 
+const profileSchema = z.object({ emailAddress: z.string().min(1), historyId: z.string().min(1) })
+const historySchema = z.object({
+  history: z.array(z.object({ messagesAdded: z.array(z.object({ message: z.object({ id: z.string() }) })).optional() })).default([]),
+  historyId: z.string().min(1),
+  nextPageToken: z.string().optional()
+})
+
+/** The most mails one look reads: a burst past it is named at the next ring, or not at all. */
+const ARRIVALS_READ = 20
+
+/**
+ * What arrived in the inbox since a history identifier, from Gmail's history of added messages. Gmail keeps its
+ * history about a week: older, it answers 404, and the identifier of now replaces it.
+ */
+async function gmailArrived(call: Call, cursor: string | undefined): Promise<{ cursor: string; mails: MailArrival[] }> {
+  const now = async () => ({ cursor: (await call(`${GMAIL_API}/profile`, profileSchema)).historyId, mails: [] })
+  if (cursor === undefined) return now()
+  const ids = new Set<string>()
+  let next = cursor
+  let page: string | undefined
+  try {
+    for (let pages = 0; pages < MAX_PAGES; pages++) {
+      const query = new URLSearchParams({
+        startHistoryId: cursor,
+        historyTypes: 'messageAdded',
+        labelId: 'INBOX',
+        ...(page === undefined ? {} : { pageToken: page })
+      })
+      const answer = await call(`${GMAIL_API}/history?${query}`, historySchema)
+      for (const record of answer.history) for (const added of record.messagesAdded ?? []) ids.add(added.message.id)
+      next = answer.historyId
+      page = answer.nextPageToken
+      if (page === undefined) break
+    }
+  } catch (error) {
+    if (error instanceof CallFailed && error.status === 404) return now()
+    throw error
+  }
+  const read = await Promise.all(
+    [...ids].slice(0, ARRIVALS_READ).map((id) =>
+      call(`${GMAIL_API}/messages/${encodeURIComponent(id)}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`, messageSchema).catch(
+        // A mail deleted since it arrived is not told.
+        (error: unknown) => {
+          if (error instanceof CallFailed && error.status === 404) return undefined
+          throw error
+        }
+      )
+    )
+  )
+  const mails = read.flatMap((message) =>
+    message?.labelIds.includes('INBOX')
+      ? [{ id: message.id, from: fromOf(message.payload), subject: headerOf(message.payload, 'Subject') || '(no subject)' }]
+      : []
+  )
+  return { cursor: next, mails }
+}
+
 /** The calendars the person shows (`selected`), each read for the span, recurring events expanded, in the person's zone. */
 async function googleEvents(call: Call, range: EventRange): Promise<CalendarEvent[]> {
   const { items } = await call(`${CALENDAR_API}/users/me/calendarList?minAccessRole=reader`, calendarListSchema)
@@ -161,12 +218,13 @@ export const google: Provider = {
   },
   async who(call, parts) {
     // Gmail's profile names the address; with the calendar alone, the primary calendar's identifier is the address.
-    if (parts.includes('mail')) return { address: (await call(`${GMAIL_API}/profile`, z.object({ emailAddress: z.string().min(1) }))).emailAddress }
+    if (parts.includes('mail')) return { address: (await call(`${GMAIL_API}/profile`, profileSchema)).emailAddress }
     return { address: (await call(`${CALENDAR_API}/calendars/primary`, z.object({ id: z.string().min(1) }))).id }
   },
   events: googleEvents,
   searchMail: gmailSearch,
   readMail: gmailRead,
+  arrived: gmailArrived,
   refusal: (error) =>
     error === 'access_denied'
       ? 'Google said no: you declined, or this account is not one of the test users the app allows while Google has not verified it. Nothing was connected.'

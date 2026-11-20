@@ -20,6 +20,7 @@ export const SCHEDULE_INSTRUCTIONS = [
   '- A reminder is a sentence you will say at the time, written now, short, in the language you are speaking: "It\'s eight: time to feed the cat." A task is a request you will carry out at the time, as if the person had just asked it: "Give me the weather in Lyon."',
   '- The timing is on the person\'s clock, from the line with the moment: a local date and time for once, "inMinutes" for "in 10 minutes", or a repeat (daily, weekdays, weekly on days, monthly on a day, every few hours between two times).',
   '- It can also go off when files arrive or change in a folder the person granted, rather than at a time ("tell me when my download is done", "each time a scan lands in Scans, file it"): timing "files", with "repeat" for each time.',
+  '- Or when a mail arrives in an account the person connected ("tell me when the landlord\'s mail arrives"): timing "mail", with "from", "subject" and "repeat".',
   '- When the time could mean two things (morning or evening, which day), ask in one short question before setting it. "At 8" said in the evening for tonight is clear; said at 9 in the morning, ask.',
   '- Once set, confirm it in one short sentence, with the time as a person says it: "Okay, 8:00 tomorrow: feed the cat." Nothing more.',
   `- To change, pause or cancel one, use ${SCHEDULE_UPDATE_TOOL} or ${SCHEDULE_CANCEL_TOOL}; ${SCHEDULE_LIST_TOOL} says what is set.`,
@@ -67,16 +68,26 @@ interface ScheduleToolsOptions {
     locate(path: string): Promise<string | undefined>
     reaches(path: string): boolean
   }
+  /** The addresses of the ready accounts giving their mail, which a job on mail may watch. Left out, none. */
+  mail?: { addresses(): string[] }
 }
 
 /** The tools of the schedule, for any session: the orchestrator sets a reminder itself, and so can a thread. */
-export function scheduleTools({ schedule, now, zone, folders }: ScheduleToolsOptions): Tool[] {
+export function scheduleTools({ schedule, now, zone, folders, mail }: ScheduleToolsOptions): Tool[] {
   /**
    * A timing as a model wrote it, read and checked; a folder to watch is found on the computer and must be one the
    * person granted, since what arrives there is read.
    */
   const timingOf = async (written: unknown): Promise<TimingReading> => {
     const timing = readTiming(written, now().getTime(), zone())
+    if (timing.ok && timing.timing.kind === 'mail') {
+      const addresses = mail?.addresses() ?? []
+      if (addresses.length === 0) return { ok: false, problem: 'No connected account gives its mail: the person connects one on the Accounts page first.' }
+      const { account } = timing.timing
+      if (account !== undefined && !addresses.some((address) => address.toLowerCase() === account.toLowerCase()))
+        return { ok: false, problem: `"${account}" is not a connected account giving its mail. The accounts are: ${addresses.join(', ')}.` }
+      return timing
+    }
     if (!timing.ok || timing.timing.kind !== 'files') return timing
     if (!folders) return { ok: false, problem: 'This computer cannot watch folders: set it for a time instead.' }
     const folder = await folders.locate(timing.timing.folder)

@@ -197,3 +197,77 @@ describe('reading mail', () => {
     expect(prefer).toEqual(['outlook.body-content-type="text"'])
   })
 })
+
+describe('what arrived', () => {
+  it('takes Gmail’s history from now on its first look, then the inbox’s new mails, and a new cursor for one too old', async () => {
+    let historyId = '100'
+    const asked: string[] = []
+    fake.serve('gmail.googleapis.com/gmail/v1/users/me/profile', () => ({ body: { emailAddress: 'ada@gmail.example', historyId } }))
+    fake.serve('gmail.googleapis.com/gmail/v1/users/me/history', (url) => {
+      asked.push(`${url.searchParams.get('startHistoryId')} ${url.searchParams.get('labelId')} ${url.searchParams.get('historyTypes')}`)
+      if (url.searchParams.get('startHistoryId') === 'gone') return { status: 404, body: { error: { message: 'Requested entity was not found.' } } }
+      return { body: { history: [{ messagesAdded: [{ message: { id: 'm2' } }] }], historyId: '120' } }
+    })
+    fake.serve('gmail.googleapis.com/gmail/v1/users/me/messages/m2', (url) => {
+      expect(url.searchParams.get('format')).toBe('metadata')
+      return {
+        body: {
+          id: 'm2',
+          labelIds: ['INBOX'],
+          payload: {
+            headers: [
+              { name: 'From', value: 'Landlord <landlord@example.com>' },
+              { name: 'Subject', value: 'The lease' }
+            ]
+          }
+        }
+      }
+    })
+    const accounts = await connected('google')
+
+    expect(await accounts.arrived('a1', undefined, never)).toEqual({ ok: true, cursor: '100', mails: [] })
+    expect(await accounts.arrived('a1', '100', never)).toEqual({
+      ok: true,
+      cursor: '120',
+      mails: [{ id: 'm2', from: { name: 'Landlord', address: 'landlord@example.com' }, subject: 'The lease' }]
+    })
+    historyId = '150'
+    expect(await accounts.arrived('a1', 'gone', never)).toEqual({ ok: true, cursor: '150', mails: [] })
+    expect(asked).toEqual(['100 INBOX messageAdded', 'gone INBOX messageAdded'])
+  })
+
+  it('follows Graph’s delta of the inbox from now, leaving out what was removed, and starts again from now when it is gone', async () => {
+    const delta = 'graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta'
+    fake.serve(delta, (url) => {
+      if (url.searchParams.get('$filter')) return { body: { value: [], '@odata.deltaLink': `https://${delta}?$deltatoken=first` } }
+      if (url.searchParams.get('$deltatoken') === 'expired') return { status: 410, body: { error: { message: 'Gone' } } }
+      return {
+        body: {
+          value: [
+            { id: 'n1', from: { emailAddress: { name: 'Bank', address: 'no-reply@bank.example' } }, subject: 'Your statement' },
+            { id: 'n0', '@removed': { reason: 'deleted' } }
+          ],
+          '@odata.deltaLink': `https://${delta}?$deltatoken=second`
+        }
+      }
+    })
+    const accounts = await connected('microsoft')
+
+    expect(await accounts.arrived('a1', undefined, never)).toEqual({ ok: true, cursor: `https://${delta}?$deltatoken=first`, mails: [] })
+    expect(await accounts.arrived('a1', `https://${delta}?$deltatoken=first`, never)).toEqual({
+      ok: true,
+      cursor: `https://${delta}?$deltatoken=second`,
+      mails: [{ id: 'n1', from: { name: 'Bank', address: 'no-reply@bank.example' }, subject: 'Your statement' }]
+    })
+    expect(await accounts.arrived('a1', `https://${delta}?$deltatoken=expired`, never)).toEqual({
+      ok: true,
+      cursor: `https://${delta}?$deltatoken=first`,
+      mails: []
+    })
+  })
+
+  it('never follows a cursor to another host', async () => {
+    const accounts = await connected('microsoft')
+    expect(await accounts.arrived('a1', 'https://elsewhere.example/delta', never)).toMatchObject({ ok: false, reason: expect.stringContaining('not a host') })
+  })
+})

@@ -36,6 +36,19 @@ export interface Accounts {
   searchMail(account: string, search: MailSearch, signal: Signal): Promise<{ ok: true; mails: MailSummary[] } | AccountFailure>
   /** One mail of the account, whole: its text, and its attachments by name, never downloaded. */
   readMail(account: string, id: string, signal: Signal): Promise<{ ok: true; mail: MailMessage } | AccountFailure>
+  /**
+   * The mails that arrived in the account's inbox since `cursor`, and the cursor to ask from next time. With no
+   * cursor, only the cursor of now: what arrived before is not told. A cursor the provider no longer knows is
+   * replaced by the one of now, and the mails of the gap are not told either.
+   */
+  arrived(account: string, cursor: string | undefined, signal: Signal): Promise<{ ok: true; cursor: string; mails: MailArrival[] } | AccountFailure>
+}
+
+/** A mail that arrived in an inbox. */
+export interface MailArrival {
+  id: string
+  from: MailAddress
+  subject: string
 }
 
 /**

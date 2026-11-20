@@ -2,12 +2,15 @@ import { MAX_EVERY_HOURS, MIN_EVERY_HOURS, type Timing, WEEKDAYS, type Weekday }
 
 /**
  * A job's timing as the Reminders page edits it: every field of every kind at once, so switching how often keeps
- * what was typed, and the timing read back from it, checked as the person meant it. A job on files is not edited
- * here: its folder is checked when it is set, by asking.
+ * what was typed, and the timing read back from it, checked as the person meant it. A job on files or mail is not
+ * edited here: its folder or its account is checked when it is set, by asking.
  */
 
+/** A timing on the clock, which the editor changes. */
+export type Clocked = Exclude<Timing, { kind: 'files' | 'mail' }>
+
 /** How often a job rings, as the editor offers it. */
-export type Often = Exclude<Timing['kind'], 'files'>
+export type Often = Clocked['kind']
 
 export const OFTEN: readonly { value: Often; label: string }[] = [
   { value: 'once', label: 'Once' },
@@ -35,7 +38,7 @@ export interface TimingForm {
 }
 
 /** The form for a timing, the fields its kind does not use filled from `today` (YYYY-MM-DD) and its own time. */
-export function formOf(timing: Exclude<Timing, { kind: 'files' }>, today: string): TimingForm {
+export function formOf(timing: Clocked, today: string): TimingForm {
   const time = timing.kind === 'once' ? timing.at.slice(11, 16) : timing.kind === 'hourly' ? timing.from : timing.time
   return {
     often: timing.kind,

@@ -1,6 +1,6 @@
-import type { AccountPart, CalendarEvent, EventRange, MailAddress, MailMessage, MailSearch, MailSummary } from '@repo/core'
+import type { AccountPart, CalendarEvent, EventRange, MailAddress, MailArrival, MailMessage, MailSearch, MailSummary } from '@repo/core'
 import { z } from 'zod'
-import type { Call } from '../requests.ts'
+import { type Call, CallFailed } from '../requests.ts'
 import { MAX_PAGES, type Provider, quoted, scopeSet } from './provider.ts'
 
 /**
@@ -148,6 +148,40 @@ async function graphMailRead(call: Call, id: string): Promise<MailMessage> {
   }
 }
 
+const deltaSchema = z.object({
+  value: z.array(z.object({ id: z.string(), from: recipientSchema.nullish(), subject: z.string().nullish(), '@removed': z.unknown().optional() })),
+  '@odata.nextLink': z.string().optional(),
+  '@odata.deltaLink': z.string().optional()
+})
+
+/**
+ * What arrived in the inbox since a delta link, Graph's own cursor. The first look asks only from now, so the mails
+ * already there are not told. A link Graph no longer knows (410) is replaced by one of now.
+ */
+async function graphArrived(call: Call, cursor: string | undefined): Promise<{ cursor: string; mails: MailArrival[] }> {
+  const fresh = new URLSearchParams({ $filter: `receivedDateTime ge ${new Date().toISOString()}`, $select: 'from,subject,receivedDateTime,isRead' })
+  const read = async (start: string) => {
+    const mails: MailArrival[] = []
+    let page: string | undefined = start
+    for (let pages = 0; pages < MAX_PAGES && page !== undefined; pages++) {
+      const answer: z.infer<typeof deltaSchema> = await call(page, deltaSchema)
+      for (const mail of answer.value)
+        if (mail['@removed'] === undefined) mails.push({ id: mail.id, from: addressOf(mail.from), subject: mail.subject || '(no subject)' })
+      if (answer['@odata.deltaLink']) return { cursor: answer['@odata.deltaLink'], mails }
+      page = answer['@odata.nextLink']
+    }
+    throw new CallFailed('Graph gave no delta link to carry on from.')
+  }
+  const now = async () => ({ cursor: (await read(`${GRAPH}/me/mailFolders/inbox/messages/delta?${fresh}`)).cursor, mails: [] })
+  if (cursor === undefined) return now()
+  try {
+    return await read(cursor)
+  } catch (error) {
+    if (error instanceof CallFailed && error.status === 410) return now()
+    throw error
+  }
+}
+
 /** A scope as Entra sends it back, "https://graph.microsoft.com/Mail.Read" or "Mail.Read", by its last part. */
 const lastPart = (scope: string) => scope.split('/').at(-1) ?? scope
 
@@ -177,6 +211,7 @@ export const microsoft: Provider = {
   events: microsoftEvents,
   searchMail: graphMailSearch,
   readMail: graphMailRead,
+  arrived: graphArrived,
   refusal(error, description) {
     if (ORGANISATION.test(description ?? ''))
       return 'Your organisation does not let its members connect this app: its administrator decides. Nothing was connected.'

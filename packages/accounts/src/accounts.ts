@@ -220,7 +220,8 @@ export function createAccounts(options: AccountsOptions): Accounts {
     events: (account, range, signal) => reading(account, signal, async (provider, call) => ({ ok: true as const, events: await provider.events(call, range) })),
     searchMail: (account, search, signal) =>
       reading(account, signal, async (provider, call) => ({ ok: true as const, mails: await provider.searchMail(call, search) })),
-    readMail: (account, id, signal) => reading(account, signal, async (provider, call) => ({ ok: true as const, mail: await provider.readMail(call, id) }))
+    readMail: (account, id, signal) => reading(account, signal, async (provider, call) => ({ ok: true as const, mail: await provider.readMail(call, id) })),
+    arrived: (account, cursor, signal) => reading(account, signal, async (provider, call) => ({ ok: true as const, ...(await provider.arrived(call, cursor)) }))
   }
 }
 

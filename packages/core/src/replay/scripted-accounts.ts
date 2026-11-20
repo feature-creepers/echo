@@ -6,6 +6,7 @@ import type {
   CalendarEvent,
   EventRange,
   Keeping,
+  MailArrival,
   MailMessage,
   MailSearch,
   MailSummary,
@@ -44,6 +45,10 @@ export interface ScriptedAccounts extends Accounts {
   searches: MailSearch[]
   /** The mails read whole, by account and identifier: `<account>/<id>`. */
   messages: Map<string, MailMessage>
+  /** The mails arrived in each account's inbox since its last look, or why it cannot be looked at. */
+  inboxes: Map<string, MailArrival[] | AccountFailure>
+  /** The looks at an inbox, in order: the account, and the cursor it was asked from. */
+  looks: { account: string; cursor: string | undefined }[]
 }
 
 export function scriptedAccounts(keeping: Keeping = { kept: true }): ScriptedAccounts {
@@ -56,6 +61,8 @@ export function scriptedAccounts(keeping: Keeping = { kept: true }): ScriptedAcc
   const mailboxes = new Map<string, MailSummary[] | AccountFailure>()
   const searches: MailSearch[] = []
   const messages = new Map<string, MailMessage>()
+  const inboxes = new Map<string, MailArrival[] | AccountFailure>()
+  const looks: { account: string; cursor: string | undefined }[] = []
   return {
     providers: () => SCRIPTED_PROVIDERS,
     keeping: async () => keeping,
@@ -93,6 +100,14 @@ export function scriptedAccounts(keeping: Keeping = { kept: true }): ScriptedAcc
       const mail = messages.get(`${account}/${id}`)
       return mail ? { ok: true, mail } : { ok: false, reason: `There is no mail ${id}.` }
     },
+    async arrived(account, cursor) {
+      looks.push({ account, cursor })
+      const waiting = inboxes.get(account) ?? []
+      if (!Array.isArray(waiting)) return waiting
+      inboxes.set(account, [])
+      // A first look takes the cursor of now: what arrived before is not told.
+      return { ok: true, cursor: `${account}@${looks.length}`, mails: cursor === undefined ? [] : waiting }
+    },
     signing: () => signing,
     held,
     disconnected,
@@ -101,6 +116,8 @@ export function scriptedAccounts(keeping: Keeping = { kept: true }): ScriptedAcc
     ranges,
     mailboxes,
     searches,
-    messages
+    messages,
+    inboxes,
+    looks
   }
 }

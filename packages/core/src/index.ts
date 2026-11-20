@@ -13,6 +13,7 @@ export type {
   EventRange,
   Keeping,
   MailAddress,
+  MailArrival,
   MailAttachment,
   MailMessage,
   MailSearch,

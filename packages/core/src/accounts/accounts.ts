@@ -208,4 +208,4 @@ export function createAccountList({ port, records, newId, now, log }: AccountLis
 const NOT_HERE: Keeping = { kept: false, reason: 'Accounts cannot be connected here.' }
 
 /** Two addresses the same mailbox: case set aside. */
-const sameAddress = (one: string, other: string) => one.trim().toLowerCase() === other.trim().toLowerCase()
+export const sameAddress = (one: string, other: string) => one.trim().toLowerCase() === other.trim().toLowerCase()

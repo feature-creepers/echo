@@ -45,13 +45,14 @@ interface JobEditorProps {
 
 /**
  * A job opened in place on the Reminders page (docs/SPEC.md, section 7.10): its title, what it says or does, and when
- * it rings. Only what changed is saved; a new timing counts from now. A job on files keeps its folder here: it is
+ * it rings. Only what changed is saved; a new timing counts from now. A job on files or mail keeps its folder or its
+ * account here: it is
  * changed by asking. Escape leaves it as it was.
  */
 export function JobEditor({ job, zone, now, onSave, onDone }: JobEditorProps) {
   const reminder = job.kind === 'reminder'
   const words = (reminder ? job.sentence : job.request) ?? ''
-  const timed = job.timing.kind === 'files' ? undefined : job.timing
+  const timed = job.timing.kind === 'files' || job.timing.kind === 'mail' ? undefined : job.timing
   const [title, setTitle] = useState(job.title)
   const [said, setSaid] = useState(words)
   const [form, setForm] = useState<TimingForm | undefined>(() => (timed ? formOf(timed, localNow(now, zone).slice(0, 10)) : undefined))
