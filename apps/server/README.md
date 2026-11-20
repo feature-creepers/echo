@@ -13,7 +13,7 @@ The import rule is enforced by `biome.jsonc` (docs/SPEC.md, section 14.3).
 ## Running it
 
 ```bash
-ASSISTANT_CORE_TOKEN=<token> pnpm --filter @repo/server start --data <folder>
+printf '%s\n' "$TOKEN" | node src/main.ts --data <folder>
 ```
 
 | Option               | Meaning                                                                                                   |
@@ -21,7 +21,7 @@ ASSISTANT_CORE_TOKEN=<token> pnpm --filter @repo/server start --data <folder>
 | `--data <folder>`    | Required. The folder that holds the user's data, created when missing. Only one core may use it at a time |
 | `--exit-with-parent` | Stop when standard input closes, so a core started as a child never outlives its parent                   |
 
-The token a client must present is read from `ASSISTANT_CORE_TOKEN`, then removed from the environment, so no program the core starts inherits it. Once the core accepts connections it prints one line on standard output saying where it listens, a Unix socket in a new private folder or a named pipe with a random name:
+The token a client must present is read before anything else is done: the first line of standard input, or, when the desktop app runs the core as an Electron utility process, the answer to the `token-wanted` message the core sends on the port between them (`@repo/protocol`, `launch.ts`). It is never read from the environment, which the person's other programs can read for as long as the core runs (`/proc/<pid>/environ` on Linux, `ps -E` on macOS). With no token within 15 seconds, or an empty one, the core exits with code 2. With `--exit-with-parent`, standard input is watched for its end once the token is read. Once the core accepts connections it prints one line on standard output saying where it listens, a Unix socket in a new private folder or a named pipe with a random name:
 
 ```json
 { "type": "ready", "endpoint": "/tmp/core-ab12cd/core.sock" }

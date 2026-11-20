@@ -80,7 +80,18 @@ export {
   languageName,
   languagesSchema
 } from './languages.ts'
-export { CORE_TOKEN_VARIABLE, DATA_OPTION, EXIT_WITH_PARENT_FLAG, EXIT_WITH_PARENT_OPTION, type Ready, readySchema } from './launch.ts'
+export {
+  type CoreMessage,
+  coreMessageSchema,
+  DATA_OPTION,
+  EXIT_WITH_PARENT_FLAG,
+  EXIT_WITH_PARENT_OPTION,
+  onPortMessage,
+  type Ready,
+  readySchema,
+  type StarterMessage,
+  starterMessageSchema
+} from './launch.ts'
 export {
   COLLECTION_MAX_LENGTH,
   collectionSchema,

@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { type Connection, ConnectionRefused, type CoreLink, connect, type Identity, type SessionLink } from '@repo/client'
 import { openLocal } from '@repo/client/transports/local'
-import { CORE_TOKEN_VARIABLE, createLineDecoder, DATA_OPTION, readySchema } from '@repo/protocol'
+import { coreMessageSchema, createLineDecoder, DATA_OPTION, onPortMessage, readySchema, type StarterMessage } from '@repo/protocol'
 import { utilityProcess } from 'electron'
 
 /** How long the core has to announce where it listens. */
@@ -45,7 +45,8 @@ export interface CoreProcess extends SessionLink {
  * endpoint, with the protocol. The app holds no shortcut into the core.
  *
  * The core runs as an Electron utility process, which ends with the app, so it is not asked to watch
- * its standard input. The token is made for this launch and is known only to the two of them.
+ * its standard input. The token is made for this launch and is known only to the two of them: it goes by the port
+ * between the two processes, never by the environment, which the person's other programs can read.
  */
 export function startCore(options: CoreProcessOptions): CoreProcess {
   const token = randomBytes(32).toString('hex')
@@ -71,11 +72,20 @@ export function startCore(options: CoreProcessOptions): CoreProcess {
     if (link.state !== 'failed') set({ state: 'failed', reason })
   }
 
-  const child = utilityProcess.fork(options.script, [`--${DATA_OPTION}`, options.data], {
-    serviceName: 'Core',
-    stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, [CORE_TOKEN_VARIABLE]: token }
-  })
+  const child = utilityProcess.fork(options.script, [`--${DATA_OPTION}`, options.data], { serviceName: 'Core', stdio: ['ignore', 'pipe', 'pipe'] })
+
+  // What the core asks of the app on the port, by type. The token is given once: a second request is not answered.
+  let tokenGiven = false
+  child.on(
+    'message',
+    onPortMessage(coreMessageSchema, {
+      'token-wanted': () => {
+        if (tokenGiven) return
+        tokenGiven = true
+        child.postMessage({ type: 'token', token } satisfies StarterMessage)
+      }
+    })
+  )
 
   let errors = ''
   child.stderr?.setEncoding('utf8').on('data', (text: string) => {

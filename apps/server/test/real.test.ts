@@ -4,16 +4,7 @@ import { connect } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import {
-  CORE_TOKEN_VARIABLE,
-  createLineDecoder,
-  DATA_OPTION,
-  type Event,
-  EXIT_WITH_PARENT_FLAG,
-  encodeLine,
-  PROTOCOL_VERSION,
-  readySchema
-} from '@repo/protocol'
+import { createLineDecoder, DATA_OPTION, type Event, EXIT_WITH_PARENT_FLAG, encodeLine, PROTOCOL_VERSION, readySchema } from '@repo/protocol'
 import { afterAll, describe, expect, it } from 'vitest'
 
 /**
@@ -24,12 +15,9 @@ import { afterAll, describe, expect, it } from 'vitest'
 const real = process.env.REAL_HARNESS === '1'
 const ENTRY = fileURLToPath(new URL('../src/main.ts', import.meta.url))
 const folder = mkdtempSync(join(tmpdir(), 'core-real-'))
-const child = real
-  ? spawn(process.execPath, [ENTRY, `--${DATA_OPTION}`, folder, EXIT_WITH_PARENT_FLAG], {
-      env: { ...process.env, [CORE_TOKEN_VARIABLE]: 'token' },
-      stdio: ['pipe', 'pipe', 'inherit']
-    })
-  : undefined
+const child = real ? spawn(process.execPath, [ENTRY, `--${DATA_OPTION}`, folder, EXIT_WITH_PARENT_FLAG], { stdio: ['pipe', 'pipe', 'inherit'] }) : undefined
+// The token, on the first line of its standard input.
+child?.stdin?.write('token\n')
 
 afterAll(() => {
   child?.stdin?.end()

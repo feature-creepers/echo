@@ -1,12 +1,11 @@
-import { type ChildProcess, spawn } from 'node:child_process'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { type ChildProcess, fork, spawn } from 'node:child_process'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { connect, type Socket } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   COMMANDS,
-  CORE_TOKEN_VARIABLE,
   type CommandInput,
   type CommandName,
   type CommandOutput,
@@ -17,7 +16,8 @@ import {
   type Hello,
   PROTOCOL_VERSION,
   readySchema,
-  resultSchema
+  resultSchema,
+  type StarterMessage
 } from '@repo/protocol'
 import { afterEach, describe, expect, it } from 'vitest'
 import manifest from '../package.json' with { type: 'json' }
@@ -28,6 +28,8 @@ import manifest from '../package.json' with { type: 'json' }
  */
 
 const ENTRY = fileURLToPath(new URL('../src/main.ts', import.meta.url))
+/** Electron's port to the app, played by Node's channel to a parent that forked the core. */
+const PORT = new URL('./electron-port.ts', import.meta.url).href
 const TOKEN = 'the-right-token'
 /** How long to wait, after the last answer, for the core to hang up. */
 const CLOSE_GRACE_MS = 1000
@@ -65,29 +67,50 @@ interface StartOptions {
   /** The folder for the user's data. Left out, a fresh one. `null` starts the core without the option. */
   data?: string | null
   args?: string[]
-  env?: Record<string, string>
+  /** The first line written on its standard input. `null` writes none, and closes it. */
+  token?: string | null
 }
 
-function start({ data = dataFolder(), args = [EXIT_WITH_PARENT_FLAG], env = { [CORE_TOKEN_VARIABLE]: TOKEN } }: StartOptions = {}) {
+/** Start the core as Node runs it, its token on the first line of its standard input. */
+function start({ data = dataFolder(), args = [EXIT_WITH_PARENT_FLAG], token = TOKEN }: StartOptions = {}) {
   const all = data === null ? args : [`--${DATA_OPTION}`, data, ...args]
-  const child = spawn(process.execPath, [ENTRY, ...all], { env: { ...process.env, ...env }, stdio: ['pipe', 'pipe', 'pipe'] })
+  const child = spawn(process.execPath, [ENTRY, ...all], { stdio: ['pipe', 'pipe', 'pipe'] })
+  if (token === null) child.stdin.end()
+  else child.stdin.write(`${token}\n`)
+  // Ask the core to stop the way its starter does.
+  return watch(child, () => child.stdin.end())
+}
+
+/** Start the core as the desktop app does: it asks for its token on the port, and is given `answers` then. */
+function startByApp(answers: StarterMessage[]) {
+  const child = fork(ENTRY, [`--${DATA_OPTION}`, dataFolder()], { execArgv: ['--import', PORT], stdio: ['ignore', 'pipe', 'pipe', 'ipc'] })
+  const asked: unknown[] = []
+  child.on('message', (message) => {
+    asked.push(message)
+    for (const answer of answers) child.send(answer)
+  })
+  return { ...watch(child, () => child.kill()), asked }
+}
+
+/** What a core started as a child says: where it listens, how it ended, what it wrote on its standard error. */
+function watch(child: ChildProcess, ending: () => void) {
   let stderr = ''
-  child.stderr.setEncoding('utf8').on('data', (text: string) => (stderr += text))
+  child.stderr?.setEncoding('utf8').on('data', (text: string) => (stderr += text))
   const exited = new Promise<number | null>((resolve) => child.once('exit', (code) => resolve(code)))
   running.add({ child, exited })
   /** The endpoint the core announces on its standard output. */
   const endpoint = new Promise<string>((resolve, reject) => {
     const decoder = createLineDecoder()
-    child.stdout.setEncoding('utf8').on('data', (text: string) => {
+    child.stdout?.setEncoding('utf8').on('data', (text: string) => {
       for (const line of decoder.push(text)) if (line.ok) resolve(readySchema.parse(line.message).endpoint)
     })
     void exited.then((code) => reject(new Error(`The core exited with code ${code} before it was ready: ${stderr}`)))
   })
   // A test that expects the core to refuse to start never waits for the endpoint: that rejection is then expected.
   endpoint.catch(() => undefined)
-  /** Ask the core to stop the way its starter does, and wait until it has. */
+  /** Ask the core to stop, and wait until it has. */
   const stop = () => {
-    child.stdin.end()
+    ending()
     return exited
   }
   return { child, endpoint, exited, stop, stderr: () => stderr }
@@ -198,11 +221,40 @@ describe('the core as a process', () => {
     await expect(exchange(endpoint, encodeLine(hello))).rejects.toThrow()
   })
 
-  it('refuses to start without a token, and says why', async () => {
-    const core = start({ env: { [CORE_TOKEN_VARIABLE]: '' } })
+  it.each([
+    { case: 'no token, its standard input closed', token: null, says: 'No token was given.' },
+    { case: 'an empty line', token: '', says: 'The token given is empty.' }
+  ])('refuses to start with $case, and says how to give one', async ({ token, says }) => {
+    const core = start({ token })
     expect(await core.exited).toBe(2)
-    expect(core.stderr()).toContain(CORE_TOKEN_VARIABLE)
-    expect(core.stderr()).toContain('Usage:')
+    expect(core.stderr()).toContain(says)
+    expect(core.stderr()).toContain('first line of standard input')
+  })
+
+  it('stops when its standard input closes right after the token', async () => {
+    const core = start()
+    core.child.stdin?.end()
+    expect(await core.exited).toBe(0)
+  })
+
+  it.runIf(process.platform === 'linux')('keeps its token out of the environment the system shows of it', async () => {
+    const core = start()
+    await core.endpoint
+    expect(readFileSync(`/proc/${core.child.pid}/environ`, 'utf8')).not.toContain(TOKEN)
+  })
+
+  it('asks the app for its token on the port, and keeps the first one given', async () => {
+    const core = startByApp([
+      { type: 'token', token: TOKEN },
+      { type: 'token', token: 'a-later-one' }
+    ])
+    const endpoint = await core.endpoint
+    expect(core.asked).toEqual([{ type: 'token-wanted' }])
+    const admitted = await exchange(endpoint, encodeLine(hello))
+    expect(admitted.replies).toMatchObject([{ type: 'welcome' }])
+    admitted.socket.destroy()
+    const { replies } = await exchange(endpoint, encodeLine({ ...hello, credential: 'a-later-one' }))
+    expect(replies).toEqual([{ type: 'refusal', reason: 'credential', protocol: PROTOCOL_VERSION }])
   })
 
   it("refuses to start without a folder for the user's data, and says why", async () => {

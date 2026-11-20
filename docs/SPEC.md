@@ -1436,7 +1436,7 @@ packages/ui-web/src/
 apps/server/src/
 ├── main.ts               read the configuration, compose, listen, shut down cleanly
 ├── compose.ts            wires the adapters into the core: the only file that knows both
-├── config.ts             the token, the data folder, and --exit-with-parent
+├── config.ts             the data folder, --exit-with-parent, and the token from the program that started the core
 ├── listeners/local/      a Unix socket or a Windows named pipe for a client on this machine; endpoint/ per system
 ├── auth/                 the local token
 └── web/                  whether an address is on the public web, for what the core reads itself
