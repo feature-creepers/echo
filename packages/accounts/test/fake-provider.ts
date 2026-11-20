@@ -32,8 +32,9 @@ export interface FakeProvider {
   revoked: string[]
   /** Where the sign-in page is, as discovery says: change it to have the adapter refuse to open it. */
   authorizationHost: string
-  /** The access tokens the provider accepts. */
+  /** The access tokens the provider accepts, and how many seconds each it gives lasts. */
   live: Set<string>
+  expiresIn: number
   /** What the provider answers for a path, beyond sign-in: the calls of the tools. */
   serve(route: string, answer: (url: URL, request: IncomingMessage) => { status?: number; body: unknown }): void
   close(): Promise<void>
@@ -70,16 +71,16 @@ export async function fakeProvider(): Promise<FakeProvider> {
       const refresh = `refresh-${made}`
       fake.live.add(access)
       refreshes.add(refresh)
-      return json(response, 200, { access_token: access, refresh_token: refresh, expires_in: 3600, token_type: 'Bearer', scope: code.scope })
+      return json(response, 200, { access_token: access, refresh_token: refresh, expires_in: fake.expiresIn, token_type: 'Bearer', scope: code.scope })
     }
     const refresh = form.get('refresh_token') ?? ''
     if (!refreshes.has(refresh)) return json(response, 400, { error: 'invalid_grant' })
     const access = `access-${++made}`
     fake.live.add(access)
-    if (!rotates) return json(response, 200, { access_token: access, expires_in: 3600, token_type: 'Bearer' })
+    if (!rotates) return json(response, 200, { access_token: access, expires_in: fake.expiresIn, token_type: 'Bearer' })
     refreshes.delete(refresh)
     refreshes.add(`refresh-${made}`)
-    return json(response, 200, { access_token: access, refresh_token: `refresh-${made}`, expires_in: 3600, token_type: 'Bearer' })
+    return json(response, 200, { access_token: access, refresh_token: `refresh-${made}`, expires_in: fake.expiresIn, token_type: 'Bearer' })
   }
 
   const server = createServer((request, response) => {
@@ -161,6 +162,7 @@ export async function fakeProvider(): Promise<FakeProvider> {
     revoked: [],
     authorizationHost: 'accounts.google.com',
     live: new Set(),
+    expiresIn: 3600,
     serve: (route, answer) => void routes.set(route, answer),
     close: () =>
       new Promise((resolve) => {

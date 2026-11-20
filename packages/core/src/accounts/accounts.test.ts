@@ -1,6 +1,7 @@
 import { COMMANDS, type Event } from '@repo/protocol'
 import { describe, expect, it, vi } from 'vitest'
 import { createCore } from '../core.ts'
+import type { SignedIn } from '../ports/accounts.ts'
 import { memoryRecords } from '../records/memory.ts'
 import { scriptedAccounts } from '../replay/scripted-accounts.ts'
 import { scriptedHarness } from '../replay/scripted-harness.ts'
@@ -106,6 +107,26 @@ describe('the list of accounts', () => {
 
     expect(await setting.list.disconnect('account-1')).toMatchObject({ ok: true, view: { accounts: [] } })
     expect(setting.port.disconnected).toEqual(['account-1'])
+    expect((await setup(records).list.read()).accounts).toEqual([])
+  })
+
+  it('ignores a sign-in again that succeeds after its account was disconnected', async () => {
+    const records = memoryRecords()
+    const setting = setup(records)
+    await signIn(setting, 'ada@example.com')
+    // The provider answers after the person disconnected the account, as if it never heard the cancelling.
+    let finish: (outcome: SignedIn) => void = () => undefined
+    setting.port.connect = () => new Promise((resolve) => (finish = resolve))
+
+    const again = setting.list.connect({ provider: 'mailbox', parts: ['mail'], account: 'account-1' })
+    await settled()
+    await setting.list.disconnect('account-1')
+    finish({ ok: true, address: 'ada@example.com', parts: ['mail'] })
+
+    expect(await again).toMatchObject({ ok: false, error: { code: 'failed' } })
+    expect((await setting.list.read()).accounts).toEqual([])
+    expect(setting.list.ready('mail')).toEqual([])
+    expect(setting.port.disconnected).toEqual(['account-1', 'account-1'])
     expect((await setup(records).list.read()).accounts).toEqual([])
   })
 

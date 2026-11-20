@@ -100,8 +100,6 @@ export function createAccounts(options: AccountsOptions): Accounts {
     }
   }
 
-  const keep = (account: string, entry: Entry) => vault.write(nameOf(account), JSON.stringify(entry))
-
   const knownFor = (provider: string) => known.find((entry) => entry.provider.id === provider)
 
   const signInAgain = (label: string): AccountFailure => ({
@@ -114,6 +112,25 @@ export function createAccounts(options: AccountsOptions): Accounts {
   const access = new Map<string, { token: string; until: number }>()
   const renewing = new Map<string, Promise<{ token: string } | AccountFailure>>()
 
+  /**
+   * Each account's generation, moved on when its sign-in is forgotten: a renewal or a sign-in that ends after that
+   * writes nothing back, so a disconnected account's token never returns to the vault.
+   */
+  const generations = new Map<string, number>()
+  const generationOf = (account: string) => generations.get(account) ?? 0
+
+  /**
+   * Keep an account's entry while `current` says its sign-in still stands. A write and an erasure asked during it may
+   * land in either order, since the vault seals before it writes: an entry dropped meanwhile is erased again.
+   */
+  const keepWhile = async (account: string, entry: Entry, current: () => boolean): Promise<boolean> => {
+    if (!current()) return false
+    await vault.write(nameOf(account), JSON.stringify(entry))
+    if (current()) return true
+    await vault.erase(nameOf(account))
+    return false
+  }
+
   const holdAccess = (account: string, tokens: { access_token: string; expiresIn(): number | undefined }) =>
     access.set(account, { token: tokens.access_token, until: Date.now() + (tokens.expiresIn() ?? 3600) * 1000 })
 
@@ -123,12 +140,17 @@ export function createAccounts(options: AccountsOptions): Accounts {
     if (held && held.until - RENEW_BEFORE_MS > Date.now()) return Promise.resolve({ token: held.token })
     let renewal = renewing.get(account)
     if (!renewal) {
+      const generation = generationOf(account)
+      const current = () => generationOf(account) === generation
+      const gone: AccountFailure = { ok: false, reason: 'The account was disconnected while it was being read.' }
       renewal = (async () => {
         try {
           const tokens = await client.refreshTokenGrant(await configurationOf(known), entry.refresh)
+          if (!current()) return gone
           holdAccess(account, tokens)
           // Microsoft gives a new refresh token at each renewal: the vault keeps the latest.
-          if (tokens.refresh_token && tokens.refresh_token !== entry.refresh) await keep(account, { ...entry, refresh: tokens.refresh_token })
+          const rotated = tokens.refresh_token !== undefined && tokens.refresh_token !== entry.refresh
+          if (rotated && !(await keepWhile(account, { ...entry, refresh: tokens.refresh_token as string }, current))) return gone
           return { token: tokens.access_token }
         } catch (error) {
           if (error instanceof client.ResponseBodyError && error.error === 'invalid_grant') return signInAgain(known.provider.label)
@@ -166,19 +188,22 @@ export function createAccounts(options: AccountsOptions): Accounts {
     }
   }
 
-  /** Forget a sign-in here, revoking it first when asked and the provider allows it. */
+  /**
+   * Forget a sign-in here, then revoke it when asked and the provider allows it. It is erased first, so a provider
+   * that cannot be reached never leaves the token in the vault: the revocation uses the token already in hand.
+   */
   const drop = async (account: string, revoke: boolean) => {
-    const entry = await readEntry(account)
+    generations.set(account, generationOf(account) + 1)
     access.delete(account)
-    const providerOf = entry && knownFor(entry.provider)
-    if (revoke && entry && providerOf?.provider.revokes) {
-      await client
-        .tokenRevocation(await configurationOf(providerOf), entry.refresh, { token_type_hint: 'refresh_token' })
-        .catch((error: unknown) =>
-          log.error(`A sign-in to ${providerOf.provider.label} could not be revoked: ${error instanceof Error ? error.message : String(error)}`)
-        )
-    }
+    const entry = await readEntry(account)
     await vault.erase(nameOf(account))
+    const providerOf = entry && knownFor(entry.provider)
+    if (!revoke || !entry || !providerOf?.provider.revokes) return
+    try {
+      await client.tokenRevocation(await configurationOf(providerOf), entry.refresh, { token_type_hint: 'refresh_token' })
+    } catch (error) {
+      log.error(`A sign-in to ${providerOf.provider.label} could not be revoked: ${error instanceof Error ? error.message : String(error)}`)
+    }
   }
 
   return {
@@ -198,6 +223,9 @@ export function createAccounts(options: AccountsOptions): Accounts {
       const entry = knownFor(id)
       if (!entry || entry.problem !== undefined) return { ok: false, reason: entry?.problem ?? `There is no provider "${id}".` }
       const stop = abortOf(signal)
+      // Disconnected or cancelled before it ends, a sign-in keeps nothing.
+      const generation = generationOf(account)
+      const current = () => !stop.aborted && generationOf(account) === generation
       try {
         if (stop.aborted) return { ok: false, reason: CANCELLED }
         const configuration = await configurationOf(entry)
@@ -205,7 +233,7 @@ export function createAccounts(options: AccountsOptions): Accounts {
         if (!signed.ok) return signed
         const call: Call = caller(fetchFor(entry.provider), signed.tokens.access_token, stop)
         const who = await entry.provider.who(call, signed.parts)
-        await keep(account, { provider: id, refresh: signed.tokens.refresh_token as string })
+        if (!(await keepWhile(account, { provider: id, refresh: signed.tokens.refresh_token as string }, current))) return { ok: false, reason: CANCELLED }
         holdAccess(account, signed.tokens)
         return { ok: true, address: who.address, ...(who.name ? { name: who.name } : {}), parts: signed.parts }
       } catch (error) {

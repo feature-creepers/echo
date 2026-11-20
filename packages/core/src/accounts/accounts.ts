@@ -143,6 +143,12 @@ export function createAccountList({ port, records, newId, now, log }: AccountLis
         await changed()
         return refuse(signed.reason, 'failed')
       }
+      // Disconnected while it signed in again, the account stays gone, and so does what the provider just gave.
+      if (again && !kept.has(id)) {
+        await port.disconnect(id).catch((error: unknown) => log.error(`An account's sign-in could not be revoked: ${String(error)}`))
+        await changed()
+        return refuse('The account was disconnected before its sign-in ended: nothing was kept.', 'failed')
+      }
       // The same account connected under another identifier is the one signed in now: the other one's sign-in is
       // forgotten here, never revoked, which would end this one too.
       const twins = [...kept.values()].filter((one) => one.id !== id && one.provider === provider.id && sameAddress(one.address, signed.address))
