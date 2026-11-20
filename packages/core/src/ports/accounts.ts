@@ -32,6 +32,65 @@ export interface Accounts {
   holds(account: string): Promise<boolean>
   /** The events of every calendar the person shows in the account that meet a span of time, cancelled ones left out. */
   events(account: string, range: EventRange, signal: Signal): Promise<{ ok: true; events: CalendarEvent[] } | AccountFailure>
+  /** The mails of the account that match a search, the latest first. */
+  searchMail(account: string, search: MailSearch, signal: Signal): Promise<{ ok: true; mails: MailSummary[] } | AccountFailure>
+  /** One mail of the account, whole: its text, and its attachments by name, never downloaded. */
+  readMail(account: string, id: string, signal: Signal): Promise<{ ok: true; mail: MailMessage } | AccountFailure>
+}
+
+/**
+ * A search of a mailbox: words, a sender, and dates (YYYY-MM-DD, `after` included, `before` not), at least one of
+ * them, and how many mails at most. The adapter quotes what it is given, so nothing is read as the provider's syntax.
+ */
+export interface MailSearch {
+  words?: string | undefined
+  from?: string | undefined
+  after?: string | undefined
+  before?: string | undefined
+  limit: number
+}
+
+/** Who sent or received a mail. */
+export interface MailAddress {
+  name?: string | undefined
+  address: string
+}
+
+/** A mail found by a search. Others wrote it: the core fences it before a model reads it. */
+export interface MailSummary {
+  /** How the provider knows it: what reads it whole. */
+  id: string
+  /** When it was received: an instant in ISO 8601. */
+  date: string
+  from: MailAddress
+  subject: string
+  /** Its first words, as the provider gives them. */
+  snippet: string
+  unread: boolean
+  /** How many files it carries, or `some` when the provider only says that it carries some. */
+  attachments: number | 'some'
+}
+
+/** A mail, read whole. */
+export interface MailMessage {
+  id: string
+  date: string
+  from: MailAddress
+  to: MailAddress[]
+  cc: MailAddress[]
+  subject: string
+  /** Its text: the plain part, or its HTML made text. */
+  text: string
+  attachments: MailAttachment[]
+}
+
+/** A file a mail carries, by name: never downloaded. */
+export interface MailAttachment {
+  name: string
+  /** Its media type: "application/pdf". */
+  kind: string
+  /** Its size in bytes. */
+  size: number
 }
 
 /** A span of time to read: two instants, in ISO 8601, and the person's time zone, which a provider may answer in. */

@@ -43,6 +43,7 @@ catalog:
   electron-updater: ^6.8.12
   electron-vite: ^6.0.0
   esbuild: ^0.28.2
+  html-to-text: ^10.0.1
   jsdom: 31.0.0
   jszip: ^3.10.2
   lowlight: ^3.3.0

@@ -217,7 +217,10 @@ export function createAccounts(options: AccountsOptions): Accounts {
     forget: (account) => drop(account, false),
     holds: async (account) => (await readEntry(account)) !== undefined,
 
-    events: (account, range, signal) => reading(account, signal, async (provider, call) => ({ ok: true as const, events: await provider.events(call, range) }))
+    events: (account, range, signal) => reading(account, signal, async (provider, call) => ({ ok: true as const, events: await provider.events(call, range) })),
+    searchMail: (account, search, signal) =>
+      reading(account, signal, async (provider, call) => ({ ok: true as const, mails: await provider.searchMail(call, search) })),
+    readMail: (account, id, signal) => reading(account, signal, async (provider, call) => ({ ok: true as const, mail: await provider.readMail(call, id) }))
   }
 }
 

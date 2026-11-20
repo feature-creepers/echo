@@ -1,7 +1,7 @@
-import type { AccountPart, CalendarEvent, EventRange } from '@repo/core'
+import type { AccountPart, CalendarEvent, EventRange, MailAddress, MailMessage, MailSearch, MailSummary } from '@repo/core'
 import { z } from 'zod'
 import type { Call } from '../requests.ts'
-import { MAX_PAGES, type Provider, scopeSet } from './provider.ts'
+import { MAX_PAGES, type Provider, quoted, scopeSet } from './provider.ts'
 
 /**
  * Microsoft accounts, work, school and personal: Outlook's calendar and mail through Microsoft Graph, read only. The
@@ -76,6 +76,78 @@ async function microsoftEvents(call: Call, range: EventRange): Promise<CalendarE
   return read.flat()
 }
 
+const recipientSchema = z.object({ emailAddress: z.object({ name: z.string().nullish(), address: z.string().nullish() }) })
+const mailSchema = z.object({
+  id: z.string(),
+  receivedDateTime: z.string(),
+  from: recipientSchema.nullish(),
+  subject: z.string().nullish(),
+  bodyPreview: z.string().nullish(),
+  isRead: z.boolean().optional(),
+  hasAttachments: z.boolean().optional()
+})
+const fullMailSchema = mailSchema.extend({
+  toRecipients: z.array(recipientSchema).default([]),
+  ccRecipients: z.array(recipientSchema).default([]),
+  body: z.object({ content: z.string().nullish() }).nullish()
+})
+const attachmentsSchema = z.object({ value: z.array(z.object({ name: z.string().nullish(), contentType: z.string().nullish(), size: z.number().nullish() })) })
+
+/** A search as Graph's `$search`: KQL, each value quoted, the whole quoted again as Graph asks. */
+export function graphSearch(search: MailSearch): string {
+  const kql = [
+    search.words ? quoted(search.words) : '',
+    search.from ? `from:${quoted(search.from)}` : '',
+    search.after ? `received>=${search.after}` : '',
+    search.before ? `received<${search.before}` : ''
+  ]
+    .filter(Boolean)
+    .join(' AND ')
+  return `"${kql.replaceAll('"', '\\"')}"`
+}
+
+const addressOf = (recipient: z.infer<typeof recipientSchema> | null | undefined): MailAddress => ({
+  address: recipient?.emailAddress.address || recipient?.emailAddress.name || '(unknown)',
+  ...(recipient?.emailAddress.name ? { name: recipient.emailAddress.name } : {})
+})
+
+const SUMMARY_FIELDS = 'id,receivedDateTime,from,subject,bodyPreview,isRead,hasAttachments'
+
+async function graphMailSearch(call: Call, search: MailSearch): Promise<MailSummary[]> {
+  const query = new URLSearchParams({ $search: graphSearch(search), $top: String(search.limit), $select: SUMMARY_FIELDS })
+  const { value } = await call(`${GRAPH}/me/messages?${query}`, z.object({ value: z.array(mailSchema) }))
+  return value.map((mail) => ({
+    id: mail.id,
+    date: new Date(mail.receivedDateTime).toISOString(),
+    from: addressOf(mail.from),
+    subject: mail.subject || '(no subject)',
+    snippet: mail.bodyPreview ?? '',
+    unread: mail.isRead === false,
+    // Graph only says whether a mail carries files; counting them is a call for each.
+    attachments: mail.hasAttachments ? 'some' : 0
+  }))
+}
+
+async function graphMailRead(call: Call, id: string): Promise<MailMessage> {
+  const at = `${GRAPH}/me/messages/${encodeURIComponent(id)}`
+  const mail = await call(`${at}?$select=${SUMMARY_FIELDS},toRecipients,ccRecipients,body`, fullMailSchema, { prefer: 'outlook.body-content-type="text"' })
+  const files = mail.hasAttachments ? (await call(`${at}/attachments?$select=name,contentType,size`, attachmentsSchema)).value : []
+  return {
+    id: mail.id,
+    date: new Date(mail.receivedDateTime).toISOString(),
+    from: addressOf(mail.from),
+    to: mail.toRecipients.map(addressOf),
+    cc: mail.ccRecipients.map(addressOf),
+    subject: mail.subject || '(no subject)',
+    text: (mail.body?.content ?? '').replace(/\r\n/g, '\n').trim(),
+    attachments: files.map((file) => ({
+      name: file.name || 'unnamed',
+      kind: (file.contentType || 'application/octet-stream').toLowerCase(),
+      size: file.size ?? 0
+    }))
+  }
+}
+
 /** A scope as Entra sends it back, "https://graph.microsoft.com/Mail.Read" or "Mail.Read", by its last part. */
 const lastPart = (scope: string) => scope.split('/').at(-1) ?? scope
 
@@ -103,6 +175,8 @@ export const microsoft: Provider = {
     return { address: me.mail || me.userPrincipalName, ...(me.displayName ? { name: me.displayName } : {}) }
   },
   events: microsoftEvents,
+  searchMail: graphMailSearch,
+  readMail: graphMailRead,
   refusal(error, description) {
     if (ORGANISATION.test(description ?? ''))
       return 'Your organisation does not let its members connect this app: its administrator decides. Nothing was connected.'

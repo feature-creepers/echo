@@ -4,7 +4,21 @@ export { type Core, type CoreOptions, createCore } from './core.ts'
 export type { Admission } from './devices/admission.ts'
 export { createMemory, type Memory, type MemoryChange, type MemoryOptions, type SleepRequest } from './memory/memory.ts'
 export { keywordsOf, searchableText } from './memory/searchable.ts'
-export type { AccountFailure, AccountPart, AccountProvider, Accounts, CalendarEvent, EventRange, Keeping, SignedIn } from './ports/accounts.ts'
+export type {
+  AccountFailure,
+  AccountPart,
+  AccountProvider,
+  Accounts,
+  CalendarEvent,
+  EventRange,
+  Keeping,
+  MailAddress,
+  MailAttachment,
+  MailMessage,
+  MailSearch,
+  MailSummary,
+  SignedIn
+} from './ports/accounts.ts'
 export type { Blobs } from './ports/blobs.ts'
 export type {
   ActionOutcome,

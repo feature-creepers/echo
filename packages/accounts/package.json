@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@repo/core": "workspace:*",
+    "html-to-text": "catalog:",
     "openid-client": "catalog:",
     "zod": "catalog:"
   },

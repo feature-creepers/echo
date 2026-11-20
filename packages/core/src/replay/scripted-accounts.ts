@@ -1,4 +1,16 @@
-import type { AccountFailure, AccountPart, AccountProvider, Accounts, CalendarEvent, EventRange, Keeping, SignedIn } from '../ports/accounts.ts'
+import type {
+  AccountFailure,
+  AccountPart,
+  AccountProvider,
+  Accounts,
+  CalendarEvent,
+  EventRange,
+  Keeping,
+  MailMessage,
+  MailSearch,
+  MailSummary,
+  SignedIn
+} from '../ports/accounts.ts'
 import type { Signal } from '../ports/harness.ts'
 
 /** Two providers, one this build can sign in to and one it cannot. */
@@ -26,6 +38,12 @@ export interface ScriptedAccounts extends Accounts {
   calendars: Map<string, CalendarEvent[] | AccountFailure | Promise<CalendarEvent[]>>
   /** The spans read, in order. */
   ranges: EventRange[]
+  /** What each account's mailbox answers a search, or why it cannot be read. */
+  mailboxes: Map<string, MailSummary[] | AccountFailure>
+  /** The searches made, in order. */
+  searches: MailSearch[]
+  /** The mails read whole, by account and identifier: `<account>/<id>`. */
+  messages: Map<string, MailMessage>
 }
 
 export function scriptedAccounts(keeping: Keeping = { kept: true }): ScriptedAccounts {
@@ -35,6 +53,9 @@ export function scriptedAccounts(keeping: Keeping = { kept: true }): ScriptedAcc
   const forgotten: string[] = []
   const calendars = new Map<string, CalendarEvent[] | AccountFailure | Promise<CalendarEvent[]>>()
   const ranges: EventRange[] = []
+  const mailboxes = new Map<string, MailSummary[] | AccountFailure>()
+  const searches: MailSearch[] = []
+  const messages = new Map<string, MailMessage>()
   return {
     providers: () => SCRIPTED_PROVIDERS,
     keeping: async () => keeping,
@@ -63,11 +84,23 @@ export function scriptedAccounts(keeping: Keeping = { kept: true }): ScriptedAcc
       const kept = await (calendars.get(account) ?? [])
       return Array.isArray(kept) ? { ok: true, events: kept } : kept
     },
+    async searchMail(account, search) {
+      searches.push(search)
+      const kept = mailboxes.get(account) ?? []
+      return Array.isArray(kept) ? { ok: true, mails: kept.slice(0, search.limit) } : kept
+    },
+    async readMail(account, id) {
+      const mail = messages.get(`${account}/${id}`)
+      return mail ? { ok: true, mail } : { ok: false, reason: `There is no mail ${id}.` }
+    },
     signing: () => signing,
     held,
     disconnected,
     forgotten,
     calendars,
-    ranges
+    ranges,
+    mailboxes,
+    searches,
+    messages
   }
 }

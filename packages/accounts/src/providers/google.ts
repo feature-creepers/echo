@@ -1,7 +1,8 @@
-import type { AccountPart, CalendarEvent, EventRange } from '@repo/core'
+import type { AccountPart, CalendarEvent, EventRange, MailAddress, MailMessage, MailSearch, MailSummary } from '@repo/core'
 import { z } from 'zod'
 import type { Call } from '../requests.ts'
-import { MAX_PAGES, type Provider, scopeSet } from './provider.ts'
+import { addressesOf, type GmailPart, gmailContent, gmailPartSchema, headerOf, plainText } from './gmail-message.ts'
+import { MAX_PAGES, type Provider, quoted, scopeSet } from './provider.ts'
 
 /**
  * Google accounts: Google Calendar and Gmail, read only. The app registration is a client of type "Desktop app",
@@ -49,6 +50,66 @@ export function googleEvent(event: z.infer<typeof eventSchema>, calendar: string
     start: (allDay ? event.start.date : event.start.dateTime) ?? '',
     end: (allDay ? event.end.date : event.end.dateTime) ?? '',
     declined: (event.attendees ?? []).some((attendee) => attendee.self === true && attendee.responseStatus === 'declined')
+  }
+}
+
+const messagesSchema = z.object({ messages: z.array(z.object({ id: z.string() })).default([]) })
+const messageSchema = z.object({
+  id: z.string(),
+  labelIds: z.array(z.string()).default([]),
+  snippet: z.string().default(''),
+  internalDate: z.string().optional(),
+  payload: gmailPartSchema
+})
+
+/** A search as Gmail's `q`: each value quoted, dates as Gmail writes them. */
+export function gmailQuery(search: MailSearch): string {
+  const date = (day: string) => day.replaceAll('-', '/')
+  return [
+    search.words ? quoted(search.words) : '',
+    search.from ? `from:${quoted(search.from)}` : '',
+    search.after ? `after:${date(search.after)}` : '',
+    search.before ? `before:${date(search.before)}` : ''
+  ]
+    .filter(Boolean)
+    .join(' ')
+}
+
+/** A message's sender, and when it came: its internal date, or its Date header. */
+const fromOf = (payload: GmailPart): MailAddress => addressesOf(headerOf(payload, 'From') ?? '')[0] ?? { address: '(unknown)' }
+const dateOf = (message: z.infer<typeof messageSchema>) =>
+  new Date(message.internalDate ? Number(message.internalDate) : Date.parse(headerOf(message.payload, 'Date') ?? '') || 0).toISOString()
+
+const readMessage = (call: Call, id: string) => call(`${GMAIL_API}/messages/${encodeURIComponent(id)}?format=full`, messageSchema)
+
+/** The messages that match, the latest first, each read whole for how many files it carries; never their files. */
+async function gmailSearch(call: Call, search: MailSearch): Promise<MailSummary[]> {
+  const query = new URLSearchParams({ q: gmailQuery(search), maxResults: String(search.limit) })
+  const { messages } = await call(`${GMAIL_API}/messages?${query}`, messagesSchema)
+  const read = await Promise.all(messages.map((message) => readMessage(call, message.id)))
+  return read.map((message) => ({
+    id: message.id,
+    date: dateOf(message),
+    from: fromOf(message.payload),
+    subject: headerOf(message.payload, 'Subject') || '(no subject)',
+    snippet: plainText(message.snippet),
+    unread: message.labelIds.includes('UNREAD'),
+    attachments: gmailContent(message.payload).attachments.length
+  }))
+}
+
+async function gmailRead(call: Call, id: string): Promise<MailMessage> {
+  const message = await readMessage(call, id)
+  const { text, attachments } = gmailContent(message.payload)
+  return {
+    id: message.id,
+    date: dateOf(message),
+    from: fromOf(message.payload),
+    to: addressesOf(headerOf(message.payload, 'To') ?? ''),
+    cc: addressesOf(headerOf(message.payload, 'Cc') ?? ''),
+    subject: headerOf(message.payload, 'Subject') || '(no subject)',
+    text,
+    attachments
   }
 }
 
@@ -104,6 +165,8 @@ export const google: Provider = {
     return { address: (await call(`${CALENDAR_API}/calendars/primary`, z.object({ id: z.string().min(1) }))).id }
   },
   events: googleEvents,
+  searchMail: gmailSearch,
+  readMail: gmailRead,
   refusal: (error) =>
     error === 'access_denied'
       ? 'Google said no: you declined, or this account is not one of the test users the app allows while Google has not verified it. Nothing was connected.'
