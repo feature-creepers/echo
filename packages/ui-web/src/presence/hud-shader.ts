@@ -18,12 +18,10 @@ import { HUD_DECKS, HUD_RINGS } from './life.ts'
  */
 
 /** The instrument's radius, as a share of half the canvas. */
-export const HUD_SIZE = 0.8
+const HUD_SIZE = 0.8
 
-/**
- * Where each ring sits, as a share of the instrument's radius. The painter draws the same rings from these.
- */
-export const HUD_RADII = {
+/** Where each ring sits, as a share of the instrument's radius. */
+const HUD_RADII = {
   coreRim: 0.08,
   broken: 0.14,
   band: 0.2,
@@ -37,21 +35,12 @@ export const HUD_RADII = {
 } as const
 
 /** The long outer arcs, as where each starts and ends, in turns. */
-export const HUD_ARCS = [
+const HUD_ARCS = [
   [0.03, 0.3],
   [0.36, 0.41],
   [0.53, 0.8],
   [0.86, 0.91]
 ] as const
-
-/**
- * How many bars the meter round the core has at a size, the instrument's radius in device pixels: up to sixty,
- * fewer on a small instrument, so each bar stays at least three and a half pixels from the next and the voice
- * reads as bars rather than as a blur. Always an even number, so the two sides match.
- */
-export function meterBars(radius: number): number {
-  return Math.min(60, Math.max(24, Math.floor((Math.PI * 2 * HUD_RADII.meter * radius) / 3.5 / 2) * 2))
-}
 
 /**
  * How far out of focus a point is drawn, in pixels of blur for each radius it stands off the depth its deck rests

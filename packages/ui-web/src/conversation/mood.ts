@@ -1,4 +1,4 @@
-import type { Mood } from '../presence/painter.ts'
+import type { Mood } from '../presence/life.ts'
 
 /**
  * What the assistant is doing, in a few words, from the tool it is using: shown in place of "Thinking" while

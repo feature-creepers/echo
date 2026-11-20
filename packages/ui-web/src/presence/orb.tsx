@@ -1,10 +1,10 @@
 import { LOOKS, type Look } from '@repo/protocol'
-import { useEffect, useRef } from 'react'
+import { type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { cn } from '../primitives/cn.ts'
 import { readAccent } from './color.ts'
+import { Eye } from './eye.tsx'
 import { createGpuCore } from './gpu.ts'
 import { type Around, createLife, type Mood, type Pose } from './life.ts'
-import { createPainter } from './painter.ts'
 
 interface OrbProps {
   mood: Mood
@@ -39,6 +39,12 @@ interface OrbProps {
   className?: string
 }
 
+/** What a core whose place and size follow its frames is asked on each frame, as its latest props say. */
+interface Followed {
+  onFrame: OrbProps['onFrame'] | undefined
+  scale: OrbProps['scale'] | undefined
+}
+
 /** The look drawn before any persona is known: the instrument, which reads as something getting ready. */
 const NEUTRAL_LOOK: Look = 'hud'
 
@@ -55,33 +61,79 @@ function readLook(element: Element): Look {
   return (LOOKS as readonly string[]).includes(value) ? (value as Look) : NEUTRAL_LOOK
 }
 
+/** How large the core is drawn in its square, as `scale` asks, from a twentieth of it to all of it. */
+const sizeOf = (scale: (() => number) | undefined) => Math.min(1, Math.max(0.05, scale?.() ?? 1))
+
+/**
+ * Calls `frame` on every frame while the window is shown and the element is in view, and `resume` before the first
+ * frame after a pause, so the time away is not lived through. Returns what stops it.
+ */
+function whileSeen(element: Element, frame: (now: number) => void, resume?: () => void): () => void {
+  let id = 0
+  let onScreen = true
+  const run = () => {
+    if (!id && onScreen && document.visibilityState === 'visible') id = requestAnimationFrame(tick)
+  }
+  const tick = (now: number) => {
+    id = 0
+    frame(now)
+    run()
+  }
+  const pause = () => {
+    cancelAnimationFrame(id)
+    id = 0
+  }
+  const onVisibility = () => {
+    if (document.visibilityState !== 'visible') return pause()
+    resume?.()
+    run()
+  }
+  // Several records can come at once for the one element; the last says where it is now.
+  const watch = new IntersectionObserver((entries) => {
+    onScreen = entries.at(-1)?.isIntersecting ?? true
+    if (!onScreen) return pause()
+    resume?.()
+    run()
+  })
+  document.addEventListener('visibilitychange', onVisibility)
+  watch.observe(element)
+  run()
+  return () => {
+    pause()
+    document.removeEventListener('visibilitychange', onVisibility)
+    watch.disconnect()
+  }
+}
+
 /**
  * The core, in whatever accent and look surround it (`--accent`, and `--look`, which `accentStyle` sets from the
  * persona). It is decoration for a screen reader: the name and the state written beside it say the same thing in
  * words.
  *
  * It is drawn on the graphics card (`gpu.ts`), moved by the life behind it (`life.ts`). Where the graphics card
- * cannot draw it, the same looks are painted on a 2D canvas (`painter.ts`) from the same life. Drawing stops while
- * the window is hidden or the core is out of view, and with less motion asked for, the core holds still and is
- * only drawn again while a mood, a look or an accent changes.
+ * cannot draw it, it is a still picture of its mark. Drawing stops while the window is hidden or the core is out of
+ * view, and with less motion asked for, the core holds still and is only drawn again while a mood, a look or an
+ * accent changes.
  */
 export function Orb({ mood, size, level, bands, gaze, load, around, onFrame, scale, className }: OrbProps) {
   const box = useRef<HTMLSpanElement>(null)
   const live = useRef({ mood, level, size, bands, gaze, load, around, onFrame, scale })
   live.current = { mood, level, size, bands, gaze, load, around, onFrame, scale }
+  const [refused, setRefused] = useState(false)
 
   useEffect(() => {
     const element = box.current
     if (!element) return
 
+    // The canvas is put in the page only once the core can be drawn: where it cannot, there is none.
     const canvas = document.createElement('canvas')
     canvas.style.cssText = 'display:block;width:100%;height:100%'
-    element.append(canvas)
-    // The core is copied into its canvas from the context every core shares; where there is none, it is painted on
-    // the canvas itself.
     const gpu = createGpuCore(canvas, forceShader())
-    const flat = gpu ? null : canvas.getContext('2d')
-    const painter = createPainter()
+    if (!gpu) {
+      setRefused(true)
+      return
+    }
+    element.append(canvas)
     let look = readLook(element)
     const life = createLife(live.current.mood, look)
     const still = window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -93,11 +145,8 @@ export function Orb({ mood, size, level, bands, gaze, load, around, onFrame, sca
     let previous = readAt
     let fading = false
     let drawn = ''
-    let frame = 0
-    let onScreen = true
 
     const draw = (now: number) => {
-      frame = 0
       const ratio = Math.min(window.devicePixelRatio || 1, 2)
       const pixels = Math.round(live.current.size * ratio)
       // A canvas starts 300 by 150 whatever its box is, so both sides are checked.
@@ -137,52 +186,68 @@ export function Orb({ mood, size, level, bands, gaze, load, around, onFrame, sca
         still: still.matches
       })
       live.current.onFrame?.(pose)
-      const drawnAt = Math.min(1, Math.max(0.05, live.current.scale?.() ?? 1))
+      const drawnAt = sizeOf(live.current.scale)
       fading = pose.looks[look] < 1
       // Holding still, a frame is only drawn while something changes: the size, the accent, a mood or a look fading.
       const settled = Math.abs(pose.weights[live.current.mood] - 1) < 0.002 && Math.abs(pose.looks[look] - 1) < 0.002
       const state = `${pixels} ${drawnAt.toFixed(3)} ${shown[look].join()} ${live.current.mood} ${look}`
       if (!(still.matches && settled && drawn === state)) {
-        if (gpu) gpu.paint(pose, shown, pixels, drawnAt)
-        else if (flat) painter.paint(flat, pose, shown, pixels, drawnAt)
+        gpu.paint(pose, shown, pixels, drawnAt)
         drawn = settled ? state : ''
       }
-      run()
     }
 
-    // Nothing is drawn while the window is hidden or the core is scrolled out of view.
-    const run = () => {
-      if (!frame && onScreen && document.visibilityState === 'visible') frame = requestAnimationFrame(draw)
-    }
-    const pause = () => {
-      cancelAnimationFrame(frame)
-      frame = 0
-    }
-    const onVisibility = () => {
-      if (document.visibilityState !== 'visible') return pause()
-      // The time away is not lived through: the core picks up where it stopped.
+    const stop = whileSeen(element, draw, () => {
       previous = performance.now()
-      run()
-    }
-    // Several records can come at once for the one element; the last says where it is now.
-    const watch = new IntersectionObserver((entries) => {
-      onScreen = entries.at(-1)?.isIntersecting ?? true
-      if (!onScreen) return pause()
-      previous = performance.now()
-      run()
     })
-    document.addEventListener('visibilitychange', onVisibility)
-    watch.observe(element)
-    run()
-
     return () => {
-      pause()
-      document.removeEventListener('visibilitychange', onVisibility)
-      watch.disconnect()
-      gpu?.dispose()
+      stop()
+      gpu.dispose()
       canvas.remove()
     }
   }, [])
 
-  return <span ref={box} aria-hidden="true" className={cn('pointer-events-none block select-none', className)} style={{ width: size, height: size }} />
+  return (
+    <span ref={box} aria-hidden="true" className={cn('pointer-events-none block select-none', className)} style={{ width: size, height: size }}>
+      {refused && <StillCore live={live} />}
+    </span>
+  )
+}
+
+/**
+ * The core where the graphics card cannot draw it: the composer's eye at the core's size, in the look and accent
+ * around it, at rest and without animation, with no picture to make or keep. A core whose place and size follow
+ * its frames (the stage's) is still told a pose at rest and asked its size on each frame, and draws nothing.
+ */
+function StillCore({ live }: { live: RefObject<Followed> }) {
+  const box = useRef<HTMLSpanElement>(null)
+  const [look, setLook] = useState<Look>(NEUTRAL_LOOK)
+  // With no frames to read it on, the look is read after each render: a change of persona renders what is round
+  // the core again.
+  useLayoutEffect(() => {
+    if (box.current) setLook(readLook(box.current))
+  })
+  const placed = Boolean(live.current.onFrame || live.current.scale)
+
+  useEffect(() => {
+    const element = box.current
+    if (!element || !placed) return
+    const rest = createLife('idle', look).step({ mood: 'idle', look, level: 0, delta: 0, still: true })
+    let sized = ''
+    return whileSeen(element, () => {
+      live.current.onFrame?.(rest)
+      const transform = `scale(${sizeOf(live.current.scale).toFixed(4)})`
+      if (transform === sized) return
+      element.style.transform = transform
+      sized = transform
+    })
+  }, [live, look, placed])
+
+  // The eye's ring is 85 % of its box and the core's edge about 72 % of its square: inset by 8 % on each side, the
+  // ring falls where the core's edge would.
+  return (
+    <span ref={box} className="block size-full p-[8%]">
+      <Eye mood="idle" look={look} still className="size-full" />
+    </span>
+  )
 }

@@ -2,10 +2,9 @@ import type { Look } from '@repo/protocol'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { fieldOf } from '../presence/field.ts'
 import { gazeAt, middleOf, type Point } from '../presence/gaze.ts'
-import { type Around, MOODS, type Pose } from '../presence/life.ts'
+import { type Around, MOODS, type Mood, type Pose } from '../presence/life.ts'
 import { useCoreLight } from '../presence/light.ts'
 import { Orb } from '../presence/orb.tsx'
-import type { Mood } from '../presence/painter.ts'
 import { arrivedAt, restOn, travelTowards } from './travel.ts'
 
 /** How strongly the light around the core shows in each mood: brighter while it hears or speaks, dim asleep. */

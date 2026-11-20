@@ -24,18 +24,27 @@ const PUPIL: Record<Mood, string> = {
 /** The circumference of the ring, which its dashes are measured against. */
 const AROUND = 2 * Math.PI * 8.5
 
+interface EyeProps {
+  mood: Mood
+  look: Look
+  /** Drawn without its mood's motion: where the core cannot be drawn, the eye stands for it, at rest. */
+  still?: boolean
+  /** Its size, 20 pixels unless said. */
+  className?: string
+}
+
 /**
  * The persona's mark in the composer: a ring with a pupil, the core in miniature, drawn after the persona's look so
  * the two read as one, and living as the core does in each mood. It is one picture so the pupil sits exactly in the
  * middle of its ring at every size and on every screen.
  */
-export function Eye({ mood, look }: { mood: Mood; look: Look }) {
+export function Eye({ mood, look, still = false, className }: EyeProps) {
   // Parts scale about their own centre, which in a drawing has to be asked for.
   const part = '[transform-box:fill-box] origin-center transition-opacity duration-(--duration-calm) motion-reduce:animate-none'
   const lens = look === 'lens'
   const glow = useId()
   return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className="size-5 overflow-visible text-accent">
+    <svg viewBox="0 0 20 20" aria-hidden="true" className={cn('size-5 overflow-visible text-accent', className)}>
       {lens ? (
         <>
           <defs>
@@ -53,7 +62,7 @@ export function Eye({ mood, look }: { mood: Mood; look: Look }) {
             stroke="rgb(140 170 210)"
             strokeOpacity={mood === 'asleep' ? 0.1 : 0.2}
             strokeWidth="0.75"
-            className={cn(part, RING[mood])}
+            className={cn(part, !still && RING[mood])}
           />
           <circle cx="10" cy="10" r="7" fill={`url(#${glow})`} opacity={mood === 'asleep' ? 0.35 : 0.75} className={part} />
         </>
@@ -70,11 +79,11 @@ export function Eye({ mood, look }: { mood: Mood; look: Look }) {
             strokeWidth="1"
             strokeDasharray={`${AROUND / 4 - 1.7} 1.7`}
             strokeDashoffset={-0.85}
-            className={cn(part, RING[mood])}
+            className={cn(part, !still && RING[mood])}
           />
         </g>
       )}
-      {(mood === 'thinking' || mood === 'working') && (
+      {!still && (mood === 'thinking' || mood === 'working') && (
         <circle
           cx="10"
           cy="10"
@@ -88,7 +97,7 @@ export function Eye({ mood, look }: { mood: Mood; look: Look }) {
           className={cn(part, mood === 'working' ? 'animate-eye-step' : 'animate-eye-spin')}
         />
       )}
-      <g className={cn(part, 'transition-transform', PUPIL[mood])}>
+      <g className={cn(part, 'transition-transform', !still && PUPIL[mood])}>
         {lens ? (
           // The lens's disc: amber, with a little red round it.
           <>

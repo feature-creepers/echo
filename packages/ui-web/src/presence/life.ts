@@ -3,9 +3,8 @@ import { LOOKS, type Look } from '@repo/protocol'
 /**
  * The life behind the core, worked out on the processor once per frame: how far each mood and each look is in
  * effect, the voice and its spectrum, where the core looks, how hard the computer works, the pulse, the breath, and
- * the clocks things turn and drift by. The drawings, on the graphics card (`lens-shader.ts`, `hud-shader.ts`) or on
- * a 2D canvas (`painter.ts`), only draw what this hands them, so all of the motion design lives here, in numbers
- * that can be read and tested.
+ * the clocks things turn and drift by. The drawings on the graphics card (`lens-shader.ts`, `hud-shader.ts`) only
+ * draw what this hands them, so all of the motion design lives here, in numbers that can be read and tested.
  *
  * The core is calm and serious, an instrument rather than a toy: a mood shows in its light and in the pace of what
  * turns in it, never in its shape. Nothing in it tumbles, races, flickers or darts about; what moves, moves slowly,

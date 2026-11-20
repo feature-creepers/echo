@@ -180,7 +180,7 @@ function draw(shared: Renderer, ready: Prepared, pose: Pose, accents: Record<Loo
 
 /**
  * Sets a core up to be drawn into its canvas, or gives nothing when the graphics card cannot draw it: the core is
- * then painted on the canvas directly (`painter.ts`). The shared context is made for the first core.
+ * then a still picture (`orb.tsx`). The shared context is made for the first core.
  */
 export function createGpuCore(canvas: HTMLCanvasElement, force: boolean): GpuCore | undefined {
   if (renderer === undefined) renderer = makeRenderer(force) ?? null

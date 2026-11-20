@@ -17,10 +17,10 @@ import { type Drawing, glsl, PRELUDE } from './glsl.ts'
  */
 
 /** The lens's radius, as a share of half the canvas: the rest is room for its shadow. */
-export const LENS_SIZE = 0.74
+const LENS_SIZE = 0.74
 
 /** How far the glass reaches, as a share of the lens's radius. Round it is the seat that holds it. */
-export const SEAT = 0.9
+const SEAT = 0.9
 
 /** How far the dome stands out of the seat at its middle, in the lens's radii, and the radius of the sphere it is a cap of. */
 const BULGE = 0.36

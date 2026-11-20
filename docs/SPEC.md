@@ -1148,7 +1148,7 @@ The one living thing on the screen, in the look of the persona that answers (sec
 
 **Change, size and less motion.** A change of persona morphs one look into the other in 400 ms, in the same frame as the rest of the window, each fading in its own accent. Edges are one device pixel soft, details finer than a pixel fade to their average, and a small core keeps only what reads (the instrument drops its glyphs, then its finer rings, and spaces its bars), so both stay sharp from 56 to 320 px at densities 1 and 2. A grain under one colour step prevents banding. With less motion, the core holds still, fully drawn, redrawn only when mood, look or accent changes. Nothing is drawn while the window is hidden or the core is out of view.
 
-**Cost.** A frame costs about 0.01 ms on the page's thread and two layout reads. On the graphics card a pixel costs a few hundred arithmetic operations at most, no loop runs more than seven times, the instrument computes only the ring a pixel falls on, and the bloom adds five small passes. Every core is drawn in one shared context, on a canvas never put in the page, and copied into a canvas of its own where it sits, so the window holds two contexts, the ground's and the cores', whatever the number of cores. Without a usable graphics card the same looks are painted on a 2D canvas from the same life, at the same radii, with less detail and no bloom, what does not move cached per size.
+**Cost.** A frame costs about 0.01 ms on the page's thread and two layout reads. On the graphics card a pixel costs a few hundred arithmetic operations at most, no loop runs more than seven times, the instrument computes only the ring a pixel falls on, and the bloom adds five small passes. Every core is drawn in one shared context, on a canvas never put in the page, and copied into a canvas of its own where it sits, so the window holds two contexts, the ground's and the cores', whatever the number of cores. Without a usable graphics card (software rendering included), the core is a still picture of its mark: the composer's eye at its size, in its look and accent, at rest, with nothing drawn per frame.
 
 #### Motion
 
@@ -1410,7 +1410,7 @@ packages/ui-web/src/
 ├── shell/           the window: title row, screens, the side sheet, where it stands (sheet-place.ts), its edge
 ├── conversation/    the main screen: stage, caption, composer, transcript, threads and their work
 ├── view/            the renderer, a view's card, the stream that turns like a dial; blocks/ draws the catalogue's blocks
-├── presence/        the core: its looks as shaders, the life that moves them (life.ts), the ground, the 2D fallback, the eye
+├── presence/        the core: its looks as shaders, the life that moves them (life.ts), the ground, the eye
 ├── audio/           the microphone, speech in and out, the voice's spectrum, voices by language
 ├── media/           the app's one player
 ├── library/         the Widgets page, the pinned docks, the bookmark
