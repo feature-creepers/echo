@@ -70,7 +70,7 @@ export function createEmbedder({ folder, log, idleMs = IDLE_MS, worker: script =
     const ready = new Promise<void>((resolve, reject) => {
       settle = { resolve, reject }
     })
-    // Nothing waits on a probe's readiness but `probe`, which handles it.
+    // The caller may have stopped waiting before the worker fails: that failure must not go unhandled in the core.
     ready.catch(() => undefined)
     const run: Running = { worker, ready, waiting }
 
