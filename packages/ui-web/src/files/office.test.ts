@@ -64,7 +64,9 @@ const workbook = (bookType: 'xlsx' | 'ods' | 'biff8', rows: unknown[][], format?
   return new Uint8Array(write(book, { type: 'array', bookType }))
 }
 
-describe('readOffice', () => {
+// Each library is loaded the first time a file of its kind is read; cold, in a full parallel run, mammoth alone can
+// take longer than the default five seconds.
+describe('readOffice', { timeout: 30_000 }, () => {
   it('reads a Word document as HTML with its headings, emphasis and tables', async () => {
     const preview = await readOffice('docx', await docx())
     expect(preview.kind).toBe('document')
