@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, isAbsolute, join } from 'node:path'
 import {
@@ -50,6 +50,7 @@ import { followLoad } from './load/index.ts'
 import { appIcon } from './mark.ts'
 import { createMini } from './mini/index.ts'
 import { serveNotifications } from './notifications.ts'
+import { selfCheckFolder } from './scratch.ts'
 import { checkMeaning, checkSettings } from './self-check.ts'
 import { type SpeechProcess, startSpeech } from './speech-process.ts'
 import { createTray, type TrayActions, type TrayLook } from './tray.ts'
@@ -64,8 +65,9 @@ import { createUpdater, releasesPage } from './updater.ts'
  *                   Started with it and not running, the app has nothing to stop, and quits at once.
  *   --hidden        start out of sight, in the tray, ready for the shortcut: how the app starts at login.
  *   --self-check    start the core, connect to it, do what a first launch does, see that search by meaning can run
- *                   (sqlite-vec loads, the model's worker starts), print the outcome as one line and quit. Exit code 1 when something failed. No window is opened, and nothing of the
- *                   user's is read or written: the check runs in a folder of its own, removed afterwards.
+ *                   (sqlite-vec loads, the model's worker starts), print the outcome as one line and quit. Exit code
+ *                   1 when something failed. No window is opened, and nothing of the user's is read or written: the
+ *                   check runs in a folder of its own, removed afterwards, or by the next check when Windows holds it.
  */
 const selfChecking = process.argv.includes('--self-check')
 
@@ -73,7 +75,7 @@ const selfChecking = process.argv.includes('--self-check')
  * Where the app keeps what belongs to this device and to its user. Set before anything reads it.
  * A build run from the sources keeps its own, so trying a change never touches the installed app's data.
  */
-const scratch = selfChecking ? mkdtempSync(join(tmpdir(), 'self-check-')) : undefined
+const scratch = selfChecking ? selfCheckFolder(tmpdir()) : undefined
 if (scratch) app.setPath('userData', scratch)
 else if (!app.isPackaged) app.setPath('userData', `${app.getPath('userData')} (development)`)
 
