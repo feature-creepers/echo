@@ -136,8 +136,9 @@ export function createAccountList({ port, records, newId, now, log }: AccountLis
         stop
       }
       await changed()
-      const signed = await port.connect({ account: id, provider: provider.id, parts: asked.parts }, signal)
-      signingIn = undefined
+      const signed = await port.connect({ account: id, provider: provider.id, parts: asked.parts }, signal).finally(() => {
+        signingIn = undefined
+      })
       if (!signed.ok) {
         await changed()
         return refuse(signed.reason, 'failed')

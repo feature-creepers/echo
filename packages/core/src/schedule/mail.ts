@@ -88,22 +88,28 @@ export function createMailWatch(options: MailWatchOptions): MailWatch {
     for (const id of [...cursors.keys()]) if (!accounts.some((account) => account.id === id)) cursors.delete(id)
     const { signal } = stopping()
     const arrived: ArrivedMail[] = []
-    await Promise.all(
-      accounts.map(async (account) => {
-        const answer = await options.arrived(account.id, cursors.get(account.id), signal)
-        if (!answer.ok) {
-          if (answer.signIn) options.signInAgain(account.id)
-          else options.problem(`The mail of ${account.address} could not be looked at: ${answer.reason}`)
-          return
-        }
-        cursors.set(account.id, answer.cursor)
-        const before = told.get(account.id) ?? []
-        const fresh = answer.mails.filter((mail) => !before.includes(mail.id))
-        told.set(account.id, [...before, ...fresh.map((mail) => mail.id)].slice(-TOLD_KEPT))
-        arrived.push(...fresh.map((mail) => ({ ...mail, account: account.address })))
-      })
-    )
-    looking = false
+    try {
+      await Promise.all(
+        accounts.map(async (account) => {
+          const answer = await options.arrived(account.id, cursors.get(account.id), signal)
+          if (!answer.ok) {
+            if (answer.signIn) options.signInAgain(account.id)
+            else options.problem(`The mail of ${account.address} could not be looked at: ${answer.reason}`)
+            return
+          }
+          cursors.set(account.id, answer.cursor)
+          const before = told.get(account.id) ?? []
+          const fresh = answer.mails.filter((mail) => !before.includes(mail.id))
+          told.set(account.id, [...before, ...fresh.map((mail) => mail.id)].slice(-TOLD_KEPT))
+          arrived.push(...fresh.map((mail) => ({ ...mail, account: account.address })))
+        })
+      )
+    } catch (error) {
+      options.problem(`The mail could not be looked at: ${error instanceof Error ? error.message : String(error)}`)
+      return
+    } finally {
+      looking = false
+    }
     for (const job of jobs) {
       const matching = arrived.filter((mail) => matchesMail(job, mail))
       if (matching.length > 0) options.ring(job.job, matching)
