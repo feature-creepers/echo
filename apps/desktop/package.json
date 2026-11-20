@@ -21,7 +21,8 @@
   },
   "dependencies": {
     "playwright-core": "catalog:",
-    "sherpa-onnx-node": "catalog:"
+    "sherpa-onnx-node": "catalog:",
+    "sqlite-vec": "catalog:"
   },
   "devDependencies": {
     "@repo/client": "workspace:*",

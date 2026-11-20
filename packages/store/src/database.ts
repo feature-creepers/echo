@@ -16,9 +16,12 @@ export class StoreTooRecent extends Error {
   }
 }
 
-/** Open the file, creating it when missing, and bring its layout up to date. */
+/**
+ * Open the file, creating it when missing, and bring its layout up to date. Extensions may be loaded into it until
+ * `loadVectorExtension` refuses them.
+ */
 export function openDatabase(file: string): DatabaseSync {
-  const database = new DatabaseSync(file)
+  const database = new DatabaseSync(file, { allowExtension: true })
   try {
     // Readers do not wait for the writer, and a process that is cut off never leaves the file half written.
     database.exec('pragma journal_mode = wal')

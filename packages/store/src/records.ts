@@ -3,12 +3,13 @@ import type { DatabaseSync } from 'node:sqlite'
 import { erasedBy, type Records, type StoredRecord } from '@repo/core'
 import { transaction } from './database.ts'
 import type { KeywordIndex } from './search/keyword.ts'
+import type { VectorIndex } from './search/vectors.ts'
 
 /**
- * The records of a core, in its file. The search index takes in each record in the same transaction, so it is
- * never behind what was written.
+ * The records of a core, in its file. The search index and the vectors take in each record in the same transaction,
+ * so neither is ever behind what was written or keeps what was erased.
  */
-export function createRecords(database: DatabaseSync, index: KeywordIndex, now: () => Date = () => new Date()): Records {
+export function createRecords(database: DatabaseSync, index: KeywordIndex, vectors: VectorIndex, now: () => Date = () => new Date()): Records {
   const origin = coreId(database)
   const last = database.prepare('select coalesce(max(sequence), 0) as last from record where origin = ?')
   const insert = database.prepare('insert into record (id, origin, sequence, at, type, payload) values (?, ?, ?, ?, ?, ?)')
@@ -28,6 +29,7 @@ export function createRecords(database: DatabaseSync, index: KeywordIndex, now: 
           const written = { ...stored, payload: JSON.parse(payload) }
           for (const erased of erasedBy(written)) erase.run(erased)
           index.take(written, lastInsertRowid)
+          vectors.take(written)
           return written
         })
       })

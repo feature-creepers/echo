@@ -1,10 +1,11 @@
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Blobs, Records, Search } from '@repo/core'
+import type { Blobs, Records, Search, Vectors } from '@repo/core'
 import { createBlobs } from './blobs.ts'
 import { openDatabase } from './database.ts'
 import { createRecords } from './records.ts'
 import { createKeywordIndex } from './search/keyword.ts'
+import { createVectors, loadVectorExtension } from './search/vectors.ts'
 
 /** The name of the one file that holds a user's data, inside their data folder. */
 export const STORE_FILE = 'store.sqlite'
@@ -13,6 +14,8 @@ export interface StoreOptions {
   /** The folder that holds the user's data. Created when missing. */
   folder: string
   now?: () => Date
+  /** The file of sqlite-vec to load. Left out, the one its package has for this system. */
+  vectorExtension?: () => string
 }
 
 export interface Store {
@@ -26,19 +29,23 @@ export interface Store {
   versions: Blobs
   /** Keyword search over the text of the records, kept in step with them. */
   search: Search
+  /** The records' vectors, for search by meaning. Where sqlite-vec cannot be loaded, it says why and holds none. */
+  vectors: Vectors
   /** Let go of the file. Nothing can be read or written afterwards. */
   close(): void
 }
 
-export function openStore({ folder, now }: StoreOptions): Store {
+export function openStore({ folder, now, vectorExtension }: StoreOptions): Store {
   mkdirSync(folder, { recursive: true })
   const database = openDatabase(join(folder, STORE_FILE))
   const search = createKeywordIndex(database)
   // Records written before the index existed, or by a version that did not keep it, are taken in now.
   search.catchUp()
+  const vectors = createVectors(database, loadVectorExtension(database, vectorExtension))
   return {
-    records: createRecords(database, search, now),
+    records: createRecords(database, search, vectors, now),
     search,
+    vectors,
     blobs: createBlobs(join(folder, 'files')),
     versions: createBlobs(join(folder, 'versions')),
     close: () => database.close()

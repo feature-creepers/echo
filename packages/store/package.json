@@ -11,7 +11,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@repo/core": "workspace:*"
+    "@repo/core": "workspace:*",
+    "sqlite-vec": "catalog:"
   },
   "devDependencies": {
     "@repo/tsconfig": "workspace:*",

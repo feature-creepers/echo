@@ -5,8 +5,8 @@
  * itself, as they are appended, indexing the text `searchableText` gives for each record and dropping what
  * an erasure names. It is never synced: each core rebuilds its own.
  *
- * Keyword search is what exists now. Vector search will be a second adapter whose hits are merged with these,
- * by the same record identifiers; keyword search must keep answering alone when there are no vectors.
+ * Search by meaning is a second port (`Vectors`), whose hits the memory merges with these by the same record
+ * identifiers (`memory/fusion.ts`). Keyword search keeps answering alone whenever there are no vectors.
  */
 
 export interface SearchQuery {

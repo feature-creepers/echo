@@ -37,6 +37,7 @@ export type { Timers } from './ports/clock.ts'
 export type { Changeable, Computer, FolderSnapshot, FoundChange } from './ports/computer.ts'
 export type { Desktop, DesktopElement, DesktopFound, SystemKey, WindowFacts, WindowImage, WindowOutline } from './ports/desktop.ts'
 export type { Drive, Drives } from './ports/drives.ts'
+export type { Embedder, EmbedderState, EmbeddingUse } from './ports/embedder.ts'
 export type {
   Attachment,
   ComputerUse,
@@ -65,5 +66,6 @@ export { PRINTABLE, type Printable, type Printed, type Printer, type Printers, t
 export { ERASURE, type Erasure, erasedBy, type NewRecord, type Records, type StoredRecord } from './ports/records.ts'
 export type { Search, SearchHit, SearchQuery } from './ports/search.ts'
 export type { ToolDefinition, ToolHost, ToolImage, ToolResult } from './ports/tools.ts'
+export type { NearestQuery, RecordVector, VectorCount, Vectors, VectorsAvailable, WithoutVector } from './ports/vectors.ts'
 export type { Web } from './ports/web.ts'
 export type { NewFile, Workspace, WorkspaceItem } from './ports/workspace.ts'
