@@ -20,6 +20,8 @@
     "@repo/client": "workspace:*",
     "@repo/protocol": "workspace:*",
     "@repo/tokens": "workspace:*",
+    "@ui-sdk/core": "catalog:",
+    "@ui-sdk/react": "catalog:",
     "class-variance-authority": "catalog:",
     "clsx": "catalog:",
     "d3-geo": "catalog:",
