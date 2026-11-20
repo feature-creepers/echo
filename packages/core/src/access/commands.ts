@@ -44,8 +44,10 @@ export interface ReadCommand {
 /** A path a line names, as written, for the adapter to resolve: `~/Documents`, `${HOME}/x`, `C:\Users`, `../a`. */
 export interface NamedPath {
   path: string
-  /** The command reaches what is inside it too: it goes through it, or a wildcard picks from it. */
+  /** The command goes through what is inside it: a recursive search, copy or archive, or a part only the shell knows. */
   below: boolean
+  /** A wildcard picks from it: the rest of the word from there (`*.kdbx`, `sub/a*.txt`), for the adapter to match. */
+  pattern?: string
 }
 
 export interface CommandReading {
@@ -260,12 +262,12 @@ const from = (folder: string, path: string) => (folder === '' || isAbsolute(path
 
 /**
  * The path a word names, as far as the line tells it. Where a wildcard, a variable or a command's output starts, the
- * word is cut: it names the folder that part picks from and what is below it, the folder the command runs in when
- * it names none. `unresolved` when where it leads cannot be told from the line: what cut it is only the shell's to
- * know, or what follows may climb out of that folder with `..`, written or matched (`{a,..}`, `.*`). Nothing for a
- * word that is no path.
+ * word is cut: it names the folder that part picks from, the folder the command runs in when it names none, with the
+ * wildcard's pattern for the adapter to match, or what is below it when only the shell knows. `unresolved` when where
+ * it leads cannot be told from the line: what cut it is only the shell's to know, or what follows may climb out of
+ * that folder with `..`, written or matched (`{a,..}`, `.*`). Nothing for a word that is no path.
  */
-function pathOf(word: Word, context: Context): { path: string; below: boolean; unresolved: boolean } | undefined {
+function pathOf(word: Word, context: Context): { path: string; below: boolean; pattern?: string; unresolved: boolean } | undefined {
   // A script block given to a command is code, read on its own, and no path.
   if (word.pieces.length === 1 && word.pieces[0]?.kind === 'inner' && word.pieces[0].block) return undefined
   let path = ''
@@ -300,7 +302,10 @@ function pathOf(word: Word, context: Context): { path: string; below: boolean; u
     const segment = (/[^\\/]*$/.exec(path)?.[0] ?? '') + rest + textOf({ pieces: after })
     const climbs = segment.includes('..') || /(^|[\\/{,])\.[*?[{]/.test(segment) || after.some((other) => other.kind !== 'text')
     const folder = path.replace(/[^\\/]*$/, '').replace(/(.)[\\/]+$/, '$1')
-    return { path: folder === '' && wildcard ? '.' : folder, below: true, unresolved: !wildcard || climbs }
+    const picksFrom = folder === '' && wildcard ? '.' : folder
+    // A wildcard of text alone is matched on the disk, from the folder it picks from.
+    if (wildcard && after.every((other) => other.kind === 'text')) return { path: picksFrom, below: false, pattern: segment, unresolved: climbs }
+    return { path: picksFrom, below: true, unresolved: true }
   }
   return path === '' ? undefined : { path, below: false, unresolved: false }
 }
@@ -318,8 +323,8 @@ function name(word: Word, context: Context, options: { always?: boolean; windows
     if (/\s/.test(path) || /^[-/]/.test(path) || !/^[\w.@+-][\w .@+-]*$/.test(path)) return
   } else if (NOWHERE.test(path)) return
   for (const folder of context.folders) {
-    const named = { path: from(folder, path), below: found.below || recursive }
-    const known = context.reading.paths.find((other) => other.path === named.path)
+    const named: NamedPath = { path: from(folder, path), below: found.below || recursive, ...(found.pattern === undefined ? {} : { pattern: found.pattern }) }
+    const known = context.reading.paths.find((other) => other.path === named.path && other.pattern === named.pattern)
     if (known) known.below ||= named.below
     else context.reading.paths.push(named)
   }
@@ -347,7 +352,7 @@ function withoutStart(word: Word, length: number): Word {
  */
 function moveTo(target: Word, context: Context): void {
   const found = pathOf(target, context)
-  if (found === undefined || found.unresolved || found.below || textOf(target) === '-') {
+  if (found === undefined || found.unresolved || found.below || found.pattern !== undefined || textOf(target) === '-') {
     moveAside(context, [''])
     context.reading.unresolved = true
     return

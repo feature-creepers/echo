@@ -263,6 +263,46 @@ describe('the scope', () => {
   })
 })
 
+describe('places never reached by their ending, through a wildcard or a recursive use', () => {
+  /** A granted folder holding `notes.txt`, `vault.kdbx` and `sub/old.kdb`, and `sub2`, holding nothing of the kind. */
+  function documents() {
+    const root = realpathSync.native(folder())
+    mkdirSync(join(root, 'sub'))
+    mkdirSync(join(root, 'sub2'))
+    for (const file of ['notes.txt', 'vault.kdbx', join('sub', 'old.kdb'), join('sub2', 'list.txt')]) writeFileSync(join(root, file), '')
+    const scope: Scope = {
+      places: [{ path: root, kind: 'folder', write: false }],
+      computer: 'off',
+      protected: [
+        { label: 'KeePass databases', ending: '.kdbx' },
+        { label: 'KeePass databases', ending: '.kdb' }
+      ]
+    }
+    return { root, scope }
+  }
+
+  it.each([
+    ['cat *.kdbx', 'keepass databases'],
+    ['cat *.txt', undefined],
+    ['cat ?ault.*', 'keepass databases'],
+    ['cat *.none', undefined],
+    ['grep -r token .', 'would go through'],
+    ['grep -r token sub', `sub${sep}old.kdb`],
+    ['grep -r token sub2', undefined]
+  ])('`%s`: %s', async (line, refused) => {
+    const { root, scope } = documents()
+    const found = await checkUse({ action: 'run', tool: 'Bash', paths: [root], command: line }, scope, [])
+    expect(found.refused?.reason.toLowerCase()).toEqual(refused === undefined ? undefined : expect.stringContaining(refused.toLowerCase()))
+    expect(found.unwalked).toBeUndefined()
+  })
+
+  it('refuses Grep on the folder', async () => {
+    const { root, scope } = documents()
+    expect(await outsideScope({ action: 'read', tool: 'Grep', paths: [root] }, scope, [])).toContain('would go through')
+    expect(await outsideScope({ action: 'read', tool: 'Grep', paths: [join(root, 'sub2')] }, scope, [])).toBeUndefined()
+  })
+})
+
 describe('git’s own files', () => {
   /** A repository, a folder git would take for a bare one, and git's settings in a home and an XDG folder, all on this disk. */
   function repositories() {

@@ -25,6 +25,27 @@ const CASES: [string, ComputerUse, Policy, boolean, Decision][] = [
   ['a command, run at auto where it may change', run('pnpm test'), guarded('auto'), false, RUNS('level')],
   ['a command given a variable, asked at trust, never for the session', run('NODE_OPTIONS=x npm run build'), guarded('trust'), false, ASKS(false, false)],
   ['a command run elevated, asked at trust, never for the session', run('sudo apt install x'), guarded('trust'), false, ASKS(false, false)],
+  [
+    'a recursive read of a folder past the bound, asked at auto, a yes for the session offered',
+    { ...run('grep -r token .'), unwalked: true },
+    guarded('auto'),
+    false,
+    ASKS(false, true)
+  ],
+  [
+    'a recursive read of a folder past the bound, covered for the session',
+    { ...run('grep -r token .'), unwalked: true },
+    guarded('auto'),
+    true,
+    RUNS('session')
+  ],
+  [
+    'a search with Grep of a folder past the bound, asked, a yes for the session offered',
+    { action: 'read', tool: 'Grep', paths: [FOLDER], unwalked: true },
+    guarded('auto'),
+    false,
+    ASKS(false, true)
+  ],
   ['the same command, not elevated, may be allowed for the session', run('apt install x'), guarded('trust'), false, ASKS(false, true)],
   ['a command naming a read-only place, asked at auto', run('pnpm test', 'read'), guarded('auto'), false, ASKS(false, true)],
   ['deleting, guarded: asked at auto, never for the session', run('rm notes.md'), guarded('auto'), false, ASKS(true, false)],

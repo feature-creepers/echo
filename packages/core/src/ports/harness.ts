@@ -94,6 +94,11 @@ export interface ComputerUse {
    */
   changesGit?: true | undefined
   /**
+   * A folder it goes through holds more than the adapter looked through for a file never reached, or a wildcard it
+   * names matches more paths than were checked: it is never run at once, though a yes for the session may cover it.
+   */
+  unwalked?: true | undefined
+  /**
    * The adapter found it beyond what was granted, or reaching a place never reached: the core refuses it with
    * this reason, and keeps the refusal in the activity.
    */

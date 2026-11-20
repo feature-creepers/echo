@@ -45,6 +45,19 @@ describe('a yes for the session on a command', () => {
     expect(covered(allowing('apt install'), line)).toBe(expected)
   })
 
+  it('covers a use that goes through more than was looked through by every command it runs, and a search by its tool', () => {
+    const allowances = allowing()
+    const line = 'grep -r token . && ls'
+    const deep: ComputerUse = { ...run(line), unwalked: true }
+    allowances.allow(deep, readCommand(line))
+    expect(allowances.list().map((one) => one.subject)).toEqual(['grep', 'ls'])
+    expect(allowances.covers(deep, readCommand(line))).toBe(true)
+    const search: ComputerUse = { action: 'read', tool: 'Grep', paths: ['/home/ada/project'], unwalked: true }
+    expect(allowances.covers(search, undefined)).toBe(false)
+    allowances.allow(search, undefined)
+    expect(allowances.covers(search, undefined)).toBe(true)
+  })
+
   it('allows nothing for an elevated line', () => {
     expect(allowing('sudo apt install x').list()).toEqual([])
   })

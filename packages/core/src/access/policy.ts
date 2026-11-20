@@ -1,6 +1,6 @@
 import type { Access } from '@repo/protocol'
 import type { ComputerUse } from '../ports/harness.ts'
-import { coverable } from './allowances.ts'
+import { sessionKeys } from './allowances.ts'
 import type { CommandReading } from './commands.ts'
 import { isLocalNetwork, isLoopback, listedHost } from './hosts.ts'
 
@@ -19,7 +19,9 @@ import { isLocalNetwork, isLoopback, listedHost } from './hosts.ts'
  * publishes, putting something before others beyond this computer (a push, a release, a post), is asked at
  * every level too; a yes for the session covers it, for those who push often. The person may turn either off:
  * what it guarded then follows the level like any other change. A change to a file git reads its settings, hooks or
- * repository from is asked at every level and never for the session: a rule, not a setting.
+ * repository from is asked at every level and never for the session: a rule, not a setting. A use the adapter could
+ * not look through whole for what is never reached (a folder too large, a wildcard matching too much) never runs at
+ * once, though a yes for the session may cover it.
  *
  * The network has two guardrails of its own. With `askLocalNetwork`, on by default, a command that reaches a device
  * of the local network is asked at every level. With `askNetwork`, off by default, so is a command that reaches
@@ -53,7 +55,12 @@ export function networkGuard(reading: CommandReading, policy: Policy): 'sending'
 
 export function decide(use: ComputerUse, policy: Policy, reading: CommandReading | undefined, coveredForSession: boolean): Decision {
   const level = policy.approvals
-  if (use.action === 'read') return { run: true, because: 'read-only' }
+  const session = sessionKeys(use, reading).length > 0
+  // A search of a folder too large to look through for what is never reached is asked, until allowed for the session.
+  if (use.action === 'read') {
+    if (!use.unwalked) return { run: true, because: 'read-only' }
+    return coveredForSession ? { run: true, because: 'session' } : { run: false, destructive: false, session }
+  }
   // A program written in git's own files would run on a git command that only reads, unseen: always asked, as a rule.
   if (use.changesGit) return { run: false, destructive: false, session: false }
   if (use.action === 'delete') {
@@ -62,15 +69,15 @@ export function decide(use: ComputerUse, policy: Policy, reading: CommandReading
   }
   if (use.action === 'run') {
     if (!reading) return { run: false, destructive: false, session: false }
-    if (reading.readOnly) return { run: true, because: 'read-only' }
+    if (reading.readOnly && !use.unwalked) return { run: true, because: 'read-only' }
     if (reading.destructive && policy.askDestroying) return { run: false, destructive: true, session: false }
     if ((reading.publishes && policy.askPublishing) || networkGuard(reading, policy)) {
-      return coveredForSession ? { run: true, because: 'session' } : { run: false, destructive: false, session: coverable(reading) }
+      return coveredForSession ? { run: true, because: 'session' } : { run: false, destructive: false, session }
     }
     // A command can change what it names: without asking, only where things may be changed.
-    if (level === 'auto' && use.reach === 'write') return { run: true, because: 'level' }
+    if (level === 'auto' && use.reach === 'write' && !use.unwalked) return { run: true, because: 'level' }
     if (coveredForSession) return { run: true, because: 'session' }
-    return { run: false, destructive: reading.destructive, session: coverable(reading) }
+    return { run: false, destructive: reading.destructive, session }
   }
   // A file created or changed: the adapter already refused one where it may only be read.
   return changeFile(level, coveredForSession)

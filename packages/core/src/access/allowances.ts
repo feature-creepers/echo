@@ -6,7 +6,8 @@ import type { CommandReading } from './commands.ts'
 /**
  * What the person allowed for the session: a yes that covers more than the one use it answered (docs/SPEC.md,
  * section 12.2). For a command, every use of the same program and subcommand (`git commit`, `npm run`,
- * `python`), its paths still checked; for a change to a file, any change in the same folder or below it. It is
+ * `python`), its paths still checked; for a change to a file, any change in the same folder or below it; for a
+ * search of a folder too large to look through first, any such search with the same tool. It is
  * kept in memory only: it ends when the app quits, when the access changes, or when everything is stopped.
  */
 export interface Allowances {
@@ -26,10 +27,16 @@ export interface Allowances {
 }
 
 /**
- * Whether a yes for the session may cover a command line: one with a command to cover, none that gives a program a
- * variable, which can make a program allowed run something else (`NODE_OPTIONS`, `PATH`), and none run elevated.
+ * What a yes for the session on a use covers, by key: a command line's keys, every command's when it goes through more
+ * than the adapter looked through; a search's tool, for one too large to look through. Nothing when no yes for the
+ * session may cover it: a line that gives a program a variable, which can make a program allowed run something else
+ * (`NODE_OPTIONS`, `PATH`), or one run elevated.
  */
-export const coverable = (reading: CommandReading) => reading.keys.length > 0 && reading.variables.length === 0 && !reading.elevated
+export function sessionKeys(use: ComputerUse, reading: CommandReading | undefined): string[] {
+  if (use.action === 'read') return use.unwalked ? [use.tool] : []
+  if (use.action !== 'run' || !reading || reading.variables.length > 0 || reading.elevated) return []
+  return use.unwalked ? [...new Set(reading.commands.map((command) => command.key))] : reading.keys
+}
 
 /** The folder a file is in, whatever the system's separator. */
 export function folderOf(path: string): string {
@@ -64,10 +71,11 @@ export function createAllowances({
     list: () => allowances,
 
     covers(use, reading) {
-      if (use.action === 'run') {
-        if (!reading || (reading.destructive && destroyingAsked()) || !coverable(reading)) return false
+      if (use.action === 'run' || use.action === 'read') {
+        if (reading?.destructive && destroyingAsked()) return false
+        const keys = sessionKeys(use, reading)
         const allowed = commands()
-        return reading.keys.every((key) => allowed.has(key))
+        return keys.length > 0 && keys.every((key) => allowed.has(key))
       }
       if (use.action !== 'create' && use.action !== 'change') return false
       const allowed = folders()
@@ -77,10 +85,10 @@ export function createAllowances({
     allow(use, reading) {
       const at = now().toISOString()
       const added: Allowance[] = []
-      if (use.action === 'run') {
-        if (!reading || (reading.destructive && destroyingAsked()) || !coverable(reading)) return
+      if (use.action === 'run' || use.action === 'read') {
+        if (reading?.destructive && destroyingAsked()) return
         const allowed = commands()
-        for (const key of reading.keys) if (!allowed.has(key)) added.push({ id: newId(), kind: 'command', subject: key, at })
+        for (const key of sessionKeys(use, reading)) if (!allowed.has(key)) added.push({ id: newId(), kind: 'command', subject: key, at })
       } else if (use.action === 'create' || use.action === 'change') {
         const allowed = folders()
         for (const folder of new Set(use.paths.map(folderOf)))

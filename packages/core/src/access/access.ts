@@ -10,7 +10,7 @@ import type { AccessChange, SettingsChange, UserSettings } from '../settings/set
 import type { Tool } from '../tools/tools.ts'
 import type { Screen, Showing } from '../views/screen.ts'
 import { type Activity, createActivity, type NewUse, type UndoResult } from './activity.ts'
-import { createAllowances, folderOf, within } from './allowances.ts'
+import { createAllowances, folderOf, sessionKeys, within } from './allowances.ts'
 import { type Answer, type Answered, type Approvals, createApprovals, type Question } from './approvals.ts'
 import { type CommandReading, readCommand } from './commands.ts'
 import { isLocalNetwork, isLoopback, listedHost } from './hosts.ts'
@@ -168,6 +168,12 @@ const GIT_NOTE: NonNullable<Question['note']> = {
   tone: 'danger'
 }
 
+/** Why a use that only reads is asked: what it goes through could not be looked through first. */
+const UNWALKED_NOTE: NonNullable<Question['note']> = {
+  text: 'It goes through more files than could be looked through first for password databases, which are never reached.',
+  tone: 'soft'
+}
+
 const DONE: Record<AccessUse['action'], string> = { read: 'read', create: 'created', change: 'changed', delete: 'deleted', run: 'ran' }
 const DOING: Record<AccessUse['action'], string> = { read: 'reading', create: 'creating', change: 'changing', delete: 'deleting', run: 'running' }
 
@@ -318,10 +324,19 @@ export function createAccess({ settings, screen, computer, timers, records, vers
     const [name, folder] = [folderName(path), folderOf(path)]
     const session = (text: string) => (offerSession ? { session: text } : {})
     const git = use.changesGit ? { note: GIT_NOTE } : {}
+    const keys = sessionKeys(use, reading)
     switch (use.action) {
+      case 'read':
+        return {
+          heading: 'Search this folder?',
+          subject: name,
+          facts: [{ label: 'In', value: where(folder) }],
+          note: UNWALKED_NOTE,
+          allow: 'Search it',
+          ...session(`Any search with ${keys[0] ?? use.tool} until you quit`)
+        }
       case 'run': {
-        const keys = reading?.keys ?? []
-        const note = reading ? commandNote(reading) : undefined
+        const note = reading ? commandNote(reading, use.unwalked === true) : undefined
         return {
           heading: 'Run this command?',
           subject: 'On your computer',
@@ -365,7 +380,7 @@ export function createAccess({ settings, screen, computer, timers, records, vers
   }
 
   /** What the person should know of a command before answering, the most serious first. */
-  const commandNote = (reading: CommandReading): Question['note'] => {
+  const commandNote = (reading: CommandReading, unwalked: boolean): Question['note'] => {
     const policy = access()
     const always = (asked: boolean) => (asked ? ' This is always asked.' : '')
     if (reading.destructive)
@@ -374,6 +389,7 @@ export function createAccess({ settings, screen, computer, timers, records, vers
     const guarded = networkGuard(reading, policy) !== undefined
     if (reading.sends.length > 0) return { text: `${sendsWords(reading.sends, reading.hosts)}${always(guarded)}`, tone: 'soft' }
     if (reading.network) return { text: `${reachesWords(reading.hosts)}${always(guarded)}`, tone: 'soft' }
+    if (unwalked) return UNWALKED_NOTE
     return reading.opaque ? { text: 'Part of what it runs cannot be read in advance.', tone: 'soft' } : undefined
   }
 

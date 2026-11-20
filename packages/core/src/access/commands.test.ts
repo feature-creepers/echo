@@ -445,15 +445,23 @@ describe('readCommand: paths it names', () => {
   it('says when it goes through what it names', () => {
     expect(readCommand('grep -r x ~').paths).toEqual([{ path: '~', below: true }])
     expect(readCommand('ls ~').paths).toEqual([{ path: '~', below: false }])
-    expect(readCommand('cat ~/.*').paths).toEqual([{ path: '~', below: true }])
+    expect(readCommand('ls ~/$DIR').paths).toEqual([{ path: '~', below: true }])
     expect(readCommand('tar czf a.tgz ~/x').paths).toEqual([
       { path: 'a.tgz', below: true },
       { path: '~/x', below: true }
     ])
   })
 
-  it('names the folder a wildcard picks from, the one it runs in when it names none', () => {
-    expect(readCommand('cat .s*/id_rsa').paths).toEqual([{ path: '.', below: true }])
+  it('names the folder a wildcard picks from, the one it runs in when it names none, with the pattern to match there', () => {
+    expect(readCommand('cat .s*/id_rsa').paths).toEqual([{ path: '.', below: false, pattern: '.s*/id_rsa' }])
+    expect(readCommand('cat ~/.*').paths).toEqual([{ path: '~', below: false, pattern: '.*' }])
+    expect(readCommand('cat *.txt *.md').paths).toEqual([
+      { path: '.', below: false, pattern: '*.txt' },
+      { path: '.', below: false, pattern: '*.md' }
+    ])
+    expect(readCommand('grep -r token ~/notes/*.md').paths).toEqual([{ path: '~/notes', below: true, pattern: '*.md' }])
+    // A wildcard followed by what only the shell knows is not matched: what is below the folder is reached.
+    expect(readCommand('cat *$X').paths).toEqual([{ path: '.', below: true }])
   })
 
   it.each(['ls $DIR', 'cat $(which x)', 'ls ~/$DIR', 'cat foo-$VERSION.txt', 'd=~; cat $d/.ssh/id_rsa', 'cat */../../x', 'cat ~/.*', 'cd ~/Doc* && cat a'])(
