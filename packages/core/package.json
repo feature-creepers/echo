@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@noble/hashes": "catalog:",
     "@repo/catalog": "workspace:*",
     "@repo/protocol": "workspace:*",
     "zod": "catalog:"

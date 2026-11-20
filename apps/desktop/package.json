@@ -25,7 +25,6 @@
   },
   "devDependencies": {
     "@repo/client": "workspace:*",
-    "@repo/models": "workspace:*",
     "@repo/protocol": "workspace:*",
     "@repo/server": "workspace:*",
     "@repo/speech": "workspace:*",

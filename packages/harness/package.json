@@ -11,7 +11,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@repo/core": "workspace:*"
+    "@repo/core": "workspace:*",
+    "smol-toml": "catalog:"
   },
   "devDependencies": {
     "@repo/tsconfig": "workspace:*",

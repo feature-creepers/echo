@@ -13,7 +13,6 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@repo/catalog": "workspace:*",
     "@repo/protocol": "workspace:*"
   },
   "devDependencies": {

@@ -207,26 +207,6 @@
       }
     },
     {
-      "includes": ["packages/embedder/**"],
-      "linter": {
-        "rules": {
-          "style": {
-            "noRestrictedImports": {
-              "level": "error",
-              "options": {
-                "patterns": [
-                  {
-                    "group": ["@repo/*", "!@repo/embedder", "!@repo/core", "!@repo/models"],
-                    "message": "@repo/embedder may only import: @repo/core, @repo/models. See docs/SPEC.md, section 14.3."
-                  }
-                ]
-              }
-            }
-          }
-        }
-      }
-    },
-    {
       "includes": ["packages/tools/**"],
       "linter": {
         "rules": {
@@ -329,27 +309,6 @@
         }
       }
     },
-    // Test doubles for the ports of the core.
-    {
-      "includes": ["packages/testing/**"],
-      "linter": {
-        "rules": {
-          "style": {
-            "noRestrictedImports": {
-              "level": "error",
-              "options": {
-                "patterns": [
-                  {
-                    "group": ["@repo/*", "!@repo/testing", "!@repo/core", "!@repo/protocol", "!@repo/catalog"],
-                    "message": "@repo/testing may only import: @repo/core, @repo/protocol, @repo/catalog. See docs/SPEC.md, section 14.3."
-                  }
-                ]
-              }
-            }
-          }
-        }
-      }
-    },
     // Applications.
     {
       "includes": ["apps/server/**"],
@@ -371,12 +330,11 @@
                       "!@repo/store",
                       "!@repo/browser",
                       "!@repo/screen",
-                      "!@repo/embedder",
                       "!@repo/tools",
                       "!@repo/speech",
                       "!@repo/models"
                     ],
-                    "message": "@repo/server may only import: @repo/core, @repo/protocol, @repo/catalog, @repo/harness, @repo/store, @repo/browser, @repo/screen, @repo/embedder, @repo/tools, @repo/speech, @repo/models. See docs/SPEC.md, section 14.3."
+                    "message": "@repo/server may only import: @repo/core, @repo/protocol, @repo/catalog, @repo/harness, @repo/store, @repo/browser, @repo/screen, @repo/tools, @repo/speech, @repo/models. See docs/SPEC.md, section 14.3."
                   }
                 ]
               }

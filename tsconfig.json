@@ -26,9 +26,6 @@
       "path": "packages/screen"
     },
     {
-      "path": "packages/embedder"
-    },
-    {
       "path": "packages/tools"
     },
     {
@@ -42,9 +39,6 @@
     },
     {
       "path": "packages/ui-web"
-    },
-    {
-      "path": "packages/testing"
     },
     {
       "path": "packages/client/tsconfig.node.json"
