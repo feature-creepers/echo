@@ -116,6 +116,22 @@ describe('the scope', () => {
     expect(await outsideScope(run('ls', secret), scope, [])).toContain('outside')
   })
 
+  it.each([
+    ['cd missing; cat ../.ssh/id_rsa', 'ssh keys'],
+    ['cd missing && cat ../.ssh/id_rsa', undefined]
+  ])('reads `%s` from every folder it may be in, with this system’s own paths', async (line, refused) => {
+    // Paths as this system writes them, there or not: the check reads them the way the system would.
+    const home = process.platform === 'win32' ? 'C:\\Users\\ada' : process.platform === 'darwin' ? '/Users/ada' : '/home/ada'
+    const work = join(home, 'work')
+    const scope: Scope = {
+      places: [{ path: work, kind: 'folder', write: false }],
+      computer: 'off',
+      protected: [{ label: 'SSH keys', path: join(home, '.ssh') }]
+    }
+    const found = await checkUse({ action: 'run', tool: 'Bash', paths: [work], command: line }, scope, [])
+    expect(found.refused?.reason.toLowerCase()).toEqual(refused === undefined ? undefined : expect.stringContaining(refused))
+  })
+
   it('says whether every place a command names may be changed', async () => {
     const { granted, secret } = machine()
     const scope: Scope = {

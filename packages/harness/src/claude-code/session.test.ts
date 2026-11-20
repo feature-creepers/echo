@@ -466,7 +466,7 @@ describe('a Claude Code session', () => {
     expect(args[args.indexOf('--model') + 1]).toBe('sonnet')
   })
 
-  it('starts the CLI without the marks of a surrounding agent session, and with its memory off', async () => {
+  it('starts the CLI without the marks of a surrounding agent session, with its memory off, and each command in its folder', async () => {
     const session = harness({
       env: {
         ...process.env,
@@ -491,7 +491,8 @@ describe('a Claude Code session', () => {
       UNRELATED: 'kept',
       CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
       MCP_TOOL_TIMEOUT: '3600000',
-      CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'
+      CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1',
+      CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR: '1'
     })
   })
 

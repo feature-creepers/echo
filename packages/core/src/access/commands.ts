@@ -1,4 +1,4 @@
-import { isPlain, type Piece, type Shell, type Stage, scan, textOf, type Word } from './command-words.ts'
+import { isPlain, type Join, type Piece, type Shell, type Stage, scan, textOf, type Word } from './command-words.ts'
 import { hostsOf } from './hosts.ts'
 import { optionValues, sentBy } from './sending.ts'
 
@@ -124,11 +124,18 @@ function harmless(variable: string, value: string, exported: boolean): boolean {
 /** Paths that are no file: where output is thrown away, the terminal, standard streams. */
 const NOWHERE = /^(\/dev\/(null|stdin|stdout|stderr|tty|zero|random|urandom|fd\/\d+)|nul|con|\$null|-)$/i
 
-/** What the line runs in: the shell, the folder `cd` moved to, and the variables it set itself. */
+/** What the line runs in: the shell, the folders it may be in, and the variables it set itself. */
 interface Context {
   shell: Shell
-  /** Where `cd` moved to within the line, as written. Relative paths after it are read from there. */
-  folder: string | undefined
+  /**
+   * The folders the line may be in, as written, `''` for the one it runs in: a `cd` moves each of them. Relative
+   * paths are read from every one.
+   */
+  folders: readonly string[]
+  /** Where the line would be had a `cd` since the last boundary failed: the folders it was in before. */
+  aside: readonly string[]
+  /** The stage read last was a `cd`: piped to the next stage, it runs apart, and the line may be where it was. */
+  moved: boolean
   /** Variables the line sets itself (`x=…`, `for f in …`, `$_`): their values were read where they were set. */
   bound: Set<string>
   reading: CommandReading
@@ -152,7 +159,7 @@ export function readCommand(line: string, shell: Shell = 'posix'): CommandReadin
     hosts: [],
     sends: []
   }
-  readLine(line, { shell, folder: undefined, bound: new Set(), reading, depth: 0 })
+  readLine(line, { shell, folders: [''], aside: [], moved: false, bound: new Set(), reading, depth: 0 })
   reading.programs = [...new Set(reading.commands.map((command) => command.program))]
   reading.keys = [...new Set(reading.commands.filter((command) => !command.readOnly).map((command) => command.key))]
   reading.readOnly = reading.readOnly && !reading.opaque && !reading.unresolved && reading.commands.every((command) => command.readOnly)
@@ -178,7 +185,34 @@ function readLine(line: string, context: Context): void {
   const scanned = scan(line, context.shell)
   if (scanned.unreadable) context.reading.opaque = true
   for (const inner of scanned.inner) readLine(inner, { ...context, depth: context.depth + 1 })
-  for (const stage of scanned.stages) readStage(stage, context)
+  for (const stage of scanned.stages) {
+    follow(stage.join, context)
+    readStage(stage, context)
+  }
+}
+
+/** How many folders the line may be in before it is no longer told: each `cd` after a boundary may double them. */
+const MAX_FOLDERS = 16
+
+/**
+ * Where a stage may run, from how it follows the one before. After `&&`, or a pipe from anything but a `cd`, where
+ * the line is; after any other join, also where it would be had a `cd` before it failed.
+ */
+function follow(join: Join, context: Context): void {
+  const keeps = join === 'and' || (join === 'pipe' && !context.moved)
+  context.moved = false
+  if (keeps || context.aside.length === 0) return
+  const folders = [...new Set([...context.folders, ...context.aside])]
+  context.aside = []
+  if (folders.length <= MAX_FOLDERS) context.folders = folders
+  else lost(context)
+}
+
+/** The line is somewhere it cannot tell: what follows is read from where it runs, and it is not read as only reading. */
+function lost(context: Context): void {
+  context.reading.unresolved = true
+  context.folders = ['']
+  context.aside = []
 }
 
 // ---------------------------------------------------------------- paths
@@ -201,6 +235,9 @@ const isAbsolute = (path: string) => /^(\/|\\|~|\$\{|[A-Za-z]:)/.test(path)
 
 /** A relative path read from a folder: `sub` and `a.txt` are `sub/a.txt`, `/` and `tmp` are `/tmp`. */
 const joined = (folder: string, path: string) => `${folder.replace(/[\\/]+$/, '')}/${path}`
+
+/** A path read from one of the folders the line may be in: as written from the one it runs in, and when absolute. */
+const from = (folder: string, path: string) => (folder === '' || isAbsolute(path) ? path : joined(folder, path))
 
 /**
  * The path a word names, as far as the line tells it. Where a wildcard, a variable or a command's output starts, the
@@ -249,23 +286,24 @@ function pathOf(word: Word, context: Context): { path: string; below: boolean; u
   return path === '' ? undefined : { path, below: false, unresolved: false }
 }
 
-/** Note a path the line names, read from the folder `cd` moved to. Words that are not paths are left alone. */
+/** Note a path the line names, read from every folder the line may be in. Words that are not paths are left alone. */
 function name(word: Word, context: Context, options: { always?: boolean; windowsProgram?: boolean; recursive?: boolean } = {}): void {
   const found = pathOf(word, context)
   if (!found) return
   if (found.unresolved) context.reading.unresolved = true
   if (found.path === '') return
   const { always = false, windowsProgram = false, recursive = false } = options
-  let { path } = found
+  const { path } = found
   if (!always && !looksLikePath(path, context.shell, windowsProgram)) {
     // A plain name is in the folder the command runs in, which matters only once `cd` moved elsewhere.
-    if (context.folder === undefined || /\s/.test(path) || /^[-/]/.test(path) || !/^[\w.@+-][\w .@+-]*$/.test(path)) return
+    if (context.folders.every((folder) => folder === '') || /\s/.test(path) || /^[-/]/.test(path) || !/^[\w.@+-][\w .@+-]*$/.test(path)) return
   } else if (NOWHERE.test(path)) return
-  if (context.folder !== undefined && !isAbsolute(path)) path = joined(context.folder, path)
-  const named = { path, below: found.below || recursive }
-  const known = context.reading.paths.find((other) => other.path === named.path)
-  if (known) known.below ||= named.below
-  else context.reading.paths.push(named)
+  for (const folder of context.folders) {
+    const named = { path: from(folder, path), below: found.below || recursive }
+    const known = context.reading.paths.find((other) => other.path === named.path)
+    if (known) known.below ||= named.below
+    else context.reading.paths.push(named)
+  }
 }
 
 /** A word's value after `--name=` or `name=`, as a word of its own, when it has one. */
@@ -285,18 +323,27 @@ function withoutStart(word: Word, length: number): Word {
 }
 
 /**
- * Move the folder the line reads relative paths from, as `cd` does to a word: named, and unknown, the line no longer
- * read as only reading, when the line cannot tell where it goes.
+ * Move the folders the line reads relative paths from, as `cd` does to a word: named from each, the folders before
+ * held aside in case it fails. When the line cannot tell where it goes, it no longer reads as only reading.
  */
 function moveTo(target: Word, context: Context): void {
   const found = pathOf(target, context)
   if (found === undefined || found.unresolved || found.below || textOf(target) === '-') {
+    moveAside(context, [''])
     context.reading.unresolved = true
-    context.folder = undefined
     return
   }
   name(target, context, { always: true })
-  context.folder = isAbsolute(found.path) || context.folder === undefined ? found.path : joined(context.folder, found.path)
+  moveAside(
+    context,
+    context.folders.map((folder) => from(folder, found.path))
+  )
+}
+
+/** The line moves to these folders, unless the move fails: then it stays where it was. */
+function moveAside(context: Context, folders: readonly string[]): void {
+  context.aside = [...new Set([...context.aside, ...context.folders])]
+  context.folders = [...new Set(folders)]
 }
 
 // ---------------------------------------------------------------- programs
@@ -1889,16 +1936,22 @@ function readStage(stage: Stage, context: Context): void {
       : kindOf(found.name, argTexts, context)
   if (elevated) kind.readOnly = false
   // A shell or an interpreter that reads what it is fed runs code that is not read here: `curl … | sh`, `python - <<EOF`.
-  if ((stage.piped || stage.fed) && (INTERPRETERS.has(found.name) || (SHELLS[found.name] && !kind.launcher))) kind.opaque = true
+  if ((stage.join === 'pipe' || stage.fed) && (INTERPRETERS.has(found.name) || (SHELLS[found.name] && !kind.launcher))) kind.opaque = true
 
   // `cd somewhere`: what follows is read from there. `popd` goes back where the line cannot tell.
   if (['cd', 'pushd', 'chdir', 'set-location', 'push-location', 'popd', 'pop-location'].includes(program.toLowerCase())) {
     const target = args.find((word) => !textOf(word).startsWith('-') && !/^\/d$/i.test(textOf(word)))
-    if (['popd', 'pop-location'].includes(program.toLowerCase())) {
+    // The POSIX shell and cmd run each stage of a pipeline apart: a `cd` there moves nothing after it. PowerShell does
+    // not, and moves to what it is given through the pipe when it names no folder.
+    const apart = stage.join === 'pipe' && context.shell !== 'powershell'
+    if (apart) {
+      if (target !== undefined) name(target, context, { always: true })
+    } else if (['popd', 'pop-location'].includes(program.toLowerCase()) || (target === undefined && stage.join === 'pipe')) {
+      moveAside(context, [''])
       reading.unresolved = true
-      context.folder = undefined
     } else if (target !== undefined) moveTo(target, context)
-    else if (context.shell === 'posix') context.folder = '~'
+    else if (context.shell === 'posix') moveAside(context, ['~'])
+    context.moved = true
     reading.commands.push(command(program, program, argTexts, { readOnly: true }))
     return
   }
@@ -1928,7 +1981,7 @@ function readStage(stage: Stage, context: Context): void {
   // What it sends to another machine: the files an upload or a copy to a server carries, and what it is fed from a
   // file or a pipe when it sends its input. A file it is fed is said by its name.
   const input = stage.redirects.find((redirect) => !redirect.writes)
-  const sent = sentBy(program, argTexts, stage.piped || input !== undefined)
+  const sent = sentBy(program, argTexts, stage.join === 'pipe' || input !== undefined)
   const sends = (sent?.files ?? []).map((file) => (file === '-' && input ? textOf(input.target) : file))
 
   const key = kind.sub && WITH_SUBCOMMANDS.has(found.name) ? `${program} ${kind.sub.toLowerCase()}` : program

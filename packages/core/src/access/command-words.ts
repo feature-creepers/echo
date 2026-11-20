@@ -31,12 +31,17 @@ export interface Redirect {
   writes: boolean
 }
 
-/** One simple command: its words, the files it is redirected to, and how its input comes. */
+/**
+ * How a stage follows the one before it: `and` once that one succeeded (`&&`), `pipe` reading its output, `other`
+ * whatever came of it (`;`, a new line, `||`, `&`, the start or end of a `( … )` group).
+ */
+export type Join = 'and' | 'pipe' | 'other'
+
+/** One simple command: its words, the files it is redirected to, how it follows the stage before, and how its input comes. */
 export interface Stage {
   words: Word[]
   redirects: Redirect[]
-  /** It reads the output of the stage before it, through a pipe. */
-  piped: boolean
+  join: Join
   /** It reads a here-document or a here-string. */
   fed: boolean
 }
@@ -63,7 +68,7 @@ export const isPlain = (word: Word) => word.pieces.every((piece) => piece.kind =
 /** A scanner's state: the stages so far, the stage and the word being read. */
 function scanState() {
   const scanned: Scanned = { stages: [], inner: [], unreadable: false }
-  let stage: Stage = { words: [], redirects: [], piped: false, fed: false }
+  let stage: Stage = { words: [], redirects: [], join: 'other', fed: false }
   let word: Piece[] | undefined
   /** An operator read, waiting for the word it applies to: a file, or what a here-document or here-string is. */
   let pending: { kind: 'file'; writes: boolean } | { kind: 'heredoc'; strip: boolean } | { kind: 'drop' } | undefined
@@ -104,12 +109,14 @@ function scanState() {
     expect(next: typeof pending) {
       pending = next
     },
-    /** The stage read so far is whole; the next one reads its input from a pipe when `piped`. */
-    endStage(piped = false) {
+    /** The stage read so far is whole; the next one follows it by `join`. */
+    endStage(join: Join) {
       this.endWord()
       pending = undefined
-      if (stage.words.length > 0 || stage.redirects.length > 0) scanned.stages.push(stage)
-      stage = { words: [], redirects: [], piped, fed: false }
+      const empty = stage.words.length === 0 && stage.redirects.length === 0
+      if (!empty) scanned.stages.push(stage)
+      // A join with nothing before it, such as the `&&` after a group's `)`, keeps the boundary it follows.
+      stage = { words: [], redirects: [], join: empty && stage.join === 'other' ? 'other' : join, fed: false }
     }
   }
 }
@@ -348,13 +355,13 @@ function scanPosix(text: string): Scanned {
       state.endWord()
       at += 1
     } else if (c === '\n') {
-      state.endStage()
+      state.endStage('other')
       at = skipHeredocs(at + 1)
     } else if (c === '#' && state.word === undefined) {
       const end = text.indexOf('\n', at)
       at = end < 0 ? text.length : end
     } else if (c === ';') {
-      state.endStage()
+      state.endStage('other')
       at += text[at + 1] === ';' || text[at + 1] === '&' ? 2 : 1
     } else if (c === '&') {
       if (text[at + 1] === '>') {
@@ -362,20 +369,20 @@ function scanPosix(text: string): Scanned {
         state.expect({ kind: 'file', writes: true })
         at += text[at + 2] === '>' ? 3 : 2
       } else {
-        state.endStage()
+        state.endStage(text[at + 1] === '&' ? 'and' : 'other')
         at += text[at + 1] === '&' ? 2 : 1
       }
     } else if (c === '|') {
       if (text[at + 1] === '|') {
-        state.endStage()
+        state.endStage('other')
         at += 2
       } else {
-        state.endStage(true)
+        state.endStage('pipe')
         at += text[at + 1] === '&' ? 2 : 1
       }
     } else if (c === '(' || c === ')') {
       // A subshell or a group: what is inside is read as stages of the line.
-      state.endStage()
+      state.endStage('other')
       at += 1
     } else if (c === '<' || c === '>') at = redirection(at)
     else {
@@ -383,7 +390,7 @@ function scanPosix(text: string): Scanned {
       at += 1
     }
   }
-  state.endStage()
+  state.endStage('other')
   return scanned
 }
 
@@ -498,13 +505,13 @@ function scanPowerShell(text: string): Scanned {
       at = group(at + 1, '(', ')', call)
     } else if (c === '{') at = group(at + 1, '{', '}')
     else if (c === ')' || c === '}') {
-      state.endStage()
+      state.endStage('other')
       at += 1
     } else if (c === ' ' || c === '\t' || c === '\r') {
       state.endWord()
       at += 1
     } else if (c === '\n' || c === ';') {
-      state.endStage()
+      state.endStage('other')
       at += 1
     } else if (c === '<' && text[at + 1] === '#') {
       const end = text.indexOf('#>', at + 2)
@@ -514,14 +521,14 @@ function scanPowerShell(text: string): Scanned {
       at = end < 0 ? text.length : end
     } else if (c === '|') {
       if (text[at + 1] === '|') {
-        state.endStage()
+        state.endStage('other')
         at += 2
       } else {
-        state.endStage(true)
+        state.endStage('pipe')
         at += 1
       }
     } else if (c === '&' && text[at + 1] === '&') {
-      state.endStage()
+      state.endStage('and')
       at += 2
     } else if (c === '&' && state.word === undefined) {
       // The call operator: what follows is the program. As a word of its own, it is told apart from text.
@@ -555,7 +562,7 @@ function scanPowerShell(text: string): Scanned {
       at += 1
     }
   }
-  state.endStage()
+  state.endStage('other')
   return scanned
 }
 
@@ -595,21 +602,21 @@ function scanCmd(text: string): Scanned {
       state.endWord()
       at += 1
     } else if (c === '\n') {
-      state.endStage()
+      state.endStage('other')
       at += 1
     } else if (c === '&') {
-      state.endStage()
+      state.endStage(text[at + 1] === '&' ? 'and' : 'other')
       at += text[at + 1] === '&' ? 2 : 1
     } else if (c === '|') {
       if (text[at + 1] === '|') {
-        state.endStage()
+        state.endStage('other')
         at += 2
       } else {
-        state.endStage(true)
+        state.endStage('pipe')
         at += 1
       }
     } else if (c === '(' || c === ')') {
-      state.endStage()
+      state.endStage('other')
       at += 1
     } else if (c === '<' || c === '>') {
       const word = state.word
@@ -627,7 +634,7 @@ function scanCmd(text: string): Scanned {
     }
   }
   if (quoted) scanned.unreadable = true
-  state.endStage()
+  state.endStage('other')
   return scanned
 
   /** `%NAME%`, or a parameter of a batch file (`%1`, `%~dp0`), or a loop's variable (`%%i`). */

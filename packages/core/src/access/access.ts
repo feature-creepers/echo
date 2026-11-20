@@ -612,6 +612,7 @@ export function createAccess({ settings, screen, computer, timers, records, vers
         ...networkLines({ askNetwork, askLocalNetwork, askSending, allowedHosts, refusedHosts }),
         `- When a card asks them, your call returns once they answered${approvalWait === null ? '' : `, or after ${approvalWait} minutes without an answer, which counts as a no`}. They can allow it once, or for the session: the same program and subcommand (git commit, npm run, python), or any change in the same folder, then runs at once until the app quits.`,
         '- Every use is checked first against what they granted. A command is checked by the paths it names, with ~, variables and .. read: one that names a place outside, or a place never reached, is refused before anyone is asked. This reads what the command names, not what a program works out once it runs, so never use a command to reach around it: name the places you work on.',
+        '- Each command starts in your working folder, and a cd lasts only for the command it is in.',
         ...(tools.confines
           ? [
               '- The system also holds each command to what they granted: it can change only the places you may change, and package caches and the temporary folder, and never read a place never reached. A command that fails for it ("Operation not permitted", "Read-only file system", "Access is denied") was held there, and is never run outside: say what it needed, and that they can grant it in Settings, Access.'

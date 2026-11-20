@@ -991,6 +991,7 @@ describe('what a thread is told', () => {
     expect(access.standing()).toContain('never reached')
     expect(access.standing()).toContain('Commands may use the network when the task needs it')
     expect(access.standing()).toContain('a git push')
+    expect(access.standing()).toContain('a cd lasts only for the command it is in')
     expect(access.standing()).not.toContain('never use them to reach the web')
     settings.setAccess({ approvals: 'auto' })
     expect(access.standing()).toContain('Everything within what they granted runs at once')

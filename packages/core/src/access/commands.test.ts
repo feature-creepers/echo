@@ -468,6 +468,36 @@ describe('readCommand: paths it names', () => {
   })
 })
 
+describe('readCommand: paths after a cd, from every folder the line may be in', () => {
+  it.each([
+    ['cd sub && cat ../a.txt', 'posix', ['sub', 'sub/../a.txt']],
+    ['cd sub; cat ../a.txt', 'posix', ['sub', 'sub/../a.txt', '../a.txt']],
+    ['cd sub || cat a.txt', 'posix', ['sub', 'sub/a.txt', 'a.txt']],
+    ['cd sub\ncat a.txt', 'posix', ['sub', 'sub/a.txt', 'a.txt']],
+    ['cd sub | cat a.txt', 'posix', ['sub', 'sub/a.txt', 'a.txt']],
+    ['cd sub && ls | grep -f p.txt', 'posix', ['sub', 'sub/p.txt']],
+    ['(cd sub && cat a.txt) && cat b.txt', 'posix', ['sub', 'sub/a.txt', 'sub/b.txt', 'b.txt']],
+    ['cd a; cd b; cat c', 'posix', ['a', 'a/b', 'b', 'a/b/c', 'b/c', 'a/c', 'c']],
+    ['cd /tmp && cat a; cat b', 'posix', ['/tmp', '/tmp/a', '/tmp/b', 'b']],
+    ['{ cd sub; }; cat a.txt', 'posix', ['sub', 'sub/a.txt', 'a.txt']],
+    ['ls | cd sub && cat ../a.txt', 'posix', ['sub', '../a.txt']],
+    ['Set-Location sub; Get-Content a.txt', 'powershell', ['sub', 'sub/a.txt', 'a.txt']],
+    ['Set-Location sub && Get-Content a.txt', 'powershell', ['sub', 'sub/a.txt']],
+    ['cd sub & type a.txt', 'cmd', ['sub', 'sub/a.txt', 'a.txt']],
+    ['cd /d sub && type a.txt', 'cmd', ['sub', 'sub/a.txt']]
+  ] as const)('`%s` in %s names %j', (line, shell, expected) => {
+    expect(paths(line, shell).sort()).toEqual([...expected].sort())
+  })
+
+  it.each([
+    ['cd a; cd b; cd c; cd d; cd e; ls', true],
+    ['cd a; cd b; cd c; cd d; ls', false],
+    ['Get-Item ~ | Set-Location; Get-Content a.txt', true]
+  ] as const)('cannot tell where `%s` is once it may be in too many folders, or one it cannot tell: %s', (line, unresolved) => {
+    expect(readCommand(line, line.startsWith('Get-') ? 'powershell' : 'posix').unresolved).toBe(unresolved)
+  })
+})
+
 describe('readCommand: keys for a session approval', () => {
   it.each([
     ['git commit -m "x"', ['git commit']],
@@ -506,7 +536,7 @@ describe('readCommand: lines that try to hide what they do', () => {
     ['nohup rm x &', { destructive: true }],
     ['timeout 5 rm x', { destructive: true }],
     ['if true; then rm x; fi', { destructive: true }],
-    ['(cd /; rm -rf tmp)', { destructive: true, paths: ['/', '/tmp'] }],
+    ['(cd /; rm -rf tmp)', { destructive: true, paths: ['/', '/tmp', 'tmp'] }],
     ['{ rm x; }', { destructive: true }],
     ['echo "$(rm x)"', { destructive: true }],
     ['x=$(rm a) ls', { destructive: true }]

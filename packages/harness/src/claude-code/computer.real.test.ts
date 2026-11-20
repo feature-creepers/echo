@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ComputerUse, Reach, Session } from '@repo/core'
 import { afterAll, describe, expect, it } from 'vitest'
@@ -73,6 +73,33 @@ describe.runIf(real)('the real Claude Code on the computer', () => {
       await followed.until('turn-end', 3)
       expect(asked).toContainEqual(expect.objectContaining({ action: 'create', paths: [join(workspace, 'done.txt')] }))
       expect(readFileSync(join(workspace, 'done.txt'), 'utf8')).toContain('ok')
+    },
+    TIMEOUT_MS
+  )
+
+  it(
+    'starts each command in the session’s folder: a cd does not carry to the next command',
+    async () => {
+      const root = realpathSync.native(folder())
+      const workspace = join(root, 'workspace')
+      mkdirSync(join(workspace, 'sub'), { recursive: true })
+      const reach: Reach = {
+        scope: () => ({ places: [{ path: workspace, kind: 'folder', write: true }], computer: 'off', home: workspace }),
+        approve: async () => ({ allow: true })
+      }
+      const claude = createClaudeCode({ folder: join(root, 'harness'), log: recordingLog(), models: { thread: 'haiku' } })
+      const session = claude.open({
+        role: 'thread',
+        instructions: 'You are a test assistant. Use your tools to do exactly what is asked, then answer in one short sentence.',
+        computer: reach
+      })
+      sessions.push(session)
+      const followed = follow(session)
+
+      session.send('Run the Bash command `cd sub` on its own. Then, in a second and separate Bash command, run `pwd > where.txt`.')
+      await followed.until('turn-end')
+      expect(existsSync(join(workspace, 'where.txt'))).toBe(true)
+      expect(existsSync(join(workspace, 'sub', 'where.txt'))).toBe(false)
     },
     TIMEOUT_MS
   )

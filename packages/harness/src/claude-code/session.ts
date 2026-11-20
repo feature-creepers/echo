@@ -73,7 +73,9 @@ const COMMAND_VARIABLES = {
   // approval the person has not answered yet), would finish after the turn the core is following has ended,
   // and the CLI would answer it on its own, out of turn. Nothing runs in the background: the person waits for
   // what they asked, sees it on screen, and can stop it.
-  CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'
+  CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1',
+  // Each command starts in the session's folder, where its paths are read from: a `cd` lasts only for its own command.
+  CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR: '1'
 }
 
 /** A live session with Claude Code. It starts the CLI at once; what is sent before the CLI runs is kept for it. */
