@@ -476,6 +476,10 @@ interface Kind {
   variables?: string[]
   /** It runs what it starts as another user, the administrator by default: `Start-Process -Verb RunAs`. */
   elevated?: boolean
+  /** What it nests runs in the home of who it runs as, which the line does not tell: `su - -c "…"`. */
+  login?: boolean
+  /** Where some of its paths lead cannot be told from the line: `tar -C dir` reads the words after it from there. */
+  unresolved?: boolean
   /**
    * It goes through the folder it runs in when it names no path: `always`, or `unfed`, unless it is given something
    * to search through a pipe or a file (`rg`).
@@ -920,14 +924,25 @@ const INTERPRETERS = new Set([
 /** Programs that run another as another user, the administrator by default. */
 const ELEVATING = new Set(['sudo', 'doas', 'run0', 'pkexec', 'gsudo', 'su', 'runas'])
 
-/** Programs that take another command after their own options, and run it. */
-const WRAPPERS: Record<string, { values: readonly string[] }> = {
-  sudo: { values: ['-u', '-g', '-C', '-D', '-h', '-p', '-r', '-t', '-U'] },
+/**
+ * Programs that take another command after their own options, and run it: the options that take a value, those of them
+ * that run the command in another folder (`env -C dir`) or run a line they are given (`env -S "…"`), and the flags that
+ * start it in the home of who it runs as (`sudo -i`).
+ */
+const WRAPPERS: Record<string, { values: readonly string[]; moves?: readonly string[]; splits?: readonly string[]; login?: readonly string[] }> = {
+  sudo: {
+    values: ['-u', '-g', '-C', '-D', '-p', '-r', '-t', '-U', '--user', '--group', '--chdir', '--prompt', '--role', '--type', '--other-user', '--close-from'],
+    moves: ['-D', '--chdir'],
+    login: ['-i', '--login']
+  },
   doas: { values: ['-u', '-C'] },
-  run0: { values: ['-u', '-g', '-D', '--user', '--group', '--chdir', '--unit', '--property', '--description', '--slice', '--nice', '--setenv', '--machine'] },
+  run0: {
+    values: ['-u', '-g', '-D', '--user', '--group', '--chdir', '--unit', '--property', '--description', '--slice', '--nice', '--setenv', '--machine'],
+    moves: ['-D', '--chdir']
+  },
   pkexec: { values: ['--user'] },
   gsudo: { values: ['-u', '--user', '-i', '--integrity'] },
-  env: { values: ['-u', '-C', '-S', '--unset', '--chdir'] },
+  env: { values: ['-u', '-C', '-S', '--unset', '--chdir', '--split-string'], moves: ['-C', '--chdir'], splits: ['-S', '--split-string'] },
   nice: { values: ['-n', '--adjustment'] },
   nohup: { values: [] },
   time: { values: ['-f', '-o'] },
@@ -983,6 +998,26 @@ function positionals(args: readonly string[], values: readonly string[] = []): {
     found.push({ word, index })
   }
   return found
+}
+
+/**
+ * An option word of a program that runs another: its flags, and the option among `values` that takes a value, with the
+ * value when it is joined to it. `-iC..` is the flag `-i` and `-C` given `..`; `--chdir=dir` is `--chdir` given `dir`.
+ * A value not joined is the next word.
+ */
+function optionOf(word: string, values: readonly string[]): { flags: string[]; name?: string; joined?: string } {
+  if (word.startsWith('--')) {
+    const [name = '', ...joined] = word.split('=')
+    if (joined.length > 0) return { flags: [], name, joined: joined.join('=') }
+    return values.includes(name) ? { flags: [], name } : { flags: [name] }
+  }
+  const flags: string[] = []
+  for (let at = 1; at < word.length; at++) {
+    const name = `-${word[at]}`
+    if (!values.includes(name)) flags.push(name)
+    else return { flags, name, ...(at + 1 < word.length ? { joined: word.slice(at + 1) } : {}) }
+  }
+  return { flags }
 }
 
 /** Whether a short option is among the words, alone or in a cluster: `-r`, `-rf`, `-Rv`. */
@@ -1567,7 +1602,9 @@ function kindOf(program: string, args: readonly string[], context: Context): Kin
           (['cp', 'zip', 'scp'].includes(program) && (short(args, 'r') || short(args, 'R') || short(args, 'a') || has(args, '--recursive'))),
         windows: WINDOWS_PROGRAMS.has(program),
         // `tar czf a.tgz x`: a first word without a dash is tar's options, as it was first written.
-        ...(program === 'tar' && args[0] !== undefined && !args[0].startsWith('-') ? { notPaths: new Set([0]) } : {})
+        ...(program === 'tar' && args[0] !== undefined && !args[0].startsWith('-') ? { notPaths: new Set([0]) } : {}),
+        // `tar -C dir`, which reads the words after it from there.
+        unresolved: program === 'tar' && (args.some((word) => /^-[A-Za-z]*C|^--(directory|cd)(=|$)/.test(word)) || /^[^-]*C/.test(args[0] ?? ''))
       }
     case 'eval':
     case 'source':
@@ -1588,7 +1625,8 @@ function kindOf(program: string, args: readonly string[], context: Context): Kin
       // `su -c "…"` runs the line it is given as another user; without it, a shell of theirs.
       const at = args.findIndex((word) => word === '-c' || word.startsWith('--command'))
       const given = args[at]?.startsWith('--command=') ? args[at]?.slice(10) : args[at + 1]
-      return at < 0 || given === undefined ? { opaque: true } : { nested: [{ line: given, shell: 'posix' }], notPaths: new Set([at + 1]) }
+      if (at < 0 || given === undefined) return { opaque: true }
+      return { nested: [{ line: given, shell: 'posix' }], notPaths: new Set([at + 1]), login: has(args, '-', '-l', '--login') }
     }
     case 'read': {
       // The variables it reads into, whose values the line does not show: `read PATH < list`.
@@ -2054,27 +2092,34 @@ function readStage(stage: Stage, context: Context): void {
         at++
         continue
       }
-      // `env -C dir` runs the command in that folder; `env -S "…"` runs the line it is given, with the words after it.
-      const option = program === 'env' ? /^(-C|--chdir=?|-S|--split-string=?)/.exec(word)?.[0] : undefined
-      if (option !== undefined) {
-        const joined = word.length > option.length
-        const value = joined ? withoutStart(words[at] as Word, option.length) : words[at + 1]
-        at += joined ? 1 : 2
-        if (option.startsWith('-C') || option.startsWith('--chdir')) {
-          context = { ...context }
-          if (value) moveTo(value, context)
-          continue
-        }
-        readLine([textOf(value ?? { pieces: [] }), ...words.slice(at).map(textOf)].join(' '), nestedIn(context))
-        reading.commands.push(command('env', 'env', [], { readOnly: true }))
-        return
-      }
       if (!word.startsWith('-') || word === '-') break
       if (word === '--') {
         at++
         break
       }
-      at += wrapper.values.includes(word) ? 2 : 1
+      const option = optionOf(word, wrapper.values)
+      // A login shell starts in the home of who it runs as, which the line does not tell.
+      if (option.flags.some((flag) => wrapper.login?.includes(flag))) {
+        context = { ...context }
+        lost(context)
+      }
+      if (option.name === undefined) {
+        at++
+        continue
+      }
+      const value = option.joined === undefined ? words[at + 1] : withoutStart(words[at] as Word, word.length - option.joined.length)
+      at += option.joined === undefined ? 2 : 1
+      // `env -C dir`, `sudo -D dir` run the command in that folder.
+      if (wrapper.moves?.includes(option.name)) {
+        context = { ...context }
+        if (value) moveTo(value, context)
+      }
+      // `env -S "…"` runs the line it is given, with the words after it.
+      if (wrapper.splits?.includes(option.name)) {
+        readLine([textOf(value ?? { pieces: [] }), ...words.slice(at).map(textOf)].join(' '), nestedIn(context))
+        reading.commands.push(command(program, program, [], { readOnly: true }))
+        return
+      }
     }
     // `timeout 5 cmd`, `nice 10 cmd`: a duration before the command.
     if (program === 'timeout' && at < words.length) at++
@@ -2190,8 +2235,12 @@ function readStage(stage: Stage, context: Context): void {
     return
   }
 
-  for (const nested of kind.nested ?? [])
-    readLine(nested.line, { ...nestedIn(context), shell: nested.shell, exporting: context.exporting || nested.exporting === true })
+  for (const nested of kind.nested ?? []) {
+    const inner: Context = { ...nestedIn(context), shell: nested.shell, exporting: context.exporting || nested.exporting === true }
+    if (kind.login) lost(inner)
+    readLine(nested.line, inner)
+  }
+  if (kind.unresolved) reading.unresolved = true
 
   // `git -C repo …`: its paths are read from there.
   if (kind.folders) {

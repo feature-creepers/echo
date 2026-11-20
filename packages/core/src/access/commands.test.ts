@@ -688,7 +688,15 @@ describe('readCommand: paths after a cd, from every folder the line may be in', 
     ['$(Set-Location sub); Get-Content a.txt', 'powershell', ['sub', 'sub/a.txt', 'a.txt']],
     ['& { Set-Location sub }; Get-Content a.txt', 'powershell', ['sub', 'sub/a.txt', 'a.txt']],
     ['powershell -c "(cd ..); Get-Content ../a.txt"', 'posix', ['..', '../a.txt', '../../a.txt']],
-    ['echo $(cd ..); cat a.txt', 'posix', ['..', 'a.txt']]
+    ['echo $(cd ..); cat a.txt', 'posix', ['..', 'a.txt']],
+    // A program that runs another in a folder of its choosing, its options run together or not.
+    ['env -iC .. cat a.txt', 'posix', ['..', '../a.txt']],
+    ['env -iC.. cat a.txt', 'posix', ['..', '../a.txt']],
+    ['env -u HOME --chdir=sub cat a.txt', 'posix', ['sub', 'sub/a.txt']],
+    ['sudo -D /tmp cat a.txt', 'posix', ['/tmp', '/tmp/a.txt']],
+    ['sudo --chdir=/tmp cat a.txt', 'posix', ['/tmp', '/tmp/a.txt']],
+    ['sudo -u ada cat a.txt', 'posix', ['a.txt']],
+    ['run0 -D /tmp cat a.txt', 'posix', ['/tmp', '/tmp/a.txt']]
   ] as const)('`%s` in %s names %j', (line, shell, expected) => {
     expect(paths(line, shell).sort()).toEqual([...expected].sort())
   })
@@ -705,7 +713,14 @@ describe('readCommand: paths after a cd, from every folder the line may be in', 
     ['pushd -0 && cat a', 'posix', true],
     ['pushd sub && cat a', 'posix', false],
     ['Set-Location -; Get-Content a.txt', 'powershell', true],
-    ['Set-Location +; Get-Content a.txt', 'powershell', true]
+    ['Set-Location +; Get-Content a.txt', 'powershell', true],
+    // A login shell starts in the home of who it runs as; tar's -C moves it for the words after it.
+    ['sudo -i cat .ssh/id_rsa', 'posix', true],
+    ['sudo --login cat .ssh/id_rsa', 'posix', true],
+    ["su - -c 'cat .ssh/id_rsa'", 'posix', true],
+    ['tar -C /tmp -xf a.tar', 'posix', true],
+    ['tar xf a.tar --directory=/tmp', 'posix', true],
+    ['tar -xzf a.tgz', 'posix', false]
   ] as const)('cannot tell where `%s` in %s is once it may be in too many folders, or one it cannot tell: %s', (line, shell, unresolved) => {
     expect(readCommand(line, shell).unresolved).toBe(unresolved)
   })
