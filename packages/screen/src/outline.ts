@@ -43,7 +43,7 @@ const quoted = (text: string, length: number) => {
   return JSON.stringify(one.length > length ? `${one.slice(0, length - 1)}…` : one)
 }
 
-export interface Outline {
+interface Outline {
   text: string
   /** Whether it was cut to the length asked. */
   cut: boolean
@@ -74,15 +74,16 @@ export function outlineOf(nodes: readonly TreeNode[], length: number, first = 1)
   let used = 0
   let cut = false
   let next = first
-  // The depth each kept ancestor is shown at, so children of a left-out element rise to its place.
-  const shownAt: { depth: number; shown: number }[] = []
+  // The depths of the kept elements this one is inside: it is indented by how many there are, so the children of a
+  // left-out element rise to its place.
+  const open: number[] = []
   for (const node of nodes) {
-    while (shownAt.length > 0 && (shownAt.at(-1) as { depth: number }).depth >= node.depth) shownAt.pop()
+    while (open.length > 0 && (open.at(-1) as number) >= node.depth) open.pop()
     const role = roleOf(node.role)
     const name = node.name.trim()
     if (name === '' && !USABLE.test(role)) continue
-    const indent = shownAt.length
-    shownAt.push({ depth: node.depth, shown: indent })
+    const indent = open.length
+    open.push(node.depth)
     const ref = `e${next++}`
     const value = !node.password && node.value !== undefined && node.value.trim() !== '' && node.value.trim() !== name ? ` = ${quoted(node.value, 80)}` : ''
     const state = node.enabled === false ? ' (disabled)' : ''

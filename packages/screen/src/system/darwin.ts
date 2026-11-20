@@ -1,8 +1,9 @@
 import { spawn } from 'node:child_process'
 import type { SystemKey } from '@repo/core'
 import type { Combination, Modifier } from '../keys.ts'
+import { printedBy } from '../program.ts'
 import { onceHelper } from './helpers.ts'
-import type { ScreenSystem } from './system.ts'
+import type { Questions, RawWindow, ScreenSystem } from './system.ts'
 
 /**
  * macOS: the accessibility API, read and operated through System Events from JavaScript for Automation (`osascript`),
@@ -43,7 +44,7 @@ const KEY_CODES: Record<string, number> = {
 const USING: Record<Modifier, string> = { control: 'control down', shift: 'shift down', alt: 'option down', meta: 'command down' }
 
 /** A combination as System Events presses it: a key code or a character, and the modifiers held. */
-export function macKeys({ modifiers, key }: Combination): { code: number | null; character: string; using: string[] } {
+function macKeys({ modifiers, key }: Combination): { code: number | null; character: string; using: string[] } {
   const code = KEY_CODES[key]
   return { code: code ?? null, character: code === undefined ? key : '', using: modifiers.map((modifier) => USING[modifier]) }
 }
@@ -52,7 +53,7 @@ export function macKeys({ modifiers, key }: Combination): { code: number | null;
  * The keys of the whole system a widget's button presses, by the codes of the Mac's special keys (`NX_KEYTYPE_…`):
  * the system hands the media keys to the app that plays, as the keyboard's own do. A Mac has no stop key.
  */
-export const MAC_SYSTEM_KEYS: Readonly<Record<SystemKey, number | null>> = {
+const MAC_SYSTEM_KEYS: Readonly<Record<SystemKey, number | null>> = {
   VolumeUp: 0,
   VolumeDown: 1,
   VolumeMute: 7,
@@ -239,24 +240,37 @@ try { output = reply({ ok: true, value: answer(JSON.parse(input)) }) } catch (er
 output
 `
 
-/** What a program prints, whole, or nothing when it fails. */
-function printed(command: string, args: string[]): Promise<string | undefined> {
-  return new Promise((resolve) => {
-    const running = spawn(command, args, { stdio: ['ignore', 'pipe', 'ignore'] })
-    let output = ''
-    running.stdout.setEncoding('utf8').on('data', (chunk: string) => {
-      output += chunk
-    })
-    running.once('error', () => resolve(undefined))
-    running.once('close', (code) => resolve(code === 0 ? output : undefined))
-  })
-}
+/**
+ * How long the check of the Accessibility permission may take, in milliseconds: the first time, the system asks the
+ * person whether the app may control System Events, and the check waits for their answer.
+ */
+const PERMISSION_MS = 60_000
 
 const helper = onceHelper('/usr/bin/osascript', async () => ['-l', 'JavaScript', '-e', HELPER])
 
+/** A picture of a part of the screen, as PNG, by the system's own tool: the person lets the app record the screen first. */
+function capture({ x, y, width, height }: RawWindow['bounds']): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const running = spawn('/usr/sbin/screencapture', ['-x', '-t', 'png', `-R${x},${y},${width},${height}`, '/dev/stdout'], {
+      stdio: ['ignore', 'pipe', 'ignore']
+    })
+    const parts: Buffer[] = []
+    running.stdout.on('data', (part: Buffer) => parts.push(part))
+    running.once('error', reject)
+    running.once('close', (code) =>
+      code === 0
+        ? resolve(Buffer.concat(parts))
+        : reject(new Error('The screen could not be read: let the app record the screen in System Settings, Privacy & Security.'))
+    )
+  })
+}
+
 export const darwin: ScreenSystem = {
   async find() {
-    const trusted = await printed('/usr/bin/osascript', ['-e', 'tell application "System Events" to get UI elements enabled'])
+    const trusted = await printedBy(
+      { command: '/usr/bin/osascript', args: ['-e', 'tell application "System Events" to get UI elements enabled'] },
+      PERMISSION_MS
+    )
     if (trusted === undefined) return { available: false, problem: 'System Events, which reads the other apps, could not be reached.' }
     return trusted.trim() === 'true'
       ? { available: true }
@@ -266,30 +280,15 @@ export const darwin: ScreenSystem = {
     async ask(name, input) {
       // A picture and the time since the last input come from the system's own tools, not from System Events.
       if (name === 'idle') {
-        const read = await printed('/usr/sbin/ioreg', ['-c', 'IOHIDSystem', '-d', '4'])
+        const read = await printedBy({ command: '/usr/sbin/ioreg', args: ['-c', 'IOHIDSystem', '-d', '4'] }, 5_000)
         const nanoseconds = read && /"HIDIdleTime"\s*=\s*(\d+)/.exec(read)?.[1]
         return (nanoseconds ? Math.round(Number(nanoseconds) / 1_000_000) : null) as never
       }
       if (name === 'screenshot') {
-        const window = ((await helper.ask('windows', {})) as { id: string; bounds: { x: number; y: number; width: number; height: number } }[]).find(
-          (one) => one.id === (input as { window: string }).window
-        )
+        const { window: id } = input as Questions['screenshot']['input']
+        const window = (await helper.ask('windows', {})).find((one) => one.id === id)
         if (!window) throw new Error('There is no such window open now. Call desktop_windows.')
-        const { x, y, width, height } = window.bounds
-        const picture = await new Promise<Buffer>((resolve, reject) => {
-          const running = spawn('/usr/sbin/screencapture', ['-x', '-t', 'png', `-R${x},${y},${width},${height}`, '/dev/stdout'], {
-            stdio: ['ignore', 'pipe', 'ignore']
-          })
-          const parts: Buffer[] = []
-          running.stdout.on('data', (part: Buffer) => parts.push(part))
-          running.once('error', reject)
-          running.once('close', (code) =>
-            code === 0
-              ? resolve(Buffer.concat(parts))
-              : reject(new Error('The screen could not be read: let the app record the screen in System Settings, Privacy & Security.'))
-          )
-        })
-        return { data: picture.toString('base64'), mime: 'image/png' } as never
+        return { data: (await capture(window.bounds)).toString('base64'), mime: 'image/png' } as never
       }
       return helper.ask(name, input)
     },

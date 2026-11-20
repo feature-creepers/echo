@@ -15,7 +15,7 @@ describe('a key as the assistant names it', () => {
     expect(readKey(written)).toEqual(read)
   })
 
-  it.each(['Hyper+S', 'Control+Banana', ''])('says why "%s" cannot be pressed', (written) => {
+  it.each(['Hyper+S', 'Control+Banana', '', 'constructor+A', 'toString'])('says why "%s" cannot be pressed', (written) => {
     expect(readKey(written)).toHaveProperty('problem')
   })
 })

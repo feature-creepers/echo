@@ -11,7 +11,7 @@ export interface DuplexPort {
 }
 
 /** A port seen the same way whatever kind it is. */
-export interface Channel {
+interface Channel {
   /**
    * Send a message. The `buffers` are the memory of sounds inside it that the sender gives away: they are
    * moved to the other side when the port can do that, and copied like the rest of the message when it cannot.

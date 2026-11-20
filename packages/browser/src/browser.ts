@@ -20,6 +20,8 @@ const NAVIGATION_TIMEOUT_MS = 30_000
 /** How long a page is given to settle after it is there or after an action: its loading, then its network falling quiet. */
 const SETTLE_LOAD_MS = 5_000
 const SETTLE_QUIET_MS = 1_500
+/** How long the outline or the picture of a page may take. */
+const CAPTURE_TIMEOUT_MS = 15_000
 
 export interface BrowserOptions {
   /** The browser's profile: a folder of its own, kept between launches, where the person's sign-ins stay. */
@@ -37,6 +39,12 @@ export interface BrowserOptions {
   idleMs?: number
 }
 
+/** A reference the latest outline of the tab does not have: said to the model as it is. */
+class UnknownReference extends Error {}
+
+/** The first line of a message from Playwright, without the name of the call it comes from ("page.goto: "). */
+const firstLine = (message: string) => (message.split('\n')[0] ?? '').replace(/^[a-zA-Z]+\.[a-zA-Z]+: /, '').trim()
+
 /** An error from Playwright, said for a model: its first line, without the name of the call. */
 function explained(error: unknown, what?: string): Error {
   const message = error instanceof Error ? error.message : String(error)
@@ -46,8 +54,7 @@ function explained(error: unknown, what?: string): Error {
   if (/Timeout \d+ms exceeded/i.test(message) && what) {
     return new Error(`${what} did not work in time: the element may be hidden, covered or disabled. Take a new browser_snapshot, or scroll to it first.`)
   }
-  const first = (message.split('\n')[0] ?? message).replace(/^[a-z]+\.[a-zA-Z]+: /, '').trim()
-  return new Error(what ? `${what} did not work: ${first}` : first)
+  return new Error(what ? `${what} did not work: ${firstLine(message)}` : firstLine(message))
 }
 
 /** A file name for a download that does not replace one already there: "report (2).pdf". */
@@ -146,7 +153,7 @@ export function createBrowser(options: BrowserOptions): Browser {
       if (/ProcessSingleton|profile.*in use|SingletonLock/i.test(message)) {
         throw new Error(`${found.name} could not start: its profile is in use by another window of it. Close that window and try again.`)
       }
-      throw new Error(`${found.name} could not start. ${(message.split('\n')[0] ?? '').replace(/^[a-zA-Z]+\.[a-zA-Z]+: /, '')}`)
+      throw new Error(`${found.name} could not start. ${firstLine(message)}`)
     }
     // Closed by the person (its last window) or ended for any reason: the next use starts it again.
     launched.on('close', () => {
@@ -206,7 +213,7 @@ export function createBrowser(options: BrowserOptions): Browser {
 
   /** A new outline of a page, which becomes the one its references are read against. */
   const outline = async (of: Page): Promise<Outline> => {
-    const snapshot = await of.ariaSnapshot({ mode: 'ai', timeout: 15_000 })
+    const snapshot = await of.ariaSnapshot({ mode: 'ai', timeout: CAPTURE_TIMEOUT_MS })
     const read = outlineOf(snapshot)
     outlines.set(of, read)
     return read
@@ -214,7 +221,8 @@ export function createBrowser(options: BrowserOptions): Browser {
 
   /** An element of the latest outline of the tab in front. Rejects when the outline has no such reference. */
   const element = (of: Page, ref: string): Locator => {
-    if (!outlines.get(of)?.refs.has(ref)) throw new Error(`There is no element ${ref} on the page now. Take a new browser_snapshot and use its references.`)
+    if (!outlines.get(of)?.refs.has(ref))
+      throw new UnknownReference(`There is no element ${ref} on the page now. Take a new browser_snapshot and use its references.`)
     return of.getByRef(ref)
   }
 
@@ -230,7 +238,7 @@ export function createBrowser(options: BrowserOptions): Browser {
       try {
         await work(before)
       } catch (error) {
-        throw error instanceof Error && error.message.startsWith('There is no element') ? error : explained(error, what)
+        throw error instanceof UnknownReference ? error : explained(error, what)
       }
       const after = await page()
       await settle(after)
@@ -290,7 +298,7 @@ export function createBrowser(options: BrowserOptions): Browser {
     screenshot: () =>
       serial(async () => {
         const shown = await page()
-        const picture = await shown.screenshot({ type: 'jpeg', quality: 70, timeout: 15_000 }).catch((error: unknown) => {
+        const picture = await shown.screenshot({ type: 'jpeg', quality: 70, timeout: CAPTURE_TIMEOUT_MS }).catch((error: unknown) => {
           throw explained(error, 'Taking the picture')
         })
         return { ...(await facts(shown)), data: picture.toString('base64'), mime: 'image/jpeg' as const }
@@ -370,10 +378,11 @@ export function createBrowser(options: BrowserOptions): Browser {
         const shown = await page()
         const where = await facts(shown)
         if (ref === undefined) {
-          const focused = (await shown.evaluateHandle(() => document.activeElement)).asElement()
-          if (!focused) return undefined
-          const reading = await focused.evaluate(readElement)
-          if (reading.tag === 'body' || reading.tag === 'html') return undefined
+          const focused = await shown.evaluateHandle(() => document.activeElement)
+          const reading = await focused.asElement()?.evaluate(readElement)
+          // The page would otherwise keep the element for the handle until it navigates.
+          await focused.dispose()
+          if (!reading || reading.tag === 'body' || reading.tag === 'html') return undefined
           const { fileField: _, ...rest } = reading
           return { ref: '', ...rest, page: where }
         }

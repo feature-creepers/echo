@@ -1,7 +1,6 @@
-import { spawn } from 'node:child_process'
 import type { SystemKey } from '@repo/core'
 import type { Combination, Modifier } from '../keys.ts'
-import { type Program, runProgram } from '../program.ts'
+import { type Program, printedBy, runProgram } from '../program.ts'
 import { onceHelper } from './helpers.ts'
 import type { Helper, Questions, ScreenSystem } from './system.ts'
 
@@ -34,7 +33,7 @@ const XDOTOOL_KEYS: Record<string, string> = {
 const XDOTOOL_MODIFIERS: Record<Modifier, string> = { control: 'ctrl', shift: 'shift', alt: 'alt', meta: 'super' }
 
 /** A combination as `xdotool key` names it: "ctrl+shift+Return". A character is named by its code point, whatever it is. */
-export function linuxKeys({ modifiers, key }: Combination): string {
+function linuxKeys({ modifiers, key }: Combination): string {
   const named = XDOTOOL_KEYS[key] ?? (/^[a-z0-9]$/.test(key) ? key : `U${(key.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, '0')}`)
   return [...modifiers.map((modifier) => XDOTOOL_MODIFIERS[modifier]), named].join('+')
 }
@@ -44,9 +43,9 @@ export function linuxKeys({ modifiers, key }: Combination): string {
  * the keyboard's own. A media key is a command to the player that plays, over the session's bus (MPRIS); a sound key
  * changes the default output, with PipeWire's or PulseAudio's own tool.
  */
-export type LinuxSystemKey = { player: 'PlayPause' | 'Next' | 'Previous' | 'Stop' } | { sound: 'up' | 'down' | 'mute' }
+type LinuxSystemKey = { player: 'PlayPause' | 'Next' | 'Previous' | 'Stop' } | { sound: 'up' | 'down' | 'mute' }
 
-export const LINUX_SYSTEM_KEYS: Readonly<Record<SystemKey, LinuxSystemKey>> = {
+const LINUX_SYSTEM_KEYS: Readonly<Record<SystemKey, LinuxSystemKey>> = {
   MediaPlayPause: { player: 'PlayPause' },
   MediaNext: { player: 'Next' },
   MediaPrevious: { player: 'Previous' },
@@ -110,33 +109,29 @@ export function soundPrograms(change: 'up' | 'down' | 'mute', times: number): Pr
   }
 }
 
-/** What a program printed when it ran well; nothing when it is not installed, failed or took too long. */
-const printedBy = (program: Program) =>
-  runProgram(program, { timeout: 5_000 }).then(
-    (ran) => (ran.code === 0 ? ran.out : undefined),
-    () => undefined
-  )
+/** How long a program of the desktop may take to answer, in milliseconds: each answers at once, or not at all. */
+const ANSWER_MS = 5_000
 
 /** A key of the whole system, as `LINUX_SYSTEM_KEYS` says what it does, pressed `times` times. */
 async function pressSystemKey(key: LinuxSystemKey, times: number): Promise<void> {
   if ('sound' in key) {
     const programs = soundPrograms(key.sound, times)
     if (programs.length === 0) return
-    for (const program of programs) if ((await printedBy(program)) !== undefined) return
+    for (const program of programs) if ((await printedBy(program, ANSWER_MS)) !== undefined) return
     throw new Error('The sound cannot be changed here: neither wpctl nor pactl answered.')
   }
-  const listed = await printedBy(busCall('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus.ListNames'))
+  const listed = await printedBy(busCall('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus.ListNames'), ANSWER_MS)
   if (listed === undefined) throw new Error('The media keys cannot be pressed here: gdbus did not answer.')
   const players = await Promise.all(
     playersIn(listed).map(async (name) => {
-      const read = await printedBy(busCall(name, MPRIS_PATH, 'org.freedesktop.DBus.Properties.Get', `${MPRIS}.Player`, 'PlaybackStatus'))
+      const read = await printedBy(busCall(name, MPRIS_PATH, 'org.freedesktop.DBus.Properties.Get', `${MPRIS}.Player`, 'PlaybackStatus'), ANSWER_MS)
       return { name, status: read === undefined ? undefined : statusIn(read) }
     })
   )
   const player = playerToDrive(players)
   if (player === undefined) throw new Error('No app that plays music or video is open.')
   for (let time = 0; time < times; time++) {
-    const pressed = await printedBy(busCall(player, MPRIS_PATH, `${MPRIS}.Player.${key.player}`))
+    const pressed = await printedBy(busCall(player, MPRIS_PATH, `${MPRIS}.Player.${key.player}`), ANSWER_MS)
     if (pressed === undefined) throw new Error(`${player.slice(MPRIS.length + 1).split('.')[0]} did not take the key.`)
   }
 }
@@ -152,7 +147,7 @@ async function openLink(link: string): Promise<void> {
 
 /** The helper, in Python. It reads one question on its input and writes one line. */
 const HELPER = String.raw`
-import json, subprocess, sys
+import base64, json, re, subprocess, sys
 import gi
 gi.require_version('Atspi', '2.0')
 from gi.repository import Atspi
@@ -262,7 +257,9 @@ def focus(id):
         attempt(component.grab_focus, False)
     title = attempt(window.get_name, '')
     if title:
-        subprocess.run(['xdotool', 'search', '--name', '^%s$' % title.replace('\\', '\\\\'), 'windowactivate'], check=False)
+        # xdotool reads the name as an extended regular expression: the title's own characters are matched as they are.
+        pattern = re.sub(r'([][\\.^$*+?(){}|])', r'\\\1', title)
+        subprocess.run(['xdotool', 'search', '--name', '^%s$' % pattern, 'windowactivate'], check=False)
 
 def answer(question):
     data = question.get('input') or {}
@@ -333,7 +330,6 @@ def answer(question):
         if window is None:
             raise Exception('There is no window %s open now.' % data['window'])
         box = window['bounds']
-        import base64
         for command in (['import', '-window', 'root', '-crop', '%dx%d+%d+%d' % (box['width'], box['height'], box['x'], box['y']), 'png:-'],
                         ['grim', '-g', '%d,%d %dx%d' % (box['x'], box['y'], box['width'], box['height']), '-']):
             try:
@@ -356,12 +352,7 @@ except Exception as error:
 `
 
 /** Whether a program runs and ends well with these arguments. */
-const runs = (command: string, args: string[]) =>
-  new Promise<boolean>((resolve) => {
-    const running = spawn(command, args, { stdio: 'ignore' })
-    running.once('error', () => resolve(false))
-    running.once('close', (code) => resolve(code === 0))
-  })
+const runs = async (command: string, args: string[]) => (await printedBy({ command, args }, 10_000)) !== undefined
 
 export const linux: ScreenSystem = {
   async find() {

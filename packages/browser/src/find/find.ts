@@ -37,7 +37,7 @@ async function isProgram(path: string): Promise<boolean> {
   }
 }
 
-export interface FindOptions {
+interface FindOptions {
   /** Where to look, in order of preference. */
   candidates: readonly Candidate[]
   /** A path to use instead, from `ASSISTANT_BROWSER`. It must be there. */

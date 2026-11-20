@@ -39,7 +39,7 @@ const KEPT_STATES = /\[(?:checked(?:=\w+)?|disabled|expanded(?:=\w+)?|selected|p
 const LINE_LENGTH = 200
 
 /** One line of a snapshot, read. */
-export interface SnapshotLine {
+interface SnapshotLine {
   /** How deep it is, from its indentation. */
   depth: number
   role: string

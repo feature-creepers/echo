@@ -1,6 +1,6 @@
 import type { Desktop, DesktopElement, SystemKey, WindowFacts } from '@repo/core'
 import { readKey } from './keys.ts'
-import { outlineOf, seekIn } from './outline.ts'
+import { outlineOf, roleOf, seekIn } from './outline.ts'
 import { system as thisSystem } from './system/index.ts'
 import type { Helper, RawWindow, ScreenSystem } from './system/system.ts'
 
@@ -23,6 +23,8 @@ const ELEMENT_LIMIT = 1_500
  * clicks take a moment to be delivered.
  */
 const OWN_INPUT_MS = 600
+
+const noWindow = (id: string) => `There is no window ${id} open now. Call desktop_windows for the windows open and their identifiers.`
 
 export interface DesktopOptions {
   /** Where the helper keeps its files. */
@@ -54,7 +56,7 @@ export function createDesktop({ folder, own = [], system = thisSystem }: Desktop
   const listed = async () => (await ask('windows', {})).filter((window) => !own.includes(window.program))
   const windowFacts = async (id: string): Promise<WindowFacts> => {
     const found = (await ask('windows', {})).find((window) => window.id === id)
-    if (!found) throw new Error(`There is no window ${id} open now. Call desktop_windows for the windows open and their identifiers.`)
+    if (!found) throw new Error(noWindow(id))
     return facts(found)
   }
   const keyOf = (ref: string) => {
@@ -97,10 +99,8 @@ export function createDesktop({ folder, own = [], system = thisSystem }: Desktop
       if (!raw) return undefined
       const element: DesktopElement = {
         ref,
-        role: raw.role
-          .replace(/^ControlType\./, '')
-          .replace(/^AX/, '')
-          .toLowerCase(),
+        // Read as the outline reads it, so the core weighs the same role on every system ("text field", not "textfield").
+        role: roleOf(raw.role),
         name: raw.name,
         ...(raw.value === undefined || raw.password ? {} : { value: raw.value }),
         password: raw.password,
@@ -111,7 +111,12 @@ export function createDesktop({ folder, own = [], system = thisSystem }: Desktop
       return element
     },
 
-    focus: (window) => acted(ask('focus', { window }).then(facts)),
+    async focus(window) {
+      const focused = await acted(ask('focus', { window }))
+      // A window that closed as it was brought forward is not found again.
+      if (!focused) throw new Error(noWindow(window))
+      return facts(focused)
+    },
 
     async click(ref) {
       await acted(ask('click', { key: keyOf(ref).key }))

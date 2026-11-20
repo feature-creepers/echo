@@ -39,7 +39,7 @@ export async function openRecognizer({ folder, threads = detectEngineThreads(det
     return path
   }
 
-  const open = async (favouring: boolean): Promise<NativeRecognizer> =>
+  const open = async (withWords: boolean): Promise<NativeRecognizer> =>
     loadSherpa().OfflineRecognizer.createAsync({
       featConfig: { sampleRate: HEARING_RATE, featureDim: 80 },
       modelConfig: {
@@ -49,9 +49,9 @@ export async function openRecognizer({ folder, threads = detectEngineThreads(det
         numThreads: threads,
         provider: 'cpu',
         debug: false,
-        ...(favouring ? { modelingUnit: 'bpe', bpeVocab: await pieces() } : {})
+        ...(withWords ? { modelingUnit: 'bpe', bpeVocab: await pieces() } : {})
       },
-      decodingMethod: favouring ? 'modified_beam_search' : 'greedy_search',
+      decodingMethod: withWords ? 'modified_beam_search' : 'greedy_search',
       maxActivePaths: WAYS
     })
 

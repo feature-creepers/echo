@@ -110,7 +110,7 @@ export interface NativeResampler {
   reset(): void
 }
 
-export interface Sherpa {
+interface Sherpa {
   OfflineRecognizer: { createAsync(config: RecognizerConfig): Promise<NativeRecognizer> }
   OfflineTts: { createAsync(config: VoiceConfig): Promise<NativeVoice> }
   Vad: new (config: DetectorConfig, bufferSizeInSeconds: number) => NativeDetector

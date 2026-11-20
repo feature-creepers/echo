@@ -1,3 +1,4 @@
+import { posix } from 'node:path'
 import type { Printer, PrintJob } from '@repo/core'
 import type { Program } from '../program.ts'
 
@@ -42,10 +43,19 @@ export function noPrinters(errors: string): boolean {
  * ending in .md or .csv would otherwise not be recognised as text.
  */
 export function printProgram(job: PrintJob): Program {
-  const title = job.path.slice(job.path.lastIndexOf('/') + 1)
   return {
     command: 'lp',
-    args: ['-d', job.printer, '-n', String(job.copies), '-t', title, ...(job.kind === 'text' ? ['-o', 'document-format=text/plain'] : []), '--', job.path],
+    args: [
+      '-d',
+      job.printer,
+      '-n',
+      String(job.copies),
+      '-t',
+      posix.basename(job.path),
+      ...(job.kind === 'text' ? ['-o', 'document-format=text/plain'] : []),
+      '--',
+      job.path
+    ],
     env: ENGLISH
   }
 }

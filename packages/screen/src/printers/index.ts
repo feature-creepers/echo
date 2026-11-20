@@ -1,7 +1,8 @@
 import { access, mkdir } from 'node:fs/promises'
 import { join, parse } from 'node:path'
-import type { Printer, Printers } from '@repo/core'
+import type { Printers } from '@repo/core'
 import { firstError, readPowershellJson, runProgram } from '../program.ts'
+import { type SystemName, THIS_SYSTEM } from '../system-name.ts'
 import * as unix from './unix.ts'
 import * as win32 from './win32.ts'
 
@@ -13,7 +14,7 @@ const PRINT_TIMEOUT_MS = 5 * 60_000
 export interface PrintersOptions {
   /** Where a printer that makes files (Microsoft Print to PDF) writes them: a folder of the assistant's own. */
   files: string
-  system?: 'win32' | 'darwin' | 'linux'
+  system?: SystemName
 }
 
 /** A free name for a file in a folder, like the file printed: "report.pdf", then "report (2).pdf". */
@@ -33,20 +34,17 @@ async function freeName(folder: string, wanted: string): Promise<string> {
  * The printers of this computer (docs/SPEC.md, section 12.4, more of the device), through each system's own means:
  * .NET's printing from Windows PowerShell on Windows, CUPS's `lpstat` and `lp` on macOS and Linux.
  */
-export function createPrinters({
-  files,
-  system = process.platform === 'win32' ? 'win32' : process.platform === 'darwin' ? 'darwin' : 'linux'
-}: PrintersOptions): Printers {
+export function createPrinters({ files, system = THIS_SYSTEM }: PrintersOptions): Printers {
   if (system === 'win32') {
+    const list = async () => {
+      const ran = await runProgram(win32.LIST, { timeout: LIST_TIMEOUT_MS, slow: 'Windows did not list its printers in time.' })
+      if (ran.code !== 0) throw new Error(`Windows could not list its printers: ${firstError(ran)}`)
+      return win32.readPrinters(readPowershellJson(ran.out) as win32.WindowsPrinter[])
+    }
     return {
-      async list() {
-        const ran = await runProgram(win32.LIST, { timeout: LIST_TIMEOUT_MS, slow: 'Windows did not list its printers in time.' })
-        if (ran.code !== 0) throw new Error(`Windows could not list its printers: ${firstError(ran)}`)
-        return win32.readPrinters(readPowershellJson(ran.out) as win32.WindowsPrinter[])
-      },
+      list,
       async print(job) {
-        const printers: Printer[] = await this.list()
-        const printer = printers.find((one) => one.name === job.printer)
+        const printer = (await list()).find((one) => one.name === job.printer)
         let file: string | undefined
         if (printer?.output === 'file') {
           await mkdir(files, { recursive: true })

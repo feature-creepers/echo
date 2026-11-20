@@ -11,7 +11,7 @@ export const LIST: Program = {
 }
 
 /** A block device as lsblk gives it. Older versions give yes and no as "1" and "0", and numbers as text. */
-export interface BlockDevice {
+interface BlockDevice {
   name: string
   path?: string | null
   label?: string | null
@@ -33,7 +33,7 @@ const number = (value: number | string | null | undefined) => {
 }
 
 /** A drive opened by the system, with the disk it is on, which is what is powered off once it is let go. */
-export interface Opened {
+interface Opened {
   drive: Drive
   /** The partition or disk opened: "/dev/sdb1". */
   device: string

@@ -3,6 +3,7 @@ import { access, mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { SystemKey } from '@repo/core'
 import type { Combination, Modifier } from '../keys.ts'
+import { WINDOWS_POWERSHELL } from '../program.ts'
 import { lastingHelper } from './helpers.ts'
 import type { ScreenSystem } from './system.ts'
 
@@ -35,7 +36,7 @@ const VIRTUAL_KEYS: Record<string, number> = {
 const MODIFIER_KEYS: Record<Modifier, number> = { control: 0x11, shift: 0x10, alt: 0x12, meta: 0x5b }
 
 /** The system's keys a widget's button presses, by their virtual keys: Windows hands the media keys to the app that plays. */
-export const WINDOWS_SYSTEM_KEYS: Readonly<Record<SystemKey, number>> = {
+const WINDOWS_SYSTEM_KEYS: Readonly<Record<SystemKey, number>> = {
   VolumeMute: 0xad,
   VolumeDown: 0xae,
   VolumeUp: 0xaf,
@@ -46,7 +47,7 @@ export const WINDOWS_SYSTEM_KEYS: Readonly<Record<SystemKey, number>> = {
 }
 
 /** A combination as the helper presses it: the modifiers' virtual keys, then a virtual key or a character it finds the key of. */
-export function windowsKeys({ modifiers, key }: Combination): { modifiers: number[]; key: number; character: string } {
+function windowsKeys({ modifiers, key }: Combination): { modifiers: number[]; key: number; character: string } {
   const named = VIRTUAL_KEYS[key]
   if (named !== undefined) return { modifiers: modifiers.map((modifier) => MODIFIER_KEYS[modifier]), key: named, character: '' }
   // A letter or a digit is its own virtual key, in capitals; another character is found on the keyboard's layout.
@@ -484,13 +485,10 @@ while ($true) {
 }
 `
 
-/** Windows PowerShell, from the system's own folder rather than whatever a search path finds first. */
-const powershell = () => join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
-
 export const win32: ScreenSystem = {
   async find() {
     try {
-      await access(powershell())
+      await access(WINDOWS_POWERSHELL)
       return { available: true }
     } catch {
       return { available: false, problem: 'Windows PowerShell, which reads the other apps, was not found on this computer.' }
@@ -499,7 +497,7 @@ export const win32: ScreenSystem = {
   helper(folder) {
     // The library is named after its source, so a new version of the bridge is compiled again, once.
     const version = createHash('sha256').update(BRIDGE).digest('hex').slice(0, 12)
-    return lastingHelper(powershell(), async () => {
+    return lastingHelper(WINDOWS_POWERSHELL, async () => {
       await mkdir(folder, { recursive: true })
       const source = join(folder, `bridge-${version}.cs`)
       const host = join(folder, `host-${version}.ps1`)

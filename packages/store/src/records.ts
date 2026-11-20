@@ -5,10 +5,10 @@ import { transaction } from './database.ts'
 import type { KeywordIndex } from './search/keyword.ts'
 
 /**
- * The records of a core, in its file. The search index, when given, takes in each record in the same
- * transaction, so it is never behind what was written.
+ * The records of a core, in its file. The search index takes in each record in the same transaction, so it is
+ * never behind what was written.
  */
-export function createRecords(database: DatabaseSync, now: () => Date = () => new Date(), index?: KeywordIndex): Records {
+export function createRecords(database: DatabaseSync, index: KeywordIndex, now: () => Date = () => new Date()): Records {
   const origin = coreId(database)
   const last = database.prepare('select coalesce(max(sequence), 0) as last from record where origin = ?')
   const insert = database.prepare('insert into record (id, origin, sequence, at, type, payload) values (?, ?, ?, ?, ?, ?)')
@@ -27,7 +27,7 @@ export function createRecords(database: DatabaseSync, now: () => Date = () => ne
           const { lastInsertRowid } = insert.run(stored.id, stored.origin, stored.sequence, stored.at, stored.type, payload)
           const written = { ...stored, payload: JSON.parse(payload) }
           for (const erased of erasedBy(written)) erase.run(erased)
-          index?.take(written, lastInsertRowid)
+          index.take(written, lastInsertRowid)
           return written
         })
       })

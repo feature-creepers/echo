@@ -1,11 +1,8 @@
 /**
- * What an element is, read inside the page: everything the core needs to decide whether to act on it, but its
- * reference and the page, which the adapter adds.
- *
- * Playwright sends this function to the page as its source text, so it must stand alone: no import, no
- * function of this module, nothing from outside but its argument.
+ * What an element is: everything the core needs to decide whether to act on it, but its reference and the page,
+ * which the adapter adds.
  */
-export interface ElementReading {
+interface ElementReading {
   tag: string
   type: string | undefined
   autocomplete: string | undefined
@@ -20,6 +17,10 @@ export interface ElementReading {
   fileField: boolean
 }
 
+/**
+ * What an element is, read inside the page. Playwright sends this function to the page as its source text, so it
+ * must stand alone: no import, no function of this module, nothing from outside but its argument.
+ */
 export function readElement(element: Element): ElementReading {
   const clean = (value: string | null | undefined, length = 200) => (value ?? '').replace(/\s+/g, ' ').trim().slice(0, length)
   const tag = element.tagName.toLowerCase()

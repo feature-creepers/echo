@@ -88,7 +88,6 @@ const id = z.number().int()
 
 /** Client to service. The input is checked against the call it names once that is known. */
 export const requestSchema = z.object({ id, call: z.enum(Object.keys(CALLS) as [CallName, ...CallName[]]), input: z.unknown() })
-export type Request = z.infer<typeof requestSchema>
 
 /** Service to client, about the request with the same number. */
 export const replySchema = z.discriminatedUnion('reply', [

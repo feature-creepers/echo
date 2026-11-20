@@ -1,6 +1,8 @@
 import { readdir } from 'node:fs/promises'
+import { posix } from 'node:path'
 import type { Drive, Drives } from '@repo/core'
 import { firstError, readPowershellJson, runProgram } from '../program.ts'
+import { type SystemName, THIS_SYSTEM } from '../system-name.ts'
 import * as darwin from './darwin.ts'
 import * as linux from './linux.ts'
 import * as win32 from './win32.ts'
@@ -19,9 +21,7 @@ const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
  * The removable drives of this computer (docs/SPEC.md, section 12.4, more of the device), through each system's own
  * means: WMI and Explorer's eject on Windows, diskutil on macOS, lsblk and udisks on Linux.
  */
-export function createDrives(
-  system: 'win32' | 'darwin' | 'linux' = process.platform === 'win32' ? 'win32' : process.platform === 'darwin' ? 'darwin' : 'linux'
-): Drives {
+export function createDrives(system: SystemName = THIS_SYSTEM): Drives {
   if (system === 'win32') {
     const list = async (): Promise<Drive[]> => {
       const ran = await runProgram(win32.LIST, { timeout: TIMEOUT_MS, slow: 'Windows did not list its drives in time.' })
@@ -54,7 +54,7 @@ export function createDrives(
         }
         const drives: Drive[] = []
         for (const name of names) {
-          const ran = await runProgram(darwin.infoProgram(`${darwin.VOLUMES}/${name}`), { timeout: TIMEOUT_MS })
+          const ran = await runProgram(darwin.infoProgram(posix.join(darwin.VOLUMES, name)), { timeout: TIMEOUT_MS })
           if (ran.code !== 0) continue
           const drive = darwin.readDrive(darwin.readPlist(ran.out))
           if (drive && !drives.some((known) => known.path === drive.path)) drives.push(drive)

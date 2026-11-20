@@ -28,9 +28,9 @@ export const IGNORED_DEFAULT_ARGUMENTS = [
 ]
 
 /** Switches added: no question about restoring pages after a crash, and no first-run screens. */
-export const ADDED_ARGUMENTS = ['--hide-crash-restore-bubble', '--no-first-run', '--no-default-browser-check']
+const ADDED_ARGUMENTS = ['--hide-crash-restore-bubble', '--no-first-run', '--no-default-browser-check']
 
-export interface LaunchSettings {
+interface LaunchSettings {
   /** The browser's program. */
   executablePath: string
   /** Whether to run with no window: for tests only. The person always sees the browser. */

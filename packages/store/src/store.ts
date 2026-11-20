@@ -37,7 +37,7 @@ export function openStore({ folder, now }: StoreOptions): Store {
   // Records written before the index existed, or by a version that did not keep it, are taken in now.
   search.catchUp()
   return {
-    records: createRecords(database, now, search),
+    records: createRecords(database, search, now),
     search,
     blobs: createBlobs(join(folder, 'files')),
     versions: createBlobs(join(folder, 'versions')),

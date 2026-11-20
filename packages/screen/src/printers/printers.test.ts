@@ -1,3 +1,4 @@
+import { win32 } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { noPrinters, printProgram, readPrinters as readUnix, LIST as UNIX_LIST } from './unix.ts'
 import { fileEnding, PRINT, readPrinters as readWindows, LIST as WINDOWS_LIST, type WindowsPrinter } from './win32.ts'
@@ -51,9 +52,10 @@ describe('the printers of Windows', () => {
     expect(fileEnding(name)).toBe(ending)
   })
 
-  it('runs its scripts encoded, so no quoting can change them', () => {
+  it('runs its scripts encoded, with the PowerShell of the system folder, so no quoting or search path can change them', () => {
     for (const program of [WINDOWS_LIST, PRINT]) {
-      expect(program.command).toBe('powershell.exe')
+      expect(win32.dirname(program.command)).toMatch(/System32\\WindowsPowerShell\\v1\.0$/)
+      expect(win32.basename(program.command)).toBe('powershell.exe')
       expect(program.args.slice(0, -1)).toEqual(['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand'])
       const script = Buffer.from(program.args.at(-1) ?? '', 'base64').toString('utf16le')
       expect(script).toContain("$ErrorActionPreference = 'Stop'")

@@ -56,7 +56,8 @@ export interface Questions {
   windows: { input: Record<string, never>; output: RawWindow[] }
   tree: { input: { window: string; limit: number }; output: TreeNode[] }
   inspect: { input: { key: string }; output: RawElement | null }
-  focus: { input: { window: string }; output: RawWindow }
+  /** The window brought to the front, read again; nothing when it closed meanwhile. */
+  focus: { input: { window: string }; output: RawWindow | null }
   click: { input: { key: string }; output: null }
   type: { input: { key: string; text: string; submit: boolean }; output: null }
   press: { input: { window: string; keys: unknown; key?: string | undefined }; output: null }
@@ -64,7 +65,7 @@ export interface Questions {
   screenshot: { input: { window: string }; output: { data: string; mime: 'image/png' | 'image/jpeg' } }
   /** Milliseconds since the last input of the mouse or the keyboard, by anyone; `null` when the system does not say. */
   idle: { input: Record<string, never>; output: number | null }
-  /** A key of the whole system, as `acts.systemKeys` gives it, pressed `times` times with no window brought to the front. */
+  /** A key of the whole system, as `ScreenSystem.systemKeys` gives it, pressed `times` times with no window brought to the front. */
   systemKey: { input: { key: unknown; times: number }; output: null }
   /** Open a link with the app the system gives it. */
   open: { input: { link: string }; output: null }
