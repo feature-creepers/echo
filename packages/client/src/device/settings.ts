@@ -47,6 +47,8 @@ export interface DeviceSettings {
      * whole system as talking is, and off until the user records keys for the same reason.
      */
     stopEverything: string
+    /** Make the window Mini, or the full window again, while it is in front (docs/SPEC.md, section 13.2). */
+    mini: string
   }
   app: {
     /** Start when the user signs in to the computer, in the background. */
@@ -60,6 +62,11 @@ export interface DeviceSettings {
     /** Download new versions in the background and install them when the app quits. */
     automatic: boolean
   }
+  /** The app's one window. */
+  window: {
+    /** Where Mini was left, and how large. Left out until it is first moved or resized: it then opens as the first time. */
+    mini?: MiniBounds
+  }
   /** The side sheet of advanced views. */
   sheet: {
     /** How wide the user made it, in pixels. A window too narrow for it shows it narrower, and this width again once it is wide enough. */
@@ -72,6 +79,17 @@ export interface AudioDevice {
   id: string
   /** Finds the device again when its identifier changed, as it can from one launch or one connection to the next. */
   label: string
+}
+
+/**
+ * Mini's size and place on the screen, in whole pixels. With no place, where the system does not let an app read it
+ * (Wayland), it opens where it opens the first time.
+ */
+export interface MiniBounds {
+  width: number
+  height: number
+  x?: number
+  y?: number
 }
 
 /** A persona's identifier, then a language's two-letter code, to the identifier of the voice style picked for it. */
@@ -109,9 +127,10 @@ export const DEFAULT_DEVICE_SETTINGS: DeviceSettings = {
   speaker: { id: '', label: '' },
   listening: { pause: 'normal', sounds: true },
   voice: { aloud: true, speed: 1, styles: {} },
-  shortcuts: { talk: '', talkInWindow: 'CommandOrControl+Space', transcript: 'CommandOrControl+T', stopEverything: '' },
+  shortcuts: { talk: '', talkInWindow: 'CommandOrControl+Space', transcript: 'CommandOrControl+T', stopEverything: '', mini: 'CommandOrControl+Shift+M' },
   app: { launchAtLogin: false, startHidden: false, closeToTray: true },
   updates: { automatic: true },
+  window: {},
   sheet: { width: SHEET_WIDTH.initial }
 }
 
@@ -159,6 +178,23 @@ function readVoiceStyles(raw: unknown): VoiceStyles {
   return Object.fromEntries(personas)
 }
 
+/** A whole number of pixels, from anything: nothing when it is not a number. */
+const pixels = (value: unknown): number | undefined => (typeof value === 'number' && Number.isFinite(value) ? Math.round(value) : undefined)
+
+/**
+ * Mini's bounds, from anything: a size of whole pixels, and a place only when both its coordinates are numbers.
+ * Nothing when the size is missing or not a size. How large it may be is for the window to decide.
+ */
+function readMiniBounds(raw: unknown): MiniBounds | undefined {
+  if (!isObject(raw)) return undefined
+  const width = pixels(raw.width)
+  const height = pixels(raw.height)
+  if (width === undefined || height === undefined || width <= 0 || height <= 0) return undefined
+  const x = pixels(raw.x)
+  const y = pixels(raw.y)
+  return x === undefined || y === undefined ? { width, height } : { width, height, x, y }
+}
+
 /**
  * Settings that can be used, from anything: a file written by an older version, edited by hand, or broken.
  * What is missing or wrong takes its default; what is unknown is dropped.
@@ -170,6 +206,9 @@ export function readDeviceSettings(raw: unknown): DeviceSettings {
   if (!Number.isFinite(read.voice.speed) || read.voice.speed < 0.5 || read.voice.speed > 2) read.voice.speed = fallback.voice.speed
   // The picks' keys are not known in advance, so they are read on their own rather than laid over the defaults.
   read.voice.styles = readVoiceStyles(isObject(raw) && isObject(raw.voice) ? raw.voice.styles : undefined)
+  // Mini's bounds are not known in advance either: there are none until it is first moved or resized.
+  const mini = readMiniBounds(isObject(raw) && isObject(raw.window) ? raw.window.mini : undefined)
+  read.window = mini ? { mini } : {}
   if (!Number.isFinite(read.sheet.width)) read.sheet.width = fallback.sheet.width
   read.sheet.width = Math.round(Math.min(SHEET_WIDTH.most, Math.max(SHEET_WIDTH.least, read.sheet.width)))
   for (const name of Object.keys(read.shortcuts) as ShortcutName[]) {
@@ -188,6 +227,8 @@ export function changeDeviceSettings(settings: DeviceSettings, change: DeviceSet
   const changed = overlay(copy(settings), change)
   // The voice styles picked are given whole: laid over the ones before, a persona or a language new to them would be lost.
   if (change.voice?.styles !== undefined) changed.voice.styles = copy(change.voice.styles)
+  // So are Mini's bounds, which the settings have none of at first.
+  if (change.window?.mini !== undefined) changed.window.mini = copy(change.window.mini)
   return readDeviceSettings(changed)
 }
 
@@ -207,7 +248,8 @@ const SHORTCUT_NAMES: Record<ShortcutName, string> = {
   talk: 'talking from any app',
   talkInWindow: 'talking in the window',
   transcript: 'the transcript',
-  stopEverything: 'stopping everything'
+  stopEverything: 'stopping everything',
+  mini: 'the mini window'
 }
 
 /**

@@ -28,7 +28,13 @@ describe('device settings read back', () => {
     expect(read.microphone).toEqual({ id: 'usb-1', label: 'Desk microphone' })
     expect(read.listening).toEqual({ pause: 'normal', sounds: false })
     expect(read.voice).toEqual({ aloud: true, speed: 1, styles: {} })
-    expect(read.shortcuts).toEqual({ talk: 'Alt+Space', talkInWindow: 'CommandOrControl+Space', transcript: '', stopEverything: '' })
+    expect(read.shortcuts).toEqual({
+      talk: 'Alt+Space',
+      talkInWindow: 'CommandOrControl+Space',
+      transcript: '',
+      stopEverything: '',
+      mini: 'CommandOrControl+Shift+M'
+    })
     expect(read).not.toHaveProperty('unknown')
   })
 
@@ -73,6 +79,31 @@ describe('device settings read back', () => {
     expect(readDeviceSettings({}).sheet.width).toBe(SHEET_WIDTH.initial)
   })
 
+  it.each([
+    ['a place and a size', { x: -300, y: 40, width: 280, height: 320 }, { x: -300, y: 40, width: 280, height: 320 }],
+    ['a size outside what Mini may be, for the window to bring within it', { x: 0, y: 0, width: 9000, height: 12 }, { x: 0, y: 0, width: 9000, height: 12 }],
+    ['fractions of a pixel', { x: 10.4, y: 20.6, width: 280.5, height: 320.2 }, { x: 10, y: 21, width: 281, height: 320 }],
+    ['a size with no place, where the system does not tell it', { width: 300, height: 340 }, { width: 300, height: 340 }],
+    ['a place missing one of its coordinates', { x: 10, width: 300, height: 340 }, { width: 300, height: 340 }],
+    ['a place written as text', { x: '10', y: '20', width: 300, height: 340 }, { width: 300, height: 340 }],
+    ['no size', { x: 10, y: 20 }, undefined],
+    ['a size of nothing', { x: 10, y: 20, width: 0, height: 320 }, undefined],
+    ['a size that is not a number', { width: Number.NaN, height: 320 }, undefined],
+    ['a list', [280, 320], undefined],
+    ['nothing', undefined, undefined]
+  ])("keep Mini's bounds from %s, or none", (_case, mini, kept) => {
+    expect(readDeviceSettings({ window: { mini } }).window).toEqual(kept === undefined ? {} : { mini: kept })
+  })
+
+  it.each([
+    ['the usual keys', undefined, 'CommandOrControl+Shift+M'],
+    ['keys recorded', 'Alt+M', 'Alt+M'],
+    ['none', '', ''],
+    ['keys that are not a shortcut', 'Hyper+M', 'CommandOrControl+Shift+M']
+  ])('keep the key of the mini window from %s', (_case, mini, kept) => {
+    expect(readDeviceSettings({ shortcuts: { mini } }).shortcuts.mini).toBe(kept)
+  })
+
   it('never share their objects with the defaults', () => {
     const read = readDeviceSettings({})
     read.voice.speed = 1.3
@@ -102,6 +133,15 @@ describe('a change of device settings', () => {
     // A change that does not name them keeps them.
     expect(changeDeviceSettings(after, { voice: { speed: 1.3 } }).voice.styles).toEqual(after.voice.styles)
   })
+
+  it("takes Mini's bounds whole, and keeps them when it does not name them", () => {
+    const placed = changeDeviceSettings(DEFAULT_DEVICE_SETTINGS, { window: { mini: { x: 900, y: 24, width: 280, height: 320 } } })
+    expect(placed.window).toEqual({ mini: { x: 900, y: 24, width: 280, height: 320 } })
+    // A size given with no place leaves none of the one before.
+    expect(changeDeviceSettings(placed, { window: { mini: { width: 300, height: 340 } } }).window).toEqual({ mini: { width: 300, height: 340 } })
+    expect(changeDeviceSettings(placed, { window: {} }).window).toEqual(placed.window)
+    expect(changeDeviceSettings(placed, { window: { mini: { width: -1, height: 340 } } }).window).toEqual({})
+  })
 })
 
 describe('pauses', () => {
@@ -117,6 +157,8 @@ describe('a shortcut given to an action', () => {
 
   it('clashes with another action that has the same keys', () => {
     expect(shortcutClash(shortcuts, 'transcript', 'CommandOrControl+Space', false)).toBe('These keys are already used for talking in the window.')
+    expect(shortcutClash(shortcuts, 'talk', 'Control+Shift+M', false)).toBe('These keys are already used for the mini window.')
+    expect(shortcutClash(shortcuts, 'mini', 'CommandOrControl+T', false)).toBe('These keys are already used for the transcript.')
     expect(shortcutClash(shortcuts, 'talk', 'Control+T', false)).toBe('These keys are already used for the transcript.')
     expect(shortcutClash(shortcuts, 'stopEverything', 'CommandOrControl+Space', false)).toBe('These keys are already used for talking in the window.')
     expect(shortcutClash({ ...shortcuts, stopEverything: 'Alt+Escape' }, 'talk', 'Alt+Escape', false)).toBe(
@@ -136,7 +178,8 @@ describe('the shortcuts taken from the whole system', () => {
     ['talk', true],
     ['stopEverything', true],
     ['talkInWindow', false],
-    ['transcript', false]
+    ['transcript', false],
+    ['mini', false]
   ] as const)('%s: %s', (name, global) => {
     expect(isGlobalShortcut(name)).toBe(global)
   })

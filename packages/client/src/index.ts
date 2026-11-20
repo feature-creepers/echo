@@ -10,6 +10,7 @@ export {
   GLOBAL_SHORTCUTS,
   type GlobalShortcutName,
   isGlobalShortcut,
+  type MiniBounds,
   PAUSES,
   type Pause,
   pauseMs,
