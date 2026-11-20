@@ -35,7 +35,8 @@ const GROUP_OF: Record<EventName, Exclude<EventGroup, 'all'>> = {
   'threads.changed': 'state',
   'memory.changed': 'state',
   'assistant.state': 'state',
-  'schedule.changed': 'state'
+  'schedule.changed': 'state',
+  'accounts.changed': 'state'
 }
 
 /** What an event says in a few words, after its name: empty when its name says it all. */

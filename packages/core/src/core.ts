@@ -1,6 +1,7 @@
 import { CLEAR_TOOL, describeCatalog, MEDIA_TOOL, SHOW_TOOL, SHOW_TOOL_INPUT, validateView } from '@repo/catalog'
 import { type Capability, type Event, MEDIA_ACTIONS, type Result } from '@repo/protocol'
 import { createAccess } from './access/access.ts'
+import { createAccountList } from './accounts/accounts.ts'
 import { createAttachments } from './attachments/attachments.ts'
 import { giveFolders } from './attachments/folders.ts'
 import { createBrowserControl } from './browser/browser.ts'
@@ -21,6 +22,7 @@ import { mediaControlOf } from './media/control.ts'
 import { contextOf, EARLIER_FILES, type EarlierFact, type EarlierLine, HISTORY_FILE, historyOf, notesOf } from './memory/earlier.ts'
 import { createMemory } from './memory/memory.ts'
 import { createObjections } from './personas/objection.ts'
+import type { Accounts } from './ports/accounts.ts'
 import type { Blobs } from './ports/blobs.ts'
 import type { Browser } from './ports/browser.ts'
 import type { Clipboard } from './ports/clipboard.ts'
@@ -97,6 +99,8 @@ export interface CoreOptions {
   workspace?: Workspace
   /** Where the previous versions of files the assistant changes are kept, for the person to undo. Left out, with `blobs`. */
   versions?: Blobs
+  /** The person's accounts at their providers: their calendars and mail, read as they granted. Left out, none can be connected. */
+  accounts?: Accounts
 }
 
 /** The core as the listeners see it. */
@@ -261,6 +265,7 @@ export function createCore(options: CoreOptions): Core {
     }
   })
   const objections = createObjections({ records: options.records, screen, now })
+  const accounts = createAccountList({ port: options.accounts, records: options.records, newId: options.newId, now, log: options.log })
   const files = createFiles({ records: options.records, blobs: options.blobs, now, newId: options.newId })
 
   // The person's files and the assistant's (docs/SPEC.md, section 9.7): handed over with what is said, browsed in
@@ -465,6 +470,7 @@ export function createCore(options: CoreOptions): Core {
     desktop.letGo()
     clipboard?.forget()
     device.forget()
+    accounts.cancel()
   })
 
   settings.onChange((changed) => {
@@ -477,6 +483,7 @@ export function createCore(options: CoreOptions): Core {
   screen.onEvent(emit)
   library.onEvent(emit)
   schedule.onEvent(emit)
+  accounts.onEvent(emit)
 
   const execute = createExecutor(
     {
@@ -716,6 +723,19 @@ export function createCore(options: CoreOptions): Core {
         // The model's default is kept as no choice at all, so it follows the default of whichever model answers.
         const effort = input.effort === model?.defaultEffort ? null : input.effort
         return { ok: true, output: { settings: settings.chooseEffort(input.harness, effort) } }
+      },
+      'accounts.read': async () => ({ ok: true, output: { accounts: await accounts.read() } }),
+      'accounts.connect': async (input) => {
+        const connected = await accounts.connect(input)
+        return connected.ok ? { ok: true, output: { accounts: connected.view, account: connected.account } } : connected
+      },
+      'accounts.cancel': async () => {
+        accounts.cancel()
+        return { ok: true, output: { accounts: await accounts.read() } }
+      },
+      'accounts.disconnect': async (input) => {
+        const change = await accounts.disconnect(input.account)
+        return change.ok ? { ok: true, output: { accounts: change.view } } : change
       },
       'engines.sign-in': async (input) => {
         const known = (await engines.read()).harnesses.some((harness) => harness.id === input.harness)

@@ -1,0 +1,10 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    // The account providers' app registrations are written into the build: a build made with others is another build.
+    "build": {
+      "env": ["ECHO_GOOGLE_CLIENT_ID", "ECHO_GOOGLE_CLIENT_SECRET", "ECHO_MICROSOFT_CLIENT_ID"]
+    }
+  }
+}

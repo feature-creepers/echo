@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { activityUsedSchema, allowancesChangedSchema } from './events/access.ts'
+import { accountsChangedSchema } from './events/accounts.ts'
 import { deviceCameraSchema } from './events/camera.ts'
 import {
   activitySchema,
@@ -41,7 +42,8 @@ export const eventSchema = z.discriminatedUnion('name', [
   deviceCameraSchema,
   workspaceChangedSchema,
   allowancesChangedSchema,
-  activityUsedSchema
+  activityUsedSchema,
+  accountsChangedSchema
 ])
 export type Event = z.infer<typeof eventSchema>
 export type EventName = Event['name']

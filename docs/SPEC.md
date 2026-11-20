@@ -1041,21 +1041,23 @@ The files a command changed, created or deleted, 200 at most, are kept with thei
 
 ### 12.3 Privacy
 
-| Data                                                            | Where it goes                                                                                                   |
-| --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Records, memory, files, settings                                | Stay with the core: on the person's machine in version 1                                                        |
-| The utterance as text, the context attached to it, tool results | The harness's vendor                                                                                            |
-| Voice audio                                                     | Stays on the machine: recognition and voice are local (section 8.2)                                             |
-| Speech models                                                   | Downloaded once from their hosts                                                                                |
-| Weather, news, radio                                            | Public services                                                                                                 |
-| Files the assistant reads on the computer                       | The harness's vendor, as tool results: only what the person granted (section 12.2)                              |
-| Map shapes and street tiles                                     | Fetched from public addresses: the GeoJSON by the core, the tiles by the window                                 |
-| The browser's profile: sign-ins, cookies, history, downloads    | Stay on the person's machine; downloads in the assistant's folder. Sites see the person as usual                |
-| What the assistant reads and sees in the browser                | The harness's vendor, as tool results: the text, outlines and pictures of the pages it opened. Never a password |
+| Data                                                            | Where it goes                                                                                                                                                                                                                                                                                                                  |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Records, memory, files, settings                                | Stay with the core: on the person's machine in version 1                                                                                                                                                                                                                                                                       |
+| The utterance as text, the context attached to it, tool results | The harness's vendor                                                                                                                                                                                                                                                                                                           |
+| Voice audio                                                     | Stays on the machine: recognition and voice are local (section 8.2)                                                                                                                                                                                                                                                            |
+| Speech models                                                   | Downloaded once from their hosts                                                                                                                                                                                                                                                                                               |
+| Weather, news, radio                                            | Public services                                                                                                                                                                                                                                                                                                                |
+| Files the assistant reads on the computer                       | The harness's vendor, as tool results: only what the person granted (section 12.2)                                                                                                                                                                                                                                             |
+| Map shapes and street tiles                                     | Fetched from public addresses: the GeoJSON by the core, the tiles by the window                                                                                                                                                                                                                                                |
+| The browser's profile: sign-ins, cookies, history, downloads    | Stay on the person's machine; downloads in the assistant's folder. Sites see the person as usual                                                                                                                                                                                                                               |
+| What the assistant reads and sees in the browser                | The harness's vendor, as tool results: the text, outlines and pictures of the pages it opened. Never a password                                                                                                                                                                                                                |
+| Sign-ins to the person's accounts                               | Stay on the computer that made them: the refresh token sealed with the system's own store (DPAPI, the Keychain, the Secret Service or KWallet) in the core's data folder, the access token in memory; never in the store, a log or an event. Where nothing can seal them, in memory until the app quits (section 12.4, item 4) |
+| Signing in to an account                                        | The provider's own sign-in page, in the system's browser, and its token endpoint: Google at `accounts.google.com` and `oauth2.googleapis.com`, Microsoft at `login.microsoftonline.com`. Nothing else is reached to sign in                                                                                                    |
 
 What the core reads itself, live figures and map shapes, comes only from public addresses, never from this computer or its local network (section 9.4).
 
-Version 1 has no server of ours, no account and no analytics. With the later service, a person who chooses it has their records on their own hosted instance (section 5).
+Version 1 has no server of ours, no account of ours and no analytics. With the later service, a person who chooses it has their records on their own hosted instance (section 5).
 
 ### 12.4 Toward the whole computer: what comes after
 
@@ -1063,8 +1065,11 @@ The assistant may act on the whole computer, behind guardrails the person sets. 
 
 1. **Confinement by the system.** Built on macOS and Linux for both harnesses, and on Windows for Codex (section 12.2). Not built for Claude Code on Windows (issue #11).
 2. **Desktop control**, built: other apps through the accessibility tree, off by default, with an allowlist of apps, a visible marker, the person's own mouse or keyboard pausing it, and passwords never typed (section 12.1).
-3. **Accounts** (mail, calendar and contacts) are not built. Reading the calendar and mail is approved (issue #9); contacts, sending mail and changing the calendar wait for a decision (issue #18). The browser reaches the sites the person signs in to there.
-4. **A vault for secrets** is not built; it comes with the accounts (issue #9).
+3. **Accounts.** Google and Microsoft accounts are connected on the Accounts page (section 13.2), each signed in in the system's browser with OAuth 2.0's authorisation code and PKCE, coming back to the loopback address (RFC 8252), with read-only scopes only. Reading their calendar and mail is approved (issue #9); contacts, sending mail and changing the calendar wait for a decision (issue #18). The browser reaches the sites the person signs in to there.
+   - **Generic.** The core, its tools, the protocol and the Accounts page know accounts, calendars and mail, never a provider beyond the label shown. Each provider is one module of `packages/accounts/src/providers/`; adding one is one more module.
+   - **The build's configuration.** Each provider's app registration (Google's client identifier and the "secret" it gives a desktop client, which it documents cannot be kept; Microsoft's client identifier) is read when the app is built (`ECHO_GOOGLE_CLIENT_ID`, `ECHO_GOOGLE_CLIENT_SECRET`, `ECHO_MICROSOFT_CLIENT_ID`) and written into the build, never into the repository. A build without a provider's registration does not offer it, and the Accounts page says why.
+   - **Google, while the app is unverified**, lets only the test users the owners added sign in, warns that the app is unverified, and ends a sign-in after seven days. **Microsoft** needs no administrator for these scopes, but an organisation may keep its members from consenting to apps; a sign-in lasts 90 days without use. Microsoft cannot revoke a public client's sign-in, so the page links to the account's own app permissions.
+4. **A vault for secrets**, built for the accounts' sign-ins: sealed by the app's main process with Electron's `safeStorage`, asynchronously, and kept by the core in `<data>/vault.json`, a map of sealed entries written whole or not at all, outside the store. The core asks over its utility process's parent port (`launch.ts`). An entry the system wants sealed again is rewritten. Where nothing can be kept safely (no app started the core, no system store, or on Linux no keyring, which leaves Chromium's `basic_text`), entries stay in memory until the core stops, and the Accounts page says why and, on Linux, what to install. On macOS an unsigned build may be asked again for its Keychain item after an update; refused, each account asks to sign in again.
 5. **Elevation** is not built: the assistant has no administrator operations of its own (issue #12, waiting for a decision).
 6. **More of the device**, built. The media player's volume, seeking and queue are in section 9.6. The clipboard, printers and drives are reached through each system's own programs (`packages/screen`).
    - **Clipboard: reading asks; writing is free.** Reading puts a card ("Read your clipboard?") whose yes for the session lasts until the app quits or everything stops. Writing replaces what the clipboard held, 100,000 characters at most. Both are kept in the activity. What is read reaches the model fenced, as a page's words do, so a marker written in it cannot pass for the tool's own words. Under X11 on Linux, the person installs `xclip` when it is missing.
@@ -1228,10 +1233,10 @@ The core is one, never drawn twice. When the first view arrives it moves from th
 
 - **The title row** is the top of the window, not a bar: the same ground, no fill, border or shadow, and it drags the window. 38 px high, "echo" in lowercase on the left (by style only; after the traffic lights on macOS), and at most three buttons on the right: Library and settings (▤, a rounded square with three lines of text, the last shorter), pressed while the hub is open and leaving it when pressed again; the sidebar (◫); and, while a widget is pinned, the pinned widgets (▦, four tiles of different heights in two columns, since equal squares would read as a grid view), which from the hub returns to the main screen to show them. No widget and nothing playing ever shows in it. On Windows and Linux the system's buttons sit over its right end on a fully transparent overlay, so the ground runs under them, their symbols in the row's soft text colour.
 - **Library and settings (the hub)** covers the main screen: the library and the settings as pages of one split view on the window's ground.
-  - Its sidebar, under the title row behind a hairline, starts with the way back, a quiet "Back to conversation" row with a chevron, lit and reached by keyboard like the entries; then Library (Widgets, Files, Memory, Reminders), This computer (General, Voice, Microphone, Shortcuts) and Your assistant (Personalities, Models, Access); Updates and about stands apart at the bottom.
+  - Its sidebar, under the title row behind a hairline, starts with the way back, a quiet "Back to conversation" row with a chevron, lit and reached by keyboard like the entries; then Library (Widgets, Files, Memory, Reminders), This computer (General, Voice, Microphone, Shortcuts) and Your assistant (Personalities, Models, Access, Accounts); Updates and about stands apart at the bottom.
   - The page fills the rest, its title top left, in a column up to 60rem (960 px) whose opening paragraph keeps a readable measure. No close button: going back is the sidebar's first row, as in Linear and the best native apps. Escape also goes back, unless a dialog or a shortcut being recorded takes it, and so do the mouse's back button, Alt+Left on Windows and Linux, and Command+[ on macOS, unless a dialog is open.
   - The title row's button opens the page last shown in this run, Widgets the first time; the tray's "Settings…" opens General, the access label Access, and a saved view's "Open in library" that widget in Widgets.
-  - The widgets' search spans the column under the title, with a scope bar of shelves; an opened widget covers the hub in a dialog that Escape closes first. The Files page shows the assistant's folder as a list beside a preview (section 9.7).
+  - The widgets' search spans the column under the title, with a scope bar of shelves; an opened widget covers the hub in a dialog that Escape closes first. The Files page shows the assistant's folder as a list beside a preview (section 9.7). The Accounts page lists the accounts connected, each with what it gives, "Sign in again" when this computer no longer holds its sign-in, and Disconnect, asked once; then what to read (calendar, mail) and a button for each provider the build offers, "Finish signing in in your browser" with Cancel while a sign-in waits, and the core's words when one fails (section 12.4, item 3).
 - **Sizes.** Three on a desktop: the full window, Mini, and the pill (summoned over another app by the global shortcut, from Speak), with frames and window controls following each system. The pill is not built.
 - **Mini** is the one window made small and kept over the other apps, as in the proof of concept; no second window is made (section 14.7).
   - _In and out._ Its key in the window ("Mini window" in Settings, Shortcuts; Ctrl+Shift+M or Cmd+Shift+M at first) and "Mini window" in the tray's menu, ticked while in Mini, enter and leave it, and a quiet "Full window" at its top left leaves it, shown while the pointer is over the window or the keyboard is in it. What needs more room goes back to the full window first: the tray's "Settings…", the transcript's key, a notification pressed, a link to the settings. Talking (the global shortcut, the tray's "Talk", `--talk`) and "Show Echo" leave it as it is. The app always opens in the full window.
@@ -1292,6 +1297,7 @@ Themes and easter eggs are not built: Speak's seasonal and secret themes, and th
 │   ├── browser/         adapter: the installed browser, driven with Playwright
 │   ├── screen/          adapter: other apps through each system's accessibility; clipboard, printers, drives
 │   ├── tools/           the MCP server through which a harness calls the core's tools
+│   ├── accounts/        adapter: the person's accounts at their providers, signed in with openid-client
 │   ├── speech/          recognition, voice and speech detection, in a process of their own
 │   ├── models/          the catalogue and download of model files, and the hardware tier
 │   ├── client/          client logic with no interface: connection, state, speech playback
@@ -1322,7 +1328,7 @@ contracts    protocol · catalog · tokens
 core         core
              pure logic. Imports protocol and catalog. No Node API, and no input or output except through its ports.
                  ▲
-adapters     harness · store · browser · screen · tools
+adapters     harness · store · browser · screen · tools · accounts
              Node. Each implements ports the core defines.
                  ▲
 host         apps/server
@@ -1351,6 +1357,7 @@ either side  speech          recognisers and voices. Node. Imports models only.
 | `browser`      | Node                                     | `core`                                                                  | The browser and its driver can change without touching the core            |
 | `screen`       | Node                                     | `core`                                                                  | Each system's accessibility bridge can change without touching the core    |
 | `tools`        | Node                                     | `core`, `catalog`                                                       | Everything a model may do passes one gate                                  |
+| `accounts`     | Node                                     | `core`                                                                  | A provider, and its sign-in, can change without touching the core          |
 | `speech`       | Node                                     | `models`                                                                | Engines run on a device or on a server, unchanged                          |
 | `models`       | Node                                     | Nothing                                                                 | One place downloads and verifies large files and detects the hardware tier |
 | `client`       | Anywhere; its local transport needs Node | `protocol`, `catalog`                                                   | Desktop and phone share connection, state and playback                     |
@@ -1385,6 +1392,7 @@ Every package has the same outline: `package.json` with an `exports` map, `tscon
 | `speech`   | `ports.ts`, `Recognizer` and `Voice`, the same on a device and on a server; `service/`, the engines' process (its own entry point) and the link to it; `native/`, sherpa-onnx loaded at run time; `recognizers/`, `voices/`, `detection/`, `audio/`                                                                                                                                                                     |
 | `models`   | `catalogue.ts`, every model with its source, size and checksum; `download.ts`, fetch, verify, resume; `hardware/`, the tier                                                                                                                                                                                                                                                                                             |
 | `tools`    | `server.ts`, MCP over HTTP on the loopback address, one token per session; `mcp.ts`, its messages. The tools themselves are the core's, and so is the gate they pass                                                                                                                                                                                                                                                    |
+| `accounts` | `accounts.ts`, the adapter: refresh tokens in the vault it is given, access tokens in memory; `sign-in.ts`, the authorisation code with PKCE; `loopback.ts`, where the browser comes back; `requests.ts`, every request held to its provider's hosts over https, never following a redirect; `providers/`, one module per provider, listed in `known.ts`                                                                |
 | `client`   | `client.ts`, what a client holds while connected; `connection.ts` and `session.ts`; `transport.ts` and `transports/local.ts` (Node, its own entry point); `state/`, what a client knows, derived from events; `device/`, its checks, settings, shortcuts and updates; `files.ts`; `speech-player.ts`; `export/`; `react/` (its own entry point)                                                                         |
 
 ```
@@ -1403,6 +1411,7 @@ packages/core/src/
 ├── settings/        the defaults, then every choice recorded, in order
 ├── schedule/        reminders and scheduled tasks, on the person's clock; quiet hours; files arriving
 ├── access/          what the assistant may reach: policy.ts decides, commands.ts reads a command line; approvals, activity, undo, the signed log
+├── accounts/        the person's accounts: the list, kept as user settings, and their sign-in
 ├── browser/  desktop/  clipboard/  device/   the browser, other apps, the clipboard, printers, drives and the camera, and their rules
 ├── devices/         admission of a client
 ├── files/           each thread's files and versions, the folder browsed and watched
@@ -1429,6 +1438,7 @@ packages/ui-web/src/
 ├── changes/         what the assistant changed, as diffs, and undo
 ├── attachments/     files waiting in the composer, the drop state, pictures made to fit a model
 ├── access/  activity/   the Access and Activity pages, and the access label under the composer
+├── accounts/        the Accounts page
 ├── hub/             Library and settings: the way back, the room kept for the side sheet
 ├── settings/  memory/  schedule/  personas/   the other pages of the hub
 ├── inspector/       the inspector's events and their groups (sift.ts)
@@ -1445,6 +1455,8 @@ apps/server/src/
 ├── config.ts             the data folder, --exit-with-parent, and the token from the program that started the core
 ├── listeners/local/      a Unix socket or a Windows named pipe for a client on this machine; endpoint/ per system
 ├── auth/                 the local token
+├── registrations.ts      each account provider's app registration, from the build's configuration
+├── vault/                secrets sealed by the app that started the core, kept in <data>/vault.json
 └── web/                  whether an address is on the public web, for what the core reads itself
 ```
 
@@ -1454,8 +1466,9 @@ apps/desktop/
 │   ├── core-process.ts   starts apps/server and connects to it
 │   ├── speech-process.ts the speech engines' process
 │   ├── self-check.ts     a first launch against the real core, with no window (run in CI)
+│   ├── vault.ts          seals and opens the core's secrets with the system's own store
 │   ├── tray.ts  mark.ts  global-shortcut.ts  notifications.ts  updater.ts  camera.ts  desktop-marker.ts  overlay.ts
-│   └── autostart/  chrome/  load/   per system: opening at login, the window's material and buttons, the computer's load
+│   └── autostart/  chrome/  load/  keyring/   per system: opening at login, the window's material and buttons, the computer's load, whether a keyring keeps secrets
 ├── src/preload/          the typed bridge to the renderer
 ├── src/renderer/         mounts ui-web
 └── build/                packaging: electron-builder.yml, and stage.ts, which lays out what is packaged for a system
@@ -1489,6 +1502,7 @@ apps/desktop/
 | Interface           | React 19, Tailwind CSS 4 with the theme generated from `@repo/tokens`, the system's typeface (Geist and Geist Mono bundled for Linux), UI SDK for what the controls do, Motion for transitions, lowlight for code in a diff                                                                                                                                                                                               | Modern, fast to build with, and native-feeling on every system                                                                                                                  |
 | File previews       | mammoth (Word), SheetJS (spreadsheets), JSZip (presentations), react-markdown (Markdown), DOMPurify; each loaded the first time a file of its kind is opened                                                                                                                                                                                                                                                              | Section 9.7. A preview shows what a file says, with well-known libraries (decision 21)                                                                                          |
 | Local models        | sherpa-onnx: Parakeet, Supertonic, Silero, in a process of their own                                                                                                                                                                                                                                                                                                                                                      | Section 8.2. One library, prebuilt for every system                                                                                                                             |
+| Accounts            | openid-client for the sign-in (OAuth 2.0 with PKCE and a loopback redirect), the certified implementation of the standards it needs, for every provider; the providers' few reads made with `fetch` and checked with zod, without their SDKs                                                                                                                                                                              | One library for Google and Microsoft alike, where `google-auth-library` and `@azure/msal-node` each serve one, and MSAL's desktop cache depends on the archived keytar          |
 | CI                  | On every push, on Windows, macOS and Linux: typecheck, lint, the persona-name check, tests, a build, the desktop self-check, and packages to download from the run's page                                                                                                                                                                                                                                                 | Principles 8 and 10 are checked by machines                                                                                                                                     |
 | Release             | electron-builder: NSIS and ZIP for Windows, DMG and ZIP for macOS, AppImage for Linux, with update manifests. A tag `v<version>` builds them on each system into a draft GitHub release; publishing it rolls the update out, read by electron-updater. Builds are not signed: Windows and Linux update unsigned, and macOS, which needs a signed app to install an update, announces it with the page to download it from | Speak's release workflow                                                                                                                                                        |
 
@@ -1513,11 +1527,12 @@ Built:
 - **Browser and other apps.** The installed browser driven with its own profile and rules; other apps read through accessibility and operated by element, with the allowlist, the frame and the pause (sections 12.1 and 12.2).
 - **Projects.** A thread bound to a folder, working in it as a senior developer would (section 7.11).
 - **Reminders and scheduled tasks**, on the person's clock or on files arriving, with quiet hours and notifications (section 7.10).
+- **Accounts.** Google and Microsoft accounts connected on the Accounts page, their sign-ins sealed in a vault with the system's own store (section 12.4, items 3 and 4).
 - **Files.** Documents written as versioned files; pictures, files and folders handed over; the Files page with previews and a quick look (section 9.7). Web search and page reading through the harness's own tools; a greeting and briefing when the app opens.
 - **Settings**, in the hub and in the menus under the composer (section 13.2).
 - **Packaging and updates** for the three systems, made in CI and published from a tag (section 14.7).
 
-Not built: the open issues, among them vector search, confinement of Claude Code's commands on Windows (macOS and Linux have it; on Windows, Codex's commands are confined by its own sandbox), accounts and mail, a vault, elevation, signed builds, the phone app and the paid service; and, in this part of the spec, the pill (13.2), the inspector's actions, themes and easter eggs (13.3). None of these is started without an owner's approval on its issue.
+Not built: the open issues, among them vector search, confinement of Claude Code's commands on Windows (macOS and Linux have it; on Windows, Codex's commands are confined by its own sandbox), reading the accounts' calendar and mail (issue #9, under way), elevation, signed builds, the phone app and the paid service; and, in this part of the spec, the pill (13.2), the inspector's actions, themes and easter eggs (13.3). None of these is started without an owner's approval on its issue.
 
 ## 15. Decisions
 

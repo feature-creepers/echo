@@ -51,8 +51,8 @@ type PortHandlers<Message extends { type: string }> = {
 }
 
 /**
- * Give each message received on the port to the handler for its type. Anything else is ignored: the port carries
- * nothing but these messages, and a starter or a core of another version may say what this one does not know.
+ * Give each message received on the port to the handler for its type. Anything else is ignored: the vault's messages
+ * have listeners of their own, and a starter or a core of another version may say what this one does not know.
  */
 export function onPortMessage<Message extends { type: string }>(schema: z.ZodType<Message>, handlers: PortHandlers<Message>): (received: unknown) => void {
   return (received) => {
@@ -62,3 +62,45 @@ export function onPortMessage<Message extends { type: string }>(schema: z.ZodTyp
     handle(read.data)
   }
 }
+
+/**
+ * The vault (docs/SPEC.md, section 12.4, item 4). Secrets are sealed by the program that started the core, with the
+ * system's own store, and kept sealed by the core, outside the store. A core started as an Electron utility process
+ * asks over its parent port; started any other way, it has nobody to ask and keeps secrets in memory only.
+ */
+
+/** The longest text the vault seals or opens, in characters: a token, never a file. */
+export const VAULT_TEXT_MAX_LENGTH = 65_536
+
+/**
+ * What the core asks of its starter: `seal` a text and answer with the sealed bytes in base 64, `open` sealed bytes
+ * given in base 64 and answer with the text, or say whether sealing `keeping` anything here at all.
+ */
+export const vaultRequestSchema = z.object({
+  type: z.literal('vault'),
+  id: z.string().min(1).max(64),
+  op: z.enum(['seal', 'open', 'keeping']),
+  text: z
+    .string()
+    .max(VAULT_TEXT_MAX_LENGTH * 2)
+    .optional()
+})
+export type VaultRequest = z.infer<typeof vaultRequestSchema>
+
+/**
+ * The starter's answer to the request of the same `id`. Refused, or for `keeping` when nothing would be kept safely,
+ * `ok` is false and `reason` says why, in words for the person. `stale`, on an opened text, means the system wants it
+ * sealed again: the core seals it anew and keeps the new bytes.
+ */
+export const vaultAnswerSchema = z.object({
+  type: z.literal('vault'),
+  id: z.string().min(1).max(64),
+  ok: z.boolean(),
+  text: z
+    .string()
+    .max(VAULT_TEXT_MAX_LENGTH * 2)
+    .optional(),
+  stale: z.literal(true).optional(),
+  reason: z.string().max(1000).optional()
+})
+export type VaultAnswer = z.infer<typeof vaultAnswerSchema>

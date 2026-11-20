@@ -207,6 +207,26 @@
       }
     },
     {
+      "includes": ["packages/accounts/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@repo/*", "!@repo/accounts", "!@repo/core"],
+                    "message": "@repo/accounts may only import: @repo/core. See docs/SPEC.md, section 14.3."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
       "includes": ["packages/tools/**"],
       "linter": {
         "rules": {
@@ -324,6 +344,7 @@
                       "@repo/*",
                       "!@repo/server",
                       "!@repo/core",
+                      "!@repo/accounts",
                       "!@repo/protocol",
                       "!@repo/catalog",
                       "!@repo/harness",
@@ -334,7 +355,7 @@
                       "!@repo/speech",
                       "!@repo/models"
                     ],
-                    "message": "@repo/server may only import: @repo/core, @repo/protocol, @repo/catalog, @repo/harness, @repo/store, @repo/browser, @repo/screen, @repo/tools, @repo/speech, @repo/models. See docs/SPEC.md, section 14.3."
+                    "message": "@repo/server may only import: @repo/core, @repo/protocol, @repo/catalog, @repo/accounts, @repo/harness, @repo/store, @repo/browser, @repo/screen, @repo/tools, @repo/speech, @repo/models. See docs/SPEC.md, section 14.3."
                   }
                 ]
               }

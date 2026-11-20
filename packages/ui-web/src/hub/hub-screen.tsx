@@ -3,6 +3,7 @@ import type { CommandInput, PersonaId, Settings } from '@repo/protocol'
 import { motion } from 'motion/react'
 import { type ReactNode, useEffect, useLayoutEffect, useRef } from 'react'
 import { AccessSection } from '../access/access-section.tsx'
+import { AccountsSection } from '../accounts/accounts-section.tsx'
 import { ActivitySection } from '../activity/activity-section.tsx'
 import type { DeviceSpeech } from '../audio/use-speech.ts'
 import { useDevice } from '../device/device.tsx'
@@ -141,6 +142,12 @@ const PAGES = {
       `What ${name} may reach on this computer: its own folder, the folders and files you give it, or everything. It is held to this on every use, whatever it is asked.`,
     render: (hub) => <AccessSection client={hub.client} settings={hub.settings} productName={hub.productName} />
   },
+  accounts: {
+    title: 'Accounts',
+    lead: (name) =>
+      `The accounts whose calendar and mail ${name} reads, read only: it never sends mail or changes your calendar. What it reads goes to the company of the AI program it runs on, as part of its work, as files do.`,
+    render: (hub) => <AccountsSection client={hub.client} productName={hub.productName} />
+  },
   about: {
     title: 'Updates & about',
     lead: (name) => `The version of ${name} on this computer, and its updates.`,
@@ -158,7 +165,7 @@ export type HubPage = keyof typeof PAGES
 const GROUPS: { title: string; pages: HubPage[] }[] = [
   { title: 'Library', pages: ['widgets', 'files', 'memory', 'reminders', 'activity'] },
   { title: 'This computer', pages: ['general', 'voice', 'microphone', 'shortcuts'] },
-  { title: 'Your assistant', pages: ['personalities', 'models', 'access'] }
+  { title: 'Your assistant', pages: ['personalities', 'models', 'access', 'accounts'] }
 ]
 
 /** What stands apart, at the bottom of the sidebar. */

@@ -63,7 +63,13 @@ jobs:
         env:
           ASSISTANT_BROWSER_SANDBOX: ${{ runner.os == 'Linux' && 'off' || '' }}
 
+      # The account providers' app registrations, the owners' own, written into the app as it is built (docs/SPEC.md,
+      # section 12.4, item 3). Left unset, a build offers no provider.
       - run: pnpm build
+        env:
+          ECHO_GOOGLE_CLIENT_ID: ${{ vars.ECHO_GOOGLE_CLIENT_ID }}
+          ECHO_GOOGLE_CLIENT_SECRET: ${{ vars.ECHO_GOOGLE_CLIENT_SECRET }}
+          ECHO_MICROSOFT_CLIENT_ID: ${{ vars.ECHO_MICROSOFT_CLIENT_ID }}
 
       # electron-builder creates the draft release of this version the first time, and adds to it from the
       # other systems. The packages are not signed yet: Windows installs and updates them after a warning,

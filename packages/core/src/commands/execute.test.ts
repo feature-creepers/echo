@@ -18,6 +18,8 @@ const settings: Settings = {
   interruptions: DEFAULT_INTERRUPTIONS
 }
 
+const noAccounts = { accounts: [], providers: [], keeping: { kept: false } }
+
 function setup(overrides: Partial<Handlers> = {}) {
   const log = { error: vi.fn<(message: string) => void>() }
   const handlers: Handlers = {
@@ -29,6 +31,10 @@ function setup(overrides: Partial<Handlers> = {}) {
     'channel.read': () => ({ ok: true, output: { exchanges: [] } }),
     'engines.read': async () => ({ ok: true, output: { engines: { harnesses: [] } } }),
     'engines.sign-in': async () => ({ ok: true, output: {} }),
+    'accounts.read': async () => ({ ok: true, output: { accounts: noAccounts } }),
+    'accounts.connect': async () => ({ ok: false, error: { code: 'failed', message: 'Accounts cannot be connected here.' } }),
+    'accounts.cancel': async () => ({ ok: true, output: { accounts: noAccounts } }),
+    'accounts.disconnect': async () => ({ ok: true, output: { accounts: noAccounts } }),
     'engines.prefer': async () => ({ ok: true, output: { settings } }),
     'engines.model.set': async () => ({ ok: true, output: { settings } }),
     'engines.effort.set': async () => ({ ok: true, output: { settings } }),

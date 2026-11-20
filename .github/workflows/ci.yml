@@ -41,7 +41,13 @@ jobs:
         env:
           ASSISTANT_BROWSER_SANDBOX: ${{ runner.os == 'Linux' && 'off' || '' }}
 
+      # The account providers' app registrations, the owners' own, written into the app as it is built (docs/SPEC.md,
+      # section 12.4, item 3). Left unset, a build offers no provider.
       - run: pnpm build
+        env:
+          ECHO_GOOGLE_CLIENT_ID: ${{ vars.ECHO_GOOGLE_CLIENT_ID }}
+          ECHO_GOOGLE_CLIENT_SECRET: ${{ vars.ECHO_GOOGLE_CLIENT_SECRET }}
+          ECHO_MICROSOFT_CLIENT_ID: ${{ vars.ECHO_MICROSOFT_CLIENT_ID }}
 
       # Start the built desktop app, let it start the core and connect to it, and fail if it cannot.
       - name: Desktop self-check

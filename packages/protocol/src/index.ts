@@ -13,6 +13,17 @@ export {
   type ProtectedPlace
 } from './access.ts'
 export {
+  ACCOUNT_PARTS,
+  type Account,
+  type AccountPart,
+  type AccountProvider,
+  type AccountsView,
+  accountPartSchema,
+  accountSchema,
+  accountsViewSchema,
+  MAX_ACCOUNTS
+} from './accounts.ts'
+export {
   type AccessUse,
   type ActivityCheck,
   accessUseSchema,
@@ -90,7 +101,12 @@ export {
   type Ready,
   readySchema,
   type StarterMessage,
-  starterMessageSchema
+  starterMessageSchema,
+  VAULT_TEXT_MAX_LENGTH,
+  type VaultAnswer,
+  type VaultRequest,
+  vaultAnswerSchema,
+  vaultRequestSchema
 } from './launch.ts'
 export {
   COLLECTION_MAX_LENGTH,

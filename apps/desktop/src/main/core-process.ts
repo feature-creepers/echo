@@ -3,6 +3,7 @@ import { type Connection, ConnectionRefused, type CoreLink, connect, type Identi
 import { openLocal } from '@repo/client/transports/local'
 import { coreMessageSchema, createLineDecoder, DATA_OPTION, onPortMessage, readySchema, type StarterMessage } from '@repo/protocol'
 import { utilityProcess } from 'electron'
+import { serveVault } from './vault.ts'
 
 /** How long the core has to announce where it listens. */
 const READY_TIMEOUT_MS = 15_000
@@ -86,6 +87,8 @@ export function startCore(options: CoreProcessOptions): CoreProcess {
       }
     })
   )
+  // The core keeps the person's sign-ins sealed: it asks this process, the only one that reaches the system's store.
+  serveVault(child)
 
   let errors = ''
   child.stderr?.setEncoding('utf8').on('data', (text: string) => {

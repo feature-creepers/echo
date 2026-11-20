@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { basename, extname, join } from 'node:path'
+import { createAccounts } from '@repo/accounts'
 import { createBrowser } from '@repo/browser'
 import { type Core, createCore } from '@repo/core'
 import { createComputer, createHarnesses, createWorkspace } from '@repo/harness'
@@ -9,6 +10,9 @@ import { serveTools } from '@repo/tools'
 import manifest from '../package.json' with { type: 'json' }
 import { localToken } from './auth/local-token.ts'
 import type { Config } from './config.ts'
+import { registrations } from './registrations.ts'
+import { sealerOfStarter } from './vault/starter.ts'
+import { openVault } from './vault/vault.ts'
 import { createPublicWeb } from './web/public-web.ts'
 
 export interface Composition {
@@ -34,6 +38,9 @@ export async function compose(config: Config): Promise<Composition> {
   // the core runs in the app's program, so its name is the one left out, with the product's.
   const own = [basename(process.execPath, extname(process.execPath)).toLowerCase(), 'echo']
   const desktop = createDesktop({ folder: join(config.data, 'screen'), own })
+  // The person's accounts: their sign-ins sealed in the vault, never in the store, and opened in the system's browser.
+  const vault = openVault({ file: join(config.data, 'vault.json'), sealer: sealerOfStarter() })
+  const accounts = createAccounts({ vault, open: (url) => desktop.open(url), registrations, log })
   // The same folder, as the person browses it and hands files into it.
   const workspace = await createWorkspace(computer.workspace)
   const core = createCore({
@@ -55,6 +62,7 @@ export async function compose(config: Config): Promise<Composition> {
     printers: createPrinters({ files: join(computer.workspace, 'printed') }),
     drives: createDrives(),
     workspace,
+    accounts,
     timers: {
       after(ms, work) {
         // A timer of the core never keeps the process alive on its own.

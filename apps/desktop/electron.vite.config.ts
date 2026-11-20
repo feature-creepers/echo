@@ -16,6 +16,14 @@ const speechEntry = fileURLToPath(import.meta.resolve('@repo/speech/process'))
 const here = (path: string) => fileURLToPath(new URL(path, import.meta.url))
 
 /**
+ * The app registrations of the account providers, as the variables set when the app is built say: written into the
+ * core, so the build's configuration decides, never the repository's or the environment the app later runs in. A
+ * variable left unset leaves its provider out of this build.
+ */
+const REGISTRATIONS = ['ECHO_GOOGLE_CLIENT_ID', 'ECHO_GOOGLE_CLIENT_SECRET', 'ECHO_MICROSOFT_CLIENT_ID']
+const registrations = Object.fromEntries(REGISTRATIONS.map((name) => [`process.env.${name}`, JSON.stringify(process.env[name] ?? '')]))
+
+/**
  * The development server runs React's refresh preamble as an inline script and reloads the page over a WebSocket.
  * Only there does the page's security policy allow them: the built page runs its own files and nothing else.
  */
@@ -28,6 +36,7 @@ const developmentPolicy: Plugin = {
 
 export default defineConfig({
   main: {
+    define: registrations,
     build: {
       rollupOptions: { input: { index: here('src/main/index.ts'), core: coreEntry, speech: speechEntry } }
     }

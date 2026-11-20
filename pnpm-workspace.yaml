@@ -48,6 +48,7 @@ catalog:
   lowlight: ^3.3.0
   mammoth: ^1.13.0
   motion: ^14.14.0
+  openid-client: ^6.9.0
   playwright-core: ^1.65.0
   react: ^19.3.1
   react-dom: ^19.3.1

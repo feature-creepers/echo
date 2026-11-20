@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@repo/accounts": "workspace:*",
     "@repo/browser": "workspace:*",
     "@repo/core": "workspace:*",
     "@repo/harness": "workspace:*",
@@ -19,7 +20,8 @@
     "@repo/screen": "workspace:*",
     "@repo/store": "workspace:*",
     "@repo/tools": "workspace:*",
-    "undici": "catalog:"
+    "undici": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@repo/tsconfig": "workspace:*",
