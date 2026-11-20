@@ -1,5 +1,7 @@
 import type { BlockProps } from '@repo/catalog'
 import { CommandFailed } from '@repo/client'
+import { FieldControl, FieldLabel, Field as FieldRoot } from '@ui-sdk/react/field'
+import { Listbox, ListboxItem } from '@ui-sdk/react/listbox'
 import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { Button as AppButton } from '../../primitives/button.tsx'
 import { cn } from '../../primitives/cn.ts'
@@ -57,39 +59,51 @@ export function Button({ props }: { props: BlockProps<'Button'> }) {
   )
 }
 
+/** Answers to pick one of: Up, Down, Home, End and typing move between them, and Enter or a press picks one, once. */
 export function Choice({ props }: { props: BlockProps<'Choice'> }) {
   const { say } = useViewActions()
   const [picked, setPicked] = useState<number>()
   return (
     <div className="grid gap-2">
       {props.question && <p className="font-medium text-sm">{props.question}</p>}
-      <div className="grid gap-1">
+      <Listbox
+        activation="manual"
+        aria-label={props.question ?? 'Answers'}
+        value={picked === undefined ? null : String(picked)}
+        readOnly={picked !== undefined}
+        onValueChange={(value) => {
+          const index = Number(value)
+          const option = props.options[index]
+          if (picked !== undefined || !option) return
+          setPicked(index)
+          say(option.say)
+        }}
+        className="grid gap-1"
+      >
         {props.options.map((option, index) => (
-          <button
+          <ListboxItem
             key={index}
-            type="button"
-            disabled={picked !== undefined}
-            onClick={() => {
-              setPicked(index)
-              say(option.say)
-            }}
+            value={String(index)}
+            label={option.label}
             className={cn(
               'grid gap-0.5 rounded-md border px-3 py-2 text-left transition-colors duration-(--duration-quick) ease-soft',
               picked === index
                 ? 'border-accent/60 bg-accent/10'
-                : 'border-line bg-white/[0.018] hover:not-disabled:border-line-strong hover:not-disabled:bg-white/[0.04]',
-              picked !== undefined && picked !== index && 'opacity-45'
+                : picked === undefined
+                  ? 'cursor-pointer border-line bg-white/[0.018] hover:border-line-strong hover:bg-white/[0.04]'
+                  : 'border-line bg-white/[0.018] opacity-45'
             )}
           >
             <span className="text-sm">{option.label}</span>
             {option.detail && <span className="text-text-soft text-xs">{option.detail}</span>}
-          </button>
+          </ListboxItem>
         ))}
-      </div>
+      </Listbox>
     </div>
   )
 }
 
+/** A line to type an answer in, sent once; its label names its input, and pressing it puts the cursor there. */
 export function Field({ props }: { props: BlockProps<'Field'> }) {
   const { say } = useViewActions()
   const [value, setValue] = useState('')
@@ -101,21 +115,24 @@ export function Field({ props }: { props: BlockProps<'Field'> }) {
     setSent(true)
   }
   return (
-    <form onSubmit={send} className="grid gap-1">
-      <Eyebrow>{props.label}</Eyebrow>
-      <div className="flex gap-1.5">
-        <input
-          value={value}
-          disabled={sent}
-          onChange={(event) => setValue(event.target.value)}
-          placeholder={props.placeholder}
-          aria-label={props.label}
-          className="h-8 min-w-0 flex-1 rounded-md border border-line-strong bg-black/25 shadow-[inset_0_1px_1px_rgb(0_0_0/0.25)] px-2.5 text-sm transition-colors duration-(--duration-quick) placeholder:text-text-faint disabled:opacity-60"
-        />
-        <AppButton type="submit" kind="primary" disabled={sent || value.trim() === ''}>
-          {sent ? 'Sent' : 'Send'}
-        </AppButton>
-      </div>
+    <form onSubmit={send}>
+      <FieldRoot className="grid gap-1">
+        <FieldLabel>
+          <Eyebrow>{props.label}</Eyebrow>
+        </FieldLabel>
+        <div className="flex gap-1.5">
+          <FieldControl
+            value={value}
+            disabled={sent}
+            onChange={(event) => setValue(event.target.value)}
+            placeholder={props.placeholder}
+            className="h-8 min-w-0 flex-1 rounded-md border border-line-strong bg-black/25 shadow-[inset_0_1px_1px_rgb(0_0_0/0.25)] px-2.5 text-sm transition-colors duration-(--duration-quick) placeholder:text-text-faint disabled:opacity-60"
+          />
+          <AppButton type="submit" kind="primary" disabled={sent || value.trim() === ''}>
+            {sent ? 'Sent' : 'Send'}
+          </AppButton>
+        </div>
+      </FieldRoot>
     </form>
   )
 }

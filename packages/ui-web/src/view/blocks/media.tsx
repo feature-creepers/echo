@@ -1,4 +1,5 @@
 import type { BlockProps } from '@repo/catalog'
+import { SliderControl, SliderIndicator, Slider as SliderRoot, SliderThumb, SliderTrack } from '@ui-sdk/react/slider'
 import { useEffect, useMemo, useState } from 'react'
 import type { MediaSource } from '../../media/player.ts'
 import { usePlayer, usePlayerState, useVideoSurface } from '../../media/player-provider.tsx'
@@ -175,27 +176,16 @@ function Live({ on }: { on: boolean }) {
   )
 }
 
-/** A thin bar to set a level or a position, from 0 to 1. A range input does the work; the bar is drawn over it. */
+/** A thin bar to set a level or a position, from 0 to 1, by the pointer or the arrow keys; its knob shows under the pointer. */
 function Slider({ label, value, onChange, className }: { label: string; value: number; onChange(value: number): void; className?: string }) {
   return (
-    <div className={cn('group relative flex h-4 min-w-0 flex-1 items-center', className)}>
-      <div className="h-[3px] w-full overflow-hidden rounded-full bg-white/[0.08]">
-        <div className="h-full rounded-full bg-accent" style={{ width: `${Math.round(value * 100)}%` }} />
-      </div>
-      <div
-        className="pointer-events-none absolute size-2.5 -translate-x-1/2 rounded-full bg-text opacity-0 shadow transition group-hover:opacity-100"
-        style={{ left: `${value * 100}%` }}
-      />
-      <input
-        type="range"
-        aria-label={label}
-        min={0}
-        max={1}
-        step={0.01}
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-        className="absolute inset-0 size-full cursor-pointer opacity-0"
-      />
-    </div>
+    <SliderRoot<number> value={value} onValueChange={onChange} min={0} max={1} step={0.01} className={cn('group relative min-w-0 flex-1', className)}>
+      <SliderControl className="flex h-4 cursor-pointer items-center">
+        <SliderTrack className="h-[3px] w-full rounded-full bg-white/[0.08]">
+          <SliderIndicator className="rounded-full bg-accent" />
+          <SliderThumb aria-label={label} className="pointer-events-none size-2.5 rounded-full bg-text opacity-0 shadow transition group-hover:opacity-100" />
+        </SliderTrack>
+      </SliderControl>
+    </SliderRoot>
   )
 }
