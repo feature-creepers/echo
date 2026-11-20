@@ -1,4 +1,4 @@
-import type { AccountFailure, AccountPart, AccountProvider, Accounts, Keeping, SignedIn } from '../ports/accounts.ts'
+import type { AccountFailure, AccountPart, AccountProvider, Accounts, CalendarEvent, EventRange, Keeping, SignedIn } from '../ports/accounts.ts'
 import type { Signal } from '../ports/harness.ts'
 
 /** Two providers, one this build can sign in to and one it cannot. */
@@ -22,6 +22,10 @@ export interface ScriptedAccounts extends Accounts {
   held: Set<string>
   disconnected: string[]
   forgotten: string[]
+  /** What each account's calendar holds, or why it cannot be read: a promise the test settles, for a slow one. */
+  calendars: Map<string, CalendarEvent[] | AccountFailure | Promise<CalendarEvent[]>>
+  /** The spans read, in order. */
+  ranges: EventRange[]
 }
 
 export function scriptedAccounts(keeping: Keeping = { kept: true }): ScriptedAccounts {
@@ -29,6 +33,8 @@ export function scriptedAccounts(keeping: Keeping = { kept: true }): ScriptedAcc
   const held = new Set<string>()
   const disconnected: string[] = []
   const forgotten: string[] = []
+  const calendars = new Map<string, CalendarEvent[] | AccountFailure | Promise<CalendarEvent[]>>()
+  const ranges: EventRange[] = []
   return {
     providers: () => SCRIPTED_PROVIDERS,
     keeping: async () => keeping,
@@ -52,9 +58,16 @@ export function scriptedAccounts(keeping: Keeping = { kept: true }): ScriptedAcc
       held.delete(account)
     },
     holds: async (account) => held.has(account),
+    async events(account, range) {
+      ranges.push(range)
+      const kept = await (calendars.get(account) ?? [])
+      return Array.isArray(kept) ? { ok: true, events: kept } : kept
+    },
     signing: () => signing,
     held,
     disconnected,
-    forgotten
+    forgotten,
+    calendars,
+    ranges
   }
 }

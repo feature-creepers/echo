@@ -30,6 +30,30 @@ export interface Accounts {
   forget(account: string): Promise<void>
   /** Whether this computer holds a sign-in for the account. */
   holds(account: string): Promise<boolean>
+  /** The events of every calendar the person shows in the account that meet a span of time, cancelled ones left out. */
+  events(account: string, range: EventRange, signal: Signal): Promise<{ ok: true; events: CalendarEvent[] } | AccountFailure>
+}
+
+/** A span of time to read: two instants, in ISO 8601, and the person's time zone, which a provider may answer in. */
+export interface EventRange {
+  from: string
+  until: string
+  zone: string
+}
+
+/** An event of a calendar, as the provider gave it. Others wrote it: the core fences it before a model reads it. */
+export interface CalendarEvent {
+  /** The calendar's name. */
+  calendar: string
+  title: string
+  place?: string | undefined
+  description?: string | undefined
+  /** All day, `start` is its first date and `end` the day after its last (YYYY-MM-DD); otherwise both are instants in ISO 8601. */
+  allDay: boolean
+  start: string
+  end: string
+  /** The person declined it. */
+  declined: boolean
 }
 
 /** Whether sign-ins outlive the app here: when not, they last until it quits, and `reason` says why. */

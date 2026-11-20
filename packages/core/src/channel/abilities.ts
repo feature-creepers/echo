@@ -40,6 +40,8 @@ export interface Abilities {
   hear?(said: string, spoken?: boolean): boolean
   /** A thread made or changed files on the computer, at these places, absolute: they are shown where `showing` says. */
   wrote?(showing: Showing, paths: readonly string[]): void
+  /** What the briefing is told besides its request, read when the window opens: the rest of today's calendar. */
+  briefing?(): Promise<string | undefined>
 }
 
 /** What the channel asks of the memory (docs/SPEC.md, section 10.5). */

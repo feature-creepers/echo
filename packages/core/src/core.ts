@@ -2,6 +2,8 @@ import { CLEAR_TOOL, describeCatalog, MEDIA_TOOL, SHOW_TOOL, SHOW_TOOL_INPUT, va
 import { type Capability, type Event, MEDIA_ACTIONS, type Result } from '@repo/protocol'
 import { createAccess } from './access/access.ts'
 import { createAccountList } from './accounts/accounts.ts'
+import { calendarBriefing } from './accounts/briefing.ts'
+import { createAccountTools } from './accounts/tools.ts'
 import { createAttachments } from './attachments/attachments.ts'
 import { giveFolders } from './attachments/folders.ts'
 import { createBrowserControl } from './browser/browser.ts'
@@ -230,6 +232,7 @@ export function createCore(options: CoreOptions): Core {
     newId: options.newId
   })
   access.onEvent(emit)
+  const accounts = createAccountList({ port: options.accounts, records: options.records, newId: options.newId, now, log: options.log })
   const browser = createBrowserControl({
     browser: options.browser,
     settings,
@@ -247,6 +250,8 @@ export function createCore(options: CoreOptions): Core {
     mark: (control) => emit({ type: 'event', name: 'device.desktop', control })
   })
   const clipboard = options.clipboard ? createClipboardControl({ clipboard: options.clipboard, ask: access.ask, uses: access }) : undefined
+  // The person's calendars and mail, read for threads while an account that gives them is ready (docs/SPEC.md, section 12.1).
+  const accountTools = createAccountTools({ list: accounts, port: options.accounts, zone, uses: access })
   // What the connected devices declared they can do: a camera is used only where one said it has one.
   const declared = new Set<Capability>()
   const device = createDeviceControl({
@@ -265,7 +270,6 @@ export function createCore(options: CoreOptions): Core {
     }
   })
   const objections = createObjections({ records: options.records, screen, now })
-  const accounts = createAccountList({ port: options.accounts, records: options.records, newId: options.newId, now, log: options.log })
   const files = createFiles({ records: options.records, blobs: options.blobs, now, newId: options.newId })
 
   // The person's files and the assistant's (docs/SPEC.md, section 9.7): handed over with what is said, browsed in
@@ -373,6 +377,7 @@ export function createCore(options: CoreOptions): Core {
         ...browser.tools(showing),
         ...desktop.tools(showing),
         ...(clipboard?.tools(showing) ?? []),
+        ...accountTools.tools(showing),
         ...device.tools(showing),
         ...timeTools,
         ...(stance === 'critical' ? objections.tools(showing) : [])
@@ -384,7 +389,9 @@ export function createCore(options: CoreOptions): Core {
         [
           objections.standing(),
           library.standing(role),
-          ...(role === 'thread' ? [browser.standing(), desktop.standing()] : [`${SCHEDULE_INSTRUCTIONS}\n${SCHEDULE_ROUTING}`, projectsStanding()])
+          ...(role === 'thread'
+            ? [browser.standing(), desktop.standing(), accountTools.standing()]
+            : [`${SCHEDULE_INSTRUCTIONS}\n${SCHEDULE_ROUTING}`, projectsStanding()])
         ]
           .filter(Boolean)
           .join('\n\n') || undefined,
@@ -405,8 +412,9 @@ export function createCore(options: CoreOptions): Core {
         return guide && guideText(guide)
       },
       worked: (thread, folder) => access.worked(thread, folder),
-      version: () => `${access.version()} ${browser.version()} ${desktop.version()}`,
+      version: () => `${access.version()} ${browser.version()} ${desktop.version()} ${accounts.version()}`,
       hear: (said, spoken) => access.hear(said, spoken),
+      briefing: () => calendarBriefing({ list: accounts, port: options.accounts, now, zone, timers: options.timers }),
       wrote: (showing, paths) => {
         written?.add(showing, paths).catch((error: unknown) => options.log.error(`The card of written files could not be shown: ${String(error)}`))
         workspaceChanged(paths.flatMap((path) => workspace?.pathOf(path) ?? []))

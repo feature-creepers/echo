@@ -1,9 +1,9 @@
-import type { AccountProvider, Accounts, Keeping, Log, Signal, Timers } from '@repo/core'
+import type { AccountFailure, AccountProvider, Accounts, Keeping, Log, Signal, Timers } from '@repo/core'
 import * as client from 'openid-client'
 import { z } from 'zod'
 import { knownProviders } from './providers/known.ts'
 import type { Provider, Registration } from './providers/provider.ts'
-import { type Call, caller, type Fetch, guarded } from './requests.ts'
+import { type Call, CallFailed, caller, type Fetch, guarded } from './requests.ts'
 import { CANCELLED, signIn } from './sign-in.ts'
 
 /**
@@ -32,6 +32,9 @@ export interface AccountsOptions {
   /** Left out, the platform's. */
   fetch?: Fetch
 }
+
+/** How long before an access token's end it is renewed. */
+const RENEW_BEFORE_MS = 60_000
 
 /** What the vault holds for an account. */
 const entrySchema = z.object({ provider: z.string(), refresh: z.string().min(1) })
@@ -101,9 +104,72 @@ export function createAccounts(options: AccountsOptions): Accounts {
 
   const knownFor = (provider: string) => known.find((entry) => entry.provider.id === provider)
 
+  const signInAgain = (label: string): AccountFailure => ({
+    ok: false,
+    reason: `${label} no longer accepts this computer's sign-in to the account: the person signs in again on the Accounts page.`,
+    signIn: true
+  })
+
+  /** The access tokens of this run, by account, and the renewals under way, so that two reads renew once. */
+  const access = new Map<string, { token: string; until: number }>()
+  const renewing = new Map<string, Promise<{ token: string } | AccountFailure>>()
+
+  const holdAccess = (account: string, tokens: { access_token: string; expiresIn(): number | undefined }) =>
+    access.set(account, { token: tokens.access_token, until: Date.now() + (tokens.expiresIn() ?? 3600) * 1000 })
+
+  /** An access token for an account, renewed with its refresh token within a minute of its end. */
+  const tokenOf = (account: string, entry: Entry, known: Known): Promise<{ token: string } | AccountFailure> => {
+    const held = access.get(account)
+    if (held && held.until - RENEW_BEFORE_MS > Date.now()) return Promise.resolve({ token: held.token })
+    let renewal = renewing.get(account)
+    if (!renewal) {
+      renewal = (async () => {
+        try {
+          const tokens = await client.refreshTokenGrant(await configurationOf(known), entry.refresh)
+          holdAccess(account, tokens)
+          // Microsoft gives a new refresh token at each renewal: the vault keeps the latest.
+          if (tokens.refresh_token && tokens.refresh_token !== entry.refresh) await keep(account, { ...entry, refresh: tokens.refresh_token })
+          return { token: tokens.access_token }
+        } catch (error) {
+          if (error instanceof client.ResponseBodyError && error.error === 'invalid_grant') return signInAgain(known.provider.label)
+          return { ok: false as const, reason: `${known.provider.label} could not be reached: ${error instanceof Error ? error.message : String(error)}` }
+        } finally {
+          renewing.delete(account)
+        }
+      })()
+      renewing.set(account, renewal)
+    }
+    return renewal
+  }
+
+  /** Read from an account with a fresh access token: what `work` gives, or why not. */
+  const reading = async <Answer>(
+    account: string,
+    signal: Signal,
+    work: (provider: Provider, call: Call) => Promise<Answer>
+  ): Promise<Answer | AccountFailure> => {
+    const entry = await readEntry(account)
+    if (!entry) return { ok: false, reason: 'This computer holds no sign-in for the account: the person signs in again on the Accounts page.', signIn: true }
+    const known = knownFor(entry.provider)
+    if (!known || known.problem !== undefined) return { ok: false, reason: known?.problem ?? 'This build does not know the account’s provider.' }
+    const token = await tokenOf(account, entry, known)
+    if (!('token' in token)) return token
+    try {
+      return await work(known.provider, caller(fetchFor(known.provider), token.token, abortOf(signal)))
+    } catch (error) {
+      // A token refused a minute after it was renewed was revoked: the person signs in again.
+      if (error instanceof CallFailed && error.status === 401) {
+        access.delete(account)
+        return signInAgain(known.provider.label)
+      }
+      return { ok: false, reason: `${known.provider.label} could not be read: ${error instanceof Error ? error.message : String(error)}` }
+    }
+  }
+
   /** Forget a sign-in here, revoking it first when asked and the provider allows it. */
   const drop = async (account: string, revoke: boolean) => {
     const entry = await readEntry(account)
+    access.delete(account)
     const providerOf = entry && knownFor(entry.provider)
     if (revoke && entry && providerOf?.provider.revokes) {
       await client
@@ -140,6 +206,7 @@ export function createAccounts(options: AccountsOptions): Accounts {
         const call: Call = caller(fetchFor(entry.provider), signed.tokens.access_token, stop)
         const who = await entry.provider.who(call, signed.parts)
         await keep(account, { provider: id, refresh: signed.tokens.refresh_token as string })
+        holdAccess(account, signed.tokens)
         return { ok: true, address: who.address, ...(who.name ? { name: who.name } : {}), parts: signed.parts }
       } catch (error) {
         return { ok: false, reason: `The sign-in to ${entry.provider.label} failed: ${error instanceof Error ? error.message : String(error)}` }
@@ -148,7 +215,9 @@ export function createAccounts(options: AccountsOptions): Accounts {
 
     disconnect: (account) => drop(account, true),
     forget: (account) => drop(account, false),
-    holds: async (account) => (await readEntry(account)) !== undefined
+    holds: async (account) => (await readEntry(account)) !== undefined,
+
+    events: (account, range, signal) => reading(account, signal, async (provider, call) => ({ ok: true as const, events: await provider.events(call, range) }))
   }
 }
 

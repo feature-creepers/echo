@@ -262,6 +262,8 @@ export function createChannel(options: ChannelOptions): Channel {
   let deciding: Turn | undefined
   /** Said while the orchestrator was still busy: decided about as soon as it is free. */
   let pending: Turn | undefined
+  /** What each briefing is told besides its request, read while the harness gets ready. */
+  const briefings = new Map<TurnId, Promise<string | undefined>>()
   const runtimes = new Map<string, Runtime>()
 
   const activePersona = (): Persona => {
@@ -999,12 +1001,17 @@ export function createChannel(options: ChannelOptions): Channel {
       finish(turn, 'stopped')
       return void decideNext()
     }
+    // A briefing waits for what it is told of the day, which its own reading keeps short.
+    const day = await briefings.get(turn.exchange.turn)
+    briefings.delete(turn.exchange.turn)
+    if (deciding !== turn) return
     const session = orchestratorSession(engine)
     // A briefing has nothing to recall by; a scheduled task is recalled by its request, as if the person had said it.
     const asked = turn.exchange.trigger === undefined || turn.exchange.trigger === 'task'
     const recalled = asked ? memory?.recall(turn.exchange.said, orchestrator?.knownSince) : undefined
     const images = engine.capabilities?.images === true
-    const text = recalled ? `${recalled}\n\n${message(turn, images)}` : message(turn, images)
+    const asking = day ? `${message(turn, images)}\n\n${day}` : message(turn, images)
+    const text = recalled ? `${recalled}\n\n${asking}` : asking
     // Only the one session that answers everything is given the files; an orchestrator is told of them, and routes.
     if (abilities?.server() === undefined && handedAny(turn.handed)) session.send(text, attachmentsFor(turn.handed, images))
     else session.send(text)
@@ -1148,6 +1155,8 @@ export function createChannel(options: ChannelOptions): Channel {
       const turn = newTurn(exchange, undefined)
       transcript.push(exchange)
       current = turn
+      const day = abilities?.briefing?.().catch(() => undefined)
+      if (day) briefings.set(exchange.turn, day)
       void decide(turn)
       return exchange.turn
     },

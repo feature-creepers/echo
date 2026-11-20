@@ -86,7 +86,7 @@ export async function fakeProvider(): Promise<FakeProvider> {
     const url = new URL(request.url ?? '/', 'http://127.0.0.1')
     const [, host = '', ...rest] = url.pathname.split('/')
     const path = `/${rest.join('/')}`
-    const route = `${host}${path}`
+    const route = `${host}${decodeURIComponent(path)}`
     if (route === 'accounts.google.com/.well-known/openid-configuration')
       return json(response, 200, {
         issuer: 'https://accounts.google.com',

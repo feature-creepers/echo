@@ -1,4 +1,4 @@
-import type { AccountPart } from '@repo/core'
+import type { AccountPart, CalendarEvent, EventRange } from '@repo/core'
 import type { Call } from '../requests.ts'
 
 /**
@@ -34,6 +34,8 @@ export interface Provider {
   granted(scope: string | undefined, asked: readonly AccountPart[]): AccountPart[]
   /** Who signed in: the account's address, and the person's name when the provider says it. */
   who(call: Call, parts: readonly AccountPart[]): Promise<{ address: string; name?: string | undefined }>
+  /** The events of every calendar the person shows that meet a span of time, expanded and without the cancelled ones. */
+  events(call: Call, range: EventRange): Promise<CalendarEvent[]>
   /** Why a sign-in was refused, from the error the provider sent back, in words for the person. */
   refusal(error: string, description: string | undefined): string
   /** What the person should know before connecting an account, as the Accounts page says it. */
@@ -47,6 +49,9 @@ export interface Registration {
   clientId?: string | undefined
   clientSecret?: string | undefined
 }
+
+/** How many pages of an answer are read at most: a calendar with more is cut there. */
+export const MAX_PAGES = 8
 
 /** Scopes as a provider sends them back, compared whole and case set aside. */
 export function scopeSet(scope: string | undefined): Set<string> {
