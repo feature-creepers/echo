@@ -360,6 +360,8 @@ describe('git’s own files', () => {
       mkdirSync(join(root, made), { recursive: true })
     writeFileSync(join(repo, 'vendor', 'lib', '.git'), 'gitdir: ../../.git/modules/lib')
     writeFileSync(join(root, 'bare', 'HEAD'), 'ref: refs/heads/main')
+    // husky runs the repository's hooks from `.husky/_`.
+    writeFileSync(join(repo, '.git', 'config'), '[core]\n\thooksPath = .husky/_\n')
     const where = { home: join(root, 'home'), env: { XDG_CONFIG_HOME: join(root, 'xdg') } }
     return { root, repo, where }
   }
@@ -376,6 +378,8 @@ describe('git’s own files', () => {
     ['../bare/HEAD', true],
     ['../bare/config', true],
     ['../bare/refs/heads/main', true],
+    ['.husky/_/post-index-change', true],
+    ['.husky/pre-commit', false],
     ['.gitattributes', false],
     ['.gitmodules', false],
     ['.github/workflows/ci.yml', false],
