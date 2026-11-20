@@ -290,16 +290,21 @@ function pathOf(word: Word, context: Context): { path: string; below: boolean; p
     let rest = ''
     let wildcard = false
     if (piece.kind === 'text') {
-      // `~` is the home the line set, when it set one.
-      if (index === 0 && !piece.quoted && piece.text.startsWith('~') && context.bound.has('HOME')) return { path: '', below: true, unresolved: true }
+      let text = piece.text
+      if (index === 0 && !piece.quoted && context.shell === 'posix') {
+        // `~` is the home the line set, when it set one; `~-` and `~N` are where the line was, which it cannot tell.
+        if (text.startsWith('~') && (context.bound.has('HOME') || /^~(-|[+-]?\d+)([\\/]|$)/.test(text))) return { path: '', below: true, unresolved: true }
+        // `~+` is where the line is.
+        if (/^~\+([\\/]|$)/.test(text)) text = `.${text.slice(2)}`
+      }
       // A wildcard or a brace expansion: what is before it is the folder it picks from.
-      const wild = piece.quoted ? -1 : piece.text.search(context.shell === 'cmd' ? /[*?]/ : /[*?[{]/)
+      const wild = piece.quoted ? -1 : text.search(context.shell === 'cmd' ? /[*?]/ : /[*?[{]/)
       if (wild < 0) {
-        path += piece.text
+        path += text
         continue
       }
-      path += piece.text.slice(0, wild)
-      rest = piece.text.slice(wild)
+      path += text.slice(0, wild)
+      rest = text.slice(wild)
       wildcard = true
     } else if (piece.kind === 'variable') {
       // PowerShell's constants: `> $null` throws the output away.

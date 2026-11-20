@@ -464,6 +464,19 @@ describe('readCommand: paths it names', () => {
     expect(readCommand('cat *$X').paths).toEqual([{ path: '.', below: true }])
   })
 
+  it.each([
+    ['cat ~+/../a.txt', ['./../a.txt']],
+    ['cat ~+', ['.']],
+    ['cd sub && cat ~+/a.txt', ['sub', 'sub/./a.txt']],
+    ['cat ~-/a.txt', []],
+    ['cat ~+1/a.txt', []],
+    ['cat ~2', []],
+    ['cat "~+/a.txt"', ['~+/a.txt']]
+  ])('reads the folders bash names with a tilde: `%s` names %j', (line, expected) => {
+    expect(paths(line)).toEqual(expected)
+    expect(readCommand(line).unresolved).toBe(/~(-|\+?\d)/.test(line))
+  })
+
   it.each(['ls $DIR', 'cat $(which x)', 'ls ~/$DIR', 'cat foo-$VERSION.txt', 'd=~; cat $d/.ssh/id_rsa', 'cat */../../x', 'cat ~/.*', 'cd ~/Doc* && cat a'])(
     'cannot tell where `%s` leads, and says so',
     (line) => {
