@@ -53,7 +53,8 @@ const device: DeviceHost = {
   showPresence: (presence) => window.desktop.app.showPresence(presence),
   load: (listener) => window.desktop.app.onLoad(listener),
   updates: window.desktop.updates,
-  files: window.desktop.files
+  files: window.desktop.files,
+  mini: window.desktop.mini
 }
 
 function App() {

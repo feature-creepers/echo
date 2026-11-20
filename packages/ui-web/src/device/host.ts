@@ -88,6 +88,15 @@ export interface DeviceHost {
      */
     takeCopied?(): Promise<CopiedFiles>
   }
+  /**
+   * Mini: the window made small and kept over the other apps, showing the core and what it says (docs/SPEC.md, section
+   * 13.2). Left out, there is only the full window.
+   */
+  mini?: {
+    read(): Promise<boolean>
+    set(on: boolean): void
+    onChange(listener: (on: boolean) => void): () => void
+  }
   updates: {
     state(): Promise<UpdateState>
     onState(listener: (state: UpdateState) => void): () => void

@@ -16,6 +16,11 @@ const SHORTCUTS: { name: ShortcutName; title: string; detail: string }[] = [
   { name: 'talkInWindow', title: 'Talk in the window', detail: 'Starts listening while the window is in front. Press it again to send.' },
   { name: 'transcript', title: 'Show the transcript', detail: 'Opens and closes the conversation, written out.' },
   {
+    name: 'mini',
+    title: 'Mini window',
+    detail: 'Makes the window small and keeps it over other apps, with the assistant and what it says. Press it again for the full window.'
+  },
+  {
     name: 'stopEverything',
     title: 'Stop everything',
     detail:
@@ -23,7 +28,7 @@ const SHORTCUTS: { name: ShortcutName; title: string; detail: string }[] = [
   }
 ]
 
-/** The keys that talk to the assistant, open the transcript and stop everything, each recorded by pressing them. */
+/** The keys that talk to the assistant, open the transcript, make the window Mini and stop everything, each recorded by pressing them. */
 export function ShortcutsSection({ productName }: { productName: string }) {
   const { settings, change, mac, host } = useDevice()
   const [problems, setProblems] = useState<Partial<Record<ShortcutName, string>>>({})

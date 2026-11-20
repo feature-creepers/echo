@@ -21,7 +21,7 @@ Five decisions shape this document:
 The design is checked against these.
 
 1. **One assistant, one channel.** The person never creates, names, picks or closes a conversation.
-2. **Voice first.** Speech is the main way in and out. Typing and clicking stay possible everywhere.
+2. **Voice first.** Speech is the main way in and out. Typing and clicking stay possible everywhere but in the desktop's Mini window (section 13.2).
 3. **Say little, show much.** A spoken reply is as short as a person's would be. Detail goes on screen as interface elements, not as text to read. Long output, spoken or written, happens only when asked for.
 4. **The screen follows the conversation.** What is shown belongs to the current reply and changes as the talk moves on.
 5. **Simple first, depth on request.** A new person sees the assistant and its answers. Transcript, activity, threads, memory and raw events are each one step further in, and never hidden.
@@ -1226,7 +1226,12 @@ The core is one, never drawn twice. When the first view arrives it moves from th
   - The page fills the rest, its title top left, in a column up to 60rem (960 px) whose opening paragraph keeps a readable measure. No close button: going back is the sidebar's first row, as in Linear and the best native apps. Escape also goes back, unless a dialog or a shortcut being recorded takes it, and so do the mouse's back button, Alt+Left on Windows and Linux, and Command+[ on macOS, unless a dialog is open.
   - The title row's button opens the page last shown in this run, Widgets the first time; the tray's "Settings…" opens General, the access label Access, and a saved view's "Open in library" that widget in Widgets.
   - The widgets' search spans the column under the title, with a scope bar of shelves; an opened widget covers the hub in a dialog that Escape closes first. The Files page shows the assistant's folder as a list beside a preview (section 9.7).
-- **Sizes.** Three on a desktop: the full window, Mini (core and caption, always on top, from the proof of concept), and the pill (summoned over another app by the global shortcut, from Speak), with frames and window controls following each system. Only the full window is built.
+- **Sizes.** Three on a desktop: the full window, Mini, and the pill (summoned over another app by the global shortcut, from Speak), with frames and window controls following each system. The pill is not built.
+- **Mini** is the one window made small and kept over the other apps, as in the proof of concept; no second window is made (section 14.7).
+  - _In and out._ Its key in the window ("Mini window" in Settings, Shortcuts; Ctrl+Shift+M or Cmd+Shift+M at first) and "Mini window" in the tray's menu, ticked while in Mini, enter and leave it, and a quiet "Full window" at its top left leaves it, shown while the pointer is over the window or the keyboard is in it. What needs more room goes back to the full window first: the tray's "Settings…", the transcript's key, a notification pressed, a link to the settings. Talking (the global shortcut, the tray's "Talk", `--talk`) and "Show Echo" leave it as it is. The app always opens in the full window.
+  - _What it shows._ The core at rest in the middle at 136 px, its name and state under it, and the caption in two lines at most, as on the stage; no title row, composer, stream, chips, pinned widgets or side sheet. A view that arrives meanwhile, a card that asks among them, is kept in the stream and not drawn: while one waits, "Shown in the full window" under the caption goes back to it, and a card's question can still be answered aloud (section 12.2). Pressing the core starts or ends listening, as the talk key does; the ground drags the window. The assistant is told the person sees no screen, and says a little more (section 8.5).
+  - _The window._ Entering keeps the full window's bounds in memory, and leaving gives them back. The first time, Mini is 280 × 320 px at the top right of the work area of the screen the window is on, 24 px from its edges. It is moved and resized between 240 × 260 and 480 × 560, kept on this device once a move or resize ends (`window.mini`), and opens there again, or as the first time when that place is on no screen. It floats over other apps and cannot be maximised or made full screen. On macOS it has no traffic lights and shows on every Space and over apps in full screen; on Windows and Linux the system's buttons stay over its top right, what it shows starting under them; under X11 it shows on every workspace. Closing it does what closing the window does.
+  - _Limits._ Mini has no input line, the one place principle 2's typing does not reach: to type, or to see a view, the person goes back to the full window. Under Wayland an app's window can neither stay on top nor read or set where it is, so Mini is only the small size, placed where the desktop puts it, and only its size is kept.
 
 ### 13.3 Disclosure levels
 
@@ -1495,7 +1500,7 @@ Built:
 - **Generated interface.** The generic blocks of section 9.6, checked by the core and drawn by our renderer; controls speak to the assistant, and a button can act on the computer with no model (section 9.5). Live figures fed from public JSON addresses with no model call (9.4), maps checked against the shapes they name, and one media player for radio, podcasts, songs and video (9.6).
 - **Personas.** Named by the person; the critical stance objects and remembers decisions made despite it (section 11). Each drawn in its own look (section 13.1).
 - **Voice.** Local recognition, voice and speech detection, downloaded once, with the person's own words favoured (section 8.2).
-- **Interface.** First launch, the main screen, the composer and its menus, the pinned docks, Library and settings, and the side sheet with the transcript, threads and inspector (sections 13.2 and 13.3).
+- **Interface.** First launch, the main screen, the composer and its menus, the pinned docks, Library and settings, the side sheet with the transcript, threads and inspector, and Mini (sections 13.2 and 13.3).
 - **Library.** Views saved, searched, filed, pinned, ordered in the docks, shown again, changed by asking, deleted (section 9.8).
 - **Memory.** Every word kept and searchable with keywords; facts extracted, reconciled and summarised into a profile while the assistant sleeps; retention; recall into each request; shown, edited, forgotten and exported (section 10).
 - **Access to the computer.** Scopes and grants, three approval levels, approvals for the session, places never reached, commands held by the paths they name, the network policy, the activity with diffs and undo, stop everything, the confirmation phrase and the signed log (section 12.2).
@@ -1506,7 +1511,7 @@ Built:
 - **Settings**, in the hub and in the menus under the composer (section 13.2).
 - **Packaging and updates** for the three systems, made in CI and published from a tag (section 14.7).
 
-Not built: the open issues, among them vector search, confinement of Claude Code's commands on Windows (macOS and Linux have it; on Windows, Codex's commands are confined by its own sandbox), accounts and mail, a vault, elevation, signed builds, the phone app and the paid service; and, in this part of the spec, Mini and the pill (13.2), the inspector's actions, themes and easter eggs (13.3). None of these is started without an owner's approval on its issue.
+Not built: the open issues, among them vector search, confinement of Claude Code's commands on Windows (macOS and Linux have it; on Windows, Codex's commands are confined by its own sandbox), accounts and mail, a vault, elevation, signed builds, the phone app and the paid service; and, in this part of the spec, the pill (13.2), the inspector's actions, themes and easter eggs (13.3). None of these is started without an owner's approval on its issue.
 
 ## 15. Decisions
 

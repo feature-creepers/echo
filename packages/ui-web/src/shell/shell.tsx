@@ -10,6 +10,7 @@ import { Stage } from '../conversation/stage.tsx'
 import { useCoreViewActions } from '../conversation/view-actions.ts'
 import { DeviceProvider, keyPress, useDevice } from '../device/device.tsx'
 import type { DeviceHost } from '../device/host.ts'
+import { type MiniWindow, useMiniWindow } from '../device/mini.ts'
 import { QuickLook } from '../files/quick-look.tsx'
 import { type HubPage, HubScreen } from '../hub/hub-screen.tsx'
 import { HUB_KEEPS, hubMakesRoom } from '../hub/room.ts'
@@ -20,6 +21,8 @@ import { Onboarding } from '../onboarding/onboarding.tsx'
 import { LivingGround } from '../presence/ground.tsx'
 import { CoreLightContext, createCoreLight } from '../presence/light.ts'
 import { Orb } from '../presence/orb.tsx'
+import { Button } from '../primitives/button.tsx'
+import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { IconButton } from '../primitives/icon-button.tsx'
 import { LibraryGlyph, SheetGlyph, WidgetsGlyph } from '../primitives/icons.tsx'
@@ -65,30 +68,31 @@ export function Shell({ device, ...rest }: ShellProps) {
 }
 
 function Screens({ productName, link, client, speech }: Omit<ShellProps, 'device'>) {
+  const mini = useMiniWindow()
   if (link.state === 'failed') {
     return (
-      <Frame productName={productName}>
+      <Frame productName={productName} mini={mini}>
         <Notice problem title="Not connected" detail={link.reason} />
       </Frame>
     )
   }
   if (link.state === 'starting' || !client) {
     return (
-      <Frame productName={productName}>
+      <Frame productName={productName} mini={mini}>
         <Notice title="Starting" />
       </Frame>
     )
   }
   return (
     <PlayerProvider>
-      <Connected productName={productName} client={client} engine={speech} />
+      <Connected productName={productName} client={client} engine={speech} mini={mini} />
     </PlayerProvider>
   )
 }
 
 type Screen = { is: 'main' } | { is: 'onboarding' } | { is: 'hub'; page: HubPage; widget?: string | undefined }
 
-function Connected({ productName, client, engine }: { productName: string; client: Client; engine: SpeechEngine | undefined }) {
+function Connected({ productName, client, engine, mini }: { productName: string; client: Client; engine: SpeechEngine | undefined; mini: MiniWindow }) {
   const snapshot = useFollowed(client.settings)
   const speaking = useFollowed(client.speech)
   const [screen, setScreen] = useState<Screen>()
@@ -96,10 +100,16 @@ function Connected({ productName, client, engine }: { productName: string; clien
   const entered = useRef<Screen>(undefined)
   /** The page of the hub last shown in this run of the app, which its button opens on: the widgets at first. */
   const lastPage = useRef<HubPage>('widgets')
-  const openHub = useCallback((page: HubPage = lastPage.current, widget?: string) => {
-    lastPage.current = page
-    setScreen({ is: 'hub', page, widget })
-  }, [])
+  // The hub needs the full window: from Mini, the window goes back to it first.
+  const leaveMini = mini.on ? mini.set : undefined
+  const openHub = useCallback(
+    (page: HubPage = lastPage.current, widget?: string) => {
+      leaveMini?.(false)
+      lastPage.current = page
+      setScreen({ is: 'hub', page, widget })
+    },
+    [leaveMini]
+  )
 
   /**
    * Where the side sheet stands: open on a tab or closed, and where each tab is. It opens and closes over whatever
@@ -185,14 +195,16 @@ function Connected({ productName, client, engine }: { productName: string; clien
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (transcriptKey !== '' && matchesShortcut(keyPress(event), transcriptKey, device.mac)) {
-        event.preventDefault()
-        toggleSheet('transcript')
-      }
+      if (transcriptKey === '' || !matchesShortcut(keyPress(event), transcriptKey, device.mac)) return
+      event.preventDefault()
+      // Mini has no room for the sheet: the window goes back to the full one, and shows the transcript there.
+      if (!leaveMini) return toggleSheet('transcript')
+      leaveMini(false)
+      moveSheetTo({ to: 'tab', tab: 'transcript' })
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [transcriptKey, device.mac, toggleSheet])
+  }, [transcriptKey, device.mac, toggleSheet, leaveMini])
 
   // The app asks for the settings: its tray's menu opens them on their general page.
   useEffect(() => {
@@ -212,14 +224,14 @@ function Connected({ productName, client, engine }: { productName: string; clien
 
   if (snapshot.state === 'loading') {
     return (
-      <Frame productName={productName}>
+      <Frame productName={productName} mini={mini}>
         <Notice title="Starting" />
       </Frame>
     )
   }
   if (snapshot.state === 'failed') {
     return (
-      <Frame productName={productName}>
+      <Frame productName={productName} mini={mini}>
         <Notice problem title="The settings could not be read" detail={snapshot.reason} />
       </Frame>
     )
@@ -231,8 +243,17 @@ function Connected({ productName, client, engine }: { productName: string; clien
   // First launch is for someone whose personas were not confirmed when the app opened. Once in it, the person
   // stays in it until its last step, although the personas are confirmed halfway through.
   entered.current ??= personas.confirmed ? { is: 'main' } : { is: 'onboarding' }
-  const showing: Screen = screen ?? entered.current
+  // Mini shows the main screen, whatever the full window shows, and gives it back once it leaves.
+  const chosen: Screen = screen ?? entered.current
+  const showing: Screen = mini.on && chosen.is === 'hub' ? { is: 'main' } : chosen
 
+  if (showing.is === 'onboarding' && mini.on) {
+    return (
+      <Frame productName={productName} accent={accent} look={look} mini={mini}>
+        <Notice title="Set up in the full window" />
+      </Frame>
+    )
+  }
   if (showing.is === 'onboarding') {
     return (
       <Frame productName={productName} accent={accent} look={look}>
@@ -292,7 +313,7 @@ function Connected({ productName, client, engine }: { productName: string; clien
 
   return (
     <LibraryContext.Provider value={controls}>
-      <Frame productName={productName} accent={accent} look={look} actions={titleActions}>
+      <Frame productName={productName} accent={accent} look={look} actions={titleActions} mini={mini}>
         <div ref={sheetArea} className="relative h-full">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
@@ -341,8 +362,12 @@ function Connected({ productName, client, engine }: { productName: string; clien
                     onSetUpVoice={engine ? () => openHub('voice') : undefined}
                     onOpenAnswer={openAnswer}
                     onOpenThread={openThread}
+                    mini={mini.on ? { onFullWindow: () => mini.set(false) } : undefined}
                   />
-                  <PinnedDocksView controls={controls} actions={actions} docks={docks} />
+                  {/* Hidden in Mini, and still drawn, so each widget keeps its state. */}
+                  <div className={mini.on ? 'hidden' : 'contents'}>
+                    <PinnedDocksView controls={controls} actions={actions} docks={docks} />
+                  </div>
                 </div>
               )}
             </motion.div>
@@ -352,7 +377,7 @@ function Connected({ productName, client, engine }: { productName: string; clien
           {/* The sheet slides over whatever screen is there and stays from one screen to the next: it never pushes
               the stage off centre, and the hub, when the window has room for both, ends where it starts. */}
           <AnimatePresence initial={false}>
-            {sheet && (
+            {sheet && !mini.on && (
               <SideSheet
                 key="sheet"
                 client={client}
@@ -398,6 +423,8 @@ interface FrameProps {
   look?: Look | undefined
   /** What the title row offers on the right. */
   actions?: ReactNode
+  /** Mini: the window has no title row, only the way back to the full window. */
+  mini?: MiniWindow | undefined
   children: ReactNode
 }
 
@@ -408,23 +435,67 @@ interface FrameProps {
  * native app whose toolbar is part of its content. The window is dragged by it, and the system draws its buttons
  * (close, minimise, maximise) over it, on no colour of their own: the titlebar-area values say which part of the
  * row those leave free. Where the system draws a material behind the page, the ground tints it.
+ *
+ * In Mini the whole ground drags the window, and the row keeps only a quiet way back to the full window, at its left,
+ * shown while the pointer is over the window or the keyboard is in it; on Windows and Linux the system's buttons stay
+ * over its right end, and what Mini shows starts under them.
  */
-function Frame({ productName, accent, look, actions, children }: FrameProps) {
+function Frame({ productName, accent, look, actions, mini, children }: FrameProps) {
   return (
     // Clipped, not hidden: what slides in or out past an edge (the side sheet, the pinned widgets) is cut there, and
     // the window can never be scrolled sideways, not even by bringing something into view or giving it the keyboard.
-    <div className="accent-shift relative flex h-screen flex-col overflow-clip bg-(--window)" style={accentStyle(accent, look)}>
+    <div
+      className={cn('accent-shift relative flex h-screen flex-col overflow-clip bg-(--window)', mini?.on && 'group/mini drag')}
+      style={accentStyle(accent, look)}
+    >
       <Ground />
       <header className="drag relative h-[env(titlebar-area-height,var(--frame-title-bar))] shrink-0">
-        <div className="absolute top-[env(titlebar-area-y,0px)] left-[env(titlebar-area-x,0px)] flex h-[env(titlebar-area-height,var(--frame-title-bar))] w-[env(titlebar-area-width,100%)] items-center justify-between pr-2 pl-4">
-          {/* The product's name, written small as a wordmark: lowercase here only, by its style, so it is still read as a name. */}
-          <span className="font-semibold text-[0.8125rem] text-text-soft lowercase tracking-[-0.01em]">{productName}</span>
-          <span className="no-drag flex items-center gap-0.5">{actions}</span>
-        </div>
+        {mini?.on ? (
+          <FullWindowButton onPress={() => mini.set(false)} />
+        ) : (
+          <div className="absolute top-[env(titlebar-area-y,0px)] left-[env(titlebar-area-x,0px)] flex h-[env(titlebar-area-height,var(--frame-title-bar))] w-[env(titlebar-area-width,100%)] items-center justify-between pr-2 pl-4">
+            {/* The product's name, written small as a wordmark: lowercase here only, by its style, so it is still read as a name. */}
+            <span className="font-semibold text-[0.8125rem] text-text-soft lowercase tracking-[-0.01em]">{productName}</span>
+            <span className="no-drag flex items-center gap-0.5">{actions}</span>
+          </div>
+        )}
       </header>
       <main className="relative min-h-0 flex-1">{children}</main>
     </div>
   )
+}
+
+/** Mini's way back to the full window, at the left of the row: quiet, shown while the pointer is over the window or the keyboard is in it. */
+function FullWindowButton({ onPress }: { onPress(): void }) {
+  const focused = useWindowFocused()
+  return (
+    <div className="absolute inset-y-0 left-0 flex items-center pl-2">
+      <Button
+        kind="quiet"
+        size="sm"
+        onClick={onPress}
+        className={cn('no-drag opacity-0 group-hover/mini:opacity-100 focus-visible:opacity-100', focused && 'opacity-100')}
+      >
+        Full window
+      </Button>
+    </div>
+  )
+}
+
+/** Whether the window has the keyboard: the person is in it, rather than in another app. */
+function useWindowFocused(): boolean {
+  const [focused, setFocused] = useState(() => document.hasFocus())
+  useEffect(() => {
+    const onFocus = () => setFocused(true)
+    const onBlur = () => setFocused(false)
+    window.addEventListener('focus', onFocus)
+    window.addEventListener('blur', onBlur)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      window.removeEventListener('blur', onBlur)
+    }
+  }, [])
+  return focused
 }
 
 /**

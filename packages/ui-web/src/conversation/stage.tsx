@@ -58,13 +58,21 @@ interface StageProps {
   onOpenAnswer(turn: TurnId): void
   /** Show a thread's work in the side sheet, or with none, the list of threads. */
   onOpenThread(thread: string | undefined): void
+  /**
+   * The window is Mini (docs/SPEC.md, section 13.2): the core and what it says alone, and the way back to the full
+   * window. Left out, the full window.
+   */
+  mini?: { onFullWindow(): void } | undefined
 }
 
 /** The event an app dispatches on the window to start talking, or to send what was said: its global shortcut. */
 export const TALK_EVENT = 'echo:talk'
 
-/** The places the stage keeps for the core: the middle of an empty stage, home, and the top of the column. */
-type CorePlace = 'empty' | 'home' | 'top'
+/** The places the stage keeps for the core: the middle of an empty stage, home, the top of the column, and Mini. */
+type CorePlace = 'empty' | 'home' | 'top' | 'mini'
+
+/** The core's size in Mini: the largest it is at the top of the stage. */
+const MINI_CORE = 136
 
 /** The width of the centred column, for everything the assistant shows and for the composer. */
 const COLUMN = 'max-w-[45rem]'
@@ -162,8 +170,10 @@ export function Stage({
   voiceBands,
   onSetUpVoice,
   onOpenAnswer,
-  onOpenThread
+  onOpenThread,
+  mini
 }: StageProps) {
+  const inMini = mini !== undefined
   const channel = useFollowed(client.channel)
   const speaking = useFollowed(client.speech)
   const activity = useFollowed(client.activity)
@@ -222,6 +232,8 @@ export function Stage({
   // Files and folders dropped anywhere on the main screen wait in the composer. A folder needs the desktop, which knows where it is.
   const device = useDevice()
   const dropping = useWindowDrop((dropped: Dropped) => {
+    // Mini has no composer for them to wait in.
+    if (inMini) return
     attachments.add(dropped.files, dropped.folders)
     if (dropped.unplaced > 0) attachments.refuse('A folder can be given only in the desktop app, which knows where it is.')
   }, device.host?.files?.pathOf)
@@ -258,8 +270,9 @@ export function Stage({
   } = useTalk(speech, (text, language) => {
     setProblem(undefined)
     client.speech.stop()
-    // Said aloud: a yes to what sends, pays or publishes counts only with the person's confirmation phrase.
-    client.channel.say(text, language, undefined, true).catch(() => setProblem(refusalCopy('failed')))
+    // Said aloud: a yes to what sends, pays or publishes counts only with the person's confirmation phrase. Said to
+    // Mini, which shows no views, the assistant says a little more.
+    client.channel.say(text, language, undefined, true, !inMini).catch(() => setProblem(refusalCopy('failed')))
   })
   const listening = talk.is === 'listening'
   // A tool at work for the answer: the core works rather than thinks.
@@ -277,7 +290,7 @@ export function Stage({
   }, [newest, newestArrived])
   const atHome = streaming && home
   // The places kept for the core: it travels to the one in use and rests there.
-  const places = useRef<Record<CorePlace, HTMLElement | null>>({ empty: null, home: null, top: null })
+  const places = useRef<Record<CorePlace, HTMLElement | null>>({ empty: null, home: null, top: null, mini: null })
   const keepers = useRef({
     empty: (element: HTMLElement | null) => {
       places.current.empty = element
@@ -287,11 +300,14 @@ export function Stage({
     },
     top: (element: HTMLElement | null) => {
       places.current.top = element
+    },
+    mini: (element: HTMLElement | null) => {
+      places.current.mini = element
     }
   })
   const keep = (where: CorePlace) => keepers.current[where]
   const placeIn = useRef<CorePlace>('empty')
-  placeIn.current = !streaming ? 'empty' : atHome ? 'home' : 'top'
+  placeIn.current = inMini ? 'mini' : !streaming ? 'empty' : atHome ? 'home' : 'top'
   const placeOf = useCallback(() => places.current[placeIn.current], [])
   // What is written under the core waits for it to arrive, so it never crosses the core on its way.
   const [arrived, setArrived] = useState(true)
@@ -301,7 +317,8 @@ export function Stage({
   // nothing on the stage holds the keyboard; but only what happens on the stage counts, and only what nothing there
   // takes for itself: a wheel over the side sheet scrolls the sheet, and an arrow in a menu moves through the menu.
   useEffect(() => {
-    if (!atHome) return
+    // Mini shows no stream to go on to.
+    if (!atHome || inMini) return
     const push = createPush(LEAVE.far, LEAVE.within)
     const stageOf = (target: EventTarget | null) => (target instanceof Element ? target.closest('[data-stage]') : null)
     const onWheel = (event: WheelEvent) => {
@@ -325,7 +342,7 @@ export function Stage({
       window.removeEventListener('wheel', onWheel)
       window.removeEventListener('keydown', onKey)
     }
-  }, [atHome])
+  }, [atHome, inMini])
   const [composerBox, composerRoom] = useComposerRoom()
   // How far the stage has gone home, from 0 in the stream to 1 at home, on the core's own spring: the stream sinks
   // under the core by it, so only the top of its newest view shows above the composer. The stream comes in where it
@@ -429,10 +446,16 @@ export function Stage({
     return () => window.removeEventListener('keydown', onKey)
   }, [toggle, listening, cancel, talkKey, device.mac])
 
+  // What the stream held when the window became Mini: a view that arrived since is kept there, and waits unseen for the
+  // full window.
+  const seenInFull = useRef<readonly string[]>([])
+  if (!inMini) seenInFull.current = stream.map((view) => view.id)
+  const unseen = inMini && stream.some((view) => !seenInFull.current.includes(view.id))
+
   if (!active) return null
 
-  // Over the stream, what is said is smaller; at home and on an empty stage, as large as the core is.
-  const compact = streaming && !home
+  // Over the stream and in Mini, what is said is smaller; at home and on an empty stage, as large as the core is.
+  const compact = inMini || (streaming && !home)
   const line = captionOf({
     hearing: speaking.sentence !== undefined,
     busy: running || voicing,
@@ -454,6 +477,65 @@ export function Stage({
       onSetUpEngine={noEngine ? onSetUpEngine : undefined}
     />
   )
+  const core = <Core mood={mood} level={level.current} bands={bands.current} load={load} sight={sight} place={placeOf} onArrive={setArrived} />
+
+  // Mini: the core alone in the middle, its name, state and what it says under it, and nothing else of the stage.
+  // The core stays first, so it is the same core, never drawn again, when the window goes from one layout to the
+  // other. Pressing it talks, as the talk key does; every button here is pressed, and the ground round them drags the
+  // window.
+  if (mini) {
+    const press = canTalk ? toggle : onSetUpVoice
+    return (
+      <div data-stage="" className="relative flex h-full min-w-0 flex-col">
+        {core}
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center-safe px-4 pb-4 text-center [&_button]:no-drag">
+          <button
+            ref={keep('mini')}
+            type="button"
+            aria-label={listening ? 'Send' : 'Talk'}
+            disabled={press === undefined}
+            onClick={press}
+            className="shrink-0 rounded-full"
+            style={{ width: MINI_CORE, height: MINI_CORE, marginBlock: -Math.round(MINI_CORE * 0.1) }}
+          />
+          <span className="mt-1.5 font-semibold text-[1.0625rem] leading-tight tracking-[-0.015em]">{active.name}</span>
+          <span className="mt-1">
+            <MoodWord mood={mood} word={word} />
+          </span>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: arrived ? 1 : 0 }}
+            transition={{ duration: arrived ? DURATION.calm : DURATION.quick, ease: EASE }}
+            className="mt-2 grid min-h-[3.25rem] w-full justify-items-center"
+            aria-live="polite"
+          >
+            {caption}
+          </motion.div>
+          {/* A view that arrived here is kept in the stream: the way to it, in the full window. */}
+          <AnimatePresence initial={false}>
+            {unseen && (
+              <motion.button
+                key="unseen"
+                type="button"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0, transition: { duration: DURATION.quick, ease: EASE } }}
+                transition={settle}
+                onClick={() => {
+                  setHome(false)
+                  mini.onFullWindow()
+                }}
+                className="group mt-1 inline-flex h-6 shrink-0 items-center gap-1 rounded-sm px-1.5 text-text-faint text-xs transition-colors duration-(--duration-quick) hover:text-text-soft"
+              >
+                Shown in the full window
+                <GoArrow />
+              </motion.button>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+    )
+  }
 
   // The last reply's full answer, when its thread wrote one: a quiet link under what is said opens it whole.
   const written = last?.written !== undefined && !failed && !problem ? last.turn : undefined
@@ -498,7 +580,7 @@ export function Stage({
   // it, and the stream of views turns under them. The sides of the window are left to the pinned widgets' docks.
   return (
     <div data-stage="" className="relative flex h-full min-w-0 flex-col">
-      <Core mood={mood} level={level.current} bands={bands.current} load={load} sight={sight} place={placeOf} onArrive={setArrived} />
+      {core}
       {streaming && (
         <header className="relative z-10 shrink-0 px-8 pt-1">
           <div className={cn('mx-auto grid w-full justify-items-center text-center', COLUMN)}>
