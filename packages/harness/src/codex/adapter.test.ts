@@ -1,4 +1,5 @@
-import { readdirSync } from 'node:fs'
+import { readdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { fake, folder, recordingLog, removeFolders } from '../../test/sessions.ts'
 import type { Cli } from '../process/cli.ts'
@@ -102,5 +103,19 @@ describe('Codex', () => {
 
   it('reads no tool server from a home that has no settings', async () => {
     expect(await userToolServers(folder())).toEqual([])
+  })
+
+  it.each([
+    ['a table', '[mcp_servers.files]\ncommand = "files"\n', ['files']],
+    ['a quoted name', '[mcp_servers."my files"]\ncommand = "files"\n', ['my files']],
+    ['dotted keys', 'mcp_servers.notes.command = "notes"\n', ['notes']],
+    ['an inline table', 'mcp_servers = { mail = { command = "mail" }, web = { url = "https://example.org" } }\n', ['mail', 'web']],
+    ['a header with spaces', '[ mcp_servers . spaced ]\ncommand = "x"\n', ['spaced']],
+    ['no servers', 'model = "terra"\n', []],
+    ['settings Codex cannot read either', '[mcp_servers.broken\n', []]
+  ])('reads the tool servers of the user written as %s', async (_, settings, names) => {
+    const home = folder()
+    writeFileSync(join(home, 'config.toml'), settings)
+    expect(await userToolServers(home)).toEqual(names)
   })
 })

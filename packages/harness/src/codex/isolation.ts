@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { HarnessComputer, Scope, ToolServer } from '@repo/core'
+import { parse } from 'smol-toml'
 import { asObject } from '../process/json.ts'
 import { PROFILE, sandbox } from './sandbox/index.ts'
 
@@ -107,17 +108,18 @@ export function heldAsAsked(reported: unknown, scope: Scope): boolean {
 }
 
 /**
- * The names of the tool servers in the user's own Codex settings. A session turns each of them off, so
- * that the only tools are the core's.
+ * The names of the tool servers in the user's own Codex settings. A session turns each of them off, so that the only
+ * tools are the core's. The settings are read with a TOML parser, so a server written as a table, dotted keys or an
+ * inline table is found alike; settings Codex could not read either give none.
  */
 export async function userToolServers(home: string): Promise<string[]> {
-  const settings = await readFile(join(home, 'config.toml'), 'utf8').catch(() => '')
-  const names = new Set<string>()
-  for (const match of settings.matchAll(/^\s*\[mcp_servers\.(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_-]+))\]\s*$/gm)) {
-    const name = match[1] ?? match[2] ?? match[3]
-    if (name) names.add(name)
+  const text = await readFile(join(home, 'config.toml'), 'utf8').catch(() => '')
+  try {
+    const servers = parse(text).mcp_servers
+    return servers !== null && typeof servers === 'object' && !Array.isArray(servers) ? Object.keys(servers) : []
+  } catch {
+    return []
   }
-  return [...names]
 }
 
 const settings = (values: string[]) => values.flatMap((value) => ['-c', value])
