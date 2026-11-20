@@ -20,6 +20,7 @@
     "package:linux": "node build/stage.ts --os linux --arch x64 && electron-builder --projectDir stage --config ../build/electron-builder.yml --linux --x64 --publish never"
   },
   "dependencies": {
+    "@huggingface/transformers": "catalog:",
     "playwright-core": "catalog:",
     "sherpa-onnx-node": "catalog:",
     "sqlite-vec": "catalog:"

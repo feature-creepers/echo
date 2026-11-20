@@ -1,0 +1,10 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    // The test against the real model is told where the model is, or is to be downloaded.
+    "test": {
+      "passThroughEnv": ["EMBEDDER_MODELS"]
+    }
+  }
+}

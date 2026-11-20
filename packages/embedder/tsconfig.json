@@ -1,0 +1,16 @@
+{
+  "extends": "@repo/tsconfig/node.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist"
+  },
+  "include": ["src", "test", "vitest.config.ts"],
+  "references": [
+    {
+      "path": "../core"
+    },
+    {
+      "path": "../models"
+    }
+  ]
+}

@@ -3,6 +3,7 @@ import { basename, extname, join } from 'node:path'
 import { createAccounts } from '@repo/accounts'
 import { createBrowser } from '@repo/browser'
 import { type Core, createCore } from '@repo/core'
+import { createEmbedder } from '@repo/embedder'
 import { createComputer, createHarnesses, createWorkspace } from '@repo/harness'
 import { createClipboard, createDesktop, createDrives, createPrinters } from '@repo/screen'
 import { openStore } from '@repo/store'
@@ -43,6 +44,8 @@ export async function compose(config: Config): Promise<Composition> {
   const accounts = createAccounts({ vault, open: (url) => desktop.open(url), registrations, log })
   // The same folder, as the person browses it and hands files into it.
   const workspace = await createWorkspace(computer.workspace)
+  // The model of search by meaning, kept with the core's data rather than the device's: downloaded only when the person asks.
+  const embedder = createEmbedder({ folder: join(config.data, 'models'), log })
   const core = createCore({
     version: manifest.version,
     acceptsCredential: localToken(config.token),
@@ -50,6 +53,8 @@ export async function compose(config: Config): Promise<Composition> {
     blobs: store.blobs,
     versions: store.versions,
     search: store.search,
+    vectors: store.vectors,
+    embedder,
     log,
     harnesses: createHarnesses({ folder: join(config.data, 'harness'), log }),
     newId: randomUUID,
@@ -79,6 +84,7 @@ export async function compose(config: Config): Promise<Composition> {
     core,
     async close() {
       core.close()
+      await embedder.close()
       await browser.close()
       await desktop.close()
       await tools.close()

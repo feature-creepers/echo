@@ -15,6 +15,7 @@
     "@repo/accounts": "workspace:*",
     "@repo/browser": "workspace:*",
     "@repo/core": "workspace:*",
+    "@repo/embedder": "workspace:*",
     "@repo/harness": "workspace:*",
     "@repo/protocol": "workspace:*",
     "@repo/screen": "workspace:*",
