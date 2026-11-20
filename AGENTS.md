@@ -19,7 +19,7 @@ What went wrong once, so it does not again: an agent left to "build everything t
 This repository is the source of the app you run in. The limits you meet while you work are implemented here, so you can find them, explain them and, when the person asks, fix them:
 
 - What you may reach on the computer, the approval levels and the cards: `packages/core/src/access/` (`policy.ts` decides, `commands.ts` reads a command line, `access.ts` holds it together).
-- What you are told, how you speak and how you work on a project: `packages/core/src/channel/instructions.ts`; turns, threads and projects: `packages/core/src/channel/channel.ts`; carrying work on across a restart, and its limit: `packages/core/src/channel/resume.ts`.
+- What you are told, how you speak and how you work on a project: `packages/core/src/channel/instructions.ts`; turns, threads and projects: `packages/core/src/channel/channel.ts`, with the orchestrator's routing in `routing.ts`, sub-threads in `subthreads.ts` and the threads' own tools in `tools.ts`; carrying work on across a restart, and its limit: `packages/core/src/channel/resume.ts`.
 - What the harness gives you, and what it switches off: `packages/harness/src/claude-code/` and `packages/harness/src/codex/` (`isolation.ts` in each).
 - The tools the core serves you: the `tools.ts` of each folder of `packages/core/src/`, gathered in `core.ts`.
 
