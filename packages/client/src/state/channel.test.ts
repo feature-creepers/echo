@@ -128,11 +128,13 @@ describe('followChannel', () => {
 
     await channel.say('Hello')
     await channel.say('Bonjour', 'fr')
+    await channel.say('And tomorrow?', 'en', undefined, true, false)
     await channel.stop()
 
     expect(core.ran.slice(1)).toEqual([
       { name: 'utterance.send', input: { text: 'Hello' } },
       { name: 'utterance.send', input: { text: 'Bonjour', language: 'fr' } },
+      { name: 'utterance.send', input: { text: 'And tomorrow?', language: 'en', spoken: true, screen: false } },
       { name: 'turn.stop', input: {} }
     ])
   })

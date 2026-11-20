@@ -32,7 +32,16 @@ import { fitThread, stepWhole, type ThreadPage } from '../threads/fit.ts'
 import { createThreadRegistry } from '../threads/registry.ts'
 import { ASIDE_STAYS_MS, type Checked, type Screen, type Showing } from '../views/screen.ts'
 import type { Abilities, Remembering } from './abilities.ts'
-import { DELEGATED_FIRST, instructionsFor, orchestratorInstructions, SIDE_QUESTION, SPEAK_FIRST, threadInstructions, WORK_FIRST } from './instructions.ts'
+import {
+  DELEGATED_FIRST,
+  instructionsFor,
+  NO_SCREEN,
+  orchestratorInstructions,
+  SIDE_QUESTION,
+  SPEAK_FIRST,
+  threadInstructions,
+  WORK_FIRST
+} from './instructions.ts'
 import { readySentence } from './ready.ts'
 import { lastRequest, RESUMED, RESUMES_WITHOUT_THE_PERSON, type Resumption, readResumptions, resumesInARow, WORK, wakeRequest } from './resume.ts'
 import { routingTools } from './routing.ts'
@@ -135,9 +144,10 @@ const withoutPlan = ({ plan: _plan, ...exchange }: Exchange): Exchange => exchan
 export interface Channel {
   /**
    * The user said something, and may have handed over files and folders with it. The answer follows as events.
-   * Said during an answer, it takes the answer's place.
+   * Said during an answer, it takes the answer's place. `screen` is false when the device it was said to shows no
+   * views now.
    */
-  say(text: string, language?: string, handed?: Handed, spoken?: boolean): TurnId
+  say(text: string, language?: string, handed?: Handed, spoken?: boolean, screen?: boolean): TurnId
   /**
    * The person asked for work on a project from the interface (docs/SPEC.md, section 7.11), in a folder already
    * theirs to change: a turn of their own that takes the stage, passed straight to the project's thread, since they
@@ -804,7 +814,7 @@ export function createChannel(options: ChannelOptions): Channel {
     // A side question is answered in passing; a request that follows it up is the topic's own, answered in full.
     const side = waiting.turn.aside ? `${SIDE_QUESTION}\n\n` : ''
     session.send(
-      `${context()}\n${changed}${recalled ? `${recalled}\n\n` : ''}${waiting.text}${beside}\n\n${note ? `${note}\n\n` : ''}${side}${reminder}`,
+      `${context(waiting.turn)}\n${changed}${recalled ? `${recalled}\n\n` : ''}${waiting.text}${beside}\n\n${note ? `${note}\n\n` : ''}${side}${reminder}`,
       attachmentsFor(handed, images)
     )
   }
@@ -848,6 +858,7 @@ export function createChannel(options: ChannelOptions): Channel {
     const exchange: Exchange = { turn: newId(), at: now().toISOString(), persona: turn.exchange.persona, said: request, replied: '', outcome: 'running' }
     const second = newTurn(exchange, turn.language, turn.handed)
     second.aside = aside
+    second.screen = turn.screen
     second.after = turn
     turn.next = second
     transcript.push(exchange)
@@ -941,10 +952,14 @@ export function createChannel(options: ChannelOptions): Channel {
   const answerIn = (sentence: string, turnLanguage: string | undefined): string | undefined =>
     answerLanguage() ?? languageOf(sentence, LANGUAGE_CODES, turnLanguage ?? conversationLanguage)
 
-  /** What a session reads first with each message, since a model has no clock: the moment, and the language to answer in when the user set it. */
-  const context = () => {
+  /**
+   * What a session reads first with each message, since a model has no clock: the moment, the language to answer in
+   * when the user set it, and that the person sees no screen when they said it to a device that shows none now.
+   */
+  const context = (turn: Turn) => {
     const language = answerLanguage()
-    return `(Now: ${moment(now(), options.timeZone?.())}${language === undefined ? '' : `. Answer in ${languageName(language)}.`})`
+    const told = `${language === undefined ? '' : ` Answer in ${languageName(language)}.`}${turn.screen ? '' : ` ${NO_SCREEN}`}`
+    return `(Now: ${moment(now(), options.timeZone?.())}${told === '' ? '' : `.${told}`})`
   }
 
   /** What the person said, or what the assistant starts on by itself, and what they handed over with it. */
@@ -963,10 +978,10 @@ export function createChannel(options: ChannelOptions): Channel {
    * it is the one session that answers, and is given the files itself.
    */
   const message = (turn: Turn, images: boolean) => {
-    if (abilities?.server() !== undefined) return `${context()}\nThreads:\n${registry.index(doing, summaryOf)}\n\n${what(turn)}`
-    if (turn.exchange.trigger !== undefined) return `${context()}\n${what(turn)}`
+    if (abilities?.server() !== undefined) return `${context(turn)}\nThreads:\n${registry.index(doing, summaryOf)}\n\n${what(turn)}`
+    if (turn.exchange.trigger !== undefined) return `${context(turn)}\n${what(turn)}`
     const note = noteForThread(turn.handed, turn.exchange.said, images)
-    return `${context()}\n${[turn.exchange.said, note].filter(Boolean).join('\n\n')}`
+    return `${context(turn)}\n${[turn.exchange.said, note].filter(Boolean).join('\n\n')}`
   }
 
   const decide = async (turn: Turn) => {
@@ -1092,7 +1107,7 @@ export function createChannel(options: ChannelOptions): Channel {
   }
 
   return {
-    say(text, language, handed = NOTHING_HANDED, aloud = false) {
+    say(text, language, handed = NOTHING_HANDED, aloud = false, screen = true) {
       // A yes or a no to a question on screen answers it: the turn that asked goes on, and no new one starts. What
       // answers a question is never kept in the log: a confirmation phrase said aloud is the person's own.
       // Files handed over are something new to look at, never an answer.
@@ -1102,6 +1117,7 @@ export function createChannel(options: ChannelOptions): Channel {
       const names = settings.read().personas.available.map((one) => one.name)
       if (isThanks(text, names)) putAsidesAway()
       const turn = personsTurn(text, language, handed)
+      turn.screen = screen
       if (deciding) pending = turn
       else void decide(turn)
       return turn.exchange.turn

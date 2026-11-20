@@ -554,7 +554,7 @@ Every session's instructions contain these rules.
 - Plain spoken language: no markup, no lists, no addresses or long numbers read aloud.
 - Anything enumerable or detailed goes to the view.
 - Never describe the view aloud ("as you can see on screen…"). Say the point, show the rest.
-- When there is no screen to use (Mini mode, a locked screen, a phone in a pocket), say a little more.
+- When there is no screen to use, say a little more. A device that shows no views now, the desktop's Mini window (section 13.2), says so with what the person says (`screen: false` on `utterance.send`), and the line the message starts with then tells the session in one sentence. A locked screen and a phone in a pocket are not told, nor are the turns the assistant starts itself.
 
 ### 8.6 Languages
 

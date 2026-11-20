@@ -25,7 +25,12 @@ export const conversationCommands = {
          * Folders given with it, by where they are on the core's computer: a desktop knows where a folder dropped
          * on it is. Giving one is consent to read it: it is granted read only.
          */
-        folders: z.array(z.string().min(1).max(4096)).max(ATTACHMENTS_PER_TURN).optional()
+        folders: z.array(z.string().min(1).max(4096)).max(ATTACHMENTS_PER_TURN).optional(),
+        /**
+         * False when the device shows no views now, as the desktop's Mini window: the person sees no screen, so the
+         * assistant says a little more. Left out, it does.
+         */
+        screen: z.boolean().optional()
       })
       // Something said, or something handed over without a word.
       .refine((input) => input.text !== '' || (input.attachments?.length ?? 0) + (input.folders?.length ?? 0) > 0),

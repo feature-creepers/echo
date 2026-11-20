@@ -1,5 +1,6 @@
 import { COMMANDS, type CommandInput, type CommandName, type CommandOutput, type Event, encodeBase64, PROTOCOL_VERSION } from '@repo/protocol'
 import { describe, expect, it, vi } from 'vitest'
+import { NO_SCREEN } from './channel/instructions.ts'
 import { createCore } from './core.ts'
 import { memoryRecords } from './records/memory.ts'
 import { manualTimers } from './replay/manual-timers.ts'
@@ -93,6 +94,7 @@ describe('a conversation through the core', () => {
     harness.sessions[0]?.reply('It is eight. ', 'In the morning.')
 
     expect(harness.sessions[0]?.sent[0]).toMatch(/^\(Now: .+\)\nWhat time is it\?$/)
+    expect(harness.sessions[0]?.sent[0]).not.toContain(NO_SCREEN)
     expect(events.map((event) => event.name)).toEqual(['turn.started', 'speech.say', 'speech.say', 'turn.ended'])
     expect(events.filter((event) => event.name === 'speech.say').map((event) => event.text)).toEqual(['It is eight.', 'In the morning.'])
     const { exchanges } = await run(core, 'channel.read', {})
@@ -106,6 +108,15 @@ describe('a conversation through the core', () => {
         outcome: 'done'
       }
     ])
+  })
+
+  it('tells the assistant to say a little more when what is said comes from a device that shows no screen', async () => {
+    const { core, harness } = start()
+    await run(core, 'utterance.send', { text: 'What time is it?', screen: false })
+    await settled()
+
+    expect(harness.sessions[0]?.sent[0]).toMatch(/^\(Now: .+\)\nWhat time is it\?$/)
+    expect(harness.sessions[0]?.sent[0]).toContain(`. ${NO_SCREEN})\n`)
   })
 
   it('finds the transcript again when it restarts on the same records', async () => {

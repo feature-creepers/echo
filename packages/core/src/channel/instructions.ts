@@ -214,6 +214,12 @@ const working = (title: string, folder: string) =>
   ].join('\n')
 
 /**
+ * Added to the line a message starts with when the person sees no screen, as in the desktop's Mini window
+ * (docs/SPEC.md, section 8.5): what is shown waits for them, so what is said carries a little more of the answer.
+ */
+export const NO_SCREEN = 'The person sees no screen just now: say a little more than usual, as what you show waits until they look.'
+
+/**
  * Added to a side question (docs/SPEC.md, section 7.5): it is answered in passing, beside the topic on the stage. It
  * is the request's, not the thread's: when the person follows it up, the thread answers that in full.
  */

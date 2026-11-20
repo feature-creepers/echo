@@ -11,7 +11,7 @@ import { createTools } from '../tools/tools.ts'
 import { ASIDE_STAYS_MS, createScreen } from '../views/screen.ts'
 import type { Abilities } from './abilities.ts'
 import { createChannel, EXCHANGE, planProgress } from './channel.ts'
-import { DELEGATED_FIRST, SIDE_QUESTION, SPEAK_FIRST, WORK_FIRST } from './instructions.ts'
+import { DELEGATED_FIRST, NO_SCREEN, SIDE_QUESTION, SPEAK_FIRST, WORK_FIRST } from './instructions.ts'
 import { RESUMES_WITHOUT_THE_PERSON } from './resume.ts'
 import { SUBTHREADS_AT_ONCE } from './subthreads.ts'
 
@@ -122,6 +122,48 @@ describe('languages', () => {
 
     expect(harness.sessions[0]?.sent[0]).toContain('Answer in Italian.')
     expect(voiced(events)).toEqual([['Domani sarà mite.', 'it']])
+  })
+})
+
+describe('a person who sees no screen', () => {
+  const NOW = '(Now: Tuesday, 17 November 2026, 09:00 (Europe/Paris)'
+  /** The line a message starts with. */
+  const opening = (message: string | undefined) => message?.split('\n')[0]
+
+  it('has whoever answers told to say a little more, with what they asked and nothing else', async () => {
+    const { channel, harness, call } = setup()
+    channel.say('What should I cook tonight?', undefined, undefined, true, false)
+    await settled()
+    await call(0, 'thread_open', { title: 'Dinner tonight', kind: 'topic' })
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+
+    expect(opening(harness.sessions[0]?.sent[0])).toBe(`${NOW}. ${NO_SCREEN})`)
+    expect(harness.sessions[1]?.sent).toEqual([`${NOW}. ${NO_SCREEN})\nWhat should I cook tonight?\n\n${SPEAK_FIRST}`])
+  })
+
+  it('is told after the language to answer in', async () => {
+    const { channel, harness, settings } = setup({ server: false })
+    settings.setLanguages({ answers: 'de' })
+    channel.say('What is the weather tomorrow?', undefined, undefined, false, false)
+    await settled()
+
+    expect(harness.sessions[0]?.sent).toEqual([`${NOW}. Answer in German. ${NO_SCREEN})\nWhat is the weather tomorrow?`])
+  })
+
+  it.each([
+    ['what is said to a device that shows views', (channel: ReturnType<typeof setup>['channel']) => channel.say('What is the weather tomorrow?')],
+    [
+      'a task the assistant starts by itself',
+      (channel: ReturnType<typeof setup>['channel']) =>
+        channel.task({ title: 'Weather in Lyon', request: 'Give me the weather in Lyon.', language: 'en', silent: false })
+    ]
+  ])('is not assumed for %s', async (_case, start) => {
+    const { channel, harness } = setup({ server: false })
+    start(channel)
+    await settled()
+
+    expect(opening(harness.sessions[0]?.sent[0])).toBe(`${NOW})`)
   })
 })
 

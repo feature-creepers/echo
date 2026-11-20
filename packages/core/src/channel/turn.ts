@@ -65,6 +65,11 @@ export interface Turn {
   delegated: string | undefined
   /** Told when it is stopped: a wait of its thread for its sub-threads ends with it. */
   stopping: (() => void)[]
+  /**
+   * The person sees a screen while it is answered. False when they said it to a device that shows no views now, as
+   * the desktop's Mini window: whoever answers is told to say a little more.
+   */
+  screen: boolean
 }
 
 /** A live session, and what it was opened for. When any of that changes, the session is replaced. */
@@ -124,7 +129,8 @@ export const newTurn = (exchange: Exchange, language: string | undefined, handed
   saidBeforeWork: 0,
   touched: new Set(),
   delegated: undefined,
-  stopping: []
+  stopping: [],
+  screen: true
 })
 
 export const newRuntime = (thread: string): Runtime => ({
