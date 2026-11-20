@@ -1,4 +1,5 @@
 import type { Access } from '@repo/protocol'
+import { keyOf, LEAVING_KEYS, MOVING_KEYS } from '../browser/policy.ts'
 import { type Consequence, consequenceOf, type Secret, secretOfWords, wordsOf } from '../browser/sensitive.ts'
 import type { DesktopElement, WindowFacts } from '../ports/desktop.ts'
 
@@ -10,20 +11,7 @@ export type DesktopAct =
   | { kind: 'press'; key: string; element: DesktopElement | undefined; window: WindowFacts }
 
 /** What the core does with an act: carry it out, ask the person first, or refuse it with the reason the model reads. */
-export type DesktopVerdict = { verdict: 'go' } | { verdict: 'ask'; always: boolean; because?: Consequence | undefined } | { verdict: 'refuse'; secret: Secret }
-
-/** A key as it is compared: in lower case, without spaces, `Ctrl` read as `Control`. */
-export const keyOf = (key: string) =>
-  key
-    .toLowerCase()
-    .replace(/\s+/g, '')
-    .replace(/\bctrl\b/g, 'control')
-
-/** Keys that only move about a window or out of a field, and send nothing: they go ahead like scrolling. */
-const MOVING_KEYS = new Set(['tab', 'shift+tab', 'escape', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'pageup', 'pagedown', 'home', 'end'])
-
-/** Keys that leave a field without typing into it. */
-const LEAVING_KEYS = new Set(['tab', 'shift+tab', 'escape'])
+type DesktopVerdict = { verdict: 'go' } | { verdict: 'ask'; always: boolean; because?: Consequence | undefined } | { verdict: 'refuse'; secret: Secret }
 
 /** Keys that act on their own, whatever has the focus: in a file manager, Delete deletes; in a mail or chat app, Control+Enter sends. */
 const KEY_CONSEQUENCES: Record<string, Consequence> = {

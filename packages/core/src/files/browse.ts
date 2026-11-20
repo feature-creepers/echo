@@ -1,4 +1,5 @@
 import { type CommandError, encodeBase64, type WorkspaceEntry } from '@repo/protocol'
+import { within } from '../access/allowances.ts'
 import type { Workspace, WorkspaceItem } from '../ports/workspace.ts'
 import type { UserSettings } from '../settings/settings.ts'
 
@@ -7,7 +8,7 @@ import type { UserSettings } from '../settings/settings.ts'
  * content of a file, read a piece at a time. A file elsewhere on the computer can be read too when the assistant
  * may read it there: the person previews what it wrote wherever they let it write.
  */
-export interface Browsing {
+interface Browsing {
   list(path: string): Promise<Outcome<{ folder: WorkspaceEntry; entries: WorkspaceEntry[] }>>
   read(path: string, offset: number, length: number): Promise<Outcome<{ data: string; size: number; entry: WorkspaceEntry }>>
 }
@@ -27,13 +28,6 @@ export function folderPath(path: string): string | undefined {
 /** Whether a path is absolute on some system: "/home/…", "C:\…", "\\server\…". */
 export const isAbsolute = (path: string) => /^(\/|[A-Za-z]:[\\/]|\\\\)/.test(path)
 
-/** Whether a place is a granted place, or inside it, by its words. The harness checks the real places, links followed. */
-function inside(path: string, place: string): boolean {
-  const trim = (value: string) => value.replace(/[\\/]+$/, '')
-  const [one, other] = [trim(path), trim(place)]
-  return one === other || one.startsWith(`${other}/`) || one.startsWith(`${other}\\`)
-}
-
 /** Folders first, then by name, as a person sorts them: "file 2" before "file 10". */
 export function sorted(items: readonly WorkspaceItem[]): WorkspaceItem[] {
   return [...items].sort((one, other) =>
@@ -43,7 +37,7 @@ export function sorted(items: readonly WorkspaceItem[]): WorkspaceItem[] {
 
 const missing = (what: string): { ok: false; error: CommandError } => ({ ok: false, error: { code: 'invalid-input', message: `There is no ${what}.` } })
 
-export interface BrowsingOptions {
+interface BrowsingOptions {
   workspace: Workspace | undefined
   settings: UserSettings
   /** A folder was listed for the person, by where it is on the computer: what changes in it is told from now. */
@@ -51,10 +45,10 @@ export interface BrowsingOptions {
 }
 
 export function createBrowsing({ workspace, settings, listed }: BrowsingOptions): Browsing {
-  /** Whether the assistant may read a place outside its folder, as the person granted. */
+  /** Whether the assistant may read a place outside its folder, as the person granted. The harness checks the real places, links followed. */
   const readable = (location: string) => {
     const { places, computer } = settings.read().access
-    return computer !== 'off' || places.some((place) => inside(location, place.path))
+    return computer !== 'off' || places.some((place) => within(location, place.path))
   }
 
   return {

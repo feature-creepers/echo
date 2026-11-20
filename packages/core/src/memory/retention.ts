@@ -37,7 +37,7 @@ const DAY_MS = 24 * 60 * 60_000
 export const CONVERSATION_RECORDS = [EXCHANGE, STEP, WORK, RESUME, RESUMED, VIEW_SHOWN, VIEW_CLEARED, EARLIER_LINE] as const
 
 /** What a pass erases: the records, and the turns whose lines go with them. */
-export interface Expired {
+interface Expired {
   records: string[]
   turns: Set<string>
 }

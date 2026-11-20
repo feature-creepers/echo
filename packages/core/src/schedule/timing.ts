@@ -11,7 +11,7 @@ import {
   type Weekday
 } from '@repo/protocol'
 import { z } from 'zod'
-import { addDays, daysInMonth, instantOf, sameDate, type WallDate, type WallTime, wallTimeAt, weekdayOf } from './zoned.ts'
+import { addDays, daysInMonth, instantOf, minutesOf, sameDate, type WallDate, type WallTime, wallTimeAt, weekdayOf } from './zoned.ts'
 
 /**
  * When a job rings (docs/SPEC.md, section 7.10): the timing a model gives, checked as a person would check it (a
@@ -19,7 +19,7 @@ import { addDays, daysInMonth, instantOf, sameDate, type WallDate, type WallTime
  */
 
 /** How far ahead a job can be set: further is more likely a mistake than a plan. */
-export const FURTHEST_YEARS = 5
+const FURTHEST_YEARS = 5
 
 /** How many days ahead the next time of a recurring job is looked for: a monthly job on the 31st waits two months at most. */
 const SEARCH_DAYS = 400
@@ -27,7 +27,7 @@ const SEARCH_DAYS = 400
 const MINUTE_MS = 60_000
 
 /** A local date and time, "2026-11-19T08:00" or with seconds, read into its parts. Nothing when it is not a real moment. */
-export function readLocal(text: string): WallTime | undefined {
+function readLocal(text: string): WallTime | undefined {
   if (!localDateTimeSchema.safeParse(text).success) return undefined
   const [date = '', time = ''] = text.split('T')
   const [year = 0, month = 0, day = 0] = date.split('-').map(Number)
@@ -39,15 +39,9 @@ export function readLocal(text: string): WallTime | undefined {
 const two = (number: number) => String(number).padStart(2, '0')
 
 /** A wall time written as a local date and time, to the second only when it has seconds. */
-export function writeLocal(wall: WallTime): string {
+function writeLocal(wall: WallTime): string {
   const time = `${two(wall.hour)}:${two(wall.minute)}${wall.second === 0 ? '' : `:${two(wall.second)}`}`
   return `${wall.year}-${two(wall.month)}-${two(wall.day)}T${time}`
-}
-
-/** A time of day, as HH:MM, in minutes from midnight. */
-const minutesOf = (clock: string) => {
-  const [hours = 0, minutes = 0] = clock.split(':').map(Number)
-  return hours * 60 + minutes
 }
 
 /** The times of day a recurring timing rings on a date, in minutes from midnight, in order. */
@@ -70,10 +64,10 @@ function timesOn(timing: Exclude<Timing, { kind: 'once' | 'files' }>, date: Wall
   }
 }
 
-/** The instant a one-time timing rings. */
-export function onceAt(timing: Extract<Timing, { kind: 'once' }>, zone: string): number {
+/** The instant a one-time timing rings. Nothing when its moment is not a real one, such as the 31st of a short month. */
+export function onceAt(timing: Extract<Timing, { kind: 'once' }>, zone: string): number | undefined {
   const wall = readLocal(timing.at)
-  return wall ? instantOf(wall, zone) : Number.NaN
+  return wall ? instantOf(wall, zone) : undefined
 }
 
 /**
@@ -85,7 +79,7 @@ export function nextTime(timing: Timing, after: number, zone: string): number | 
   if (timing.kind === 'files') return undefined
   if (timing.kind === 'once') {
     const at = onceAt(timing, zone)
-    return at > after ? at : undefined
+    return at !== undefined && at > after ? at : undefined
   }
   const start = wallTimeAt(after, zone)
   for (let offset = 0; offset <= SEARCH_DAYS; offset++) {

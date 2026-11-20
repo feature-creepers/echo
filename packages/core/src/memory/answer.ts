@@ -38,9 +38,3 @@ export function dayOf(date: Date): string {
   const day = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
   return `${WEEKDAYS[date.getDay()]} ${day}, ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
-
-/** Cut a text to a length, marking the cut. */
-export function shorten(text: string, length: number): string {
-  const flat = text.replace(/\s+/g, ' ').trim()
-  return flat.length > length ? `${flat.slice(0, length - 1)}…` : flat
-}

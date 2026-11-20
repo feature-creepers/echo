@@ -46,9 +46,9 @@ const LISTED = 30
 /** How many widgets a search gives back. */
 const FOUND = 8
 
-export type LibraryChange = { ok: true; library: LibraryView } | { ok: false; error: CommandError }
+type LibraryChange = { ok: true; library: LibraryView } | { ok: false; error: CommandError }
 
-export interface LibraryOptions {
+interface LibraryOptions {
   records: Records
   screen: Screen
   now: () => Date
@@ -68,7 +68,7 @@ export interface Library {
   /** Show a saved widget as it is, where `showing` says. */
   show(widget: string, showing: Showing): ToolResult
   /** The saved widgets that best match what was asked for, best first. */
-  search(query: string, limit?: number): SavedWidget[]
+  search(query: string): SavedWidget[]
   /** The tools a thread finds, shows and keeps widgets with. */
   tools(showing: () => Showing): Tool[]
   /** What sessions are told about the library and its tools. */
@@ -198,13 +198,12 @@ export function createLibrary({ records, screen, now, newId }: LibraryOptions): 
     return { ok: true, library: moved > 0 ? changed() : read() }
   }
 
-  const replace = (id: string, spec: ViewSpec, title?: string): SavedWidget | undefined => {
+  const replace = (id: string, spec: ViewSpec, title?: string) => {
     const before = kept.get(id)?.widget
-    if (!before) return undefined
+    if (!before) return
     const { at: _at, ...rest } = before
-    const widget = write({ ...rest, spec, ...(title === undefined ? {} : { title }) })
+    write({ ...rest, spec, ...(title === undefined ? {} : { title }) })
     changed()
-    return widget
   }
 
   const remove: Library['remove'] = (id) => {
@@ -224,15 +223,15 @@ export function createLibrary({ records, screen, now, newId }: LibraryOptions): 
     return screen.present({ title: widget.title, spec: checked.spec, widget: widget.id }, showing)
   }
 
-  const search: Library['search'] = (query, limit = FOUND) => {
+  const search: Library['search'] = (query) => {
     const keywords = keywordsOf(query)
     const widgets = read().widgets
-    if (keywords.length === 0) return widgets.slice(0, limit)
+    if (keywords.length === 0) return widgets.slice(0, FOUND)
     return widgets
       .map((widget) => ({ widget, score: score(widget, keywords) }))
       .filter((hit) => hit.score > 0)
       .sort((one, other) => other.score - one.score)
-      .slice(0, limit)
+      .slice(0, FOUND)
       .map((hit) => hit.widget)
   }
 

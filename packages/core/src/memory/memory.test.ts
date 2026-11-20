@@ -34,7 +34,7 @@ function setup({
   records = memoryRecords({ now: () => NOW }),
   harness = scriptedHarness() as Harness,
   turn = () => undefined as string | undefined,
-  erased = (_turns: ReadonlySet<string>) => undefined as void
+  erased = (_turns: ReadonlySet<string>): void => {}
 } = {}) {
   let ids = 0
   const timers = manualTimers()
@@ -395,7 +395,14 @@ describe('what the proof of concept knew', () => {
   it('recalls its lines as the log is, by the date they were said, and never makes sense of them asleep', async () => {
     const records = memoryRecords({ now: () => NOW })
     const extracted: string[] = []
-    const harness = scriptedHarness({ complete: model({ extract: (input) => (extracted.push(input), { facts: [] }) }) })
+    const harness = scriptedHarness({
+      complete: model({
+        extract: (input) => {
+          extracted.push(input)
+          return { facts: [] }
+        }
+      })
+    })
     const { memory } = setup({ records, harness })
     memory.bringIn(found)
     expect(memory.recall('where is the boat moored')).toContain('On 2026-03-01, in conversation: "The boat is moored in Brest.')

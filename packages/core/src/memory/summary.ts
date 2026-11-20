@@ -1,7 +1,8 @@
 import type { Exchange } from '@repo/protocol'
 import { z } from 'zod'
 import type { Harness } from '../ports/harness.ts'
-import { dayOf, shorten } from './answer.ts'
+import { shorten } from '../text.ts'
+import { dayOf } from './answer.ts'
 
 /**
  * Thread summaries (docs/SPEC.md, section 10.2): for each thread, a few sentences on what it is about, where it
@@ -32,7 +33,7 @@ export const SUMMARIES_PER_SLEEP = 8
 const SUMMARY_EXCHANGES = 24
 const SAID_LENGTH = 600
 const REPLIED_LENGTH = 900
-export const SUMMARY_LENGTH = 900
+const SUMMARY_LENGTH = 900
 
 export const SUMMARY_INSTRUCTIONS = [
   'You keep the summary of one thread of conversation between a person and their voice assistant.',

@@ -10,7 +10,7 @@ import type { DeviceActs } from './acts.ts'
 export const PICTURE_WAIT_MS = 30_000
 
 /** The folder of the assistant's own where each picture taken is kept, for the person to see what was seen. */
-export const PICTURES_FOLDER = 'camera'
+const PICTURES_FOLDER = 'camera'
 
 const captureInput = z.object({ camera: z.string().trim().min(1).max(200).optional() })
 
@@ -30,7 +30,7 @@ export interface CameraOptions {
   stamp: () => string
 }
 
-export interface CameraControl {
+interface CameraControl {
   tools(showing: () => Showing): Tool[]
   /** A device answered a request: the picture, or why there is none. An answer nobody waits for is dropped. */
   answer(input: CommandRequest<'camera.picture'>): void

@@ -1,7 +1,8 @@
 import { type Exchange, FACT_KINDS, FACT_MAX_LENGTH, type FactKind, factKindSchema } from '@repo/protocol'
 import { z } from 'zod'
 import type { Harness } from '../ports/harness.ts'
-import { dayOf, readJsonAnswer, shorten } from './answer.ts'
+import { shorten } from '../text.ts'
+import { dayOf, readJsonAnswer } from './answer.ts'
 
 /**
  * Candidate facts from what was said since the last sleep (docs/SPEC.md, section 10.6).

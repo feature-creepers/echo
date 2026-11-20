@@ -159,7 +159,7 @@ export type Secret = 'password' | 'card'
 const PASSWORD_AUTOCOMPLETE = ['current-password', 'new-password', 'one-time-code']
 const CARD_AUTOCOMPLETE = ['cc-number', 'cc-csc', 'cc-exp', 'cc-exp-month', 'cc-exp-year']
 
-const PASSWORD_WORDS = ['password', 'passwd', 'passcode', 'mot de passe', 'mdp', 'passwort', 'contrasena', 'one time code']
+const PASSWORD_WORDS = ['password', 'passwd', 'passcode', 'mot de passe', 'mdp', 'passwort', 'contrasena', 'one time code'].map(wordsOf)
 const CARD_WORDS = [
   'cardnumber',
   'card number',
@@ -201,7 +201,7 @@ export function secretOf(element: ElementFacts): Secret | undefined {
 /** Whether the words that name a field say it takes a password or a payment card's details. */
 export function secretOfWords(texts: readonly string[]): Secret | undefined {
   const read = texts.map(wordsOf)
-  if (read.some((text) => PASSWORD_WORDS.some((word) => text.includes(wordsOf(word))))) return 'password'
+  if (read.some((text) => PASSWORD_WORDS.some((word) => text.includes(word)))) return 'password'
   if (read.some((text) => CARD_WORDS.some((word) => text.includes(word)))) return 'card'
   return undefined
 }

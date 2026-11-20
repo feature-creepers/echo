@@ -17,18 +17,20 @@ export function searchableText(record: NewRecord): string | undefined {
   if (record.type === EXCHANGE) {
     const exchange = exchangeSchema.safeParse(record.payload)
     // What a thread handed a sub-thread is the assistant's own work, not something said: it is never recalled as such.
-    if (!exchange.success || !inConversation(exchange.data)) return undefined
-    const text = [exchange.data.said, exchange.data.replied].filter((part) => part.trim() !== '').join('\n')
-    return text === '' ? undefined : text
+    return exchange.success && inConversation(exchange.data) ? bothSides(exchange.data) : undefined
   }
   if (record.type === FACT) return readFactRecord(record.payload)?.text
   if (record.type === EARLIER_LINE) {
     const line = earlierLineSchema.safeParse(record.payload)
-    if (!line.success) return undefined
-    const text = [line.data.said, line.data.replied].filter((part) => part.trim() !== '').join('\n')
-    return text === '' ? undefined : text
+    return line.success ? bothSides(line.data) : undefined
   }
   return undefined
+}
+
+/** What both sides of a line said, one under the other. Nothing when neither said anything. */
+function bothSides({ said, replied }: { said: string; replied: string }): string | undefined {
+  const text = [said, replied].filter((part) => part.trim() !== '').join('\n')
+  return text === '' ? undefined : text
 }
 
 /** The longest list of words a search looks for. A long utterance is mostly words that carry little. */

@@ -55,7 +55,7 @@ const cancelInput = z.object({ job: z.string().min(1).max(64).optional(), descri
 
 const refuse = (text: string): ToolResult => ({ ok: false, text })
 
-export interface ScheduleToolsOptions {
+interface ScheduleToolsOptions {
   schedule: Schedule
   now: () => Date
   zone: () => string

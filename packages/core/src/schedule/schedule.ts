@@ -34,16 +34,16 @@ import { lateSentence, reminderCard } from './words.ts'
  */
 
 /** The type of a job's record: one version of one job. */
-export const JOB = 'schedule.job'
+const JOB = 'schedule.job'
 /** The type of the record written each time a job rings. */
-export const RANG = 'schedule.rang'
+const RANG = 'schedule.rang'
 /** The type of the record written when everything is paused at once, or resumed. */
-export const HELD = 'schedule.held'
+const HELD = 'schedule.held'
 
 /** How late a job may ring and still count as on time: a timer can fire a little after its moment. */
-export const ON_TIME_MS = 2 * 60_000
+const ON_TIME_MS = 2 * 60_000
 /** How late a one-time job may ring, worded as late, when the app was not running at its time. Later, it is missed. */
-export const LATE_LIMIT_MS = 12 * 60 * 60_000
+const LATE_LIMIT_MS = 12 * 60 * 60_000
 /**
  * The longest the scheduler sleeps before looking at the clock again. A timer counts time only while the machine
  * is awake, so a long one would ring late after the machine slept; looking every minute keeps a job on time.
@@ -52,7 +52,7 @@ const LOOK_MS = 60_000
 /** How often a job that rang while the person was being answered looks again for a pause to be said in. */
 const PAUSE_LOOK_MS = 1_000
 /** How many jobs can wait to ring at once. More is more likely a model gone wrong than a person's plan. */
-export const MAX_JOBS = 100
+const MAX_JOBS = 100
 /** How many files a reminder's card names, and a task's request: the rest are counted. */
 const FILES_NAMED = 3
 const FILES_TOLD = 20
@@ -90,7 +90,7 @@ export interface Proactive {
   mayInterrupt?(): boolean
 }
 
-export interface ScheduleOptions {
+interface ScheduleOptions {
   records: Records
   now: () => Date
   /** The person's time zone, as an IANA name: the jobs ring by its clock. */
@@ -115,7 +115,7 @@ export interface NewJob {
 }
 
 /** What can change in a job. What is left out keeps its value. */
-export interface JobChange {
+interface JobChange {
   title?: string | undefined
   sentence?: string | undefined
   request?: string | undefined
@@ -123,7 +123,7 @@ export interface JobChange {
   paused?: boolean | undefined
 }
 
-export type ScheduleChange = { ok: true; schedule: ScheduleView } | { ok: false; error: CommandError }
+type ScheduleChange = { ok: true; schedule: ScheduleView } | { ok: false; error: CommandError }
 
 export interface Schedule {
   /**
@@ -204,7 +204,7 @@ export function createSchedule(options: ScheduleOptions): Schedule {
     const own = ownNext(entry, now)
     const snoozed = snoozedAt(entry.record)
     if (snoozed === undefined) return own
-    return own === undefined || Number.isNaN(own) ? snoozed : Math.min(own, snoozed)
+    return own === undefined ? snoozed : Math.min(own, snoozed)
   }
 
   /** When a job rings next by its own times, if it is active: a recurring one never for a time before `from`, nor one it rang at. */
@@ -223,7 +223,7 @@ export function createSchedule(options: ScheduleOptions): Schedule {
     return {
       id,
       ...rest,
-      ...(next === undefined || Number.isNaN(next) ? {} : { next: new Date(next).toISOString() }),
+      ...(next === undefined ? {} : { next: new Date(next).toISOString() }),
       ...(entry.last === undefined ? {} : { last: new Date(entry.last).toISOString() })
     }
   }
@@ -231,12 +231,15 @@ export function createSchedule(options: ScheduleOptions): Schedule {
   const read = (): ScheduleView => {
     const now = clock()
     const jobs = [...kept.values()].map((entry) => toJob(entry, now))
-    const waiting = jobs.filter((job) => job.state === 'active' || job.state === 'paused')
-    const past = jobs.filter((job) => job.state === 'done' || job.state === 'missed')
+    const waiting = jobs.filter(isWaiting)
+    const past = jobs.filter((job) => !isWaiting(job))
     // Waiting jobs, the next to ring first and the paused after them; past ones, the latest first.
     const at = (job: Job) => (job.next ? Date.parse(job.next) : Number.POSITIVE_INFINITY)
     waiting.sort((one, other) => at(one) - at(other) || one.since.localeCompare(other.since))
-    const ended = (job: Job) => job.last ?? (job.timing.kind === 'once' ? new Date(onceAt(job.timing, options.zone())).toISOString() : job.since)
+    const ended = (job: Job) => {
+      const due = job.timing.kind === 'once' ? onceAt(job.timing, options.zone()) : undefined
+      return job.last ?? (due === undefined ? job.since : new Date(due).toISOString())
+    }
     past.sort((one, other) => ended(other).localeCompare(ended(one)))
     return { revision, jobs: [...waiting, ...past], quiet, held, timeZone: options.zone() }
   }
@@ -267,16 +270,23 @@ export function createSchedule(options: ScheduleOptions): Schedule {
     if (waiting.length > 0 && timers) cancelPause = timers.after(PAUSE_LOOK_MS, sayWhenFree)
   }
 
+  /** In the quiet hours, or past the cap on how often it speaks up, a job is shown, notified silently and not said. */
+  const silentAt = (now: number) => isQuiet(quiet, now, options.zone()) || proactive.mayInterrupt?.() === false
+
+  /** Keep that a job rang for the time it was due. */
+  const keepRang = (record: JobRecord, due: number) => {
+    const [rang] = records.append([{ type: RANG, payload: { job: record.job, due: new Date(due).toISOString() } }])
+    if (rang) take(rang)
+  }
+
   /** A job's time has come: it rings, worded as late when it is. */
   const ring = (entry: Kept, due: number, now: number) => {
     const { record } = entry
     const zone = options.zone()
     const late = now - due > ON_TIME_MS
-    // In the quiet hours, or past the cap on how often it speaks up, it is shown, notified silently and not said.
-    const silent = isQuiet(quiet, now, zone) || proactive.mayInterrupt?.() === false
+    const silent = silentAt(now)
     const snoozed = snoozedAt(record) === due
-    const [rang] = records.append([{ type: RANG, payload: { job: record.job, due: new Date(due).toISOString() } }])
-    if (rang) take(rang)
+    keepRang(record, due)
     // Rung for its snooze, a reminder goes back to its own times; a one-time job is done.
     if (record.timing.kind === 'once') write({ ...unsnoozed(record), state: 'done' })
     else if (snoozed) write(unsnoozed(record))
@@ -303,9 +313,8 @@ export function createSchedule(options: ScheduleOptions): Schedule {
     const { record } = entry
     const timing = entry.record.timing
     const now = clock()
-    const silent = isQuiet(quiet, now, options.zone()) || proactive.mayInterrupt?.() === false
-    const [rang] = records.append([{ type: RANG, payload: { job: record.job, due: new Date(now).toISOString() } }])
-    if (rang) take(rang)
+    const silent = silentAt(now)
+    keepRang(record, now)
     if (!timing.repeat) write({ ...record, state: 'done' })
 
     const names = paths.map(lastName)
@@ -357,7 +366,7 @@ export function createSchedule(options: ScheduleOptions): Schedule {
     for (const entry of [...kept.values()]) {
       if (entry.record.state !== 'active') continue
       const due = nextOf(entry, now)
-      if (due === undefined || Number.isNaN(due) || due > now) continue
+      if (due === undefined || due > now) continue
       const snoozed = snoozedAt(entry.record) === due
       if (now - due <= ON_TIME_MS || ((entry.record.timing.kind === 'once' || snoozed) && now - due < LATE_LIMIT_MS)) ring(entry, due, now)
       // A snooze too long past is let go: the reminder rang already.
@@ -375,17 +384,17 @@ export function createSchedule(options: ScheduleOptions): Schedule {
     cancelLook()
     if (!timers || held || !listening) return
     const now = clock()
-    const nexts = [...kept.values()].map((entry) => nextOf(entry, now)).filter((next): next is number => next !== undefined && !Number.isNaN(next))
+    const nexts = [...kept.values()].map((entry) => nextOf(entry, now)).filter((next) => next !== undefined)
     if (nexts.length === 0) return
     cancelLook = timers.after(Math.max(0, Math.min(LOOK_MS, Math.min(...nexts) - now)), look)
   }
 
   // ---------------------------------------------------------------- changes
 
-  const pending = () => [...kept.values()].filter((entry) => entry.record.state === 'active' || entry.record.state === 'paused').length
+  const pending = () => [...kept.values()].filter((entry) => isWaiting(entry.record)).length
 
-  const neverRings = (timing: Timing, now: number) =>
-    timing.kind === 'files' ? false : timing.kind === 'once' ? onceAt(timing, options.zone()) <= now : nextTime(timing, now, options.zone()) === undefined
+  /** A job on files rings whenever they arrive; one on time never rings when no time of it is to come. */
+  const neverRings = (timing: Timing, now: number) => timing.kind !== 'files' && nextTime(timing, now, options.zone()) === undefined
 
   const create: Schedule['create'] = (job) => {
     if (pending() >= MAX_JOBS) return { ok: false, problem: `${MAX_JOBS} reminders and tasks are already waiting. Cancel some first.` }
@@ -412,7 +421,7 @@ export function createSchedule(options: ScheduleOptions): Schedule {
 
   const change: Schedule['change'] = (id, asked) => {
     const entry = kept.get(id)
-    if (!entry || (entry.record.state !== 'active' && entry.record.state !== 'paused')) return unknownJob(id)
+    if (!entry || !isWaiting(entry.record)) return unknownJob(id)
     const now = clock()
     const timing = asked.timing ?? entry.record.timing
     const state: JobState = asked.paused === undefined ? entry.record.state : asked.paused ? 'paused' : 'active'
@@ -526,4 +535,4 @@ function unsnoozed(record: JobRecord): JobRecord {
 }
 
 /** Whether a job is still to ring: active or paused. */
-export const isWaiting = (job: Job) => job.state === 'active' || job.state === 'paused'
+export const isWaiting = (job: { state: JobState }) => job.state === 'active' || job.state === 'paused'

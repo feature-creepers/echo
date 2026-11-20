@@ -10,30 +10,26 @@ import type { Tool } from '../tools/tools.ts'
  */
 
 /** The type of the record written for each version of a file. */
-export const FILE_VERSION = 'file.version'
+const FILE_VERSION = 'file.version'
 
-/** The kinds of file the assistant writes, and how each is shown. */
-export const FORMATS = {
-  markdown: { extension: 'md', mime: 'text/markdown' },
-  text: { extension: 'txt', mime: 'text/plain' },
-  csv: { extension: 'csv', mime: 'text/csv' }
-} as const
-export type Format = keyof typeof FORMATS
+/** The kinds of file the assistant writes, and the media type each is read as. */
+const MEDIA_TYPES = { markdown: 'text/markdown', text: 'text/plain', csv: 'text/csv' } as const
+const formatSchema = z.enum(['markdown', 'text', 'csv'])
 
 const versionSchema = z.object({
   file: z.string(),
   name: z.string(),
-  format: z.enum(['markdown', 'text', 'csv']),
+  format: formatSchema,
   version: z.number().int().positive(),
   hash: z.string(),
   bytes: z.number().int().nonnegative(),
   thread: z.string().optional(),
   at: z.string()
 })
-export type FileVersion = z.infer<typeof versionSchema>
+type FileVersion = z.infer<typeof versionSchema>
 
 /** A file as a client reads it: its latest version and the text. */
-export interface FileContent extends FileVersion {
+interface FileContent extends FileVersion {
   mime: string
   text: string
 }
@@ -43,13 +39,13 @@ const MAX_LENGTH = 400_000
 
 const writeInput = z.object({
   name: z.string().trim().min(1).max(120),
-  format: z.enum(['markdown', 'text', 'csv']).default('markdown'),
+  format: formatSchema.default('markdown'),
   content: z.string().max(MAX_LENGTH),
   file: z.string().optional()
 })
 const readInput = z.object({ file: z.string().min(1) })
 
-export interface Files {
+interface Files {
   read(file: string): FileContent | undefined
   /** The tools a thread writes and reads files with. */
   tools(thread: () => string | undefined): Tool[]
@@ -69,7 +65,7 @@ export function createFiles({ records, blobs, now, newId }: { records: Records; 
     const version = latest(file)
     const bytes = version ? blobs.get(version.hash) : undefined
     if (!version || !bytes) return undefined
-    return { ...version, mime: FORMATS[version.format].mime, text: new TextDecoder().decode(bytes) }
+    return { ...version, mime: MEDIA_TYPES[version.format], text: new TextDecoder().decode(bytes) }
   }
 
   return {

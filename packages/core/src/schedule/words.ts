@@ -19,7 +19,7 @@ const LATE: Record<string, (time: string) => string> = {
 }
 
 /** A time of day as it is said: "8:00", "14:30". */
-export function spokenClock(instant: number, zone: string): string {
+function spokenClock(instant: number, zone: string): string {
   const wall = wallTimeAt(instant, zone)
   return `${wall.hour}:${String(wall.minute).padStart(2, '0')}`
 }

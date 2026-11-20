@@ -1,15 +1,15 @@
 import { FACT_KINDS, FACT_MAX_LENGTH, type FactKind, factKindSchema } from '@repo/protocol'
 import { z } from 'zod'
 import type { ToolResult } from '../ports/tools.ts'
+import { shorten } from '../text.ts'
 import type { Tool } from '../tools/tools.ts'
-import { shorten } from './answer.ts'
 import type { KnownFact } from './facts.ts'
 import type { Recalled } from './recall.ts'
 
-/** What a session can do with the memory, by name (docs/SPEC.md, section 10.5 and 10.6). */
-export const MEMORY_SEARCH_TOOL = 'memory_search'
-export const MEMORY_REMEMBER_TOOL = 'memory_remember'
-export const MEMORY_FORGET_TOOL = 'memory_forget'
+/** What a session can do with the memory, by name (docs/SPEC.md, sections 10.5 and 10.6). */
+const MEMORY_SEARCH_TOOL = 'memory_search'
+const MEMORY_REMEMBER_TOOL = 'memory_remember'
+const MEMORY_FORGET_TOOL = 'memory_forget'
 
 /** What every session with tools is told about its memory. */
 export const MEMORY_INSTRUCTIONS = [
@@ -21,7 +21,7 @@ export const MEMORY_INSTRUCTIONS = [
 ].join('\n')
 
 /** What the tools need from the memory. */
-export interface MemoryActions {
+interface MemoryActions {
   find(query: string, after?: string, before?: string): Recalled
   /** Keep a fact. Gives the fact as known, and whether it was known already. */
   remember(text: string, kind: FactKind): { fact: KnownFact; known: boolean }

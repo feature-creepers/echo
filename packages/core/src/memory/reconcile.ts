@@ -1,7 +1,8 @@
 import { FACT_MAX_LENGTH } from '@repo/protocol'
 import { z } from 'zod'
 import type { Harness } from '../ports/harness.ts'
-import { readJsonAnswer, shorten } from './answer.ts'
+import { shorten } from '../text.ts'
+import { readJsonAnswer } from './answer.ts'
 import type { Candidate } from './extract.ts'
 import type { KnownFact } from './facts.ts'
 
@@ -11,7 +12,7 @@ import type { KnownFact } from './facts.ts'
  */
 
 /** A candidate with the known facts it may repeat or contradict. */
-export interface Comparison {
+interface Comparison {
   candidate: Candidate
   similar: readonly KnownFact[]
 }

@@ -1,19 +1,21 @@
 # @repo/core
 
-The assistant itself: the channel, the orchestrator, threads, memory and personas. It is pure logic: everything it needs from outside is an interface in `src/ports`.
+The assistant itself: the channel, threads and projects, memory, personas, the library of saved views, the schedule, and access to the computer with its approval cards. It is pure logic: everything it needs from outside is an interface in `src/ports` (records, search, files, the harnesses, the browser, the desktop, the clock, the public web), which the adapters implement and `apps/server` wires in.
 
-`createCore` gives what a listener needs: admit a client, carry out a command, announce an event.
+`createCore` gives a listener what it needs: admit a client, carry out a command, announce an event. Each folder of `src/` serves its own tools to the sessions in its `tools.ts`, gathered in `core.ts`.
 
-The memory (`src/memory`, docs/SPEC.md section 10) has one entry point, `createMemory`. It recalls what bears on each turn with no model call, writes facts while the assistant sleeps (with `Harness.complete` on the `utility` role), keeps a profile for every session, and gives sessions the `memory_search`, `memory_remember` and `memory_forget` tools. Search and timers are ports (`src/ports/search.ts`, `src/ports/clock.ts`); `memorySearch` and `manualTimers` stand in for them in tests.
-
-The library (`src/library`, docs/SPEC.md section 9.8) keeps the views the user saved as records, a version per change and an erasure to delete. It tells every session what is saved and gives threads `library_search`, `library_show`, `library_save`, `library_update` and `library_delete`, so a saved widget comes back as it is when asked for again.
-
-Access to the computer (`src/access`, docs/SPEC.md section 12.2) keeps what the user grants (the assistant's own folder, folders and files, or everything), gives each thread a `Reach` for its harness to check every use against, shows approval cards composed from the catalogue, hears a yes or a no to them before any turn starts, and gives threads `computer_grant` for a folder named aloud. Paths and files are reached through ports (`src/ports/computer.ts`), as are the public addresses the core reads to check a map's shapes (`src/ports/web.ts`).
-
-A persona is data. `src/personas/defaults.ts` is the only file that contains the default names, and nothing else in the repository names a persona: behaviour depends on a persona's stance, never on which one it is.
+A persona is data. `src/personas/defaults.ts` is the only file that contains the default names: behaviour depends on a persona's stance, never on which one it is (`scripts/check-persona-names.ts` enforces it).
 
 - **Runs in:** Anywhere: Node, a browser, a phone. No Node API, no DOM
 - **May import:** `@repo/protocol`, `@repo/catalog`
 - **Entry points:** `@repo/core`
 
-The import rule is enforced by `biome.jsonc` and explained in [docs/SPEC.md](../../docs/SPEC.md), section 14.3.
+The import rule is enforced by `biome.jsonc` (docs/SPEC.md, section 14.3).
+
+## Tests
+
+```bash
+pnpm --filter @repo/core test
+```
+
+The tests sit beside the code, and drive the core through a scripted harness and stand-ins for its ports (`src/replay/`).

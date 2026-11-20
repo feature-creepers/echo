@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { Harness } from '../ports/harness.ts'
-import { dayOf, shorten } from './answer.ts'
+import { shorten } from '../text.ts'
+import { dayOf } from './answer.ts'
 import type { KnownFact } from './facts.ts'
 
 /**
@@ -17,7 +18,7 @@ const profileRecordSchema = z.object({
   /** Which facts it was written from, as `basisOf` gives it: when they change, it is written again. */
   basis: z.string()
 })
-export type ProfileRecord = z.infer<typeof profileRecordSchema>
+type ProfileRecord = z.infer<typeof profileRecordSchema>
 
 export function readProfileRecord(payload: unknown): ProfileRecord | undefined {
   const read = profileRecordSchema.safeParse(payload)

@@ -4,11 +4,11 @@ import type { ToolResult } from '../ports/tools.ts'
 import type { Tool } from '../tools/tools.ts'
 
 /** What a session can do with the library, by name (docs/SPEC.md, section 9.8). */
-export const LIBRARY_SEARCH_TOOL = 'library_search'
-export const LIBRARY_SHOW_TOOL = 'library_show'
-export const LIBRARY_SAVE_TOOL = 'library_save'
-export const LIBRARY_UPDATE_TOOL = 'library_update'
-export const LIBRARY_DELETE_TOOL = 'library_delete'
+const LIBRARY_SEARCH_TOOL = 'library_search'
+const LIBRARY_SHOW_TOOL = 'library_show'
+const LIBRARY_SAVE_TOOL = 'library_save'
+const LIBRARY_UPDATE_TOOL = 'library_update'
+const LIBRARY_DELETE_TOOL = 'library_delete'
 
 /** What every session that can show things is told about the library. */
 export const LIBRARY_INSTRUCTIONS = [
@@ -18,8 +18,8 @@ export const LIBRARY_INSTRUCTIONS = [
 ].join('\n')
 
 /** What the tools need from the library. */
-export interface LibraryActions {
-  search(query: string, limit?: number): SavedWidget[]
+interface LibraryActions {
+  search(query: string): SavedWidget[]
   show(widget: string): ToolResult
   save(title: string | undefined, collection: string | undefined): ToolResult
   update(input: LibraryEdit): ToolResult

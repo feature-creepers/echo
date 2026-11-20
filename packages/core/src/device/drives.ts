@@ -25,7 +25,7 @@ export function chooseDrive(drives: readonly Drive[], asked: string): Drive | st
     : `No drive "${asked}" is plugged in. The drives are ${all}.`
 }
 
-export interface DriveToolsOptions {
+interface DriveToolsOptions {
   drives: Drives
   /** Whether a place may be read now, or changed with `write`, by the person's grants. */
   reaches: (path: string, write?: boolean) => boolean

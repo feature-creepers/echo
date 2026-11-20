@@ -54,7 +54,7 @@ export interface Watching {
   reaches(folder: string): boolean
 }
 
-export interface FileWatchOptions extends Watching {
+interface FileWatchOptions extends Watching {
   timers: Timers
   /** The time now, in milliseconds since 1970. */
   now: () => number
@@ -64,7 +64,7 @@ export interface FileWatchOptions extends Watching {
   problem(message: string): void
 }
 
-export interface FileWatch {
+interface FileWatch {
   /** The jobs to watch for now: a watch starts for each new one, and stops for each gone, or whose folder or pattern changed. */
   follow(jobs: readonly WatchedJob[]): void
   close(): void

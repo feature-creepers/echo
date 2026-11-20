@@ -39,16 +39,6 @@ const formatterFor = (zone: string): Intl.DateTimeFormat => {
   return formatter
 }
 
-/** Whether a zone is one this place knows, by its IANA name. */
-export function knownZone(zone: string): boolean {
-  try {
-    formatterFor(zone)
-    return true
-  } catch {
-    return false
-  }
-}
-
 /** What a zone's clock shows at an instant, in milliseconds since 1970. */
 export function wallTimeAt(instant: number, zone: string): WallTime {
   const parts = formatterFor(zone).formatToParts(new Date(instant))
@@ -97,3 +87,9 @@ export function daysInMonth(year: number, month: number): number {
 
 /** Whether two dates are the same day. */
 export const sameDate = (one: WallDate, other: WallDate) => one.year === other.year && one.month === other.month && one.day === other.day
+
+/** A time of day, as HH:MM, in minutes from midnight. */
+export function minutesOf(clock: string): number {
+  const [hours = 0, minutes = 0] = clock.split(':').map(Number)
+  return hours * 60 + minutes
+}

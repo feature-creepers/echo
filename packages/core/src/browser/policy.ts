@@ -21,13 +21,18 @@ export type PageVerdict =
   | { verdict: 'ask'; always: boolean; because?: Consequence | 'upload' | undefined }
   | { verdict: 'refuse'; secret: Secret }
 
-/** Keys that only move around a page or out of a field, and send nothing: they go ahead like scrolling. */
-const MOVING_KEYS = new Set(['tab', 'shift+tab', 'escape', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'pageup', 'pagedown', 'home', 'end'])
+/** A key as it is compared: in lower case, without spaces, `Ctrl` read as `Control`. */
+export const keyOf = (key: string) =>
+  key
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/\bctrl\b/g, 'control')
+
+/** Keys that only move around a page, a window or out of a field, and send nothing: they go ahead like scrolling. */
+export const MOVING_KEYS = new Set(['tab', 'shift+tab', 'escape', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'pageup', 'pagedown', 'home', 'end'])
 
 /** Keys that leave a field without typing into it or sending it. */
-const LEAVING_KEYS = new Set(['tab', 'shift+tab', 'escape'])
-
-const isEnter = (key: string) => key.toLowerCase() === 'enter'
+export const LEAVING_KEYS = new Set(['tab', 'shift+tab', 'escape'])
 
 /**
  * Whether an action on a page goes ahead, is asked first, or is refused. The one place this is decided, for
@@ -41,7 +46,7 @@ const isEnter = (key: string) => key.toLowerCase() === 'enter'
  * 4. Anything else follows the person's choice: asked first (`ask`), or carried out (`trust` and `auto`).
  */
 export function decidePageAct(act: PageAct, approvals: Access['approvals']): PageVerdict {
-  const key = act.kind === 'press' ? act.key.toLowerCase().replace(/\s+/g, '') : ''
+  const key = act.kind === 'press' ? keyOf(act.key) : ''
   if (act.kind === 'type' || act.kind === 'select' || (act.kind === 'press' && !LEAVING_KEYS.has(key))) {
     const secret = act.element ? secretOf(act.element) : undefined
     if (secret) return { verdict: 'refuse', secret }
@@ -52,7 +57,7 @@ export function decidePageAct(act: PageAct, approvals: Access['approvals']): Pag
   const consequence =
     act.kind === 'click' || act.kind === 'select'
       ? consequenceOfAct(act.element, { kind: act.kind })
-      : (act.kind === 'type' && act.submit) || (act.kind === 'press' && isEnter(act.key))
+      : (act.kind === 'type' && act.submit) || key === 'enter'
         ? act.element && consequenceOfAct(act.element, { kind: 'enter' })
         : undefined
   if (consequence) return { verdict: 'ask', always: true, because: consequence }

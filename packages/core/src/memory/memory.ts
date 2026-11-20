@@ -6,6 +6,7 @@ import {
   type Exchange,
   exchangeSchema,
   FACT_KINDS,
+  FACT_MAX_LENGTH,
   type Fact,
   type FactKind,
   inConversation,
@@ -21,8 +22,9 @@ import type { Harness } from '../ports/harness.ts'
 import type { Log } from '../ports/log.ts'
 import { ERASURE, type NewRecord, type Records, type StoredRecord } from '../ports/records.ts'
 import type { Search } from '../ports/search.ts'
+import { shorten } from '../text.ts'
 import type { Tool } from '../tools/tools.ts'
-import { shorten, UnreadableAnswer } from './answer.ts'
+import { UnreadableAnswer } from './answer.ts'
 import { EARLIER_LINE, type EarlierFact, type EarlierLine, earlierLineSchema, IMPORTED, importedSchema } from './earlier.ts'
 import { type Candidate, extract } from './extract.ts'
 import { createFactBook, FACT, type FactRecord, type KnownFact } from './facts.ts'
@@ -45,7 +47,7 @@ import { MEMORY_INSTRUCTIONS, memoryTools } from './tools.ts'
  */
 
 /** The type of the record written after each batch a sleep made sense of: the last exchange it read. */
-export const SLEPT = 'memory.slept'
+const SLEPT = 'memory.slept'
 
 const sleptSchema = z.object({ through: z.string(), at: z.string() })
 
@@ -268,7 +270,7 @@ export function createMemory(options: MemoryOptions): Memory {
   // —— Writing, awake ——
 
   const remember = (text: string, kind: FactKind = 'other'): { fact: KnownFact; known: boolean } => {
-    const clean = shorten(text, 500)
+    const clean = shorten(text, FACT_MAX_LENGTH)
     const same = book.current().find((fact) => foldWord(fact.text) === foldWord(clean))
     if (same) return { fact: same, known: true }
     const turn = options.turn?.()
@@ -303,11 +305,13 @@ export function createMemory(options: MemoryOptions): Memory {
   // —— What the proof of concept knew ——
 
   /** The latest import, as the view shows it. */
-  let imported: MemoryImport | undefined = (() => {
-    const last = records.read([IMPORTED]).findLast((record) => importedSchema.safeParse(record.payload).success)
-    const read = last && importedSchema.safeParse(last.payload)
-    return last && read?.success ? { at: last.at, facts: read.data.facts, lines: read.data.lines } : undefined
-  })()
+  let imported: MemoryImport | undefined = records
+    .read([IMPORTED])
+    .flatMap((record) => {
+      const read = importedSchema.safeParse(record.payload)
+      return read.success ? [{ at: record.at, facts: read.data.facts, lines: read.data.lines }] : []
+    })
+    .at(-1)
 
   const bringIn = ({ from, facts, lines }: { from: string; facts: readonly EarlierFact[]; lines: readonly EarlierLine[] }): MemoryImport => {
     // A fact already known, in whatever capitals and accents, is not kept twice; nor a line already brought in.

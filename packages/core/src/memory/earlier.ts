@@ -1,7 +1,7 @@
 import { FACT_MAX_LENGTH, type FactKind } from '@repo/protocol'
 import { z } from 'zod'
 import { inFolder } from '../projects/folders.ts'
-import { shorten } from './answer.ts'
+import { shorten } from '../text.ts'
 
 /**
  * What the proof of concept knew, brought in once (docs/SPEC.md, section 10.7). It kept, in its data folder (in the

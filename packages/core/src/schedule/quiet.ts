@@ -1,5 +1,5 @@
 import { type QuietHours, quietHoursSchema } from '@repo/protocol'
-import { wallTimeAt } from './zoned.ts'
+import { minutesOf, wallTimeAt } from './zoned.ts'
 
 /**
  * The quiet hours (docs/SPEC.md, section 7.10): every night by default, the assistant keeps its voice to itself.
@@ -15,11 +15,6 @@ export const DEFAULT_QUIET: QuietHours = { on: true, from: '23:00', until: '07:3
 export function readQuietHours(payload: unknown): QuietHours | undefined {
   const read = quietHoursSchema.safeParse(payload)
   return read.success ? read.data : undefined
-}
-
-const minutesOf = (clock: string) => {
-  const [hours = 0, minutes = 0] = clock.split(':').map(Number)
-  return hours * 60 + minutes
 }
 
 /** Whether an instant falls in the quiet hours, on the person's clock. Hours that start and end at the same time are none. */

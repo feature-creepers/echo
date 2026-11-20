@@ -10,7 +10,7 @@ import { type CameraOptions, createCameraControl } from './camera.ts'
 import { driveTools } from './drives.ts'
 import { printerTools } from './printers.ts'
 
-export interface DeviceOptions {
+interface DeviceOptions {
   access: Pick<AccessControl, 'ask' | 'record' | 'report' | 'reaches'>
   /** The approval level the person chose, read at each act. */
   level: () => Access['approvals']
@@ -21,7 +21,7 @@ export interface DeviceOptions {
   camera?: Omit<CameraOptions, 'acts'> | undefined
 }
 
-export interface DeviceControl {
+interface DeviceControl {
   /** The tools of what this computer has, for a thread whose screen is `showing`. */
   tools(showing: () => Showing): Tool[]
   /** A device answered a request for a picture. */

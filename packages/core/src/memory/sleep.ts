@@ -30,7 +30,7 @@ export function untilTimeOfDay(now: Date, time: string): number {
   return next.getTime() - now.getTime()
 }
 
-export interface SleepScheduleOptions {
+interface SleepScheduleOptions {
   now: () => Date
   /** Left out, the assistant falls asleep only when told. */
   timers?: Timers | undefined
@@ -41,7 +41,7 @@ export interface SleepScheduleOptions {
 }
 
 /** The timers that put the assistant to sleep. */
-export interface SleepSchedule {
+interface SleepSchedule {
   /** Something was said or answered: the quiet period starts again. */
   heard(): void
   /** The setting changed: the timers follow it. */

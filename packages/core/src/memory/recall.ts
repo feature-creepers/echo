@@ -1,6 +1,6 @@
 import { EXCHANGE } from '../channel/channel.ts'
 import type { Search, SearchHit } from '../ports/search.ts'
-import { shorten } from './answer.ts'
+import { shorten } from '../text.ts'
 import { EARLIER_LINE } from './earlier.ts'
 import { FACT, type FactBook, type KnownFact } from './facts.ts'
 
@@ -18,13 +18,13 @@ const FACT_HALF_LIFE_DAYS = 365
 const EXCHANGE_HALF_LIFE_DAYS = 45
 const SNIPPET_LENGTH = 220
 
-export interface RecallSources {
+interface RecallSources {
   search: Search
   facts: FactBook
   now: () => Date
 }
 
-export interface RecallFor {
+interface RecallFor {
   /** What the user just said. */
   said: string
   /** Lines of the log written from this date on are already known to the session, and are not recalled. */

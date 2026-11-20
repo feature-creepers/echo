@@ -9,7 +9,7 @@ import type { Screen, Showing } from '../views/screen.ts'
  * card for each turn, brought up to date with every file, listing each with its size and the ways to open it. The
  * card is composed from the generic blocks, like any view.
  */
-export interface WrittenFiles {
+interface WrittenFiles {
   /** A thread wrote files at these places, absolute: they go on the card of its turn. */
   add(showing: Showing, paths: readonly string[]): Promise<void>
 }
@@ -24,7 +24,7 @@ const TURNS_KEPT = 20
  * What the card says of where a file is: in the project the thread works on, or in the assistant's folder, then the
  * folders inside it. Nothing for a file elsewhere: its place on the computer is shown as it is.
  */
-export function detailOf(item: WorkspaceItem, workspace: Workspace, project?: string): string | undefined {
+function detailOf(item: WorkspaceItem, workspace: Workspace, project?: string): string | undefined {
   const inProject = project === undefined ? undefined : partsFrom(project, item.location)
   if (inProject !== undefined && project !== undefined) return ['In', [folderName(project), ...inProject.slice(0, -1)].join(' › ')].join(' ')
   const path = workspace.pathOf(item.location)
@@ -45,7 +45,7 @@ export function writtenCard(items: readonly WorkspaceItem[], workspace: Workspac
   }
 }
 
-export interface WrittenFilesOptions {
+interface WrittenFilesOptions {
   screen: Screen
   workspace: Workspace
   newId: () => string

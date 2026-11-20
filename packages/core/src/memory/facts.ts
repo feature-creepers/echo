@@ -65,8 +65,6 @@ export interface FactBook {
   recordsToForget(fact: string): string[]
   /** The turns a fact was learned from, in any of its versions and those of the facts it replaced before it. */
   turnsToForget(fact: string): string[]
-  /** Changes with every fact taken or dropped. */
-  revision(): number
 }
 
 export function createFactBook(records: readonly StoredRecord[] = []): FactBook {
@@ -74,7 +72,6 @@ export function createFactBook(records: readonly StoredRecord[] = []): FactBook 
   const latest = new Map<string, string>()
   /** The turns each fact came from, in every version: a later version may name others than the first. */
   const learnedFrom = new Map<string, Set<string>>()
-  let revision = 0
 
   const book: FactBook = {
     take(record) {
@@ -101,7 +98,6 @@ export function createFactBook(records: readonly StoredRecord[] = []): FactBook 
         const replaced = facts.get(payload.replaces)
         if (replaced && replaced.fact !== fact.fact) facts.set(replaced.fact, { ...replaced, replacedBy: fact.fact })
       }
-      revision++
     },
 
     drop(id) {
@@ -113,7 +109,6 @@ export function createFactBook(records: readonly StoredRecord[] = []): FactBook 
         facts.delete(forgotten)
         learnedFrom.delete(forgotten)
       }
-      revision++
     },
 
     current: () =>
@@ -133,9 +128,7 @@ export function createFactBook(records: readonly StoredRecord[] = []): FactBook 
 
     recordsToForget: (id) => chain(id).flatMap((fact) => facts.get(fact)?.versions ?? []),
 
-    turnsToForget: (id) => [...new Set(chain(id).flatMap((fact) => [...(learnedFrom.get(fact) ?? [])]))],
-
-    revision: () => revision
+    turnsToForget: (id) => [...new Set(chain(id).flatMap((fact) => [...(learnedFrom.get(fact) ?? [])]))]
   }
 
   /** A fact and every fact it replaced before it, however far back. */

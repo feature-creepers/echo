@@ -6,7 +6,7 @@ import { decideDesktopAct } from './policy.ts'
 /** How often a click waits for its element to appear, in milliseconds: an app takes a moment to open a page. */
 const SEEK_EVERY_MS = 250
 
-export interface ActsOptions {
+interface ActsOptions {
   /** The apps of the computer the core runs on. Left out, nothing can be done on it. */
   desktop: Desktop | undefined
   settings: UserSettings

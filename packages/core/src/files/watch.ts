@@ -14,7 +14,7 @@ export const GATHER_MS = 300
 /** How many paths one telling names at most: the page reads its open folders again whichever paths it names. */
 export const PATHS_TOLD = 100
 
-export interface FolderWatchOptions {
+interface FolderWatchOptions {
   /** Watch one folder of the computer, not its subfolders: the computer port's. Throws when it cannot. */
   watch(folder: string, changed: (paths: readonly string[]) => void): () => void
   /** The path in the assistant's folder of a place on the computer, when it is inside the folder. */
@@ -25,7 +25,7 @@ export interface FolderWatchOptions {
   changed(paths: string[]): void
 }
 
-export interface FolderWatch {
+interface FolderWatch {
   /** A folder the person just listed, by where it is on the computer: watched from now, as one of the latest. */
   follow(location: string): void
   close(): void
@@ -68,7 +68,7 @@ export function createFolderWatch(options: FolderWatchOptions): FolderWatch {
       try {
         watched.set(location, options.watch(location, moved))
       } catch {
-        // A folder that cannot be watched is read again when the page comes back to the front, as before.
+        // A folder that cannot be watched is read again when the page comes back to the front.
         return
       }
       for (const [oldest, stopOldest] of watched) {

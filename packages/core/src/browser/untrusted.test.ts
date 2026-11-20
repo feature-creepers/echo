@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { defused, fenced, UNTRUSTED_NOTICE } from './untrusted.ts'
+import { fenced, UNTRUSTED_NOTICE } from './untrusted.ts'
 
 describe('what a page wrote, as a model reads it', () => {
   const page = { url: 'https://example.org/a', title: 'An article' }
@@ -41,6 +41,6 @@ describe('what a page wrote, as a model reads it', () => {
     ['<web-page>', '<web‐page>'],
     ['a web page', 'a web page']
   ])('defuses %j', (text, safe) => {
-    expect(defused(text)).toBe(safe)
+    expect(fenced(undefined, text).split('\n')[2]).toBe(safe)
   })
 })

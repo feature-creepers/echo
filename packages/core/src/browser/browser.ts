@@ -13,7 +13,7 @@ import { type BrowserToolsOptions, browserTools } from './tools.ts'
  * the person lets it use one and one was found, what a thread is told about it, and the browser as the
  * settings show it.
  */
-export interface BrowserControl {
+interface BrowserControl {
   /** The browser's tools, for one thread: its questions go where `showing` says. Nothing while it is off or none was found. */
   tools(showing: () => Showing): Tool[]
   /** What a thread is told about the browser. Nothing while it has none. */
@@ -28,7 +28,7 @@ export interface BrowserControl {
   close(): Promise<void>
 }
 
-export interface BrowserControlOptions {
+interface BrowserControlOptions {
   /** The browser of the computer the core runs on. Left out, the assistant has none: a core with no computer of its own. */
   browser?: Browser | undefined
   settings: UserSettings
@@ -74,12 +74,12 @@ export function createBrowserControl({ browser, settings, ask, records, uses, co
 
   return {
     tools(showing) {
-      if (!browser || !usable() || found?.found !== true) return []
+      if (!browser || found?.found !== true || !on()) return []
       return browserTools({ browser, name: found.name, settings, ask, records, uses, computer, showing, usable })
     },
 
     standing() {
-      if (!usable() || found?.found !== true) return undefined
+      if (found?.found !== true || !usable()) return undefined
       return standingFor(found.name, settings.read().access.approvals)
     },
 

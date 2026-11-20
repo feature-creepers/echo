@@ -70,11 +70,9 @@ describe('the facts true now', () => {
       { type: 'other', payload: version('c', 'Not a fact record.') }
     ])
     const book = createFactBook(records.read([FACT, 'other']))
-    const before = book.revision()
 
     expect(book.current().map((fact) => fact.fact)).toEqual(['a'])
     book.drop('a')
     expect(book.current()).toEqual([])
-    expect(book.revision()).toBeGreaterThan(before)
   })
 })

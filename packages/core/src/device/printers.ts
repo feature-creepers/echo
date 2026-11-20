@@ -1,3 +1,4 @@
+import { lastName } from '@repo/protocol'
 import { z } from 'zod'
 import type { Computer } from '../ports/computer.ts'
 import type { Printable, Printer, Printers } from '../ports/printers.ts'
@@ -6,7 +7,7 @@ import type { Showing } from '../views/screen.ts'
 import type { DeviceActs } from './acts.ts'
 
 /** The most copies of one file a call prints. */
-export const MAX_COPIES = 20
+const MAX_COPIES = 20
 
 /** What a file holds, by its ending: what the adapter can print, on every system. */
 const KINDS: Record<string, Printable> = {
@@ -34,7 +35,7 @@ const KINDS: Record<string, Printable> = {
 
 /** What a file holds, by its ending, when it can be printed. */
 export function printableKind(path: string): Printable | undefined {
-  const name = path.slice(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1)
+  const name = lastName(path)
   const dot = name.lastIndexOf('.')
   return dot <= 0 ? undefined : KINDS[name.slice(dot + 1).toLowerCase()]
 }
@@ -73,7 +74,7 @@ const printInput = z.object({
   copies: z.number().int().min(1).max(MAX_COPIES).optional()
 })
 
-export interface PrinterToolsOptions {
+interface PrinterToolsOptions {
   printers: Printers
   computer: Computer
   /** Whether a place may be read now, by the person's grants. */
@@ -129,7 +130,7 @@ export function printerTools({ printers, computer, reaches, acts }: PrinterTools
         if (!asked.success) return { ok: false, text: `print takes the "path" of a file, with "printer" and "copies" (1 to ${MAX_COPIES}) if needed.` }
         const found = await computer.locate(asked.data.path)
         if (found?.kind !== 'file') return { ok: false, text: `There is no file at ${asked.data.path}.` }
-        const name = found.path.slice(Math.max(found.path.lastIndexOf('/'), found.path.lastIndexOf('\\')) + 1)
+        const name = lastName(found.path)
         const kind = printableKind(found.path)
         if (!kind) return { ok: false, text: `${name} cannot be printed as it is: only PDFs, pictures and plain text are. Write it as a PDF first.` }
         let all: Printer[]
@@ -144,10 +145,9 @@ export function printerTools({ printers, computer, reaches, acts }: PrinterTools
         const line = `Print ${name} on ${printer.name}${copies > 1 ? ` (${copies} copies)` : ''}`
         const act = { tool: 'print', line, paths: [found.path] }
         if (!reaches(found.path)) {
-          return acts.refuse(
+          return acts.refuseOutside(
             act,
             showing(),
-            'outside',
             `${found.path} is outside what the person granted. You can print files from your own folder or from places they gave you; they can grant more in Settings, Access.`
           )
         }

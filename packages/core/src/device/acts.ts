@@ -7,7 +7,7 @@ import type { Showing } from '../views/screen.ts'
 type Reason = (typeof USE_REASONS)[number]
 
 /** An act on the device, as the core decides it: what the activity keeps, and the card when the person is asked. */
-export interface DeviceAct {
+interface DeviceAct {
   /** The tool, as the activity names it. */
   tool: string
   /** One line for the activity and the side sheet: "Print report.pdf on Brother DCP-9020CDW". */
@@ -22,7 +22,7 @@ export interface DeviceAct {
   always?: boolean
 }
 
-export type Decided = { go: true; use: string | undefined } | { go: false; result: ToolResult }
+type Decided = { go: true; use: string | undefined } | { go: false; result: ToolResult }
 
 const NOT_DONE: Record<Exclude<Answer, 'yes' | 'session'>, string> = {
   no: 'The person said no, so it was not done. Do not try it again unless they ask.',
@@ -38,7 +38,7 @@ const REFUSED: Record<Exclude<Answer, 'yes' | 'session'>, Reason> = {
   unanswered: 'unanswered'
 }
 
-export interface DeviceActsOptions {
+interface DeviceActsOptions {
   ask: Approvals['ask']
   /** The approval level the person chose, read at each act. */
   level: () => Access['approvals']
@@ -49,8 +49,8 @@ export interface DeviceActsOptions {
 export interface DeviceActs {
   /** Decide an act: carried out at once, asked first, or refused; kept in the activity whatever was decided. */
   decide(act: DeviceAct, showing: Showing): Promise<Decided>
-  /** Refuse an act before anyone is asked, such as a file outside what the person granted, and keep it in the activity. */
-  refuse(act: Pick<DeviceAct, 'tool' | 'line' | 'paths'>, showing: Showing, reason: 'outside' | 'protected', text: string): ToolResult
+  /** Refuse an act on a file outside what the person granted, before anyone is asked, and keep it in the activity. */
+  refuseOutside(act: Pick<DeviceAct, 'tool' | 'line' | 'paths'>, showing: Showing, text: string): ToolResult
   /** Carry out what was decided, and keep in the activity how it went. A failure is a result the model reads. */
   carry(use: string | undefined, work: () => Promise<ToolResult>): Promise<ToolResult>
   /** Forget what was allowed for the session: everything was stopped. */
@@ -93,8 +93,8 @@ export function createDeviceActs({ ask, level, uses }: DeviceActsOptions): Devic
       if (answer === 'session' && !act.always) allowed.add(act.tool)
       return { go: true, use: keep(act, showing, 'approved', pressed ? 'pressed' : 'said') }
     },
-    refuse(act, showing, reason, text) {
-      keep(act, showing, 'refused', reason, text)
+    refuseOutside(act, showing, text) {
+      keep(act, showing, 'refused', 'outside', text)
       return { ok: false, text }
     },
     async carry(use, work) {

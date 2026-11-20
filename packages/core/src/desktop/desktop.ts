@@ -13,7 +13,7 @@ import { type DesktopToolsOptions, desktopTools } from './tools.ts'
  * `device.screen`): the tools a thread gets while the person lets it and the system allows it, what a thread is
  * told about them, the window it holds, marked on the person's screen, and the state the settings show.
  */
-export interface DesktopControl {
+interface DesktopControl {
   /** The tools, for one thread: its questions go where `showing` says. Nothing while it is off or unavailable. */
   tools(showing: () => Showing): Tool[]
   /** What a thread is told about other apps. Nothing while it has none. */
@@ -30,7 +30,7 @@ export interface DesktopControl {
   close(): Promise<void>
 }
 
-export interface DesktopControlOptions {
+interface DesktopControlOptions {
   /** The other apps of the computer the core runs on. Left out, the assistant has none: a core with no desktop of its own. */
   desktop?: Desktop | undefined
   settings: UserSettings

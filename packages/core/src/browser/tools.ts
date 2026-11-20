@@ -1,7 +1,8 @@
 import type { USE_REASONS } from '@repo/protocol'
 import { z } from 'zod'
 import type { AccessControl } from '../access/access.ts'
-import type { Answer, Approvals } from '../access/approvals.ts'
+import { within } from '../access/allowances.ts'
+import type { Approvals } from '../access/approvals.ts'
 import type { ActionOutcome, Browser, ElementFacts, PageFacts } from '../ports/browser.ts'
 import type { Computer } from '../ports/computer.ts'
 import type { Records } from '../ports/records.ts'
@@ -11,7 +12,7 @@ import type { Tool } from '../tools/tools.ts'
 import type { Showing } from '../views/screen.ts'
 import { BROWSER_ACTION, type BrowserAction } from './log.ts'
 import { decidePageAct, type PageAct } from './policy.ts'
-import { labelOf, questionFor, SECRET_REFUSAL, siteOf } from './questions.ts'
+import { labelOf, NOT_DONE, questionFor, refusalReason, SECRET_REFUSAL, siteOf } from './questions.ts'
 import { fenced } from './untrusted.ts'
 
 /** How much of a page's text one read gives, in characters: enough for an article's opening, small enough for a context. */
@@ -19,12 +20,12 @@ const READ_LENGTH = 8_000
 /** The longest outline a snapshot gives, in characters. */
 const OUTLINE_LENGTH = 12_000
 /** The longest a wait lasts, in seconds. */
-/** Why a use was decided as it was, as the activity keeps it. */
-type AccessUseReason = (typeof USE_REASONS)[number]
-
 const WAIT_SECONDS = 30
 /** How many lines of what changed an action reports. The rest is in a new snapshot. */
 const CHANGES_SHOWN = 30
+
+/** Why a use was decided as it was, as the activity keeps it. */
+type AccessUseReason = (typeof USE_REASONS)[number]
 
 export interface BrowserToolsOptions {
   browser: Browser
@@ -56,14 +57,6 @@ const selectInput = z.object({ ref, values: z.array(z.string().max(500)).min(1).
 const pressInput = z.object({ key: z.string().trim().min(1).max(60), ref: ref.optional() })
 const uploadInput = z.object({ ref, paths: z.array(z.string().trim().min(1).max(4096)).min(1).max(20) })
 
-/** What the model is told when the person did not say yes. */
-const NOT_DONE: Record<Exclude<Answer, 'yes' | 'session'>, string> = {
-  no: 'The person said no, so it was not done. Do not try it again unless they ask.',
-  'moved-on': 'The person moved on to something else without answering, so it was not done.',
-  stopped: 'The turn was stopped, so it was not done.',
-  unanswered: 'No answer came, so it was not done. Ask again if it still matters.'
-}
-
 const failed = (error: unknown): ToolResult => ({ ok: false, text: error instanceof Error ? error.message : String(error) })
 const refused = (text: string): ToolResult => ({ ok: false, text })
 
@@ -83,13 +76,6 @@ function outcomeText(done: string, outcome: ActionOutcome): string {
   const more = outcome.changes.length - shown.length
   const body = shown.length > 0 ? `What is new on the page:\n${shown.join('\n')}${more > 0 ? `\n(${more} more lines: take a browser_snapshot)` : ''}` : ''
   return told(done, outcome, body, shown.length === 0 ? 'Nothing new appeared among the elements you can use.' : undefined)
-}
-
-/** Whether a path is a place or inside it, by its words. Both are as the system names them, links followed. */
-const inside = (path: string, place: string) => {
-  const trim = (value: string) => value.replace(/[\\/]+$/, '')
-  const [one, other] = [trim(path), trim(place)]
-  return one === other || one.startsWith(`${other}/`) || one.startsWith(`${other}\\`)
 }
 
 /**
@@ -160,7 +146,7 @@ export function browserTools(options: BrowserToolsOptions): Tool[] {
       // A page's card offers no yes for the session; said aloud, it is a yes for this action.
       if (answer !== 'yes' && answer !== 'session') {
         record({ ...base, decision: 'declined', answer, ...(verdict.because ? { because: verdict.because } : {}) })
-        use('refused', answer === 'no' ? 'declined' : answer === 'stopped' ? 'stopped' : 'unanswered', NOT_DONE[answer])
+        use('refused', refusalReason(answer), NOT_DONE[answer])
         return refused(NOT_DONE[answer])
       }
       decision = 'approved'
@@ -197,7 +183,7 @@ export function browserTools(options: BrowserToolsOptions): Tool[] {
     for (const path of paths) {
       const found = await computer.locate(path)
       if (found?.kind !== 'file') return { ok: false, text: `There is no file at ${path}.` }
-      if (reach === 'off' && !allowed.some((place) => inside(found.path, place))) {
+      if (reach === 'off' && !allowed.some((place) => within(found.path, place))) {
         return {
           ok: false,
           text: `${found.path} is outside what the person granted. A page can only be given files from your own folder or from places they gave you; they can grant more in Settings, Access.`
