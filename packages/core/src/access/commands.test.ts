@@ -469,6 +469,27 @@ describe('readCommand: paths it names', () => {
   })
 })
 
+describe('readCommand: variables it gives the programs it runs', () => {
+  it.each([
+    ['NODE_OPTIONS=--require=./x.js npm run build', 'posix', ['NODE_OPTIONS']],
+    ['env PATH=./bin:$PATH git commit -m x', 'posix', ['PATH']],
+    ['export LD_PRELOAD=./x.so; git commit -m x', 'posix', ['LD_PRELOAD']],
+    ['declare -x GIT_SSH_COMMAND=x; git push', 'posix', ['GIT_SSH_COMMAND']],
+    ['readonly PATH=./bin; git status', 'posix', ['PATH']],
+    ['printf -v PATH /tmp; ls', 'posix', ['PATH']],
+    ['LANG=C GIT_PAGER=cat git log', 'posix', []],
+    ['x=1; npm run build', 'posix', []],
+    ['local x=1; npm run build', 'posix', []],
+    ["$env:NODE_OPTIONS = '--require x'; npm run build", 'powershell', ['NODE_OPTIONS']],
+    ['Set-Item env:NODE_OPTIONS x; npm run build', 'powershell', ['NODE_OPTIONS']],
+    ['Set-Item -Path Env:\\PATH -Value x; npm run build', 'powershell', ['PATH']],
+    ['set NODE_OPTIONS=x && npm run build', 'cmd', ['NODE_OPTIONS']],
+    ['set NO_COLOR=1 && npm run build', 'cmd', []]
+  ] as const)('`%s` in %s gives %j', (line, shell, expected) => {
+    expect(readCommand(line, shell).variables).toEqual(expected)
+  })
+})
+
 describe('readCommand: plain names, in the folder the command runs in', () => {
   it.each([
     ['cat .netrc', 'posix', ['.netrc']],

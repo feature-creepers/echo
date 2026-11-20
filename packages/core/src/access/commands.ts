@@ -71,6 +71,11 @@ export interface CommandReading {
   sends: string[]
   /** The keys of its commands that are not read-only: what a session approval of this line would cover. */
   keys: string[]
+  /**
+   * The variables it gives the programs it runs, harmless ones aside, each once: `NODE_OPTIONS` of
+   * `NODE_OPTIONS=… npm run build`. Such a line is never covered by a yes for the session.
+   */
+  variables: string[]
 }
 
 /**
@@ -121,6 +126,15 @@ function harmless(variable: string, value: string, exported: boolean): boolean {
   return HARMLESS_VARIABLES.test(variable) || (PAGERS.test(variable) && /^(cat)?$/.test(value.trim()))
 }
 
+/** The variables among `NAME=value` words that are not harmless, given to programs when `exported`. */
+function variablesSet(words: readonly string[], exported: boolean): string[] {
+  return words.flatMap((word) => {
+    if (word.startsWith('-')) return []
+    const [variable = '', ...value] = word.split('=')
+    return harmless(variable, value.join('='), exported) ? [] : [variable]
+  })
+}
+
 /** Paths that are no file: where output is thrown away, the terminal, standard streams. */
 const NOWHERE = /^(\/dev\/(null|stdin|stdout|stderr|tty|zero|random|urandom|fd\/\d+)|nul|con|\$null|-)$/i
 
@@ -157,7 +171,8 @@ export function readCommand(line: string, shell: Shell = 'posix'): CommandReadin
     paths: [],
     keys: [],
     hosts: [],
-    sends: []
+    sends: [],
+    variables: []
   }
   readLine(line, { shell, folders: [''], aside: [], moved: false, bound: new Set(), reading, depth: 0 })
   reading.programs = [...new Set(reading.commands.map((command) => command.program))]
@@ -169,6 +184,7 @@ export function readCommand(line: string, shell: Shell = 'posix'): CommandReadin
     ...new Set(reading.commands.filter((command) => command.network).flatMap((command) => [...hostsOf(command.program, command.args), ...command.sendsTo]))
   ]
   reading.sends = [...new Set(reading.commands.flatMap((command) => command.sends))]
+  reading.variables = [...new Set(reading.variables)]
   reading.publishes = reading.commands.some((command) => command.publishes)
   reading.opaque = reading.opaque || reading.commands.some((command) => command.opaque)
   if (reading.network || reading.destructive || reading.opaque || reading.publishes) reading.readOnly = false
@@ -370,6 +386,8 @@ interface Kind {
   launcher?: boolean
   /** It takes Windows-style `/switches`. */
   windows?: boolean
+  /** The variables it gives the programs the line runs after it, harmless ones aside: `export LD_PRELOAD=x`. */
+  variables?: string[]
 }
 
 /** PowerShell's aliases of the commands it reads, to their names. */
@@ -1421,6 +1439,12 @@ function kindOf(program: string, args: readonly string[], context: Context): Kin
       return { opaque: true, nested: program === 'eval' ? [{ line: args.join(' '), shell: 'posix' }] : [] }
     case 'find':
       return findKind(args)
+    case 'declare':
+    case 'typeset':
+    case 'local':
+    case 'readonly':
+      // Given `-x`, a variable goes to every program the line runs after it; one the system exported already does anyway.
+      return { variables: variablesSet(args, program !== 'readonly' && short(args, 'x')) }
   }
 
   if (READING.has(program)) return readingKind(program, args, context.shell)
@@ -1570,19 +1594,17 @@ function readingKind(program: string, args: readonly string[], shell: Shell): Ki
       return kind
     case 'export':
       // A variable exported goes to every program the line runs after it.
-      kind.readOnly = args.every((word) => {
-        const [variable = '', ...value] = word.split('=')
-        return word.startsWith('-') || harmless(variable, value.join('='), true)
-      })
+      kind.variables = variablesSet(args, true)
+      kind.readOnly = kind.variables.length === 0
       return kind
     case 'set':
       // In cmd, `set NAME=value` sets a variable of the environment, which every program after it is given.
-      kind.readOnly =
-        shell !== 'cmd' ||
-        args.every((word) => {
-          const [variable = '', ...value] = word.split('=')
-          return value.length === 0 || harmless(variable.trim().toUpperCase(), value.join('='), true)
-        })
+      if (shell !== 'cmd') return kind
+      kind.variables = variablesSet(
+        args.filter((word) => word.includes('=')).map((word) => word.replace(/^[^=]*/, (variable) => variable.trim().toUpperCase())),
+        true
+      )
+      kind.readOnly = kind.variables.length === 0
       return kind
     case 'uniq':
       // A second file is where it writes.
@@ -1602,7 +1624,8 @@ function readingKind(program: string, args: readonly string[], shell: Shell): Ki
       // What it prints is no path: what it writes to, after `>`, is checked as one. `printf -v NAME` sets a variable.
       kind.notPaths = new Set(args.keys())
       const set = program === 'printf' ? args.indexOf('-v') : -1
-      if (set >= 0) kind.readOnly = harmless(args[set + 1] ?? '', '', false)
+      if (set >= 0) kind.variables = variablesSet([args[set + 1] ?? ''], false)
+      kind.readOnly = (kind.variables ?? []).length === 0
       return kind
     }
     case 'ls':
@@ -1729,6 +1752,13 @@ function powershellKind(name: string, args: readonly string[]): Kind {
     kind.readOnly = args.every((word) => word.startsWith('-') || word === '{…}') || lower === 'where-object'
   }
   if (lower === 'start-process' && parameter(args, 'verb', 2)) kind.opaque = true
+  // `Set-Item env:NAME value` sets a variable of the environment, given to every program the line runs after it.
+  const environment = ['set-item', 'new-item', 'set-content', 'add-content'].includes(lower) ? args.findIndex((word) => /^env:[\\/]?\w+$/i.test(word)) : -1
+  if (environment >= 0) {
+    const variable = (args[environment] as string).replace(/^env:[\\/]?/i, '').toUpperCase()
+    const value = args.slice(environment + 1).find((word) => !word.startsWith('-')) ?? ''
+    kind.variables = harmless(variable, value, true) ? [] : [variable]
+  }
   kind.recursive = parameter(args, 'recurse', 2) || parameter(args, 'depth', 2)
   if (lower === 'get-childitem' && parameter(args, 'recurse')) kind.recursive = true
   if (lower === 'write-output' || lower === 'write-host') kind.notPaths = new Set(args.keys())
@@ -1775,13 +1805,13 @@ function readStage(stage: Stage, context: Context): void {
       const value = assignedValue(assigned)
       if (value) name(value, context)
       // Before a command, it is given to that command.
-      if (!harmless(variable, value ? textOf(value) : '', words.length > 0)) reading.readOnly = false
+      if (!harmless(variable, value ? textOf(value) : '', words.length > 0)) given(variable, reading)
     }
   } else if (context.shell === 'powershell' && words[1] && /^(\?\?|[-+*/%])?=$/.test(textOf(words[1]))) {
     const target = words[0]?.pieces[0]
     if (target?.kind === 'variable') {
       context.bound.add(target.name)
-      if (target.environment && !harmless(target.name, textOf(words[2] ?? { pieces: [] }), true)) reading.readOnly = false
+      if (target.environment && !harmless(target.name, textOf(words[2] ?? { pieces: [] }), true)) given(target.name, reading)
     }
     words = words.slice(2)
     // A value given to it is named, as it is wherever it is used next.
@@ -1831,7 +1861,7 @@ function readStage(stage: Stage, context: Context): void {
       const word = textOf(words[at] as Word)
       if (program === 'env' && /^[A-Za-z_]\w*=/.test(word)) {
         const [variable = '', ...value] = word.split('=')
-        if (!harmless(variable, value.join('='), true)) reading.readOnly = false
+        if (!harmless(variable, value.join('='), true)) given(variable, reading)
         at++
         continue
       }
@@ -1937,6 +1967,7 @@ function readStage(stage: Stage, context: Context): void {
       ? { readOnly: true, windows: true, notPaths: new Set([positionals(argTexts)[0]?.index ?? -1]) }
       : kindOf(found.name, argTexts, context)
   if (elevated) kind.readOnly = false
+  for (const variable of kind.variables ?? []) given(variable, reading)
   // A shell or an interpreter that reads what it is fed runs code that is not read here: `curl … | sh`, `python - <<EOF`.
   if ((stage.join === 'pipe' || stage.fed) && (INTERPRETERS.has(found.name) || (SHELLS[found.name] && !kind.launcher))) kind.opaque = true
 
@@ -2005,6 +2036,12 @@ function readStage(stage: Stage, context: Context): void {
       sendsTo: sent?.to ?? []
     })
   )
+}
+
+/** A variable the line gives the programs it runs, which can change what they run: the line no longer only reads. */
+function given(variable: string, reading: CommandReading): void {
+  reading.readOnly = false
+  reading.variables.push(variable)
 }
 
 const firstText = (word: Word) => {

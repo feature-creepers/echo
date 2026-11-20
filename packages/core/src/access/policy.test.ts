@@ -23,6 +23,7 @@ const CASES: [string, ComputerUse, Policy, boolean, Decision][] = [
   ['a change, made at trust', file('change'), guarded('trust'), false, RUNS('level')],
   ['a command, asked at trust', run('pnpm test'), guarded('trust'), false, ASKS(false, true)],
   ['a command, run at auto where it may change', run('pnpm test'), guarded('auto'), false, RUNS('level')],
+  ['a command given a variable, asked at trust, never for the session', run('NODE_OPTIONS=x npm run build'), guarded('trust'), false, ASKS(false, false)],
   ['a command naming a read-only place, asked at auto', run('pnpm test', 'read'), guarded('auto'), false, ASKS(false, true)],
   ['deleting, guarded: asked at auto, never for the session', run('rm notes.md'), guarded('auto'), false, ASKS(true, false)],
   ['a file deleted, guarded: asked at auto', file('delete'), guarded('auto'), false, ASKS(true, false)],

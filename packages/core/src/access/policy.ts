@@ -1,5 +1,6 @@
 import type { Access } from '@repo/protocol'
 import type { ComputerUse } from '../ports/harness.ts'
+import { coverable } from './allowances.ts'
 import type { CommandReading } from './commands.ts'
 import { isLocalNetwork, isLoopback, listedHost } from './hosts.ts'
 
@@ -64,12 +65,12 @@ export function decide(use: ComputerUse, policy: Policy, reading: CommandReading
     if (reading.readOnly) return { run: true, because: 'read-only' }
     if (reading.destructive && policy.askDestroying) return { run: false, destructive: true, session: false }
     if ((reading.publishes && policy.askPublishing) || networkGuard(reading, policy)) {
-      return coveredForSession ? { run: true, because: 'session' } : { run: false, destructive: false, session: reading.keys.length > 0 }
+      return coveredForSession ? { run: true, because: 'session' } : { run: false, destructive: false, session: coverable(reading) }
     }
     // A command can change what it names: without asking, only where things may be changed.
     if (level === 'auto' && use.reach === 'write') return { run: true, because: 'level' }
     if (coveredForSession) return { run: true, because: 'session' }
-    return { run: false, destructive: reading.destructive, session: reading.keys.length > 0 }
+    return { run: false, destructive: reading.destructive, session: coverable(reading) }
   }
   // A file created or changed: the adapter already refused one where it may only be read.
   return changeFile(level, coveredForSession)

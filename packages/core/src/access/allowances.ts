@@ -11,7 +11,7 @@ import type { CommandReading } from './commands.ts'
  */
 export interface Allowances {
   list(): Allowance[]
-  /** Whether a use is covered. A command that destroys never is, while what destroys is always asked. */
+  /** Whether a use is covered. A command that destroys never is while what destroys is always asked, nor one that gives a program a variable. */
   covers(use: ComputerUse, reading: CommandReading | undefined): boolean
   /** Allow for the session what this use is: its commands' keys, or the folders of its files. */
   allow(use: ComputerUse, reading: CommandReading | undefined): void
@@ -21,6 +21,12 @@ export interface Allowances {
   /** Be told each time the list changes. Returns a function that stops the telling. */
   onChange(listener: (allowances: Allowance[]) => void): () => void
 }
+
+/**
+ * Whether a yes for the session may cover a command line: one with a command to cover, and none that gives a program
+ * a variable, which can make a program allowed run something else (`NODE_OPTIONS`, `PATH`).
+ */
+export const coverable = (reading: CommandReading) => reading.keys.length > 0 && reading.variables.length === 0
 
 /** The folder a file is in, whatever the system's separator. */
 export function folderOf(path: string): string {
@@ -56,7 +62,7 @@ export function createAllowances({
 
     covers(use, reading) {
       if (use.action === 'run') {
-        if (!reading || (reading.destructive && destroyingAsked()) || reading.keys.length === 0) return false
+        if (!reading || (reading.destructive && destroyingAsked()) || !coverable(reading)) return false
         const allowed = commands()
         return reading.keys.every((key) => allowed.has(key))
       }
@@ -69,7 +75,7 @@ export function createAllowances({
       const at = now().toISOString()
       const added: Allowance[] = []
       if (use.action === 'run') {
-        if (!reading || (reading.destructive && destroyingAsked())) return
+        if (!reading || (reading.destructive && destroyingAsked()) || !coverable(reading)) return
         const allowed = commands()
         for (const key of reading.keys) if (!allowed.has(key)) added.push({ id: newId(), kind: 'command', subject: key, at })
       } else if (use.action === 'create' || use.action === 'change') {
