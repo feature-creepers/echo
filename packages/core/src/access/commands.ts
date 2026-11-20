@@ -79,7 +79,10 @@ export interface CommandReading {
    * never covered by a yes for the session.
    */
   variables: string[]
-  /** It runs a program as another user, the administrator by default: `sudo`, `doas`. Never covered by a yes for the session. */
+  /**
+   * It runs a program as another user, the administrator by default: `sudo`, `doas`, `run0`, `pkexec`, `su`, `gsudo`,
+   * `runas`, `Start-Process -Verb RunAs`. Never covered by a yes for the session.
+   */
   elevated: boolean
 }
 
@@ -471,6 +474,8 @@ interface Kind {
   windows?: boolean
   /** The variables it gives the programs the line runs after it, harmless ones aside: `export LD_PRELOAD=x`. */
   variables?: string[]
+  /** It runs what it starts as another user, the administrator by default: `Start-Process -Verb RunAs`. */
+  elevated?: boolean
   /**
    * It goes through the folder it runs in when it names no path: `always`, or `unfed`, unless it is given something
    * to search through a pipe or a file (`rg`).
@@ -912,10 +917,16 @@ const INTERPRETERS = new Set([
   'irb'
 ])
 
+/** Programs that run another as another user, the administrator by default. */
+const ELEVATING = new Set(['sudo', 'doas', 'run0', 'pkexec', 'gsudo', 'su', 'runas'])
+
 /** Programs that take another command after their own options, and run it. */
 const WRAPPERS: Record<string, { values: readonly string[] }> = {
   sudo: { values: ['-u', '-g', '-C', '-D', '-h', '-p', '-r', '-t', '-U'] },
   doas: { values: ['-u', '-C'] },
+  run0: { values: ['-u', '-g', '-D', '--user', '--group', '--chdir', '--unit', '--property', '--description', '--slice', '--nice', '--setenv', '--machine'] },
+  pkexec: { values: ['--user'] },
+  gsudo: { values: ['-u', '--user', '-i', '--integrity'] },
   env: { values: ['-u', '-C', '-S', '--unset', '--chdir'] },
   nice: { values: ['-n', '--adjustment'] },
   nohup: { values: [] },
@@ -1573,6 +1584,12 @@ function kindOf(program: string, args: readonly string[], context: Context): Kin
     case 'readonly':
       // Given `-x`, a variable goes to every program the line runs after it; one the system exported already does anyway.
       return { variables: variablesSet(args, program !== 'readonly' && short(args, 'x'), context) }
+    case 'su': {
+      // `su -c "…"` runs the line it is given as another user; without it, a shell of theirs.
+      const at = args.findIndex((word) => word === '-c' || word.startsWith('--command'))
+      const given = args[at]?.startsWith('--command=') ? args[at]?.slice(10) : args[at + 1]
+      return at < 0 || given === undefined ? { opaque: true } : { nested: [{ line: given, shell: 'posix' }], notPaths: new Set([at + 1]) }
+    }
     case 'read': {
       // The variables it reads into, whose values the line does not show: `read PATH < list`.
       const names = positionals(args, ['-a', '-d', '-i', '-n', '-N', '-p', '-t', '-u']).map(({ word }) => word)
@@ -1919,7 +1936,10 @@ function powershellKind(name: string, args: readonly string[], windows: boolean)
     // A method or property named instead of a script block, `% Delete`, runs what cannot be read here.
     kind.readOnly = args.every((word) => word.startsWith('-') || word === '{…}') || lower === 'where-object'
   }
-  if (lower === 'start-process' && parameter(args, 'verb', 2)) kind.opaque = true
+  if (lower === 'start-process' && parameter(args, 'verb', 2)) {
+    kind.opaque = true
+    kind.elevated = /^runas/i.test(parameterValue(args, 'verb') ?? '')
+  }
   // A variable of the environment is given to every program the line runs after it.
   kind.variables = environmentSet(lower, args, windows)
   kind.recursive = parameter(args, 'recurse', 2) || parameter(args, 'depth', 2)
@@ -2021,7 +2041,7 @@ function readStage(stage: Stage, context: Context): void {
     const program = programOf(textOf(words[0] as Word)).name
     const wrapper = context.shell === 'posix' ? WRAPPERS[program] : undefined
     if (!wrapper || !isPlain(words[0] as Word)) break
-    if (program === 'sudo' || program === 'doas') {
+    if (ELEVATING.has(program)) {
       elevated = true
       reading.elevated = true
     }
@@ -2070,7 +2090,7 @@ function readStage(stage: Stage, context: Context): void {
     }
     if (at >= words.length) {
       // Alone, `env` lists the variables and `command -v` finds a program: both only read.
-      reading.commands.push(command(program, program, words.slice(1).map(textOf), { readOnly: program !== 'sudo' && program !== 'doas' && program !== 'exec' }))
+      reading.commands.push(command(program, program, words.slice(1).map(textOf), { readOnly: !ELEVATING.has(program) && program !== 'exec' }))
       return
     }
     words = words.slice(at)
@@ -2108,8 +2128,8 @@ function readStage(stage: Stage, context: Context): void {
   if (context.shell === 'powershell' && args.some((word) => word.pieces.some((piece) => piece.kind === 'inner' && piece.call))) reading.opaque = true
 
   const found = programOf(written)
-  // Windows' own `sudo`, from PowerShell or cmd, runs what follows it as the administrator too.
-  if (found.name === 'sudo' || found.name === 'doas') reading.elevated = true
+  // `su -c`, cmd's `runas`, and from PowerShell or cmd Windows' own `sudo` and `gsudo`, run what follows as another user too.
+  if (ELEVATING.has(found.name)) reading.elevated = true
   const alias = context.shell === 'powershell' ? (ALIASES[found.name] ?? (/^[a-z]+-[a-z]+$/i.test(written) ? written : undefined)) : undefined
 
   // A script run by its path, or a program given by its path: the path is named too.
@@ -2138,6 +2158,7 @@ function readStage(stage: Stage, context: Context): void {
       ? { readOnly: true, windows: true, notPaths: new Set([positionals(argTexts)[0]?.index ?? -1]) }
       : kindOf(found.name, argTexts, context)
   if (elevated) kind.readOnly = false
+  if (kind.elevated) reading.elevated = true
   for (const variable of kind.variables ?? []) given(variable, reading)
   if (context.shell === 'posix' && (program === 'set' || program === 'shopt')) context.exporting = allexportOf(program, argTexts) ?? context.exporting
   // A shell or an interpreter that reads what it is fed runs code that is not read here: `curl … | sh`, `python - <<EOF`.

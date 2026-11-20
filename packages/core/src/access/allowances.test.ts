@@ -52,7 +52,10 @@ describe('a yes for the session on a command', () => {
   it.each([
     ['apt install x', true],
     ['sudo apt install x', false],
-    ['doas apt install x', false]
+    ['doas apt install x', false],
+    ['run0 apt install x', false],
+    ['pkexec apt install x', false],
+    ["su -c 'apt install x'", false]
   ])('on `apt install`, covers `%s`: %s', (line, expected) => {
     expect(covered(allowing('apt install'), line)).toBe(expected)
   })

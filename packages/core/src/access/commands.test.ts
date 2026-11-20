@@ -614,7 +614,18 @@ describe('readCommand: elevated', () => {
     ['doas apt install x', 'posix', true],
     ['echo ok && sudo -u root ls', 'posix', true],
     ['sudo winget install x', 'powershell', true],
-    ['apt install x', 'posix', false]
+    ['apt install x', 'posix', false],
+    ['run0 apt install x', 'posix', true],
+    ['pkexec apt install x', 'posix', true],
+    ['gsudo apt install x', 'posix', true],
+    ['gsudo winget install x', 'powershell', true],
+    ["su -c 'apt install x'", 'posix', true],
+    ['su root -c id', 'posix', true],
+    ['su -', 'posix', true],
+    ['Start-Process pwsh -Verb RunAs', 'powershell', true],
+    ['saps pwsh -Verb:runas', 'powershell', true],
+    ['Start-Process notepad', 'powershell', false],
+    ['runas /user:Administrator cmd', 'cmd', true]
   ] as const)('reads `%s` in %s as elevated: %s', (line, shell, elevated) => {
     expect(readCommand(line, shell).elevated).toBe(elevated)
   })
@@ -741,7 +752,8 @@ describe('readCommand: lines that try to hide what they do', () => {
     ['(cd /; rm -rf tmp)', { destructive: true, paths: ['/', '/tmp', 'tmp'] }],
     ['{ rm x; }', { destructive: true }],
     ['echo "$(rm x)"', { destructive: true }],
-    ['x=$(rm a) ls', { destructive: true }]
+    ['x=$(rm a) ls', { destructive: true }],
+    ["su -c 'rm -rf /'", { destructive: true }]
   ])('`%s` is read for what it is', (line, expected) => {
     const reading = readCommand(line)
     if ('destructive' in expected) expect(reading.destructive).toBe(expected.destructive)
