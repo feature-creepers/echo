@@ -64,6 +64,7 @@ function setup(overrides: Partial<Handlers> = {}) {
     'desktop.read': () => ({ ok: true, output: { desktop: { available: false, problem: 'none', open: [] } } }),
     'threads.read': () => ({ ok: true, output: { threads: [] } }),
     'thread.focus': () => ({ ok: true, output: {} }),
+    'threads.dismiss': () => ({ ok: true, output: {} }),
     'project.open': () => ({ ok: true, output: { thread: 'thread-1', turn: 'turn-1' } }),
     'threads.stop': () => ({ ok: true, output: { stopped: false } }),
     'thread.read': () => ({ ok: false, error: { code: 'invalid-input', message: 'There is no such thread.' } }),

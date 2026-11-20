@@ -28,7 +28,7 @@ import { EngineIndicator } from './engine-indicator.tsx'
 import { GoArrow } from './go-arrow.tsx'
 import { InputLine } from './input-line.tsx'
 import { moodOf, moodWord } from './mood.ts'
-import { ReadyChips } from './ready-chips.tsx'
+import { ReadyTopics } from './ready-topics.tsx'
 import { RunningThreads } from './running-threads.tsx'
 import { type ScrollEdges, useScrollEdges } from './scroll-edges.ts'
 import { Caption } from './stage-caption.tsx'
@@ -542,11 +542,16 @@ export function Stage({
   const answerLink = (
     <AnimatePresence initial={false}>{written !== undefined && <FullAnswerLink key={written} onOpen={() => onOpenAnswer(written)} />}</AnimatePresence>
   )
-  const chips =
+  const readyList =
     ready.length > 0 ? (
-      <div className="flex flex-wrap items-center justify-center gap-2">
-        <ReadyChips ready={ready} onFocus={(thread) => void client.threads.focus(thread).catch(() => undefined)} />
+      <div className="flex w-full flex-col items-center gap-1">
         {answerLink}
+        <ReadyTopics
+          ready={ready}
+          exchanges={channel.exchanges}
+          onFocus={(thread) => void client.threads.focus(thread).catch(() => undefined)}
+          onDismiss={(thread) => void client.threads.dismiss(thread).catch(() => undefined)}
+        />
       </div>
     ) : undefined
 
@@ -598,7 +603,7 @@ export function Stage({
               <MoodWord mood={mood} word={word} />
             </motion.span>
             {/* Two lines are kept for what is said, and every line shown there holds to them, so it never moves the
-                stream under it nor runs onto the chips. Only a problem may take more room, and then pushes the chips
+                stream under it nor runs onto the ready list. Only a problem may take more room, and then pushes the ready list
                 down rather than covering them. They come in once the core, rising from the middle of the screen, has
                 passed where they are. */}
             <motion.div
@@ -612,10 +617,10 @@ export function Stage({
                   {!atHome && caption}
                 </div>
                 {/* Under the two lines kept for what is said, over the room above the stream, so it moves nothing. With
-                    topics ready, it sits in their row instead. */}
-                {!chips && !atHome && <div className="absolute inset-x-0 top-full flex justify-center">{answerLink}</div>}
+                    topics ready, it sits over their list instead. */}
+                {!readyList && !atHome && <div className="absolute inset-x-0 top-full flex justify-center">{answerLink}</div>}
               </div>
-              {!atHome && chips}
+              {!atHome && readyList}
             </motion.div>
           </div>
         </header>
@@ -639,7 +644,7 @@ export function Stage({
               <div className="flex w-full justify-center" aria-live="polite">
                 {caption}
               </div>
-              {chips ?? answerLink}
+              {readyList ?? answerLink}
             </motion.div>
           </div>
         </div>
@@ -712,10 +717,10 @@ export function Stage({
                 <div className="flex w-full justify-center" aria-live="polite">
                   {caption}
                 </div>
-                {!chips && answerLink}
+                {!readyList && answerLink}
               </div>
-              {chips ? (
-                <div className={cn('mt-2 w-full', COLUMN)}>{chips}</div>
+              {readyList ? (
+                <div className={cn('mt-2 w-full', COLUMN)}>{readyList}</div>
               ) : (
                 // Until the person has said anything, a few things to try.
                 !noEngine && !running && !speaking.sentence && channel.exchanges.every((line) => line.trigger !== undefined) && <Suggestions onSay={say} />

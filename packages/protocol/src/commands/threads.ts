@@ -46,6 +46,16 @@ export const threadCommands = {
   },
 
   /**
+   * Put a finished topic's waiting answer away unseen, or with no thread every one that waits (docs/SPEC.md, section
+   * 7.4): it is no longer ready, so its row under the caption leaves and it is not mentioned. Nothing else changes: the
+   * topic stays where it was, and the side sheet still shows its answer.
+   */
+  'threads.dismiss': {
+    input: z.object({ thread: threadIdSchema.optional() }),
+    output: z.object({})
+  },
+
+  /**
    * Bring a topic back: it takes the focus, its view the stage and its last answer the caption. A side question
    * answered only in passing comes back in passing: its card on top of the stream, for its full time again, and the
    * topic on the stage stays.

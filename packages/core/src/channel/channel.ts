@@ -204,6 +204,11 @@ export interface Channel {
    */
   focus(thread: string): boolean
   /**
+   * Put a waiting answer away unseen: one topic's, or with none named, every one that waits. It is no longer ready,
+   * so it is neither mentioned nor said, and nothing else about the topic changes.
+   */
+  dismiss(thread?: string): void
+  /**
    * A page of one thread, for the side sheet: its latest requests, or those before `before`, as many as fit one
    * message, with their steps previewed and their views named. Undefined when there is no such thread.
    */
@@ -1317,6 +1322,16 @@ export function createChannel(options: ChannelOptions): Channel {
           emit({ type: 'event', name: 'speech.say', turn: missed.turn, text: sentence, ...(language === undefined ? {} : { language }) })
         }
       return true
+    },
+
+    dismiss(id) {
+      for (const thread of registry.read().threads) {
+        if (thread.state !== 'ready' || (id !== undefined && thread.id !== id)) continue
+        toTell.delete(thread.id)
+        const answer = transcript.findLast((line) => line.thread === thread.id && line.outcome === 'done')
+        if (answer) unheard.delete(answer.turn)
+        registry.setState(thread.id, 'parked')
+      }
     },
 
     thread(id, before) {

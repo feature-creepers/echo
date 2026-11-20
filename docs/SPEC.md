@@ -318,13 +318,15 @@ The instructions, a reminder at the end of each request and the core hold the or
 
 ### 7.4 Background results
 
-When a thread finishes while another is in focus, its result does not interrupt. A "ready" chip appears under the caption, with a soft sound when answers are heard aloud on the device. The assistant mentions it at the next pause ("By the way, it's ready: Recipe."), or the person asks for it.
+When a thread finishes while another is in focus, its result does not interrupt. A row appears in the "ready" list under the caption, with a soft sound when answers are heard aloud on the device. The assistant mentions it at the next pause ("By the way, it's ready: Recipe."), or the person asks for it.
+
+- **The ready list** shows three rows at most, the most recent first, the others behind "N more". A row names the topic, says on one line what its latest answer found (the title of what it wrote, else what it said) and how long it has waited. Pressing it brings the topic back. Its cross, or Delete on the row, puts the answer away unseen (`threads.dismiss` with the thread): the topic is no longer ready and is not mentioned, and stays where it was, its answer in the side sheet. "Clear all" puts every one away (`threads.dismiss` with no thread).
 
 - **The mention** is a turn the assistant starts itself with no model asked (`trigger: 'ready'`, labelled "Ready"): the topics' titles, several in one sentence, joined in the language of the conversation with words the core knows in English, French, Spanish, German, Italian, Portuguese and Dutch, and English for others (`channel/ready.ts`).
 - **The next pause** is when nobody is being answered: no turn on the stage or waiting for the orchestrator. A project's thread at work on the stage is silent until it is done, so it leaves a pause (section 7.8). The core looks for it as each turn ends; the voice says it after what it is still saying, never cutting it.
-- **Asked for** ("what's ready?"), the orchestrator brings the topic back with `thread_focus`, which says the part of its answer not heard yet, as a press on the chip does.
-- **The setting** (`interruptions.results`, on the Voice page under "Speaking up by itself", for every device): `mention` by default; `chip` leaves it to its chip and notification; `speak` says the answer itself at the next pause and brings its view back.
-- **Left to the chip** during the quiet hours, past the cap on how often the assistant speaks up by itself (section 7.10), and once the person pressed Escape or stopped everything. A topic brought back before the pause is not mentioned.
+- **Asked for** ("what's ready?"), the orchestrator brings the topic back with `thread_focus`, which says the part of its answer not heard yet, as a press on its row does.
+- **The setting** (`interruptions.results`, on the Voice page under "Speaking up by itself", for every device): `mention` by default; `chip` leaves it to its row and notification; `speak` says the answer itself at the next pause and brings its view back.
+- **Left to its row** during the quiet hours, past the cap on how often the assistant speaks up by itself (section 7.10), and once the person pressed Escape or stopped everything. A topic brought back before the pause is not mentioned.
 
 **A notification says it too** (`device.notify`, section 12.1): when an answer finishes in the background, when a scheduled task is answered, and when an answer took more than twenty seconds, which is how "tell me when it's done" works once the person has turned to another app. It carries the thread's title and the start of what was said, is shown only while the window is hidden, minimised or not in front, and when pressed brings the window forward.
 
@@ -372,7 +374,7 @@ The assistant starts a turn itself on a trigger (the window opening, a time, a t
 - **The briefing** is a turn the orchestrator answers when the window opens, at most every six hours. When a ready account gives its calendar, the request is given the rest of today's events, eight at most, by start time and title, fenced, read within two seconds; past them, or on a failure, it goes on without them.
 - **A reminder** has nothing to work out: its sentence was written when it was set, so it is said at once in the persona's voice, with the caption and no model asked. A card in the stream shows what it is about and when it was due.
 - **A scheduled task** is a request the orchestrator hears as if the person had just said it, told that it is scheduled and that the person may be away, and routes like any other.
-- **A background result** is the "ready" chip, its notification, and its mention or the answer itself at the next pause (section 7.4).
+- **A background result** is its row in the "ready" list, its notification, and its mention or the answer itself at the next pause (section 7.4).
 - **They wait their turn.** What the assistant starts itself waits while the person is being answered (a silent project's thread at work on the stage does not count), looking again every second, and its sentences queue after what is being said. A turn the person starts still cuts everything. A reminder does not wake an assistant asleep at its memory's work (section 10.6).
 
 ### 7.9 Routing cost
@@ -587,11 +589,11 @@ A view is a description the model writes, limited to the blocks of the catalogue
 
 ### 9.3 Where views appear
 
-| Place  | Content                                                                                                                                                                                                                                                                       | On a phone                      |
-| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
-| Stage  | The stream: every view of the conversation still open, newest first, the newest in the middle of the screen. The view of the thread in focus is the stage                                                                                                                     | The whole screen                |
-| Asides | Answers to side questions, as cards marked "By the way" in the same stream (`aside` on the view). One that needs work is a topic opened `beside` the topic on the stage, which keeps the stage (section 7.5). Also the "ready" chips of background threads, under the caption | Banners over the stage          |
-| Pinned | Saved widgets the person pinned (section 9.8), live, in two docks on either side of the conversation                                                                                                                                                                          | A sheet pulled up from the edge |
+| Place  | Content                                                                                                                                                                                                                                                                      | On a phone                      |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| Stage  | The stream: every view of the conversation still open, newest first, the newest in the middle of the screen. The view of the thread in focus is the stage                                                                                                                    | The whole screen                |
+| Asides | Answers to side questions, as cards marked "By the way" in the same stream (`aside` on the view). One that needs work is a topic opened `beside` the topic on the stage, which keeps the stage (section 7.5). Also the "ready" list of background threads, under the caption | Banners over the stage          |
+| Pinned | Saved widgets the person pinned (section 9.8), live, in two docks on either side of the conversation                                                                                                                                                                         | A sheet pulled up from the edge |
 
 Everything the assistant composes appears in the centre, and nothing it does pushes the core, its caption or the stream aside. The sides belong to the person: the pinned widgets, and the side sheet with the transcript, the threads and the inspector (section 13.2).
 
@@ -1223,11 +1225,11 @@ The core is one, never drawn twice. When the first view arrives it moves from th
 
 #### The column
 
-- **One column for everything the assistant does**: the core, its caption, the "ready" chips, the stream of views and the composer, 45rem (720 px) wide, centred in the window. Neither the pinned widgets nor the side sheet ever move it.
+- **One column for everything the assistant does**: the core, its caption, the "ready" list, the stream of views and the composer, 45rem (720 px) wide, centred in the window. Neither the pinned widgets nor the side sheet ever move it.
 - **Home.** With no views, the core rests large in the middle of the screen, its name, state and caption under it. With views, the same home sits above the newest view, which waits under it: only its top 96 px show above the composer, dimmed and fading into it, a hint rather than a second thing to read. The app opens at home.
 - **Between home and the stream.** Scrolling down, Page Down, Down, End, pressing the waiting view or a new view arriving goes on to the stream; that press does nothing else, and Enter or Space on the waiting view goes on first. A firm wheel push up past the newest view (90 px with no pause over half a second, begun at the top; a quick scroll that reaches the top and runs on stays there), Home, Page Up or Up goes back. Only input nothing on the stage takes for itself counts: the wheel over the side sheet, a long block or a multi-line field scrolls that; an arrow in a menu moves in the menu. The core, its name and state glide on the spring of the first view's arrival, the stream rising with them; turned back mid-way, the core glides back from where it is, with its speed, never jumping.
 - **Off home**, the core sits at the top of the column, at an eighth of the window's height (96 to 136 px), its name, state and spoken line centred under it. It only shrinks and moves vertically.
-- **What is said takes two lines.** The sentence heard rolls within them; what was asked and the reply are cut to them, at home too, so nothing moves the stream or runs onto the chips. Only a problem may take more room, pushing the chips down. What was asked shows quietly while the answer runs, after "Resumed" or "Scheduled" when it came from there. The "ready" chips sit under the caption.
+- **What is said takes two lines.** The sentence heard rolls within them; what was asked and the reply are cut to them, at home too, so nothing moves the stream or runs onto the "ready" list. Only a problem may take more room, pushing the list down. What was asked shows quietly while the answer runs, after "Resumed" or "Scheduled" when it came from there. The "ready" list sits under the caption, with the link to the full answer over it.
 
 #### The stream of views
 

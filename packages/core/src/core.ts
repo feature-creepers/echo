@@ -663,6 +663,10 @@ export function createCore(options: CoreOptions): Core {
         channel.focus(input.thread)
           ? { ok: true, output: {} }
           : { ok: false, error: { code: 'invalid-input', message: `There is no thread "${input.thread}".` } },
+      'threads.dismiss': (input) => {
+        channel.dismiss(input.thread)
+        return { ok: true, output: {} }
+      },
       'project.open': async (input) => {
         if (toolServer === undefined || !computer)
           return { ok: false, error: { code: 'failed', message: 'Projects cannot be worked on here: the assistant has no computer to work on.' } }

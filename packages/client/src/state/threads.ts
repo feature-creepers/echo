@@ -11,6 +11,8 @@ export interface ThreadsState extends Followed<Threads> {
   focus(thread: string): Promise<void>
   /** Stop one thread's work, or with none named, every thread's. */
   stop(thread?: string): Promise<void>
+  /** Put a waiting answer away unseen: one topic's, or with none named, every one that waits. */
+  dismiss(thread?: string): Promise<void>
   /**
    * A page of one thread: its latest requests, or those just before `before`, with their full answers, their tool
    * calls previewed and the titles of their views.
@@ -48,6 +50,9 @@ export function followThreads(session: Session): ThreadsState {
     },
     async stop(thread) {
       await session.run('threads.stop', thread === undefined ? {} : { thread })
+    },
+    async dismiss(thread) {
+      await session.run('threads.dismiss', thread === undefined ? {} : { thread })
     },
     read: (thread, before) => session.run('thread.read', before === undefined ? { thread } : { thread, before }),
     step: async (thread, call) => (await session.run('thread.step', { thread, call })).step,

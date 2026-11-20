@@ -739,6 +739,31 @@ describe('an answer finished out of sight', () => {
     expect(spoken()).toEqual(['Let me look.', 'Hello!', 'A risotto would do.'])
     expect(state()).toBe('parked')
   })
+
+  it.each([
+    ['by its name', true],
+    ['with every answer that waits', false]
+  ])('is put away unseen %s: neither mentioned nor said, and the stage stays', async (_case, named) => {
+    const { channel, harness, spoken, screen, recipe, state } = await finishedWhileAnswered()
+    const stage = () => ({ focus: channel.threads().focus, view: screen.current()?.title })
+    const before = stage()
+    channel.dismiss(named ? recipe : undefined)
+    expect(state()).toBe('parked')
+    expect(stage()).toEqual(before)
+
+    harness.sessions[0]?.reply('Hello!')
+    await settled()
+    channel.focus(recipe)
+    expect(spoken()).toEqual(['Let me look.', 'Hello!'])
+  })
+
+  it('leaves another answer waiting when one is put away by its name', async () => {
+    const { channel, recipe, state } = await finishedWhileAnswered()
+    channel.dismiss('another-thread')
+    expect(state()).toBe('ready')
+    channel.dismiss(recipe)
+    expect(state()).toBe('parked')
+  })
 })
 
 describe('turns the assistant starts itself', () => {
