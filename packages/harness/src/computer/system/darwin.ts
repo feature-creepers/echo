@@ -20,6 +20,7 @@ export const darwin: ComputerSystem = {
   shellPath: (path) => path,
   caseless: true,
   watchesTrees: true,
+  watchesLate: true,
   appData: ({ home }) => [path.join(home, 'Library')],
   confines: true,
   caches({ home, env }) {

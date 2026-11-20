@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 import { readdir, readFile, stat } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { dirname, join, relative, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import type { Changeable, FolderSnapshot, FoundChange, NamedPlace } from '@repo/core'
@@ -56,8 +57,6 @@ const DIRTY_LIMIT = 500
 const NAMED_LIMIT = 16
 /** How long a command's places are watched at most, when its end is never told. */
 const WATCHED_MS = 60 * 60 * 1000
-/** How long the system is given, once a command ended, to tell the last of what it changed. */
-const SETTLE_MS = 150
 /** The slack on when a file was written, which some file systems keep to two seconds. */
 const WRITTEN_SLACK_MS = 2000
 /** The slack on when a file was made, the clock and the file system's times read apart. */
@@ -135,6 +134,11 @@ interface SnapshotOptions {
   appData?: readonly string[] | undefined
   /** Whether the system watches a folder with all its subfolders at once. Left out, as this system does. */
   trees?: boolean | undefined
+  /**
+   * Where a fence is made for each watch, when the system starts watching late and tells changes late. Left out, the
+   * temporary folder where this system does (macOS), and none elsewhere.
+   */
+  fence?: string | undefined
 }
 
 /** A place looked at, and what it covers: a place inside it, looked at already, is not looked at again. */
@@ -150,7 +154,13 @@ const samePlace = (one: string, other: string) => within(one, other) && within(o
 const fromTop = (top: string, path: string) => relative(top, path).split(sep).join('/')
 
 /** Snapshots of folders, holding small files across them so a folder looked at again reads only what changed. */
-export function createSnapshots({ never = () => false, home, appData = [], trees = system.watchesTrees }: SnapshotOptions = {}): Snapshots {
+export function createSnapshots({
+  never = () => false,
+  home,
+  appData = [],
+  trees = system.watchesTrees,
+  fence = system.watchesLate ? tmpdir() : undefined
+}: SnapshotOptions = {}): Snapshots {
   // What is held of a file outside git, by where it is: its size and time when it was read, and its bytes.
   const held = new Map<string, { size: number; modified: number; bytes: Uint8Array }>()
   let heldBytes = 0
@@ -432,6 +442,7 @@ export function createSnapshots({ never = () => false, home, appData = [], trees
     const places = [...changeable.places, ...(changeable.everywhere && home !== undefined ? [home] : [])]
     const watching = await watchPlaces(places, {
       trees,
+      fence,
       passed: (folder, name) =>
         SKIPPED.has(name) ||
         (home !== undefined && samePlace(folder, home) && (name.startsWith('.') || appData.some((one) => samePlace(join(folder, name), one)))),
@@ -449,7 +460,7 @@ export function createSnapshots({ never = () => false, home, appData = [], trees
       snapshot: {
         release,
         async changes() {
-          await new Promise((resolve) => setTimeout(resolve, SETTLE_MS))
+          await watching.settle()
           clearTimeout(timer)
           return judge(await watching.stop(), started)
         }

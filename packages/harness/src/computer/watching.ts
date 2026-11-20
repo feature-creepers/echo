@@ -1,5 +1,5 @@
 import { type FSWatcher, type Stats, watch } from 'node:fs'
-import { readdir, stat } from 'node:fs/promises'
+import { mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, sep } from 'node:path'
 import { within } from './paths.ts'
 
@@ -12,6 +12,12 @@ import { within } from './paths.ts'
  * When changes come faster than the system can tell them, it says only that something changed (Windows' buffer of
  * changes overflows on a burst of writes): the place is then looked through once the command ended, for the files
  * written since it started. A file deleted meanwhile is not found that way.
+ *
+ * Where the system starts watching late and tells changes late, through one stream for all the folders a process
+ * watches (FSEvents on macOS), a fence of the watch's own, a folder outside the places, says when the stream holds them
+ * and when it has told everything up to now: once it tells of a probe written in the fence, since one stream tells its
+ * changes in order. The stream is replaced whenever a watch starts or stops in the process, so a change made at the
+ * moment another one starts or stops (another command's, the Files page's) can still be missed.
  */
 
 /** The most paths noted while one command runs: past them, a build's or an install's, the rest are not. */
@@ -24,6 +30,12 @@ const MADE_LIMIT = 200
 const LOOKED_LIMIT = 20_000
 /** The slack on when a file was written, which some file systems keep to two seconds. */
 const WRITTEN_SLACK_MS = 2000
+/** How long the system is given, once a command ended, to tell the last of what it changed, where there is no fence. */
+const SETTLE_MS = 150
+/** How long a probe in the fence is waited for before the watch goes on without it. */
+const FENCE_MS = 2000
+/** How often a probe is written again while none is told: one written before the system watched the fence never is. */
+const PROBE_MS = 25
 
 /** A path the system said changed, and what was there when it first said so: nothing, when it was already gone. */
 export interface Noted {
@@ -32,6 +44,8 @@ export interface Noted {
 }
 
 interface Watching {
+  /** Let the system tell the last of what changed until now: through the fence where there is one, else for a moment. */
+  settle(): Promise<void>
   /** Stop watching, and give the paths noted, each once, in the order they were first told. */
   stop(): Promise<Noted[]>
 }
@@ -43,7 +57,73 @@ interface WatchOptions {
   passed(folder: string, name: string): boolean
   /** Whether a path that changed is left out: a place never reached, or one looked at another way. */
   ignored(path: string): boolean
+  /** Where a fence is made for the watch, when the system starts watching late and tells changes late. */
+  fence?: string | undefined
 }
+
+/** A folder of the watch's own, where probes are written to learn how far the system has told of changes. */
+interface Fence {
+  folder: string
+  /** Write probes until the system tells of one written now, or the wait is over: whether it told of one. */
+  pass(): Promise<boolean>
+  /** Stop watching the fence, and remove it. A pass under way ends untold. */
+  close(): Promise<void>
+}
+
+/** A fence made in a folder, and watched as the places are: nothing, when it cannot be. */
+async function openFence(parent: string): Promise<Fence | undefined> {
+  const folder = await mkdtemp(join(parent, 'watch-fence-')).catch(() => undefined)
+  if (folder === undefined) return undefined
+  const remove = () => rm(folder, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }).catch(() => undefined)
+  /** The probes of the pass under way, and how it ends. */
+  let waiting: { probes: Set<string>; end(told: boolean): void } | undefined
+  let watcher: FSWatcher
+  try {
+    watcher = watch(folder, { persistent: false }, (_event, name) => {
+      if (name !== null && waiting?.probes.has(name.toString())) waiting.end(true)
+    })
+  } catch {
+    await remove()
+    return undefined
+  }
+  watcher.on('error', () => watcher.close())
+  let written = 0
+  return {
+    folder,
+    pass: () =>
+      new Promise<boolean>((resolve) => {
+        const probes = new Set<string>()
+        const write = () => {
+          const name = `probe-${++written}`
+          probes.add(name)
+          void writeFile(join(folder, name), '').catch(() => undefined)
+        }
+        const again = setInterval(write, PROBE_MS)
+        const over = setTimeout(() => waiting?.end(false), FENCE_MS)
+        waiting = {
+          probes,
+          end(told) {
+            clearInterval(again)
+            clearTimeout(over)
+            waiting = undefined
+            resolve(told)
+          }
+        }
+        write()
+      }),
+    async close() {
+      waiting?.end(false)
+      watcher.close()
+      await remove()
+    }
+  }
+}
+
+/**
+ * One turn of the event loop, through its poll for what other threads hand it: the system hands each watcher its
+ * changes apart, so a place's changes told before a probe may reach the loop a turn after the fence's.
+ */
+const nextTurn = () => new Promise<void>((resolve) => setImmediate(() => setImmediate(resolve)))
 
 /** Whether a path inside a place lies under a folder passed over, between the place and it. */
 function passedOnTheWay(place: string, path: string, passed: WatchOptions['passed']): boolean {
@@ -70,9 +150,11 @@ export async function watchPlaces(places: readonly string[], options: WatchOptio
   let closing = false
   let stopped = false
   let folders = 0
+  let fence: Fence | undefined
 
   const note = (path: string) => {
     if (stopped || noted.has(path) || noted.size >= NOTED_LIMIT || options.ignored(path)) return
+    if (fence && within(path, fence.folder)) return
     noted.set(
       path,
       stat(path).catch(() => undefined)
@@ -159,6 +241,16 @@ export async function watchPlaces(places: readonly string[], options: WatchOptio
     }
   }
 
+  // The fence is watched last, so the stream that tells of its probe holds every place; and the command starts once
+  // it does. A fence never told is let go, and the watch goes on as where there is none.
+  if (options.fence !== undefined && watchers.length > 0) {
+    fence = await openFence(options.fence)
+    if (fence && !(await fence.pass())) {
+      await fence.close()
+      fence = undefined
+    }
+  }
+
   /** The files of a folder written since the watching started, noted, its subfolders' too when `deep`. */
   const lookThrough = async (folder: string, deep: boolean, budget = { left: LOOKED_LIMIT }) => {
     for (const entry of await readdir(folder, { withFileTypes: true }).catch(() => [])) {
@@ -178,6 +270,7 @@ export async function watchPlaces(places: readonly string[], options: WatchOptio
   const stop = async (): Promise<Noted[]> => {
     closing = true
     for (const watcher of watchers) watcher.close()
+    await fence?.close()
     for (const [folder, deep] of lost) await lookThrough(folder, deep)
     stopped = true
     const told: Noted[] = []
@@ -185,6 +278,12 @@ export async function watchPlaces(places: readonly string[], options: WatchOptio
     return told
   }
   return {
+    async settle() {
+      if (closing) return
+      if (!fence) await new Promise((resolve) => setTimeout(resolve, SETTLE_MS))
+      // A probe untold for the whole wait has given the system longer than a moment already.
+      else if (await fence.pass()) await nextTurn()
+    },
     stop: () => {
       stopping ??= stop()
       return stopping

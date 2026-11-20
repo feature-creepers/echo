@@ -34,6 +34,7 @@ export const win32: ComputerSystem = {
   },
   caseless: true,
   watchesTrees: true,
+  watchesLate: false,
   appData: ({ home }) => [path.join(home, 'AppData')],
   // Claude Code has no sandbox on Windows itself, only inside WSL2.
   confines: false,

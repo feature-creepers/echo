@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, sep } from 'node:path'
 import type { FoundChange } from '@repo/core'
@@ -268,6 +268,27 @@ describe('what a command changed where its line does not name', () => {
         ['reports/week.txt', made(join(place, 'reports', 'week.txt')), 'r\n']
       ].sort()
     )
+  })
+
+  it.each([
+    ['in a folder of its own', false],
+    ['inside a place watched', true]
+  ])('behind a fence %s: what changed at once and just before the end, never the probes, and no fence left', async (_where, inside) => {
+    const top = folder()
+    const place = folder()
+    const parent = inside ? place : folder()
+    const fences = () => readdirSync(parent).filter((name) => name.startsWith('watch-fence-'))
+    const snapshot = await createSnapshots({ fence: parent }).snapshot(top, [], { places: [place], everywhere: false })
+    // The command starts once the system told of a probe: the fence is still there.
+    expect(fences()).toHaveLength(1)
+    writeFileSync(join(place, 'first.md'), 'a\n')
+    writeFileSync(join(place, 'last.md'), 'b\n')
+    const found = (await snapshot?.changes()) ?? []
+    expect(foundIn(found, place)).toEqual([
+      ['first.md', made(join(place, 'first.md')), 'a\n'],
+      ['last.md', made(join(place, 'last.md')), 'b\n']
+    ])
+    expect(fences()).toEqual([])
   })
 
   it.runIf(hasGit)('a file there before and deleted, when git tracks it, and none that git ignores', async () => {

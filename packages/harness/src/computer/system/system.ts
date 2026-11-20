@@ -20,6 +20,12 @@ export interface ComputerSystem {
    */
   watchesTrees: boolean
   /**
+   * Whether the system starts watching a folder some time after it is asked to, and tells its changes late, through one
+   * stream for every folder a process watches (FSEvents on macOS, for a folder watched alone or with its subfolders).
+   * A change is then known to be told only once a probe written after it is.
+   */
+  watchesLate: boolean
+  /**
    * Folders of the home folder where apps keep their own data, changing all the time of their own accord: passed
    * over when what a command changes is watched there (`AppData`, `Library`). Folders whose name starts with a dot,
    * on every system, are passed over too.

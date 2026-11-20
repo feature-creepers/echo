@@ -20,6 +20,7 @@ export const linux: ComputerSystem = {
   shellPath: (path) => path,
   caseless: false,
   watchesTrees: false,
+  watchesLate: false,
   // Apps keep their data in folders whose name starts with a dot: `.config`, `.local`, `.cache`.
   appData: () => [],
   confines: true,
