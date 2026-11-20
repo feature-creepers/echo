@@ -44,12 +44,15 @@ export interface Stage {
   join: Join
   /** It reads a here-document or a here-string. */
   fed: boolean
+  /**
+   * Commands inside its words and its here-documents, each a line of the same shell, read on their own: they run
+   * just before it, from where the line is then.
+   */
+  inner: string[]
 }
 
 export interface Scanned {
   stages: Stage[]
-  /** Commands inside the line's words, each a line of the same shell, read on their own. */
-  inner: string[]
   /** Something could not be read to its end: an unclosed quote or substitution. */
   unreadable: boolean
 }
@@ -67,13 +70,18 @@ export const isPlain = (word: Word) => word.pieces.every((piece) => piece.kind =
 
 /** A scanner's state: the stages so far, the stage and the word being read. */
 function scanState() {
-  const scanned: Scanned = { stages: [], inner: [], unreadable: false }
-  let stage: Stage = { words: [], redirects: [], join: 'other', fed: false }
+  const scanned: Scanned = { stages: [], unreadable: false }
+  let stage: Stage = { words: [], redirects: [], join: 'other', fed: false, inner: [] }
   let word: Piece[] | undefined
   /** An operator read, waiting for the word it applies to: a file, or what a here-document or here-string is. */
   let pending: { kind: 'file'; writes: boolean } | { kind: 'heredoc'; strip: boolean } | { kind: 'drop' } | undefined
-  /** The here-documents opened on the line, read after it. One whose delimiter is not quoted runs the commands in its text. */
-  const heredocs: { delimiter: string; strip: boolean; expands: boolean }[] = []
+  /**
+   * The here-documents opened on the line, read after it, with the stage that reads each. One whose delimiter is not
+   * quoted runs the commands in its text.
+   */
+  const heredocs: { delimiter: string; strip: boolean; expands: boolean; stage: Stage }[] = []
+  /** The stage the commands found now run with, when it is not the one being read: a here-document's. */
+  let into: Stage | undefined
 
   return {
     scanned,
@@ -95,6 +103,17 @@ function scanState() {
       word ??= []
       word.push(piece)
     },
+    /** A command inside a word, run with the stage it is in. */
+    inner(line: string) {
+      ;(into ?? stage).inner.push(line)
+    },
+    /** Read, the commands found going to `target` when there is one. */
+    within(target: Stage | undefined, read: () => void) {
+      const before = into
+      into = target ?? into
+      read()
+      into = before
+    },
     /** The word read so far is whole. */
     endWord() {
       if (word === undefined) return
@@ -102,7 +121,12 @@ function scanState() {
       word = undefined
       if (pending?.kind === 'file') stage.redirects.push({ target: done, writes: pending.writes })
       else if (pending?.kind === 'heredoc')
-        heredocs.push({ delimiter: textOf(done), strip: pending.strip, expands: done.pieces.every((piece) => piece.kind !== 'text' || !piece.quoted) })
+        heredocs.push({
+          delimiter: textOf(done),
+          strip: pending.strip,
+          expands: done.pieces.every((piece) => piece.kind !== 'text' || !piece.quoted),
+          stage
+        })
       else if (pending === undefined) stage.words.push(done)
       pending = undefined
     },
@@ -113,10 +137,10 @@ function scanState() {
     endStage(join: Join) {
       this.endWord()
       pending = undefined
-      const empty = stage.words.length === 0 && stage.redirects.length === 0
+      const empty = stage.words.length === 0 && stage.redirects.length === 0 && stage.inner.length === 0 && !stage.fed
       if (!empty) scanned.stages.push(stage)
       // A join with nothing before it, such as the `&&` after a group's `)`, keeps the boundary it follows.
-      stage = { words: [], redirects: [], join: empty && stage.join === 'other' ? 'other' : join, fed: false }
+      stage = { words: [], redirects: [], join: empty && stage.join === 'other' ? 'other' : join, fed: false, inner: [] }
     }
   }
 }
@@ -152,12 +176,12 @@ function scanPosix(text: string): Scanned {
   /** After a newline, the bodies of the here-documents opened on the line before it. */
   const skipHeredocs = (from: number) => {
     let next = from
-    for (const { delimiter, strip, expands } of state.heredocs.splice(0)) {
+    for (const { delimiter, strip, expands, stage } of state.heredocs.splice(0)) {
       while (next < text.length) {
         const found = text.indexOf('\n', next)
         const end = found < 0 ? text.length : found
         const ends = (strip ? text.slice(next, end).replace(/^\t+/, '') : text.slice(next, end)) === delimiter
-        if (!ends && expands) expanded(next, end)
+        if (!ends && expands) expanded(next, end, stage)
         next = Math.min(end + 1, text.length)
         if (ends) break
       }
@@ -166,19 +190,21 @@ function scanPosix(text: string): Scanned {
   }
 
   /**
-   * Text the shell expands without cutting it into words, from `from` to `to`: an unquoted here-document's, or an
-   * arithmetic expression. None of it is a word of the command, but the commands it substitutes run.
+   * Text the shell expands without cutting it into words, from `from` to `to`: an unquoted here-document's, read by
+   * `stage`, or an arithmetic expression. None of it is a word of the command, but the commands it substitutes run.
    */
-  const expanded = (from: number, to: number) => {
+  const expanded = (from: number, to: number, stage?: Stage) => {
     const word = state.word
     state.word = undefined
-    for (let at = from; at < to; ) {
-      const c = text[at]
-      if (c === '\\') at += 2
-      else if (c === '$') at = dollar(at, true)
-      else if (c === '`') at = backticks(at)
-      else at += 1
-    }
+    state.within(stage, () => {
+      for (let at = from; at < to; ) {
+        const c = text[at]
+        if (c === '\\') at += 2
+        else if (c === '$') at = dollar(at, true)
+        else if (c === '`') at = backticks(at)
+        else at += 1
+      }
+    })
     state.word = word
   }
 
@@ -202,7 +228,7 @@ function scanPosix(text: string): Scanned {
         scanned.unreadable = true
         return text.length
       }
-      scanned.inner.push(text.slice(from + 2, end))
+      state.inner(text.slice(from + 2, end))
       state.piece({ kind: 'inner' })
       return end + 1
     }
@@ -216,7 +242,7 @@ function scanPosix(text: string): Scanned {
       if (body.includes('$(') || body.includes('`')) {
         // A default given by a command, `${x:-$(…)}`: that command is read too.
         const inner = /\$\((.*)\)|`(.*)`/.exec(body)
-        if (inner) scanned.inner.push(inner[1] ?? inner[2] ?? '')
+        if (inner) state.inner(inner[1] ?? inner[2] ?? '')
       }
       const name = IDENTIFIER.exec(body)?.[0] ?? SPECIAL_VARIABLE.exec(body)?.[0]
       // `${HOME}` is HOME; `${HOME:-/tmp}` or `${#x}` is something only the shell knows.
@@ -249,7 +275,7 @@ function scanPosix(text: string): Scanned {
       scanned.unreadable = true
       return text.length
     }
-    scanned.inner.push(text.slice(from + 1, end).replace(/\\([`$\\])/g, '$1'))
+    state.inner(text.slice(from + 1, end).replace(/\\([`$\\])/g, '$1'))
     state.piece({ kind: 'inner' })
     return end + 1
   }
@@ -294,7 +320,7 @@ function scanPosix(text: string): Scanned {
         scanned.unreadable = true
         return text.length
       }
-      scanned.inner.push(text.slice(from + 2, end))
+      state.inner(text.slice(from + 2, end))
       state.piece({ kind: 'inner' })
       return end + 1
     }
@@ -409,7 +435,7 @@ function scanPowerShell(text: string): Scanned {
       scanned.unreadable = true
       return text.length
     }
-    scanned.inner.push(text.slice(from, end))
+    state.inner(text.slice(from, end))
     state.piece(call ? { kind: 'inner', call: true } : open === '{' ? { kind: 'inner', block: true } : { kind: 'inner' })
     return end + 1
   }

@@ -543,7 +543,14 @@ describe('readCommand: paths after a cd, from every folder the line may be in', 
     ['Set-Location sub; Get-Content a.txt', 'powershell', ['sub', 'sub/a.txt', 'a.txt']],
     ['Set-Location sub && Get-Content a.txt', 'powershell', ['sub', 'sub/a.txt']],
     ['cd sub & type a.txt', 'cmd', ['sub', 'sub/a.txt', 'a.txt']],
-    ['cd /d sub && type a.txt', 'cmd', ['sub', 'sub/a.txt']]
+    ['cd /d sub && type a.txt', 'cmd', ['sub', 'sub/a.txt']],
+    // A command inside a word runs where the stage it is in runs, after the `cd`s before it.
+    ['cd .. && echo $(cat ../a.txt)', 'posix', ['..', '../../a.txt']],
+    ['cd sub && echo `cat ../a.txt`', 'posix', ['sub', 'sub/../a.txt']],
+    ['cd sub; echo "$(cat a.txt)"', 'posix', ['sub', 'sub/a.txt', 'a.txt']],
+    ['cd sub && cat <<EOF\n$(cat a.txt)\nEOF', 'posix', ['sub', 'sub/a.txt']],
+    ['echo $(cd sub && cat a.txt); cat b.txt', 'posix', ['sub', 'sub/a.txt', 'b.txt']],
+    ['Set-Location sub && Write-Output $(Get-Content a.txt)', 'powershell', ['sub', 'sub/a.txt']]
   ] as const)('`%s` in %s names %j', (line, shell, expected) => {
     expect(paths(line, shell).sort()).toEqual([...expected].sort())
   })

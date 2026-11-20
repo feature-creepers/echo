@@ -205,12 +205,16 @@ function readLine(line: string, context: Context): void {
   }
   const scanned = scan(line, context.shell)
   if (scanned.unreadable) context.reading.opaque = true
-  for (const inner of scanned.inner) readLine(inner, { ...context, depth: context.depth + 1 })
   for (const stage of scanned.stages) {
     follow(stage.join, context)
+    // The commands inside its words run just before it, from where the line is then, apart from it.
+    for (const inner of stage.inner) readLine(inner, nestedIn(context))
     readStage(stage, context)
   }
 }
+
+/** A line run from inside a stage: it starts where the stage runs, with a copy of the folders, apart from the line. */
+const nestedIn = (context: Context): Context => ({ ...context, aside: [], moved: false, depth: context.depth + 1 })
 
 /** How many folders the line may be in before it is no longer told: each `cd` after a boundary may double them. */
 const MAX_FOLDERS = 16
@@ -1887,7 +1891,7 @@ function readStage(stage: Stage, context: Context): void {
           if (value) moveTo(value, context)
           continue
         }
-        readLine([textOf(value ?? { pieces: [] }), ...words.slice(at).map(textOf)].join(' '), { ...context, depth: context.depth + 1 })
+        readLine([textOf(value ?? { pieces: [] }), ...words.slice(at).map(textOf)].join(' '), nestedIn(context))
         reading.commands.push(command('env', 'env', [], { readOnly: true }))
         return
       }
@@ -1901,7 +1905,7 @@ function readStage(stage: Stage, context: Context): void {
     // `timeout 5 cmd`, `nice 10 cmd`: a duration before the command.
     if (program === 'timeout' && at < words.length) at++
     if (program === 'watch') {
-      readLine(words.slice(at).map(textOf).join(' '), { ...context, depth: context.depth + 1 })
+      readLine(words.slice(at).map(textOf).join(' '), nestedIn(context))
       reading.commands.push(command('watch', 'watch', [], { readOnly: true }))
       return
     }
@@ -2002,7 +2006,7 @@ function readStage(stage: Stage, context: Context): void {
     return
   }
 
-  for (const nested of kind.nested ?? []) readLine(nested.line, { ...context, shell: nested.shell, depth: context.depth + 1 })
+  for (const nested of kind.nested ?? []) readLine(nested.line, { ...nestedIn(context), shell: nested.shell })
 
   // `git -C repo …`: its paths are read from there.
   if (kind.folders) {

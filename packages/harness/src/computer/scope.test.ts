@@ -138,9 +138,11 @@ describe('the scope', () => {
   })
 
   it.each([
-    ['cd missing; cat ../.ssh/id_rsa', 'ssh keys'],
-    ['cd missing && cat ../.ssh/id_rsa', undefined]
-  ])('reads `%s` from every folder it may be in, with this system’s own paths', async (line, refused) => {
+    ['cd missing; cat ../.ssh/id_rsa', 'work', 'ssh keys'],
+    ['cd missing && cat ../.ssh/id_rsa', 'work', undefined],
+    ['cd .. && echo $(cat ../.ssh/id_rsa)', 'work/project', 'ssh keys'],
+    ['cd .. && echo `cat ../.ssh/id_rsa`', 'work/project', 'ssh keys']
+  ])('reads `%s` from every folder it may be in, run in %s, with this system’s own paths', async (line, runsIn, refused) => {
     // Paths as this system writes them, there or not: the check reads them the way the system would.
     const home = process.platform === 'win32' ? 'C:\\Users\\ada' : process.platform === 'darwin' ? '/Users/ada' : '/home/ada'
     const work = join(home, 'work')
@@ -149,7 +151,7 @@ describe('the scope', () => {
       computer: 'off',
       protected: [{ label: 'SSH keys', path: join(home, '.ssh') }]
     }
-    const found = await checkUse({ action: 'run', tool: 'Bash', paths: [work], command: line }, scope, [])
+    const found = await checkUse({ action: 'run', tool: 'Bash', paths: [join(home, ...runsIn.split('/'))], command: line }, scope, [])
     expect(found.refused?.reason.toLowerCase()).toEqual(refused === undefined ? undefined : expect.stringContaining(refused))
   })
 
