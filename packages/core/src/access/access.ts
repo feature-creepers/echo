@@ -531,7 +531,7 @@ export function createAccess({ settings, screen, computer, timers, records, vers
             refusal(use, by, undefined, { decision: 'refused', reason: use.refused.why, detail: use.refused.reason })
             return { allow: false, reason: use.refused.reason }
           }
-          const reading = use.action === 'run' ? readCommand(use.command ?? '', use.shell ?? 'posix') : undefined
+          const reading = use.action === 'run' ? readCommand(use.command ?? '', use.shell ?? 'posix', use.paths[0]) : undefined
           // A destination the person refused is refused before anyone is asked, whatever the level.
           const refusedHost = reading?.network ? reading.hosts.find((host) => listedHost(host, access().refusedHosts)) : undefined
           if (refusedHost !== undefined) {

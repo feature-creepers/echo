@@ -159,10 +159,15 @@ interface Context {
   reading: CommandReading
   /** How deep in nested shells: a line that nests without end is not read further. */
   depth: number
+  /** The drive of the folder it runs in, in capitals, when it is on one: Windows keeps a location for each drive. */
+  drive: string | undefined
 }
 
-/** Read a command line, as the given shell reads it. Claude Code's commands are read by the POSIX shell. */
-export function readCommand(line: string, shell: Shell = 'posix'): CommandReading {
+/**
+ * Read a command line, as the given shell reads it. Claude Code's commands are read by the POSIX shell. `folder`, the
+ * folder it runs in, tells on Windows the drive whose location a path such as `C:..\x` is read from.
+ */
+export function readCommand(line: string, shell: Shell = 'posix', folder?: string): CommandReading {
   const reading: CommandReading = {
     commands: [],
     programs: [],
@@ -179,7 +184,8 @@ export function readCommand(line: string, shell: Shell = 'posix'): CommandReadin
     variables: [],
     elevated: false
   }
-  readLine(line, { shell, folders: [''], aside: [], moved: false, bound: new Set(), reading, depth: 0 })
+  const drive = /^([A-Za-z]):[\\/]/.exec(folder ?? '')?.[1]?.toUpperCase()
+  readLine(line, { shell, folders: [''], aside: [], moved: false, bound: new Set(), reading, depth: 0, drive })
   reading.programs = [...new Set(reading.commands.map((command) => command.program))]
   reading.keys = [...new Set(reading.commands.filter((command) => !command.readOnly).map((command) => command.key))]
   reading.readOnly = reading.readOnly && !reading.opaque && !reading.unresolved && reading.commands.every((command) => command.readOnly)
@@ -292,6 +298,13 @@ function pathOf(word: Word, context: Context): { path: string; below: boolean; p
     let wildcard = false
     if (piece.kind === 'text') {
       let text = piece.text
+      // `C:..\x`, a drive with no separator after it, is read from the location the line has on that drive: where it is
+      // when it runs on that drive and moved only by relative paths, else where it cannot tell.
+      const drive = index === 0 && context.drive !== undefined ? /^([A-Za-z]):(?![\\/])/.exec(text)?.[1] : undefined
+      if (drive !== undefined) {
+        if (drive.toUpperCase() !== context.drive || context.folders.some(isAbsolute)) return { path: '', below: true, unresolved: true }
+        text = text.slice(2) || '.'
+      }
       if (index === 0 && !piece.quoted && context.shell === 'posix') {
         // `~` is the home the line set, when it set one; `~-` and `~N` are where the line was, which it cannot tell.
         if (text.startsWith('~') && (context.bound.has('HOME') || /^~(-|[+-]?\d+)([\\/]|$)/.test(text))) return { path: '', below: true, unresolved: true }

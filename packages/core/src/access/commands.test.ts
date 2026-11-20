@@ -643,3 +643,23 @@ describe('readCommand: lines that try to hide what they do', () => {
     if ('paths' in expected) expect(reading.paths.map((named) => named.path)).toEqual(expected.paths)
   })
 })
+
+describe('readCommand: a path from the location a drive has, on Windows', () => {
+  const work = 'C:\\Users\\ada\\work'
+  it.each([
+    ['Get-Content C:..\\..\\.ssh\\id_rsa', 'powershell', work, ['..\\..\\.ssh\\id_rsa'], false],
+    ['Get-Content c:notes.txt', 'powershell', work, ['notes.txt'], false],
+    ['cd sub; Get-Content C:a.txt', 'powershell', work, ['sub', 'sub/a.txt', 'a.txt'], false],
+    ['Get-ChildItem C:', 'powershell', work, ['.'], false],
+    ['type C:..\\a.txt', 'cmd', work, ['..\\a.txt'], false],
+    ["cat 'C:../a.txt'", 'posix', work, ['../a.txt'], false],
+    ['Get-Content D:..\\a.txt', 'powershell', work, [], true],
+    ['cd C:\\x; Get-Content C:a.txt', 'powershell', work, ['C:\\x'], true],
+    // Elsewhere, such a word is a name like any other.
+    ['cat C:a.txt', 'posix', '/home/ada/work', ['C:a.txt'], false]
+  ] as const)('`%s` in %s, run in %s, names %j (unresolved: %s)', (line, shell, folder, expected, unresolved) => {
+    const reading = readCommand(line, shell, folder)
+    expect(reading.paths.map((named) => named.path).sort()).toEqual([...expected].sort())
+    expect(reading.unresolved).toBe(unresolved)
+  })
+})

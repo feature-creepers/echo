@@ -137,7 +137,7 @@ export async function checkUse(
   // A command: the folder it runs in, then every path it names, read from that folder.
   const folder = use.paths[0]
   if (folder === undefined) return refuse('outside', 'The command has no folder to run in.')
-  const reading = readCommand(use.command ?? '', use.shell ?? 'posix')
+  const reading = readCommand(use.command ?? '', use.shell ?? 'posix', folder)
   let changes = true
   let runsIn: string | undefined
   // The places it names outside its folder, each once, so what it changes there is looked for too.

@@ -159,6 +159,24 @@ describe('the scope', () => {
     expect(found.refused?.reason.toLowerCase()).toEqual(refused === undefined ? undefined : expect.stringContaining(refused))
   })
 
+  it.each([
+    ['Get-Content C:..\\.ssh\\id_rsa', 'ssh keys'],
+    ['Get-Content c:..\\..\\ada\\.ssh\\id_rsa', 'ssh keys'],
+    ['Get-Content Z:..\\.ssh\\id_rsa', undefined]
+  ])('reads `%s` from where the line is on that drive, on Windows', async (line, refused) => {
+    const home = process.platform === 'win32' ? 'C:\\Users\\ada' : '/home/ada'
+    const work = join(home, 'work')
+    const scope: Scope = {
+      places: [{ path: work, kind: 'folder', write: false }],
+      computer: 'off',
+      protected: [{ label: 'SSH keys', path: join(home, '.ssh') }]
+    }
+    const found = await checkUse({ action: 'run', tool: 'Bash', paths: [work], command: line, shell: 'powershell' }, scope, [])
+    // Elsewhere, `C:..` is a folder's name like any other.
+    const expected = process.platform === 'win32' ? refused : undefined
+    expect(found.refused?.reason.toLowerCase()).toEqual(expected === undefined ? undefined : expect.stringContaining(expected))
+  })
+
   it('follows a link before the `..` after it, where the system does', async () => {
     const root = realpathSync.native(folder())
     const work = join(root, 'work')
