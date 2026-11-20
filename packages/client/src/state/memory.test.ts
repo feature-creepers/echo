@@ -94,6 +94,16 @@ describe('followMemory', () => {
     ])
   })
 
+  it('downloads, stops and removes the model of search by meaning, taking in what the core answers', async () => {
+    const core = fakeSession()
+    const memory = followMemory(core.session)
+    await memory.installMeaning()
+    expect(memory.current()?.revision).toBe(9)
+    await memory.cancelMeaning()
+    await memory.removeMeaning()
+    expect(core.ran.slice(1).map((ran) => ran.name)).toEqual(['memory.meaning.install', 'memory.meaning.cancel', 'memory.meaning.remove'])
+  })
+
   it('hears nothing more once unfollowed', () => {
     const core = fakeSession()
     const memory = followMemory(core.session)

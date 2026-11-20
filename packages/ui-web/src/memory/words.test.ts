@@ -1,11 +1,13 @@
-import type { Fact, SleepSettings } from '@repo/protocol'
+import type { Fact, Meaning, SleepSettings } from '@repo/protocol'
 import { describe, expect, it } from 'vitest'
 import {
+  aboutModel,
   ago,
   dayOf,
   importDetail,
   keptFor,
   learnedFrom,
+  meaningDetail,
   retentionChoices,
   retentionDetail,
   retentionOf,
@@ -85,4 +87,34 @@ describe('the words of the memory section', () => {
     expect(warning !== undefined).toBe(warned)
     if (warning) expect(warning).toContain(dayOf(new Date(now.getTime() - (to as number) * 86_400_000).toISOString()))
   })
+})
+
+describe('the words of search by meaning', () => {
+  const model = { name: 'multilingual-e5-small', bytes: 135_392_183, source: 'Hugging Face', licence: 'MIT' }
+  const ready = (lines: [number, number], facts: [number, number]): Meaning => ({
+    state: 'ready',
+    model,
+    lines: { done: lines[0], total: lines[1] },
+    facts: { done: facts[0], total: facts[1] }
+  })
+
+  it('name the model, its size, where it comes from and its licence', () => {
+    expect(aboutModel({ state: 'absent', model })).toBe('multilingual-e5-small · 135 MB · from Hugging Face · MIT licence')
+  })
+
+  const cases: Array<{ meaning: Meaning; says: string }> = [
+    { meaning: { state: 'absent', model }, says: 'Finds what was said in other words or another language. Its model runs on this computer, once downloaded.' },
+    { meaning: { state: 'downloading', model, received: 42_000_000, total: 135_392_183 }, says: 'Downloading: 42 MB of 135 MB.' },
+    {
+      meaning: { state: 'unavailable', model, why: 'Search by meaning is not available on this computer: sqlite-vec could not be loaded.' },
+      says: 'Search by meaning is not available on this computer: sqlite-vec could not be loaded.'
+    },
+    { meaning: ready([0, 0], [0, 0]), says: 'Ready. What is said from now on is given its meaning while it sleeps.' },
+    { meaning: ready([8400, 12950], [40, 52]), says: '8,400 of 12,950 lines and 40 of 52 facts searchable by meaning. The rest follows while it sleeps.' },
+    { meaning: ready([0, 1], [0, 0]), says: '0 of 1 line searchable by meaning. The rest follows while it sleeps.' },
+    { meaning: ready([12950, 12950], [52, 52]), says: 'Everything said and known can be found by meaning.' }
+  ]
+  for (const { meaning, says } of cases) {
+    it(`say where it stands: ${says}`, () => expect(meaningDetail(meaning)).toBe(says))
+  }
 })

@@ -1,4 +1,4 @@
-import { type AssistantState, type Fact, type MemoryImport, RETENTION_CHOICES, type SleepMode, type SleepSettings } from '@repo/protocol'
+import { type AssistantState, type Fact, type Meaning, type MemoryImport, RETENTION_CHOICES, type SleepMode, type SleepSettings } from '@repo/protocol'
 
 /** The choices of when the assistant sleeps, as the person reads them, each with what it means. */
 export const SLEEP_CHOICES: readonly { mode: SleepMode; label: string; description: string }[] = [
@@ -120,4 +120,31 @@ export function retentionDetail(days: number | null): string {
 export function retentionWarning(from: number | null, to: number | null, now: Date): string | undefined {
   if (to === null || (from !== null && to >= from)) return undefined
   return `What was said before ${dayOf(new Date(now.getTime() - to * DAY).toISOString())} is erased now, for good.`
+}
+
+const megabytes = (bytes: number) => `${Math.round(bytes / 1_000_000).toLocaleString('en-GB')} MB`
+const counted = (n: number) => n.toLocaleString('en-GB')
+
+/** The model of search by meaning, as the person is told of it: "multilingual-e5-small · 135 MB · from Hugging Face · MIT licence". */
+export function aboutModel({ model }: Meaning): string {
+  return `${model.name} · ${megabytes(model.bytes)} · from ${model.source} · ${model.licence} licence`
+}
+
+/** Where search by meaning stands, in a sentence. */
+export function meaningDetail(meaning: Meaning): string {
+  switch (meaning.state) {
+    case 'absent':
+      return 'Finds what was said in other words or another language. Its model runs on this computer, once downloaded.'
+    case 'downloading':
+      return `Downloading: ${megabytes(meaning.received)} of ${megabytes(meaning.total)}.`
+    case 'unavailable':
+      return meaning.why
+    case 'ready': {
+      const { lines, facts } = meaning
+      const factsPart = facts.total === 0 ? '' : ` and ${counted(facts.done)} of ${counted(facts.total)} ${facts.total === 1 ? 'fact' : 'facts'}`
+      if (lines.total === 0 && facts.total === 0) return 'Ready. What is said from now on is given its meaning while it sleeps.'
+      if (lines.done === lines.total && facts.done === facts.total) return 'Everything said and known can be found by meaning.'
+      return `${counted(lines.done)} of ${counted(lines.total)} ${lines.total === 1 ? 'line' : 'lines'}${factsPart} searchable by meaning. The rest follows while it sleeps.`
+    }
+  }
 }

@@ -22,6 +22,12 @@ export interface MemoryState extends Followed<MemoryView | undefined> {
    * with why not, in words for the person.
    */
   importEarlier(folder: string): Promise<MemoryImport>
+  /** Download the model of search by meaning. Resolves once the download has started; its progress arrives in the memory. */
+  installMeaning(): Promise<void>
+  /** Stop that download. What was received stays for the next one. */
+  cancelMeaning(): Promise<void>
+  /** Delete the model and every vector made with it. */
+  removeMeaning(): Promise<void>
   unfollow(): void
 }
 
@@ -86,6 +92,15 @@ export function followMemory(session: Session): MemoryState {
     },
     async sleepNow() {
       await session.run('memory.sleep-now', {})
+    },
+    async installMeaning() {
+      accept((await session.run('memory.meaning.install', {})).memory)
+    },
+    async cancelMeaning() {
+      accept((await session.run('memory.meaning.cancel', {})).memory)
+    },
+    async removeMeaning() {
+      accept((await session.run('memory.meaning.remove', {})).memory)
     },
     unfollow: stopEvents
   }
