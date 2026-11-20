@@ -246,6 +246,8 @@ describe('what a command changed where its line does not name', () => {
     mkdirSync(join(place, 'node_modules'))
     const never = join(place, 'keys')
     mkdirSync(never)
+    // A file made in the last moments before a command starts counts as made by it: kept.md must be older.
+    await new Promise((resolve) => setTimeout(resolve, 50))
     const snapshot = await createSnapshots({ trees, never: (path) => path.startsWith(never) }).snapshot(top, [], { places: [place], everywhere: false })
     writeFileSync(join(place, 'kept.md'), 'b\n')
     writeFileSync(join(place, 'deep', 'er', 'made.md'), 'new\n')

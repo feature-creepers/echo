@@ -14,14 +14,15 @@ import { afterAll, describe, expect, it } from 'vitest'
  */
 const real = process.env.REAL_HARNESS === '1'
 const ENTRY = fileURLToPath(new URL('../src/main.ts', import.meta.url))
-const folder = mkdtempSync(join(tmpdir(), 'core-real-'))
-const child = real ? spawn(process.execPath, [ENTRY, `--${DATA_OPTION}`, folder, EXIT_WITH_PARENT_FLAG], { stdio: ['pipe', 'pipe', 'inherit'] }) : undefined
+// Made only when the test runs, so a run that skips it leaves nothing in the temporary folder.
+const folder = real ? mkdtempSync(join(tmpdir(), 'core-real-')) : undefined
+const child = folder ? spawn(process.execPath, [ENTRY, `--${DATA_OPTION}`, folder, EXIT_WITH_PARENT_FLAG], { stdio: ['pipe', 'pipe', 'inherit'] }) : undefined
 // The token, on the first line of its standard input.
 child?.stdin?.write('token\n')
 
 afterAll(() => {
   child?.stdin?.end()
-  rmSync(folder, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
+  if (folder) rmSync(folder, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
 })
 
 async function client() {
