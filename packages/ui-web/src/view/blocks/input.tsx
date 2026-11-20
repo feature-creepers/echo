@@ -1,3 +1,4 @@
+import { useActions } from '@json-render/react'
 import type { BlockProps } from '@repo/catalog'
 import { CommandFailed } from '@repo/client'
 import { FieldControl, FieldLabel, Field as FieldRoot } from '@ui-sdk/react/field'
@@ -11,12 +12,20 @@ import { useViewActions } from '../context.ts'
 /** How long a button's failure stays under it, in milliseconds: long enough to read, gone at the next press. */
 const PROBLEM_MS = 6_000
 
+/** Say something to the assistant on the person's behalf, through the renderer's actions. */
+function useSay() {
+  const { execute } = useActions()
+  return (text: string) => void execute({ action: 'say', params: { text } }).catch(() => undefined)
+}
+
 /**
  * A button that says something to the assistant, or acts on the computer at once (docs/SPEC.md, section 9.5). Acting,
  * it is busy until the steps are done, so a press is not sent twice by accident; failing, it says why under it.
  */
 export function Button({ props }: { props: BlockProps<'Button'> }) {
-  const { say, act } = useViewActions()
+  const { act } = useViewActions()
+  const { execute } = useActions()
+  const say = useSay()
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState<string>()
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -28,7 +37,7 @@ export function Button({ props }: { props: BlockProps<'Button'> }) {
     clearTimeout(timer.current)
     setProblem(undefined)
     setBusy(true)
-    act(props.act)
+    execute({ action: 'act', params: { steps: props.act } })
       .catch((error: unknown) => {
         setProblem(error instanceof CommandFailed && error.detail ? error.detail : 'It could not be done.')
         timer.current = setTimeout(() => setProblem(undefined), PROBLEM_MS)
@@ -61,7 +70,7 @@ export function Button({ props }: { props: BlockProps<'Button'> }) {
 
 /** Answers to pick one of: Up, Down, Home, End and typing move between them, and Enter or a press picks one, once. */
 export function Choice({ props }: { props: BlockProps<'Choice'> }) {
-  const { say } = useViewActions()
+  const say = useSay()
   const [picked, setPicked] = useState<number>()
   return (
     <div className="grid gap-2">
@@ -105,7 +114,7 @@ export function Choice({ props }: { props: BlockProps<'Choice'> }) {
 
 /** A line to type an answer in, sent once; its label names its input, and pressing it puts the cursor there. */
 export function Field({ props }: { props: BlockProps<'Field'> }) {
-  const { say } = useViewActions()
+  const say = useSay()
   const [value, setValue] = useState('')
   const [sent, setSent] = useState(false)
   const send = (event: FormEvent) => {
