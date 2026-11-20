@@ -14,6 +14,9 @@ import { isLocalNetwork, isLoopback, listedHost } from './hosts.ts'
  * | `trust` | The same, and changes to files where they may be changed             | Every other command                      |
  * | `auto`  | Everything, commands naming only places that may be changed included | Commands that destroy or publish, deleting files |
  *
+ * At `auto`, a command whose folder or paths the line does not tell (`cd $(…)`, `popd`, `cat $FILE`) is asked: what it
+ * reaches was not checked.
+ *
  * Two guardrails stand above the level, each a setting that is on by default. With `askDestroying`, what
  * destroys is asked at every level and never covered by a yes for the session. With `askPublishing`, what
  * publishes, putting something before others beyond this computer (a push, a release, a post), is asked at
@@ -74,8 +77,9 @@ export function decide(use: ComputerUse, policy: Policy, reading: CommandReading
     if ((reading.publishes && policy.askPublishing) || networkGuard(reading, policy)) {
       return coveredForSession ? { run: true, because: 'session' } : { run: false, destructive: false, session }
     }
-    // A command can change what it names: without asking, only where things may be changed.
-    if (level === 'auto' && use.reach === 'write' && !use.unwalked) return { run: true, because: 'level' }
+    // A command can change what it names: without asking, only where things may be changed, and only when where the
+    // line is and every path it uses could be told, since what cannot be told was not checked.
+    if (level === 'auto' && use.reach === 'write' && !use.unwalked && !reading.unresolved) return { run: true, because: 'level' }
     if (coveredForSession) return { run: true, because: 'session' }
     return { run: false, destructive: reading.destructive, session }
   }

@@ -55,6 +55,12 @@ const CASES: [string, ComputerUse, Policy, boolean, Decision][] = [
   ],
   ['the same command, not elevated, may be allowed for the session', run('apt install x'), guarded('trust'), false, ASKS(false, true)],
   ['a command naming a read-only place, asked at auto', run('pnpm test', 'read'), guarded('auto'), false, ASKS(false, true)],
+  // Where the line is, or a path it uses, cannot be told: what it reaches cannot be either.
+  ['a command after a cd the line cannot follow, asked at auto', run('cd $(echo ~) && cat .ssh/id_rsa'), guarded('auto'), false, ASKS(false, false)],
+  ['a command after popd, asked at auto', run('popd; cat .ssh/id_rsa'), guarded('auto'), false, ASKS(false, false)],
+  ['a command after cd -, asked at auto', run('cd - && cat .ssh/id_rsa'), guarded('auto'), false, ASKS(false, false)],
+  ['a command on a path only the shell knows, asked at auto', run('cp $X backup/'), guarded('auto'), false, ASKS(false, true)],
+  ['a command on a path only the shell knows, covered for the session', run('cp $X backup/'), guarded('auto'), true, RUNS('session')],
   ['deleting, guarded: asked at auto, never for the session', run('rm notes.md'), guarded('auto'), false, ASKS(true, false)],
   ['a file deleted, guarded: asked at auto', file('delete'), guarded('auto'), false, ASKS(true, false)],
   ['publishing, guarded: asked at auto', run('git push'), guarded('auto'), false, ASKS(false, true)],

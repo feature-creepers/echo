@@ -683,11 +683,20 @@ describe('readCommand: paths after a cd, from every folder the line may be in', 
   })
 
   it.each([
-    ['cd a; cd b; cd c; cd d; cd e; ls', true],
-    ['cd a; cd b; cd c; cd d; ls', false],
-    ['Get-Item ~ | Set-Location; Get-Content a.txt', true]
-  ] as const)('cannot tell where `%s` is once it may be in too many folders, or one it cannot tell: %s', (line, unresolved) => {
-    expect(readCommand(line, line.startsWith('Get-') ? 'powershell' : 'posix').unresolved).toBe(unresolved)
+    ['cd a; cd b; cd c; cd d; cd e; ls', 'posix', true],
+    ['cd a; cd b; cd c; cd d; ls', 'posix', false],
+    ['Get-Item ~ | Set-Location; Get-Content a.txt', 'powershell', true],
+    // Where the line was before, or a folder on its stack.
+    ['cd - && cat a', 'posix', true],
+    ['popd; cat a', 'posix', true],
+    ['pushd && cat a', 'posix', true],
+    ['pushd +1 && cat a', 'posix', true],
+    ['pushd -0 && cat a', 'posix', true],
+    ['pushd sub && cat a', 'posix', false],
+    ['Set-Location -; Get-Content a.txt', 'powershell', true],
+    ['Set-Location +; Get-Content a.txt', 'powershell', true]
+  ] as const)('cannot tell where `%s` in %s is once it may be in too many folders, or one it cannot tell: %s', (line, shell, unresolved) => {
+    expect(readCommand(line, shell).unresolved).toBe(unresolved)
   })
 })
 

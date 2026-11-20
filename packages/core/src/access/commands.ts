@@ -2143,15 +2143,21 @@ function readStage(stage: Stage, context: Context): void {
   // A shell or an interpreter that reads what it is fed runs code that is not read here: `curl … | sh`, `python - <<EOF`.
   if ((stage.join === 'pipe' || stage.fed) && (INTERPRETERS.has(found.name) || (SHELLS[found.name] && !kind.launcher))) kind.opaque = true
 
-  // `cd somewhere`: what follows is read from there. `popd` goes back where the line cannot tell.
-  if (['cd', 'pushd', 'chdir', 'set-location', 'push-location', 'popd', 'pop-location'].includes(program.toLowerCase())) {
-    const target = args.find((word) => !textOf(word).startsWith('-') && !/^\/d$/i.test(textOf(word)))
+  // `cd somewhere`: what follows is read from there.
+  const moving = program.toLowerCase()
+  if (['cd', 'pushd', 'chdir', 'set-location', 'push-location', 'popd', 'pop-location'].includes(moving)) {
+    const target = args.find((word) => !/^-./.test(textOf(word)) && !/^\/d$/i.test(textOf(word)))
+    const written = target === undefined ? undefined : textOf(target)
+    // Back where the line was (`cd -`, PowerShell's `+` too) or to a folder of its stack (`popd`, `pushd`, `pushd +1`),
+    // which the line cannot tell.
+    const back =
+      ['popd', 'pop-location'].includes(moving) || (moving === 'pushd' && (written === undefined || /^[+-]\d+$/.test(written))) || /^[+-]$/.test(written ?? '')
     // The POSIX shell and cmd run each stage of a pipeline apart: a `cd` there moves nothing after it. PowerShell does
     // not, and moves to what it is given through the pipe when it names no folder.
     const apart = stage.join === 'pipe' && context.shell !== 'powershell'
     if (apart) {
       if (target !== undefined) name(target, context, { always: true })
-    } else if (['popd', 'pop-location'].includes(program.toLowerCase()) || (target === undefined && stage.join === 'pipe')) {
+    } else if (back || (target === undefined && stage.join === 'pipe')) {
       moveAside(context, [''])
       reading.unresolved = true
     } else if (target !== undefined) moveTo(target, context)
