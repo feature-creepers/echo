@@ -732,6 +732,7 @@ describe('readCommand: paths after a cd, from every folder the line may be in', 
     // A login shell starts in the home of who it runs as; tar's -C moves it for the words after it.
     ['sudo -i cat .ssh/id_rsa', 'posix', true],
     ['sudo --login cat .ssh/id_rsa', 'posix', true],
+    ['sudo -R /srv/root cat etc/passwd', 'posix', true],
     ["su - -c 'cat .ssh/id_rsa'", 'posix', true],
     ['tar -C /tmp -xf a.tar', 'posix', true],
     ['tar xf a.tar --directory=/tmp', 'posix', true],

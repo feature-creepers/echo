@@ -943,14 +943,33 @@ const ELEVATING = new Set(['sudo', 'doas', 'run0', 'pkexec', 'gsudo', 'su', 'run
 
 /**
  * Programs that take another command after their own options, and run it: the options that take a value, those of them
- * that run the command in another folder (`env -C dir`) or run a line they are given (`env -S "…"`), and the flags that
- * start it in the home of who it runs as (`sudo -i`).
+ * that run the command in another folder (`env -C dir`) or run a line they are given (`env -S "…"`), and those that
+ * run it where the line cannot tell: in the home of who it runs as (`sudo -i`), under another root (`sudo -R dir`).
  */
-const WRAPPERS: Record<string, { values: readonly string[]; moves?: readonly string[]; splits?: readonly string[]; login?: readonly string[] }> = {
+const WRAPPERS: Record<string, { values: readonly string[]; moves?: readonly string[]; splits?: readonly string[]; elsewhere?: readonly string[] }> = {
   sudo: {
-    values: ['-u', '-g', '-C', '-D', '-p', '-r', '-t', '-U', '--user', '--group', '--chdir', '--prompt', '--role', '--type', '--other-user', '--close-from'],
+    values: [
+      '-u',
+      '-g',
+      '-C',
+      '-D',
+      '-R',
+      '-p',
+      '-r',
+      '-t',
+      '-U',
+      '--user',
+      '--group',
+      '--chdir',
+      '--chroot',
+      '--prompt',
+      '--role',
+      '--type',
+      '--other-user',
+      '--close-from'
+    ],
     moves: ['-D', '--chdir'],
-    login: ['-i', '--login']
+    elsewhere: ['-i', '--login', '-R', '--chroot']
   },
   doas: { values: ['-u', '-C'] },
   run0: {
@@ -2131,8 +2150,8 @@ function readStage(stage: Stage, context: Context): void {
         break
       }
       const option = optionOf(word, wrapper.values)
-      // A login shell starts in the home of who it runs as, which the line does not tell.
-      if (option.flags.some((flag) => wrapper.login?.includes(flag))) {
+      // A login shell starts in the home of who it runs as, which the line does not tell, and another root moves everything.
+      if ([...option.flags, option.name].some((one) => one !== undefined && wrapper.elsewhere?.includes(one))) {
         context = { ...context }
         lost(context)
       }
