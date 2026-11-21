@@ -5,7 +5,6 @@ import type { Desktop, DesktopFound, WindowFacts } from '../ports/desktop.ts'
 import type { UserSettings } from '../settings/settings.ts'
 import type { Tool } from '../tools/tools.ts'
 import type { Showing } from '../views/screen.ts'
-import { type ActDone, carryOut } from './acts.ts'
 import { type DesktopToolsOptions, desktopTools } from './tools.ts'
 
 /**
@@ -22,8 +21,6 @@ interface DesktopControl {
   version(): string
   /** Whether other apps can be used here, and which have a window open, for the settings. */
   state(): Promise<DesktopState>
-  /** Carry out what a Button of a view does on the computer, pressed by the person (docs/SPEC.md, section 9.5). */
-  act(act: unknown): Promise<ActDone>
   /** Let go at once: the person stopped everything. The marker goes, and what was allowed for now is forgotten. */
   letGo(): void
   /** Let go and stop the helper, when the core stops. */
@@ -99,11 +96,6 @@ export function createDesktopControl({ desktop, settings, ask, uses, timers, mar
     tools(showing) {
       if (!desktop || !usable()) return []
       return desktopTools({ desktop, settings, ask, uses, showing, usable, allowedForNow, outlines, holding, pause: waiting })
-    },
-
-    async act(act) {
-      await finding
-      return carryOut(act, { desktop, settings, usable, pause: waiting })
     },
 
     standing() {

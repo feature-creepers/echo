@@ -95,17 +95,4 @@ describe.runIf(asked)('the desktop of this computer', () => {
     const picture = await desktop.screenshot(window.id)
     expect(Buffer.from(picture.data, 'base64').subarray(1, 4).toString()).toBe('PNG')
   })
-
-  it("finds a button by its name and presses it, as a widget's button does", async () => {
-    const button = await desktop.seek(window.id, 'greet', 'button')
-    expect(button).toMatch(/^e\d+$/)
-    await desktop.click(button as string)
-    await new Promise((resolve) => setTimeout(resolve, 300))
-    expect((await desktop.look(window.id, 10_000)).outline).toContain('Hello, Ada')
-  })
-
-  // Muted, then back as it was: the system takes the key, and the sound is left as the person had it.
-  it('presses a key of the whole system', async () => {
-    await expect(desktop.systemKey('VolumeMute', 2)).resolves.toBeUndefined()
-  })
 })

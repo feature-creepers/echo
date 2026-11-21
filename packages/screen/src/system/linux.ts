@@ -1,6 +1,5 @@
-import type { SystemKey } from '@repo/core'
 import type { Combination, Modifier } from '../keys.ts'
-import { type Program, printedBy, runProgram } from '../program.ts'
+import { printedBy, runProgram } from '../program.ts'
 import { onceHelper } from './helpers.ts'
 import type { Helper, Questions, ScreenSystem } from './system.ts'
 
@@ -36,104 +35,6 @@ const XDOTOOL_MODIFIERS: Record<Modifier, string> = { control: 'ctrl', shift: 's
 function linuxKeys({ modifiers, key }: Combination): string {
   const named = XDOTOOL_KEYS[key] ?? (/^[a-z0-9]$/.test(key) ? key : `U${(key.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, '0')}`)
   return [...modifiers.map((modifier) => XDOTOOL_MODIFIERS[modifier]), named].join('+')
-}
-
-/**
- * What a key of the whole system does on Linux, where no app may press one under Wayland: what the desktop does with
- * the keyboard's own. A media key is a command to the player that plays, over the session's bus (MPRIS); a sound key
- * changes the default output, with PipeWire's or PulseAudio's own tool.
- */
-type LinuxSystemKey = { player: 'PlayPause' | 'Next' | 'Previous' | 'Stop' } | { sound: 'up' | 'down' | 'mute' }
-
-const LINUX_SYSTEM_KEYS: Readonly<Record<SystemKey, LinuxSystemKey>> = {
-  MediaPlayPause: { player: 'PlayPause' },
-  MediaNext: { player: 'Next' },
-  MediaPrevious: { player: 'Previous' },
-  MediaStop: { player: 'Stop' },
-  VolumeUp: { sound: 'up' },
-  VolumeDown: { sound: 'down' },
-  VolumeMute: { sound: 'mute' }
-}
-
-/** How much a sound key changes the volume, in percent, as the desktops' own keys do. */
-const SOUND_STEP = 5
-
-const MPRIS = 'org.mpris.MediaPlayer2'
-const MPRIS_PATH = '/org/mpris/MediaPlayer2'
-
-/** A call on the session's bus with `gdbus`, which comes with GLib on every desktop. */
-export const busCall = (destination: string, path: string, method: string, ...args: string[]): Program => ({
-  command: 'gdbus',
-  args: ['call', '--session', '--dest', destination, '--object-path', path, '--method', method, ...args]
-})
-
-/** The players on the session's bus, read from what `ListNames` prints: `(['org.freedesktop.DBus', ':1.2', '…'],)`. */
-export function playersIn(listed: string): string[] {
-  return [...listed.matchAll(/'(org\.mpris\.MediaPlayer2\.[^']+)'/g)].map((match) => match[1] as string)
-}
-
-/** A player's state, read from what `Properties.Get` prints: `(<'Playing'>,)`. */
-export function statusIn(read: string): string | undefined {
-  return /<'(\w+)'>/.exec(read)?.[1]
-}
-
-/** The player a media key drives, as the desktop's own keys choose it: the one playing, else one paused, else the first. */
-export function playerToDrive(players: readonly { name: string; status: string | undefined }[]): string | undefined {
-  return (players.find((one) => one.status === 'Playing') ?? players.find((one) => one.status === 'Paused') ?? players[0])?.name
-}
-
-/**
- * The programs that change the sound as a key pressed `times` times would, each tried until one answers: PipeWire's
- * `wpctl`, then PulseAudio's `pactl`, which PipeWire answers too. Mute pressed twice leaves it as it was: nothing.
- */
-export function soundPrograms(change: 'up' | 'down' | 'mute', times: number): Program[] {
-  const step = `${SOUND_STEP * times}%`
-  switch (change) {
-    case 'up':
-      return [
-        { command: 'wpctl', args: ['set-volume', '--limit', '1.0', '@DEFAULT_AUDIO_SINK@', `${step}+`] },
-        { command: 'pactl', args: ['set-sink-volume', '@DEFAULT_SINK@', `+${step}`] }
-      ]
-    case 'down':
-      return [
-        { command: 'wpctl', args: ['set-volume', '@DEFAULT_AUDIO_SINK@', `${step}-`] },
-        { command: 'pactl', args: ['set-sink-volume', '@DEFAULT_SINK@', `-${step}`] }
-      ]
-    case 'mute':
-      return times % 2 === 0
-        ? []
-        : [
-            { command: 'wpctl', args: ['set-mute', '@DEFAULT_AUDIO_SINK@', 'toggle'] },
-            { command: 'pactl', args: ['set-sink-mute', '@DEFAULT_SINK@', 'toggle'] }
-          ]
-  }
-}
-
-/** How long a program of the desktop may take to answer, in milliseconds: each answers at once, or not at all. */
-const ANSWER_MS = 5_000
-
-/** A key of the whole system, as `LINUX_SYSTEM_KEYS` says what it does, pressed `times` times. */
-async function pressSystemKey(key: LinuxSystemKey, times: number): Promise<void> {
-  if ('sound' in key) {
-    const programs = soundPrograms(key.sound, times)
-    if (programs.length === 0) return
-    for (const program of programs) if ((await printedBy(program, ANSWER_MS)) !== undefined) return
-    throw new Error('The sound cannot be changed here: neither wpctl nor pactl answered.')
-  }
-  const listed = await printedBy(busCall('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus.ListNames'), ANSWER_MS)
-  if (listed === undefined) throw new Error('The media keys cannot be pressed here: gdbus did not answer.')
-  const players = await Promise.all(
-    playersIn(listed).map(async (name) => {
-      const read = await printedBy(busCall(name, MPRIS_PATH, 'org.freedesktop.DBus.Properties.Get', `${MPRIS}.Player`, 'PlaybackStatus'), ANSWER_MS)
-      return { name, status: read === undefined ? undefined : statusIn(read) }
-    })
-  )
-  const player = playerToDrive(players)
-  if (player === undefined) throw new Error('No app that plays music or video is open.')
-  for (let time = 0; time < times; time++) {
-    const pressed = await printedBy(busCall(player, MPRIS_PATH, `${MPRIS}.Player.${key.player}`), ANSWER_MS)
-    if (pressed === undefined) throw new Error(`${player.slice(MPRIS.length + 1).split('.')[0]} did not take the key.`)
-  }
 }
 
 /** Open a link with the app the desktop gives its scheme. The core checked the link first. */
@@ -365,12 +266,7 @@ export const linux: ScreenSystem = {
     const reader = onceHelper('python3', async () => ['-c', HELPER])
     return {
       async ask(name, input) {
-        // A key of the whole system and a link are the desktop's own: no app is read for them.
-        if (name === 'systemKey') {
-          const { key, times } = input as Questions['systemKey']['input']
-          await pressSystemKey(key as LinuxSystemKey, times)
-          return null as never
-        }
+        // A link is the desktop's own: no app is read for it.
         if (name === 'open') {
           await openLink((input as Questions['open']['input']).link)
           return null as never
@@ -380,6 +276,5 @@ export const linux: ScreenSystem = {
       close: () => reader.close()
     }
   },
-  keys: linuxKeys,
-  systemKeys: LINUX_SYSTEM_KEYS
+  keys: linuxKeys
 }

@@ -36,7 +36,7 @@ export type {
 export type { Clipboard } from './ports/clipboard.ts'
 export type { Timers } from './ports/clock.ts'
 export type { Changeable, Computer, FolderSnapshot, FoundChange } from './ports/computer.ts'
-export type { Desktop, DesktopElement, DesktopFound, SystemKey, WindowFacts, WindowImage, WindowOutline } from './ports/desktop.ts'
+export type { Desktop, DesktopElement, DesktopFound, WindowFacts, WindowImage, WindowOutline } from './ports/desktop.ts'
 export type { Drive, Drives } from './ports/drives.ts'
 export type { Embedder, EmbedderState, EmbeddingUse } from './ports/embedder.ts'
 export type {

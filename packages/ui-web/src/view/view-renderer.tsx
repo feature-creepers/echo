@@ -15,11 +15,7 @@ export function ViewRenderer({ spec, actions }: { spec: ViewSpec; actions: ViewA
   const current = useRef(actions)
   current.current = actions
   const [handlers] = useState(() => ({
-    say: (params: Record<string, unknown>) => current.current.say(String(params.text)),
-    act: (params: Record<string, unknown>) => {
-      const { act } = current.current
-      return act ? act(params.steps as Record<string, unknown>[]) : Promise.reject(new Error('Nothing can be done on a computer here.'))
-    }
+    say: (params: Record<string, unknown>) => current.current.say(String(params.text))
   }))
   const drawn = useMemo(() => tableKeys(spec), [spec])
   // A word longer than the line it is on, such as an address, breaks rather than pushing the view out of its

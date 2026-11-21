@@ -562,11 +562,6 @@ export function createCore(options: CoreOptions): Core {
         screen.clear(input.view)
         return { ok: true, output: {} }
       },
-      // A button's act, pressed by the person: carried out at once, with no turn and no card (docs/SPEC.md, section 9.5).
-      'view.act': async (input) => {
-        const done = await desktop.act(input.act)
-        return done.ok ? { ok: true, output: {} } : { ok: false, error: { code: 'invalid-input', message: done.problem } }
-      },
       'threads.read': () => ({ ok: true, output: channel.threads() }),
       'memory.read': () => ({ ok: true, output: { memory: memory.read(), state: memory.state() } }),
       'memory.edit': (input) => {

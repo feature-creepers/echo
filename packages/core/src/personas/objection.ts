@@ -85,11 +85,15 @@ export function createObjections({ records, screen, now }: { records: Records; s
               concern: { type: 'Text', props: { text: concern, size: 'large', weight: 'medium' } },
               better: { type: 'Text', props: { text: alternative, tone: 'soft' } },
               choice: {
-                type: 'Choice',
+                type: 'Questions',
                 props: {
-                  options: [
-                    { label: instead, detail: alternative, say: `Let's do it the better way: ${alternative}` },
-                    { label: proceed, detail: 'As you asked, at full quality.', say: 'I am sure. Go ahead as I asked.' }
+                  questions: [
+                    {
+                      options: [
+                        { label: instead, detail: alternative, recommended: true, say: `Let's do it the better way: ${alternative}` },
+                        { label: proceed, detail: 'As you asked, at full quality.', say: 'I am sure. Go ahead as I asked.' }
+                      ]
+                    }
                   ]
                 }
               }

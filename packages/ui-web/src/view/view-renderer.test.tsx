@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 import { EXAMPLE_VIEW, type ViewSpec, validateView } from '@repo/catalog'
-import { CommandFailed } from '@repo/client'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -59,18 +58,14 @@ const type = (input: HTMLInputElement, text: string) =>
     input.dispatchEvent(new Event('input', { bubbles: true }))
   })
 
-/** Let what was started settle, as React draws what follows. */
-const actOn = (start: () => void) =>
-  act(async () => {
-    start()
-    await new Promise((settled) => setTimeout(settled, 0))
-  })
-
 /** Press a key where the keyboard is. */
 const key = (name: string) =>
   act(async () => {
     document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true }))
   })
+
+/** The lines to type another answer to a question in. */
+const other = (host: HTMLElement) => [...host.querySelectorAll<HTMLInputElement>('input[placeholder="Other answer…"]')]
 
 const button = (host: HTMLElement, name: string) => [...host.querySelectorAll('button')].find((one) => one.textContent === name)
 
@@ -148,47 +143,100 @@ describe('a view drawn', () => {
       said: [['Yes, book it'], ['Yes, book it']]
     },
     {
-      name: 'picking an answer of a Choice',
-      spec: view({
-        choice: {
-          type: 'Choice',
-          props: {
-            question: 'Which one?',
-            options: [
-              { label: 'Red', say: 'The red one' },
-              { label: 'Blue', say: 'The blue one' }
-            ]
+      name: 'picking the answer of one question, sent at once',
+      spec: checked(
+        view({
+          questions: {
+            type: 'Questions',
+            props: { questions: [{ question: 'Which one?', options: [{ label: 'Red', recommended: true }, { label: 'Blue' }] }] }
           }
-        }
-      }),
+        })
+      ),
       use: async (host: HTMLElement) => {
         const [red, blue] = host.querySelectorAll('[role="option"]')
         await press(blue)
-        // Once picked, a Choice is answered: another answer says nothing.
+        // Once picked, it is answered: another answer says nothing.
         await press(red)
       },
-      said: [['The blue one']]
+      said: [['Which one? Blue']]
     },
     {
-      name: 'answering a Choice with the keys',
-      spec: view({
-        choice: {
-          type: 'Choice',
-          props: {
-            options: [
-              { label: 'Red', say: 'The red one' },
-              { label: 'Blue', say: 'The blue one' }
-            ]
-          }
-        }
-      }),
+      name: 'answering one question with the keys',
+      spec: checked(
+        view({ questions: { type: 'Questions', props: { questions: [{ question: 'Which one?', options: [{ label: 'Red' }, { label: 'Blue' }] }] } } })
+      ),
       use: async (host: HTMLElement) => {
         const [red] = host.querySelectorAll<HTMLElement>('[role="option"]')
         red?.focus()
         await key('ArrowDown')
         await key('Enter')
       },
-      said: [['The blue one']]
+      said: [['Which one? Blue']]
+    },
+    {
+      name: 'the exact words of an answer that waits for them',
+      spec: checked(
+        view({
+          questions: {
+            type: 'Questions',
+            props: {
+              questions: [
+                {
+                  options: [
+                    { label: 'Allow once', say: 'Allow once.' },
+                    { label: 'No', say: 'No.' }
+                  ],
+                  other: false
+                }
+              ]
+            }
+          }
+        })
+      ),
+      use: async (host: HTMLElement) => {
+        expect(other(host)).toEqual([])
+        await press(host.querySelectorAll('[role="option"]')[1])
+      },
+      said: [['No.']]
+    },
+    {
+      name: 'several questions, sent together once each has an answer',
+      spec: checked(
+        view({
+          questions: {
+            type: 'Questions',
+            props: {
+              questions: [
+                { question: 'Build it?', options: [{ label: 'Yes', recommended: true }, { label: 'Not yet' }] },
+                { question: 'Which parts?', multiple: true, options: [{ label: 'Code' }, { label: 'Tests' }, { label: 'Spec' }] }
+              ]
+            }
+          }
+        })
+      ),
+      use: async (host: HTMLElement) => {
+        const [yes, , code, , spec] = host.querySelectorAll('[role="option"]')
+        await press(yes)
+        expect(button(host, 'Send')?.disabled).toBe(true)
+        await press(code)
+        await press(spec)
+        await type(other(host)[1] as HTMLInputElement, 'the docs')
+        await press(button(host, 'Send'))
+        await press(button(host, 'Sent'))
+      },
+      said: [['Build it? Yes\nWhich parts? Code, Spec, the docs']]
+    },
+    {
+      name: 'an answer typed in place of one to pick',
+      spec: checked(
+        view({ questions: { type: 'Questions', props: { questions: [{ question: 'Which one?', options: [{ label: 'Red' }, { label: 'Blue' }] }] } } })
+      ),
+      use: async (host: HTMLElement) => {
+        expect(button(host, 'Send')).toBeUndefined()
+        await type(other(host)[0] as HTMLInputElement, 'Green')
+        await press(button(host, 'Send'))
+      },
+      said: [['Which one? Green']]
     },
     {
       name: 'sending a Field',
@@ -211,25 +259,5 @@ describe('a view drawn', () => {
     const label = host.querySelector('label')
     expect(label?.textContent).toBe('Where to')
     expect(label?.htmlFor).toBe(input?.id)
-  })
-
-  it('acts with a Button, busy until it is done, and says why it could not be done under it', async () => {
-    let fail: (error: unknown) => void = () => undefined
-    const act = vi.fn(() => new Promise<void>((_, reject) => (fail = reject)))
-    const steps = [{ key: 'play' }]
-    const { host } = await draw(view({ button: { type: 'Button', props: { label: 'Play', act: steps } } }), { act })
-    await press(button(host, 'Play'))
-    expect(act).toHaveBeenCalledWith(steps)
-    expect(button(host, 'Play')?.getAttribute('aria-busy')).toBe('true')
-    await press(button(host, 'Play'))
-    expect(act).toHaveBeenCalledTimes(1)
-    await actOn(() => fail(new CommandFailed('desktop.act', 'failed', 'Spotify has no window open.')))
-    expect(button(host, 'Play')?.getAttribute('aria-busy')).toBe('false')
-    expect(host.querySelector('[role="alert"]')?.textContent).toBe('Spotify has no window open.')
-  })
-
-  it('disables a Button that acts where nothing can be done on a computer', async () => {
-    const { host } = await draw(view({ button: { type: 'Button', props: { label: 'Play', act: [{ key: 'play' }] } } }))
-    expect(button(host, 'Play')?.disabled).toBe(true)
   })
 })

@@ -14,11 +14,6 @@ export interface ViewActions {
   say(text: string): void
   readFile(file: string): Promise<FileContent>
   /**
-   * Carry out what a Button does on the computer, at once and with no turn (docs/SPEC.md, section 9.5). Rejects with
-   * why not, in words for the person. Left out where nothing can be done on a computer: the button is then disabled.
-   */
-  act?(act: readonly Record<string, unknown>[]): Promise<void>
-  /**
    * The GeoJSON a map names, read by the core, which checked it and needs no permission of the page to fetch it.
    * Left out, a map fetches it itself.
    */

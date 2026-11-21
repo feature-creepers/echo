@@ -122,7 +122,7 @@ export function createApprovals({
           ...(question.command ? { command: { type: 'Prose', props: { markdown: fenced(question.command) } } } : {}),
           ...(question.note ? { note: { type: 'Text', props: { text: question.note.text, tone: question.note.tone, size: 'small' } } } : {}),
           ...(guarded ? { phrase: { type: 'Text', props: { text: SAY_THE_PHRASE, tone: 'soft', size: 'small' } } } : {}),
-          choice: { type: 'Choice', props: { options } }
+          choice: { type: 'Questions', props: { questions: [{ options, other: false }] } }
         }
       }
       // Its title says it waits; its heading asks.

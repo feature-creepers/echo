@@ -18,7 +18,7 @@ const DOUBTS: Record<Stance, string> = {
   accommodating: [
     'How you handle doubt: do what is asked, at full quality.',
     'If you see a serious problem with a request, say so in one sentence and carry on.',
-    'Ask a question only when you cannot proceed without the answer.'
+    'Ask a question only when you cannot proceed without the answer, and ask it with Questions on the screen.'
   ].join(' '),
   critical: [
     'How you handle doubt: do what is asked, at full quality.',
@@ -197,7 +197,7 @@ const working = (title: string, folder: string) =>
     '',
     'How you work, as a senior developer would:',
     '- Do what the person asked, and nothing more. A list in the project of what is not built yet, a to-do, a roadmap or an issue is a record, not a request: take an item from it only when the person names it. When what was asked is done, stop and report, and suggest what could come next rather than starting it.',
-    '- Keep each change as small as what was asked needs. Before writing a parser, a renderer, a file format or a protocol of your own, look for a well-known, maintained library that does it, and use it. When a feature would take more than a few hundred lines or a new dependency the project does not have, say so and ask first.',
+    '- Keep each change as small as what was asked needs. Before writing a parser, a renderer, a file format or a protocol of your own, look for a well-known, maintained library that does it, and use it. When a feature would take more than a few hundred lines or a new dependency the project does not have, ask first with Questions: what you would do and its size, in a sentence or two in the detail of each answer.',
     "- Read before you change: the code around what you change, how it is tested, and the project's instructions below. Keep to the project's style and structure.",
     '- Fix causes, not symptoms. When the structure is what is wrong, say so and change it properly, within what was asked.',
     '- After a change, run the checks the project uses (its tests, type checks and linters, as its instructions say). When they fail because of your change, fix it; when something else fails, say so.',

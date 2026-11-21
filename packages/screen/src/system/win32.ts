@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto'
 import { access, mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { SystemKey } from '@repo/core'
 import type { Combination, Modifier } from '../keys.ts'
 import { WINDOWS_POWERSHELL } from '../program.ts'
 import { lastingHelper } from './helpers.ts'
@@ -34,17 +33,6 @@ const VIRTUAL_KEYS: Record<string, number> = {
 }
 
 const MODIFIER_KEYS: Record<Modifier, number> = { control: 0x11, shift: 0x10, alt: 0x12, meta: 0x5b }
-
-/** The system's keys a widget's button presses, by their virtual keys: Windows hands the media keys to the app that plays. */
-const WINDOWS_SYSTEM_KEYS: Readonly<Record<SystemKey, number>> = {
-  VolumeMute: 0xad,
-  VolumeDown: 0xae,
-  VolumeUp: 0xaf,
-  MediaNext: 0xb0,
-  MediaPrevious: 0xb1,
-  MediaStop: 0xb2,
-  MediaPlayPause: 0xb3
-}
 
 /** A combination as the helper presses it: the modifiers' virtual keys, then a virtual key or a character it finds the key of. */
 function windowsKeys({ modifiers, key }: Combination): { modifiers: number[]; key: number; character: string } {
@@ -134,7 +122,6 @@ public static class EchoScreen {
       case "scroll": Scroll(WindowIn(input), (string)input["direction"], Convert.ToDouble(input["screens"]), input.ContainsKey("key") ? input["key"] as string : null); return null;
       case "screenshot": return new Dictionary<string, object> { { "data", Picture(WindowIn(input)) }, { "mime", "image/png" } };
       case "idle": { var info = new LastInput(); info.Size = (uint)Marshal.SizeOf(info); if (!GetLastInputInfo(ref info)) return null; return (long)unchecked((uint)Environment.TickCount - info.Time); }
-      case "systemKey": SystemKey(Convert.ToInt32(input["key"]), Convert.ToInt32(input["times"])); return null;
       case "open": Open((string)input["link"]); return null;
       default: throw new Exception("The helper does not know " + name + ".");
     }
@@ -411,15 +398,6 @@ public static class EchoScreen {
       throw new Exception("The system did not take the key or the click (error " + Marshal.GetLastWin32Error() + "). An app started as administrator cannot be operated.");
   }
 
-  // A key of the whole system, sent to no window in particular: the system hands a media key to the app that plays.
-  static void SystemKey(int key, int times) {
-    for (var time = 0; time < times; time++) {
-      if (time > 0) Thread.Sleep(30);
-      Key(key, false);
-      Key(key, true);
-    }
-  }
-
   // Opened as the shell opens it, by the app registered for the link's scheme. The core checked the link first.
   static void Open(string link) {
     try {
@@ -430,7 +408,7 @@ public static class EchoScreen {
   }
 
   static void Key(int key, bool up) {
-    var extended = (key >= 0x21 && key <= 0x28) || key == 0x2d || key == 0x2e || key == 0x5b || (key >= 0xad && key <= 0xb3);
+    var extended = (key >= 0x21 && key <= 0x28) || key == 0x2d || key == 0x2e || key == 0x5b;
     var input = new Input { Type = 1 };
     input.Data.Keyboard = new KeyboardInput { Key = (ushort)key, Flags = (up ? 2u : 0u) | (extended ? 1u : 0u) };
     Send(input);
@@ -518,6 +496,5 @@ export const win32: ScreenSystem = {
       ]
     })
   },
-  keys: windowsKeys,
-  systemKeys: WINDOWS_SYSTEM_KEYS
+  keys: windowsKeys
 }

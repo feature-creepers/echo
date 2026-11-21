@@ -30,8 +30,8 @@ describe('objecting', () => {
     const card = screen.current()
     expect(card?.title).toBe('A decision')
     expect(validateView(card?.spec).ok).toBe(true)
-    const choice = Object.values(card?.spec.elements ?? {}).find((element) => element.type === 'Choice')
-    const options = (choice?.props as { options: { say: string }[] } | undefined)?.options ?? []
+    const choice = Object.values(card?.spec.elements ?? {}).find((element) => element.type === 'Questions')
+    const options = (choice?.props as { questions: { options: { say: string }[] }[] } | undefined)?.questions[0]?.options ?? []
     expect(options.map((option) => option.say)).toEqual(["Let's do it the better way: Send it without that paragraph.", 'I am sure. Go ahead as I asked.'])
   })
 

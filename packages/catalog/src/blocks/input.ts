@@ -1,36 +1,44 @@
 import { z } from 'zod'
-import { actSchema } from '../act.ts'
 import type { Block } from '../block.ts'
 
 /**
- * Blocks the user can act on. Most end in something the user says to the assistant: pressing a button or picking
- * an option is a turn of the conversation, in the words given in `say`. A Button may instead act on the computer
- * itself (`act`), at once and with no turn, so a widget the person keeps drives an app or the sound without asking
- * anyone (docs/SPEC.md, section 9.5).
+ * Blocks the user can act on. Each ends in something the user says to the assistant: pressing a button or answering
+ * questions is a turn of the conversation, in the words given in `say` or made of the answers.
  */
 export const inputBlocks = {
   Button: {
-    description:
-      "Something the user can press. Give `say` or `act`. `say` is what pressing it tells you, as if the user had said it: write it in the first person. `act` is done on the computer at once, with no call to you, for controls kept on a widget: `key` presses a system key (media keys drive the app that plays, volume keys the sound); `open` opens a link in its app (spotify:playlist:<id>); `click` presses an element of an allowed app's window by the name desktop_look shows, waiting up to `within` seconds. Steps run in order.",
+    description: 'Something the user can press. `say` is what pressing it tells you, as if the user had said it: write it in the first person.',
     props: z.object({
       label: z.string(),
-      say: z.string().optional(),
-      act: actSchema.optional(),
+      say: z.string(),
       emphasis: z.enum(['primary', 'secondary']).default('secondary')
     }),
-    children: false,
-    check: (props) => ((props.say === undefined) === (props.act === undefined) ? 'Give the button `say` or `act`, one of the two.' : undefined)
-  },
-  Choice: {
-    description: 'A question with a few answers to pick from. Picking one tells you its `say`, as if the user had said it.',
-    props: z.object({
-      question: z.string().optional(),
-      options: z
-        .array(z.object({ label: z.string(), detail: z.string().optional(), say: z.string() }))
-        .min(2)
-        .max(8)
-    }),
     children: false
+  },
+  Questions: {
+    description:
+      "How you ask anything that decides what you do next: which way, which option, whether to go ahead. One to four questions of two to six answers, the one you advise first and `recommended`, what each costs in `detail`. A typed answer is offered too, unless `other` is false. The person's answers come back to you as their words: each question, then its answers.",
+    props: z.object({
+      questions: z
+        .array(
+          z.object({
+            question: z.string().optional(),
+            multiple: z.boolean().default(false),
+            options: z
+              .array(z.object({ label: z.string(), detail: z.string().optional(), recommended: z.boolean().default(false), say: z.string().optional() }))
+              .min(2)
+              .max(6),
+            other: z.boolean().default(true)
+          })
+        )
+        .min(1)
+        .max(4)
+    }),
+    children: false,
+    check: (props) => {
+      const questions = props.questions as { question?: string }[]
+      return questions.length > 1 && questions.some((one) => !one.question) ? 'With several questions, give each its `question`.' : undefined
+    }
   },
   FilePreview: {
     description: 'A document you wrote with file_write, shown to read, with a button to download it. Use it whenever you wrote one; say aloud only what it is.',

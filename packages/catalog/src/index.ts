@@ -1,4 +1,4 @@
-export { type ActStep, actSchema, type SystemKey } from './act.ts'
+export { type Answer, answered, answerWords, sentOnPick } from './answers.ts'
 export { TONES } from './block.ts'
 export type { Shape } from './blocks/drawing.ts'
 export type { BlockName } from './catalog.ts'
