@@ -1,6 +1,6 @@
 /**
- * How the core travels between the places the stage keeps for it (the middle of an empty stage, home, the top of the
- * column), and when it rests on one. Plain numbers, so it is tested without a page and costs nothing on every frame.
+ * How the core travels between the places the stage keeps for it (the middle of an empty stage, the top left of the
+ * board), and when it rests on one. Plain numbers, so it is tested without a page and costs nothing on every frame.
  */
 
 /**

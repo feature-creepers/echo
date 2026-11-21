@@ -46,7 +46,7 @@ interface CoreProps {
 
 /**
  * The core, one for the whole stage, never drawn twice: it travels between the places the stage keeps for it (the
- * middle of an empty stage, home, the top of the column) on a spring, and is drawn again at each size on its way, so
+ * middle of an empty stage, the top left of the board, Mini) on a spring, and is drawn again at each size on its way, so
  * nothing is stretched or swapped. With it goes the soft light it casts on the ground: the accent, faint, fading to
  * nothing well before any edge, leaning a little towards where the core looks, a little brighter as the computer
  * works harder. All of it is written on every frame the core draws, as a transform and an opacity only, so it costs

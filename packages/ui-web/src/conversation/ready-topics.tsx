@@ -12,7 +12,7 @@ import { FLOATING, FLOATING_LIST, FLOATING_SHADOW, GAP, MARGIN } from '../primit
 import { DURATION, EASE } from '../styles/motion.ts'
 import { StateDot } from './thread-list.tsx'
 
-/** How many finished topics have a row under the caption; the others wait behind "more", so the stream never moves far. */
+/** How many finished topics have a row under the caption; the others wait behind "more", so the board never moves far. */
 const SHOWN = 3
 
 /** A finished topic as its row shows it: what its answer found, on one line, if the answer is in the conversation. */

@@ -53,7 +53,7 @@ export function Questions({ props }: { props: BlockProps<'Questions'> }) {
 
   return (
     <form
-      className="grid gap-4"
+      className="grid gap-3"
       onSubmit={(event) => {
         event.preventDefault()
         if (ready) send(answers)
@@ -104,7 +104,7 @@ function QuestionAnswers({
         value={String(place)}
         label={option.label}
         className={cn(
-          'flex items-start gap-2.5 rounded-md border px-3 py-2 text-left transition-colors duration-(--duration-quick) ease-soft',
+          'flex items-start gap-2 rounded-md border px-2.5 py-1.5 text-left transition-colors duration-(--duration-quick) ease-soft',
           chosen
             ? 'border-accent/60 bg-accent/10'
             : sent
@@ -114,10 +114,14 @@ function QuestionAnswers({
       >
         <span
           aria-hidden="true"
-          className={cn('mt-0.5 size-3.5 shrink-0 border', several ? 'rounded-xs' : 'rounded-full', chosen ? 'border-accent bg-accent' : 'border-line-strong')}
+          className={cn(
+            'mt-[0.1875rem] size-3.5 shrink-0 border',
+            several ? 'rounded-xs' : 'rounded-full',
+            chosen ? 'border-accent bg-accent' : 'border-line-strong'
+          )}
         />
         <span className="grid min-w-0 gap-0.5">
-          <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[0.8125rem] leading-5">
             {option.label}
             {option.recommended && <span className="rounded-xs bg-accent/15 px-1.5 text-[0.6875rem] text-accent">Recommended</span>}
           </span>
@@ -128,9 +132,9 @@ function QuestionAnswers({
   })
   const named = question.question ? { 'aria-labelledby': `${id}-question` } : { 'aria-label': 'Answers' }
   return (
-    <div className="grid gap-2">
+    <div className="grid gap-1.5">
       {question.question && (
-        <p id={`${id}-question`} className="font-medium text-sm">
+        <p id={`${id}-question`} className="font-medium text-[0.8125rem]">
           {question.question}
         </p>
       )}
@@ -159,7 +163,7 @@ function QuestionAnswers({
           disabled={sent}
           autoComplete="off"
           onChange={(event) => onChange({ picked: several ? answer.picked : [], typed: event.target.value }, false)}
-          className="h-8 min-w-0 rounded-md border border-line-strong bg-black/25 shadow-[inset_0_1px_1px_rgb(0_0_0/0.25)] px-2.5 text-sm transition-colors duration-(--duration-quick) placeholder:text-text-faint disabled:opacity-60"
+          className="h-7 min-w-0 rounded-md border border-line-strong bg-black/25 shadow-[inset_0_1px_1px_rgb(0_0_0/0.25)] px-2.5 text-[0.8125rem] transition-colors duration-(--duration-quick) placeholder:text-text-faint disabled:opacity-60"
         />
       )}
     </div>
@@ -189,7 +193,7 @@ export function Field({ props }: { props: BlockProps<'Field'> }) {
             disabled={sent}
             onChange={(event) => setValue(event.target.value)}
             placeholder={props.placeholder}
-            className="h-8 min-w-0 flex-1 rounded-md border border-line-strong bg-black/25 shadow-[inset_0_1px_1px_rgb(0_0_0/0.25)] px-2.5 text-sm transition-colors duration-(--duration-quick) placeholder:text-text-faint disabled:opacity-60"
+            className="h-7 min-w-0 flex-1 rounded-md border border-line-strong bg-black/25 shadow-[inset_0_1px_1px_rgb(0_0_0/0.25)] px-2.5 text-[0.8125rem] transition-colors duration-(--duration-quick) placeholder:text-text-faint disabled:opacity-60"
           />
           <AppButton type="submit" kind="primary" disabled={sent || value.trim() === ''}>
             {sent ? 'Sent' : 'Send'}

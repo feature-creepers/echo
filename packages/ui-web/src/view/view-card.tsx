@@ -17,7 +17,7 @@ interface ViewCardProps {
 }
 
 /**
- * A view the assistant composed, as a card of the stream: a thin bar on top names it and holds its controls, a
+ * A view the assistant composed, as a card of the board: a thin bar on top names it and holds its controls, a
  * hairline under it, and the view below. The answer to a side question says so before its title; a reminder's card
  * can be snoozed from its bar.
  */
@@ -33,7 +33,7 @@ export function ViewCard({ view, actions, onClose }: ViewCardProps) {
           <CloseGlyph />
         </IconButton>
       </PanelBar>
-      <div className="px-5 pt-4 pb-5">
+      <div className="p-3">
         {/* The core checked the view against the catalogue before sending it. */}
         <ViewRenderer spec={view.spec as ViewSpec} actions={actions} />
       </div>
@@ -69,15 +69,15 @@ function SnoozeControl({ job, snooze, onSnoozed }: { job: string; snooze(job: st
   )
 }
 
-/** The bar on top of a view: its name on the left, what can be done with it on the right. */
+/** The bar on top of a view: its name on the left, what can be done with it on the right, its glyphs small. */
 function PanelBar({ title, lead, children }: { title: string; lead?: string | undefined; children: ReactNode }) {
   return (
-    <header className="flex h-9 min-w-0 items-center justify-between gap-3 border-line border-b pr-1 pl-4">
+    <header className="flex h-7 min-w-0 items-center justify-between gap-3 border-line border-b pr-0.5 pl-3">
       <span className="flex min-w-0 items-baseline gap-2 text-xs">
         {lead && <span className="shrink-0 text-[0.6875rem] text-text-faint">{lead}</span>}
         <span className="truncate font-medium text-text-soft">{title}</span>
       </span>
-      <div className="flex shrink-0 items-center">{children}</div>
+      <div className="flex shrink-0 items-center [&_button[aria-label]]:size-6 [&_svg]:size-3.5">{children}</div>
     </header>
   )
 }

@@ -2,8 +2,8 @@ import type { Client } from '@repo/client'
 import { matchesShortcut } from '@repo/client'
 import { useFollowed } from '@repo/client/react'
 import type { PersonaId, Settings, ShownView, TurnId } from '@repo/protocol'
-import { AnimatePresence, animate, motion, useMotionValue } from 'motion/react'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AccessIndicator } from '../access/access-indicator.tsx'
 import { type Dropped, DropState, useWindowDrop } from '../attachments/drop-state.tsx'
 import { useAttachments } from '../attachments/use-attachments.ts'
@@ -12,6 +12,7 @@ import { useTalk } from '../audio/use-talk.ts'
 import { keyPress, useDevice } from '../device/device.tsx'
 import { useLoad } from '../device/load.ts'
 import { useShownPresence } from '../device/presence.ts'
+import { DOCK_ROOM } from '../library/pinned-docks.tsx'
 import { usePlayer } from '../media/player-provider.tsx'
 import { refusalCopy } from '../personas/copy.ts'
 import { attendedView, useLingering } from '../presence/attention.ts'
@@ -21,8 +22,7 @@ import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { DURATION, EASE, settle } from '../styles/motion.ts'
 import type { ViewActions } from '../view/context.ts'
-import { createPush, scrollsUnder, wheelTravel } from '../view/push.ts'
-import { HOME_PEEK, ViewStream } from '../view/view-stream.tsx'
+import { ViewBoard } from '../view/view-board.tsx'
 import { captionOf, useLastHeard } from './caption.ts'
 import { EngineIndicator } from './engine-indicator.tsx'
 import { GoArrow } from './go-arrow.tsx'
@@ -31,7 +31,7 @@ import { moodOf, moodWord } from './mood.ts'
 import { ReadyTopics } from './ready-topics.tsx'
 import { RunningThreads } from './running-threads.tsx'
 import { type ScrollEdges, useScrollEdges } from './scroll-edges.ts'
-import { Caption } from './stage-caption.tsx'
+import { Caption, OneLine } from './stage-caption.tsx'
 import { Core, LARGEST, type Sight } from './stage-core.tsx'
 import { Suggestions } from './suggestions.tsx'
 import { TRAVEL } from './travel.ts'
@@ -63,19 +63,30 @@ interface StageProps {
    * window. Left out, the full window.
    */
   mini?: { onFullWindow(): void } | undefined
+  /** The pinned widgets stand in their docks on both sides of the screen: the board takes the room between them. */
+  docked?: boolean | undefined
 }
 
 /** The event an app dispatches on the window to start talking, or to send what was said: its global shortcut. */
 export const TALK_EVENT = 'echo:talk'
 
-/** The places the stage keeps for the core: the middle of an empty stage, home, the top of the column, and Mini. */
-type CorePlace = 'empty' | 'home' | 'top' | 'mini'
+/** The places the stage keeps for the core: the middle of an empty stage, the top left of the board, and Mini. */
+type CorePlace = 'empty' | 'board' | 'mini'
 
 /** The core's size in Mini: the largest it is at the top of the stage. */
 const MINI_CORE = 136
 
-/** The width of the centred column, for everything the assistant shows and for the composer. */
+/** The width of the centred column, for the empty stage and for the composer. */
 const COLUMN = 'max-w-[45rem]'
+
+/**
+ * The core's square at the top left of the board. The core fills about seven tenths of its square, so it shows about
+ * 40 px wide; the square spills over its neighbours by this much on each side, so the core takes only that room.
+ */
+const BOARD_CORE = { square: 56, spill: 8 } as const
+
+/** The room kept on each side of the board: from the window's edges, or from the pinned docks beside it. */
+const BOARD_SIDE = { free: 24, docked: DOCK_ROOM + 16 } as const
 
 /**
  * How the empty stage fades out where it is cut, in a window too short for it: at the top when scrolled, and just
@@ -91,54 +102,19 @@ const FADES = {
 } as const
 const fade = ({ above, below }: ScrollEdges) => FADES[above ? (below ? 'both' : 'above') : below ? 'below' : 'none']
 
-/**
- * How firmly the person must scroll on down at home to go on to the stream: this many pixels of wheel within this
- * many milliseconds.
- */
-const LEAVE = { far: 40, within: 450 } as const
-
-/** How much of the stream shows at home, under the fade above the composer: a hint of what waits, not a second thing to read. */
-const HOME_DIM = 0.45
-
-/** The room between what is written under the core at home and the top of the view that waits under it. */
-const HOME_AIR = 20
-
 /** The spring the core travels on, for its name and its state, which go with it. */
 const travel = { type: 'spring', stiffness: TRAVEL.stiffness, damping: TRAVEL.damping, mass: 1 } as const
 
 /**
- * The core's size over the stream: large enough to read as the presence at the top of the screen, small enough to
- * leave the stream its room in a short window.
+ * How much room the floating composer takes at the bottom of the stage, kept current: the board ends above it, so
+ * nothing of a card is seen behind it. Measured on the block that holds the composer and the row under it.
  */
-const topCoreSize = (height: number) => Math.round(Math.min(136, Math.max(96, height * 0.12)))
-
-function useTopCoreSize(): number {
-  const [size, setSize] = useState(() => topCoreSize(window.innerHeight))
-  useEffect(() => {
-    const onResize = () => setSize(topCoreSize(window.innerHeight))
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [])
-  return size
-}
-
-/**
- * Where the floating composer sits, kept current: the stream's box ends behind the middle of the composer, and the
- * cards fade out above the composer's top, half the composer up from there, so nothing is seen behind it. Measured
- * on the block that holds the composer and the row under it.
- */
-function useComposerRoom(): [(element: HTMLElement | null) => void, { end: number; under: number }] {
+function useComposerRoom(): [(element: HTMLElement | null) => void, number] {
   const [element, setElement] = useState<HTMLElement | null>(null)
-  const [room, setRoom] = useState({ end: 66, under: 24 })
+  const [room, setRoom] = useState(96)
   useEffect(() => {
     if (!element) return
-    const measure = () => {
-      const composer = element.querySelector('form')
-      const half = Math.round((composer?.offsetHeight ?? 48) / 2)
-      const end = Math.round(element.offsetHeight) - half
-      setRoom((was) => (was.end === end && was.under === half ? was : { end, under: half }))
-    }
-    const observer = new ResizeObserver(measure)
+    const observer = new ResizeObserver(() => setRoom(Math.round(element.offsetHeight)))
     observer.observe(element)
     return () => observer.disconnect()
   }, [element])
@@ -171,7 +147,8 @@ export function Stage({
   onSetUpVoice,
   onOpenAnswer,
   onOpenThread,
-  mini
+  mini,
+  docked = false
 }: StageProps) {
   const inMini = mini !== undefined
   const channel = useFollowed(client.channel)
@@ -278,28 +255,14 @@ export function Stage({
   // A tool at work for the answer: the core works rather than thinks.
   const tool = activity.running.at(-1)?.tool
   const [stageScroll, stageEdges] = useScrollEdges()
-  const coreSize = useTopCoreSize()
-  // With views, the stream has a notch above its newest view: home, where the core rests large in the middle as on
-  // an empty stage and the newest view waits under it. The app opens there; scrolling on up past the newest view
-  // goes back there; scrolling down, pressing the view that waits, or a new view arriving goes on to the stream.
-  const [home, setHome] = useState(true)
-  const newest = stream[0]?.id
-  const newestArrived = newest !== undefined && shown.arrived.includes(newest)
-  useEffect(() => {
-    if (newestArrived) setHome(false)
-  }, [newest, newestArrived])
-  const atHome = streaming && home
   // The places kept for the core: it travels to the one in use and rests there.
-  const places = useRef<Record<CorePlace, HTMLElement | null>>({ empty: null, home: null, top: null, mini: null })
+  const places = useRef<Record<CorePlace, HTMLElement | null>>({ empty: null, board: null, mini: null })
   const keepers = useRef({
     empty: (element: HTMLElement | null) => {
       places.current.empty = element
     },
-    home: (element: HTMLElement | null) => {
-      places.current.home = element
-    },
-    top: (element: HTMLElement | null) => {
-      places.current.top = element
+    board: (element: HTMLElement | null) => {
+      places.current.board = element
     },
     mini: (element: HTMLElement | null) => {
       places.current.mini = element
@@ -307,62 +270,11 @@ export function Stage({
   })
   const keep = (where: CorePlace) => keepers.current[where]
   const placeIn = useRef<CorePlace>('empty')
-  placeIn.current = inMini ? 'mini' : !streaming ? 'empty' : atHome ? 'home' : 'top'
+  placeIn.current = inMini ? 'mini' : streaming ? 'board' : 'empty'
   const placeOf = useCallback(() => places.current[placeIn.current], [])
-  // What is written under the core waits for it to arrive, so it never crosses the core on its way.
+  // What is written beside or under the core waits for it to arrive, so it never crosses the core on its way.
   const [arrived, setArrived] = useState(true)
-  // Whether the press under way is the one that went on from home to the stream.
-  const wentOn = useRef(false)
-  // At home, a push of the wheel on down, or a key that would go down, goes on to the stream. The window listens, as
-  // nothing on the stage holds the keyboard; but only what happens on the stage counts, and only what nothing there
-  // takes for itself: a wheel over the side sheet scrolls the sheet, and an arrow in a menu moves through the menu.
-  useEffect(() => {
-    // Mini shows no stream to go on to.
-    if (!atHome || inMini) return
-    const push = createPush(LEAVE.far, LEAVE.within)
-    const stageOf = (target: EventTarget | null) => (target instanceof Element ? target.closest('[data-stage]') : null)
-    const onWheel = (event: WheelEvent) => {
-      const stage = stageOf(event.target)
-      // The stream itself, sunk under the core, is what the push goes on to: it does not take the wheel from it.
-      const free = stage !== null && !scrollsUnder(event.target, stage, 'down', stage.querySelector('[data-stream]'))
-      if (push.wheel(wheelTravel(event), performance.now(), free)) setHome(false)
-    }
-    const onKey = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || (event.key !== 'PageDown' && event.key !== 'ArrowDown' && event.key !== 'End')) return
-      const target = event.target
-      if (target instanceof Element && target !== document.body) {
-        if (stageOf(target) === null) return
-        if (target.closest('input, textarea, select, [contenteditable], [role="menu"], [role="listbox"], [role="dialog"]')) return
-      }
-      setHome(false)
-    }
-    window.addEventListener('wheel', onWheel, { passive: true })
-    window.addEventListener('keydown', onKey)
-    return () => {
-      window.removeEventListener('wheel', onWheel)
-      window.removeEventListener('keydown', onKey)
-    }
-  }, [atHome, inMini])
   const [composerBox, composerRoom] = useComposerRoom()
-  // How far the stage has gone home, from 0 in the stream to 1 at home, on the core's own spring: the stream sinks
-  // under the core by it, so only the top of its newest view shows above the composer. The stream comes in where it
-  // belongs, and only a change of place glides.
-  const homing = useMotionValue(1)
-  const streamed = useRef(false)
-  useLayoutEffect(() => {
-    if (!streaming) {
-      streamed.current = false
-      return
-    }
-    const target = atHome ? 1 : 0
-    if (!streamed.current || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      streamed.current = true
-      homing.jump(target)
-      return
-    }
-    const glide = animate(homing, target, travel)
-    return () => glide.stop()
-  }, [streaming, atHome, homing])
 
   // What plays goes quiet while the person talks, so the music does not drown what they say.
   const player = usePlayer()
@@ -454,8 +366,6 @@ export function Stage({
 
   if (!active) return null
 
-  // Over the stream and in Mini, what is said is smaller; at home and on an empty stage, as large as the core is.
-  const compact = inMini || (streaming && !home)
   const line = captionOf({
     hearing: speaking.sentence !== undefined,
     busy: running || voicing,
@@ -466,15 +376,18 @@ export function Stage({
     },
     problem: failed !== undefined || problem !== undefined
   })
-  const caption = (
+  // What is said is as large as the core: large in the middle of an empty stage, smaller in Mini, and on one line
+  // beside the small core over the board, where the indicator under the composer offers to set up an AI program.
+  const caption = (size: 'large' | 'medium' | 'small', lines: 1 | 2 | undefined) => (
     <Caption
       line={line}
       heard={heard}
       last={last}
       paused={speaking.paused}
-      compact={compact}
+      size={size}
+      lines={lines}
       problem={failed ?? problem}
-      onSetUpEngine={noEngine ? onSetUpEngine : undefined}
+      onSetUpEngine={noEngine && size !== 'small' ? onSetUpEngine : undefined}
     />
   )
   const core = <Core mood={mood} level={level.current} bands={bands.current} load={load} sight={sight} place={placeOf} onArrive={setArrived} />
@@ -509,7 +422,7 @@ export function Stage({
             className="mt-2 grid min-h-[3.25rem] w-full justify-items-center"
             aria-live="polite"
           >
-            {caption}
+            {caption('medium', 2)}
           </motion.div>
           {/* A view that arrived here is kept in the stream: the way to it, in the full window. */}
           <AnimatePresence initial={false}>
@@ -521,10 +434,7 @@ export function Stage({
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0, transition: { duration: DURATION.quick, ease: EASE } }}
                 transition={settle}
-                onClick={() => {
-                  setHome(false)
-                  mini.onFullWindow()
-                }}
+                onClick={mini.onFullWindow}
                 className="group mt-1 inline-flex h-6 shrink-0 items-center gap-1 rounded-sm px-1.5 text-text-faint text-xs transition-colors duration-(--duration-quick) hover:text-text-soft"
               >
                 Shown in the full window
@@ -542,17 +452,14 @@ export function Stage({
   const answerLink = (
     <AnimatePresence initial={false}>{written !== undefined && <FullAnswerLink key={written} onOpen={() => onOpenAnswer(written)} />}</AnimatePresence>
   )
-  const readyList =
+  const readyTopics =
     ready.length > 0 ? (
-      <div className="flex w-full flex-col items-center gap-1">
-        {answerLink}
-        <ReadyTopics
-          ready={ready}
-          exchanges={channel.exchanges}
-          onFocus={(thread) => void client.threads.focus(thread).catch(() => undefined)}
-          onDismiss={(thread) => void client.threads.dismiss(thread).catch(() => undefined)}
-        />
-      </div>
+      <ReadyTopics
+        ready={ready}
+        exchanges={channel.exchanges}
+        onFocus={(thread) => void client.threads.focus(thread).catch(() => undefined)}
+        onDismiss={(thread) => void client.threads.dismiss(thread).catch(() => undefined)}
+      />
     ) : undefined
 
   const composer = (
@@ -580,130 +487,75 @@ export function Stage({
     />
   )
 
-  // Everything the assistant shows stays in one column, centred in the window: the core and its caption never move
-  // aside. With views to show, the core rises to the top of the column, its name, state and spoken line centred under
-  // it, and the stream of views turns under them. The sides of the window are left to the pinned widgets' docks.
+  // With views, the core rests small at the top left of the board, its name and state beside it, then what it says
+  // on one line, whole when pointed at; the "ready" list under them, and the board under all of it, between the
+  // pinned docks when they stand beside it. With none, the core rests large in the middle of the stage.
+  const side = docked ? BOARD_SIDE.docked : BOARD_SIDE.free
+  const fadeIn = { duration: arrived ? DURATION.calm : DURATION.quick, ease: EASE }
   return (
     <div data-stage="" className="relative flex h-full min-w-0 flex-col">
       {core}
       {streaming && (
-        <header className="relative z-10 shrink-0 px-8 pt-1">
-          <div className={cn('mx-auto grid w-full justify-items-center text-center', COLUMN)}>
-            {/* At home, the core, its name and its state glide to the middle of the stage, and their places here stay
-                kept, so the stream under them never moves. */}
-            <div ref={keep('top')} aria-hidden="true" style={{ width: coreSize, height: coreSize, marginBlock: -Math.round(coreSize * 0.1) }} />
-            <motion.span
-              {...(atHome ? {} : { layoutId: 'stage-name' })}
-              transition={travel}
-              className={cn('mt-1.5 font-semibold text-[1.0625rem] leading-tight tracking-[-0.015em]', atHome && 'invisible')}
-            >
-              {active.name}
-            </motion.span>
-            <motion.span {...(atHome ? {} : { layoutId: 'stage-mood' })} transition={travel} className={cn('mt-1', atHome && 'invisible')}>
-              <MoodWord mood={mood} word={word} />
-            </motion.span>
-            {/* Two lines are kept for what is said, and every line shown there holds to them, so it never moves the
-                stream under it nor runs onto the ready list. Only a problem may take more room, and then pushes the ready list
-                down rather than covering them. They come in once the core, rising from the middle of the screen, has
-                passed where they are. */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: atHome || !arrived ? 0 : 1 }}
-              transition={{ duration: arrived ? DURATION.calm : DURATION.quick, ease: EASE }}
-              className="mt-3 grid w-full justify-items-center gap-1"
-            >
-              <div className="relative w-full max-w-[38rem]">
-                <div className="min-h-[3.25rem] text-text" aria-live={atHome ? undefined : 'polite'}>
-                  {!atHome && caption}
-                </div>
-                {/* Under the two lines kept for what is said, over the room above the stream, so it moves nothing. With
-                    topics ready, it sits over their list instead. */}
-                {!readyList && !atHome && <div className="absolute inset-x-0 top-full flex justify-center">{answerLink}</div>}
-              </div>
-              {!atHome && readyList}
-            </motion.div>
-          </div>
-        </header>
-      )}
-      {/* Home: the core large in the middle, its name, its state and what it says under it, as on an empty stage,
-          over the stream, which waits further down. */}
-      {atHome && (
-        <div
-          className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-col items-center px-8"
-          style={{ bottom: composerRoom.end + composerRoom.under + HOME_PEEK + HOME_AIR }}
-        >
-          <div className="flex min-h-0 w-full flex-1 flex-col items-center justify-center">
-            <div ref={keep('home')} aria-hidden="true" className="-my-7" style={{ width: LARGEST, height: LARGEST }} />
-            <Presence name={active.name} mood={mood} word={word} />
+        <header className="relative z-10 shrink-0 pt-1.5 pb-2" style={{ paddingInline: side }}>
+          <div className="flex h-10 min-w-0 items-center gap-3">
+            <div
+              ref={keep('board')}
+              aria-hidden="true"
+              className="shrink-0"
+              style={{ width: BOARD_CORE.square, height: BOARD_CORE.square, margin: -BOARD_CORE.spill }}
+            />
+            <div className="grid shrink-0 gap-0.5">
+              <motion.span layoutId="stage-name" transition={travel} className="font-semibold text-[0.8125rem] leading-4 tracking-[-0.01em]">
+                {active.name}
+              </motion.span>
+              <motion.span layoutId="stage-mood" transition={travel} className="flex leading-4">
+                <MoodWord mood={mood} word={word} />
+              </motion.span>
+            </div>
+            {/* What is said comes in once the core, rising from the middle of the stage, has arrived beside it. */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: arrived ? 1 : 0 }}
-              transition={{ duration: arrived ? DURATION.calm : DURATION.quick, ease: EASE }}
-              className={cn('pointer-events-auto mt-7 flex min-h-[5.5rem] w-full flex-col items-center gap-1.5 text-center', COLUMN)}
+              transition={fadeIn}
+              className="flex min-w-0 flex-1 items-center gap-3 border-line border-l pl-3"
+              aria-live="polite"
             >
-              <div className="flex w-full justify-center" aria-live="polite">
-                {caption}
-              </div>
-              {readyList ?? answerLink}
+              <OneLine>{(whole) => caption('small', whole ? undefined : 1)}</OneLine>
+              {answerLink}
             </motion.div>
           </div>
-        </div>
+          {readyTopics && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: arrived ? 1 : 0 }}
+              transition={fadeIn}
+              className="mt-2"
+              style={{ paddingLeft: BOARD_CORE.square - 2 * BOARD_CORE.spill + 12 }}
+            >
+              {readyTopics}
+            </motion.div>
+          )}
+        </header>
       )}
       <div className="relative min-h-0 flex-1">
         <AnimatePresence initial={false}>
           {streaming && (
             <motion.div
-              key="stream"
+              key="board"
               className="absolute inset-x-0 top-0"
-              style={{ bottom: composerRoom.end }}
-              // At home, the stream dims under the core, and sinks there by the dial's own measure; pressing the view
-              // that waits goes on to it.
-              initial={false}
-              animate={{ opacity: atHome ? HOME_DIM : 1 }}
-              transition={travel}
+              style={{ bottom: composerRoom }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1, transition: { duration: DURATION.calm, ease: EASE } }}
               exit={{ opacity: 0, transition: { duration: DURATION.quick, ease: EASE } }}
-              onPointerDownCapture={(event) => {
-                if (!atHome) return
-                event.preventDefault()
-                event.stopPropagation()
-                // The press that goes on to the stream is only that: the click it ends in never also presses what
-                // was under it. Once the pointer is let go, and that click has come or not, presses count again.
-                wentOn.current = true
-                const done = () => {
-                  window.removeEventListener('pointerup', done)
-                  window.removeEventListener('pointercancel', done)
-                  setTimeout(() => {
-                    wentOn.current = false
-                  }, 0)
-                }
-                window.addEventListener('pointerup', done)
-                window.addEventListener('pointercancel', done)
-                setHome(false)
-              }}
-              onClickCapture={(event) => {
-                if (!wentOn.current) return
-                wentOn.current = false
-                event.preventDefault()
-                event.stopPropagation()
-              }}
-              // From the keyboard too: at home, Enter or Space on what waits in the stream goes on to it first.
-              onKeyDownCapture={(event) => {
-                if (!atHome || (event.key !== 'Enter' && event.key !== ' ')) return
-                event.preventDefault()
-                event.stopPropagation()
-                setHome(false)
-              }}
             >
-              <ViewStream
-                className="h-full"
+              <ViewBoard
+                className="h-full pt-1 pb-3"
+                style={{ paddingInline: side }}
                 views={stream}
                 arrived={shown.arrived}
                 attended={attended}
                 actions={actionsFor}
                 onClose={close}
-                under={composerRoom.under}
-                home={homing}
-                onPastTop={() => setHome(true)}
               />
             </motion.div>
           )}
@@ -715,12 +567,12 @@ export function Stage({
               <Presence name={active.name} mood={mood} word={word} />
               <div className={cn('mt-7 flex min-h-[6.75rem] w-full flex-col items-center gap-1.5 text-center', COLUMN)}>
                 <div className="flex w-full justify-center" aria-live="polite">
-                  {caption}
+                  {caption('large', 2)}
                 </div>
-                {!readyList && answerLink}
+                {answerLink}
               </div>
-              {readyList ? (
-                <div className={cn('mt-2 w-full', COLUMN)}>{readyList}</div>
+              {readyTopics ? (
+                <div className={cn('mt-2 flex w-full justify-center', COLUMN)}>{readyTopics}</div>
               ) : (
                 // Until the person has said anything, a few things to try.
                 !noEngine && !running && !speaking.sentence && channel.exchanges.every((line) => line.trigger !== undefined) && <Suggestions onSay={say} />
@@ -730,7 +582,7 @@ export function Stage({
         )}
       </div>
 
-      {/* The composer floats over the bottom of the screen; the stream turns under it, and what sinks fades out there. */}
+      {/* The composer floats over the bottom of the screen, under the board, with nothing painted behind it. */}
       <div ref={composerBox} className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-8 pb-4">
         <div className={cn('pointer-events-auto mx-auto grid w-full gap-1.5', COLUMN)}>
           {composer}
@@ -780,8 +632,8 @@ function MoodWord({ mood, word }: { mood: Mood; word: string }) {
 }
 
 /**
- * The persona's name and what it is doing, large under the core in the middle of the stage: at home and on an empty
- * stage. They glide to and from their places over the stream with the core.
+ * The persona's name and what it is doing, large under the core in the middle of an empty stage. They glide to and
+ * from their places beside the core over the board with it.
  */
 function Presence({ name, mood, word }: { name: string; mood: Mood; word: string }) {
   return (

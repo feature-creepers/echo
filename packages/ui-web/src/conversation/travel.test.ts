@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { arrivedAt, restOn, type Spot, type Travel, travelTowards } from './travel.ts'
 
-type Place = 'top' | 'home'
+type Place = 'board' | 'empty'
 
-/** The places of a stage with views: the top of the column, small, and home, large in the middle. */
-const SPOTS: Record<Place, Spot> = { top: { x: 600, y: 40, size: 72 }, home: { x: 600, y: 360, size: 280 } }
+/** The places of the stage: the top left of the board, small, and the middle of an empty stage, large. */
+const SPOTS: Record<Place, Spot> = { board: { x: 44, y: 60, size: 56 }, empty: { x: 600, y: 360, size: 280 } }
 
 const FRAME = 1 / 60
 
@@ -25,32 +25,32 @@ function frames(here: Travel<Place>, place: Place, count: number): Spot[] {
 
 describe('the core travelling between its places', () => {
   it('follows the place it rests on at once, frame or not', () => {
-    const here = restingOn('top')
+    const here = restingOn('board')
     const scrolled = { x: 600, y: 12, size: 72 }
-    expect(travelTowards(here, 'top', scrolled, undefined)).toBe(true)
-    expect(here).toMatchObject({ ...scrolled, rested: 'top' })
+    expect(travelTowards(here, 'board', scrolled, undefined)).toBe(true)
+    expect(here).toMatchObject({ ...scrolled, rested: 'board' })
   })
 
   it('stays where it is on its way while no frame is drawn', () => {
-    const here = restingOn('top')
-    expect(travelTowards(here, 'home', SPOTS.home, undefined)).toBe(false)
-    expect(here).toMatchObject({ ...SPOTS.top, rested: null })
+    const here = restingOn('board')
+    expect(travelTowards(here, 'empty', SPOTS.empty, undefined)).toBe(false)
+    expect(here).toMatchObject({ ...SPOTS.board, rested: null })
   })
 
   it('glides to a new place and rests there', () => {
-    const here = restingOn('top')
-    const drawn = frames(here, 'home', 90)
+    const here = restingOn('board')
+    const drawn = frames(here, 'empty', 90)
     // Its first frame moves it a little of the way, and it rests on its new place within about a second and a half.
-    expect(drawn[0]?.y).toBeLessThan(SPOTS.top.y + (SPOTS.home.y - SPOTS.top.y) * 0.1)
-    expect(here.rested).toBe('home')
-    expect(here).toMatchObject(SPOTS.home)
+    expect(drawn[0]?.y).toBeLessThan(SPOTS.board.y + (SPOTS.empty.y - SPOTS.board.y) * 0.1)
+    expect(here.rested).toBe('empty')
+    expect(here).toMatchObject(SPOTS.empty)
   })
 
   it('never overshoots its place on the way', () => {
-    const here = restingOn('top')
-    const drawn = frames(here, 'home', 90)
-    expect(Math.max(...drawn.map((spot) => spot.y))).toBeLessThanOrEqual(SPOTS.home.y + 0.5)
-    expect(Math.max(...drawn.map((spot) => spot.size))).toBeLessThanOrEqual(SPOTS.home.size + 0.5)
+    const here = restingOn('board')
+    const drawn = frames(here, 'empty', 90)
+    expect(Math.max(...drawn.map((spot) => spot.y))).toBeLessThanOrEqual(SPOTS.empty.y + 0.5)
+    expect(Math.max(...drawn.map((spot) => spot.size))).toBeLessThanOrEqual(SPOTS.empty.size + 0.5)
   })
 
   it.each([
@@ -58,24 +58,24 @@ describe('the core travelling between its places', () => {
     ['half way', 12],
     ['nearly there', 30]
   ])('turned back %s, glides back from where it is rather than jumping', (_when, out) => {
-    const here = restingOn('top')
-    const drawn = frames(here, 'home', out)
+    const here = restingOn('board')
+    const drawn = frames(here, 'empty', out)
     const turned = drawn.at(-1) as Spot
     // The first frame back starts from where it was drawn: a frame's worth of travel at most, never the whole way.
-    expect(travelTowards(here, 'top', SPOTS.top, FRAME)).toBe(true)
+    expect(travelTowards(here, 'board', SPOTS.board, FRAME)).toBe(true)
     expect(here.rested).toBe(null)
     expect(Math.abs(here.y - turned.y)).toBeLessThan(20)
-    expect(arrivedAt(here, 'top', SPOTS.top)).toBe(false)
-    frames(here, 'top', 120)
-    expect(here.rested).toBe('top')
-    expect(arrivedAt(here, 'top', SPOTS.top)).toBe(true)
+    expect(arrivedAt(here, 'board', SPOTS.board)).toBe(false)
+    frames(here, 'board', 120)
+    expect(here.rested).toBe('board')
+    expect(arrivedAt(here, 'board', SPOTS.board)).toBe(true)
   })
 
   it('counts as arrived a little before it rests, so what is written under it comes in as it settles', () => {
-    const here = restingOn('top')
+    const here = restingOn('board')
     const arrivals = Array.from({ length: 90 }, () => {
-      travelTowards(here, 'home', SPOTS.home, FRAME)
-      return [arrivedAt(here, 'home', SPOTS.home), here.rested === 'home'] as const
+      travelTowards(here, 'empty', SPOTS.empty, FRAME)
+      return [arrivedAt(here, 'empty', SPOTS.empty), here.rested === 'empty'] as const
     })
     const arrived = arrivals.findIndex(([at]) => at)
     const rested = arrivals.findIndex(([, at]) => at)
@@ -84,10 +84,10 @@ describe('the core travelling between its places', () => {
   })
 
   it('counts a long frame as a short one, so a stall never throws it', () => {
-    const stalled = restingOn('top')
-    const short = restingOn('top')
-    travelTowards(stalled, 'home', SPOTS.home, 2)
-    travelTowards(short, 'home', SPOTS.home, 0.05)
+    const stalled = restingOn('board')
+    const short = restingOn('board')
+    travelTowards(stalled, 'empty', SPOTS.empty, 2)
+    travelTowards(short, 'empty', SPOTS.empty, 0.05)
     expect(stalled).toEqual(short)
   })
 })

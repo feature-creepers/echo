@@ -39,7 +39,7 @@ export function Media({ props }: { props: BlockProps<'Media'> }) {
     status === 'failed' ? 'Unavailable' : going && (state.buffering || status === 'loading') ? 'Tuning in' : going ? 'Playing' : held ? 'Paused' : 'Ready'
 
   return (
-    <div className="@container grid min-w-[min(15rem,100%)] gap-2.5 rounded-md border border-line bg-white/[0.018] p-2.5">
+    <div className="@container grid min-w-[min(15rem,100%)] gap-2 rounded-md border border-line bg-white/[0.018] p-2">
       {props.kind === 'video' && (
         <div className="relative aspect-video w-full overflow-hidden rounded-sm border border-line bg-black">
           {/* While this source plays, the player's element is drawn here; otherwise its picture, if any. */}
@@ -67,7 +67,7 @@ export function Media({ props }: { props: BlockProps<'Media'> }) {
             {props.live && <Live on={sounding} />}
             <span className={cn('text-[0.6875rem]', status === 'failed' ? 'text-danger' : going ? 'text-accent' : 'text-text-faint')}>{label}</span>
           </div>
-          <p className="truncate font-medium text-sm leading-snug">{props.title}</p>
+          <p className="truncate font-medium text-[0.8125rem] leading-snug">{props.title}</p>
           {props.subtitle && <p className="truncate text-text-soft text-xs">{props.subtitle}</p>}
         </div>
         <button

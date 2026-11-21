@@ -30,9 +30,8 @@ interface PinnedCardProps {
 }
 
 /**
- * One pinned widget: a bar with its name and what can be done with it, over the widget drawn live and a little
- * smaller than on the stage. A tall one is folded to a fixed height until unfolded. In a dock, it is dragged by
- * its bar.
+ * One pinned widget: a bar with its name and what can be done with it, over the widget drawn live, as dense as on
+ * the board. A tall one is folded to a fixed height until unfolded. In a dock, it is dragged by its bar.
  */
 export function PinnedCard({ widget, controls, actions, dragged, landed, shut, unfolded, onShut, onUnfold, onPress }: PinnedCardProps) {
   const root = useRef<HTMLDivElement>(null)
@@ -65,7 +64,7 @@ export function PinnedCard({ widget, controls, actions, dragged, landed, shut, u
     >
       <div
         onPointerDown={onPress && ((event) => root.current && onPress(event, root.current))}
-        className={cn('flex h-8 touch-none select-none items-center gap-1 pr-1 pl-1.5', onPress ? 'cursor-grab' : 'pl-3')}
+        className={cn('flex h-7 touch-none select-none items-center gap-1 pr-0.5 pl-1.5', onPress ? 'cursor-grab' : 'pl-3')}
       >
         {onPress && (
           <span className="text-text-faint/0 transition-colors group-hover/card:text-text-faint [&_svg]:size-3.5">
@@ -90,8 +89,7 @@ export function PinnedCard({ widget, controls, actions, dragged, landed, shut, u
       {/* Folded to its bar, the widget stays drawn: what it plays goes on, and it unfolds as it was. */}
       <div hidden={shut} className="relative min-w-0">
         <div className="overflow-hidden" style={unfolded ? undefined : { maxHeight: FOLDED_HEIGHT }}>
-          {/* Drawn a little smaller than on the stage: the same widget, at the size of a margin. */}
-          <div ref={body} className="min-w-0 px-3 pt-1 pb-3 [zoom:0.86]">
+          <div ref={body} className="min-w-0 px-3 pt-0.5 pb-3">
             <WidgetBody spec={widget.spec as ViewSpec} actions={actions} />
           </div>
         </div>

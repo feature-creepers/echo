@@ -13,16 +13,18 @@ import { PinnedCard } from './pinned-card.tsx'
 /** A dock's width, and the gap it keeps from the window's edge, in pixels. */
 const WIDTH = 280
 const EDGE = 12
+/** The room a dock takes from the screen's edge, in pixels: the board of views keeps clear of it. */
+export const DOCK_ROOM = EDGE + WIDTH
 /** The least room left between a dock and the conversation's column. */
 const GAP = 32
-/** The conversation's column, as wide as the stage draws it (45rem). */
+/** The conversation's column, as wide as the stage draws its composer (45rem). */
 const COLUMN = 720
 /**
- * The narrowest window where the docks sit beside the conversation without covering it. The column is centred,
+ * The narrowest window where the docks sit beside the conversation without covering it. The composer is centred,
  * so both docks need the same room: they appear and disappear together. Narrower, the pinned widgets wait behind
  * the title row's toggle and float over the stage in one list.
  */
-const DOCKS_WIDTH = COLUMN + 2 * (GAP + WIDTH + EDGE)
+const DOCKS_WIDTH = COLUMN + 2 * (GAP + DOCK_ROOM)
 
 /** Where the pinned widgets stand: in their docks, over the stage, or out of sight. */
 interface PinnedDocks {
@@ -181,7 +183,7 @@ export function PinnedDocksView({ controls, actions, docks }: { controls: Librar
           layoutScroll
           className="scroll-quiet min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pt-3 pb-3 [mask-image:linear-gradient(to_bottom,black_calc(100%-12px),transparent)]"
         >
-          <div className="grid grid-cols-[minmax(0,1fr)] gap-2.5">{all.map((widget) => card(widget, undefined))}</div>
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-2">{all.map((widget) => card(widget, undefined))}</div>
         </motion.div>
       </motion.aside>
     )
@@ -230,7 +232,7 @@ export function PinnedDocksView({ controls, actions, docks }: { controls: Librar
               data-dock-scroll={side}
               className="scroll-quiet -mx-1.5 pointer-events-auto relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-1.5 pt-1 pb-3 [mask-image:linear-gradient(to_bottom,transparent,black_6px,black_calc(100%-16px),transparent)]"
             >
-              <div data-dock={side} className="relative grid grid-cols-[minmax(0,1fr)] gap-2.5">
+              <div data-dock={side} className="relative grid grid-cols-[minmax(0,1fr)] gap-2">
                 {items}
               </div>
             </motion.div>

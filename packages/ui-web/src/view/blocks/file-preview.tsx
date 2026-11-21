@@ -46,7 +46,7 @@ export function FilePreview({ props }: { props: BlockProps<'FilePreview'> }) {
           Download
         </Button>
       </div>
-      <div className={cn('scroll-quiet overflow-y-auto px-5 py-4', HEIGHT[props.height])}>
+      <div className={cn('scroll-quiet overflow-y-auto px-3 py-2.5', HEIGHT[props.height])}>
         {!file ? null : file.format === 'markdown' ? (
           <Markdown text={file.text} />
         ) : file.format === 'csv' ? (

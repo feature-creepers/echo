@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
+import { cn } from '../../primitives/cn.ts'
 
 /** Headings start small: the prose sits inside a view or a sheet that has a title of its own. */
 const HEADING = 'mt-1.5 leading-snug [overflow-wrap:anywhere]'
@@ -71,13 +72,13 @@ const PLUGINS = [remarkGfm, remarkBreaks]
 /**
  * Markdown as a model writes it in Prose and in its full answers, and as a Markdown file holds it: CommonMark with
  * GitHub's tables, checklists and struck text, a line break kept where it was written. It builds React elements,
- * never HTML, so nothing written can run.
+ * never HTML, so nothing written can run. `className` sets it denser where it reads among other blocks.
  */
-export function Markdown({ text }: { text: string }): ReactNode {
+export function Markdown({ text, className }: { text: string; className?: string | undefined }): ReactNode {
   // One column that is never wider than where it is drawn: a long word, an address or a path in the prose breaks
   // anywhere rather than widening it, code wraps in its box, and a table wider than the column scrolls in its own.
   return (
-    <div className="grid min-w-0 max-w-[68ch] grid-cols-1 gap-3 text-sm">
+    <div className={cn('grid min-w-0 max-w-[68ch] grid-cols-1 gap-3 text-sm', className)}>
       <ReactMarkdown remarkPlugins={PLUGINS} components={COMPONENTS} skipHtml>
         {text}
       </ReactMarkdown>

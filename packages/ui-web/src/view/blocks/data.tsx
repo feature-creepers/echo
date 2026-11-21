@@ -21,18 +21,18 @@ export function Metric({ props }: { props: BlockProps<'Metric'> }) {
   // nothing. It keeps a width a figure reads at, a row that has no room for it puts it on the next line, and the
   // figures of a line share it.
   return (
-    <div className="@container grid min-w-[min(7.5rem,100%)] grow content-start gap-1 overflow-hidden rounded-md border border-line bg-white/[0.018] px-3.5 py-3">
+    <div className="@container grid min-w-[min(7.5rem,100%)] grow content-start gap-0.5 overflow-hidden rounded-md border border-line bg-white/[0.018] px-3 py-2.5">
       <Eyebrow>{props.label}</Eyebrow>
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-1">
         <span
           className={cn(
-            'min-w-0 break-words font-medium text-[clamp(1.25rem,14cqi,1.75rem)] tabular-nums leading-tight tracking-[-0.02em]',
+            'min-w-0 break-words font-medium text-[clamp(1.125rem,12cqi,1.5rem)] tabular-nums leading-tight tracking-[-0.02em]',
             TONE_TEXT[props.tone]
           )}
         >
           {fed?.text ?? props.value}
         </span>
-        {props.unit && <span className="text-sm text-text-soft">{props.unit}</span>}
+        {props.unit && <span className="text-text-soft text-xs">{props.unit}</span>}
         {props.trend && (
           <span className={cn('ml-0.5 text-xs', props.trend === 'up' ? 'text-ok' : props.trend === 'down' ? 'text-danger' : 'text-text-faint')}>
             {TREND[props.trend]}
@@ -51,7 +51,10 @@ export function Table({ props }: { props: BlockProps<'Table'> }) {
         <thead>
           <tr className="border-line border-b bg-white/[0.02]">
             {props.columns.map((column) => (
-              <th key={column.key} className={cn('h-8 px-3 font-normal text-[0.6875rem] text-text-faint', column.align === 'end' ? 'text-right' : 'text-left')}>
+              <th
+                key={column.key}
+                className={cn('h-7 px-2.5 font-normal text-[0.6875rem] text-text-faint', column.align === 'end' ? 'text-right' : 'text-left')}
+              >
                 {column.label}
               </th>
             ))}
@@ -61,7 +64,7 @@ export function Table({ props }: { props: BlockProps<'Table'> }) {
           {props.rows.map((row, index) => (
             <tr key={index} className="border-line border-b transition-colors duration-(--duration-quick) last:border-b-0 hover:bg-white/[0.02]">
               {props.columns.map((column) => (
-                <td key={column.key} className={cn('px-3 py-2', column.align === 'end' ? 'text-right tabular-nums' : 'text-left')}>
+                <td key={column.key} className={cn('px-2.5 py-1.5', column.align === 'end' ? 'text-right tabular-nums' : 'text-left')}>
                   {row[column.key] ?? ''}
                 </td>
               ))}
@@ -76,7 +79,7 @@ export function Table({ props }: { props: BlockProps<'Table'> }) {
 export function Timeline({ props }: { props: BlockProps<'Timeline'> }) {
   // One grid for every moment, so the times line up in one column whatever their length.
   return (
-    <ol className="grid grid-cols-[fit-content(35%)_0.75rem_minmax(0,1fr)] gap-x-2.5">
+    <ol className="grid grid-cols-[fit-content(35%)_0.75rem_minmax(0,1fr)] gap-x-2">
       {props.items.map((item, index) => (
         <li key={index} className="contents">
           <span className="text-right text-[0.6875rem] text-text-faint tabular-nums leading-5">{item.time}</span>
@@ -84,9 +87,9 @@ export function Timeline({ props }: { props: BlockProps<'Timeline'> }) {
             <span className="mt-[0.4375rem] size-1.5 shrink-0 rounded-full" style={{ background: markColor(item.tone) }} />
             {index < props.items.length - 1 && <span className="my-1 w-px flex-1 bg-line-strong" />}
           </div>
-          <div className="grid content-start gap-0.5 pb-3 last:pb-0">
-            <span className="font-medium text-sm leading-5">{item.title}</span>
-            {item.detail && <span className="text-[0.8125rem] text-text-soft leading-snug">{item.detail}</span>}
+          <div className="grid content-start gap-0.5 pb-2 last:pb-0">
+            <span className="font-medium text-[0.8125rem] leading-5">{item.title}</span>
+            {item.detail && <span className="text-text-soft text-xs leading-snug">{item.detail}</span>}
           </div>
         </li>
       ))}
@@ -98,7 +101,7 @@ export function Progress({ props }: { props: BlockProps<'Progress'> }) {
   const fed = useFedFigure(props.feed)?.number
   const value = fed === undefined ? props.value : Math.min(1, Math.max(0, fed))
   return (
-    <div className="grid gap-1.5">
+    <div className="grid gap-1">
       {(props.label || props.detail) && (
         <div className="flex items-baseline justify-between gap-4">
           {props.label && <span className="text-[0.8125rem]">{props.label}</span>}

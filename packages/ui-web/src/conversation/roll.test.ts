@@ -21,7 +21,7 @@ describe('how far a sentence rolls under the core', () => {
     ['keeps words a fraction of a pixel apart on one line', [0, 0.2, 24.375, 24.4, 48.75], 5, 24.375]
   ]
   it.each(cases)('%s', (_name, tops, reached, roll) => {
-    expect(rollOf(tops, reached)).toBe(roll)
+    expect(rollOf(tops, reached, 2)).toBe(roll)
   })
 
   it('keeps the line the voice is on in sight, however many lines show', () => {
@@ -32,6 +32,6 @@ describe('how far a sentence rolls under the core', () => {
   it('never shows fewer lines than it can, even when the voice is on the last', () => {
     // The roll is the top of the first line shown: with two lines shown, never past the line before the last.
     const tops = [0, 24, 48, 72, 96]
-    for (let reached = 0; reached <= tops.length; reached++) expect(rollOf(tops, reached)).toBeLessThanOrEqual(72)
+    for (let reached = 0; reached <= tops.length; reached++) expect(rollOf(tops, reached, 2)).toBeLessThanOrEqual(72)
   })
 })

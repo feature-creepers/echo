@@ -390,7 +390,8 @@ function Connected({ productName, client, engine, mini }: { productName: string;
                     onBack={toMain}
                   />
                 ) : (
-                  // The conversation stays centred in the window whatever is pinned: the docks sit in the room on its sides.
+                  // The composer stays centred in the window whatever is pinned; the board of views takes the room between
+                  // the docks while they stand beside it.
                   // Nothing clips here, so the light around the core runs on into the title row, which is the same ground.
                   <div className="relative h-full">
                     <Stage
@@ -406,6 +407,7 @@ function Connected({ productName, client, engine, mini }: { productName: string;
                       onOpenAnswer={openAnswer}
                       onOpenThread={openThread}
                       mini={mini.on ? { onFullWindow: () => mini.set(false) } : undefined}
+                      docked={docks.wide && docks.shown}
                     />
                   </div>
                 )}

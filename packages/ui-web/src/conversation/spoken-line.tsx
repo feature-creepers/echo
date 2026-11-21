@@ -1,6 +1,6 @@
 import { type CSSProperties, Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { cn } from '../primitives/cn.ts'
-import { rollOf, SHOWN_LINES } from './roll.ts'
+import { rollOf } from './roll.ts'
 
 interface SpokenLineProps {
   text: string
@@ -9,6 +9,8 @@ interface SpokenLineProps {
   seconds: number | undefined
   /** The voice is held: the words stop where it stopped. */
   paused: boolean
+  /** How many lines show at most, the sentence rolling within them; left out, it shows whole. */
+  lines: number | undefined
 }
 
 /** A word's share of the time a sentence takes: its letters, and the short gap after it. */
@@ -17,18 +19,18 @@ const weight = (word: string) => word.length + 2
 /** The voice speeds up a little towards the end of what it says: a word is lit a moment before it is reached, never after. */
 const AHEAD = 0.92
 
-/** The lines kept for a sentence: no more ever show, so it never runs onto what sits under the core. */
-const KEPT: CSSProperties = { maxHeight: `${SHOWN_LINES}lh`, overflow: 'hidden' }
+/** The lines kept for a sentence: no more ever show, so it never runs onto what sits round it. */
+const kept = (lines: number): CSSProperties => ({ maxHeight: `${lines}lh`, overflow: 'hidden' })
 
 /** A sentence shown whole at once is cut to the lines kept, with an ellipsis. */
-const CUT: CSSProperties = { display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: SHOWN_LINES, overflow: 'hidden' }
+const cut = (lines: number): CSSProperties => ({ display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: lines, overflow: 'hidden' })
 
 /**
  * A sentence as it is heard. Every word is in place from the start, so nothing reflows, and each one lights up as
- * the voice reaches it: the caption follows the voice, word by word. It shows in two lines at most: a longer one
- * rolls up a line as the voice goes on to the next, so the words being said are always in sight.
+ * the voice reaches it: the caption follows the voice, word by word. It shows in the lines it is given at most: a
+ * longer one rolls up a line as the voice goes on to the next, so the words being said are always in sight.
  */
-export function SpokenLine({ text, since, seconds, paused }: SpokenLineProps) {
+export function SpokenLine({ text, since, seconds, paused, lines: shown }: SpokenLineProps) {
   const words = useMemo(() => text.split(/\s+/).filter((word) => word !== ''), [text])
   /** When each word is reached, as a share of the sentence. */
   const marks = useMemo(() => {
@@ -83,7 +85,7 @@ export function SpokenLine({ text, since, seconds, paused }: SpokenLineProps) {
   }, [])
   useLayoutEffect(() => {
     const box = lines.current
-    if (!timed || !box) return setRoll(0)
+    if (!timed || !box || shown === undefined) return setRoll(0)
     // Each word's last line, as drawn: a word broken at a hyphen counts on the line it ends on. Measured from the
     // sentence's own top, so a roll under way moves every word alike and changes nothing.
     const top = box.getBoundingClientRect().top
@@ -91,15 +93,15 @@ export function SpokenLine({ text, since, seconds, paused }: SpokenLineProps) {
       const parts = word.getClientRects()
       return (parts[parts.length - 1]?.top ?? top) - top
     })
-    setRoll(rollOf(tops, lit))
-  }, [timed, lit, width])
+    setRoll(rollOf(tops, lit, shown))
+  }, [timed, lit, width, shown])
 
   return (
-    <span className="block" style={timed ? KEPT : undefined}>
+    <span className="block" style={timed && shown !== undefined ? kept(shown) : undefined}>
       <span
         ref={lines}
         className={cn('relative block', timed && 'transition-transform duration-(--duration-calm) ease-soft')}
-        style={timed ? { transform: `translateY(${-roll}px)` } : CUT}
+        style={timed ? { transform: `translateY(${-roll}px)` } : shown === undefined ? undefined : cut(shown)}
       >
         {words.map((word, index) => (
           // A sentence's words never move, and the same word can come twice: its place is its key. The space before
