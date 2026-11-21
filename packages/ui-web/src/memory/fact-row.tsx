@@ -3,7 +3,7 @@ import { FACT_KINDS, FACT_MAX_LENGTH, type Fact, type FactKind } from '@repo/pro
 import { type KeyboardEvent, useState } from 'react'
 import { Button } from '../primitives/button.tsx'
 import { cn } from '../primitives/cn.ts'
-import { FIELD } from '../settings/field.ts'
+import { FIELD, TEXT_AREA } from '../settings/field.ts'
 import { learnedFrom } from './words.ts'
 
 interface FactRowProps {
@@ -54,7 +54,7 @@ export function FactRow({ fact, onEdit, onForget }: FactRowProps) {
       if (text !== '') void act(() => onEdit(text, mode.kind), 'The correction could not be saved.')
     }
     return (
-      <li className="grid gap-3 border border-accent/45 bg-surface px-4 py-3.5">
+      <li className="grid gap-2 py-3">
         <textarea
           aria-label="What it knows"
           value={mode.text}
@@ -64,15 +64,15 @@ export function FactRow({ fact, onEdit, onForget }: FactRowProps) {
           autoFocus
           onChange={(event) => setMode({ ...mode, text: event.target.value })}
           onKeyDown={(event) => keys(event, save)}
-          className="w-full resize-none bg-transparent text-sm text-text leading-relaxed outline-none"
+          className={TEXT_AREA}
         />
-        <div className="flex flex-wrap items-center gap-2 border-line border-t pt-3">
+        <div className="flex flex-wrap items-center gap-2">
           <select
             aria-label="Kind"
             value={mode.kind}
             onChange={(event) => setMode({ ...mode, kind: event.target.value as FactKind })}
             onKeyDown={(event) => keys(event)}
-            className={cn(FIELD, 'h-7 px-2 text-text-soft text-xs outline-none')}
+            className={cn(FIELD, 'h-7 px-2 text-text-soft text-xs')}
           >
             {FACT_KINDS.map((kind) => (
               <option key={kind} value={kind}>
@@ -94,14 +94,9 @@ export function FactRow({ fact, onEdit, onForget }: FactRowProps) {
   }
 
   return (
-    <li
-      className={cn(
-        'group flex items-start gap-4 border bg-raised/95 px-4 py-3.5 transition duration-(--duration-quick) ease-soft',
-        mode.is === 'forgetting' ? 'border-danger/40' : 'border-line hover:border-line-strong'
-      )}
-    >
+    <li className="group flex items-start gap-4 py-3">
       <div className="grid min-w-0 flex-1 gap-1.5">
-        <p className={cn('text-sm leading-relaxed transition', mode.is === 'forgetting' && 'text-text-soft line-through decoration-danger/60')}>{fact.text}</p>
+        <p className={cn('text-[0.8125rem] leading-relaxed', mode.is === 'forgetting' && 'text-text-soft line-through decoration-danger')}>{fact.text}</p>
         <p className="flex min-w-0 items-baseline gap-2 text-text-faint text-xs">
           <span className="shrink-0">{learnedFrom(fact)}</span>
           {source?.said && (
@@ -114,22 +109,16 @@ export function FactRow({ fact, onEdit, onForget }: FactRowProps) {
       </div>
       {mode.is === 'forgetting' ? (
         <div className="flex shrink-0 items-center gap-1">
-          <span className="mr-1 text-text-soft text-xs">Forget for good?</span>
+          <span className="caps mr-1 text-danger">Forget for good?</span>
           <Button kind="quiet" size="sm" onClick={() => setMode({ is: 'reading' })} disabled={busy} onKeyDown={(event) => keys(event)}>
             Keep
           </Button>
-          <Button
-            kind="secondary"
-            size="sm"
-            className="border-danger/50 text-danger hover:not-disabled:border-danger"
-            onClick={() => void act(onForget, 'It could not be forgotten.')}
-            disabled={busy}
-          >
+          <Button kind="secondary" size="sm" className="text-danger" onClick={() => void act(onForget, 'It could not be forgotten.')} disabled={busy}>
             {busy ? 'Forgetting…' : 'Forget'}
           </Button>
         </div>
       ) : (
-        <div className="flex shrink-0 gap-1 opacity-0 transition duration-(--duration-quick) ease-soft focus-within:opacity-100 group-hover:opacity-100">
+        <div className="flex shrink-0 gap-1 opacity-0 transition-opacity duration-(--duration-quick) ease-soft focus-within:opacity-100 group-hover:opacity-100">
           <Button kind="quiet" size="sm" onClick={() => setMode({ is: 'editing', text: fact.text, kind: fact.kind })}>
             Edit
           </Button>

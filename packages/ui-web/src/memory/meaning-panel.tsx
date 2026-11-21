@@ -35,14 +35,12 @@ export function MeaningPanel({ memory, meaning }: { memory: MemoryState; meaning
   const failed = problem ?? (meaning.state === 'absent' ? meaning.failed : undefined)
 
   return (
-    <div
-      className={cn('grid gap-3 border bg-raised/95 p-5 transition duration-(--duration-quick) ease-soft', asked ? 'border-danger/40' : 'border-line-strong')}
-    >
+    <div className="grid gap-3 py-4">
       <div className="flex items-center justify-between gap-6">
         <div className="grid min-w-0 gap-1" aria-live="polite">
           <Eyebrow>{LABEL}</Eyebrow>
-          <p className={cn('text-sm leading-relaxed', meaning.state === 'unavailable' ? 'text-text-faint' : 'text-text-soft')}>{meaningDetail(meaning)}</p>
-          <p className="text-text-faint text-xs">{aboutModel(meaning)}</p>
+          <p className={cn('text-xs leading-relaxed', meaning.state === 'unavailable' ? 'text-text-faint' : 'text-text-soft')}>{meaningDetail(meaning)}</p>
+          <p className="caps text-text-faint">{aboutModel(meaning)}</p>
         </div>
         {meaning.state === 'absent' && (
           <Button
@@ -74,26 +72,26 @@ export function MeaningPanel({ memory, meaning }: { memory: MemoryState; meaning
       </div>
 
       {meaning.state === 'downloading' && (
-        <div role="progressbar" aria-label={LABEL} aria-valuenow={Math.round(progress * 100)} className="h-1 overflow-hidden bg-text/[0.06]">
-          <div
-            className="h-full origin-left bg-accent transition-transform duration-(--duration-calm) ease-soft"
-            style={{ transform: `scaleX(${progress})` }}
-          />
+        <div
+          role="progressbar"
+          aria-label={LABEL}
+          aria-valuenow={Math.round(progress * 100)}
+          className="h-1.5 overflow-hidden shadow-[inset_0_-1px_0_var(--color-line-strong)]"
+        >
+          <div className="h-full origin-left bg-text transition-transform duration-(--duration-calm) ease-soft" style={{ transform: `scaleX(${progress})` }} />
         </div>
       )}
 
       {asked && meaning.state === 'ready' && (
-        <div className="flex flex-wrap items-center gap-2 border-line border-t pt-3">
-          <p className="min-w-0 flex-1 text-text-soft text-xs leading-relaxed">
-            The model and every vector made with it are deleted. Search goes on by keyword.
-          </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="min-w-0 flex-1 text-danger text-xs leading-relaxed">The model and every vector made with it are deleted. Search goes on by keyword.</p>
           <Button kind="quiet" size="sm" onClick={() => setAsked(false)} disabled={busy}>
             Keep
           </Button>
           <Button
             kind="secondary"
             size="sm"
-            className="border-danger/50 text-danger hover:not-disabled:border-danger"
+            className="text-danger"
             onClick={() => void act(memory.removeMeaning, 'The model could not be removed.')}
             disabled={busy}
           >

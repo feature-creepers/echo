@@ -7,7 +7,7 @@ import { IconButton } from '../primitives/icon-button.tsx'
 import { CloseGlyph } from '../primitives/icons.tsx'
 import { Menu } from '../primitives/menu.tsx'
 import { Switch } from '../primitives/switch.tsx'
-import { SettingGroup, SettingRow } from '../settings/rows.tsx'
+import { EmptyRow, SettingGroup, SettingRow } from '../settings/rows.tsx'
 
 /** A window with a pointer over it, drawn as the system's symbols are. */
 const AppMark = () => (
@@ -77,15 +77,15 @@ export function AppsGroup({ client, access, productName }: { client: Client; acc
       {desktop?.available && (
         <div className={cn('transition-opacity duration-(--duration-calm) ease-soft', !access.desktop && 'opacity-45')}>
           {access.apps.length === 0 && (
-            <SettingRow title="No app allowed yet" detail="Each app is asked for on a card the first time. Add the ones you use with it often." />
+            <EmptyRow title="No app allowed yet" detail="Each app is asked for on a card the first time. Add the ones you use with it often." />
           )}
           {access.apps.map((app) => (
-            <div key={app.program} className="flex items-center gap-4 px-5 py-3">
+            <div key={app.program} className="flex items-center gap-4 py-3">
               <span className="shrink-0 text-text-faint">
                 <AppMark />
               </span>
               <div className="grid min-w-0 flex-1 gap-0.5">
-                <span className="truncate font-medium text-sm">{app.name}</span>
+                <span className="truncate text-[0.8125rem]">{app.name}</span>
                 <span className="truncate font-mono text-text-faint text-xs">{app.program}</span>
               </div>
               <IconButton
@@ -97,11 +97,11 @@ export function AppsGroup({ client, access, productName }: { client: Client; acc
               </IconButton>
             </div>
           ))}
-          <div className="flex flex-wrap items-center gap-2 bg-raised/30 px-5 py-3">
+          <div className="flex flex-wrap items-center gap-2 py-3">
             <Menu
               label="Apps open now"
               align="start"
-              header={<span className="text-label text-text-faint">Open now</span>}
+              header={<span className="caps text-text-faint">Open now</span>}
               trigger={(props, { open }) => (
                 <Button
                   size="sm"
@@ -127,7 +127,7 @@ export function AppsGroup({ client, access, productName }: { client: Client; acc
       )}
 
       {problem && (
-        <p role="alert" className="px-4 py-3 text-danger text-xs leading-relaxed">
+        <p role="alert" className="py-3 text-danger text-xs leading-relaxed">
           {problem}
         </p>
       )}

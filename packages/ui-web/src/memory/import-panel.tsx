@@ -31,18 +31,18 @@ export function ImportPanel({ memory, imported }: { memory: MemoryState; importe
   }
 
   return (
-    <div className="grid gap-3 border border-line-strong bg-raised/95 p-5">
+    <div className="grid gap-3 py-4">
       <div className="flex items-center justify-between gap-6">
         <div className="grid min-w-0 gap-1">
           <Eyebrow>What the proof of concept knew</Eyebrow>
-          <p className="text-sm text-text-soft leading-relaxed">{busy ? 'Bringing it in…' : importDetail(imported)}</p>
+          <p className="text-text-soft text-xs leading-relaxed">{busy ? 'Bringing it in…' : importDetail(imported)}</p>
         </div>
         {host?.files ? (
           <Button kind="secondary" size="sm" className="shrink-0" onClick={() => void bringIn()} disabled={busy}>
             {imported ? 'Import again…' : 'Import…'}
           </Button>
         ) : (
-          <span className="shrink-0 text-text-faint text-xs">From the desktop app</span>
+          <span className="caps shrink-0 text-text-faint">From the desktop app</span>
         )}
       </div>
       {problem && (

@@ -44,3 +44,22 @@ export function SettingRow({ title, detail, children, stacked = false, problem }
     </div>
   )
 }
+
+/** What a list says while it holds nothing: a short label, and at most a sentence on how it fills. */
+export function EmptyRow({ title, detail }: { title: string; detail?: ReactNode }) {
+  return (
+    <div className="grid gap-1 py-3">
+      <span className="caps text-text-faint">{title}</span>
+      {detail && <span className="max-w-xl text-text-faint text-xs leading-relaxed">{detail}</span>}
+    </div>
+  )
+}
+
+/** A page's list while it holds nothing yet: a hatched plane, with what fills it said on the ground in its middle. */
+export function EmptyPlane({ children }: { children: ReactNode }) {
+  return (
+    <div className="hatch grid place-items-center px-6 py-8 text-line">
+      <div className="grid max-w-md gap-1 bg-ground px-4 py-3 text-center text-text-soft text-xs leading-relaxed">{children}</div>
+    </div>
+  )
+}

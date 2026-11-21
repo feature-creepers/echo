@@ -1,7 +1,6 @@
 import type { MemoryState } from '@repo/client'
 import { useState } from 'react'
 import { Button } from '../primitives/button.tsx'
-import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { Select } from '../primitives/select.tsx'
 import { retentionChoices, retentionDetail, retentionOf, retentionWarning } from './words.ts'
@@ -42,13 +41,11 @@ export function RetentionPanel({ memory, days }: { memory: MemoryState; days: nu
   const shown = asked ? asked.days : days
 
   return (
-    <div
-      className={cn('grid gap-3 border bg-raised/95 p-5 transition duration-(--duration-quick) ease-soft', asked ? 'border-danger/40' : 'border-line-strong')}
-    >
+    <div className="grid gap-3 py-4">
       <div className="flex items-center justify-between gap-6">
         <div className="grid min-w-0 gap-1">
           <Eyebrow>{LABEL}</Eyebrow>
-          <p className="text-sm text-text-soft leading-relaxed">{retentionDetail(days)}</p>
+          <p className="text-text-soft text-xs leading-relaxed">{retentionDetail(days)}</p>
         </div>
         <Select
           label={LABEL}
@@ -61,25 +58,19 @@ export function RetentionPanel({ memory, days }: { memory: MemoryState; days: nu
       </div>
 
       {asked && (
-        <div className="flex flex-wrap items-center gap-2 border-line border-t pt-3">
-          <p className="min-w-0 flex-1 text-text-soft text-xs leading-relaxed">{asked.warning} What was learned from it stays.</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="min-w-0 flex-1 text-danger text-xs leading-relaxed">{asked.warning} What was learned from it stays.</p>
           <Button kind="quiet" size="sm" onClick={() => setAsked(undefined)} disabled={busy}>
             Keep
           </Button>
-          <Button
-            kind="secondary"
-            size="sm"
-            className="border-danger/50 text-danger hover:not-disabled:border-danger"
-            onClick={() => void set(asked.days)}
-            disabled={busy}
-          >
+          <Button kind="secondary" size="sm" className="text-danger" onClick={() => void set(asked.days)} disabled={busy}>
             {busy ? 'Erasing…' : 'Erase'}
           </Button>
         </div>
       )}
 
       {problem && (
-        <p role="alert" className="text-danger text-sm">
+        <p role="alert" className="text-danger text-xs">
           {problem}
         </p>
       )}

@@ -86,7 +86,7 @@ export function BrowserGroup({ client, access, productName }: { client: Client; 
       </SettingRow>
 
       {browser?.found && (
-        <div className={cn('flex items-center gap-4 px-4 py-3 transition-opacity duration-(--duration-calm) ease-soft', !access.browser && 'opacity-45')}>
+        <div className={cn('flex items-center gap-4 py-3 transition-opacity duration-(--duration-calm) ease-soft', !access.browser && 'opacity-45')}>
           <span className="shrink-0 text-text-faint">
             <GlobeMark />
           </span>
@@ -94,8 +94,8 @@ export function BrowserGroup({ client, access, productName }: { client: Client; 
             <span className="flex items-center gap-2 text-[0.8125rem]">
               {browser.name}
               {browser.running && (
-                <span className="inline-flex items-center gap-1.5 text-text-faint text-xs">
-                  <span aria-hidden="true" className="size-1.5 bg-ok" />
+                <span className="caps inline-flex items-center gap-1.5 text-text">
+                  <span aria-hidden="true" className="size-2 bg-ok" />
                   Open
                 </span>
               )}
@@ -121,7 +121,7 @@ export function BrowserGroup({ client, access, productName }: { client: Client; 
       )}
 
       {problem && (
-        <p role="alert" className="px-4 py-3 text-danger text-xs leading-relaxed">
+        <p role="alert" className="py-3 text-danger text-xs leading-relaxed">
           {problem}
         </p>
       )}

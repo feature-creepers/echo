@@ -10,7 +10,7 @@ import { cn } from '../primitives/cn.ts'
 import { IconButton } from '../primitives/icon-button.tsx'
 import { CloseGlyph } from '../primitives/icons.tsx'
 import { Switch } from '../primitives/switch.tsx'
-import { SettingGroup, SettingRow } from '../settings/rows.tsx'
+import { EmptyRow, SettingGroup, SettingRow } from '../settings/rows.tsx'
 import { AppsGroup } from './apps-group.tsx'
 import { BrowserGroup } from './browser-group.tsx'
 import { ConfirmationRow } from './confirmation-row.tsx'
@@ -123,15 +123,15 @@ export function AccessSection({ client, settings, productName }: { client: Clien
 
       <SettingGroup title="Folders and files" note="Or say which one: “you can look at my Documents folder”">
         {access.places.length === 0 && (
-          <SettingRow title="Nothing else yet" detail={`Add the folders and files ${productName} may work with. Each is read only until you allow changes.`} />
+          <EmptyRow title="Nothing else yet" detail={`Add the folders and files ${productName} may work with. Each is read only until you allow changes.`} />
         )}
         {access.places.map((place) => (
-          <div key={place.path} className="flex items-center gap-4 px-5 py-3.5">
+          <div key={place.path} className="flex items-center gap-4 py-3">
             <span className="shrink-0 text-text-faint">
               <FolderMark kind={place.kind} />
             </span>
             <div className="grid min-w-0 flex-1 gap-0.5">
-              <span className="truncate font-medium text-sm">{lastPart(place.path)}</span>
+              <span className="truncate text-[0.8125rem]">{lastPart(place.path)}</span>
               <PathText path={place.path} className="text-text-faint" />
             </div>
             <Choice
@@ -148,7 +148,7 @@ export function AccessSection({ client, settings, productName }: { client: Clien
             </IconButton>
           </div>
         ))}
-        <div className="flex flex-wrap items-center gap-2 bg-raised/30 px-5 py-3">
+        <div className="flex flex-wrap items-center gap-2 py-3">
           {host?.files ? (
             <>
               <Button size="sm" disabled={busy} onClick={() => void add('folder')}>
@@ -159,7 +159,7 @@ export function AccessSection({ client, settings, productName }: { client: Clien
               </Button>
             </>
           ) : (
-            <span className="text-text-faint text-xs">Folders are picked from the desktop app.</span>
+            <span className="caps text-text-faint">Folders are picked from the desktop app</span>
           )}
         </div>
       </SettingGroup>
@@ -269,13 +269,13 @@ export function AccessSection({ client, settings, productName }: { client: Clien
 
       <SettingGroup title="Allowed for this session" note="Until you quit, or change these settings">
         {rules.allowances.length === 0 ? (
-          <SettingRow
+          <EmptyRow
             title="Nothing yet"
             detail="When a card asks, “Allow for this session” lets the same command, or any change in the same folder, go ahead without asking again."
           />
         ) : (
           rules.allowances.map((allowance) => (
-            <div key={allowance.id} className="flex items-center gap-4 px-4 py-3">
+            <div key={allowance.id} className="flex items-center gap-4 py-3">
               <span className="shrink-0 text-text-faint">{allowance.kind === 'change' ? <FolderMark kind="folder" /> : <CommandMark />}</span>
               <div className="grid min-w-0 flex-1 gap-0.5">
                 {allowance.kind !== 'change' ? (
@@ -306,19 +306,19 @@ export function AccessSection({ client, settings, productName }: { client: Clien
 
       <SettingGroup title="Never reached" note="Refused to every tool and command, whatever you give">
         {rules.loading ? (
-          <SettingRow title="Reading the list…" />
+          <EmptyRow title="Reading the list…" />
         ) : rules.protected.length === 0 ? (
-          <SettingRow title="Nothing on this computer" detail={`${productName} runs where it reaches no file.`} />
+          <EmptyRow title="Nothing on this computer" detail={`${productName} runs where it reaches no file.`} />
         ) : (
           <>
             {(showAll ? rules.protected : rules.protected.slice(0, PROTECTED_SHOWN)).map((place) => (
-              <div key={`${place.label}:${place.path}`} className="grid grid-cols-[minmax(0,12rem)_minmax(0,1fr)] items-baseline gap-4 px-4 py-2.5">
+              <div key={`${place.label}:${place.path}`} className="grid grid-cols-[minmax(0,12rem)_minmax(0,1fr)] items-baseline gap-4 py-2.5">
                 <span className="truncate text-[0.8125rem]">{place.label}</span>
                 <PathText path={place.path} className="text-text-faint" />
               </div>
             ))}
             {rules.protected.length > PROTECTED_SHOWN && (
-              <div className="bg-raised/30 px-4 py-2">
+              <div className="py-2">
                 <Button kind="quiet" size="sm" onClick={() => setShowAll(!showAll)}>
                   {showAll ? 'Show fewer' : `Show all ${rules.protected.length}`}
                 </Button>

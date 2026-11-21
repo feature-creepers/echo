@@ -4,7 +4,7 @@ import { type Account, type AccountPart, type AccountProvider, type AccountsView
 import { useEffect, useState } from 'react'
 import { Button } from '../primitives/button.tsx'
 import { Switch } from '../primitives/switch.tsx'
-import { SettingGroup, SettingRow } from '../settings/rows.tsx'
+import { EmptyRow, SettingGroup, SettingRow } from '../settings/rows.tsx'
 import { partsWords } from './words.ts'
 
 /** The accounts, followed for as long as the page is open. */
@@ -62,7 +62,7 @@ function Services({ state }: { state: ServicesState }) {
         <ServiceRow key={connection.id} connection={connection} onDisconnect={() => disconnect(connection)} />
       ))}
       {problem && (
-        <p role="alert" className="px-4 py-3 text-danger text-xs leading-relaxed">
+        <p role="alert" className="py-3 text-danger text-xs leading-relaxed">
           {problem}
         </p>
       )}
@@ -86,7 +86,7 @@ function ServiceRow({ connection, onDisconnect }: { connection: Connection; onDi
     >
       {asking ? (
         <span className="flex items-center gap-2">
-          <span className="text-text-soft text-xs">Disconnect it?</span>
+          <span className="caps text-text-soft">Disconnect it?</span>
           <Button size="sm" onClick={onDisconnect}>
             Disconnect
           </Button>
@@ -104,7 +104,7 @@ function ServiceRow({ connection, onDisconnect }: { connection: Connection; onDi
 }
 
 function Reading() {
-  return <p className="text-text-faint text-xs">Reading your accounts…</p>
+  return <p className="caps text-text-faint">Reading your accounts…</p>
 }
 
 /** What the core said when it refused, else a sentence of the page's own. */
@@ -161,7 +161,7 @@ function Accounts({ state, productName }: { state: AccountsState; productName: s
           ))
         )}
         {left?.provider.permissions && (
-          <p className="px-4 py-3 text-text-faint text-xs leading-relaxed">
+          <p className="py-3 text-text-faint text-xs leading-relaxed">
             {`${left.address} is disconnected from this computer. ${left.provider.label} keeps the access until you remove it from `}
             <a href={left.provider.permissions} target="_blank" rel="noreferrer" className="text-text-soft underline underline-offset-2 hover:text-text">
               your account’s app permissions
@@ -175,7 +175,7 @@ function Accounts({ state, productName }: { state: AccountsState; productName: s
         <SettingRow title="What it may read" detail="Ask for what you want it to read: you can sign in again later to give more.">
           <span className="flex items-center gap-5">
             {(['calendar', 'mail'] as const).map((part) => (
-              <span key={part} className="flex items-center gap-2 text-xs">
+              <span key={part} className="caps flex items-center gap-2 text-text-soft">
                 <Switch
                   label={partsWords([part])}
                   on={parts[part]}
@@ -205,7 +205,7 @@ function Accounts({ state, productName }: { state: AccountsState; productName: s
         )}
 
         {problem && (
-          <p role="alert" className="px-4 py-3 text-danger text-xs leading-relaxed">
+          <p role="alert" className="py-3 text-danger text-xs leading-relaxed">
             {problem}
           </p>
         )}
@@ -231,7 +231,7 @@ function AccountRow({ account, view, onSignIn, onDisconnect }: { account: Accoun
     >
       {asking ? (
         <span className="flex items-center gap-2">
-          <span className="text-text-soft text-xs">Disconnect it?</span>
+          <span className="caps text-text-soft">Disconnect it?</span>
           <Button size="sm" onClick={onDisconnect}>
             Disconnect
           </Button>
@@ -267,8 +267,9 @@ function Notes({ notes }: { notes: readonly string[] }) {
 
 function Empty({ productName }: { productName: string }) {
   return (
-    <p className="px-4 py-6 text-center text-text-faint text-xs leading-relaxed">
-      {`No account is connected. Connect one, and ${productName} can tell you what is on your calendar, find and read your mail, and tell you when a mail arrives.`}
-    </p>
+    <EmptyRow
+      title="No account connected"
+      detail={`Connect one, and ${productName} can tell you what is on your calendar, find and read your mail, and tell you when a mail arrives.`}
+    />
   )
 }

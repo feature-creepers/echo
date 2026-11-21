@@ -3,7 +3,7 @@ import { useFollowed } from '@repo/client/react'
 import type { SleepSettings } from '@repo/protocol'
 import { type KeyboardEvent, useEffect, useId, useState } from 'react'
 import { useNow } from '../hub/use-now.ts'
-import { Orb } from '../presence/orb.tsx'
+import { Eye } from '../presence/eye.tsx'
 import { Button } from '../primitives/button.tsx'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
@@ -47,18 +47,12 @@ export function SleepPanel({ memory, sleep }: { memory: MemoryState; sleep: Slee
   }
 
   return (
-    <div
-      className={cn('grid gap-5 border bg-raised/95 p-5 transition duration-(--duration-slow) ease-soft', state.asleep ? 'border-line' : 'border-line-strong')}
-    >
+    <div className="grid gap-4 py-4">
       <div className="flex items-center gap-5">
-        <Orb
-          size={64}
-          mood={state.asleep ? 'asleep' : 'idle'}
-          className={cn('-m-2 shrink-0 transition-opacity duration-(--duration-slow) ease-soft', state.asleep && 'opacity-70')}
-        />
+        <Eye size={64} mood={state.asleep ? 'asleep' : 'idle'} className="shrink-0" />
         <div className="grid min-w-0 flex-1 gap-1" aria-live="polite">
-          <Eyebrow accent={!state.asleep}>{status.title}</Eyebrow>
-          <p className="text-sm text-text-soft leading-relaxed">{status.detail}</p>
+          <Eyebrow className={cn(!state.asleep && 'text-text')}>{status.title}</Eyebrow>
+          <p className="text-text-soft text-xs leading-relaxed">{status.detail}</p>
         </div>
         <Button onClick={() => void sleepNow()} disabled={sleep.when === 'never' || asking || working} className="shrink-0">
           {working ? 'Sleeping…' : 'Sleep now'}
@@ -66,15 +60,20 @@ export function SleepPanel({ memory, sleep }: { memory: MemoryState; sleep: Slee
       </div>
 
       {working && (
-        <div className="h-1 overflow-hidden bg-text/[0.06]" role="progressbar" aria-label="Sleep" aria-valuenow={Math.round(progress * 100)}>
+        <div
+          className="h-1.5 overflow-hidden shadow-[inset_0_-1px_0_var(--color-line-strong)]"
+          role="progressbar"
+          aria-label="Sleep"
+          aria-valuenow={Math.round(progress * 100)}
+        >
           <div
-            className="h-full origin-left bg-accent/70 transition-transform duration-(--duration-slow) ease-soft"
+            className="h-full origin-left bg-text transition-transform duration-(--duration-slow) ease-soft"
             style={{ transform: `scaleX(${Math.max(0.04, progress)})` }}
           />
         </div>
       )}
 
-      <div className="grid gap-4 border-line border-t pt-5">
+      <div className="grid gap-4 border-line border-t pt-4">
         <div className="flex items-center justify-between gap-6">
           <Eyebrow>When it sleeps</Eyebrow>
           <Select
@@ -87,7 +86,7 @@ export function SleepPanel({ memory, sleep }: { memory: MemoryState; sleep: Slee
         </div>
 
         {(usesQuiet || usesTime) && (
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-sm text-text-soft">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-[0.8125rem] text-text-soft">
             {usesQuiet && (
               <span className="flex items-center gap-2.5">
                 <label htmlFor={quietId}>After</label>
@@ -114,7 +113,7 @@ export function SleepPanel({ memory, sleep }: { memory: MemoryState; sleep: Slee
         )}
 
         {problem && (
-          <p role="alert" className="text-danger text-sm">
+          <p role="alert" className="text-danger text-xs">
             {problem}
           </p>
         )}
