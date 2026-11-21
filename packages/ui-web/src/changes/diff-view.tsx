@@ -36,8 +36,8 @@ const Chevron = ({ open }: { open: boolean }) => (
     fill="none"
     stroke="currentColor"
     strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
+    strokeLinecap="square"
+    strokeLinejoin="miter"
     aria-hidden="true"
     className={cn('shrink-0 transition-transform duration-(--duration-quick) ease-soft', open && 'rotate-90')}
   >
@@ -46,7 +46,7 @@ const Chevron = ({ open }: { open: boolean }) => (
 )
 
 /**
- * Lines added and removed, in the ok and danger colours, each left out when there are none; a file that is not
+ * Lines added and removed, in the info and danger colours, each left out when there are none; a file that is not
  * text, too large, or whose content before is not known, says so instead.
  */
 export function Counts({ change, className }: { change: Pick<FileChange, 'added' | 'removed' | 'binary' | 'large' | 'unknown'>; className?: string }) {
@@ -81,17 +81,17 @@ function FileBlock({ file, relative, startsOpen }: { file: FileDiff; relative: R
   const [open, setOpen] = useState(startsOpen)
   const status = STATUS_WORDS[file.status]
   return (
-    <section className="min-w-0 overflow-hidden bg-black/25 shadow-[inset_0_0_0_1px_rgb(235_230_218/0.07)]">
+    <section className="min-w-0 overflow-hidden border border-line bg-surface">
       <button
         type="button"
         aria-expanded={open}
         title={file.path}
         onClick={() => setOpen(!open)}
-        className="flex h-8 w-full min-w-0 items-center gap-2 px-2.5 text-left text-text-faint transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.03]"
+        className="-outline-offset-1 flex h-8 w-full min-w-0 items-center gap-2 px-2.5 text-left text-text-soft transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.06]"
       >
         <Chevron open={open} />
         <PathLine path={relative(file.path)} className="flex-1 text-text text-xs" />
-        {status && <span className="shrink-0 text-[0.6875rem] text-text-faint">{status}</span>}
+        {status && <span className="caps shrink-0 text-text-soft">{status}</span>}
         <Counts change={file} className="text-[0.6875rem]" />
       </button>
       {open && <FileBody file={file} />}
@@ -257,7 +257,7 @@ const Lines = memo(function Lines({ file }: { file: FileDiff }) {
         <button
           type="button"
           onClick={() => setAll(true)}
-          className="flex h-7 w-full items-center justify-center border-line border-t text-[0.6875rem] text-text-soft transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.03] hover:text-text"
+          className="caps flex h-7 w-full items-center justify-center border-line border-t text-text-soft transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.06] hover:text-text"
         >
           Show the rest · {linesInWords(rest)}
         </button>

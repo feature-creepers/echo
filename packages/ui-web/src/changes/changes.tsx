@@ -37,15 +37,15 @@ export function Changes({ client, of, relative, version }: { client: Client; of:
   if (reading.is === 'reading') {
     return (
       <div aria-busy="true" className="grid grid-cols-1 gap-1.5">
-        <div className="h-8 animate-pulse bg-text/[0.035]" />
-        <p className="text-[0.6875rem] text-text-faint">Reading the changes…</p>
+        <div className="hatch h-8 animate-pulse text-line" />
+        <p className="caps text-text-soft">Reading the changes</p>
       </div>
     )
   }
   if (reading.is === 'failed') {
     return (
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-danger text-xs">The changes could not be read.</span>
+        <span className="text-[0.8125rem] text-danger">The changes could not be read.</span>
         <Button
           kind="quiet"
           size="sm"
@@ -59,6 +59,6 @@ export function Changes({ client, of, relative, version }: { client: Client; of:
       </div>
     )
   }
-  if (reading.files.length === 0) return <p className="text-text-faint text-xs">No file was changed.</p>
+  if (reading.files.length === 0) return <p className="text-[0.8125rem] text-text-soft">No file was changed.</p>
   return <DiffView files={reading.files} relative={relative} />
 }

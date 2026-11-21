@@ -46,7 +46,7 @@ export function Inspector({ client, onOpenMemory }: { client: Client; onOpenMemo
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="grid gap-2 px-2 pt-2 pb-2">
+      <div className="grid gap-2 px-3 pt-2 pb-2">
         <div className="flex items-center gap-2">
           <SearchField value={query} onChange={setQuery} placeholder="Find an event" label="Find an event by its name or its words" />
           <IconButton label={held ? 'Follow new events' : 'Hold the log still'} active={held !== undefined} onClick={held ? follow : hold}>
@@ -73,23 +73,26 @@ export function Inspector({ client, onOpenMemory }: { client: Client; onOpenMemo
               <button
                 type="button"
                 onClick={follow}
-                className="material shadow-float pointer-events-auto flex items-center gap-1.5 py-1 pr-2.5 pl-2 text-label text-text-soft transition-colors hover:text-text"
+                className="caps material shadow-float pointer-events-auto flex items-center gap-1.5 py-1 pr-2.5 pl-2 text-text-soft transition-colors hover:text-text"
               >
-                <span className="size-1.5 bg-accent" />
+                <span className="size-2 bg-accent" />
                 {arrived === 0 ? 'Held · follow new events' : arrived === 1 ? 'One new event · show' : `${arrived} new events · show`}
               </button>
             </motion.div>
           )}
         </AnimatePresence>
         {shown.length === 0 ? (
-          <p className="px-5 py-4 text-sm text-text-faint [overflow-wrap:anywhere]">
+          <p className="px-4 py-4 text-[0.8125rem] text-text-soft [overflow-wrap:anywhere]">
             {query.trim() === '' ? `No ${GROUP_TITLE[group].toLowerCase()} event yet.` : `No event holds “${query.trim()}”.`}
           </p>
         ) : (
           // Each line is keyed by its place in the order of arrival, so a line read stays where it is as others come in.
           <ol
             ref={list}
-            className={cn('scroll-quiet min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-2 font-mono text-[0.6875rem]', held ? 'pt-10' : 'pt-1')}
+            className={cn(
+              'scroll-quiet mx-3 min-h-0 flex-1 overflow-y-auto overflow-x-hidden border-text border-t-2 pb-2 font-mono text-[0.6875rem]',
+              held && 'pt-9'
+            )}
           >
             {shown.map((logged) => (
               <EventLine
@@ -117,22 +120,22 @@ function EventLine({ logged, open, onToggle, onOpenMemory }: { logged: Logged; o
   const { event } = logged
   const summary = eventSummary(event)
   return (
-    <li>
+    <li className="border-line border-t first:border-t-0">
       <button
         type="button"
         aria-expanded={open}
         onClick={onToggle}
         className={cn(
-          'mx-2 flex w-[calc(100%-1rem)] items-baseline gap-2 px-2 py-0.5 text-left transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.05]',
-          open && 'bg-text/[0.07]'
+          '-outline-offset-1 flex w-full items-baseline gap-2 px-1 py-1 text-left transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.06]',
+          open && 'bg-text/[0.06] shadow-[inset_2px_0_0_var(--color-text)]'
         )}
       >
         <span className="shrink-0 text-text-faint tabular-nums">{time.format(logged.at)}</span>
-        <span className="shrink-0 text-accent">{event.name}</span>
+        <span className="shrink-0 text-text">{event.name}</span>
         <span className="min-w-0 truncate text-text-soft">{summary}</span>
       </button>
       {open && event.name === 'memory.changed' && onOpenMemory && (
-        <Button kind="quiet" size="sm" onClick={onOpenMemory} className="mx-4 mb-1 w-fit">
+        <Button kind="quiet" size="sm" onClick={onOpenMemory} className="mb-1 ml-1 w-fit">
           Edit or forget in Memory
         </Button>
       )}
@@ -146,12 +149,12 @@ function EventWhole({ logged }: { logged: Logged }) {
   const text = useMemo(() => JSON.stringify(logged.event, null, 2), [logged])
   const { copied, copy } = useCopy(text)
   return (
-    <div className="relative mx-4 mb-2">
-      <Button kind="quiet" size="sm" onClick={copy} aria-live="polite" className="absolute top-1.5 right-1.5 font-sans">
+    <div className="relative mb-2">
+      <Button kind="quiet" size="sm" onClick={copy} aria-live="polite" className="absolute top-1.5 right-1.5">
         {copied === undefined ? 'Copy' : copied ? 'Copied' : 'Could not copy'}
       </Button>
       {/* An event can hold a long answer, an address or a path. */}
-      <pre className="scroll-quiet max-h-96 overflow-y-auto whitespace-pre-wrap bg-ground p-3 pr-16 text-text-soft leading-relaxed [overflow-wrap:anywhere]">
+      <pre className="scroll-quiet max-h-96 overflow-y-auto whitespace-pre-wrap border border-line bg-surface p-3 pr-16 text-text-soft leading-relaxed [overflow-wrap:anywhere]">
         {text}
       </pre>
     </div>

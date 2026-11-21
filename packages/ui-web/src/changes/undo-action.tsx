@@ -18,7 +18,7 @@ export function UndoAction({ use, undo }: { use: AccessUse; undo: Undo }) {
   if (!use.undo) return null
   if (use.undo.done) {
     return (
-      <p className="text-accent text-xs">
+      <p className="text-[0.8125rem] text-text">
         {use.undo.kind === 'restore' ? 'The previous version was put back' : 'Moved to the trash'} at {timeOf(use.undo.done)}.
       </p>
     )
@@ -44,7 +44,7 @@ export function UndoAction({ use, undo }: { use: AccessUse; undo: Undo }) {
   if (undoing.is === 'changed') {
     return (
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-warn text-xs">
+        <span className="text-[0.8125rem] text-warn">
           {use.paths.length > 1 ? 'These files' : 'The file'} changed since.{' '}
           {restore ? 'Put the previous version back anyway?' : 'Move it to the trash anyway?'}
         </span>
@@ -62,8 +62,10 @@ export function UndoAction({ use, undo }: { use: AccessUse; undo: Undo }) {
       <Button size="sm" disabled={undoing.is === 'busy'} onClick={() => void act(false)}>
         {undoing.is === 'busy' ? 'Working…' : restore ? 'Restore the previous version' : 'Move to trash'}
       </Button>
-      {undoing.is === 'failed' && <span className="text-danger text-xs">{undoing.reason}</span>}
-      {undoing.is !== 'failed' && !restore && <span className="text-text-faint text-xs">To the trash in the app’s data folder, to take back from there.</span>}
+      {undoing.is === 'failed' && <span className="text-[0.8125rem] text-danger">{undoing.reason}</span>}
+      {undoing.is !== 'failed' && !restore && (
+        <span className="text-[0.8125rem] text-text-soft">To the trash in the app’s data folder, to take back from there.</span>
+      )}
     </div>
   )
 }
