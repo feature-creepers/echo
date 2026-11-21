@@ -138,6 +138,23 @@
     height: 100%;
   }
 
+  /* The app is dark: the browser draws its own controls and colours dark too. */
+  :root {
+    color-scheme: dark;
+  }
+
+  /*
+   * UI SDK opens menus, selects and popovers as the browser's popovers, which the browser gives a background, a
+   * border, padding and a clip of its own. What floats draws its own material and shadow, so none of those stay.
+   */
+  [popover] {
+    background: transparent;
+    border: 0;
+    padding: 0;
+    color: inherit;
+    overflow: visible;
+  }
+
   body {
     background: var(--color-ground);
     color: var(--color-text);
