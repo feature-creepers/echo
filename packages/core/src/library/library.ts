@@ -289,9 +289,14 @@ export function createLibrary({ records, screen, now, newId }: LibraryOptions): 
       libraryTools({
         search,
         show: (id) => show(id, showing()),
-        save(title, collection) {
-          const view = screen.latest(showing().thread)
-          if (!view) return { ok: false, text: 'Nothing of yours is on screen to save. Show it first.' }
+        save(title, collection, card) {
+          const cards = screen.cards(showing().thread)
+          const view = card === undefined ? cards[0] : cards.find((one) => one.card === card)
+          if (!view)
+            return {
+              ok: false,
+              text: card === undefined ? 'Nothing of yours is on screen to save. Show it first.' : `No card of yours on the screen is named "${card}".`
+            }
           const saved = save({ view: view.id, ...(title === undefined ? {} : { title }), ...(collection === undefined ? {} : { collection }) })
           return saved.ok ? { ok: true, text: `Saved as "${saved.widget.title}" [${saved.widget.id}].` } : { ok: false, text: saved.error.message }
         },

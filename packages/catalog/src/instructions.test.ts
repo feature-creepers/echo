@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { BLOCKS } from './catalog.ts'
-import { describeCatalog, SHOW_TOOL } from './instructions.ts'
+import { CARDS_PER_ANSWER, describeCatalog, SHOW_TOOL } from './instructions.ts'
 import { signature } from './signature.ts'
 
 describe('describeCatalog', () => {
@@ -15,6 +15,11 @@ describe('describeCatalog', () => {
   it('names the tool and tells the model to compose, not to pick something ready-made', () => {
     expect(text).toContain(SHOW_TOOL)
     expect(text).toContain('Nothing is ready-made for any subject')
+  })
+
+  it('tells the model an answer may show a few named cards side by side, which its next answer replaces', () => {
+    expect(text).toContain(`up to ${CARDS_PER_ANSWER} cards per answer, side by side, one call each with a short \`card\` name`)
+    expect(text).toContain('your next answer replaces them all')
   })
 
   it('tells the model to play media in the app, not to link to a web player', () => {

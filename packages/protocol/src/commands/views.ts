@@ -33,15 +33,16 @@ export const viewCommands = {
   },
 
   /**
-   * Read what the assistant is showing now, if anything: for a client that connects after it was shown. The stream
-   * is every view of the conversation still open, newest first, so the main screen opens as it was left.
+   * Read what the assistant is showing now, if anything: for a client that connects after it was shown. The view is
+   * the newest card on the stage; the stream is every view of the conversation still open, newest first, so the main
+   * screen opens as it was left.
    */
   'view.read': {
     input: z.object({}),
     output: z.object({ view: viewSchema.optional(), stream: z.array(viewSchema).default([]) })
   },
 
-  /** Remove a view from the screen: the one given, wherever it is in the stream, or, left out, the one on the stage. */
+  /** Remove a view from the screen: the one given, wherever it is in the stream, or, left out, every card on the stage. */
   'view.clear': {
     input: z.object({ view: z.string().min(1).max(64).optional() }),
     output: z.object({})

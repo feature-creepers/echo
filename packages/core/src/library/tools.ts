@@ -2,6 +2,7 @@ import { collectionSchema, type SavedWidget, widgetTitleSchema } from '@repo/pro
 import { z } from 'zod'
 import type { ToolResult } from '../ports/tools.ts'
 import type { Tool } from '../tools/tools.ts'
+import { cardNameSchema } from '../views/screen.ts'
 
 /** What a session can do with the library, by name (docs/SPEC.md, section 9.8). */
 const LIBRARY_SEARCH_TOOL = 'library_search'
@@ -22,14 +23,14 @@ export const LIBRARY_INSTRUCTIONS = [
 interface LibraryActions {
   search(query: string): SavedWidget[]
   show(widget: string): ToolResult
-  save(title: string | undefined, collection: string | undefined): ToolResult
+  save(title: string | undefined, collection: string | undefined, card: string | undefined): ToolResult
   update(input: LibraryEdit): ToolResult
   remove(widget: string): ToolResult
 }
 
 const searchInput = z.object({ query: z.string().max(500).default('') })
 const widgetInput = z.object({ widget: z.string().min(1).max(64) })
-const saveInput = z.object({ title: widgetTitleSchema.optional(), collection: collectionSchema.optional() })
+const saveInput = z.object({ title: widgetTitleSchema.optional(), collection: collectionSchema.optional(), card: cardNameSchema.optional() })
 const updateInput = z.object({
   widget: z.string().min(1).max(64),
   title: widgetTitleSchema.optional(),
@@ -64,7 +65,7 @@ export function libraryTools(library: LibraryActions): Tool[] {
       definition: {
         name: LIBRARY_SHOW_TOOL,
         description:
-          'Show a widget of the library on the screen, exactly as the person saved it: it replaces what was shown, and what it plays starts. Then say in a few words what it is; do not describe it.',
+          'Show a widget of the library on the screen, exactly as the person saved it, as a card of your answer, and what it plays starts. Then say in a few words what it is; do not describe it.',
         inputSchema: {
           type: 'object',
           properties: { widget: { type: 'string', description: 'The id of the saved widget, in brackets in the list.' } },
@@ -79,18 +80,21 @@ export function libraryTools(library: LibraryActions): Tool[] {
     {
       definition: {
         name: LIBRARY_SAVE_TOOL,
-        description: 'Save the view you are showing now to the library, because the person asked to keep it. A title and a collection may be given.',
+        description: 'Save a card you are showing now to the library, because the person asked to keep it. A title and a collection may be given.',
         inputSchema: {
           type: 'object',
           properties: {
             title: { type: 'string', description: 'What to call it. Left out, the title of the view.' },
-            collection: { type: 'string', description: 'A collection to file it in, when they named one.' }
+            collection: { type: 'string', description: 'A collection to file it in, when they named one.' },
+            card: { type: 'string', description: 'The name of the card to save. Left out, the latest.' }
           }
         }
       },
       run(input) {
         const asked = saveInput.safeParse(input ?? {})
-        return asked.success ? library.save(asked.data.title, asked.data.collection) : { ok: false, text: 'A title and a collection are a few words each.' }
+        return asked.success
+          ? library.save(asked.data.title, asked.data.collection, asked.data.card)
+          : { ok: false, text: "A title and a collection are a few words each, and a card's name a word or two." }
       }
     },
     {

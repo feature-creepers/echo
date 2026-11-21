@@ -1,3 +1,4 @@
+import { validateView } from '@repo/catalog'
 import { z } from 'zod'
 import type { Records } from '../ports/records.ts'
 import type { Tool } from '../tools/tools.ts'
@@ -99,8 +100,10 @@ export function createObjections({ records, screen, now }: { records: Records; s
               }
             }
           }
-          const shown = screen.show({ title: 'A decision', view }, showing())
-          if (!shown.ok) return shown
+          // The core's own card: it goes beside what the assistant shows.
+          const checked = validateView(view)
+          if (!checked.ok) return { ok: false, text: `The card was not shown:\n- ${checked.problems.join('\n- ')}` }
+          screen.present({ title: 'A decision', spec: checked.spec }, showing())
           return {
             ok: true,
             text: 'The card is shown. Ask aloud, in one sentence, which way they prefer, then stop and wait for their answer. When they decide, call record_decision.'

@@ -1,3 +1,4 @@
+import { validateView } from '@repo/catalog'
 import type { ConfirmationPhrase } from '@repo/protocol'
 import type { Timers } from '../ports/clock.ts'
 import type { Signal } from '../ports/harness.ts'
@@ -125,10 +126,11 @@ export function createApprovals({
           choice: { type: 'Questions', props: { questions: [{ options, other: false }] } }
         }
       }
-      // Its title says it waits; its heading asks.
-      const shown = screen.show({ title: 'Waiting for you', view }, showing)
-      if (!shown.ok) return Promise.resolve({ answer: 'unanswered', pressed: false })
-      const id = screen.latest(showing.thread)?.id
+      // Its title says it waits; its heading asks. It is the core's own card: it goes beside what the assistant shows.
+      const checked = validateView(view)
+      if (!checked.ok) return Promise.resolve({ answer: 'unanswered', pressed: false })
+      screen.present({ title: 'Waiting for you', spec: checked.spec }, showing)
+      const id = screen.cards(showing.thread)[0]?.id
 
       return new Promise<Answered>((resolve) => {
         const entry = {

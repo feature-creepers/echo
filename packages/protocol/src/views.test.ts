@@ -31,6 +31,21 @@ describe('the stream', () => {
     expect(ids(stream)).toEqual(['radio-2', 'card-2', 'topic'])
   })
 
+  it.each<[string, Partial<ShownView>, string[]]>([
+    ['the same name in the same turn', { thread: 'x', turn: 't1', card: 'chart' }, ['chart-2', 'map']],
+    ['another name', { thread: 'x', turn: 't1', card: 'news' }, ['chart-2', 'map', 'chart-1']],
+    ['the same name in another turn', { thread: 'x', turn: 't2', card: 'chart' }, ['chart-2', 'map', 'chart-1']],
+    ['the same name in another thread', { thread: 'y', turn: 't1', card: 'chart' }, ['chart-2', 'map', 'chart-1']],
+    ['the same name outside any turn', { thread: 'x', card: 'chart' }, ['chart-2', 'map', 'chart-1']],
+    ['no name', { thread: 'x', turn: 't1' }, ['chart-2', 'map', 'chart-1']]
+  ])('keeps one card of each name per answer: a card shown with %s', (_case, more, expected) => {
+    let stream: ShownView[] = []
+    stream = onTop(stream, view('chart-1', { thread: 'x', turn: 't1', card: 'chart' }))
+    stream = onTop(stream, view('map', { thread: 'x', turn: 't1', card: 'map' }))
+    stream = onTop(stream, view('chart-2', more))
+    expect(ids(stream)).toEqual(expected)
+  })
+
   it("keeps a thread's view on the stage beside its aside card", () => {
     let stream: ShownView[] = []
     stream = onTop(stream, view('card', { aside: true, thread: 'side' }))

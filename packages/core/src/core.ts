@@ -1,5 +1,6 @@
 import { CLEAR_TOOL, describeCatalog, MEDIA_TOOL, SHOW_TOOL, SHOW_TOOL_INPUT, validateView } from '@repo/catalog'
 import { type Capability, type Event, MEDIA_ACTIONS, type Result } from '@repo/protocol'
+import { z } from 'zod'
 import { createAccess } from './access/access.ts'
 import { createAccountList } from './accounts/accounts.ts'
 import { calendarBriefing } from './accounts/briefing.ts'
@@ -56,13 +57,16 @@ import { createUserSettings } from './settings/settings.ts'
 import { createTools, type Tool } from './tools/tools.ts'
 import { createFeeds } from './views/feeds.ts'
 import { createMaps } from './views/maps.ts'
-import { createScreen, type Showing } from './views/screen.ts'
+import { cardNameSchema, createScreen, type Showing } from './views/screen.ts'
 
 /** The most of the proof of concept's notes or context file read, and of one day of its history, in bytes. */
 const EARLIER_TEXT_LIMIT = 1_000_000
 const EARLIER_DAY_LIMIT = 20_000_000
 /** The most lines of its history brought in: the latest. */
 const EARLIER_LINES_MAX = 200_000
+
+/** What a session asks to remove from the screen: one card of its answer, by its name, or every card. */
+const clearInput = z.object({ card: cardNameSchema.optional() })
 
 /** What a core is given by the program that hosts it. */
 export interface CoreOptions {
@@ -167,7 +171,7 @@ export function createCore(options: CoreOptions): Core {
       definition: {
         name: SHOW_TOOL,
         description:
-          'Show a view on the screen, composed from the blocks of the catalogue. It replaces what was shown. Answers with the problems to correct when the view is not valid. Say your short answer aloud before calling it, so the view appears while you are heard.',
+          'Show a view on the screen as a card of your answer, composed from the blocks of the catalogue. A new card name adds a card beside the others; the same name replaces that card. Answers with the problems to correct when the view is not valid. Say your short answer aloud before calling it, so the view appears while you are heard.',
         inputSchema: SHOW_TOOL_INPUT
       },
       async run(input) {
@@ -184,11 +188,16 @@ export function createCore(options: CoreOptions): Core {
     {
       definition: {
         name: CLEAR_TOOL,
-        description: 'Remove what is shown on the screen, when it no longer serves the conversation.',
-        inputSchema: { type: 'object', properties: {} }
+        description: 'Remove the cards of your answer from the screen, when they no longer serve the conversation: all of them, or one by its name.',
+        inputSchema: { type: 'object', properties: { card: { type: 'string', description: 'The name of the card to remove. Left out, every card.' } } }
       },
-      run: () => {
-        screen.clear()
+      run: (input) => {
+        const asked = clearInput.safeParse(input ?? {})
+        if (!asked.success) return { ok: false, text: 'Give the name of the card to remove as "card", or nothing to remove them all.' }
+        const { card } = asked.data
+        const cards = screen.cards(showing().thread).filter((one) => card === undefined || one.card === card)
+        if (card !== undefined && cards.length === 0) return { ok: false, text: `No card of yours on the screen is named "${card}".` }
+        for (const one of cards) screen.clear(one.id)
         return { ok: true, text: 'Cleared.' }
       }
     },

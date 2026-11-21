@@ -2,7 +2,7 @@ import { type EventOf, onTop, type ShownView } from '@repo/protocol'
 import type { Session } from '../session.ts'
 import { cell, type Followed } from './followed.ts'
 
-/** What the assistant shows: the view on the stage, and the stream. */
+/** What the assistant shows: the newest card on the stage, and the stream. */
 export interface Shown {
   stage: ShownView | undefined
   /** Every view of the conversation still open, newest first, aside cards among them: what the main screen draws. */
@@ -15,7 +15,7 @@ export interface Shown {
 }
 
 export interface ViewState extends Followed<Shown> {
-  /** Close a view of the stream, or, left out, the one on the stage. */
+  /** Close a view of the stream, or, left out, every card on the stage. */
   clear(view?: string): Promise<void>
   unfollow(): void
 }

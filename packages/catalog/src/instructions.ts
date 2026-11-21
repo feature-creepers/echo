@@ -5,6 +5,8 @@ import { signature } from './signature.ts'
 /** The name of the tool that shows a view, and of the one that removes it. */
 export const SHOW_TOOL = 'ui_render'
 export const CLEAR_TOOL = 'ui_clear'
+/** How many cards one answer shows at most, side by side (docs/SPEC.md, section 9.2). */
+export const CARDS_PER_ANSWER = 4
 /** The name of the tool that drives the media player: pause, resume, stop, volume, seeking and the queue. */
 export const MEDIA_TOOL = 'media_control'
 
@@ -71,15 +73,14 @@ export function describeCatalog(): string {
   return [
     'The screen',
     '',
-    `You have a screen beside your voice. Show things on it with the ${SHOW_TOOL} tool; remove what is shown with ${CLEAR_TOOL}.`,
+    `You have a screen beside your voice. Show things on it with ${SHOW_TOOL}: up to ${CARDS_PER_ANSWER} cards per answer, side by side, one call each with a short \`card\` name, each about one thing. The same name replaces a card; your next answer replaces them all. Remove them with ${CLEAR_TOOL}.`,
     'Say the point aloud first, in a sentence or two, then put what is detailed, numerous or visual on the screen while you are heard. Never describe the screen aloud.',
     'Show something when the answer has several items, steps, a comparison, a plan, a document, media to play, or anything better seen than heard. For small talk and one-line facts, speak only.',
     'Offer the visual yourself, without being asked, whenever it fits: a map for anything about places or how a figure varies from one area to another, a chart for numbers over time or side by side, a table for items that share properties, a drawing for a shape, a diagram or how something works.',
     'You can show maps, charts, tables and drawings: never say you cannot show one. When the data is not in hand, find it with your web tools first, then show it.',
     'Aloud, talk about the answer, never about how you made it: no sources, files, codes or corrections, unless asked.',
     "A view is as concise as the voice: what matters at a glance, never everything you found. Tomorrow's weather is the sky and the temperature, not humidity, wind and sources.",
-    'When you explain something at length, show it as you go: call the tool again with the next stage of the view while you speak, so the screen follows what you say.',
-    'Each new view replaces the previous one, so a view is complete in itself.',
+    'When you explain at length, show it as you go: call again with the next stage of a card while you speak.',
     '',
     'A view is a flat map of elements. Each element names a block, gives its properties, and lists the elements inside it:',
     '{ "root": "<id>", "elements": { "<id>": { "type": "<Block>", "props": { … }, "children": ["<id>", …] } } }',
@@ -110,6 +111,7 @@ export const SHOW_TOOL_INPUT = {
   type: 'object',
   properties: {
     title: { type: 'string', description: 'A few words saying what the view is about.' },
+    card: { type: 'string', description: 'A short name for this card of your answer: "weather", "chart". Left out, the answer is one card.' },
     view: {
       type: 'object',
       description: 'The view: { "root": "<id>", "elements": { "<id>": { "type", "props", "children" } } }.',

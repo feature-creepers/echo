@@ -2,7 +2,10 @@ import { z } from 'zod'
 import { eventPrefixSchema } from '../envelope.ts'
 import { viewSchema } from '../views.ts'
 
-/** The assistant shows a view. It goes on top of the stream; on the stage, it takes the place of the one shown before. */
+/**
+ * The assistant shows a view. It goes on top of the stream; on the stage, it goes beside the cards of its answer, or
+ * takes the place of those of an earlier one.
+ */
 export const viewShownSchema = eventPrefixSchema.extend({
   name: z.literal('view.shown'),
   view: viewSchema

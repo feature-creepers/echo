@@ -27,6 +27,11 @@ export const viewSchema = z.object({
    * Escape, and a thread keeps one such card, its latest.
    */
   aside: z.boolean().optional(),
+  /**
+   * Its name among the cards of one answer ("weather", "chart"), when the assistant composed it: an answer shows a few
+   * cards side by side, and a card shown again under its name in the same turn takes the place of the one before.
+   */
+  card: z.string().min(1).max(40).optional(),
   /** The saved widget of the library this view shows again, when it is one. */
   widget: z.string().min(1).max(64).optional(),
   /** The reminder this card is of, when it is one's: it can be snoozed from it. */
@@ -36,20 +41,22 @@ export const viewSchema = z.object({
 export type ShownView = z.infer<typeof viewSchema>
 
 /**
- * How many views the main screen's stream holds. An older one leaves the stream, not the conversation: it stays
- * with its thread and can be asked for again.
+ * How many views the main screen's stream holds, each card of an answer one view. An older one leaves the stream,
+ * not the conversation: it stays with its thread and can be asked for again.
  */
 export const STREAM_LENGTH = 12
 
 /**
  * The stream with a view put on top: newest first, each view once. The core and every client keep it by this one
  * rule, so they agree on it. A view shown again (a topic brought back) moves to the top. A thread keeps one aside
- * card, its latest, and a saved widget one card, its latest version: a new one takes the place of the one before.
+ * card, its latest, a saved widget one card, its latest version, and an answer one card of each name, its latest:
+ * a new one takes the place of the one before.
  */
 export function onTop(stream: readonly ShownView[], view: ShownView): ShownView[] {
   const replaced = (other: ShownView) =>
     other.id === view.id ||
     (view.widget !== undefined && other.widget === view.widget) ||
-    (view.aside === true && view.thread !== undefined && other.aside === true && other.thread === view.thread)
+    (view.aside === true && view.thread !== undefined && other.aside === true && other.thread === view.thread) ||
+    (view.card !== undefined && view.turn !== undefined && other.card === view.card && other.turn === view.turn && other.thread === view.thread)
   return [view, ...stream.filter((other) => !replaced(other))].slice(0, STREAM_LENGTH)
 }

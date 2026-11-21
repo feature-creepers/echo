@@ -390,6 +390,25 @@ describe('the library through the core', () => {
     expect((await run(core, 'library.read', {})).library.widgets).toEqual([])
   })
 
+  it('shows several cards for one answer, saves one by its name, and clears one or all of them', async () => {
+    const { core, harness } = start()
+    const { token } = await threadOf(core, harness, 'Plan a weekend in Lyon')
+    for (const card of ['weather', 'map', 'radio'])
+      expect(await core.toolHost.call(token, 'ui_render', { title: card, card, view: radio })).toEqual({ ok: true, text: 'Shown.' })
+    const titles = async () => (await run(core, 'view.read', {})).stream.map((view) => view.title)
+    expect(await titles()).toEqual(['radio', 'map', 'weather'])
+
+    const saved = await core.toolHost.call(token, 'library_save', { card: 'map' })
+    expect(saved.text).toMatch(/^Saved as "map"/)
+    expect(await core.toolHost.call(token, 'library_save', { card: 'news' })).toEqual({ ok: false, text: 'No card of yours on the screen is named "news".' })
+
+    expect(await core.toolHost.call(token, 'ui_clear', { card: 'Map' })).toEqual({ ok: true, text: 'Cleared.' })
+    expect(await titles()).toEqual(['radio', 'weather'])
+    expect((await core.toolHost.call(token, 'ui_clear', { card: 'map' })).ok).toBe(false)
+    await core.toolHost.call(token, 'ui_clear', {})
+    expect(await titles()).toEqual([])
+  })
+
   it('shows a saved widget on the stage when the user brings it back from the library', async () => {
     const { core, harness } = start()
     const { token } = await threadOf(core, harness, 'Play some jazz')

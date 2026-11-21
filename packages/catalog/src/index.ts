@@ -13,6 +13,6 @@ export {
   type SeriesFeed
 } from './feed.ts'
 export { checkJoin, type Feature, type JoinCheck, propertyText, type Regions, readRegions } from './geo.ts'
-export { CLEAR_TOOL, describeCatalog, EXAMPLE_VIEW, MEDIA_TOOL, SHOW_TOOL, SHOW_TOOL_INPUT } from './instructions.ts'
+export { CARDS_PER_ANSWER, CLEAR_TOOL, describeCatalog, EXAMPLE_VIEW, MEDIA_TOOL, SHOW_TOOL, SHOW_TOOL_INPUT } from './instructions.ts'
 export { type Validation, validateView } from './validate.ts'
 export type { BlockProps, ViewSpec } from './view.ts'
