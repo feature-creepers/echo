@@ -74,7 +74,7 @@ export function usePinnedDocks(count: number, area: HTMLElement | null): PinnedD
  * to put it in order in its dock or to move it to the other one. Docks and order are the library's, kept by the core.
  *
  * In a narrow window the docks are hidden, and the title row's toggle slides every pinned widget over the right of
- * the stage in one list, the left dock's first, as a translucent panel that the same toggle or Escape closes.
+ * the stage in one list, the left dock's first, on a floating plane that the same toggle or Escape closes.
  * Hidden, the widgets stay drawn and only fade: showing them again costs no new layout, and what they hold (a
  * scroll position, an unfolded card) is kept.
  */
@@ -183,7 +183,7 @@ export function PinnedDocksView({ controls, actions, docks }: { controls: Librar
           layoutScroll
           className="scroll-quiet min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pt-3 pb-3 [mask-image:linear-gradient(to_bottom,black_calc(100%-12px),transparent)]"
         >
-          <div className="grid grid-cols-[minmax(0,1fr)] gap-2">{all.map((widget) => card(widget, undefined))}</div>
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-5">{all.map((widget) => card(widget, undefined))}</div>
         </motion.div>
       </motion.aside>
     )
@@ -222,8 +222,8 @@ export function PinnedDocksView({ controls, actions, docks }: { controls: Librar
               aria-hidden="true"
               className={cn(
                 '-inset-x-1.5 pointer-events-none absolute inset-y-0 transition duration-(--duration-calm) ease-soft',
-                drag ? 'bg-text/[0.015] shadow-[inset_0_0_0_1px_rgb(235_230_218/0.05)]' : 'opacity-0',
-                target && 'bg-text/[0.025] shadow-[inset_0_0_0_1px_rgb(235_230_218/0.09)]'
+                drag ? 'shadow-[inset_0_0_0_1px_var(--color-line)]' : 'opacity-0',
+                target && 'bg-text/[0.04] shadow-[inset_0_0_0_1px_var(--color-line-strong)]'
               )}
             />
             {/* The list scrolls with the wheel, and fades out at its ends instead of being cut. */}
@@ -232,7 +232,7 @@ export function PinnedDocksView({ controls, actions, docks }: { controls: Librar
               data-dock-scroll={side}
               className="scroll-quiet -mx-1.5 pointer-events-auto relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-1.5 pt-1 pb-3 [mask-image:linear-gradient(to_bottom,transparent,black_6px,black_calc(100%-16px),transparent)]"
             >
-              <div data-dock={side} className="relative grid grid-cols-[minmax(0,1fr)] gap-2">
+              <div data-dock={side} className="relative grid grid-cols-[minmax(0,1fr)] gap-5">
                 {items}
               </div>
             </motion.div>
@@ -243,13 +243,7 @@ export function PinnedDocksView({ controls, actions, docks }: { controls: Librar
   )
 }
 
-/** Where a dragged card would land: a slot its height, marked in the accent. */
+/** Where a dragged card would land: a slot its height, hatched as what is about to come. */
 function DropSlot({ height }: { height: number }) {
-  return (
-    <div
-      data-drop=""
-      style={{ height }}
-      className="bg-[color-mix(in_oklab,var(--accent)_6%,transparent)] shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--accent)_42%,transparent)]"
-    />
-  )
+  return <div data-drop="" style={{ height }} className="hatch text-line shadow-[inset_0_0_0_1px_var(--color-line-strong)]" />
 }

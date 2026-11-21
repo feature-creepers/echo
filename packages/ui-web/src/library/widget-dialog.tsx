@@ -8,6 +8,7 @@ import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { IconButton } from '../primitives/icon-button.tsx'
 import { CloseGlyph, SendGlyph } from '../primitives/icons.tsx'
 import { Switch } from '../primitives/switch.tsx'
+import { FIELD } from '../settings/field.ts'
 import type { ViewActions } from '../view/context.ts'
 import { ViewRenderer } from '../view/view-renderer.tsx'
 import type { LibraryControls } from './library-context.ts'
@@ -28,8 +29,8 @@ interface WidgetDialogProps {
 
 const when = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'long', year: 'numeric' })
 
-/** The look of the dialog's fields: a sunken box with a hairline. */
-const FIELD = 'h-8 border border-line-strong bg-black/25 px-2.5 text-[0.8125rem] shadow-[inset_0_1px_1px_rgb(0_0_0/0.25)] transition-colors'
+/** The dialog's fields: the app's own, compact. */
+const SHORT_FIELD = cn(FIELD, 'h-8 px-2.5 text-[0.8125rem]')
 
 /**
  * One saved widget, open: drawn at full size and usable, beside what can be done with it. Its name and
@@ -79,19 +80,19 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
       <DialogContent
         aria-label={widget.title}
         initialFocus="content"
-        className="shadow-float fixed inset-6 m-auto flex h-fit max-h-[calc(100%-3rem)] w-[calc(100%-3rem)] max-w-4xl overflow-hidden bg-surface outline-none ring-1 ring-text/[0.08] transition-[opacity,translate,scale] duration-(--duration-calm) ease-soft data-starting-style:translate-y-2 data-starting-style:scale-99 data-starting-style:opacity-0 data-ending-style:translate-y-1 data-ending-style:scale-99 data-ending-style:opacity-0 data-ending-style:duration-(--duration-quick)"
+        className="material shadow-float fixed inset-6 m-auto flex h-fit max-h-[calc(100%-3rem)] w-[calc(100%-3rem)] max-w-4xl overflow-hidden transition-[opacity,translate,scale] duration-(--duration-calm) ease-soft data-starting-style:translate-y-2 data-starting-style:scale-99 data-starting-style:opacity-0 data-ending-style:translate-y-1 data-ending-style:scale-99 data-ending-style:opacity-0 data-ending-style:duration-(--duration-quick)"
       >
         <div className="scroll-quiet grid min-w-0 flex-1 content-start overflow-y-auto">
-          <div className="sticky top-0 z-10 flex h-10 items-center border-line border-b bg-surface/90 px-5 text-text-soft text-xs backdrop-blur-xl">
-            <span className="truncate font-medium">{widget.title}</span>
+          <div className="sticky top-0 z-10 flex h-12 items-center border-line border-b bg-surface px-5">
+            <span className="display truncate text-[1.75rem] leading-[1.5rem]">{widget.title}</span>
           </div>
           <div className="p-5">
             <ViewRenderer spec={widget.spec as ViewSpec} actions={actions} />
           </div>
         </div>
 
-        <aside className="scroll-quiet flex w-72 shrink-0 flex-col gap-5 overflow-y-auto border-black/40 border-l bg-text/[0.025] px-4 pb-4 *:shrink-0">
-          <div className="-mx-4 flex h-10 shrink-0 items-center justify-between border-line border-b pr-1.5 pl-4">
+        <aside className="scroll-quiet flex w-72 shrink-0 flex-col gap-5 overflow-y-auto border-line border-l px-4 pb-4 *:shrink-0">
+          <div className="-mx-4 flex h-12 shrink-0 items-center justify-between border-line border-b pr-1.5 pl-4">
             <Eyebrow>Saved {when.format(new Date(widget.since))}</Eyebrow>
             <DialogClose
               render={
@@ -114,7 +115,7 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
                 onChange={(event) => setTitle(event.target.value)}
                 onBlur={keepTitle}
                 onKeyDown={(event) => event.key === 'Enter' && event.currentTarget.blur()}
-                className={cn(FIELD, 'font-medium')}
+                className={SHORT_FIELD}
               />
             </div>
             <div className="grid gap-1.5">
@@ -130,7 +131,7 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
                 onChange={(event) => setCollection(event.target.value)}
                 onBlur={keepCollection}
                 onKeyDown={(event) => event.key === 'Enter' && event.currentTarget.blur()}
-                className={cn(FIELD, 'placeholder:text-text-faint')}
+                className={SHORT_FIELD}
               />
               <datalist id={`${ids}-collections`}>
                 {collections.map((name) => (
@@ -138,10 +139,10 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
                 ))}
               </datalist>
             </div>
-            <div className="flex items-center justify-between gap-3 bg-text/[0.04] px-2.5 py-2 shadow-[inset_0_0_0_1px_rgb(235_230_218/0.05)]">
+            <div className="flex items-center justify-between gap-3 border-line border-y py-2.5">
               <span className="grid gap-px">
                 <span className="text-[0.8125rem]">Pin to the main screen</span>
-                <span className="text-[0.6875rem] text-text-faint">Kept live beside the conversation, in your order</span>
+                <span className="text-[0.75rem] text-text-soft">Kept live beside the conversation, in your order</span>
               </span>
               <Switch label="Pin to the main screen" on={widget.pinned} onChange={(pinned) => act(controls.library.update({ widget: widget.id, pinned }))} />
             </div>
@@ -155,7 +156,7 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
             <label htmlFor={`${ids}-change`}>
               <Eyebrow>Ask for a change</Eyebrow>
             </label>
-            <div className="flex items-end gap-1.5 border border-line-strong bg-black/25 shadow-[inset_0_1px_1px_rgb(0_0_0/0.25)] py-1.5 pr-1 pl-2.5 transition-colors focus-within:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_55%,transparent)]">
+            <div className="flex items-end gap-1.5 border border-line-strong bg-surface py-1.5 pr-1 pl-2.5 transition-colors duration-(--duration-quick) ease-soft focus-within:border-text">
               <textarea
                 id={`${ids}-change`}
                 value={change}
@@ -172,17 +173,17 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
                 label="Ask the assistant"
                 type="submit"
                 disabled={change.trim() === ''}
-                className="text-accent disabled:text-text-faint disabled:opacity-50"
+                className="text-text disabled:text-text-faint disabled:opacity-50"
               >
                 <SendGlyph />
               </IconButton>
             </div>
-            <p className="text-text-faint text-xs leading-relaxed">The assistant changes it and saves the new version.</p>
+            <p className="text-[0.75rem] text-text-soft leading-relaxed">The assistant changes it and saves the new version.</p>
           </form>
 
           <div className="mt-auto grid gap-2 border-line border-t pt-4">
             {problem && (
-              <p role="alert" className="text-danger text-xs">
+              <p role="alert" className="text-[0.8125rem] text-danger">
                 {problem}
               </p>
             )}
@@ -192,7 +193,7 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
                 <div className="flex gap-2">
                   <Button
                     size="sm"
-                    className="flex-1 border-danger/50 text-danger hover:not-disabled:border-danger"
+                    className="flex-1 text-danger shadow-[inset_0_0_0_1px_var(--color-danger)]"
                     onClick={() => act(controls.library.remove(widget.id))}
                   >
                     Delete
@@ -203,7 +204,7 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
                 </div>
               </div>
             ) : (
-              <Button size="sm" kind="quiet" className="justify-start text-text-faint hover:not-disabled:text-danger" onClick={() => setDeleting(true)}>
+              <Button size="sm" kind="quiet" className="justify-start hover:not-disabled:text-danger" onClick={() => setDeleting(true)}>
                 Delete from the library
               </Button>
             )}

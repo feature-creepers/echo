@@ -30,8 +30,9 @@ interface PinnedCardProps {
 }
 
 /**
- * One pinned widget: a bar with its name and what can be done with it, over the widget drawn live, as dense as on
- * the board. A tall one is folded to a fixed height until unfolded. In a dock, it is dragged by its bar.
+ * One pinned widget, bare on the ground: its name in capitals over a hairline, with what can be done with it there
+ * while it is pointed at, then the widget drawn live, as dense as on the board. A tall one is cut to a fixed height,
+ * fading where it is cut, until unfolded. In a dock, it is dragged by its name's row.
  */
 export function PinnedCard({ widget, controls, actions, dragged, landed, shut, unfolded, onShut, onUnfold, onPress }: PinnedCardProps) {
   const root = useRef<HTMLDivElement>(null)
@@ -60,18 +61,20 @@ export function PinnedCard({ widget, controls, actions, dragged, landed, shut, u
       animate={{ opacity: 1, y: 0 }}
       // Dragged, the card leaves the layout: the picture that follows the pointer stands for it.
       style={{ display: dragged ? 'none' : undefined }}
-      className="group/card relative grid min-w-0 grid-cols-[minmax(0,1fr)] overflow-hidden bg-surface shadow-[0_0_0_1px_rgb(235_230_218/0.06),0_6px_18px_-10px_rgb(0_0_0/0.7)]"
+      // The picture dragged is a copy of the card without its mark: bare content would show what it passes over through
+      // it, so it is drawn on a plane.
+      className="group/card relative grid min-w-0 grid-cols-[minmax(0,1fr)] overflow-hidden not-data-[pin]:material"
     >
       <div
         onPointerDown={onPress && ((event) => root.current && onPress(event, root.current))}
-        className={cn('flex h-7 touch-none select-none items-center gap-1 pr-0.5 pl-1.5', onPress ? 'cursor-grab' : 'pl-3')}
+        className={cn('flex h-7 touch-none select-none items-center gap-1 border-line border-b', onPress && 'cursor-grab')}
       >
         {onPress && (
-          <span className="text-text-faint/0 transition-colors group-hover/card:text-text-faint [&_svg]:size-3.5">
+          <span className="text-text-soft opacity-0 transition-opacity duration-(--duration-quick) group-hover/card:opacity-100 [&_svg]:size-3.5">
             <GripGlyph />
           </span>
         )}
-        <span className="min-w-0 flex-1 truncate font-medium text-text-soft text-xs">{widget.title}</span>
+        <span className="caps min-w-0 flex-1 truncate text-text-soft">{widget.title}</span>
         <div className="flex items-center opacity-0 transition-opacity duration-(--duration-quick) focus-within:opacity-100 group-hover/card:opacity-100 [&_button]:size-6 [&_svg]:size-3.5">
           <IconButton label={`Show ${widget.title} on the stage`} onClick={() => act(controls.library.show(widget.id))}>
             <ExpandGlyph />
@@ -79,35 +82,31 @@ export function PinnedCard({ widget, controls, actions, dragged, landed, shut, u
           <IconButton label={`Unpin ${widget.title}`} onClick={() => act(controls.library.update({ widget: widget.id, pinned: false }))}>
             <PinGlyph filled />
           </IconButton>
+          <IconButton label={shut ? `Unfold ${widget.title}` : `Fold ${widget.title}`} onClick={onShut}>
+            <span className={cn('transition-transform duration-(--duration-calm) ease-soft', shut && '-rotate-90')}>
+              <ChevronGlyph />
+            </span>
+          </IconButton>
         </div>
-        <IconButton label={shut ? `Unfold ${widget.title}` : `Fold ${widget.title}`} onClick={onShut} className="size-6 [&_svg]:size-3.5">
-          <span className={cn('transition-transform duration-(--duration-calm) ease-soft', shut && '-rotate-90')}>
-            <ChevronGlyph />
-          </span>
-        </IconButton>
       </div>
-      {/* Folded to its bar, the widget stays drawn: what it plays goes on, and it unfolds as it was. */}
+      {/* Folded to its name's row, the widget stays drawn: what it plays goes on, and it unfolds as it was. */}
       <div hidden={shut} className="relative min-w-0">
-        <div className="overflow-hidden" style={unfolded ? undefined : { maxHeight: FOLDED_HEIGHT }}>
-          <div ref={body} className="min-w-0 px-3 pt-0.5 pb-3">
+        <div
+          className={cn('overflow-hidden', tall && !unfolded && '[mask-image:linear-gradient(to_bottom,black_calc(100%-2rem),transparent)]')}
+          style={unfolded ? undefined : { maxHeight: FOLDED_HEIGHT }}
+        >
+          <div ref={body} className="min-w-0 pt-2 pb-3">
             <WidgetBody spec={widget.spec as ViewSpec} actions={actions} />
           </div>
         </div>
         {tall && (
-          <div
-            className={cn(
-              'flex justify-center pb-1.5',
-              !unfolded && 'absolute inset-x-0 bottom-0 bg-gradient-to-t from-surface via-surface/90 to-transparent pt-8'
-            )}
+          <button
+            type="button"
+            onClick={onUnfold}
+            className="caps flex h-6 items-center text-text-soft transition-colors duration-(--duration-quick) ease-soft hover:text-text"
           >
-            <button
-              type="button"
-              onClick={onUnfold}
-              className="flex h-5 items-center gap-1 px-2 text-[0.6875rem] text-text-soft transition-colors hover:bg-text/[0.06] hover:text-text"
-            >
-              {unfolded ? 'Show less' : 'Show more'}
-            </button>
-          </div>
+            {unfolded ? 'Show less' : 'Show more'}
+          </button>
         )}
       </div>
     </motion.div>

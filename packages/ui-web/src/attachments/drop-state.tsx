@@ -85,7 +85,7 @@ export function useWindowDrop(onDrop: (dropped: Dropped) => void, pathOf: ((file
 }
 
 /**
- * The window while files are dragged over it: the screen dims a little under a hairline frame, and a card in the
+ * The window while files are dragged over it: the screen dims a little under a hairline frame, and a plane in the
  * middle says what dropping does. Nothing glows; it only fades.
  */
 export function DropState({ over, name }: { over: boolean; name: string }) {
@@ -102,7 +102,7 @@ export function DropState({ over, name }: { over: boolean; name: string }) {
           transition={{ duration: DURATION.quick, ease: EASE }}
         >
           <div className="absolute inset-0 bg-ground/55" />
-          <div className="absolute inset-3 shadow-[inset_0_0_0_1px_rgb(235_230_218/0.14)]" />
+          <div className="absolute inset-3 shadow-[inset_0_0_0_1px_var(--color-line-strong)]" />
           <div className="absolute inset-0 flex items-center justify-center">
             <motion.div
               initial={{ scale: 0.97, y: 4 }}
@@ -114,8 +114,9 @@ export function DropState({ over, name }: { over: boolean; name: string }) {
               <span className="text-text-soft [&_svg]:size-6">
                 <PaperclipGlyph />
               </span>
-              <span className="font-medium text-[0.9375rem] tracking-[-0.01em]">Drop to give these to {name}</span>
-              <span className="grid text-text-faint text-xs leading-relaxed">
+              <span className="display text-[2rem] leading-[1.75rem]">Drop</span>
+              <span className="text-[0.9375rem]">To give these to {name}</span>
+              <span className="grid text-[0.75rem] text-text-soft leading-relaxed">
                 <span>They go with what you say next.</span>
                 <span>
                   Up to {ATTACHMENTS_PER_TURN} files of {LARGEST_FILE} each; a folder is given to read.
