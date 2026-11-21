@@ -174,6 +174,18 @@ describe('a view drawn', () => {
       said: [['Which one? Blue']]
     },
     {
+      name: 'picking an answer by its number',
+      spec: checked(
+        view({ questions: { type: 'Questions', props: { questions: [{ question: 'Which one?', options: [{ label: 'Red' }, { label: 'Blue' }] }] } } })
+      ),
+      use: async (host: HTMLElement) => {
+        host.querySelector<HTMLElement>('[role="option"]')?.focus()
+        await key('3')
+        await key('2')
+      },
+      said: [['Which one? Blue']]
+    },
+    {
       name: 'the exact words of an answer that waits for them',
       spec: checked(
         view({
