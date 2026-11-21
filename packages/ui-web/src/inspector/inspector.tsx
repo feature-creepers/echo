@@ -2,6 +2,7 @@ import type { Client, Logged } from '@repo/client'
 import { useFollowed } from '@repo/client/react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useMemo, useRef, useState } from 'react'
+import { Empty } from '../conversation/thread-list.tsx'
 import { useCopy } from '../conversation/use-copy.ts'
 import { Button } from '../primitives/button.tsx'
 import { Choice } from '../primitives/choice.tsx'
@@ -40,11 +41,12 @@ export function Inspector({ client, onOpenMemory }: { client: Client; onOpenMemo
     list.current?.scrollTo({ top: 0 })
   }
 
-  if (events.length === 0) return <p className="px-5 py-4 text-sm text-text-faint">Events from the core appear here as they arrive.</p>
+  if (events.length === 0)
+    return <Empty title="No events yet" text="What the core tells the window appears here as it happens: turns, threads, views, memory and settings." />
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="grid gap-2 px-3 pt-3 pb-2">
+      <div className="grid gap-2 px-2 pt-2 pb-2">
         <div className="flex items-center gap-2">
           <SearchField value={query} onChange={setQuery} placeholder="Find an event" label="Find an event by its name or its words" />
           <IconButton label={held ? 'Follow new events' : 'Hold the log still'} active={held !== undefined} onClick={held ? follow : hold}>
@@ -58,7 +60,7 @@ export function Inspector({ client, onOpenMemory }: { client: Client; onOpenMemo
           onChange={setGroup}
         />
       </div>
-      <div className="relative flex min-h-0 flex-1 flex-col border-line border-t">
+      <div className="relative flex min-h-0 flex-1 flex-col">
         <AnimatePresence>
           {held && (
             <motion.div
@@ -120,7 +122,10 @@ function EventLine({ logged, open, onToggle, onOpenMemory }: { logged: Logged; o
         type="button"
         aria-expanded={open}
         onClick={onToggle}
-        className={cn('flex w-full items-baseline gap-2 px-4 py-1 text-left transition-colors hover:bg-raised', open && 'bg-raised')}
+        className={cn(
+          'mx-2 flex w-[calc(100%-1rem)] items-baseline gap-2 rounded-sm px-2 py-0.5 text-left transition-colors duration-(--duration-quick) ease-soft hover:bg-white/[0.05]',
+          open && 'bg-white/[0.07]'
+        )}
       >
         <span className="shrink-0 text-text-faint tabular-nums">{time.format(logged.at)}</span>
         <span className="shrink-0 text-accent">{event.name}</span>

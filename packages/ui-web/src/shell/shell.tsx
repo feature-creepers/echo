@@ -3,7 +3,7 @@ import { describeShortcut, followServices, matchesShortcut, pinnedOf } from '@re
 import { useFollowed } from '@repo/client/react'
 import type { Accent, CommandInput, Look, PersonaId, TurnId } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
-import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { type ReactNode, type Ref, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import type { SpeechEngine } from '../audio/engine.ts'
 import { useDeviceSpeech } from '../audio/use-speech.ts'
 import { Stage } from '../conversation/stage.tsx'
@@ -29,7 +29,7 @@ import { LibraryGlyph, SheetGlyph, WidgetsGlyph } from '../primitives/icons.tsx'
 import { accentStyle } from '../styles/accent.ts'
 import { DURATION, EASE } from '../styles/motion.ts'
 import { FIRST_SHEET_PLACE, moveSheet, type SheetTab } from './sheet-place.ts'
-import { clampSheetWidth, previewSheetWidth, sheetBounds } from './sheet-width.ts'
+import { previewSheetWidth } from './sheet-width.ts'
 import { SideSheet } from './side-sheet.tsx'
 
 export interface ShellProps {
@@ -179,8 +179,9 @@ function Connected({ productName, client, engine, mini }: { productName: string;
 
   // The pinned widgets: docked on both sides of the conversation in a wide window, behind a toggle in a narrow one.
   const library = useFollowed(client.library)
-  // The docks measure the room the side sheet leaves them, now that it takes its width from the window.
-  const docks = usePinnedDocks(pinnedOf(library).length, sheet && !mini.on ? clampSheetWidth(device.settings.sheet.width, sheetBounds(window.innerWidth)) : 0)
+  // The docks measure the room the screen has beside the side sheet, however it changes.
+  const [screenArea, setScreenArea] = useState<HTMLDivElement | null>(null)
+  const docks = usePinnedDocks(pinnedOf(library).length, screenArea)
 
   // A saved widget opens in the library, on its widgets page.
   // The services widget apps call, followed while the window shows the conversation.
@@ -319,9 +320,40 @@ function Connected({ productName, client, engine, mini }: { productName: string;
 
   return (
     <LibraryContext.Provider value={controls}>
-      <Frame productName={productName} accent={accent} look={look} actions={titleActions} mini={mini}>
-        <div ref={sheetArea} className="flex h-full">
-          <div className="relative h-full min-w-0 flex-1">
+      <Frame
+        productName={productName}
+        accent={accent}
+        look={look}
+        actions={titleActions}
+        mini={mini}
+        frameRef={sheetArea}
+        sideOpen={sheet !== undefined && !mini.on}
+        // The sheet takes its width from the window, top to bottom, and stays from one screen to the next: the
+        // screen beside it narrows, so nothing is ever under it.
+        side={
+          <AnimatePresence initial={false}>
+            {sheet && !mini.on && (
+              <SideSheet
+                key="sheet"
+                client={client}
+                personas={personas.available}
+                place={sheetPlace}
+                tab={sheet}
+                onMove={moveSheetTo}
+                onOpenMemory={() => openHub('memory')}
+                resize={{
+                  width: sheetWidth,
+                  keep: showing.is === 'hub' ? HUB_KEEPS : STAGE_KEEPS,
+                  onPreview: previewWidth,
+                  onCommit: keepSheetWidth
+                }}
+              />
+            )}
+          </AnimatePresence>
+        }
+      >
+        <div className="flex h-full">
+          <div ref={setScreenArea} className="relative h-full min-w-0 flex-1">
             <AnimatePresence mode="wait" initial={false}>
               <motion.div
                 key={showing.is}
@@ -382,27 +414,6 @@ function Connected({ productName, client, engine, mini }: { productName: string;
             </div>
             <QuickLook client={client} />
           </div>
-          {/* The sheet takes its width from the window and stays from one screen to the next: the screen beside it
-              narrows, so nothing is ever under it. */}
-          <AnimatePresence initial={false}>
-            {sheet && !mini.on && (
-              <SideSheet
-                key="sheet"
-                client={client}
-                personas={personas.available}
-                place={sheetPlace}
-                tab={sheet}
-                onMove={moveSheetTo}
-                onOpenMemory={() => openHub('memory')}
-                resize={{
-                  width: sheetWidth,
-                  keep: showing.is === 'hub' ? HUB_KEEPS : STAGE_KEEPS,
-                  onPreview: previewWidth,
-                  onCommit: keepSheetWidth
-                }}
-              />
-            )}
-          </AnimatePresence>
         </div>
       </Frame>
     </LibraryContext.Provider>
@@ -419,6 +430,12 @@ interface FrameProps {
   actions?: ReactNode
   /** Mini: the window has no title row, only the way back to the full window. */
   mini?: MiniWindow | undefined
+  /** What stands beside the screen, the whole height of the window, its own top holding the system's controls: the side sheet. */
+  side?: ReactNode
+  /** The side is open: the title row then ends where it starts, since the side's top holds the system's controls. */
+  sideOpen?: boolean
+  /** The window's frame, where a width being dragged is written. */
+  frameRef?: Ref<HTMLDivElement>
   children: ReactNode
 }
 
@@ -434,27 +451,37 @@ interface FrameProps {
  * shown while the pointer is over the window or the keyboard is in it; on Windows and Linux the system's buttons stay
  * over its right end, and what Mini shows starts under them.
  */
-function Frame({ productName, accent, look, actions, mini, children }: FrameProps) {
+function Frame({ productName, accent, look, actions, mini, side, sideOpen = false, frameRef, children }: FrameProps) {
   return (
     // Clipped, not hidden: what slides in or out past an edge (the side sheet, the pinned widgets) is cut there, and
     // the window can never be scrolled sideways, not even by bringing something into view or giving it the keyboard.
     <div
-      className={cn('accent-shift relative flex h-screen flex-col overflow-clip bg-(--window)', mini?.on && 'group/mini drag')}
+      ref={frameRef}
+      className={cn('accent-shift relative flex h-screen overflow-clip bg-(--window)', mini?.on && 'group/mini drag')}
       style={accentStyle(accent, look)}
     >
       <Ground />
-      <header className="drag relative h-[env(titlebar-area-height,var(--frame-title-bar))] shrink-0">
-        {mini?.on ? (
-          <FullWindowButton onPress={() => mini.set(false)} />
-        ) : (
-          <div className="absolute top-[env(titlebar-area-y,0px)] left-[env(titlebar-area-x,0px)] flex h-[env(titlebar-area-height,var(--frame-title-bar))] w-[env(titlebar-area-width,100%)] items-center justify-between pr-2 pl-4">
-            {/* The product's name, written small as a wordmark: lowercase here only, by its style, so it is still read as a name. */}
-            <span className="font-semibold text-[0.8125rem] text-text-soft lowercase tracking-[-0.01em]">{productName}</span>
-            <span className="no-drag flex items-center gap-0.5">{actions}</span>
-          </div>
-        )}
-      </header>
-      <main className="relative min-h-0 flex-1">{children}</main>
+      <div className="relative flex min-w-0 flex-1 flex-col">
+        <header className="drag relative h-[env(titlebar-area-height,var(--frame-title-bar))] shrink-0">
+          {mini?.on ? (
+            <FullWindowButton onPress={() => mini.set(false)} />
+          ) : (
+            <div
+              className={cn(
+                'absolute top-[env(titlebar-area-y,0px)] left-[env(titlebar-area-x,0px)] flex h-[env(titlebar-area-height,var(--frame-title-bar))] items-center justify-between pr-2 pl-4',
+                // The system's controls sit over the side's top while it is open: the row runs to the side's edge.
+                sideOpen ? 'right-0' : 'w-[env(titlebar-area-width,100%)]'
+              )}
+            >
+              {/* The product's name, written small as a wordmark: lowercase here only, by its style, so it is still read as a name. */}
+              <span className="font-semibold text-[0.8125rem] text-text-soft lowercase tracking-[-0.01em]">{productName}</span>
+              <span className="no-drag flex items-center gap-0.5">{actions}</span>
+            </div>
+          )}
+        </header>
+        <main className="relative min-h-0 flex-1">{children}</main>
+      </div>
+      {side}
     </div>
   )
 }

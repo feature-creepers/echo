@@ -38,24 +38,27 @@ interface PinnedDocks {
 }
 
 /**
- * Where the pinned widgets stand, from the room the conversation has and the user's choice: the window's width, less
- * what the side sheet takes beside it (`taken`). Wide enough, they are docked on both sides of the conversation;
- * narrower, they wait behind a toggle. The user's choice holds until the room crosses that width again.
+ * Where the pinned widgets stand, from the room the conversation has and the user's choice. The room is measured on
+ * the screen's own box (`area`), whatever narrows it: the window, the side sheet beside it, a resize. Wide enough, the
+ * widgets are docked on both sides of the conversation; narrower, they wait behind a toggle. The user's choice holds
+ * until the room crosses that width again.
  */
-export function usePinnedDocks(count: number, taken = 0): PinnedDocks {
-  const query = `(min-width: ${DOCKS_WIDTH + taken}px)`
-  const [wide, setWide] = useState(() => window.matchMedia(query).matches)
+export function usePinnedDocks(count: number, area: HTMLElement | null): PinnedDocks {
+  const [wide, setWide] = useState(() => window.innerWidth >= DOCKS_WIDTH)
   const [chosen, setChosen] = useState<boolean>()
+  const measured = useRef<boolean>(undefined)
   useEffect(() => {
-    const media = window.matchMedia(query)
-    setWide(media.matches)
-    const onChange = () => {
-      setWide(media.matches)
+    if (!area) return
+    const observer = new ResizeObserver(([entry]) => {
+      const next = (entry?.contentRect.width ?? 0) >= DOCKS_WIDTH
+      if (measured.current === next) return
+      measured.current = next
+      setWide(next)
       setChosen(undefined)
-    }
-    media.addEventListener('change', onChange)
-    return () => media.removeEventListener('change', onChange)
-  }, [query])
+    })
+    observer.observe(area)
+    return () => observer.disconnect()
+  }, [area])
   const shown = count > 0 && (chosen ?? wide)
   return useMemo(
     () => ({ count, wide, shown, toggle: () => setChosen(!shown), show: () => setChosen(true), hide: () => setChosen(false) }),

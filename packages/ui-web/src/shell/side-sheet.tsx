@@ -14,7 +14,7 @@ import { Inspector } from '../inspector/inspector.tsx'
 import { cn } from '../primitives/cn.ts'
 import { IconButton } from '../primitives/icon-button.tsx'
 import { CloseGlyph } from '../primitives/icons.tsx'
-import { DURATION, EASE, settle, slide } from '../styles/motion.ts'
+import { settle, slide } from '../styles/motion.ts'
 import { SheetHandle } from './sheet-handle.tsx'
 import { SHEET_TABS, type SheetMove, type SheetPlace, type SheetTab } from './sheet-place.ts'
 import { SHEET_CSS_WIDTH, sheetWidthStyle } from './sheet-width.ts'
@@ -142,15 +142,13 @@ export function SideSheet({ client, personas, place, tab, onMove, onOpenMemory, 
       // Its width follows the one the person chose, within what the window allows, without React drawing it again.
       data-sheet-width
       style={{ ...sheetWidthStyle(resize.width), width: SHEET_CSS_WIDTH }}
-      className="material relative z-30 flex h-full min-w-0 shrink-0 flex-col border-black/50 border-l"
+      className="relative z-30 flex h-full min-w-0 shrink-0 flex-col border-line border-l bg-surface"
     >
       <SheetHandle {...resize} />
-      <header className="flex items-center gap-2 border-white/[0.06] border-b py-2.5 pr-2.5 pl-3">
-        <div
-          role="tablist"
-          aria-label="What the side sheet shows"
-          className="grid min-w-0 flex-1 grid-cols-3 rounded-md bg-white/[0.06] p-0.5 shadow-[inset_0_0_0_1px_rgb(255_255_255/0.04)]"
-        >
+      {/* The sheet's top is the window's top: the title row's height, dragging the window, and on Windows and Linux
+          room kept on the right for the system's controls, which are drawn over it. */}
+      <header className="drag flex h-[env(titlebar-area-height,var(--frame-title-bar))] shrink-0 items-center gap-2 pr-[calc(100vw-env(titlebar-area-x,0px)-env(titlebar-area-width,100vw)+0.5rem)] pl-2">
+        <div role="tablist" aria-label="What the side sheet shows" className="no-drag flex min-w-0 flex-1 items-center gap-0.5">
           {SHEET_TABS.map((name) => (
             <button
               key={name}
@@ -163,28 +161,21 @@ export function SideSheet({ client, personas, place, tab, onMove, onOpenMemory, 
               onClick={() => onMove({ to: 'tab', tab: name })}
               title={name === 'transcript' && transcriptKey !== '' ? `Transcript (${describeShortcut(transcriptKey, device.mac)})` : undefined}
               className={cn(
-                'relative flex h-6 min-w-0 items-center justify-center gap-1.5 rounded-sm text-xs transition-colors duration-(--duration-quick)',
-                tab === name ? 'text-text' : 'text-text-soft hover:text-text'
+                'flex h-6 min-w-0 items-center gap-1.5 rounded-md px-2 text-xs outline-none transition-colors duration-(--duration-quick) ease-soft focus-visible:bg-white/[0.06]',
+                tab === name ? 'bg-white/[0.07] text-text' : 'text-text-faint hover:bg-white/[0.04] hover:text-text-soft'
               )}
             >
-              {tab === name && (
-                <motion.span
-                  layoutId="side-sheet-tab"
-                  transition={{ duration: DURATION.calm, ease: EASE }}
-                  className="absolute inset-0 rounded-sm bg-white/[0.13] shadow-[0_1px_2px_rgb(0_0_0/0.35),inset_0_1px_0_rgb(255_255_255/0.06)]"
-                />
-              )}
-              <span className="relative truncate">{TITLES[name]}</span>
+              <span className="truncate">{TITLES[name]}</span>
               {name === 'threads' && working > 0 && (
-                <span className="relative flex items-center gap-1 text-[0.6875rem] tabular-nums" title={`${working} at work`}>
+                <span className="flex items-center gap-1 text-[0.6875rem] text-accent tabular-nums" title={`${working} at work`}>
                   <StateDot state="working" />
-                  <span className={tab === name ? 'text-text-soft' : 'text-text-faint'}>{working}</span>
+                  {working}
                 </span>
               )}
             </button>
           ))}
         </div>
-        <IconButton label="Close the side sheet" onClick={() => onMove({ to: 'close' })}>
+        <IconButton label="Close the side sheet" onClick={() => onMove({ to: 'close' })} className="no-drag">
           <CloseGlyph />
         </IconButton>
       </header>

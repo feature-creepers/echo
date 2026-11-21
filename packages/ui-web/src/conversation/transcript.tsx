@@ -32,9 +32,9 @@ export function answerLine(exchange: Pick<Exchange, 'replied' | 'written'>): str
 }
 
 /**
- * What both sides said, as compact turns read from the end (docs/SPEC.md, section 13.2): each turn is the time, what
- * was said, and the assistant's answer on a line or two, with its full answer and its thread to open. Pressing a turn
- * shows its words whole. It opens at the latest turn and follows the conversation while the person stays at the end;
+ * What both sides said, read from the end (docs/SPEC.md, section 13.2): what the person said on the right, the
+ * assistant's answer under it, a few lines each and whole when pressed, with its full answer and its thread to open.
+ * What the assistant started by itself or was handed is a thin line saying why. Pointed at, a turn shows its time. It opens at the latest turn and follows the conversation while the person stays at the end;
  * scrolled up, nothing moves under their eyes, and "Latest" takes them back.
  */
 export function Transcript({ exchanges, threads, personas, onOpenAnswer, onOpenThread }: TranscriptProps) {
@@ -46,64 +46,92 @@ export function Transcript({ exchanges, threads, personas, onOpenAnswer, onOpenT
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-      <div ref={scroll.ref} className="scroll-quiet min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-3">
+      <div
+        ref={scroll.ref}
+        className="scroll-quiet min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pt-3 pb-4 [mask-image:linear-gradient(to_bottom,transparent,black_0.75rem)]"
+      >
         {exchanges.length === 0 ? (
           <p className="text-sm text-text-faint">Nothing has been said yet.</p>
         ) : (
-          <ol className="grid grid-cols-1 gap-3.5">
+          <ol className="grid grid-cols-1 gap-4">
             {exchanges.map((exchange) => {
               const persona = personas.find((candidate) => candidate.id === exchange.persona)
               const thread = exchange.thread === undefined ? undefined : threads.find((one) => one.id === exchange.thread)
               const asked = whoAsked(exchange)
               const answer = answerLine(exchange)
               const open = whole.has(exchange.turn)
+              const time = clock.format(new Date(exchange.at))
               return (
-                <li key={exchange.turn} className="grid grid-cols-[3.5rem_minmax(0,1fr)] gap-x-1.5" style={accentStyle(persona?.accent)}>
-                  <time className="whitespace-nowrap pt-px text-[0.6875rem] text-text-faint tabular-nums" dateTime={exchange.at}>
-                    {clock.format(new Date(exchange.at))}
-                  </time>
-                  <div className="grid min-w-0 grid-cols-1 gap-1">
+                <li key={exchange.turn} className="group grid grid-cols-1 gap-1.5" style={accentStyle(persona?.accent)}>
+                  {asked === 'You' ? (
+                    // What the person said, on the right, as T3 Code and every conversation show it.
+                    exchange.said && (
+                      <div className="flex justify-end pl-10">
+                        <button
+                          type="button"
+                          aria-expanded={open}
+                          onClick={() => toggle(exchange.turn)}
+                          title={time}
+                          className={cn(
+                            'min-w-0 rounded-lg rounded-br-sm bg-white/[0.07] px-3 py-1.5 text-left text-[0.8125rem] text-text leading-relaxed outline-none [overflow-wrap:anywhere] focus-visible:bg-white/[0.1]',
+                            !open && 'line-clamp-4'
+                          )}
+                        >
+                          {exchange.said}
+                        </button>
+                      </div>
+                    )
+                  ) : (
+                    // What the assistant started by itself, or was handed: a thin line saying why, its words one press away.
                     <button
                       type="button"
                       aria-expanded={open}
                       onClick={() => toggle(exchange.turn)}
-                      title={open ? 'Show less' : 'Show it whole'}
-                      className="grid min-w-0 grid-cols-1 gap-1 rounded-xs text-left outline-none focus-visible:bg-white/[0.04]"
+                      className="flex min-w-0 items-center gap-2 text-[0.6875rem] text-text-faint outline-none hover:text-text-soft focus-visible:text-text-soft"
                     >
-                      {(exchange.said || asked !== 'You') && (
-                        <span className={cn('text-[0.8125rem] text-text-soft leading-snug [overflow-wrap:anywhere]', !open && 'line-clamp-2')}>
-                          {asked !== 'You' && <span className="text-text-faint">{exchange.said ? `${asked} · ` : asked}</span>}
-                          {exchange.said}
-                        </span>
-                      )}
-                      {answer && (
-                        <span
-                          className={cn(
-                            'border-accent/50 border-l-2 pl-2 text-[0.8125rem] text-text leading-snug [overflow-wrap:anywhere]',
-                            !open && 'line-clamp-2'
-                          )}
-                        >
-                          {answer}
-                        </span>
-                      )}
+                      <span aria-hidden="true" className="h-px w-3 shrink-0 bg-line" />
+                      <span className="shrink-0 font-medium">{asked}</span>
+                      <span className="shrink-0 tabular-nums">{time}</span>
+                      {exchange.said && <span className={cn('min-w-0 text-left', open ? '[overflow-wrap:anywhere]' : 'truncate')}>{exchange.said}</span>}
+                      <span aria-hidden="true" className="h-px min-w-3 flex-1 bg-line" />
                     </button>
-                    <AttachedLine attached={exchange.attached} />
-                    {exchange.outcome === 'running' && !answer && <span className="text-label text-text-faint">Answering…</span>}
-                    {exchange.outcome === 'failed' && (
-                      <span className="text-danger text-xs leading-snug [overflow-wrap:anywhere]">{exchange.problem ?? 'It could not answer.'}</span>
+                  )}
+                  <AttachedLine attached={exchange.attached} />
+                  {answer && (
+                    <button
+                      type="button"
+                      aria-expanded={open}
+                      onClick={() => toggle(exchange.turn)}
+                      className={cn(
+                        'min-w-0 rounded-sm text-left text-[0.8125rem] text-text leading-relaxed outline-none [overflow-wrap:anywhere] focus-visible:bg-white/[0.04]',
+                        !open && 'line-clamp-4'
+                      )}
+                    >
+                      {answer}
+                    </button>
+                  )}
+                  {exchange.outcome === 'running' && !answer && <span className="text-label text-text-faint">Answering…</span>}
+                  {exchange.outcome === 'failed' && (
+                    <span className="text-danger text-xs leading-snug [overflow-wrap:anywhere]">{exchange.problem ?? 'It could not answer.'}</span>
+                  )}
+                  <span className="flex min-h-5 min-w-0 flex-wrap items-center gap-1">
+                    {exchange.written && <Chip onClick={() => onOpenAnswer(exchange.turn)}>Full answer</Chip>}
+                    {thread && (
+                      <Chip onClick={() => onOpenThread(thread.id)} title={`Show the work of ${thread.title}`}>
+                        {thread.title}
+                      </Chip>
                     )}
-                    {(exchange.written || thread || exchange.outcome === 'stopped') && (
-                      <span className="flex min-w-0 flex-wrap items-center gap-1">
-                        {exchange.written && <Chip onClick={() => onOpenAnswer(exchange.turn)}>Full answer</Chip>}
-                        {thread && (
-                          <Chip onClick={() => onOpenThread(thread.id)} title={`Show the work of ${thread.title}`}>
-                            {thread.title}
-                          </Chip>
-                        )}
-                        {exchange.outcome === 'stopped' && <span className="px-1 text-[0.6875rem] text-text-faint">Stopped</span>}
-                      </span>
+                    {exchange.outcome === 'stopped' && <span className="px-1 text-[0.6875rem] text-text-faint">Stopped</span>}
+                    {/* The time of what the person said shows where they look for it, as the row is pointed at. */}
+                    {asked === 'You' && (
+                      <time
+                        dateTime={exchange.at}
+                        className="ml-auto text-[0.6875rem] text-text-faint tabular-nums opacity-0 transition-opacity duration-(--duration-quick) ease-soft group-hover:opacity-100"
+                      >
+                        {time}
+                      </time>
                     )}
-                  </div>
+                  </span>
                 </li>
               )
             })}

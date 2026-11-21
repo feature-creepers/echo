@@ -168,8 +168,10 @@ const StreamCard = memo(function StreamCard({ view, dial, appear, lit, actions, 
  * middle of the card, so what is in it reads as it always does.
  */
 const CORE_LIGHT: CSSProperties = {
+  // The brighter top edge is drawn inside the ring, so it follows the card's rounded corners: a shadow shifted up
+  // showed only as two arcs at the top corners.
   boxShadow:
-    '0 0 0 1px color-mix(in oklab, var(--accent) 46%, transparent), 0 -1px 0 0 color-mix(in oklab, var(--accent) 72%, transparent), 0 0 0 2px color-mix(in oklab, var(--accent) 12%, transparent)',
+    '0 0 0 1px color-mix(in oklab, var(--accent) 46%, transparent), inset 0 1px 0 0 color-mix(in oklab, var(--accent) 60%, transparent), 0 0 0 2px color-mix(in oklab, var(--accent) 12%, transparent)',
   background: 'radial-gradient(90% 55% at 50% 0%, color-mix(in oklab, var(--accent) 8%, transparent), transparent 75%)'
 }
 
