@@ -6,7 +6,7 @@ import { memoryWorkspace } from '../replay/memory-workspace.ts'
 import { createDeviceActs } from './acts.ts'
 import { createCameraControl, PICTURE_WAIT_MS } from './camera.ts'
 
-const showing = () => ({ thread: 't', turn: 'turn', focused: true })
+const showing = () => ({ thread: 't', turn: 'turn' })
 const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 0xff, 0xd9])
 
 function setup({ answers = [], available = true }: { answers?: Answer[]; available?: boolean } = {}) {

@@ -2,14 +2,13 @@ import type { Thread } from '@repo/protocol'
 import { describe, expect, it } from 'vitest'
 import { workingRows } from './running-threads.tsx'
 
-const thread = (id: string, kind: Thread['kind'], state: Thread['state'], parent?: string, beside?: string): Thread => ({
+const thread = (id: string, kind: Thread['kind'], state: Thread['state'], parent?: string): Thread => ({
   id,
   title: `The ${id}`,
   kind,
   state,
   at: '2026-11-19T12:00:00.000Z',
-  ...(parent === undefined ? {} : { parent }),
-  ...(beside === undefined ? {} : { beside })
+  ...(parent === undefined ? {} : { parent })
 })
 
 /** Each row as words: indented under the thread it is part of, or saying what it is part of. */
@@ -39,13 +38,8 @@ describe('the threads at work under the composer', () => {
       rows: ['drawings']
     },
     {
-      name: 'a side question at work under its topic at work',
-      threads: [thread('side', 'topic', 'working', undefined, 'project'), thread('project', 'topic', 'working')],
-      rows: ['project', '  side']
-    },
-    {
       name: 'only what works',
-      threads: [thread('idle', 'topic', 'parked'), thread('ready', 'topic', 'ready'), thread('side', 'topic', 'parked', undefined, 'idle')],
+      threads: [thread('idle', 'topic', 'parked'), thread('ready', 'topic', 'ready')],
       rows: []
     }
   ])('lists $name', ({ threads, rows }) => {

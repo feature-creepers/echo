@@ -1,16 +1,12 @@
 import { CARDS_PER_ANSWER, CLEAR_TOOL, type ViewSpec, validateView } from '@repo/catalog'
-import { type Event, onTop, type ShownView, type TurnId, VIEW_WIDTHS, viewSchema } from '@repo/protocol'
+import { answerIdOf, type Event, type ShownView, type TurnId, VIEW_WIDTHS, viewSchema, withCard } from '@repo/protocol'
 import { z } from 'zod'
-import type { Timers } from '../ports/clock.ts'
-import type { Records } from '../ports/records.ts'
+import type { Records, StoredRecord } from '../ports/records.ts'
 import type { ToolResult } from '../ports/tools.ts'
 
 /** The types of the records written when a view is shown and when one is cleared. */
 export const VIEW_SHOWN = 'view.shown'
 export const VIEW_CLEARED = 'view.cleared'
-
-/** How long an aside's card stays once shown, before it leaves by itself: long enough to read it twice. */
-export const ASIDE_STAYS_MS = 3 * 60_000
 
 /** A card's name among the cards of its answer, as a session gives it: names that differ only in case are one. */
 export const cardNameSchema = z.string().trim().toLowerCase().min(1).max(40)
@@ -29,24 +25,17 @@ export interface ScreenOptions {
   records: Records
   /** A new identifier, unique for good. */
   newId: () => string
-  /** Time passing, for aside cards to leave by themselves. Left out, they stay until closed. */
-  timers?: Timers | undefined
-  now?: () => Date
 }
 
-/** Who asks to show something: a thread, the turn it is answering, and how what it shows is placed. */
+/** Who asks to show something: a thread, and the turn it is answering. */
 export interface Showing {
   thread: string | undefined
   turn: TurnId | undefined
-  /** Whether its topic is the one on the stage. A topic in the background keeps its cards for when it comes back. */
-  focused: boolean
-  /** It answers a side question: what it shows is an aside card, on top of the stream, and the stage stays as it is. */
-  aside?: boolean | undefined
 }
 
 /** A view already checked against the catalogue, to show as it is: a saved widget brought back. */
 export interface Checked {
-  /** The view this is a new version of, which it replaces wherever it is. Left out, it is a view of its own. */
+  /** The view this is a new version of, which it replaces where it is. Left out, it is a view of its own. */
   id?: string
   title: string
   spec: ViewSpec
@@ -61,157 +50,120 @@ export interface Checked {
 }
 
 /**
- * What the assistant shows: the cards of each thread's latest answer, those of the topic in focus on the stage, and the
- * stream the main screen draws, every view still open, newest first, the side questions' cards among them.
+ * What the assistant shows: the cards of every answer, kept for good. An answer is a few cards side by side
+ * (docs/SPEC.md, section 9.2); which topic an answer belongs to is the topics' business (`topics/topics.ts`).
  */
 export interface Screen {
-  /** The newest card on the stage now. */
-  current(): ShownView | undefined
-  /** Every view of the conversation still open, newest first, stage and aside cards together. */
-  stream(): ShownView[]
-  /** The aside cards still in the stream, newest first. */
-  asides(): ShownView[]
   /** Show what a session asked to show. The answer says "shown", or lists what to correct. */
   show(asked: unknown, showing: Showing): ToolResult
   /** Show a view that was checked already, as it is. */
   present(view: Checked, showing: Showing): ToolResult
   /** A view shown now or earlier, by its identifier. */
   find(view: string): ShownView | undefined
-  /** The cards of a thread's latest answer, newest first, or, left out, the cards on the stage. */
+  /** The cards of the answer a thread last showed something in, in the order they were shown. */
   cards(thread: string | undefined): ShownView[]
+  /** The cards of each answer given that has some, in the order they were shown. */
+  of(answers: readonly string[]): Map<string, ShownView[]>
+  /** Whether an answer has a card. */
+  has(answer: string): boolean
   /** Every view a thread showed, oldest first, from the records. */
   history(thread: string): ShownView[]
-  /** When the latest view a thread showed is an aside card, put it back on top of the stream, for its full time again. */
-  recall(thread: string): void
-  /** The focus moved to this thread: the stage shows the cards of its latest answer, or nothing. */
-  focus(thread: string | undefined): void
-  /** Remove the view given, wherever it is, or, left out, every card on the stage. */
-  clear(view?: string): void
+  /** Remove a card from its answer, for good. */
+  clear(view: string): void
   onEvent(listener: (event: Event) => void): () => void
 }
 
-/**
- * A view as it was recorded. The cards of side questions were once said to go in a margin beside the stage
- * (`slot: 'margin'`): they are read as the aside cards they are.
- */
-const fromRecord = (payload: unknown): unknown => {
-  if (typeof payload !== 'object' || payload === null || !('slot' in payload)) return payload
-  const { slot, ...rest } = payload as { slot?: unknown }
-  return slot === 'margin' ? { ...rest, aside: true } : rest
+/** A card of an answer, as the screen remembers it: where its view is in the records, and what it takes the place of. */
+interface Slot {
+  id: string
+  record: string
+  card: string | undefined
+  widget: string | undefined
 }
 
-/** Whether two views are cards of one answer: shown by one thread in one turn, neither of them an aside's. */
-const together = (one: ShownView, other: ShownView) =>
-  one.turn !== undefined && one.turn === other.turn && one.thread === other.thread && one.aside !== true && other.aside !== true
+/**
+ * Whether a clearing recorded before answers were kept for good is one to forget: the cards of side questions left by
+ * themselves after a while, only put away, and a clearing that named no view emptied the stage of the time.
+ */
+const putAwayOnly = (shown: unknown) =>
+  typeof shown === 'object' && shown !== null && ((shown as { aside?: unknown }).aside === true || (shown as { slot?: unknown }).slot === 'margin')
 
 /**
- * The screen checks a view against the catalogue before showing it. A view that does not pass is not shown,
- * and the answer lists every problem so it can be written again. Every view is recorded, so an earlier one
- * is never lost, and the screen is as it was after a restart.
+ * The screen checks a view against the catalogue before showing it. A view that does not pass is not shown, and the
+ * answer lists every problem so it can be written again. Every view is recorded, so an earlier one is never lost.
  *
- * An answer is a few cards side by side (docs/SPEC.md, section 9.2): a card shown in the turn of the thread's cards
- * goes beside them, or in place of the one of its name, and the first one of a new turn takes the place of them all.
- * The core's own cards (an approval, a decision, the files written) have no name: they go beside the assistant's and
- * are never refused.
+ * It remembers where each answer's cards are in the records, not the cards: they are read when asked for, so years
+ * of answers weigh nothing until someone scrolls back to them.
+ *
+ * A card shown in the turn of other cards goes beside them, or in place of the one of its name. The core's own cards
+ * (an approval, a decision, the files written) have no name: they go beside the assistant's and are never refused.
  */
-export function createScreen({ records, newId, timers, now = () => new Date() }: ScreenOptions): Screen {
+export function createScreen({ records, newId }: ScreenOptions): Screen {
   const listeners = new Set<(event: Event) => void>()
   const emit = (event: Event) => {
     for (const listener of listeners) listener(event)
   }
-  const recorded = (payload: unknown) => viewSchema.safeParse(fromRecord(payload))
+  const recorded = (payload: unknown) => viewSchema.safeParse(payload)
 
-  /** The cards of each thread's latest answer, newest first; views shown outside any thread are kept under ''. */
-  const answers = new Map<string, ShownView[]>()
-  let stage: ShownView[] = []
-  let stream: ShownView[] = []
-  /** A thread's cards once a view is shown: beside the cards of the same answer, else in place of them all. */
-  const answered = (view: ShownView) =>
-    onTop(
-      (answers.get(view.thread ?? '') ?? []).filter((card) => together(card, view)),
-      view
-    )
-  const place = (view: ShownView, cards = answered(view)) => {
-    answers.set(view.thread ?? '', cards)
-    stream = onTop(stream, view)
-    // An aside card goes on top of the stream: the stage keeps the topic it was asked beside.
-    if (view.aside !== true) stage = cards
-  }
-  const remove = (id: string) => {
-    stage = stage.filter((card) => card.id !== id)
-    stream = stream.filter((view) => view.id !== id)
-    // A card removed does not come back when its topic does. An aside's card closed is only put away: it comes back
-    // when its topic is brought back.
-    for (const [thread, cards] of answers) {
-      const kept = cards.filter((card) => card.id !== id || card.aside === true)
-      if (kept.length === 0) answers.delete(thread)
-      else if (kept.length < cards.length) answers.set(thread, kept)
-    }
-  }
-  /** Whether a view is still there to see: on the stage, in the stream, or kept for when its topic comes back. */
-  const stillThere = (id: string) =>
-    stage.some((card) => card.id === id) ||
-    stream.some((view) => view.id === id) ||
-    [...answers.values()].some((cards) => cards.some((card) => card.id === id && card.aside !== true))
+  /** The cards of each answer, in the order they were first shown. */
+  const slots = new Map<string, Slot[]>()
+  /** The answer each view is a card of. */
+  const answerOf = new Map<string, string>()
+  /** The answer each thread last showed something in; what was shown outside any thread is kept under ''. */
+  const lastOf = new Map<string, string>()
 
-  /**
-   * An aside's card leaves by itself a while after it was shown, unless it was shown again since: an aside answers
-   * in passing, and its card should not stay on top of the stream for good. Each card has one timer, the latest.
-   */
-  const leaving = new Map<string, () => void>()
-  const leaveLater = (view: ShownView, ms: number) => {
-    if (!timers || view.aside !== true) return
-    leaving.get(view.id)?.()
-    leaving.set(
-      view.id,
-      timers.after(Math.max(ms, 0), () => {
-        leaving.delete(view.id)
-        clear(view.id)
-      })
-    )
+  const drop = (view: string) => {
+    const answer = answerOf.get(view)
+    if (answer === undefined) return
+    answerOf.delete(view)
+    const left = (slots.get(answer) ?? []).filter((slot) => slot.id !== view)
+    if (left.length === 0) slots.delete(answer)
+    else slots.set(answer, left)
+  }
+  const keep = (view: ShownView, record: string) => {
+    const answer = answerIdOf(view)
+    // A card brought up to date in a later turn is a card of that turn's answer.
+    if (answerOf.get(view.id) !== answer) drop(view.id)
+    const before = slots.get(answer) ?? []
+    const after = withCard(before, { id: view.id, record, card: view.card, widget: view.widget })
+    for (const slot of before) if (!after.includes(slot) && slot.id !== view.id) answerOf.delete(slot.id)
+    slots.set(answer, after)
+    answerOf.set(view.id, answer)
+    lastOf.set(view.thread ?? '', answer)
   }
 
-  /** When each aside card was last shown, from the records, for those still in the stream after a restart. */
-  const shownAt = new Map<string, number>()
+  const asides = new Set<string>()
   for (const record of records.read([VIEW_SHOWN, VIEW_CLEARED])) {
     if (record.type === VIEW_CLEARED) {
-      // The first records of a clearing named no view: they cleared the stage.
       const { view } = record.payload as { view?: string }
-      for (const id of view === undefined ? stage.map((card) => card.id) : [view]) remove(id)
-    } else {
+      if (view !== undefined && !asides.has(view)) drop(view)
+      continue
+    }
+    const view = recorded(record.payload)
+    if (!view.success) continue
+    if (putAwayOnly(record.payload)) asides.add(view.data.id)
+    keep(view.data, record.id)
+  }
+
+  /** The views of some records, by record. */
+  const read = (ids: readonly string[]): Map<string, ShownView> => {
+    const views = new Map<string, ShownView>()
+    for (const record of ids.length === 0 ? [] : records.get(ids)) {
       const view = recorded(record.payload)
-      if (!view.success) continue
-      place(view.data)
-      if (view.data.aside === true) shownAt.set(view.data.id, Date.parse(record.at))
+      if (view.success) views.set(record.id, view.data)
     }
+    return views
   }
-
-  function clear(id?: string) {
-    if (id === undefined) {
-      for (const card of stage) clear(card.id)
-      return
-    }
-    if (!stillThere(id)) return
-    leaving.get(id)?.()
-    leaving.delete(id)
-    remove(id)
-    records.append([{ type: VIEW_CLEARED, payload: { view: id } }])
-    emit({ type: 'event', name: 'view.cleared', view: id })
-  }
-
-  const asides = () => stream.filter((view) => view.aside === true)
-
-  // The aside cards still in the stream after a restart leave when their time is up, or at once if it already was.
-  for (const card of asides()) {
-    const at = shownAt.get(card.id)
-    if (at !== undefined && !Number.isNaN(at)) leaveLater(card, at + ASIDE_STAYS_MS - now().getTime())
+  const of = (answers: readonly string[]): Map<string, ShownView[]> => {
+    const asked = answers.flatMap((answer) => (slots.has(answer) ? [[answer, slots.get(answer) ?? []] as const] : []))
+    const views = read(asked.flatMap(([, cards]) => cards.map((slot) => slot.record)))
+    return new Map(asked.map(([answer, cards]) => [answer, cards.flatMap((slot) => views.get(slot.record) ?? [])]))
   }
 
   const present = (checked: Checked, showing: Showing): ToolResult => {
     const view: ShownView = {
       id: checked.id ?? newId(),
       title: checked.title,
-      ...(showing.aside === true ? { aside: true } : {}),
       ...(checked.card === undefined ? {} : { card: checked.card }),
       ...(checked.width === undefined ? {} : { width: checked.width }),
       spec: checked.spec,
@@ -220,29 +172,21 @@ export function createScreen({ records, newId, timers, now = () => new Date() }:
       ...(showing.turn === undefined ? {} : { turn: showing.turn }),
       ...(showing.thread === undefined ? {} : { thread: showing.thread })
     }
-    const cards = answered(view)
-    const named = cards.flatMap((card) => (card.card === undefined ? [] : [card.card]))
-    if (view.card !== undefined && named.length > CARDS_PER_ANSWER)
+    const others = (slots.get(answerIdOf(view)) ?? []).flatMap((slot) =>
+      slot.card === undefined || slot.card === view.card || slot.id === view.id ? [] : [slot.card]
+    )
+    if (view.card !== undefined && others.length >= CARDS_PER_ANSWER)
       return {
         ok: false,
-        text: `Not shown: an answer shows ${CARDS_PER_ANSWER} cards at most, and yours shows ${named.slice(1).join(', ')}. Show it under one of these names to replace that card, or remove one with ${CLEAR_TOOL} first.`
+        text: `Not shown: an answer shows ${CARDS_PER_ANSWER} cards at most, and yours shows ${others.join(', ')}. Show it under one of these names to replace that card, or remove one with ${CLEAR_TOOL} first.`
       }
-    records.append([{ type: VIEW_SHOWN, payload: view }])
-    if (view.aside !== true && !showing.focused && showing.thread !== undefined) {
-      answers.set(showing.thread, cards)
-      return { ok: true, text: 'Kept for when this topic is back on screen.' }
-    }
-    place(view, cards)
+    const [written] = records.append([{ type: VIEW_SHOWN, payload: view }]) as [StoredRecord]
+    keep(view, written.id)
     emit({ type: 'event', name: 'view.shown', view })
-    leaveLater(view, ASIDE_STAYS_MS)
     return { ok: true, text: 'Shown.' }
   }
 
   return {
-    current: () => stage[0],
-    stream: () => [...stream],
-    asides,
-
     show(asked, showing) {
       const read = request.safeParse(asked)
       if (!read.success)
@@ -256,8 +200,10 @@ export function createScreen({ records, newId, timers, now = () => new Date() }:
     present,
 
     find(id) {
-      for (const view of [...stage, ...stream, ...[...answers.values()].flat()]) if (view.id === id) return view
-      // An older view is in the records: they are read only for this, which is rare.
+      const answer = answerOf.get(id)
+      const slot = answer === undefined ? undefined : slots.get(answer)?.find((one) => one.id === id)
+      if (slot) return read([slot.record]).get(slot.record)
+      // A view removed from its answer is still in the records: they are read whole only for this, which is rare.
       for (const record of records.read([VIEW_SHOWN]).reverse()) {
         const view = recorded(record.payload)
         if (view.success && view.data.id === id) return view.data
@@ -265,7 +211,14 @@ export function createScreen({ records, newId, timers, now = () => new Date() }:
       return undefined
     },
 
-    cards: (thread) => [...(thread === undefined ? stage : (answers.get(thread) ?? []))],
+    cards(thread) {
+      const answer = lastOf.get(thread ?? '')
+      return answer === undefined ? [] : (of([answer]).get(answer) ?? [])
+    },
+
+    of,
+
+    has: (answer) => slots.has(answer),
 
     history(thread) {
       const views: ShownView[] = []
@@ -280,33 +233,12 @@ export function createScreen({ records, newId, timers, now = () => new Date() }:
       return views
     },
 
-    recall(thread) {
-      const [view] = answers.get(thread) ?? []
-      if (view?.aside !== true) return
-      // Recorded again, so the card is still there after a restart, and leaves its full time after now.
-      records.append([{ type: VIEW_SHOWN, payload: view }])
-      place(view)
-      emit({ type: 'event', name: 'view.shown', view })
-      leaveLater(view, ASIDE_STAYS_MS)
+    clear(id) {
+      if (!answerOf.has(id)) return
+      drop(id)
+      records.append([{ type: VIEW_CLEARED, payload: { view: id } }])
+      emit({ type: 'event', name: 'view.cleared', view: id })
     },
-
-    focus(thread) {
-      const cards = answers.get(thread ?? '') ?? []
-      if (cards.length > 0 && cards.every((card) => card.aside !== true)) {
-        if (cards.length === stage.length && cards.every((card, index) => card.id === stage[index]?.id)) return
-        stage = cards
-        // A topic brought back puts its cards on top of the stream again, together, in the order they were shown.
-        for (const view of cards.toReversed()) {
-          stream = onTop(stream, view)
-          emit({ type: 'event', name: 'view.shown', view })
-        }
-      } else if (stage.length > 0) {
-        stage = []
-        emit({ type: 'event', name: 'view.cleared' })
-      }
-    },
-
-    clear,
 
     onEvent(listener) {
       listeners.add(listener)

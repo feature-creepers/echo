@@ -2,22 +2,16 @@ import { z } from 'zod'
 import { eventPrefixSchema } from '../envelope.ts'
 import { viewSchema } from '../views.ts'
 
-/**
- * The assistant shows a view. It goes on top of the stream; on the stage, it goes beside the cards of its answer, or
- * takes the place of those of an earlier one.
- */
+/** The assistant shows a view: a card of an answer (`answerIdOf`), beside the others of it or in place of one (`withCard`). */
 export const viewShownSchema = eventPrefixSchema.extend({
   name: z.literal('view.shown'),
   view: viewSchema
 })
 
-/**
- * A view is no longer shown. Given, that view leaves the stream. Left out, the topic in focus has nothing to show:
- * the stage is empty, and the views already in the stream stay there.
- */
+/** A card was removed from its answer. */
 export const viewClearedSchema = eventPrefixSchema.extend({
   name: z.literal('view.cleared'),
-  view: z.string().min(1).max(64).optional()
+  view: z.string().min(1).max(64)
 })
 
 /** What the assistant can do to the media player. */

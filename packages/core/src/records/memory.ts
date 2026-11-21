@@ -32,6 +32,9 @@ export function memoryRecords({ origin = 'memory', now = () => new Date() }: Mem
     },
     read(types) {
       return stored.filter((record) => types.includes(record.type)).map((record) => ({ ...record, payload: throughJson(record.payload) }))
+    },
+    get(ids) {
+      return stored.filter((record) => ids.includes(record.id)).map((record) => ({ ...record, payload: throughJson(record.payload) }))
     }
   }
 }

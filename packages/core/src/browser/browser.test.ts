@@ -5,8 +5,8 @@ import type { Computer } from '../ports/computer.ts'
 import type { ToolResult } from '../ports/tools.ts'
 import { memoryRecords } from '../records/memory.ts'
 import { manualTimers } from '../replay/manual-timers.ts'
+import { watchedScreen } from '../replay/watched-screen.ts'
 import { createUserSettings } from '../settings/settings.ts'
-import { createScreen } from '../views/screen.ts'
 import { createBrowserControl } from './browser.ts'
 import { BROWSER_ACTION, type BrowserAction } from './log.ts'
 
@@ -88,12 +88,12 @@ const computer: Computer = {
 function setup(found?: BrowserFound) {
   const records = memoryRecords()
   let ids = 0
-  const screen = createScreen({ records, newId: () => `v${++ids}` })
+  const screen = watchedScreen({ records, newId: () => `v${++ids}` })
   const settings = createUserSettings(records, undefined, WORKSPACE)
   const access = createAccess({ settings, screen, computer, timers: manualTimers() })
   const { browser, done } = standIn(found)
   const control = createBrowserControl({ browser, settings, ask: access.ask, records, computer })
-  const showing = () => ({ thread: 't', turn: 'turn', focused: true })
+  const showing = () => ({ thread: 't', turn: 'turn' })
   const call = async (name: string, input: unknown): Promise<ToolResult> => {
     const tool = control.tools(showing).find((candidate) => candidate.definition.name === name)
     if (!tool) throw new Error(`No tool ${name}`)
@@ -114,7 +114,7 @@ describe('the browser of the assistant', () => {
   it('gives a thread its tools and tells it about them once a browser is found', async () => {
     const { control, ready } = setup()
     await ready
-    const names = control.tools(() => ({ thread: 't', turn: undefined, focused: true })).map((tool) => tool.definition.name)
+    const names = control.tools(() => ({ thread: 't', turn: undefined })).map((tool) => tool.definition.name)
     expect(names).toEqual([
       'browser_open',
       'browser_read',
@@ -140,7 +140,7 @@ describe('the browser of the assistant', () => {
     await ready
     const before = control.version()
     settings.setAccess({ browser: false })
-    expect(control.tools(() => ({ thread: 't', turn: undefined, focused: true }))).toEqual([])
+    expect(control.tools(() => ({ thread: 't', turn: undefined }))).toEqual([])
     expect(control.standing()).toBeUndefined()
     expect(control.version()).not.toBe(before)
   })
@@ -148,7 +148,7 @@ describe('the browser of the assistant', () => {
   it('gives nothing when no browser was found, and says why in the settings', async () => {
     const { control, ready } = setup({ found: false, problem: 'Neither Microsoft Edge nor Google Chrome was found on this computer.' })
     expect(await ready).toEqual({ found: false, problem: 'Neither Microsoft Edge nor Google Chrome was found on this computer.', running: false })
-    expect(control.tools(() => ({ thread: 't', turn: undefined, focused: true }))).toEqual([])
+    expect(control.tools(() => ({ thread: 't', turn: undefined }))).toEqual([])
     expect(control.standing()).toBeUndefined()
   })
 
@@ -307,7 +307,7 @@ describe('the browser of the assistant', () => {
   it('refuses every call once the person turned it off during a turn', async () => {
     const { control, settings, ready } = setup()
     await ready
-    const [open] = control.tools(() => ({ thread: 't', turn: undefined, focused: true }))
+    const [open] = control.tools(() => ({ thread: 't', turn: undefined }))
     settings.setAccess({ browser: false })
     expect(await open?.run({ url: 'https://example.org' })).toMatchObject({ ok: false })
   })

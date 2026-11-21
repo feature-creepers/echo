@@ -66,6 +66,16 @@ describe('the store', () => {
     expect(records.read([])).toEqual([])
   })
 
+  it('reads back the records asked for by their identifiers, in the order written', () => {
+    const { records } = store(folder())
+    const written = records.append(Array.from({ length: 1200 }, (_, n) => ({ type: n % 2 === 0 ? 'a' : 'b', payload: { n } })))
+    const ids = written.map((record) => record.id)
+
+    expect(records.get([ids[900] ?? '', ids[3] ?? '', 'unknown'])).toEqual([written[3], written[900]])
+    expect(records.get(ids.toReversed())).toEqual(written)
+    expect(records.get([])).toEqual([])
+  })
+
   it('keeps everything, and the same core, when the file is opened again', () => {
     const at = folder()
     const before = store(at)

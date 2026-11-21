@@ -33,7 +33,7 @@ export interface Said {
   spoken?: boolean | undefined
   /** False while the device shows no views, so the assistant says a little more. */
   screen?: boolean | undefined
-  /** The view in front of the person when they said it, by its id: what they say is probably about it. */
+  /** The topic in front of the person when they said it, by its id: what they say is probably about it. */
   about?: string | undefined
 }
 

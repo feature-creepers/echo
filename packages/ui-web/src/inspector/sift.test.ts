@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { arrivedSince, type EventGroup, siftEvents } from './sift.ts'
 
 const said = (id: number, text: string): Logged => ({ id, at: 1_000 + id, event: { type: 'event', name: 'speech.say', turn: 'turn', text } })
-const cleared = (id: number): Logged => ({ id, at: 1_000 + id, event: { type: 'event', name: 'view.cleared' } })
+const cleared = (id: number): Logged => ({ id, at: 1_000 + id, event: { type: 'event', name: 'view.cleared', view: 'view' } })
 
 const log = [said(1, 'Bonjour à tous'), cleared(2), said(3, 'The weather is fine'), said(4, 'The weather is fine')]
 

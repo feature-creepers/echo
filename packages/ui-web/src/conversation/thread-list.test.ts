@@ -8,13 +8,12 @@ const thread = (
   {
     title = id,
     parent,
-    beside,
     state = 'parked',
     at = '12:00',
     folder,
     day = '19',
     archived
-  }: { title?: string; parent?: string; beside?: string; state?: Thread['state']; at?: string; folder?: string; day?: string; archived?: boolean } = {}
+  }: { title?: string; parent?: string; state?: Thread['state']; at?: string; folder?: string; day?: string; archived?: boolean } = {}
 ): Thread => ({
   id,
   title,
@@ -23,7 +22,6 @@ const thread = (
   at: `2026-11-${day}T${at}:00.000Z`,
   ...(archived === undefined ? {} : { archived }),
   ...(parent === undefined ? {} : { parent }),
-  ...(beside === undefined ? {} : { beside }),
   ...(folder === undefined ? {} : { folder })
 })
 
@@ -56,19 +54,14 @@ describe('the threads as the side sheet lists them', () => {
 
   it.each([
     {
-      name: 'a side question and a sub-thread under their topic',
-      threads: [thread('topic', 'topic'), thread('side', 'topic', { beside: 'topic' }), thread('part', 'subthread', { parent: 'topic' })],
-      sections: [['today', 'topic > side > part']]
+      name: 'a sub-thread under its thread',
+      threads: [thread('topic', 'topic'), thread('part', 'subthread', { parent: 'topic' })],
+      sections: [['today', 'topic > part']]
     },
     {
       name: 'a sub-thread whose topic is gone on its own row',
       threads: [thread('topic', 'topic'), thread('part', 'subthread', { parent: 'gone' })],
       sections: [['today', 'topic', 'part']]
-    },
-    {
-      name: 'a side question whose topic is gone on its own row',
-      threads: [thread('side', 'topic', { beside: 'gone' })],
-      sections: [['today', 'side']]
     },
     {
       name: 'what is at work first, then what is ready, then the rest',
@@ -152,16 +145,10 @@ describe('the threads under a thread, over its work', () => {
       words: 'Sub-threads'
     },
     {
-      name: 'one side question',
-      threads: [thread('project', 'topic'), thread('side', 'topic', { beside: 'project' })],
-      under: ['side'],
-      words: 'Side question'
-    },
-    {
-      name: 'both kinds together',
-      threads: [thread('project', 'topic'), thread('side', 'topic', { beside: 'project', at: '13:00' }), thread('part', 'subthread', { parent: 'project' })],
-      under: ['side', 'part'],
-      words: 'Under this thread'
+      name: 'one sub-thread',
+      threads: [thread('project', 'topic'), thread('part', 'subthread', { parent: 'project' })],
+      under: ['part'],
+      words: 'Sub-thread'
     }
   ])('lists $name', ({ threads, under, words }) => {
     const found = underOf('project', threads)

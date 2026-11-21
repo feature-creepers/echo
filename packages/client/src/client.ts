@@ -9,7 +9,7 @@ import { followLibrary, type LibraryState } from './state/library.ts'
 import { followMemory, type MemoryState } from './state/memory.ts'
 import { followSettings, type SettingsState } from './state/settings.ts'
 import { followThreads, type ThreadsState } from './state/threads.ts'
-import { followView, type ViewState } from './state/view.ts'
+import { followTopics, type TopicsState } from './state/topics.ts'
 
 /** Everything a client holds while it is connected to a core: the exchange, and what it keeps current from it. */
 export interface Client {
@@ -19,7 +19,8 @@ export interface Client {
   /** What the assistant is doing for the turn under way: the tool calls it is making. */
   activity: Followed<Activity>
   engines: EnginesState
-  view: ViewState
+  /** The topics of the conversation and their answers: what the main screen shows. */
+  topics: TopicsState
   threads: ThreadsState
   /** Every event the core sent, for the inspector. */
   events: Followed<readonly Logged[]>
@@ -42,7 +43,7 @@ export function openClient(link: SessionLink, voice: DeviceVoice): Client {
   const channel = followChannel(session)
   const activity = followActivity(session)
   const engines = followEngines(session)
-  const view = followView(session)
+  const topics = followTopics(session)
   const threads = followThreads(session)
   const events = followEvents(session)
   const memory = followMemory(session)
@@ -54,7 +55,7 @@ export function openClient(link: SessionLink, voice: DeviceVoice): Client {
     channel,
     activity,
     engines,
-    view,
+    topics,
     threads,
     events,
     memory,
@@ -64,7 +65,7 @@ export function openClient(link: SessionLink, voice: DeviceVoice): Client {
       speech.close()
       library.unfollow()
       memory.unfollow()
-      view.unfollow()
+      topics.unfollow()
       threads.unfollow()
       events.unfollow()
       engines.unfollow()

@@ -130,7 +130,7 @@ export function createApprovals({
       const checked = validateView(view)
       if (!checked.ok) return Promise.resolve({ answer: 'unanswered', pressed: false })
       screen.present({ title: 'Waiting for you', spec: checked.spec }, showing)
-      const id = screen.cards(showing.thread)[0]?.id
+      const id = screen.cards(showing.thread).at(-1)?.id
 
       return new Promise<Answered>((resolve) => {
         const entry = {

@@ -9,7 +9,7 @@ import { createScreen, type Showing } from '../views/screen.ts'
 import { createWidgetApps } from './apps.ts'
 import { createLibrary } from './library.ts'
 
-const onStage: Showing = { thread: 'a', turn: 't1', focused: true }
+const onStage: Showing = { thread: 'a', turn: 't1' }
 
 const github: Service = { api: 'https://api.github.com/', name: 'GitHub', sign: { kind: 'token', header: 'Authorization', prefix: 'Bearer ' } }
 const spotify: Service = {

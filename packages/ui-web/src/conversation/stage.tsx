@@ -1,7 +1,7 @@
 import type { Client } from '@repo/client'
 import { matchesShortcut } from '@repo/client'
 import { useFollowed } from '@repo/client/react'
-import type { PersonaId, Settings, ShownView, TurnId } from '@repo/protocol'
+import type { Answer, PersonaId, Settings, ShownView, TurnId } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
 import { type CSSProperties, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AccessIndicator } from '../access/access-indicator.tsx'
@@ -20,8 +20,10 @@ import type { Mood } from '../presence/eye-motion.ts'
 import { cn } from '../primitives/cn.ts'
 import { DURATION, EASE, settle } from '../styles/motion.ts'
 import type { ViewActions } from '../view/context.ts'
-import { FEED, type GroupVersion, groupStream, type ViewGroup } from '../view/groups.ts'
-import { type AnswerWords, ViewFeed } from '../view/view-feed.tsx'
+import { FEED } from '../view/rows.ts'
+import { type AnswerWords, type Corrections, TopicFeed } from '../view/topic-feed.tsx'
+import { TopicIndex } from '../view/topic-index.tsx'
+import { useVersions } from '../view/versions.ts'
 import { captionOf, useLastHeard } from './caption.ts'
 import { EngineIndicator } from './engine-indicator.tsx'
 import { GoArrow } from './go-arrow.tsx'
@@ -84,8 +86,26 @@ const BAR = 44
 /** The height of the window's title row, which the page runs under: the system's own where it says, else the app's. */
 const TITLE_ROW = { '--title': 'env(titlebar-area-height, var(--frame-title-bar))' } as CSSProperties
 
-/** How far down the person must have scrolled, in pixels, before an answer counts as in front of them. */
+/** How far down the person must have scrolled, in pixels, before a topic counts as in front of them. */
 const AT_TOP = 8
+
+/** How much of a topic must still show under the bar, in pixels, for it to be the one in front: that, or half of it. */
+const FRONT_SHOWS = 96
+
+/** How far from the end of the topics read, in pixels, the ones before them are read. */
+const READ_AHEAD = 800
+
+/** The arrow keys that walk the topics: left and right through the versions of the one in front, up and down between them. */
+const WALK: Readonly<Record<string, readonly ['version' | 'topic', 1 | -1]>> = {
+  ArrowLeft: ['version', 1],
+  ArrowRight: ['version', -1],
+  ArrowUp: ['topic', -1],
+  ArrowDown: ['topic', 1]
+}
+
+/** Whether a key pressed there walks the topics: nowhere in particular, or in the composer while nothing is typed in it. */
+const walksFrom = (target: EventTarget | null) =>
+  target === document.body || (target instanceof HTMLTextAreaElement && target.value === '' && target.closest('[data-stage]') !== null)
 
 /**
  * How much room the composer takes at the bottom of the stage, kept current: the answers end above it. Measured on
@@ -117,9 +137,9 @@ const still = () => typeof matchMedia === 'function' && matchMedia('(prefers-red
 
 /**
  * The main screen (docs/SPEC.md, section 13.2): one page that scrolls. At its top, home: the assistant's eye, its
- * name, what it is doing and what it is saying. Under it the answers, the newest first, all open. Scrolled past
- * home, the eye shrinks into a bar that stays at the top. The line to talk to it stays at the bottom, and names the
- * answer in front of the person, which what they say next is probably about.
+ * name, what it is doing and what it is saying. Under it the topics, the one last active first, each an island that
+ * shows its latest answer. Scrolled past home, the eye shrinks into a bar that stays at the top. The line to talk to
+ * it stays at the bottom, and names the topic in front of the person, which what they say next is probably about.
  */
 export function Stage({
   client,
@@ -140,10 +160,14 @@ export function Stage({
   const speaking = useFollowed(client.speech)
   const activity = useFollowed(client.activity)
   const engines = useFollowed(client.engines)
-  const shown = useFollowed(client.view)
-  const stream = shown.stream
-  const streaming = stream.length > 0
-  const groups = useMemo(() => groupStream(stream), [stream])
+  const shown = useFollowed(client.topics)
+  const topics = shown.topics
+  const streaming = topics.length > 0
+  /** The cards on screen: those of each topic's latest answer. */
+  const cards = useMemo(() => topics.flatMap((one) => one.answers[0]?.views ?? []), [topics])
+  const names = useMemo(() => topics.map((one) => one.topic), [topics])
+  const earlier = useCallback((topic: string) => client.topics.earlier(topic), [client])
+  const versions = useVersions(topics, earlier)
   const threads = useFollowed(client.threads)
   const asleep = useFollowed(client.memory.asleep)
   const ready = threads.threads.filter((thread) => thread.state === 'ready')
@@ -168,34 +192,47 @@ export function Stage({
   const home = useRef<HTMLElement | null>(null)
   const [past, setPast] = useState(false)
   const [front, setFront] = useState<string>()
-  /** The answer the person said their words are not about: its chip stays away until another answer is in front. */
+  /** The topic the person said their words are not about: its chip stays away until another topic is in front. */
   const [notAbout, setNotAbout] = useState<string>()
   const [composerBox, composerRoom] = useComposerRoom()
+  // How much of the top of the page the bar covers once it shows: the title row's height and its own.
+  const bar = useRef<HTMLDivElement | null>(null)
+  const covered = useCallback(() => bar.current?.offsetHeight ?? BAR, [])
   const look = useCallback(() => {
     const area = scroller.current
     if (!area) return
-    setPast(home.current !== null && area.scrollTop > home.current.offsetHeight - BAR)
-    // In front: the answer across the line a third of the way down what shows. At the very top nothing is: what is
-    // said there is as likely about something new.
+    setPast(home.current !== null && area.scrollTop > home.current.offsetHeight - covered())
+    // In front: the first topic that still shows a good part of itself under the bar. At the very top nothing is:
+    // what is said there is as likely about something new.
     let key: string | undefined
     if (area.scrollTop > AT_TOP) {
-      const box = area.getBoundingClientRect()
-      const line = box.top + BAR + (box.height - BAR - composerRoom) / 3
-      for (const answer of area.querySelectorAll<HTMLElement>('[data-group]')) {
-        const { top, bottom } = answer.getBoundingClientRect()
-        if (top <= line && bottom > line) key = answer.dataset.group
+      const under = area.getBoundingClientRect().top + covered()
+      for (const island of area.querySelectorAll<HTMLElement>('[data-topic]')) {
+        const { bottom, height } = island.getBoundingClientRect()
+        if (bottom - under <= Math.min(FRONT_SHOWS, height / 2)) continue
+        key = island.dataset.topic
+        break
       }
     }
     setFront(key)
-  }, [composerRoom])
-  // Answers coming and going change what is in front without a scroll.
-  useEffect(look, [look, groups])
-  const frontGroup = front === undefined || front === notAbout ? undefined : groups.find((group) => group.key === front)
-  const aboutView = frontGroup?.versions[0]?.views[0]
-  const aboutTitle =
-    aboutView && ((frontGroup?.thread === undefined ? undefined : threads.threads.find((one) => one.id === frontGroup.thread)?.title) ?? aboutView.title)
+  }, [covered])
+  // Topics coming and going change what is in front without a scroll.
+  useEffect(look, [look, topics])
+  const about = front === undefined || front === notAbout ? undefined : names.find((topic) => topic.id === front)
   const aboutId = useRef<string | undefined>(undefined)
-  aboutId.current = aboutView?.id
+  aboutId.current = about?.id
+
+  /** Bring a topic's island under the bar. */
+  const goTo = useCallback(
+    (topic: string) => {
+      const area = scroller.current
+      const island = area?.querySelector<HTMLElement>(`[data-topic="${CSS.escape(topic)}"]`)
+      if (!area || !island) return
+      const top = area.scrollTop + island.getBoundingClientRect().top - area.getBoundingClientRect().top - covered() - 8
+      area.scrollTo({ top, behavior: still() ? 'auto' : 'smooth' })
+    },
+    [covered]
+  )
 
   const say = useCallback(
     (text: string, about?: string) => {
@@ -236,40 +273,51 @@ export function Stage({
     if (dropped.unplaced > 0) attachments.refuse('A folder can be given only in the desktop app, which knows where it is.')
   }, device.host?.files?.pathOf)
   /**
-   * What a card can do. What it says for the person (an answer picked in its questionnaire) is about that card. Only
-   * a view shown in answer to what the person just asked may start what it plays: one read on opening, or an earlier
-   * topic's view brought back on screen, never does, as the person may have stopped it.
+   * What a card can do. What it says for the person (an answer picked in its questionnaire) is about its topic. Only
+   * a view shown in answer to what the person just asked may start what it plays: one read on opening never does, as
+   * the person may have stopped it.
    */
   const answering = channel.running ?? channel.exchanges.at(-1)?.turn
   const actionsFor = useCallback(
-    (shownView: ShownView): ViewActions => ({
+    (shownView: ShownView, topic: string): ViewActions => ({
       ...actions,
-      say: (text: string) => say(text, shownView.id),
+      say: (text: string) => say(text, topic),
       ...(shownView.turn !== undefined && shownView.turn === answering && shown.arrived.includes(shownView.id) ? { autoplay: shownView.id } : {})
     }),
     [actions, say, shown.arrived, answering]
   )
-  // Closing a card takes it out of the stream.
-  const close = useCallback((view: ShownView) => void client.view.clear(view.id).catch(() => undefined), [client])
-  // What an answer says over its cards: when it was asked for and in what words, and what the assistant said.
+  // Removing a card takes it out of its answer.
+  const remove = useCallback((view: ShownView) => void client.topics.clear(view.id).catch(() => undefined), [client])
+  // What an answer says over its cards: when it was asked for and in what words, and what the assistant said. The
+  // conversation's own line is the latest there is of an answer still being given.
   const describe = useCallback(
-    (group: ViewGroup, version: GroupVersion): AnswerWords => {
-      const exchange = version.turn === undefined ? undefined : channel.exchanges.find((one) => one.turn === version.turn)
-      const topic = group.thread === undefined ? undefined : threads.threads.find((one) => one.id === group.thread)?.title
-      const named = topic ?? version.views[0]?.title ?? 'Shown'
-      if (!exchange) return { said: named }
+    (answer: Answer): AnswerWords => {
+      const exchange = channel.exchanges.find((one) => one.turn === answer.id) ?? answer.exchange
+      if (!exchange) return {}
       const who = whoAsked(exchange)
       const asked = exchange.said.replace(/\s+/g, ' ').trim()
       const said = exchange.replied.replace(/\s+/g, ' ').trim()
       return {
         time: usedWords(exchange.at, new Date()),
         asked: who === 'You' ? asked || undefined : asked === '' ? who : `${who} · ${asked}`,
-        said: said || named,
+        said: said || undefined,
+        working: exchange.outcome === 'running',
+        problem: exchange.outcome === 'failed' ? (exchange.problem ?? 'It could not answer.') : undefined,
         onOpenWhole: exchange.written === undefined ? undefined : () => onOpenAnswer(exchange.turn)
       }
     },
-    [channel.exchanges, threads.threads, onOpenAnswer]
+    [channel.exchanges, onOpenAnswer]
   )
+  // What the person corrects of how things were filed. A refusal is said under the eye, as any other.
+  const corrections = useMemo<Corrections>(() => {
+    const refused = () => setProblem(refusalCopy('failed'))
+    return {
+      rename: (topic, title) => void client.topics.rename(topic, title).catch(refused),
+      putAway: (topic) => void client.topics.archive(topic, true).catch(refused),
+      move: (answer, to) => void client.topics.move(answer, to).catch(refused),
+      merge: (topic, into) => void client.topics.merge(topic, into).catch(refused)
+    }
+  }, [client])
   const stop = useCallback(() => {
     client.speech.stop()
     client.channel.stop().catch(() => undefined)
@@ -324,26 +372,64 @@ export function Stage({
   const level = useRef(() => (voices.current.listening ? heardLevel() : (voices.current.voiceLevel?.() ?? syllables())))
 
   // The card the assistant is talking about, which says so by its name.
-  const attendedNow = attendedView(stream, speaking.sentence?.turn, channel.running, shown.arrived)
-  const attended = useLingering(attendedNow, (id) => stream.some((view) => view.id === id))
+  const attendedNow = attendedView(cards, speaking.sentence?.turn, channel.running, shown.arrived)
+  const attended = useLingering(attendedNow, (id) => cards.some((view) => view.id === id))
 
-  // A view that arrives is brought into sight, unless it already is: the newest answer rises under the bar.
-  const arrivals = useRef({ top: stream[0]?.id, arrived: shown.arrived, room: composerRoom })
-  arrivals.current.arrived = shown.arrived
-  arrivals.current.room = composerRoom
-  const topView = stream[0]?.id
+  // A topic that becomes active, answered or asked for again, rises to the top and is brought into sight, unless it
+  // already is. One read on opening is simply there.
+  const [top] = names
+  const rose = useRef<{ at: string | undefined; ready: boolean; room: number }>({ at: undefined, ready: false, room: composerRoom })
+  rose.current.room = composerRoom
   useEffect(() => {
-    const was = arrivals.current.top
-    arrivals.current.top = topView
+    const was = { ...rose.current }
+    rose.current.at = top?.at
+    rose.current.ready = shown.ready
     const area = scroller.current
-    if (!area || topView === undefined || topView === was || !arrivals.current.arrived.includes(topView)) return
-    const answer = area.querySelector<HTMLElement>('[data-group]')
-    if (!answer) return
+    if (!area || !was.ready || top === undefined || (was.at !== undefined && top.at <= was.at)) return
+    const island = area.querySelector<HTMLElement>('[data-topic]')
+    if (!island) return
     const box = area.getBoundingClientRect()
-    const at = answer.getBoundingClientRect()
-    if (at.top >= box.top && at.bottom <= box.bottom - arrivals.current.room) return
-    area.scrollTo({ top: area.scrollTop + at.top - box.top - BAR - 8, behavior: still() ? 'auto' : 'smooth' })
-  }, [topView])
+    const at = island.getBoundingClientRect()
+    if (at.top >= box.top + covered() && at.bottom <= box.bottom - was.room) return
+    area.scrollTo({ top: area.scrollTop + at.top - box.top - covered() - 8, behavior: still() ? 'auto' : 'smooth' })
+  }, [top, shown.ready, covered])
+
+  // The topics active before those read are read as the person nears the end of them.
+  const [end, setEnd] = useState<HTMLElement | null>(null)
+  useEffect(() => {
+    if (!end || !shown.more) return
+    const observer = new IntersectionObserver(([entry]) => entry?.isIntersecting && void client.topics.older().catch(() => undefined), {
+      root: scroller.current,
+      rootMargin: `${READ_AHEAD}px`
+    })
+    observer.observe(end)
+    return () => observer.disconnect()
+  }, [end, shown.more, client, topics.length])
+
+  // The arrows walk the topics while nothing is being typed: left and right through the versions of the one in
+  // front, or of the first one at the very top, up and down from one topic to the next.
+  const { step } = versions
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const walk = WALK[event.key]
+      if (!walk || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || !walksFrom(event.target)) return
+      const [what, way] = walk
+      const at = names.findIndex((topic) => topic.id === front)
+      if (what === 'version') {
+        const walked = names[Math.max(at, 0)]
+        if (!walked) return
+        void step(walked.id, way)
+      } else {
+        const next = names[at + way]
+        if (next) goTo(next.id)
+        else if (way < 0) scroller.current?.scrollTo({ top: 0, behavior: still() ? 'auto' : 'smooth' })
+        else return
+      }
+      event.preventDefault()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [names, front, step, goTo])
 
   // Starting to talk stops the assistant. The talk key (Ctrl+Space by default) starts listening, and again sends.
   const toggle = useCallback(() => {
@@ -379,11 +465,10 @@ export function Stage({
     return () => window.removeEventListener('keydown', onKey)
   }, [toggle, listening, cancel, talkKey, device.mac])
 
-  // What the stream held when the window became Mini: a view that arrived since is kept there, and waits unseen for the
-  // full window.
+  // The cards on screen when the window became Mini: one that arrived since waits unseen for the full window.
   const seenInFull = useRef<readonly string[]>([])
-  if (!inMini) seenInFull.current = stream.map((view) => view.id)
-  const unseen = inMini && stream.some((view) => !seenInFull.current.includes(view.id))
+  if (!inMini) seenInFull.current = cards.map((view) => view.id)
+  const unseen = inMini && cards.some((view) => !seenInFull.current.includes(view.id))
 
   if (!active) return null
 
@@ -426,7 +511,7 @@ export function Stage({
           <div className="mt-2 grid min-h-[3.25rem] w-full justify-items-center" aria-live="polite">
             {caption('medium', 2)}
           </div>
-          {/* A view that arrived here is kept in the stream: the way to it, in the full window. */}
+          {/* A view that arrived here waits in its topic: the way to it, in the full window. */}
           <AnimatePresence initial={false}>
             {unseen && (
               <QuietLink key="unseen" onPress={mini.onFullWindow} className="mt-1">
@@ -441,7 +526,7 @@ export function Stage({
 
   // What rests under the eye is what the assistant says while it says it, what was asked while it works, or a
   // problem. Once said, the reply is the headline of its answer below, and is not written twice.
-  const answered = last !== undefined && groups.some((group) => group.versions.some((version) => version.turn === last.turn))
+  const answered = last !== undefined && topics.some((one) => one.answers[0]?.id === last.turn)
   const resting = line === 'heard' || line === 'replied'
   const captioned = line !== 'nothing' && !(resting && answered)
   // The last reply's full answer, when its thread wrote one and no answer below offers it.
@@ -465,6 +550,7 @@ export function Stage({
     <div data-stage="" className="-mt-(--title) relative flex h-[calc(100%+var(--title))] min-w-0 flex-col" style={TITLE_ROW}>
       {/* The bar the eye shrinks into once home has scrolled away, the title row's ground with it. Pressing its eye goes back up. */}
       <motion.div
+        ref={bar}
         initial={false}
         animate={{ opacity: past ? 1 : 0, y: past ? 0 : -6 }}
         transition={settle}
@@ -537,15 +623,33 @@ export function Stage({
         {streaming && (
           <div style={{ paddingInline: side, paddingBottom: composerRoom + 24 }}>
             <div className="mx-auto w-full" style={COLUMN}>
-              <ViewFeed groups={groups} arrived={shown.arrived} attended={attended} actions={actionsFor} onClose={close} describe={describe} />
+              <TopicFeed
+                topics={topics}
+                stepped={versions.stepped}
+                onStep={(topic, way) => void step(topic, way)}
+                arrived={shown.arrived}
+                attended={attended}
+                actions={actionsFor}
+                onRemove={remove}
+                describe={describe}
+                corrections={corrections}
+              />
+              {/* Where the topics read so far end: the ones before them are read as it comes near. */}
+              {shown.more && (
+                <p ref={setEnd} className="caps flex items-center gap-[7px] border-line-strong border-t pt-3.5 pb-9 text-text-soft">
+                  <span aria-hidden="true" className="size-[7px] border border-text-soft" />
+                  Earlier topics
+                </p>
+              )}
             </div>
           </div>
         )}
       </motion.div>
+      {streaming && names.length > 1 && <TopicIndex topics={names} front={front} onGo={goTo} />}
 
       {/* The composer stays at the bottom, on the ground: the answers end above it. */}
       <div ref={composerBox} className="pointer-events-none absolute inset-x-0 bottom-0 z-20" style={{ paddingInline: side - 8 }}>
-        <div className="pointer-events-auto mx-auto grid w-full gap-1.5 bg-ground px-2 pt-2 pb-3" style={{ maxWidth: FEED.most + 16 }}>
+        <div className="pointer-events-auto mx-auto grid w-full min-w-0 grid-cols-1 gap-1.5 bg-ground px-2 pt-2 pb-3" style={{ maxWidth: FEED.most + 16 }}>
           <InputLine
             name={active.name}
             stopAll={running || voicing || working > 0 ? { working: Math.max(working, 1), onStop: stopAll } : undefined}
@@ -559,7 +663,7 @@ export function Stage({
             }
             talk={canTalk ? { listening, onPress: toggle } : onSetUpVoice ? { listening: false, onPress: onSetUpVoice } : undefined}
             persona={{ name: active.name, stance: active.stance, mood, next: other && { name: other.name }, onToggle: switchPersona }}
-            about={aboutTitle === undefined || front === undefined ? undefined : { title: aboutTitle, onRemove: () => setNotAbout(front) }}
+            about={about === undefined ? undefined : { title: about.title, onRemove: () => setNotAbout(about.id) }}
           />
           {/* Why a file was not added, quietly on the left; what it may reach and what it thinks with on the right, changed
               on the spot from their menus. */}

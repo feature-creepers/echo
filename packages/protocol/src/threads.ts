@@ -1,16 +1,14 @@
 import { z } from 'zod'
 
 /**
- * A thread: a hidden working conversation about one topic, behind the single channel the user sees.
- * The user never opens or closes one; the assistant does, and the activity panel shows them on request.
+ * A thread: a hidden working conversation, behind the single channel the user sees. The user never opens or closes
+ * one; the assistant does, and the side panel shows them on request. What it answers is filed in a topic
+ * (`topics.ts`), which is what the person sees.
  */
 export const threadIdSchema = z.string().min(1).max(64)
 
 const THREAD_KINDS = [
-  /**
-   * A topic the conversation can come back to: a recipe, a form, a trip. A side question is one too, opened beside the
-   * topic on the stage without taking its place (`beside`).
-   */
+  /** It answers the person: a recipe, a form, a trip, a quick question. */
   'topic',
   /**
    * Part of a topic's work, handed by its thread to a thread of its own so both go on at once. It answers that thread,
@@ -36,10 +34,10 @@ export const threadSchema = z.object({
   /** For a sub-thread: the thread that opened it, which it works for. */
   parent: threadIdSchema.optional(),
   /**
-   * For a topic opened for a side question (docs/SPEC.md, section 7.5): the topic on the stage when it was asked, which
-   * kept the stage. The side sheet lists it under that topic.
+   * The topic its answers are filed in. A sub-thread has none: it works for its thread's. A thread recorded before
+   * there were topics has none either: it is read as a topic of its own, under its own identifier.
    */
-  beside: threadIdSchema.optional(),
+  topic: z.string().min(1).max(64).optional(),
   /**
    * For a project: the folder the thread works in, absolute, as the system names it. Its session runs there, reads
    * the folder's own instructions for those who work in it, and works on its files as a developer would.
@@ -55,7 +53,7 @@ export type Thread = z.infer<typeof threadSchema>
 export const threadsSchema = z.object({
   /** The most recent first. */
   threads: z.array(threadSchema),
-  /** The topic on the stage. */
+  /** The thread the person last turned to: the one that answered them last, or that they brought back. */
   focus: threadIdSchema.optional()
 })
 export type Threads = z.infer<typeof threadsSchema>

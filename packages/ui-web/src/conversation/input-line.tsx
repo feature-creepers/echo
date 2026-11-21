@@ -155,9 +155,9 @@ export function InputLine({ name, stopAll, onSay, onStop, talk, persona, pause, 
   }
 
   return (
-    <form onSubmit={send} className="material shadow-float group grid">
+    <form onSubmit={send} className="material shadow-float group grid min-w-0 grid-cols-1">
       {waiting > 0 && <AttachmentChips pending={attachments.pending} onRemove={attachments.remove} />}
-      <div className="flex min-h-[3.25rem] items-end gap-1 p-2">
+      <div className="flex min-h-[3.25rem] min-w-0 items-end gap-1 p-2">
         {/* The eye says which persona answers and what it is doing; pressing it hands over to the other one. */}
         <button
           type="button"

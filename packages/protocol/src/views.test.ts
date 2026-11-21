@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { onTop, type ShownView, STREAM_LENGTH } from './views.ts'
+import { type ShownView, withCard } from './views.ts'
 
 const view = (id: string, more: Partial<ShownView> = {}): ShownView => ({
   id,
@@ -7,56 +7,30 @@ const view = (id: string, more: Partial<ShownView> = {}): ShownView => ({
   spec: { root: 'a', elements: { a: { type: 'Divider', props: {}, children: [] } } },
   ...more
 })
-const ids = (stream: readonly ShownView[]) => stream.map((one) => one.id)
+const ids = (cards: readonly ShownView[]) => cards.map((one) => one.id)
+const shown = (...views: ShownView[]) => views.reduce<ShownView[]>(withCard, [])
 
-describe('the stream', () => {
-  it('puts the newest view first and keeps every earlier one', () => {
-    let stream: ShownView[] = []
-    for (const id of ['a', 'b', 'c']) stream = onTop(stream, view(id, { thread: 'same' }))
-    expect(ids(stream)).toEqual(['c', 'b', 'a'])
+describe('the cards of an answer', () => {
+  it.each<[string, ShownView[], string[]]>([
+    ['stand in the order they were shown', [view('a'), view('b'), view('c')], ['a', 'b', 'c']],
+    ['keep the place of a view shown again', [view('a'), view('b'), view('a', { title: 'again' })], ['a', 'b']],
+    [
+      'show a card in place of the one of its name',
+      [view('chart-1', { card: 'chart' }), view('map', { card: 'map' }), view('chart-2', { card: 'chart' })],
+      ['chart-2', 'map']
+    ],
+    ['show a card of another name beside the others', [view('chart', { card: 'chart' }), view('news', { card: 'news' })], ['chart', 'news']],
+    ['keep cards that have no name, each one', [view('asked'), view('written'), view('chart', { card: 'chart' })], ['asked', 'written', 'chart']],
+    [
+      'show a saved widget in place of its earlier version',
+      [view('radio-1', { widget: 'radio' }), view('other'), view('radio-2', { widget: 'radio' })],
+      ['radio-2', 'other']
+    ]
+  ])('%s', (_case, views, expected) => {
+    expect(ids(shown(...views))).toEqual(expected)
   })
 
-  it('moves a view shown again to the top, once', () => {
-    const stream = onTop(onTop(onTop([], view('a')), view('b')), view('a'))
-    expect(ids(stream)).toEqual(['a', 'b'])
-  })
-
-  it("keeps one aside card per thread, and one per saved widget: each one's latest", () => {
-    let stream: ShownView[] = []
-    stream = onTop(stream, view('topic', { thread: 'x' }))
-    stream = onTop(stream, view('card-1', { aside: true, thread: 'side' }))
-    stream = onTop(stream, view('radio-1', { widget: 'radio' }))
-    stream = onTop(stream, view('card-2', { aside: true, thread: 'side' }))
-    stream = onTop(stream, view('radio-2', { widget: 'radio' }))
-    expect(ids(stream)).toEqual(['radio-2', 'card-2', 'topic'])
-  })
-
-  it.each<[string, Partial<ShownView>, string[]]>([
-    ['the same name in the same turn', { thread: 'x', turn: 't1', card: 'chart' }, ['chart-2', 'map']],
-    ['another name', { thread: 'x', turn: 't1', card: 'news' }, ['chart-2', 'map', 'chart-1']],
-    ['the same name in another turn', { thread: 'x', turn: 't2', card: 'chart' }, ['chart-2', 'map', 'chart-1']],
-    ['the same name in another thread', { thread: 'y', turn: 't1', card: 'chart' }, ['chart-2', 'map', 'chart-1']],
-    ['the same name outside any turn', { thread: 'x', card: 'chart' }, ['chart-2', 'map', 'chart-1']],
-    ['no name', { thread: 'x', turn: 't1' }, ['chart-2', 'map', 'chart-1']]
-  ])('keeps one card of each name per answer: a card shown with %s', (_case, more, expected) => {
-    let stream: ShownView[] = []
-    stream = onTop(stream, view('chart-1', { thread: 'x', turn: 't1', card: 'chart' }))
-    stream = onTop(stream, view('map', { thread: 'x', turn: 't1', card: 'map' }))
-    stream = onTop(stream, view('chart-2', more))
-    expect(ids(stream)).toEqual(expected)
-  })
-
-  it("keeps a thread's view on the stage beside its aside card", () => {
-    let stream: ShownView[] = []
-    stream = onTop(stream, view('card', { aside: true, thread: 'side' }))
-    stream = onTop(stream, view('full', { thread: 'side' }))
-    expect(ids(stream)).toEqual(['full', 'card'])
-  })
-
-  it('holds a bounded number of views', () => {
-    let stream: ShownView[] = []
-    for (let index = 0; index < STREAM_LENGTH + 3; index++) stream = onTop(stream, view(`v${index}`))
-    expect(stream).toHaveLength(STREAM_LENGTH)
-    expect(stream[0]?.id).toBe(`v${STREAM_LENGTH + 2}`)
+  it('shows a view as it was last shown', () => {
+    expect(shown(view('a'), view('a', { title: 'again' }))[0]?.title).toBe('again')
   })
 })

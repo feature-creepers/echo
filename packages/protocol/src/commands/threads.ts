@@ -14,7 +14,7 @@ export const threadCommands = {
    * Read a thread for the side sheet, a page at a time: its latest requests, or with `before` those just before
    * that request, as many as fit one message. Each comes with its full written answer, its tool calls as a
    * preview (what each was about, the start of what it gave back: `thread.step` reads one whole), and the titles of
-   * the views it showed, its aside cards included. `earlier` says how many requests come before the page. A request too
+   * the views it showed. `earlier` says how many requests come before the page. A request too
    * long to fit alone keeps its latest calls, `earlierSteps` saying how many of its first ones are left out.
    */
   'thread.read': {
@@ -46,9 +46,8 @@ export const threadCommands = {
   },
 
   /**
-   * Put a finished topic's waiting answer away unseen, or with no thread every one that waits (docs/SPEC.md, section
-   * 7.4): it is no longer ready, so its row under the caption leaves and it is not mentioned. Nothing else changes: the
-   * topic stays where it was, and the side sheet still shows its answer.
+   * Take a finished thread's waiting answer as seen, or with no thread every one that waits (docs/SPEC.md, section
+   * 7.4): it is no longer ready, and is not mentioned. Nothing else changes.
    */
   'threads.dismiss': {
     input: z.object({ thread: threadIdSchema.optional() }),
@@ -65,9 +64,8 @@ export const threadCommands = {
   },
 
   /**
-   * Bring a topic back: it takes the focus, its view the stage and its last answer the caption. A side question
-   * answered only in passing comes back in passing: its card on top of the stream, for its full time again, and the
-   * topic on the stage stays.
+   * Turn to a thread: it takes the focus, its topic comes back to the top of the main screen, and what of its
+   * waiting answer was not heard is said.
    */
   'thread.focus': {
     input: z.object({ thread: threadIdSchema }),

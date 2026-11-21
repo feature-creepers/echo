@@ -291,7 +291,7 @@ export function createLibrary({ records, screen, now, newId }: LibraryOptions): 
         show: (id) => show(id, showing()),
         save(title, collection, card) {
           const cards = screen.cards(showing().thread)
-          const view = card === undefined ? cards[0] : cards.find((one) => one.card === card)
+          const view = card === undefined ? cards.at(-1) : cards.find((one) => one.card === card)
           if (!view)
             return {
               ok: false,

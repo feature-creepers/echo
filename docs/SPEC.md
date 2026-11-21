@@ -42,14 +42,14 @@ The design is checked against these.
 | Device capability | Something a client offers the core: microphone, speaker, screen, local files, other apps, notifications              |
 | Channel           | The single conversation the person has with the assistant                                                            |
 | Turn              | One thing the person says, and the assistant's response to it                                                        |
-| Thread            | A hidden working conversation about one topic or task                                                                |
-| Topic             | A thread the person works on with the assistant, whose view takes the stage                                          |
-| Project           | A topic whose thread works in a folder of the person's (section 7.11)                                                |
-| Sub-thread        | A thread a topic hands part of its work to (section 7.3)                                                             |
+| Thread            | A hidden working conversation: a session that does the work for a topic                                              |
+| Topic             | One subject of the conversation, as the person sees it: its answers, from as many threads as it takes (section 7.3)  |
+| Project           | Work in a folder of the person's, done by a thread that works there (section 7.11)                                   |
+| Sub-thread        | A thread another thread hands part of its work to (section 7.3)                                                      |
 | Orchestrator      | The session that hears every turn and either answers it or passes it to a thread                                     |
 | View              | What a thread shows on screen: a description of interface elements and their data                                    |
-| Stage             | The screen area showing the cards of the thread in focus                                                             |
-| Aside             | A side question, answered in passing beside the topic on the stage (section 7.5)                                     |
+| Answer            | What the assistant gives for one turn: what it said and a few cards. Each one is a version of its topic              |
+| Aside             | A side question, answered in passing (section 7.5)                                                                   |
 | Persona           | One of the characters the assistant can be: a name the person chooses, a stance and an accent. Two ship by default   |
 | Hardware tier     | Light, standard or performance: which speech and memory components a machine runs                                    |
 | Inspector         | The technical view of threads, events, memory and cost                                                               |
@@ -232,8 +232,8 @@ Of these capabilities, the port (`packages/core/src/ports/harness.ts`) carries o
 
 1. **Capture.** Speech is recognised into text, with partial words shown while the person talks.
 2. **Local intents.** Commands that need no intelligence never reach a model: stop, pause, next, louder, repeat, show the transcript, switch persona. A small grammar per language handles them at once.
-3. **Context.** The core assembles the time and place, the thread in focus, the index of open threads (title, one-line state) and the memories most relevant to the utterance. When the device says which view was in front of the person (`about`), and it is still in the stream, the orchestrator is told its title and its topic: it leans towards that topic when the words fit it, and is never held to it ("what's the weather?" in front of a build is still about the weather).
-4. **Orchestrator.** A warm session on a fast model reads the utterance and either answers directly (small talk, quick facts), continues a thread (`thread_send`), opens a thread or a side question (`thread_open`), or brings an earlier thread's view back (`thread_focus`, "back to the document").
+3. **Context.** The core assembles the time and place, the topics last active with the threads of each (title, state, what it is answering) and the memories most relevant to the utterance. When the device says which topic was in front of the person (`about`), the orchestrator is told its title and the thread that last answered in it: it leans towards that topic when the words fit it, and is never held to it ("what's the weather?" in front of a build is still about the weather).
+4. **Orchestrator.** A warm session on a fast model reads the utterance and either answers directly (small talk, quick facts), continues a thread (`thread_send`), opens a thread, in the topic it is about or a new one, or a side question (`thread_open`), or brings an earlier topic back (`thread_focus`, "back to the document").
 5. **Thread.** The chosen thread works in its own session with its own tools and answers in three layers (section 7.2).
 6. **Record.** The utterance, the spoken reply, the view and the thread are appended to the channel log.
 
@@ -255,23 +255,32 @@ The instructions, a reminder at the end of each request and the core hold the or
 
 **Nothing is said twice.** Each speaker's words are cut into sentences of their own, so a thread's first sentence never runs into the orchestrator's last. What the orchestrator said before passing a turn on is told to the thread, which carries on from it. A sentence already said in a turn is not said again. Once the full answer is written, a recap of it is not voiced. A thread brought back says only what was not heard of its answer.
 
-### 7.3 Threads
+### 7.3 Topics and threads
 
-| State   | Meaning                                                                   |
-| ------- | ------------------------------------------------------------------------- |
-| Working | A turn is running                                                         |
-| Ready   | It finished while another topic was in focus: its answer waits to be seen |
-| Parked  | Idle, with a summary. Its harness session may be closed to free memory    |
+**Topics.** What the person sees is topics, not threads (`core/src/topics/`). A topic is one subject they come back to, a trip, a project, a purchase: a conversation in its own right, made of answers, each one a version of it. Threads are how the work is done; a topic is what it is about.
 
-- A thread owns its transcript, its view, its files and a rolling summary.
+- **A thread files what it answers in its topic.** Several threads can work for one topic ("the weather this weekend", then "what should I pack?"): the orchestrator opens each new thread in the topic it is about (`thread_open` with `topic`), or lets it start a new one, named by the thread's title. A thread recorded before there were topics is a topic of its own.
+- **An answer** is a line of the conversation a thread answered, with the cards shown for it (section 9.3). What is shown outside any thread is an answer too, in a topic of its own named as it is: a reminder's card; a saved widget the person had shown, which is one topic however often they show it, back on top each time, and gone once its card is removed.
+- **Kept for good.** A topic never leaves by itself. Topics are listed the one last active first: a new answer, or being asked for again, brings one back to the top. A client reads them a page of twelve at a time, each with its latest answer (`topics.read`), and a topic's earlier answers when the person steps back to them (`topic.read`). The core remembers which answers a topic has and where their cards are in the records, and reads the cards when asked, so years of answers weigh nothing until someone scrolls back to them.
+- **The person corrects the filing.** They rename a topic (`topic.rename`), move an answer to another topic or to a new one (`topic.move`), merge a topic into another, with what its threads answer next (`topic.merge`), and put a topic away from the main screen (`topic.archive`). An answer follows its thread, so nothing is written for the common case: only a move, or an answer that is no thread's, is recorded (`topic.answer`). A topic put away comes back with a new answer in it, or when the assistant is asked for it: no screen lists the topics put away.
+
+**Threads.**
+
+| State   | Meaning                                                                     |
+| ------- | --------------------------------------------------------------------------- |
+| Working | A turn is running                                                           |
+| Ready   | It finished while another turn was being said: its answer waits to be heard |
+| Parked  | Idle, with a summary. Its harness session may be closed to free memory      |
+
+- A thread owns its transcript, its files and a rolling summary.
 - A closed session is rebuilt on the next use from the persona, the summary, the last exchanges and the relevant memories.
-- A side question's session is closed once its card has left (section 7.5). A topic's session stays open until the app quits: it holds what a long piece of work read and did, which a new session's recap would not. Sessions are not closed by hardware tier.
-- The orchestrator sees the most recent threads in its context and can search older ones, so "that recipe from last week" finds an older thread.
+- A side question's session is closed three minutes after it answered (section 7.5). Any other thread's session stays open until the app quits: it holds what a long piece of work read and did, which a new session's recap would not. Sessions are not closed by hardware tier.
+- The orchestrator sees the twelve topics last active in its context, with up to four threads of each, and can search older ones, so "that recipe from last week" finds an older thread.
 - The number of threads working at once is capped by hardware tier.
 
-**Threads run side by side.** A thread at work goes on while the person asks for something else: what they say next takes the stage, and the work carries on out of sight until its answer is marked ready (section 7.4).
+**Threads run side by side.** A thread at work goes on while the person asks for something else: what they say next is answered, and the work carries on, its cards arriving in its topic, until its answer is marked ready (section 7.4).
 
-- The orchestrator's list of threads gives each one at work and what it is answering, so "what are you working on?" is answered from it.
+- The orchestrator's list gives each thread at work and what it is answering, so "what are you working on?" is answered from it.
 - A thread answers one request at a time. Something new sent to a thread at work is refused once, saying what the thread is doing; the orchestrator then opens another thread for it (in the same folder for a project), so both go on at once, or sends it again with `wait` when it follows from that work ("and then commit it").
 - A project's thread that starts while others work in the same folder is told what they are doing, to change only what its task needs, and to commit only its own files.
 
@@ -279,7 +288,7 @@ The instructions, a reminder at the end of each request and the core hold the or
 
 - `subthread_open` opens one with a title and a complete request, in the thread's folder for a project or another the person lets it change. `subthread_send` gives one more to do, after what it is doing. `subthread_wait` waits for those named, or all of the thread's at work or with an unread result, and gives each one's full answer (20,000 characters at most) or what it wrote, and how it ended. A wait returns after 10 minutes, or the minutes asked up to 30, saying which are still at work.
 - At most four at work at once per thread, and one level: a sub-thread opens none of its own and is not given the screen, so work never fans out beyond what the person can follow.
-- A sub-thread works for its thread, never the person. Its request is a line of its own (`trigger: 'delegated'`, labelled "From its topic"), kept out of the conversation: the transcript, the orchestrator's recap, memory and search leave it out. Nothing it writes is said; it is never marked ready, mentioned or notified; its approvals show while its topic is on the stage.
+- A sub-thread works for its thread, never the person. Its request is a line of its own (`trigger: 'delegated'`, labelled "From its topic"), kept out of the conversation: the transcript, the orchestrator's recap, memory and search leave it out. Nothing it writes is said; it is never marked ready, mentioned or notified; what it must ask the person shows at once, in its thread's topic.
 - The side sheet lists it under its topic, with its whole work, and can stop it; stopping its topic stops it. The orchestrator does not route to sub-threads: what the person says to one goes to its topic.
 - A thread starting on a request is told which of its sub-threads are at work or have an unread result. A sub-thread cut short by a restart takes up its part again.
 
@@ -293,20 +302,20 @@ The instructions, a reminder at the end of each request and the core hold the or
 
 **Stopping.** Quieting the voice and stopping work are kept apart, so a long piece of work is never lost to a stray key:
 
-- **Escape** stops what is being said and the answer on the stage; a project's thread at work goes on (`turn.stop`).
+- **Escape** stops what is being said and the answer being given; a project's thread at work goes on (`turn.stop`).
 - **One thread** is stopped from the list of work under the composer or its row in the side sheet (`threads.stop` with the thread): the request it answers and those waiting for it.
-- **All work** is stopped by the composer's stop button held for two seconds (`threads.stop` with no thread): every thread's work and the answer on the stage. Reminders, scheduled tasks and approvals are left as they are; that is "Stop everything" (section 12.2).
+- **All work** is stopped by the composer's stop button held for two seconds (`threads.stop` with no thread): every thread's work and the answer being given. Reminders, scheduled tasks and approvals are left as they are; that is "Stop everything" (section 12.2).
 
 ### 7.4 Background results
 
-When a thread finishes while another is in focus, its result does not interrupt. A row appears in the "ready" list under the caption, with a soft sound when answers are heard aloud on the device. The assistant mentions it at the next pause ("By the way, it's ready: Recipe."), or the person asks for it.
+When a thread finishes while another turn is being said, its result does not interrupt: its cards are in its topic, and a row appears in the "ready" list under the caption, with a soft sound when answers are heard aloud on the device. The assistant mentions it at the next pause ("By the way, it's ready: Recipe."), or the person asks for it.
 
 - **The ready list** shows three rows at most, the most recent first, the others behind "N more". A row names the topic, says on one line what its latest answer found (the title of what it wrote, else what it said) and how long it has waited. Pressing it brings the topic back. Its cross, or Delete on the row, puts the answer away unseen (`threads.dismiss` with the thread): the topic is no longer ready and is not mentioned, and stays where it was, its answer in the side sheet. "Clear all" puts every one away (`threads.dismiss` with no thread).
 
 - **The mention** is a turn the assistant starts itself with no model asked (`trigger: 'ready'`, labelled "Ready"): the topics' titles, several in one sentence, joined in the language of the conversation with words the core knows in English, French, Spanish, German, Italian, Portuguese and Dutch, and English for others (`channel/ready.ts`).
-- **The next pause** is when nobody is being answered: no turn on the stage or waiting for the orchestrator. A project's thread at work on the stage is silent until it is done, so it leaves a pause (section 7.8). The core looks for it as each turn ends; the voice says it after what it is still saying, never cutting it.
+- **The next pause** is when nobody is being answered: no turn being answered aloud or waiting for the orchestrator. A project's thread at work is silent until it is done, so it leaves a pause (section 7.8). The core looks for it as each turn ends; the voice says it after what it is still saying, never cutting it.
 - **Asked for** ("what's ready?"), the orchestrator brings the topic back with `thread_focus`, which says the part of its answer not heard yet, as a press on its row does.
-- **The setting** (`interruptions.results`, on the Voice page under "Speaking up by itself", for every device): `mention` by default; `chip` leaves it to its row and notification; `speak` says the answer itself at the next pause and brings its view back.
+- **The setting** (`interruptions.results`, on the Voice page under "Speaking up by itself", for every device): `mention` by default; `chip` leaves it to its row and notification; `speak` says the answer itself at the next pause and brings its topic back to the top.
 - **Left to its row** during the quiet hours, past the cap on how often the assistant speaks up by itself (section 7.10), and once the person pressed Escape or stopped everything. A topic brought back before the pause is not mentioned.
 
 **A notification says it too** (`device.notify`, section 12.1): when an answer finishes in the background, when a scheduled task is answered, and when an answer took more than twenty seconds, which is how "tell me when it's done" works once the person has turned to another app. It carries the thread's title and the start of what was said, is shown only while the window is hidden, minimised or not in front, and when pressed brings the window forward.
@@ -317,12 +326,11 @@ An aside is a question that does not change the topic: "By the way, what time is
 
 - **Trigger.** A spoken marker ("by the way", "quick question", and their French equivalents), the orchestrator's judgement when a short unrelated question arrives mid-task, or an optional modifier on the talk shortcut.
 - **A fact said in one sentence** the orchestrator answers itself, as any one-line fact.
-- **One that needs a search, a tool or the screen** is a topic of its own, opened beside the topic on the stage (`thread_open` with `kind: 'aside'`; the thread is a `topic` whose `beside` is that topic). There is no kind of thread for side questions. The turn is passed on without moving the focus, so the topic keeps the stage, and the request is marked to be answered in passing (`SIDE_QUESTION`): a sentence or two and, if it helps, a small view.
-- **On screen**, that view is an aside card (`aside` on the view), marked "By the way", on top of the stream of views, first among the answers; the topic's view follows it and keeps the stage. A thread keeps one aside card in the stream, its latest.
-- **In the side sheet**, it is listed under the topic it was asked beside, as a side question, with its work. "Show on screen" brings it back as it was answered: its card on top of the stream for its full time again, the topic keeping the stage. One answered in words alone comes back as any topic.
-- **"Tell me more about that"** is a request to its thread like any (`thread_send`): it takes the focus and the stage and answers in full, carrying on from what it said in passing, in the same session or, once that was closed, a new one told what came before.
-- **The card leaves** with its close button; by itself three minutes after it was shown (again its full time when brought back, and at its time after a restart); when the person says thanks and nothing more ("thanks", "merci", "ok, thank you so much", in the seven languages of section 7.4, `channel/thanks.ts`), which is still answered; and on Escape, which also stops the answer under way. A card is only put away, and comes back from the side sheet. It can be saved to the library and pinned like any view (section 9.8). Its session is kept as long as its card, then closed.
-- **With no topic on the stage, and always for a project**, a side question is a topic like any and takes the stage.
+- **One that needs a search, a tool or the screen** is passed to a thread of its own (`thread_open` with `kind: 'aside'`), in the topic it is about or a new one. There is no kind of thread for side questions. The turn is passed on without moving the focus, and the request is marked to be answered in passing (`SIDE_QUESTION`): a sentence or two and, if it helps, one small view.
+- **On screen**, its answer is a topic like any other, which is never active for long (section 13.2). Nothing marks it, and nothing of it leaves by itself.
+- **"Tell me more about that"** is a request to its thread like any (`thread_send`): it takes the focus and answers in full, as a new answer of its topic, carrying on from what it said in passing, in the same session or, once that was closed, a new one told what came before.
+- **Its session** is kept three minutes after it answered, for what may follow, then closed.
+- **With no thread in focus, and always for a project**, a side question is passed on like any request.
 
 ### 7.6 Two requests at once
 
@@ -337,7 +345,7 @@ An aside is a question that does not change the topic: "By the way, what time is
                   says: "A mushroom risotto would work. Forty minutes, and it suits your vegetarian guest."
 
 "I was filling out a document earlier and I need help with the admin side."
-   orchestrator   finds B "Housing form", parked yesterday: focus on B, the stage shows its document preview
+   orchestrator   finds B "Housing form", parked yesterday: focus on B, its topic back on top
    thread B       resumes from its summary
                   says: "We stopped at the income section. Do you have last year's tax notice?"
 
@@ -345,7 +353,7 @@ An aside is a question that does not change the topic: "By the way, what time is
    orchestrator   a side question it answers itself; focus stays on B
 
 "And for the risotto, can I use white wine instead?"
-   orchestrator   sends to A, focus on A, the stage shows the recipe again
+   orchestrator   sends to A, focus on A: a new answer of its topic, back on top
 ```
 
 ### 7.8 Proactive turns
@@ -353,10 +361,10 @@ An aside is a question that does not change the topic: "By the way, what time is
 The assistant starts a turn itself on a trigger (the window opening, a time, a thread finished, a restart) rather than an utterance. The exchange's `trigger` says which (`greeting`, `reminder`, `task`, `resume`, `ready`, and `delegated` for a sub-thread's part, section 7.3), and the transcript labels it "Briefing", "Reminder", "Scheduled", "Resumed" or "Ready" where it would say "You".
 
 - **The briefing** is a turn the orchestrator answers when the window opens, at most every six hours. When a ready account gives its calendar, the request is given the rest of today's events, eight at most, by start time and title, fenced, read within two seconds; past them, or on a failure, it goes on without them.
-- **A reminder** has nothing to work out: its sentence was written when it was set, so it is said at once in the persona's voice, with the caption and no model asked. A card in the stream shows what it is about and when it was due.
+- **A reminder** has nothing to work out: its sentence was written when it was set, so it is said at once in the persona's voice, with the caption and no model asked. A card, a topic of its own, shows what it is about and when it was due.
 - **A scheduled task** is a request the orchestrator hears as if the person had just said it, told that it is scheduled and that the person may be away, and routes like any other.
 - **A background result** is its row in the "ready" list, its notification, and its mention or the answer itself at the next pause (section 7.4).
-- **They wait their turn.** What the assistant starts itself waits while the person is being answered (a silent project's thread at work on the stage does not count), looking again every second, and its sentences queue after what is being said. A turn the person starts still cuts everything. A reminder does not wake an assistant asleep at its memory's work (section 10.6).
+- **They wait their turn.** What the assistant starts itself waits while the person is being answered (a project's thread at work in silence does not count), looking again every second, and its sentences queue after what is being said. A turn the person starts still cuts everything. A reminder does not wake an assistant asleep at its memory's work (section 10.6).
 
 ### 7.9 Routing cost
 
@@ -394,7 +402,7 @@ The person asks for something later, and it happens at its time: "remind me at 8
 - one missed by twelve hours or more is marked missed;
 - a recurring job does not replay missed times; it rings at its next one.
 
-**What the person gets.** A reminder: a notification at once, then at the next pause its sentence said and a card on top of the stream (section 7.8). A task: a turn marked as scheduled, its answer said and shown, and a notification when the window is not in front. A Windows notification needs the app's identity, which the installer gives its shortcut, so a copy run from the sources may show none; macOS may show none until the app is signed (section 14.7).
+**What the person gets.** A reminder: a notification at once, then at the next pause its sentence said and its card on top of the topics (section 7.8). A task: a turn marked as scheduled, its answer said and shown, and a notification when the window is not in front. A Windows notification needs the app's identity, which the installer gives its shortcut, so a copy run from the sources may show none; macOS may show none until the app is signed (section 14.7).
 
 **Snoozing.** A reminder that rang is snoozed from its card (10 minutes, 30 minutes or 1 hour) or its notification ("Snooze 10 min", "Snooze 1 hour", where the system shows buttons: Windows, and macOS once the app is signed). Its card leaves, and `schedule.snooze` rings it once more at that time, worded as itself, its card then reading "14:25 · snoozed". Its own times go on; a one-time reminder is done again once it has rung for the snooze. A snooze missed while the app was closed rings late within twelve hours and is dropped past them; a new timing drops it. A task, a reminder on files or mail, one not rung yet and a paused one cannot be snoozed. By voice, "remind me again in ten minutes" sets a new reminder.
 
@@ -436,7 +444,7 @@ The person works on something with the assistant over hours and days: a code rep
 **Opening one from the interface.** The side sheet's Threads tab has "Open a project": a form with up to six folders (those projects work in, most recent first, then those the person lets the assistant change, each once, as Windows compares paths) and "Choose a folder…", the system's picker; then what to do there first.
 
 - Choosing the folder there is the person's consent, as in Settings, Access, so no card asks again: Start (`project.open`) grants it read and change. The core still refuses a file, a place that is not there, a place never reached, and a place past the 64 the settings keep.
-- What they asked is a turn of their own, labelled "You", that takes the stage, passed straight to the project's thread without the orchestrator. A free thread already in that folder carries on; when it is at work, or there is none, a new one opens there, named after the folder and told who works beside it. The sheet then shows the thread at work.
+- What they asked is a turn of their own, labelled "You", answered at once, passed straight to the project's thread without the orchestrator. A free thread already in that folder carries on; when it is at work, or there is none, a new one opens there, named after the folder and told who works beside it. The sheet then shows the thread at work.
 - Escape goes back to the list, Ctrl or Command with Enter starts, and the core's refusal shows under the form.
 
 **Where it works.** Its session runs in the folder: commands run there and relative paths start there (Claude Code's working folder; Codex's when it has its command line, section 12.2). The assistant's own folder and the other folders granted stay reachable.
@@ -566,23 +574,23 @@ A view is a description the model writes, limited to the blocks of the catalogue
 ### 9.2 How a view is made
 
 1. The catalogue's description is part of every thread's instructions.
-2. The model calls `ui_render` with a whole view, one card of its answer. An answer shows up to four cards side by side, one call each with a short name (`card`: "weather", "map"), each about one thing. Within a turn, a new name adds a card beside the others and the same name replaces that card; a fifth is refused with the names of the four, to replace one or clear one first. The first view of a new turn replaces every card the thread showed. A call without a name is one card, `main`, so an answer that names none shows one view at a time. A card may say how much of its answer's row of twelve columns it takes (`width`: `third`, `half`, `two-thirds`, `full`), so an answer reads as a main card with what supports it beside it, and a table, a map or questions across the row; left out, the cards share the row evenly. `ui_clear` removes every card of the thread's answer, or one by its name. The core's own cards (an approval, a decision, the files written) have no name: they go beside the answer's cards and are never refused.
+2. The model calls `ui_render` with a whole view, one card of its answer. An answer shows up to four cards side by side, one call each with a short name (`card`: "weather", "map"), each about one thing. Within a turn, a new name adds a card beside the others and the same name replaces that card; a fifth is refused with the names of the four, to replace one or clear one first. The first view of a new turn starts a new answer, and the one before keeps its cards. A call without a name is one card, `main`, so an answer that names none shows one view at a time. A card may say how much of its answer's row of twelve columns it takes (`width`: `third`, `half`, `two-thirds`, `full`), so an answer reads as a main card with what supports it beside it, and a table, a map or questions across the row; left out, the cards share the row evenly. `ui_clear` removes every card of the answer the thread is giving, or one by its name; an earlier answer keeps its cards. The core's own cards (an approval, a decision, the files written) have no name: they go beside the answer's cards and are never refused.
 3. The core validates the view against the catalogue. An invalid view goes back to the model as an error to correct. Nothing the model writes is ever executed.
 4. The view is stored with its thread, its turn and its card's name, and sent to every connected client once the call is complete.
 
 ### 9.3 Where views appear
 
-| Place  | Content                                                                                                                                                                                                                                                                      |
-| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Stage  | The stream: every view of the conversation still open, as answers, one for each topic, the newest first. The cards of the thread in focus are the stage                                                                                                                      |
-| Asides | Answers to side questions, as cards marked "By the way" in the same stream (`aside` on the view). One that needs work is a topic opened `beside` the topic on the stage, which keeps the stage (section 7.5). Also the "ready" list of background threads, under the caption |
-| Pinned | Saved widgets the person pinned (section 9.8), live, in two docks on either side of the conversation                                                                                                                                                                         |
+| Place   | Content                                                                                                                              |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Topics  | Every answer, as a version of its topic (section 7.3): the main screen shows each topic's latest answer, the topic last active first |
+| Waiting | The "ready" list of the answers that finished unheard, under the caption (section 7.4)                                               |
+| Pinned  | Saved widgets the person pinned (section 9.8), live, in two docks on either side of the conversation                                 |
 
 Everything the assistant composes appears in the centre, and nothing it does pushes the eye, what is said under it or the answers aside. The sides belong to the person: the pinned widgets, and the side sheet with the transcript, the threads and the inspector (section 13.2).
 
 A view says what to show, never where. Each renderer lays the blocks out for its device; every block wraps and shrinks to its width, and a word longer than its line breaks. The core tells each session what kind of device is active, so a view meant for a small screen stays short.
 
-Earlier views are never lost. The stream holds the latest twenty-four views still open, each card a view, stage and asides together, kept and recorded by the core, so every device opens on the same stream and a restart changes nothing. A view shown again goes back on top; a new card of an aside, a new version of a saved widget, or a card of an answer shown again under its name replaces its earlier one. Closing a card takes it out of the stream for good. A topic brought back puts its cards back on top together, in the order they were shown. When the focus moves to a topic with nothing to show, the stage empties and the stream stays. Older views can be brought back by asking; views to keep go to the library.
+Earlier views are never lost. A view is a card of one answer: its turn's, or, shown outside a turn, an answer of its own (`answerIdOf`). The core records every view, and every device reads the same topics, so a restart changes nothing. Within an answer a view shown again keeps its place, and a card shown under the name of another, or a new version of the same saved widget, takes that card's place (`withCard`). A card brought up to date in a later turn is a card of that turn's answer. Removing a card takes it out of its answer for good. Views to keep outside the conversation go to the library.
 
 ### 9.4 Live data
 
@@ -676,7 +684,7 @@ Each thread has files of its own, kept by the core. A document the assistant pro
 
 ### 9.8 The library
 
-The person keeps the views they like. Every view, on the stage, in an aside or pinned, has a bookmark: one press saves it. The library collects them, so the person builds a set of widgets out of what the assistant composed for them, and the assistant brings them back as they are.
+The person keeps the views they like. Every view, in an answer or pinned, has a bookmark: one press saves it. The library collects them, so the person builds a set of widgets out of what the assistant composed for them, and the assistant brings them back as they are.
 
 - **What is kept.** A saved widget is a view and a few words about it: a title, an optional collection, and whether and where it is pinned. What it shows or plays is drawn again: a saved radio plays, a saved chart is as it was. Each change is a new record; deleting a widget erases every version (section 10.3). The library is kept by the core, so it follows the person to every device.
 - **The widgets page** is the first page of Library and settings (section 13.2), also reached from a saved view's bookmark menu ("Open in library"). Widgets are drawn live as tiles, each under a rule of the ink, filtered by all, pinned, unfiled or a collection, and searched by any word they show. Opened, a widget is drawn full size beside its name, its collection (the person's own, made by typing one), a pin switch, "Show on the stage", "Ask for a change" and "Delete". Asking for a change sends it to the assistant, which saves a new version and shows it at once, without starting what it plays.
@@ -1174,12 +1182,12 @@ The eye never travels: it stands large at home, and a small one stands in the ba
 │ A PINNED WIDGET                     NAME                      A PINNED WIDGET │
 │ ──────────────                    ▪ READY                     ──────────────  │
 │ ▶ what it plays ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 17  18  16      │
-│                 17:42  what was asked                ‹ V 2/2 ›                │
+│  TOPIC  17:42  what was asked           ▫─▫─▪ V 03/03 ‹ ›  ⋯                ▪ │
 │                 What the assistant said.                                      │
 │                 LAST RUN       │ EARLIER RUNS                                 │
 │                 PASSED         │ ▪ Route an update …       1 H                │
 │                 ─────────────────────────────────────────────                 │
-│                 16:58  what was asked before                                  │
+│  TOPIC  16:58  what was asked before                                        ▫ │
 │                 ┌───────────────────────────────────────────┐                 │
 │                 │ ◔ [ABOUT … ×] Ask anything   CTRL+SPACE ↑ │                 │
 │                 └───────────────────────────────────────────┘                 │
@@ -1188,31 +1196,34 @@ The eye never travels: it stands large at home, and a small one stands in the ba
 
 #### The stage
 
-- **One page that scrolls**, in one column no wider than 880 px, centred in the window or in the room the side sheet leaves beside it: home at its top, the answers under it, the newest first, and the composer staying at the bottom. The bar, the answers and the composer share the column's edges. Between the pinned docks while they stand beside it, the column takes the room they leave, 16 px from each; else the screen's width less 32 px on each side. The pinned widgets never move the composer.
-- **Home** is the assistant: its eye (section 13.1) centred on fine dots that fade out below it (one pixel every 22 px, the ink at 13 %), its name in the display face, what it is doing as a small label after a square (in the accent while something is happening, in the ink at rest), and under them what it is saying. With no answer, home fills the screen, the eye 200 px across, and offers the "ready" list or, to a person who has said nothing yet, a few things to try. With answers, the eye is 150 px across and the newest answer starts right under home. The app opens at the top. Home's dots run up under the title row.
+- **One page that scrolls**, in one column no wider than 880 px, centred in the window or in the room the side sheet leaves beside it: home at its top, the topics under it, the one last active first, and the composer staying at the bottom. The bar, the answers and the composer share the column's edges. Between the pinned docks while they stand beside it, the column takes the room they leave, 16 px from each; else the screen's width less 32 px on each side. The pinned widgets never move the composer.
+- **Home** is the assistant: its eye (section 13.1) centred on fine dots that fade out below it (one pixel every 22 px, the ink at 13 %), its name in the display face, what it is doing as a small label after a square (in the accent while something is happening, in the ink at rest), and under them what it is saying. With no answer, home fills the screen, the eye 200 px across, and offers the "ready" list or, to a person who has said nothing yet, a few things to try. With topics, the eye is 150 px across and the topic last active starts right under home. The app opens at the top. Home's dots run up under the title row.
 - **The bar.** Scrolled past home, the eye shrinks into a bar 44 px high that stays at the top, on the ground, under the title row: the eye, the name, the state, then what is being said on one line. Pressing the eye goes back to the top.
 - **What is said under the eye** is what the assistant says while it says it, each word lit as the voice reaches it; what was asked while it works, quietly, after "Resumed" or "Scheduled" when it came from there; or a problem. Once said, a reply is the headline of its answer below and is not written twice; a reply that showed nothing stays under the eye, with the link to its full answer when its thread wrote one. With no answer on screen it is as large as a headline; over the answers it keeps to two lines; in the bar to one, shown whole on a floating plane when pointed at or pressed.
 
-#### The answers
+#### The topics
 
-- **One for each topic**, bare on the ground, every one open: the page scrolls, so nothing folds (`view/groups.ts`, `view/view-feed.tsx`). The topic shown last comes first; a saved widget the person showed, or a view of no thread, is an answer of its own. A rule of the full ink, 3 px, stands over the newest; a hairline at 34 % over each of the others.
-- **An answer** is a line, a headline and its cards. The line says when it was asked for, as a small label, and in what words (what the person said, or who started it: a briefing, a reminder, work resumed). The headline is what the assistant said, at 25 px, on four lines at most, with "Full answer" under it when its thread wrote one; before it has said anything, or for a view shown outside a turn, it is the topic's title.
+- **An island for each topic**, bare on the ground, every one open: the page scrolls, so nothing folds (`view/topic-feed.tsx`). The topic last active comes first, and the ones before it are read as the person scrolls towards them, back to the first. A rule of the full ink, 3 px, stands over the first; a hairline at 34 % over each of the others.
+- **An island** is a line, a headline and its cards. The line names the topic in capitals, says when the answer shown was asked for and in what words (what the person said, or who started it: a briefing, a reminder, work resumed), then gives the way through its versions and, once pointed at, three small squares that open what can be corrected. The headline is what the assistant said, at 25 px, on four lines at most, with "Full answer" under it when its thread wrote one; while nothing was said yet, "Working on it" after a square of the accent; and under it, in red-orange, why an answer failed. In a column under 560 px wide the line keeps the name, the count and the arrows: the time and the squares give way.
+- **Versions.** Each answer of a topic is a version of it. The latest shows; the line draws a square for each of up to seven versions joined by hairlines, the first on the left, the one shown in the accent, then "V 03/05" and two arrows. Stepping to an earlier answer shows it whole, with its own time, words, headline and cards, coming in from the side it lies on. The arrows on the line, a sideways swipe on the island (a card that scrolls sideways keeps its own) and the left and right arrow keys all step. Earlier answers are read when first stepped to. A new answer shows the latest again.
+- **Corrections** (section 7.3). The three squares open a menu: rename, which turns the name into a field (Enter keeps it, Escape or leaving it does not); move the answer shown, to a new topic named after what was asked or to one of the eight topics last active; merge the topic into one of them; put it away.
+- **The index.** A column of small squares stands at the right edge of the screen, one for each topic read, in their order, the one in front in the accent. Pointing at a square names its topic; pressing it goes there.
+- **The arrow keys** walk the topics while nothing is typed and the keyboard is in the composer or nowhere: left and right through the versions of the topic in front, or of the first at the very top; up and down from one topic to the next.
 - **Cards side by side.** The cards of an answer stand on rows of twelve columns, parted by vertical hairlines, never boxed; a second row starts under a hairline. A card takes the width the assistant gave it (section 9.3): a third, a half, two thirds, or the row. With none given, the cards share a row evenly, four on two rows. A row is filled before the next starts, and its last card grows to fill what is left. In a column under 560 px wide, each card takes a row.
-- **A card** is its name as a small label, then its view, bare. What can be done with it shows beside its name once pointed at or reached by the keyboard: the bookmark (⌑), which saves the view to the library and then opens a menu to pin it, find it in the library or take it out; "Snooze" on a reminder's; and the cross that closes it. An aside's card says "By the way" before its name. The card the assistant is talking about (during a sentence of an answer, that answer's newest view; while an answer is under way and silent, a view just arrived for it) has a square of the accent before its name, and keeps it 1.6 s after.
-- **Versions.** An answer that updates a topic takes the place of the one before, and the topic goes back on top: nothing is shown twice. The earlier answers stay behind it, as long as the stream holds them (section 9.3): the line then shows "V 2/3" between two arrows that step back and forth through them, each with its own time, words and headline. A new answer shows the latest again. Pointed at, the line offers to close the answer, every card of every version.
-- **How it moves.** A new answer rises 10 px as it fades in, its cards after it, each a moment after the one before, while the answers under it glide on a stiff, damped spring to their new places. A view that arrives is brought into sight, its answer's top under the bar, unless the answer already shows whole. Closed, an answer fades where it stands. Answers move by their transform only, and a card redraws only when its own view changes.
-- **Compact.** A view's text reads at 13 px, and its blocks are spaced to match: 4, 8 or 12 px between the blocks of a stack, small headings, and fields 28 px high. Cards keep 20 px on each side of the hairline that parts them. The pinned cards are as dense. The keyboard reaches every card's controls in order, newest first.
+- **A card** is its name as a small label, then its view, bare. What can be done with it shows beside its name once pointed at or reached by the keyboard: the bookmark (⌑), which saves the view to the library and then opens a menu to pin it, find it in the library or take it out; "Snooze" on a reminder's; and the cross that removes it from its answer. The card the assistant is talking about (during a sentence of an answer, that answer's newest view; while an answer is under way and silent, a view just arrived for it) has a square of the accent before its name, and keeps it 1.6 s after.
+- **How it moves.** A topic that becomes active rises 10 px as it fades in, its cards after it, each a moment after the one before, while the topics under it glide on a stiff, damped spring to their new places. It is brought into sight, its top under the bar, unless it already shows whole. Put away, a topic fades where it stands. Islands move by their transform only, and a card redraws only when its own view changes.
+- **Compact.** A view's text reads at 13 px, and its blocks are spaced to match: 4, 8 or 12 px between the blocks of a stack, small headings, and fields 28 px high. Cards keep 20 px on each side of the hairline that parts them. The pinned cards are as dense. The keyboard reaches every card's controls in order, from the first topic.
 - **Blocks lie bare in their card**, with no box, fill or shadow of their own, and never wider than it (`view/blocks/`). A figure is set in the display face under a label in capitals, about 60 px alone and smaller side by side, its change or detail in capitals under it. A list, a table, a list of files and a questionnaire start under a rule of the full ink, with hairlines between rows about 34 px high and a square mark by tone. Blocks side by side, in a row or a grid, are parted by a vertical hairline; a card the model draws is a group under a rule. Tracks, bars and charts are flat and square: lines of 1.5 px, series in the ink, then blue, yellow and red, a second series of bars and the area under a line hatched. A mark or text the model gives the accent is drawn in the ink, as the persona's accent is kept for what plays. Bars grow from their start, lines draw themselves and figures rise as they arrive, by transform and opacity only, and not when less motion is asked for.
 
 #### The composer
 
-- **It stays at the bottom** of the screen on a band of the ground as wide as the column: the answers end above it, and nothing shows through it. It is a plane with a line round it (section 13.1).
+- **It stays at the bottom** of the screen on a band of the ground as wide as the column: the topics end above it, and nothing shows through it. It is a plane with a line round it (section 13.1).
 - **The persona's eye**, on its left, small as its composition draws it, living as the large one does in each mood (section 13.1). Pressing it hands over to the other persona. No prompt chevron: the eye says who answers and what it does.
-- **What it is about.** Scrolled down, the answer in front of the person, the one across the line a third of the way down the screen, is named on a chip after the eye: "About", then the topic's title. What is typed or said then goes to the assistant with that answer named, as a hint that it is probably about it (section 7.3). The chip's cross, or Backspace on an empty line, takes the hint away until another answer is in front. At the very top nothing is in front and there is no chip: what is said there is as likely about something new. What a card says for the person, such as an answer picked in its questionnaire, always names that card.
+- **What it is about.** Scrolled down, the topic in front of the person, the first that still shows 96 px of itself under the bar, or half of itself, is named on a chip after the eye: "About", then the topic's title. What is typed or said then goes to the assistant with that topic named, as a hint that it is probably about it (section 7.1). The chip's cross, or Backspace on an empty line, takes the hint away until another topic is in front. At the very top nothing is in front and there is no chip: what is said there is as likely about something new. What a card says for the person, such as an answer picked in its questionnaire, always names its topic.
 - **Several lines.** It grows to about eight lines, then scrolls. Enter sends; Shift+Enter starts a line; Enter while composing a character stays in the text. Its buttons stay on the last line. Sending is always possible: what is said while the assistant works runs beside it (section 7.3). While nothing is typed, the key that starts talking shows at the end of the line, as a small label.
 - **Files.** A picture or file pasted (Ctrl or Cmd+V), picked with the paperclip or dropped anywhere on the main screen waits as a chip along the top: its picture or kind mark, name, kind and size, a thin line of the ink along its bottom while it uploads, a cross under the pointer. Backspace on an empty line removes the last. A row wider than the composer scrolls sideways, fading where cut, so the composer grows one row at most. Dragging files over the window dims it under a hairline frame, with a plane saying what dropping does. Beyond ten files, or over 25 MB, a quiet line under the composer says why, for a few seconds. Once sent, the files are named in the transcript under what was said, or in the caption.
 - **Stop is held.** While anything runs, a square stop button sits beside sending, named for what it stops ("Hold to stop all 3 pieces of work"). Since it stops all work, it is held two seconds (pointer, Space or Enter) while the danger colour fills it evenly from the left; released early, it empties and stops nothing; a tap shows "Hold to stop" above it, in a label of fixed width.
-- **Under it, on the left:** "2 at work", with the working mark, while threads work. It opens a list upwards: each thread's title, folder, and where its plan stands or what it answers, sub-threads and side questions under their thread. A row opens its work in the side sheet at the latest request; its "Stop" stops that thread alone; "All threads" opens the sheet's list.
+- **Under it, on the left:** "2 at work", with the working mark, while threads work. It opens a list upwards: each thread's title, folder, and where its plan stands or what it answers, sub-threads under their thread. A row opens its work in the side sheet at the latest request; its "Stop" stops that thread alone; "All threads" opens the sheet's list.
 - **Under it, on the right:** two quiet labels, what it may reach ("Own folder · asks first", in yellow where it reaches everything or no longer asks) and what it thinks with ("Claude Code · Opus · Max": a yellow square before it when no program is ready; the level once the model has levels). Each opens a menu upwards: the scope and whether it asks first; the AI program (an unusable one greyed, with why: not installed, not signed in), its model, the model's levels of reasoning, each with a word on what it suits. Picking a program, or a model with levels, keeps the menu open. A change applies from the next question. The last entry opens the settings' section.
 
 #### Around the answers
@@ -1236,7 +1247,7 @@ The eye never travels: it stands large at home, and a small one stands in the ba
 - **Sizes.** Two on a desktop: the full window and Mini, with frames and window controls following each system.
 - **Mini** is the one window made small and kept over the other apps, as in the proof of concept; no second window is made (section 14.7).
   - _In and out._ Its key in the window ("Mini window" in Settings, Shortcuts; Ctrl+Shift+M or Cmd+Shift+M at first) and "Mini window" in the tray's menu, ticked while in Mini, enter and leave it, and a quiet "Full window" at its top left leaves it, shown while the pointer is over the window or the keyboard is in it. What needs more room goes back to the full window first: the tray's "Settings…", the transcript's key, a notification pressed, a link to the settings. Talking (the global shortcut, the tray's "Talk", `--talk`) and "Show Echo" leave it as it is. The app always opens in the full window.
-  - _What it shows._ The eye in the middle at 136 px, its name and state under it, and the caption in two lines at most, as on the stage; no title row, composer, answers, chips, pinned widgets or side sheet. A view that arrives meanwhile, a card that asks among them, is kept in the stream and not drawn: while one waits, "Shown in the full window" under the caption goes back to it, and a card's question can still be answered aloud (section 12.2). Pressing the eye starts or ends listening, as the talk key does; the ground drags the window. The assistant is told the person sees no screen, and says a little more (section 8.5).
+  - _What it shows._ The eye in the middle at 136 px, its name and state under it, and the caption in two lines at most, as on the main screen; no title row, composer, answers, chips, pinned widgets or side sheet. A view that arrives meanwhile, a card that asks among them, is kept in the stream and not drawn: while one waits, "Shown in the full window" under the caption goes back to it, and a card's question can still be answered aloud (section 12.2). Pressing the eye starts or ends listening, as the talk key does; the ground drags the window. The assistant is told the person sees no screen, and says a little more (section 8.5).
   - _The window._ Entering keeps the full window's bounds in memory, and leaving gives them back. The first time, Mini is 280 × 320 px at the top right of the work area of the screen the window is on, 24 px from its edges. It is moved and resized between 240 × 260 and 480 × 560, kept on this device once a move or resize ends (`window.mini`), and opens there again, or as the first time when that place is on no screen. It floats over other apps and cannot be maximised or made full screen. On macOS it has no traffic lights and shows on every Space and over apps in full screen; on Windows and Linux the system's buttons stay over its top right, what it shows starting under them; under X11 it shows on every workspace. Closing it does what closing the window does.
   - _Limits._ Mini has no input line, the one place principle 2's typing does not reach: to type, or to see a view, the person goes back to the full window. Under Wayland an app's window can neither stay on top nor read or set where it is, so Mini is only the small size, placed where the desktop puts it, and only its size is kept.
 
@@ -1244,7 +1255,7 @@ The eye never travels: it stands large at home, and a small one stands in the ba
 
 | Level         | Shows                                                                                                                   | For                           |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
-| 0. Presence   | The eye, the caption of the current reply, the stage                                                                    | Everyone, by default          |
+| 0. Presence   | The eye, the caption of the current reply, the topics                                                                   | Everyone, by default          |
 | 1. Transcript | What both sides said, as a scrolling log                                                                                | Anyone: one key or one phrase |
 | 2. Activity   | What the assistant is doing (the word under the eye), which thread is working, waiting and ready states                 | The curious                   |
 | 3. Inspector  | Threads and their transcripts, routing decisions, prompts, raw harness events, memory results, timings, tokens and cost | Technical users and debugging |
@@ -1399,9 +1410,10 @@ packages/core/src/
 ├── commands/        reads a command, runs its handler, answers with a result
 ├── channel/         the one conversation (channel.ts): turns (turn.ts), the orchestrator's routing (routing.ts), sub-threads (subthreads.ts), the threads' own tools (tools.ts), what it is given (abilities.ts), the instructions sessions get (instructions.ts), restarts and their limit (resume.ts)
 ├── threads/         the registry of threads and focus; a thread's work cut into pages
+├── topics/          the topics the answers are filed in, and what the person corrects of them
 ├── engines/         which harnesses are ready, and the one the assistant runs on
 ├── speech/          reply text cut into sentences; the language a text is in
-├── views/           views and the stage (screen.ts), the shapes a map names, live feeds, and the web readings both keep (readings.ts)
+├── views/           the cards of every answer (screen.ts), the shapes a map names, live feeds, and the web readings both keep (readings.ts)
 ├── memory/          facts, recall, sleep, extraction and reconciliation, the profile, retention, summaries, search by meaning (meaning.ts) and its merge with keywords (fusion.ts)
 ├── library/         saved widgets
 ├── personas/        the default personas (defaults.ts, the only place their names are written), the choice, objections
@@ -1426,7 +1438,7 @@ packages/ui-web/src/
 ├── styles/          global styles; motion.ts, the curve and durations
 ├── shell/           the window: title row, screens, the side sheet, where it stands (sheet-place.ts), its edge
 ├── conversation/    the main screen: stage, caption, composer, transcript, threads and their work
-├── view/            the renderer, a view's card, the answers (groups.ts groups the stream and lays an answer's cards out); blocks/ draws the catalogue's blocks
+├── view/            the renderer, a view's card, the topics' islands (topic-feed.tsx, their versions in versions.ts, their index in topic-index.tsx; rows.ts lays an answer's cards out); blocks/ draws the catalogue's blocks
 ├── presence/        the eye: its drawing (eye.tsx), the numbers that move it (eye-motion.ts), and the card it is talking about
 ├── audio/           the microphone, speech in and out, voices by language
 ├── media/           the app's one player

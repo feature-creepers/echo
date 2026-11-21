@@ -6,11 +6,11 @@ import type { Timers } from '../ports/clock.ts'
 import { memoryRecords } from '../records/memory.ts'
 import { manualTimers } from '../replay/manual-timers.ts'
 import { type ScriptedHarness, scriptedHarness } from '../replay/scripted-harness.ts'
+import { watchedScreen } from '../replay/watched-screen.ts'
 import { createUserSettings } from '../settings/settings.ts'
 import { createTools } from '../tools/tools.ts'
-import { ASIDE_STAYS_MS, createScreen } from '../views/screen.ts'
 import type { Abilities } from './abilities.ts'
-import { createChannel, EXCHANGE, planProgress } from './channel.ts'
+import { type Channel, createChannel, EXCHANGE, planProgress, SIDE_SESSION_MS } from './channel.ts'
 import { DELEGATED_FIRST, NO_SCREEN, SIDE_QUESTION, SPEAK_FIRST, WORK_FIRST } from './instructions.ts'
 import { RESUMES_WITHOUT_THE_PERSON } from './resume.ts'
 import { SUBTHREADS_AT_ONCE } from './subthreads.ts'
@@ -39,7 +39,7 @@ function setup({ harness = scriptedHarness(), records = memoryRecords(), server 
   ])
   const log = { error: vi.fn<(message: string) => void>() }
   const tools = createTools(newId)
-  const screen = createScreen({ records, newId })
+  const screen = watchedScreen({ records, newId })
   const notices: { title: string; body: string }[] = []
   const channel = createChannel({
     // The user's choice of program and model, read from the settings as the core does.
@@ -168,7 +168,7 @@ describe('a person who sees no screen', () => {
 })
 
 describe('the orchestrator', () => {
-  it('hears each turn with the list of threads, as the persona in use', async () => {
+  it('hears each turn with the list of topics and their threads, as the persona in use', async () => {
     const { channel, harness } = setup()
     channel.say('Hello')
     await settled()
@@ -178,7 +178,7 @@ describe('the orchestrator', () => {
     expect(orchestrator?.request.instructions).toContain('You are Ada.')
     expect(orchestrator?.request.instructions).toContain('thread_open')
     expect(orchestrator?.sent).toEqual([
-      '(Now: Tuesday, 17 November 2026, 09:00 (Europe/Paris))\nThreads:\nThere are no threads yet.\n\nThe person says: Hello'
+      '(Now: Tuesday, 17 November 2026, 09:00 (Europe/Paris))\nTopics, and the threads that work on each:\nThere are no topics yet.\n\nThe person says: Hello'
     ])
   })
 
@@ -196,7 +196,7 @@ describe('the orchestrator', () => {
 })
 
 describe('what the person had in front of them', () => {
-  /** The stream once a topic showed its card and a card of no topic came after it: the views' ids, and the topic's. */
+  /** A topic a thread answered in, and one that is no thread's: a card shown outside the conversation. */
   async function shown() {
     const context = setup()
     const { channel, harness, call, screen } = context
@@ -208,34 +208,27 @@ describe('what the person had in front of them', () => {
     harness.sessions[1]?.emit({ type: 'text', text: 'Your CI is green. ' })
     await call(1, 'ui_render', { title: 'Build status', view: EXAMPLE_VIEW })
     harness.sessions[1]?.emit({ type: 'turn-end' })
-    const build = screen.current()?.id as string
     const checked = validateView(EXAMPLE_VIEW)
     if (!checked.ok) throw new Error('The example view is valid.')
-    screen.present({ title: 'Wake at seven', spec: checked.spec }, { thread: undefined, turn: undefined, focused: true })
-    const reminder = screen.current()?.id as string
-    return { ...context, build, reminder, topic: channel.threads().threads[0]?.id as string }
+    screen.present({ title: 'Wake at seven', spec: checked.spec }, { thread: undefined, turn: undefined })
+    const topic = (title: string) => channel.topics.read({ limit: 5 }).topics.find((one) => one.topic.title === title)?.topic.id as string
+    return { ...context, build: topic('CI of echo'), reminder: topic('Wake at seven'), thread: channel.threads().threads[0]?.id as string }
   }
+  type Shown = Awaited<ReturnType<typeof shown>>
 
-  it.each<[string, (ids: Awaited<ReturnType<typeof shown>>) => string | undefined, (topic: string) => string | undefined]>([
+  it.each<[string, (ids: Shown) => string | undefined, (ids: Shown) => string | undefined]>([
     [
-      "a topic's card, named with its topic",
+      'a topic, named with the thread that last answered in it',
       ({ build }) => build,
-      (topic) => `The person had "Build status" in front of them (topic: CI of echo, thread ${topic}): what they say is probably about it.`
+      ({ build, thread }) =>
+        `The person had the topic "CI of echo" in front of them (topic ${build}, last answered by thread ${thread}): what they say is probably about it.`
     ],
     [
-      'a card of no topic, named alone',
+      "a topic that is no thread's, named alone",
       ({ reminder }) => reminder,
-      () => 'The person had "Wake at seven" in front of them: what they say is probably about it.'
+      ({ reminder }) => `The person had the topic "Wake at seven" in front of them (topic ${reminder}): what they say is probably about it.`
     ],
-    [
-      'a card closed since: nothing',
-      ({ build, screen }) => {
-        screen.clear(build)
-        return build
-      },
-      () => undefined
-    ],
-    ['a view that was never shown: nothing', () => 'view-unknown', () => undefined],
+    ['a topic that never was: nothing', () => 'topic-unknown', () => undefined],
     ['nothing in particular: nothing', () => undefined, () => undefined]
   ])('tells the orchestrator of %s, after what they said', async (_case, about, told) => {
     const context = await shown()
@@ -243,15 +236,15 @@ describe('what the person had in front of them', () => {
     await settled()
 
     const message = context.harness.sessions[0]?.sent.at(-1)
-    const line = told(context.topic)
+    const line = told(context)
     expect(message?.endsWith(line === undefined ? 'The person says: Why did it fail?' : `The person says: Why did it fail?\n${line}`)).toBe(true)
   })
 
   it('tells nothing to the thread the request is passed to: the orchestrator decides with it', async () => {
-    const { channel, harness, call, build, topic } = await shown()
+    const { channel, harness, call, build, thread } = await shown()
     channel.say('Why did it fail?', { about: build })
     await settled()
-    await call(0, 'thread_send', { thread: topic })
+    await call(0, 'thread_send', { thread })
     harness.sessions[0]?.emit({ type: 'turn-end' })
     await settled()
 
@@ -342,7 +335,8 @@ describe('threads', () => {
 
     channel.say('Can I use white wine?')
     await settled()
-    expect(harness.sessions[0]?.sent[1]).toContain(`${thread}: "Dinner" (topic, parked, on screen`)
+    expect(harness.sessions[0]?.sent[1]).toContain('- topic ')
+    expect(harness.sessions[0]?.sent[1]).toContain(`  - thread ${thread}: "Dinner" (parked, the one the person last turned to)`)
     await call(0, 'thread_send', { thread })
     harness.sessions[0]?.emit({ type: 'turn-end' })
     await settled()
@@ -360,55 +354,8 @@ describe('threads', () => {
     expect(refused.text).toContain('There is no such thread')
   })
 
-  it('answers a side question in a card on top of the stream, and leaves the topic on the stage', async () => {
-    const { channel, harness, call, screen } = setup()
-    channel.say('Plan my trip')
-    await settled()
-    await call(0, 'thread_open', { title: 'Trip' })
-    harness.sessions[0]?.emit({ type: 'turn-end' })
-    await settled()
-    harness.sessions[1]?.emit({ type: 'text', text: 'Here is a plan. ' })
-    await call(1, 'ui_render', { title: 'Itinerary', view: EXAMPLE_VIEW })
-    harness.sessions[1]?.emit({ type: 'turn-end' })
-
-    channel.say('By the way, what time is it in Montreal?')
-    await settled()
-    await call(0, 'thread_open', { title: 'Time in Montreal', kind: 'aside' })
-    harness.sessions[0]?.emit({ type: 'turn-end' })
-    await settled()
-    // A topic like any, asked to answer this request in passing.
-    expect(harness.sessions[2]?.request.instructions).toContain('you work on one topic: "Time in Montreal"')
-    expect(harness.sessions[2]?.sent[0]).toContain(SIDE_QUESTION)
-    harness.sessions[2]?.emit({ type: 'text', text: 'It is two in the morning there. ' })
-    await call(2, 'ui_render', { title: 'Montreal', view: EXAMPLE_VIEW })
-    harness.sessions[2]?.emit({ type: 'turn-end' })
-
-    expect(screen.current()?.title).toBe('Itinerary')
-    expect(screen.stream().map((view) => [view.title, view.aside === true])).toEqual([
-      ['Montreal', true],
-      ['Itinerary', false]
-    ])
-    const trip = channel.threads().threads.find((thread) => thread.title === 'Trip')
-    expect(channel.threads().focus).toBe(trip?.id)
-
-    // The side question sits under the topic it was asked beside, and its card can be brought back once closed,
-    // in passing again: the topic keeps the stage.
-    const side = channel.threads().threads.find((thread) => thread.title === 'Time in Montreal')
-    expect(side).toMatchObject({ kind: 'topic', beside: trip?.id })
-    screen.clear(screen.asides()[0]?.id)
-    expect(screen.asides()).toEqual([])
-    expect(channel.focus(side?.id as string)).toBe(true)
-    expect(screen.asides().map((view) => view.title)).toEqual(['Montreal'])
-    expect(screen.current()?.title).toBe('Itinerary')
-    expect(channel.thread(side?.id as string)).toMatchObject({
-      thread: { title: 'Time in Montreal' },
-      exchanges: [{ replied: 'It is two in the morning there.' }],
-      views: [{ title: 'Montreal' }]
-    })
-  })
-
   describe('a side question', () => {
-    /** A topic on the stage, and a side question answered beside it in a card. */
+    /** A thread the person is on, and a side question answered in passing by a thread of its own. */
     async function asideBesideTopic(more: Setup = {}) {
       const context = setup(more)
       const { channel, harness, call } = context
@@ -428,36 +375,40 @@ describe('threads', () => {
       harness.sessions[2]?.emit({ type: 'text', text: 'It is two in the morning there. ' })
       await call(2, 'ui_render', { title: 'Montreal', view: EXAMPLE_VIEW })
       harness.sessions[2]?.emit({ type: 'turn-end' })
-      expect(context.screen.asides().map((view) => view.title)).toEqual(['Montreal'])
-      const side = context.channel.threads().threads.find((thread) => thread.title === 'Time in Montreal')?.id as string
-      return { ...context, side }
+      const thread = (title: string) => context.channel.threads().threads.find((one) => one.title === title)?.id as string
+      return { ...context, side: thread('Time in Montreal'), trip: thread('Trip') }
     }
+    const topics = (channel: Channel) =>
+      channel.topics.read({ limit: 5 }).topics.map((one) => [one.topic.title, one.answers[0]?.views.map((view) => view.title)])
 
-    it.each(['Thanks', 'Merci Ada !', 'ok thank you so much'])('puts its card away on %j, which is still answered', async (said) => {
-      const { channel, harness, screen, spoken } = await asideBesideTopic()
-      channel.say(said)
-      expect(screen.asides()).toEqual([])
-      expect(screen.current()?.title).toBe('Itinerary')
-      await settled()
-      harness.sessions[0]?.reply('You are welcome.')
-      expect(spoken().at(-1)).toBe('You are welcome.')
+    it('is answered in passing, in a topic of its own, and the thread the person was on keeps the focus', async () => {
+      const { channel, harness, side, trip } = await asideBesideTopic()
+      // A thread like any, asked to answer this request in passing.
+      expect(harness.sessions[2]?.request.instructions).toContain('you work on one topic: "Time in Montreal"')
+      expect(harness.sessions[2]?.sent[0]).toContain(SIDE_QUESTION)
+      expect(channel.threads().focus).toBe(trip)
+      expect(topics(channel)).toEqual([
+        ['Time in Montreal', ['Montreal']],
+        ['Trip', ['Itinerary']]
+      ])
+      expect(channel.thread(side)).toMatchObject({
+        thread: { title: 'Time in Montreal', kind: 'topic' },
+        exchanges: [{ replied: 'It is two in the morning there.' }],
+        views: [{ title: 'Montreal' }]
+      })
     })
 
-    it('keeps its card when thanks comes with more', async () => {
+    it.each([
+      ['a thank you', (channel: Channel) => void channel.say('Thanks')],
+      ['Escape', (channel: Channel) => channel.stop()]
+    ])('keeps what it showed after %s: nothing leaves the screen by itself', async (_case, act) => {
       const { channel, screen } = await asideBesideTopic()
-      channel.say('Thanks, and what about Tokyo?')
-      expect(screen.asides().map((view) => view.title)).toEqual(['Montreal'])
+      act(channel)
+      expect(screen.shown().map((view) => view.title)).toEqual(['Itinerary', 'Montreal'])
     })
 
-    it('puts its card away on Escape, with the answer under way, and the topic stays', async () => {
-      const { channel, screen } = await asideBesideTopic()
-      channel.stop()
-      expect(screen.asides()).toEqual([])
-      expect(screen.current()?.title).toBe('Itinerary')
-    })
-
-    it('followed up, is the topic it is: it takes the stage and answers in full', async () => {
-      const { channel, harness, call, screen, side } = await asideBesideTopic()
+    it('followed up, takes the focus and answers in full, as a new answer of its topic', async () => {
+      const { channel, harness, call, side } = await asideBesideTopic()
       channel.say('Tell me more about that')
       await settled()
       await call(0, 'thread_send', { thread: side })
@@ -470,24 +421,25 @@ describe('threads', () => {
       harness.sessions[2]?.emit({ type: 'text', text: 'Montreal is six hours behind Paris. ' })
       await call(2, 'ui_render', { title: 'Montreal in detail', view: EXAMPLE_VIEW })
       harness.sessions[2]?.emit({ type: 'turn-end' })
-      expect(screen.current()).toMatchObject({ title: 'Montreal in detail', thread: side })
-      expect(screen.current()?.aside).toBeUndefined()
-      expect(screen.stream().map((view) => view.title)).toEqual(['Montreal in detail', 'Montreal', 'Itinerary'])
+      expect(channel.topics.read({ limit: 5 }).topics[0]).toMatchObject({
+        topic: { title: 'Time in Montreal', answers: 2 },
+        answers: [{ views: [{ title: 'Montreal in detail', thread: side }] }]
+      })
     })
 
-    it('keeps its session as long as its card, for a "tell me more", then closes it', async () => {
+    it('keeps its session a while, for a "tell me more", then closes it', async () => {
       const timers = manualTimers()
       const { harness } = await asideBesideTopic({ timers })
-      timers.advance(ASIDE_STAYS_MS - 1)
+      timers.advance(SIDE_SESSION_MS - 1)
       expect(harness.sessions[2]?.closed).toBe(false)
       timers.advance(1)
       expect(harness.sessions[2]?.closed).toBe(true)
-      // The topic it was asked beside keeps its own, with all its work in it.
+      // The thread the person was on keeps its own, with all its work in it.
       timers.advance(24 * 60 * 60_000)
       expect(harness.sessions[1]?.closed).toBe(false)
     })
 
-    it('followed up, keeps its session as a topic does', async () => {
+    it('followed up, keeps its session as any thread does', async () => {
       const timers = manualTimers()
       const { channel, harness, call, side } = await asideBesideTopic({ timers })
       channel.say('Tell me more about that')
@@ -503,7 +455,7 @@ describe('threads', () => {
     it('opens a new session, told what came before, once its own was closed', async () => {
       const timers = manualTimers()
       const { channel, harness, call, side } = await asideBesideTopic({ timers })
-      timers.advance(ASIDE_STAYS_MS)
+      timers.advance(SIDE_SESSION_MS)
       channel.say('Tell me more about Montreal')
       await settled()
       await call(0, 'thread_send', { thread: side })
@@ -515,28 +467,45 @@ describe('threads', () => {
       expect(again?.request.instructions).toContain('It is two in the morning there.')
     })
 
-    it('answered in words alone, is brought back as the topic it is, with no card to show in passing', async () => {
-      const { channel, harness, call, screen } = setup()
-      channel.say('Plan my trip')
+    it('takes the focus when the person turns to it, and its topic comes back to the top', async () => {
+      const { channel, harness, call, side } = await asideBesideTopic()
+      channel.say('And the weather on the trip?')
       await settled()
-      await call(0, 'thread_open', { title: 'Trip' })
+      await call(0, 'thread_send', { thread: channel.threads().threads.find((one) => one.title === 'Trip')?.id })
       harness.sessions[0]?.emit({ type: 'turn-end' })
       await settled()
-      harness.sessions[1]?.emit({ type: 'text', text: 'Here is a plan. ' })
-      await call(1, 'ui_render', { title: 'Itinerary', view: EXAMPLE_VIEW })
-      harness.sessions[1]?.emit({ type: 'turn-end' })
-      channel.say('By the way, how tall is Mont Royal?')
-      await settled()
-      await call(0, 'thread_open', { title: 'Mont Royal', kind: 'aside' })
-      harness.sessions[0]?.emit({ type: 'turn-end' })
-      await settled()
-      harness.sessions[2]?.reply('It is 233 metres high.')
-      expect(screen.current()?.title).toBe('Itinerary')
-      const side = channel.threads().threads.find((thread) => thread.title === 'Mont Royal')?.id as string
-      expect(channel.threads().focus).not.toBe(side)
+      harness.sessions[1]?.reply('Mild.')
+      expect(topics(channel).map(([title]) => title)).toEqual(['Trip', 'Time in Montreal'])
       expect(channel.focus(side)).toBe(true)
       expect(channel.threads().focus).toBe(side)
-      expect(screen.current()).toBeUndefined()
+      expect(topics(channel).map(([title]) => title)).toEqual(['Time in Montreal', 'Trip'])
+    })
+  })
+
+  describe('a topic', () => {
+    it('gathers the threads opened in it, and a new one starts when none is named', async () => {
+      const { channel, harness, call } = setup()
+      channel.say('What is the weather this weekend?')
+      await settled()
+      await call(0, 'thread_open', { title: 'Weather this weekend' })
+      harness.sessions[0]?.emit({ type: 'turn-end' })
+      await settled()
+      harness.sessions[1]?.reply('Sunny.')
+      const weekend = channel.topics.read({ limit: 5 }).topics[0]?.topic.id as string
+      expect(harness.sessions[0]?.request.instructions).toContain('give thread_open that `topic`')
+
+      channel.say('I will camp there, what should I pack?')
+      await settled()
+      expect((await call(0, 'thread_open', { title: 'What to pack', topic: 'nowhere' })).text).toContain('There is no such topic.')
+      await call(0, 'thread_open', { title: 'What to pack', topic: weekend })
+      harness.sessions[0]?.emit({ type: 'turn-end' })
+      await settled()
+      harness.sessions[2]?.reply('A tent.')
+
+      expect(channel.threads().threads.map((thread) => thread.topic)).toEqual([weekend, weekend])
+      expect(channel.topics.read({ limit: 5 }).topics).toMatchObject([
+        { topic: { id: weekend, title: 'Weather this weekend', answers: 2 }, answers: [{ exchange: { said: 'I will camp there, what should I pack?' } }] }
+      ])
     })
   })
 
@@ -638,7 +607,7 @@ describe('threads', () => {
     expect(channel.step('nope', 'c1')).toBeUndefined()
   })
 
-  it('brings back an earlier topic, with its view', async () => {
+  it('brings back an earlier topic, to the top, with what it showed', async () => {
     const { channel, harness, call, screen, spoken } = setup()
     for (const [said, title] of [
       ['Recipe please', 'Recipe'],
@@ -654,7 +623,8 @@ describe('threads', () => {
       await call(harness.sessions.length - 1, 'ui_render', { title, view: EXAMPLE_VIEW })
       session?.emit({ type: 'turn-end' })
     }
-    expect(screen.current()?.title).toBe('Form')
+    const topics = () => channel.topics.read({ limit: 5 }).topics.map((one) => one.topic.title)
+    expect(topics()).toEqual(['Form', 'Recipe'])
 
     channel.say('Back to the recipe')
     await settled()
@@ -662,7 +632,8 @@ describe('threads', () => {
     expect((await call(0, 'thread_focus', { thread: recipe })).ok).toBe(true)
     harness.sessions[0]?.reply('The recipe is back.')
 
-    expect(screen.current()?.title).toBe('Recipe')
+    expect(topics()).toEqual(['Recipe', 'Form'])
+    expect(screen.shown().map((view) => view.title)).toEqual(['Recipe', 'Form'])
     expect(channel.threads().focus).toBe(recipe)
     expect(spoken().at(-1)).toBe('The recipe is back.')
   })
@@ -834,15 +805,16 @@ describe('an answer finished out of sight', () => {
 describe('turns the assistant starts itself', () => {
   const card = { title: 'Reminder', spec: { root: 'text', elements: { text: { type: 'Text', props: { text: 'Feed the cat' }, children: [] } } } }
 
-  it('says a reminder with no model, as a turn of its own, with its card in the stream', () => {
+  it('says a reminder with no model, as a turn of its own, with its card a topic of its own', () => {
     const { channel, harness, events, screen, records } = setup()
     const turn = channel.remind({ sentence: "It's eight. Time to feed the cat.", language: 'en', card: card as never, silent: false })
 
     expect(harness.sessions).toHaveLength(0)
-    expect(events.map((event) => event.name)).toEqual(['turn.started', 'speech.say', 'speech.say', 'view.shown', 'turn.ended'])
+    expect(events.map((event) => event.name)).toEqual(['turn.started', 'speech.say', 'speech.say', 'topics.changed', 'view.shown', 'turn.ended'])
     expect(events.find((event) => event.name === 'speech.say')).toMatchObject({ turn, text: "It's eight.", language: 'en' })
     expect(events.at(-1)).toMatchObject({ exchange: { turn, trigger: 'reminder', said: '', replied: "It's eight. Time to feed the cat.", outcome: 'done' } })
-    expect(screen.stream()[0]).toMatchObject({ title: 'Reminder', turn })
+    expect(screen.current()).toMatchObject({ title: 'Reminder', turn })
+    expect(channel.topics.read({ limit: 5 }).topics).toMatchObject([{ topic: { title: 'Reminder', answers: 1 }, answers: [{ id: turn }] }])
     expect(records.read([EXCHANGE]).at(-1)?.payload).toMatchObject({ trigger: 'reminder' })
   })
 
@@ -1267,7 +1239,7 @@ describe('files a thread writes', () => {
     harness.sessions[1]?.emit({ type: 'tool', name: 'computer_write', phase: 'started', call: 'c1' })
     harness.sessions[1]?.emit({ type: 'tool', name: 'computer_write', phase: 'ended', call: 'c1', output: 'ok', wrote: ['/w/trip.md'] })
     harness.sessions[1]?.emit({ type: 'tool', name: 'computer_write', phase: 'ended', call: 'c2', failed: true, wrote: ['/w/no.md'] })
-    expect(wrote).toEqual([{ showing: expect.objectContaining({ turn, focused: true }), paths: ['/w/trip.md'] }])
+    expect(wrote).toEqual([{ showing: expect.objectContaining({ turn }), paths: ['/w/trip.md'] }])
   })
 })
 
@@ -1453,7 +1425,7 @@ describe('a project', () => {
     channel.say('Also add a dark mode to the settings.')
     await settled()
     expect(harness.sessions[0]?.sent.at(-1)).toContain(
-      'working, working in /home/ada/code/echo, on screen, answering: In the echo repo, make the handle wider.'
+      'working, working in /home/ada/code/echo, the one the person last turned to, answering: In the echo repo, make the handle wider.'
     )
     const id = channel.threads().threads[0]?.id as string
     const refused = await call(0, 'thread_send', { thread: id })

@@ -1,5 +1,4 @@
 import { z } from 'zod'
-import { viewSchema } from '../views.ts'
 
 /** An address the core reads for a client: https only. */
 const httpsAddress = z
@@ -32,19 +31,9 @@ export const viewCommands = {
     output: z.object({ document: z.unknown() })
   },
 
-  /**
-   * Read what the assistant is showing now, if anything: for a client that connects after it was shown. The view is
-   * the newest card on the stage; the stream is every view of the conversation still open, newest first, so the main
-   * screen opens as it was left.
-   */
-  'view.read': {
-    input: z.object({}),
-    output: z.object({ view: viewSchema.optional(), stream: z.array(viewSchema).default([]) })
-  },
-
-  /** Remove a view from the screen: the one given, wherever it is in the stream, or, left out, every card on the stage. */
+  /** Remove a card from its answer, for good. */
   'view.clear': {
-    input: z.object({ view: z.string().min(1).max(64).optional() }),
+    input: z.object({ view: z.string().min(1).max(64) }),
     output: z.object({})
   }
 }

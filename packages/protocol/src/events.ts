@@ -18,6 +18,7 @@ import { deviceDesktopSchema, deviceNotifySchema, scheduleChangedSchema } from '
 import { servicesChangedSchema } from './events/services.ts'
 import { settingsChangedSchema } from './events/settings.ts'
 import { threadsChangedSchema } from './events/threads.ts'
+import { topicsChangedSchema } from './events/topics.ts'
 import { mediaControlSchema, viewClearedSchema, viewShownSchema } from './events/views.ts'
 
 /** Every event a core can send, assembled from the groups in `events/`. */
@@ -34,6 +35,7 @@ export const eventSchema = z.discriminatedUnion('name', [
   viewClearedSchema,
   mediaControlSchema,
   threadsChangedSchema,
+  topicsChangedSchema,
   memoryChangedSchema,
   assistantStateChangedSchema,
   libraryChangedSchema,

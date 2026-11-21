@@ -172,6 +172,15 @@ export const GripGlyph = () => (
   </Glyph>
 )
 
+/** More that can be done with something: three small squares in a row. */
+export const MoreGlyph = () => (
+  <Glyph>
+    <rect x="3" y="7" width="2" height="2" fill="currentColor" stroke="none" />
+    <rect x="7" y="7" width="2" height="2" fill="currentColor" stroke="none" />
+    <rect x="11" y="7" width="2" height="2" fill="currentColor" stroke="none" />
+  </Glyph>
+)
+
 /** Something that folds open downwards. Turned, it folds the other way. */
 export const ChevronGlyph = () => (
   <Glyph>

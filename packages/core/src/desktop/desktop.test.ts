@@ -5,8 +5,8 @@ import type { Desktop, DesktopElement, DesktopFound, WindowFacts } from '../port
 import type { ToolResult } from '../ports/tools.ts'
 import { memoryRecords } from '../records/memory.ts'
 import { manualTimers } from '../replay/manual-timers.ts'
+import { watchedScreen } from '../replay/watched-screen.ts'
 import { createUserSettings } from '../settings/settings.ts'
-import { createScreen } from '../views/screen.ts'
 import { createDesktopControl, HOLD_MS } from './desktop.ts'
 
 const NOTEPAD: WindowFacts = {
@@ -44,7 +44,7 @@ function standIn(found: DesktopFound = { available: true }) {
     },
     focus: async (window) => {
       done.push(`focus ${window}`)
-      return { ...NOTEPAD, focused: true }
+      return { ...NOTEPAD }
     },
     click: async (ref) => {
       done.push(`click ${ref}`)
@@ -69,7 +69,7 @@ function standIn(found: DesktopFound = { available: true }) {
 function setup({ found, on = true }: { found?: DesktopFound; on?: boolean } = {}) {
   const records = memoryRecords()
   let ids = 0
-  const screen = createScreen({ records, newId: () => `v${++ids}` })
+  const screen = watchedScreen({ records, newId: () => `v${++ids}` })
   const settings = createUserSettings(records, undefined, '/data/workspace')
   settings.setAccess({ desktop: on, approvals: 'trust' })
   const timers = manualTimers()
@@ -85,7 +85,7 @@ function setup({ found, on = true }: { found?: DesktopFound; on?: boolean } = {}
     mark: (marked) => marks.push(marked),
     pause: async () => undefined
   })
-  const showing = () => ({ thread: 't', turn: 'turn', focused: true })
+  const showing = () => ({ thread: 't', turn: 'turn' })
   const ready = control.state()
   const call = async (name: string, input: unknown): Promise<ToolResult> => {
     // Whether the system allows it is found once, before any tool is given.
@@ -99,7 +99,7 @@ function setup({ found, on = true }: { found?: DesktopFound; on?: boolean } = {}
   return { control, settings, access, desktop, done, touch, call, heading, asked, marks, timers, ready }
 }
 
-const anywhere = () => ({ thread: 't', turn: undefined, focused: true })
+const anywhere = () => ({ thread: 't', turn: undefined })
 
 describe('other apps', () => {
   it('gives a thread its tools only while the person lets it and the system allows it', async () => {

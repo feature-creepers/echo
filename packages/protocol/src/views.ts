@@ -28,12 +28,6 @@ export const viewSchema = z.object({
   /** The thread it belongs to. */
   thread: threadIdSchema.optional(),
   /**
-   * The answer to a side question (docs/SPEC.md, section 7.5): a card marked "By the way", on top of the stream while
-   * the topic keeps the stage. It leaves by itself a while after it was shown, when the person says thanks, and on
-   * Escape, and a thread keeps one such card, its latest.
-   */
-  aside: z.boolean().optional(),
-  /**
    * Its name among the cards of one answer ("weather", "chart"), when the assistant composed it: an answer shows a few
    * cards side by side, and a card shown again under its name in the same turn takes the place of the one before.
    */
@@ -49,23 +43,14 @@ export const viewSchema = z.object({
 export type ShownView = z.infer<typeof viewSchema>
 
 /**
- * How many views the main screen's stream holds, each card of an answer one view: enough for a topic's earlier
- * answers to stay behind its latest, as the answer's earlier versions. An older one leaves the stream,
- * not the conversation: it stays with its thread and can be asked for again.
+ * The cards of one answer once a view is shown, in the order they were first shown, each once. The core and every
+ * client keep them by this one rule, so they agree. A view shown again keeps its place; so does the card a view
+ * replaces: the one of its name, or the earlier version of the same saved widget.
  */
-export const STREAM_LENGTH = 24
-
-/**
- * The stream with a view put on top: newest first, each view once. The core and every client keep it by this one
- * rule, so they agree on it. A view shown again (a topic brought back) moves to the top. A thread keeps one aside
- * card, its latest, a saved widget one card, its latest version, and an answer one card of each name, its latest:
- * a new one takes the place of the one before.
- */
-export function onTop(stream: readonly ShownView[], view: ShownView): ShownView[] {
-  const replaced = (other: ShownView) =>
-    other.id === view.id ||
-    (view.widget !== undefined && other.widget === view.widget) ||
-    (view.aside === true && view.thread !== undefined && other.aside === true && other.thread === view.thread) ||
-    (view.card !== undefined && view.turn !== undefined && other.card === view.card && other.turn === view.turn && other.thread === view.thread)
-  return [view, ...stream.filter((other) => !replaced(other))].slice(0, STREAM_LENGTH)
+export function withCard<Card extends Pick<ShownView, 'id' | 'card' | 'widget'>>(cards: readonly Card[], view: Card): Card[] {
+  const replaced = (card: Card) =>
+    card.id === view.id || (view.card !== undefined && card.card === view.card) || (view.widget !== undefined && card.widget === view.widget)
+  const place = cards.findIndex(replaced)
+  if (place < 0) return [...cards, view]
+  return cards.flatMap((card, at) => (at === place ? [view] : replaced(card) ? [] : [card]))
 }

@@ -32,7 +32,7 @@ export const conversationCommands = {
          */
         screen: z.boolean().optional(),
         /**
-         * The view in front of the person when they said it, by its id: what they say is probably about it. Left
+         * The topic in front of the person when they said it, by its id: what they say is probably about it. Left
          * out when they were at the top of the main screen, where nothing in particular is in front of them, or took
          * the hint away.
          */

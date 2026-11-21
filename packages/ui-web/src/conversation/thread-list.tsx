@@ -7,11 +7,11 @@ import { ChevronGlyph } from '../primitives/icons.tsx'
 import { SearchField } from '../primitives/search-field.tsx'
 import { doingOf } from './plan.ts'
 
-/** What a thread is, on its row and over its work: a topic, a side question asked beside one, or a sub-thread. */
-export const kindWords = (thread: Thread): string => (thread.kind === 'subthread' ? 'Sub-thread' : thread.beside !== undefined ? 'Side question' : 'Topic')
+/** What a thread is, on its row and over its work: one that answers the person, or a sub-thread. */
+export const kindWords = (thread: Thread): string => (thread.kind === 'subthread' ? 'Sub-thread' : 'Thread')
 
-/** The thread a thread is listed under: the one a sub-thread works for, or the topic a side question was asked beside. */
-export const overOf = (thread: Thread): string | undefined => (thread.kind === 'subthread' ? thread.parent : thread.beside)
+/** The thread a thread is listed under: the one a sub-thread works for. */
+export const overOf = (thread: Thread): string | undefined => (thread.kind === 'subthread' ? thread.parent : undefined)
 
 /** The threads listed under a thread, those at work first, then the most recently used. */
 export function underOf(thread: string, threads: readonly Thread[]): Thread[] {
@@ -21,16 +21,12 @@ export function underOf(thread: string, threads: readonly Thread[]): Thread[] {
 }
 
 /** What the threads under a thread are called, together, over them. */
-export function underWords(under: readonly Thread[]): string {
-  const kinds = new Set(under.map(kindWords))
-  if (kinds.size > 1) return 'Under this thread'
-  return kinds.has('Sub-thread') ? (under.length === 1 ? 'Sub-thread' : 'Sub-threads') : under.length === 1 ? 'Side question' : 'Side questions'
-}
+export const underWords = (under: readonly Thread[]): string => (under.length === 1 ? 'Sub-thread' : 'Sub-threads')
 
 /** What each state is called, after the kind. */
 export const STATE = { working: 'working', ready: 'ready', parked: 'idle' } as const
 
-/** A thread listed on its own row, with the side questions asked beside it and the sub-threads it handed work to under it. */
+/** A thread listed on its own row, with the sub-threads it handed work to under it. */
 interface ThreadGroup {
   head: Thread
   under: Thread[]
@@ -62,12 +58,11 @@ const matches = (thread: Thread, words: readonly string[]) => {
 }
 
 /**
- * The threads as the side sheet lists them: each topic with the side questions asked while it was on the stage and
- * the sub-threads it opened under it, one level deep; one whose topic is gone, or is itself under another, stands on
- * its own row, so none is ever left out. A group is listed at work when any of its threads works, ready when any has
+ * The threads as the side sheet lists them: each thread that answers the person with the sub-threads it opened under
+ * it, one level deep; one whose thread is gone stands on its own row, so none is ever left out. A group is listed at work when any of its threads works, ready when any has
  * an answer waiting, archived when the person put it away or it was left for a week, else by the day it was last
  * used, the groups used most recently first. Words typed keep the threads whose title or folder holds them all, each
- * under its topic, and everything under a topic found.
+ * under its thread, and everything under a thread found.
  */
 export function sectionThreads(threads: readonly Thread[], query = '', now = new Date()): ThreadSection[] {
   const words = plain(query).split(/\s+/).filter(Boolean)

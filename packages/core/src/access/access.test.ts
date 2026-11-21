@@ -6,8 +6,8 @@ import type { Changeable, Computer } from '../ports/computer.ts'
 import type { ComputerUse, Reach, Signal } from '../ports/harness.ts'
 import { memoryRecords } from '../records/memory.ts'
 import { manualTimers } from '../replay/manual-timers.ts'
+import { watchedScreen } from '../replay/watched-screen.ts'
 import { ACCESS_SET, createUserSettings } from '../settings/settings.ts'
-import { createScreen } from '../views/screen.ts'
 import { createAccess, DIRECT_TOOLS } from './access.ts'
 import { ACCESS_OUTCOME, ACCESS_USE, KEPT_MS, samePlace } from './activity.ts'
 
@@ -95,7 +95,7 @@ function versions(): Blobs & { held: Map<string, Uint8Array> } {
 
 function setup({ withComputer = true, records = memoryRecords(), now = () => new Date('2026-11-18T10:00:00Z'), kept = versions(), core = 'id' } = {}) {
   let ids = 0
-  const screen = createScreen({ records, newId: () => `v${++ids}` })
+  const screen = watchedScreen({ records, newId: () => `v${++ids}` })
   const settings = createUserSettings(records, undefined, withComputer ? WORKSPACE : undefined)
   const timers = manualTimers()
   const { computer, files, trashed, watched } = machine()
@@ -111,7 +111,7 @@ function setup({ withComputer = true, records = memoryRecords(), now = () => new
   })
   const events: Event[] = []
   access.onEvent((event) => events.push(event))
-  const showing = () => ({ thread: 't', turn: 'turn', focused: true })
+  const showing = () => ({ thread: 't', turn: 'turn' })
   const reach = access.reach(showing) as Reach
   const [grant] = access.tools(showing)
   return { access, reach, grant, settings, screen, records, timers, files, trashed, kept, events, watched }
@@ -181,8 +181,8 @@ describe('access to the computer', () => {
 
   it('reaches nothing on a core with no computer of its own', () => {
     const { access } = setup({ withComputer: false })
-    expect(access.reach(() => ({ thread: 't', turn: undefined, focused: true }))).toBeUndefined()
-    expect(access.tools(() => ({ thread: 't', turn: undefined, focused: true }))).toEqual([])
+    expect(access.reach(() => ({ thread: 't', turn: undefined }))).toBeUndefined()
+    expect(access.tools(() => ({ thread: 't', turn: undefined }))).toEqual([])
   })
 
   it('lets a read, and a command that only reads, go ahead without a question', async () => {
@@ -643,7 +643,7 @@ describe('the activity', () => {
     // Read again from the records, as when the app opens again.
     const again = createAccess({
       settings: createUserSettings(records, undefined, WORKSPACE),
-      screen: createScreen({ records, newId: () => 'v' }),
+      screen: watchedScreen({ records, newId: () => 'v' }),
       records,
       versions: undefined
     })
@@ -948,7 +948,7 @@ describe('a folder named by voice', () => {
 describe('a project folder to work in', () => {
   it('asks to work in a folder not yet changeable, and grants it read and write', async () => {
     const { access, settings, screen } = setup()
-    const showing = { thread: undefined, turn: 'turn', focused: true }
+    const showing = { thread: undefined, turn: 'turn' }
     const granted = access.grant({ path: '~/Documents', write: true, purpose: 'work' }, showing)
     await settle()
     expect(cardText(screen)).toContain('Work in this folder?')
@@ -963,7 +963,7 @@ describe('a project folder to work in', () => {
 
   it('grants a folder the person chose in the interface without a card, and still refuses a place never reached', async () => {
     const { access, settings, screen } = setup()
-    const showing = { thread: undefined, turn: undefined, focused: true }
+    const showing = { thread: undefined, turn: undefined }
     settings.setAccess({ places: [{ path: '/home/ada/Documents', kind: 'folder', write: false }] })
     expect(await access.grant({ path: '~/Documents', write: true, purpose: 'work', chosen: true }, showing)).toEqual({
       ok: true,
@@ -986,7 +986,7 @@ describe('a project folder to work in', () => {
 
   it('grants no more places than the settings keep', async () => {
     const { access, settings } = setup()
-    const showing = { thread: undefined, turn: undefined, focused: true }
+    const showing = { thread: undefined, turn: undefined }
     settings.setAccess({ places: Array.from({ length: MAX_PLACES }, (_, index) => ({ path: `/elsewhere/${index}`, kind: 'folder' as const, write: false })) })
     expect(await access.grant({ path: '~/Documents', write: true, purpose: 'work', chosen: true }, showing)).toEqual({
       ok: false,
@@ -997,7 +997,7 @@ describe('a project folder to work in', () => {
 
   it('refuses a file, and a place never reached, before anyone is asked', async () => {
     const { access, screen } = setup()
-    const showing = { thread: undefined, turn: 'turn', focused: true }
+    const showing = { thread: undefined, turn: 'turn' }
     expect(await access.grant({ path: '~/notes.txt', write: true, purpose: 'work' }, showing)).toEqual({
       ok: false,
       text: expect.stringContaining('a project is a folder')

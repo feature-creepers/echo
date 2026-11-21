@@ -15,6 +15,26 @@ export function createRecords(database: DatabaseSync, index: KeywordIndex, vecto
   const insert = database.prepare('insert into record (id, origin, sequence, at, type, payload) values (?, ?, ?, ?, ?, ?)')
   // A tombstone keeps the record in its place and erases its content (the records port says why).
   const erase = database.prepare("update record set payload = 'null' where id = ?")
+  /** The records whose type or identifier is one of those given, in the order they were written. */
+  const select = (column: 'type' | 'id', values: readonly string[]): StoredRecord[] => {
+    const rows = []
+    for (let from = 0; from < values.length; from += NAMED_AT_ONCE) {
+      const named = values.slice(from, from + NAMED_AT_ONCE)
+      const marks = named.map(() => '?').join(', ')
+      rows.push(
+        ...database.prepare(`select rowid, id, origin, sequence, at, type, payload from record where ${column} in (${marks}) order by rowid`).all(...named)
+      )
+    }
+    if (values.length > NAMED_AT_ONCE) rows.sort((one, other) => Number(one.rowid) - Number(other.rowid))
+    return rows.map((row) => ({
+      id: String(row.id),
+      origin: String(row.origin),
+      sequence: Number(row.sequence),
+      at: String(row.at),
+      type: String(row.type),
+      payload: JSON.parse(String(row.payload))
+    }))
+  }
 
   return {
     append(records) {
@@ -35,21 +55,13 @@ export function createRecords(database: DatabaseSync, index: KeywordIndex, vecto
       })
     },
 
-    read(types) {
-      if (types.length === 0) return []
-      const marks = types.map(() => '?').join(', ')
-      const rows = database.prepare(`select id, origin, sequence, at, type, payload from record where type in (${marks}) order by rowid`).all(...types)
-      return rows.map((row) => ({
-        id: String(row.id),
-        origin: String(row.origin),
-        sequence: Number(row.sequence),
-        at: String(row.at),
-        type: String(row.type),
-        payload: JSON.parse(String(row.payload))
-      }))
-    }
+    read: (types) => select('type', types),
+    get: (ids) => select('id', ids)
   }
 }
+
+/** The most values one statement names: SQLite takes a limited number of them. */
+const NAMED_AT_ONCE = 500
 
 /** The identifier of the core that owns the file, made the first time the file is opened. */
 function coreId(database: DatabaseSync): string {

@@ -261,7 +261,7 @@ export const DIRECT_TOOLS: HarnessComputer = {
 }
 
 /** Keeps nothing: for a core with no records, which has no computer either. */
-const NO_RECORDS: Records = { append: () => [], read: () => [] }
+const NO_RECORDS: Records = { append: () => [], read: () => [], get: () => [] }
 const NO_VERSIONS: Blobs = { put: () => '', get: () => undefined }
 
 export function createAccess({ settings, screen, computer, timers, records, versions, now = () => new Date(), newId }: AccessOptions): AccessControl {

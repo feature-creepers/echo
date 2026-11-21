@@ -32,6 +32,10 @@ async function run<Name extends CommandName>(core: ReturnType<typeof start>['cor
   return COMMANDS[name].output.parse(result.output) as CommandOutput<Name>
 }
 
+/** What the main screen shows: the cards of each topic's latest answer, the topic last active first. */
+const shownBy = async (core: ReturnType<typeof start>['core']) =>
+  (await run(core, 'topics.read', {})).topics.flatMap((one) => one.answers.flatMap((answer) => answer.views))
+
 /** Lets what the core started without waiting for it come to its end. */
 async function settled(): Promise<void> {
   for (let turn = 0; turn < 20; turn++) await Promise.resolve()
@@ -298,11 +302,13 @@ describe('threads and the screen through the core', () => {
     thread?.emit({ type: 'text', text: 'Here is your week. ' })
     expect(await core.toolHost.call(token, 'ui_render', { title: 'The week', width: 'two-thirds', view: EXAMPLE_VIEW })).toEqual({ ok: true, text: 'Shown.' })
     expect(events.find((event) => event.name === 'view.shown')).toMatchObject({ view: { title: 'The week', width: 'two-thirds', thread: expect.any(String) } })
-    expect((await run(core, 'view.read', {})).view?.title).toBe('The week')
+    const [week] = await shownBy(core)
+    expect(week?.title).toBe('The week')
     expect((await run(core, 'threads.read', {})).threads.map((one) => one.title)).toEqual(['The week'])
+    expect((await run(core, 'topics.read', {})).topics).toMatchObject([{ topic: { title: 'The week', answers: 1 } }])
 
-    await run(core, 'view.clear', {})
-    expect((await run(core, 'view.read', {})).view).toBeUndefined()
+    await run(core, 'view.clear', { view: week?.id ?? '' })
+    expect(await shownBy(core)).toEqual([])
   })
 
   it('ends the right to call tools when a session fails', async () => {
@@ -346,7 +352,7 @@ describe('the library through the core', () => {
     const first = start(records)
     const { token } = await threadOf(first.core, first.harness, 'Play some jazz')
     await first.core.toolHost.call(token, 'ui_render', { title: 'Jazz radio', view: radio })
-    const shown = (await run(first.core, 'view.read', {})).view
+    const [shown] = await shownBy(first.core)
     if (!shown) throw new Error('The view was not shown.')
     const { widget } = await run(first.core, 'library.save', { view: shown.id, collection: 'Music' })
     expect(widget).toMatchObject({ title: 'Jazz radio', collection: 'Music', pinned: false, from: shown.id, spec: shown.spec })
@@ -387,7 +393,7 @@ describe('the library through the core', () => {
       elements: { ...radio.elements, all: { type: 'Stack', props: {}, children: ['player', 'note'] }, note: { type: 'Text', props: { text: 'From Paris' } } }
     }
     expect(await core.toolHost.call(token, 'library_update', { widget: id, view: annotated })).toEqual({ ok: true, text: 'Saved as a new version, and shown.' })
-    const changed = (await run(core, 'view.read', {})).view
+    const [changed] = await shownBy(core)
     expect(changed).toMatchObject({ widget: id, spec: { elements: { note: { type: 'Text' } } } })
     expect(changed?.turn).toBeUndefined()
     expect((await core.toolHost.call(token, 'library_update', { widget: id, view: { root: 'x', elements: {} } })).ok).toBe(false)
@@ -401,29 +407,32 @@ describe('the library through the core', () => {
     const { token } = await threadOf(core, harness, 'Plan a weekend in Lyon')
     for (const card of ['weather', 'map', 'radio'])
       expect(await core.toolHost.call(token, 'ui_render', { title: card, card, view: radio })).toEqual({ ok: true, text: 'Shown.' })
-    const titles = async () => (await run(core, 'view.read', {})).stream.map((view) => view.title)
-    expect(await titles()).toEqual(['radio', 'map', 'weather'])
+    const titles = async () => (await shownBy(core)).map((view) => view.title)
+    expect(await titles()).toEqual(['weather', 'map', 'radio'])
 
     const saved = await core.toolHost.call(token, 'library_save', { card: 'map' })
     expect(saved.text).toMatch(/^Saved as "map"/)
     expect(await core.toolHost.call(token, 'library_save', { card: 'news' })).toEqual({ ok: false, text: 'No card of yours on the screen is named "news".' })
 
     expect(await core.toolHost.call(token, 'ui_clear', { card: 'Map' })).toEqual({ ok: true, text: 'Cleared.' })
-    expect(await titles()).toEqual(['radio', 'weather'])
+    expect(await titles()).toEqual(['weather', 'radio'])
     expect((await core.toolHost.call(token, 'ui_clear', { card: 'map' })).ok).toBe(false)
     await core.toolHost.call(token, 'ui_clear', {})
     expect(await titles()).toEqual([])
   })
 
-  it('shows a saved widget on the stage when the user brings it back from the library', async () => {
+  it('shows a saved widget as a topic of its own when the user brings it back from the library', async () => {
     const { core, harness } = start()
     const { token } = await threadOf(core, harness, 'Play some jazz')
     await core.toolHost.call(token, 'ui_render', { title: 'Jazz radio', view: radio })
-    const { widget } = await run(core, 'library.save', { view: (await run(core, 'view.read', {})).view?.id ?? '' })
-    await run(core, 'view.clear', {})
+    const [shown] = await shownBy(core)
+    const { widget } = await run(core, 'library.save', { view: shown?.id ?? '' })
+    await run(core, 'view.clear', { view: shown?.id ?? '' })
 
     await run(core, 'library.show', { widget: widget.id })
-    expect((await run(core, 'view.read', {})).view).toMatchObject({ widget: widget.id, title: 'Jazz radio' })
+    expect((await shownBy(core))[0]).toMatchObject({ widget: widget.id, title: 'Jazz radio' })
+    // Shown by the person, it is a topic of its own, named as the widget is.
+    expect((await run(core, 'topics.read', {})).topics[0]?.topic).toMatchObject({ title: 'Jazz radio', answers: 1 })
     expect((await core.execute({ type: 'command', id: 'c2', name: 'library.show', input: { widget: 'nothing' } }))?.ok).toBe(false)
   })
 })

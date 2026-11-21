@@ -33,6 +33,7 @@ const GROUP_OF: Record<EventName, Exclude<EventGroup, 'all'>> = {
   'settings.changed': 'state',
   'engines.changed': 'state',
   'threads.changed': 'state',
+  'topics.changed': 'state',
   'memory.changed': 'state',
   'assistant.state': 'state',
   'schedule.changed': 'state',
@@ -57,7 +58,9 @@ export function eventSummary(event: Event): string {
     case 'turn.ended':
       return `${event.exchange.outcome}${event.exchange.thread ? ` · thread ${event.exchange.thread.slice(0, 8)}` : ''}`
     case 'view.shown':
-      return `${event.view.title}${event.view.aside ? ' · aside' : ''}${event.view.widget ? ' · saved' : ''}`
+      return `${event.view.title}${event.view.widget ? ' · saved' : ''}`
+    case 'topics.changed':
+      return [...event.topics.map((one) => one.topic.title), ...event.gone.map(() => 'gone')].join(' · ')
     case 'library.changed':
       return `${event.library.widgets.length} saved`
     default:

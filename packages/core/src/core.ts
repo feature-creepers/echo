@@ -170,7 +170,7 @@ export function createCore(options: CoreOptions): Core {
   )
   const tools = createTools(options.newId)
   let toolServer: string | undefined
-  const screen = createScreen({ records: options.records, newId: options.newId, timers: options.timers, now })
+  const screen = createScreen({ records: options.records, newId: options.newId })
   const mapsOf = createMaps(options.web)
   const feeds = createFeeds(options.web, now)
 
@@ -197,14 +197,16 @@ export function createCore(options: CoreOptions): Core {
     {
       definition: {
         name: CLEAR_TOOL,
-        description: 'Remove the cards of your answer from the screen, when they no longer serve the conversation: all of them, or one by its name.',
+        description: 'Remove cards of the answer you are giving, when they no longer serve it: all of them, or one by its name. Earlier answers keep theirs.',
         inputSchema: { type: 'object', properties: { card: { type: 'string', description: 'The name of the card to remove. Left out, every card.' } } }
       },
       run: (input) => {
         const asked = clearInput.safeParse(input ?? {})
         if (!asked.success) return { ok: false, text: 'Give the name of the card to remove as "card", or nothing to remove them all.' }
         const { card } = asked.data
-        const cards = screen.cards(showing().thread).filter((one) => card === undefined || one.card === card)
+        // Only the answer it is giving: what an earlier answer showed is that answer's, kept as it was.
+        const { thread, turn } = showing()
+        const cards = screen.cards(thread).filter((one) => one.turn === turn && (card === undefined || one.card === card))
         if (card !== undefined && cards.length === 0) return { ok: false, text: `No card of yours on the screen is named "${card}".` }
         for (const one of cards) screen.clear(one.id)
         return { ok: true, text: 'Cleared.' }
@@ -547,6 +549,7 @@ export function createCore(options: CoreOptions): Core {
   schedule.onEvent(emit)
   accounts.onEvent(emit)
 
+  const noTopic = (topic: string) => ({ ok: false as const, error: { code: 'invalid-input' as const, message: `There is no topic "${topic}".` } })
   const execute = createExecutor(
     {
       'settings.read': () => ({ ok: true, output: { settings: settings.read() } }),
@@ -602,11 +605,23 @@ export function createCore(options: CoreOptions): Core {
       },
       'channel.read': (input) => ({ ok: true, output: { exchanges: channel.read(input.limit) } }),
       'engines.read': async () => ({ ok: true, output: { engines: await engines.read(true) } }),
-      'view.read': () => {
-        const view = screen.current()
-        const stream = screen.stream()
-        return { ok: true, output: view ? { view, stream } : { stream } }
+      'topics.read': (input) => ({ ok: true, output: channel.topics.read(input) }),
+      'topic.read': (input) => {
+        const read = channel.topics.answers(input.topic, input)
+        return read ? { ok: true, output: read } : noTopic(input.topic)
       },
+      'topic.rename': (input) => (channel.topics.rename(input.topic, input.title) ? { ok: true, output: {} } : noTopic(input.topic)),
+      'topic.archive': (input) => (channel.topics.archive(input.topic, input.archived) ? { ok: true, output: {} } : noTopic(input.topic)),
+      'topic.move': (input) => {
+        const topic = channel.topics.move(input.answer, input.topic === undefined ? { title: input.title ?? '' } : { topic: input.topic })
+        return topic === undefined
+          ? { ok: false, error: { code: 'invalid-input', message: 'There is no such answer, or no such topic to move it to.' } }
+          : { ok: true, output: { topic } }
+      },
+      'topic.merge': (input) =>
+        channel.topics.merge(input.topic, input.into)
+          ? { ok: true, output: {} }
+          : { ok: false, error: { code: 'invalid-input', message: 'A topic is merged into another one, and both must be there.' } },
       'view.clear': (input) => {
         screen.clear(input.view)
         return { ok: true, output: {} }
@@ -723,8 +738,8 @@ export function createCore(options: CoreOptions): Core {
         return { ok: true, output: {} }
       },
       'library.show': (input) => {
-        // Brought back by the user, it is shown on the stage over whatever topic is there, and starts nothing by itself.
-        const shown = library.show(input.widget, { thread: undefined, turn: undefined, focused: true })
+        // Shown by the person, it is a topic of its own, back at the top each time, and starts nothing by itself.
+        const shown = library.show(input.widget, { thread: undefined, turn: undefined })
         return shown.ok ? { ok: true, output: {} } : { ok: false, error: { code: 'unknown-widget', message: shown.text } }
       },
       'thread.focus': (input) =>
@@ -743,10 +758,7 @@ export function createCore(options: CoreOptions): Core {
         if (toolServer === undefined || !computer)
           return { ok: false, error: { code: 'failed', message: 'Projects cannot be worked on here: the assistant has no computer to work on.' } }
         // The person chose the folder in the interface: that is their consent, and no card asks them again.
-        const granted = await access.grant(
-          { path: input.folder, write: true, purpose: 'work', chosen: true },
-          { thread: undefined, turn: undefined, focused: true }
-        )
+        const granted = await access.grant({ path: input.folder, write: true, purpose: 'work', chosen: true }, { thread: undefined, turn: undefined })
         if (!granted.ok) return { ok: false, error: { code: 'invalid-input', message: granted.text } }
         return { ok: true, output: channel.work({ folder: granted.path, request: input.request }) }
       },

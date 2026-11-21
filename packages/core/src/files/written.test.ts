@@ -3,7 +3,8 @@ import type { Event } from '@repo/protocol'
 import { describe, expect, it } from 'vitest'
 import { memoryRecords } from '../records/memory.ts'
 import { memoryWorkspace } from '../replay/memory-workspace.ts'
-import { createScreen, type Showing } from '../views/screen.ts'
+import { watchedScreen } from '../replay/watched-screen.ts'
+import type { Showing } from '../views/screen.ts'
 import { createWrittenFiles, writtenCard } from './written.ts'
 
 const bytes = (text: string) => new TextEncoder().encode(text)
@@ -11,12 +12,12 @@ const bytes = (text: string) => new TextEncoder().encode(text)
 function setup() {
   let ids = 0
   const records = memoryRecords()
-  const screen = createScreen({ records, newId: () => `v${++ids}` })
+  const screen = watchedScreen({ records, newId: () => `v${++ids}` })
   const workspace = memoryWorkspace()
   const written = createWrittenFiles({ screen, workspace, newId: () => `v${++ids}` })
   const events: Event[] = []
   screen.onEvent((event) => events.push(event))
-  const showing = (turn: string): Showing => ({ thread: 't1', turn, focused: true })
+  const showing = (turn: string): Showing => ({ thread: 't1', turn })
   return { screen, workspace, written, events, showing }
 }
 
@@ -77,7 +78,7 @@ describe('the card of the files a thread writes', () => {
     const ids = events.flatMap((event) => (event.name === 'view.shown' ? [event.view.id] : []))
     expect(new Set(ids).size).toBe(2)
     expect(filesOn(events.at(-1))).toEqual([{ path: '/home/ada/Documents/letter.txt', name: 'letter.txt', size: 4 }])
-    expect(screen.stream()).toHaveLength(2)
+    expect(screen.shown()).toHaveLength(2)
   })
 
   it('shows nothing for a file that is not there any more', async () => {

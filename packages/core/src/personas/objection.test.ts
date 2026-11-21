@@ -2,16 +2,16 @@ import { validateView } from '@repo/catalog'
 import type { Event } from '@repo/protocol'
 import { describe, expect, it } from 'vitest'
 import { memoryRecords } from '../records/memory.ts'
-import { createScreen } from '../views/screen.ts'
+import { watchedScreen } from '../replay/watched-screen.ts'
 import { createObjections, DECISION } from './objection.ts'
 
 function setup(records = memoryRecords()) {
   let ids = 0
-  const screen = createScreen({ records, newId: () => `v${++ids}` })
+  const screen = watchedScreen({ records, newId: () => `v${++ids}` })
   const events: Event[] = []
   screen.onEvent((event) => events.push(event))
   const objections = createObjections({ records, screen, now: () => new Date('2026-11-17T08:00:00Z') })
-  const [raise, record] = objections.tools(() => ({ thread: 't', turn: 'turn', focused: true }))
+  const [raise, record] = objections.tools(() => ({ thread: 't', turn: 'turn' }))
   if (!raise || !record) throw new Error('Two tools are expected.')
   return { objections, raise, record, screen, events, records }
 }

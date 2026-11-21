@@ -3,10 +3,11 @@ import { type Event, pinnedBySide, pinnedInOrder } from '@repo/protocol'
 import { describe, expect, it } from 'vitest'
 import { ERASURE } from '../ports/records.ts'
 import { memoryRecords } from '../records/memory.ts'
-import { createScreen, type Showing } from '../views/screen.ts'
+import { watchedScreen } from '../replay/watched-screen.ts'
+import type { Showing } from '../views/screen.ts'
 import { createLibrary, type Library, summary, WIDGET } from './library.ts'
 
-const onStage: Showing = { thread: 'a', turn: 't1', focused: true }
+const onStage: Showing = { thread: 'a', turn: 't1' }
 
 const player = (title: string, url: string) => ({
   root: 'all',
@@ -25,7 +26,7 @@ function setup(records = memoryRecords()) {
     clock += 60_000
     return new Date(clock)
   }
-  const screen = createScreen({ records, newId })
+  const screen = watchedScreen({ records, newId })
   const library = createLibrary({ records, screen, now, newId })
   const events: Event[] = []
   library.onEvent((event) => events.push(event))
@@ -195,7 +196,7 @@ describe('the library', () => {
     const { screen, library, shown } = setup()
     const saved = library.save({ view: shown('Radio FIP', player('Radio FIP', 'https://icecast.radiofrance.fr/fip-hifi.aac')) })
     if (!saved.ok) throw new Error('Not saved.')
-    screen.clear()
+    for (const view of screen.shown()) screen.clear(view.id)
 
     expect(library.show(saved.widget.id, onStage)).toEqual({ ok: true, text: 'Shown.' })
     expect(screen.current()).toMatchObject({ title: 'Radio FIP', widget: saved.widget.id, spec: saved.widget.spec })

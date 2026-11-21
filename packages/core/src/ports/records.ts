@@ -58,4 +58,6 @@ export interface Records {
   append(records: readonly NewRecord[]): StoredRecord[]
   /** Every record of the given types, in the order they were written. */
   read(types: readonly string[]): StoredRecord[]
+  /** The records of the given identifiers, in the order they were written: what is read again long after, a few at a time. */
+  get(ids: readonly string[]): StoredRecord[]
 }

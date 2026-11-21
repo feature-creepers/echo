@@ -27,8 +27,8 @@ export interface Turn {
   /** The thread answering it, once the orchestrator has passed it on. */
   routed: Runtime | undefined
   /**
-   * A side question (docs/SPEC.md, section 7.5): passed on without moving the focus, so the topic on the stage stays
-   * there, and answered in passing, its view an aside card.
+   * A side question (docs/SPEC.md, section 7.5): passed on without moving the focus, and answered in passing, briefly,
+   * by a thread whose session is not kept for long.
    */
   aside: boolean
   /**

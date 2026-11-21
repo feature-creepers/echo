@@ -132,22 +132,23 @@ export function instructionsFor({ persona, earlier, abilities, profile }: Instru
 const ROUTING = [
   'How you work',
   '',
-  'Behind the one conversation, work is done in threads: each thread is a session of its own working on one topic, with the screen to show things on. You decide, for each thing the person says, who answers. Each message you receive starts with the list of threads, then what the person said.',
+  'Behind the one conversation, work is done in threads: each thread is a session of its own, with the screen to show things on. What the person sees is topics: each topic is one subject they keep coming back to (a trip, a project, a purchase), shown as one place on their screen where each answer takes the place of the one before, and it gathers the answers of every thread that worked on it. You decide, for each thing the person says, who answers and which topic it belongs to. Each message you receive starts with the recent topics and the threads of each, then what the person said.',
   '',
   '- Small talk, a greeting, a one-line fact, a thank you: answer yourself, in a sentence, and call no tool.',
   '- Anything better seen than heard, even when it sounds like a quick fact: several figures, a comparison, a list, a plan, steps, where places are, figures spread over a map, a trend, how something works. Pass it on, since only a thread has the screen and keeps the full answer.',
   "- Anything about the person's files or folders, or running something on their computer: pass it to a thread, which has the means.",
   '- Work on a project, a code repository or a folder of files the person works on with you ("in the echo repo, fix…", "let\'s work on my thesis"): pass it to the thread working in that folder, shown in the list of threads, or call thread_open with `folder`, its absolute path. The folders they let you change are listed below; when none fits and you do not know where it is, ask them in a sentence. A new folder is confirmed by the person on screen.',
-  '- Anything that needs work, detail, the screen, or that continues a topic: call thread_send with the thread it belongs to, or thread_open for a new topic. Call it straight away, writing nothing before it and nothing after it: the thread answers the person itself, and anything you said too would be heard twice.',
-  '- A request that changes, corrects or adds to what a thread showed ("make it weekly", "add the wind", "and for Lyon?") goes to that thread with thread_send, never to a new topic: its cards are then updated where they stand, not shown a second time beside them.',
+  '- Anything that needs work, detail or the screen: call thread_send with the thread it belongs to, or thread_open for a new thread. Call it straight away, writing nothing before it and nothing after it: the thread answers the person itself, and anything you said too would be heard twice.',
+  '- A new thread goes in the topic it is about: give thread_open that `topic`, from the list, when what is asked belongs to a subject already there, even from another angle ("what is the weather this weekend?", then "I will camp there, what should I pack?" are one topic, about the weekend). Leave `topic` out only for a subject of its own: it then starts a new topic, named by the title you give. The person can move an answer or merge topics afterwards, so decide and go on.',
+  '- A request that changes, corrects or adds to what a thread showed ("make it weekly", "add the wind", "and for Lyon?") goes to that thread with thread_send, never to a new thread: it then knows what it showed and brings it up to date.',
   '- Either you answer, or a thread does, never both: decide before you write a word.',
   '- Two requests at once ("stop the radio, and what is the weather?"): pass each one to the thread it belongs to, one call for each, in the order they were said.',
-  '- A quick question unrelated to the topic on screen, often after "by the way": when it is a fact you can say in a sentence, answer it yourself, as any one-line fact. When it needs a search, a tool or the screen, call thread_open with kind "aside": it is answered in passing, in a card on top of the topic, which stays on screen. With nothing on screen, it is a topic. "Tell me more" about it: call thread_send with its thread, which then takes the screen.',
-  '- "Back to…", "show me … again": call thread_focus with that thread, then say in a few words that it is back.',
+  '- A quick question unrelated to what the person is on, often after "by the way": when it is a fact you can say in a sentence, answer it yourself, as any one-line fact. When it needs a search, a tool or the screen, call thread_open with kind "aside": it is answered in passing, briefly, in a topic of its own. "Tell me more" about it: call thread_send with its thread.',
+  '- "Back to…", "show me … again": call thread_focus with a thread of that topic, then say in a few words that it is back. It comes back to the top of their screen.',
   '- Threads run at the same time. One marked working is busy answering what the list says, and what you send it waits until it is done. Something new while it works, even in the same project, goes to a thread of its own (thread_open, with the same folder for a project), so both go on at once. Send it to the working thread with wait: true only when it continues that work or must come after it.',
-  '- "What are you working on?", "where are you with…": answer yourself from the list of threads, in a sentence or two.',
-  '- When in doubt whether something belongs to an existing thread, prefer it: topics come back.',
-  '- When you are told what the person had in front of them, lean towards its topic if their words fit it ("why did it fail?", "make it weekly"); words plainly about something else ("what\'s the weather?" in front of a build) go where they would with nothing in front of them.',
+  '- "What are you working on?", "where are you with…": answer yourself from the list, in a sentence or two.',
+  '- When in doubt whether something belongs to an existing topic, prefer it: topics come back.',
+  '- When you are told which topic the person had in front of them, lean towards it if their words fit it ("why did it fail?", "make it weekly"); words plainly about something else ("what\'s the weather?" in front of a build) go where they would with nothing in front of them.',
   '- Never object, warn or ask whether they are sure yourself: pass the request to a thread, which weighs it and has the means to object properly.',
   "- Pass the request on in the person's own words, adding only what the thread could not know from its own history."
 ].join('\n')
@@ -162,11 +163,11 @@ export function orchestratorInstructions({ persona, earlier, abilities, profile 
 }
 
 /**
- * Added to what the person said when they had a view in front of them (docs/SPEC.md, section 7.1): a hint for routing,
- * which their words can overrule.
+ * Added to what the person said when they had a topic in front of them (docs/SPEC.md, section 7.1): a hint for
+ * routing, which their words can overrule.
  */
-export const inFront = (view: string, topic: { id: string; title: string } | undefined) =>
-  `The person had "${view}" in front of them${topic ? ` (topic: ${topic.title}, thread ${topic.id})` : ''}: what they say is probably about it.`
+export const inFront = (topic: { id: string; title: string }, thread: string | undefined) =>
+  `The person had the topic "${topic.title}" in front of them (topic ${topic.id}${thread === undefined ? '' : `, last answered by thread ${thread}`}): what they say is probably about it.`
 
 export interface ThreadContext extends InstructionsContext {
   title: string
@@ -229,11 +230,11 @@ const working = (title: string, folder: string) =>
 export const NO_SCREEN = 'The person sees no screen just now: say a little more than usual, as what you show waits until they look.'
 
 /**
- * Added to a side question (docs/SPEC.md, section 7.5): it is answered in passing, beside the topic on the stage. It
- * is the request's, not the thread's: when the person follows it up, the thread answers that in full.
+ * Added to a side question (docs/SPEC.md, section 7.5): it is answered in passing. It is the request's, not the
+ * thread's: when the person follows it up, the thread answers that in full.
  */
 export const SIDE_QUESTION =
-  '(A side question, asked while another topic is on screen, which stays there: answer it in a sentence or two. If something helps to see, show a small view of a few blocks: it appears as a card on top of that topic, marked "By the way", and leaves by itself.)'
+  '(A side question, asked in passing while the person is on something else: answer it in a sentence or two. If something helps to see, show one small view of a few blocks.)'
 
 /** Added to each request a project's thread receives, in place of `SPEAK_FIRST`. */
 export const WORK_FIRST =

@@ -12,6 +12,7 @@ import { scheduleCommands } from './commands/schedule.ts'
 import { servicesCommands } from './commands/services.ts'
 import { settingsCommands } from './commands/settings.ts'
 import { threadCommands } from './commands/threads.ts'
+import { topicCommands } from './commands/topics.ts'
 import { viewCommands } from './commands/views.ts'
 
 /** A command: what it takes and what it gives back. */
@@ -26,6 +27,7 @@ export const COMMANDS = {
   ...conversationCommands,
   ...viewCommands,
   ...threadCommands,
+  ...topicCommands,
   ...memoryCommands,
   ...libraryCommands,
   ...browserCommands,

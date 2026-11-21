@@ -20,25 +20,21 @@ interface ViewCardProps {
 
 /**
  * A view the assistant composed, as one card of an answer: its name as a small label, then the view, bare on the
- * ground. What can be done with it (keep it, snooze its reminder, close it) shows beside its name once it is pointed
- * at or has the keyboard. The answer to a side question says so before its name.
+ * ground. What can be done with it (keep it, snooze its reminder, remove it) shows beside its name once it is pointed
+ * at or has the keyboard.
  */
 export function ViewCard({ view, actions, lit, onClose }: ViewCardProps) {
-  const aside = view.aside === true
   const { snooze } = actions
   return (
     // The stage finds the card by its view, to bring it into sight.
     <div data-view={view.id} className="group/card grid min-w-0 gap-2">
       <header className="flex h-5 min-w-0 items-center gap-2">
         {lit && <span aria-hidden="true" className="size-1.5 shrink-0 bg-accent" />}
-        <span className="caps min-w-0 flex-1 truncate text-text-soft">
-          {aside && <span className="text-text-faint">By the way · </span>}
-          {view.title}
-        </span>
+        <span className="caps min-w-0 flex-1 truncate text-text-soft">{view.title}</span>
         <div className="-my-1 flex shrink-0 items-center opacity-0 transition-opacity duration-(--duration-quick) ease-soft focus-within:opacity-100 group-hover/card:opacity-100 has-[[aria-expanded=true]]:opacity-100 [&_button[aria-label]]:size-6 [&_svg]:size-3.5">
           {view.reminder !== undefined && snooze && <SnoozeControl job={view.reminder} snooze={snooze} onSnoozed={onClose} />}
           <SaveControl view={view} />
-          <IconButton label={aside ? 'Dismiss' : 'Close'} onClick={onClose}>
+          <IconButton label="Remove" onClick={onClose}>
             <CloseGlyph />
           </IconButton>
         </div>
