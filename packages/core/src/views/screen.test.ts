@@ -303,6 +303,27 @@ describe('the cards of an answer', () => {
     expect(screen.cards('a').map((view) => view.card)).toEqual(['main', 'weather'])
   })
 
+  it.each<[string, unknown, string | undefined]>([
+    ['the main card of the row', 'two-thirds', 'two-thirds'],
+    ['one that supports it', 'third', 'third'],
+    ['a table across the row', 'full', 'full'],
+    ['a card that says none, to share the row evenly', undefined, undefined]
+  ])('carries the width of %s, after a restart too', (_case, width, carried) => {
+    const records = memoryRecords()
+    const { screen, events } = setup(records)
+    expect(screen.show({ title: 'Weather', card: 'weather', ...(width === undefined ? {} : { width }), view: EXAMPLE_VIEW }, onStage()).ok).toBe(true)
+    expect(events.map((event) => (event.name === 'view.shown' ? event.view.width : 'none'))).toEqual([carried])
+    expect(setup(records).screen.current()?.width).toBe(carried)
+  })
+
+  it('refuses a width it does not know, naming those it does', () => {
+    const { screen } = setup()
+    expect(screen.show({ title: 'Weather', width: 'quarter', view: EXAMPLE_VIEW }, onStage())).toEqual({
+      ok: false,
+      text: "Give a title, in a few words, and a view; a card's name is a word or two, its width one of third, half, two-thirds, full."
+    })
+  })
+
   it("refuses a fifth card, naming the four, and still takes one of them shown again, or the core's own card", () => {
     const { screen, events } = setup()
     showAll(screen, [

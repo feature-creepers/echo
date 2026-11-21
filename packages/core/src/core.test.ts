@@ -1,4 +1,4 @@
-import { COMMANDS, type CommandInput, type CommandName, type CommandOutput, type Event, encodeBase64, PROTOCOL_VERSION } from '@repo/protocol'
+import { COMMANDS, type CommandInput, type CommandName, type CommandOutput, type Event, encodeBase64, PROTOCOL_VERSION, VIEW_WIDTHS } from '@repo/protocol'
 import { describe, expect, it, vi } from 'vitest'
 import { NO_SCREEN } from './channel/instructions.ts'
 import { createCore } from './core.ts'
@@ -288,10 +288,16 @@ describe('threads and the screen through the core', () => {
       'subthread_wait'
     ])
 
+    // Every width a card can take is offered, and named where the thread is told how to lay an answer out.
+    expect(core.toolHost.list(token)?.find((tool) => tool.name === 'ui_render')?.inputSchema).toMatchObject({
+      properties: { width: { enum: [...VIEW_WIDTHS] } }
+    })
+    for (const width of VIEW_WIDTHS) expect(thread?.request.instructions).toContain(`"${width}"`)
+
     const { EXAMPLE_VIEW } = await import('@repo/catalog')
     thread?.emit({ type: 'text', text: 'Here is your week. ' })
-    expect(await core.toolHost.call(token, 'ui_render', { title: 'The week', view: EXAMPLE_VIEW })).toEqual({ ok: true, text: 'Shown.' })
-    expect(events.find((event) => event.name === 'view.shown')).toMatchObject({ view: { title: 'The week', thread: expect.any(String) } })
+    expect(await core.toolHost.call(token, 'ui_render', { title: 'The week', width: 'two-thirds', view: EXAMPLE_VIEW })).toEqual({ ok: true, text: 'Shown.' })
+    expect(events.find((event) => event.name === 'view.shown')).toMatchObject({ view: { title: 'The week', width: 'two-thirds', thread: expect.any(String) } })
     expect((await run(core, 'view.read', {})).view?.title).toBe('The week')
     expect((await run(core, 'threads.read', {})).threads.map((one) => one.title)).toEqual(['The week'])
 

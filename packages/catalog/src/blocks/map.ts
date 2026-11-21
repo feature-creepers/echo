@@ -30,7 +30,7 @@ const place = z.object({
 export const mapBlocks = {
   RegionMap: {
     description:
-      'A map of areas coloured by a figure (a choropleth): countries, states, departments, districts, any regions. `shapes` is the https address of a public GeoJSON FeatureCollection of the areas (prefer a simplified, low-resolution file); `key` is the feature property that each `values[].region` matches, such as a code; `name` the property holding the area name. One value per area; areas with none stay empty, or are left out with `onlyValued`. `sequential` for an amount, `diverging` for above and below a `midpoint`. Pointing at an area shows its name and figure; a legend explains the colours.',
+      'A map of areas coloured by a figure (a choropleth): countries, states, departments, districts, any regions. `shapes` is the https address of a public GeoJSON FeatureCollection of the areas (prefer a simplified, low-resolution file); `key` is the feature property that each `values[].region` matches, such as a code; `name` the property holding the area name. One value per area; areas with none stay empty, or are left out with `onlyValued`. `sequential` for an amount, `diverging` for above and below a `midpoint`.',
     props: z.object({
       shapes: https,
       key: z.string().min(1),

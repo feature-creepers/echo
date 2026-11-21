@@ -1,5 +1,5 @@
 import { CLEAR_TOOL, describeCatalog, MEDIA_TOOL, SHOW_TOOL, SHOW_TOOL_INPUT, validateView } from '@repo/catalog'
-import { type Capability, type Event, MEDIA_ACTIONS, type Result } from '@repo/protocol'
+import { type Capability, type Event, MEDIA_ACTIONS, type Result, VIEW_WIDTHS } from '@repo/protocol'
 import { z } from 'zod'
 import { createAccess } from './access/access.ts'
 import { createAccountList } from './accounts/accounts.ts'
@@ -67,6 +67,15 @@ const EARLIER_LINES_MAX = 200_000
 
 /** What a session asks to remove from the screen: one card of its answer, by its name, or every card. */
 const clearInput = z.object({ card: cardNameSchema.optional() })
+
+/** What a session gives to show a view: the catalogue's input, and how wide the card is, which only the protocol knows. */
+const showInput = {
+  ...SHOW_TOOL_INPUT,
+  properties: {
+    ...SHOW_TOOL_INPUT.properties,
+    width: { type: 'string', enum: [...VIEW_WIDTHS], description: "How much of the answer's row the card takes. Left out, the cards share it evenly." }
+  }
+}
 
 /** What a core is given by the program that hosts it. */
 export interface CoreOptions {
@@ -172,7 +181,7 @@ export function createCore(options: CoreOptions): Core {
         name: SHOW_TOOL,
         description:
           'Show a view on the screen as a card of your answer, composed from the blocks of the catalogue. A new card name adds a card beside the others; the same name replaces that card. Answers with the problems to correct when the view is not valid. Say your short answer aloud before calling it, so the view appears while you are heard.',
-        inputSchema: SHOW_TOOL_INPUT
+        inputSchema: showInput
       },
       async run(input) {
         // A map is checked against the shapes it names first, so a join that finds nothing comes back to be corrected.

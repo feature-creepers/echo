@@ -1,5 +1,5 @@
 import { CARDS_PER_ANSWER, CLEAR_TOOL, type ViewSpec, validateView } from '@repo/catalog'
-import { type Event, onTop, type ShownView, type TurnId, viewSchema } from '@repo/protocol'
+import { type Event, onTop, type ShownView, type TurnId, VIEW_WIDTHS, viewSchema } from '@repo/protocol'
 import { z } from 'zod'
 import type { Timers } from '../ports/clock.ts'
 import type { Records } from '../ports/records.ts'
@@ -18,7 +18,12 @@ export const cardNameSchema = z.string().trim().toLowerCase().min(1).max(40)
 /** The name of the card a session shows without naming one: an answer that names none is this one card. */
 const UNNAMED_CARD = 'main'
 
-const request = z.object({ title: z.string().trim().min(1).max(120), card: cardNameSchema.optional(), view: z.unknown() })
+const request = z.object({
+  title: z.string().trim().min(1).max(120),
+  card: cardNameSchema.optional(),
+  width: z.enum(VIEW_WIDTHS).optional(),
+  view: z.unknown()
+})
 
 export interface ScreenOptions {
   records: Records
@@ -47,6 +52,8 @@ export interface Checked {
   spec: ViewSpec
   /** Its name among the cards of its answer, when a session composed it. The core's own cards have none. */
   card?: string
+  /** How much of its answer's row it takes, when the session said. */
+  width?: ShownView['width']
   /** The saved widget of the library it shows again. */
   widget?: string
   /** The reminder it is the card of: it can be snoozed from it. */
@@ -206,6 +213,7 @@ export function createScreen({ records, newId, timers, now = () => new Date() }:
       title: checked.title,
       ...(showing.aside === true ? { aside: true } : {}),
       ...(checked.card === undefined ? {} : { card: checked.card }),
+      ...(checked.width === undefined ? {} : { width: checked.width }),
       spec: checked.spec,
       ...(checked.widget === undefined ? {} : { widget: checked.widget }),
       ...(checked.reminder === undefined ? {} : { reminder: checked.reminder }),
@@ -237,10 +245,12 @@ export function createScreen({ records, newId, timers, now = () => new Date() }:
 
     show(asked, showing) {
       const read = request.safeParse(asked)
-      if (!read.success) return { ok: false, text: "Give a title, in a few words, and a view; a card's name is a word or two." }
+      if (!read.success)
+        return { ok: false, text: `Give a title, in a few words, and a view; a card's name is a word or two, its width one of ${VIEW_WIDTHS.join(', ')}.` }
       const checked = validateView(read.data.view)
       if (!checked.ok) return { ok: false, text: `The view was not shown. Correct this and show it again:\n- ${checked.problems.join('\n- ')}` }
-      return present({ title: read.data.title, card: read.data.card ?? UNNAMED_CARD, spec: checked.spec }, showing)
+      const { title, card = UNNAMED_CARD, width } = read.data
+      return present({ title, card, ...(width === undefined ? {} : { width }), spec: checked.spec }, showing)
     },
 
     present,

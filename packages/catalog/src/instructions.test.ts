@@ -22,6 +22,11 @@ describe('describeCatalog', () => {
     expect(text).toContain('your next answer replaces them all')
   })
 
+  it('tells the model how wide to make each card on the row of twelve columns', () => {
+    expect(text).toContain('give the main card `width` "two-thirds" and what supports it "third", two equals "half" each')
+    expect(text).toContain('Left out, the cards share the row evenly.')
+  })
+
   it('tells the model to play media in the app, not to link to a web player', () => {
     expect(text).toContain('- Media { url: string; kind?: "audio" | "video"; title: string;')
     expect(text).toContain('Never show a link to a web player instead.')
