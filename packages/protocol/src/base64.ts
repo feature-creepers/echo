@@ -1,6 +1,6 @@
 /**
  * Bytes as text and back, in base64: how a file's content crosses a protocol made of JSON lines. Written out
- * here rather than taken from the runtime, which differs between Node, a browser and a phone's engine.
+ * here rather than taken from the runtime, which differs between Node and a browser.
  */
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'

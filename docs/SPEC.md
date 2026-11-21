@@ -25,11 +25,11 @@ The design is checked against these.
 3. **Say little, show much.** A spoken reply is as short as a person's would be. Detail goes on screen as interface elements, not as text to read. Long output, spoken or written, happens only when asked for.
 4. **The screen follows the conversation.** What is shown belongs to the current reply and changes as the talk moves on.
 5. **Simple first, depth on request.** A new person sees the assistant and its answers. Transcript, activity, threads, memory and raw events are each one step further in, and never hidden.
-6. **Harnesses first, API keys possible.** The AI runs through the person's own Claude Code or Codex. Direct API keys can be added without redesign.
+6. **The person's own AI program.** The AI runs through the person's own Claude Code or Codex, signed in by them. Echo holds no key of its own.
 7. **Nothing important lives in the harness.** Conversation state, memory, persona and tools are Echo's, so changing harness loses nothing.
 8. **Three systems from the first version.** Windows, macOS and Linux are equal targets. A feature ships on all three, or is declared specific to one.
 9. **Weak machine to strong machine.** Every heavy component has a light alternative, chosen automatically.
-10. **The core can move.** It runs on the person's machine. The same core must be able to run on a server, with the desktop app and a phone app as its clients, without redesign.
+10. **The core can move.** It runs on the person's machine. The same core must be able to run on another machine, with the app as its client, without redesign.
 11. **The person is in charge.** The assistant may question a request, but it always carries out a confirmed one and never acts against the person's interest.
 
 ### 1.2 Terms
@@ -38,7 +38,7 @@ The design is checked against these.
 | ----------------- | -------------------------------------------------------------------------------------------------------------------- |
 | Harness           | An AI agent program the app drives, such as Claude Code or Codex                                                     |
 | Core              | The assistant itself: conversation, threads, memory, tools. One per person. It has no interface and owns no hardware |
-| Client            | An app on a device that connects to the core: the desktop app, and a phone app later                                 |
+| Client            | An app on a device that connects to the core: the desktop app                                                        |
 | Device capability | Something a client offers the core: microphone, speaker, screen, local files, other apps, notifications              |
 | Channel           | The single conversation the person has with the assistant                                                            |
 | Turn              | One thing the person says, and the assistant's response to it                                                        |
@@ -120,14 +120,14 @@ Tokyo Night palette, JetBrains Mono, flat surfaces, thin rules, bracketed action
         CLIENTS, one per device                               CORE, one per user
 ┌───────────────────────────────────────────┐        ┌─────────────────────────────────────────────┐
 │ desktop app    Windows · macOS · Linux    │        │ channel · orchestrator · threads · triggers │
-│ phone app      iOS · Android     (later)  │        │ memory · views · personas · permissions     │
+│                                           │        │ memory · views · personas · permissions     │
 │                                           │        │                                             │
 │ draws the interface and offers            │protocol│ tool server (MCP)                           │
 │ device capabilities:                      │◀──────▶│ store: SQLite records, search, files        │
 │   microphone · speaker · screen           │        │ harness adapters                            │
 │   local speech engines · local files      │        │        │                                    │
 │   other apps · shortcuts · notifications  │        │        ▼                                    │
-└───────────────────────────────────────────┘        │ Claude Code · Codex · API keys (later)      │
+└───────────────────────────────────────────┘        │ Claude Code · Codex                         │
                                                      └─────────────────────────────────────────────┘
   transport: a local pipe when the core is on the same machine, a secure WebSocket when it is remote (later)
 ```
@@ -136,7 +136,7 @@ Five ideas hold this together.
 
 **Core and client are separate programs.** The desktop app starts the same core program a server would run and connects to it as a remote client would, so the remote case is exercised every day.
 
-**The core owns no hardware.** Microphone, speaker, screen, local files, other apps, shortcuts and notifications belong to a client, which declares them as capabilities when it connects. The core asks for them through the protocol. A phone declares a different set from a desktop.
+**The core owns no hardware.** Microphone, speaker, screen, local files, other apps, shortcuts and notifications belong to a client, which declares them as capabilities when it connects. The core asks for them through the protocol. Each client declares its own set.
 
 **Reply text is speech; tool calls are the screen.** Whatever the model writes as its answer is spoken. Everything visual, and every action, goes through tools the core serves. This works the same on every harness.
 
@@ -144,50 +144,31 @@ Five ideas hold this together.
 
 **Everything observable is one event stream.** The interface, the transcript and the inspector read the same typed events. A recorded stream can be replayed through the core without a window, which is how the orchestrator is tested.
 
-## 5. Cloud and mobile: prepared now, built later
+## 5. A core that can move
 
-A paid service may come after version 1: sync of the person's content, a hosted core on a server in place of their machine, and a native phone app. None of it is in the first version. This section fixes what the first version respects so that none of it needs a redesign.
+The core and the app are two programs, so the core can run on another machine than the one the person sits at, with no redesign. Echo ships one core, on the person's own computer: there is no core hosted for them, no phone app and no paid service. This section fixes the rules that keep the move possible.
 
 ### 5.1 The shape
 
-```
- phone app ────┐
-               ├── secure WebSocket ──▶ hosted core, one per user ──▶ harness or API
- desktop app ──┘                              │
-                                              └── records and files ──▶ service storage
- desktop app with its own local core ◀── records and files ──────────────┘
-```
-
-- **One core per person.** A hosted service runs one isolated instance per customer; customers' data and agent processes never share a process.
-- **One active core at a time.** A person's turns go to one core, local or hosted. The other copy receives the records and can take over. Two orchestrators never answer the same conversation.
-- **A phone is always a client.** It cannot run a harness, so it connects to a core elsewhere: the hosted one, or the person's desktop through a relay.
-- **The paid service is separate from the core.** Accounts, billing, provisioning, the relay and storage are programs of their own. The local product never depends on them.
+- **One core per person, and one active at a time.** Two orchestrators never answer the same conversation.
 - **Several devices at once.** The device that last captured speech listens and speaks. Other connected devices show the same views silently.
 
 ### 5.2 Rules the first version follows
 
-| Rule now                                                                                                                                                                              | What it allows later                                                         |
+| Rule                                                                                                                                                                                  | What it keeps possible                                                       |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | Core and client are separate programs, speaking a versioned protocol through a transport interface                                                                                    | A remote core is a second transport, not a rewrite                           |
-| A connection opens with a handshake: protocol version, kind of client, device identifier, capabilities, credential                                                                    | Accounts, several devices, older clients still in use                        |
-| The core reaches hardware only through device capabilities                                                                                                                            | A phone, or a desktop far from its core                                      |
-| Input is text or audio. Speech output is text for the device to voice, or audio                                                                                                       | Speech engines on the device or on the server, chosen per device             |
+| A connection opens with a handshake: protocol version, kind of client, device identifier, capabilities, credential                                                                    | Several devices, older clients still in use                                  |
+| The core reaches hardware only through device capabilities                                                                                                                            | A client far from its core                                                   |
+| Input is text or audio. Speech output is text for the device to voice, or audio                                                                                                       | Speech engines on the device or beside the core, chosen per device           |
 | Every durable record is immutable and carries a global identifier, the core that wrote it and a sequence number. A change is a new record; a deletion is a tombstone                  | Sync sends the records the other side lacks, with no conflict to resolve     |
 | Files are stored by content hash. Records refer to hashes, never to local paths                                                                                                       | Files sync through any object storage; a path on one machine breaks no other |
 | Search indexes and vectors are derived data, rebuilt by each core                                                                                                                     | They are not synced, and each core may use its own embedding model           |
 | User settings (personas, the AI program preferred, its model, memory options) are kept apart from device settings (microphone, speakers, voice, listening, shortcuts, start, updates) | User settings follow the person; device settings stay with the device        |
-| The view format and the catalogue contain nothing specific to the web                                                                                                                 | One catalogue, a web renderer now and a React Native one later               |
-| Client logic (connection, state, speech playback) lives in a package with no web or Node dependency                                                                                   | The phone app reuses it                                                      |
+| The view format and the catalogue contain nothing specific to the web                                                                                                                 | One catalogue, whatever renderer draws it                                    |
+| Client logic (connection, state, speech playback) lives in a package with no web or Node dependency                                                                                   | Any client reuses it                                                         |
 | Secrets (harness sign-in, tokens) are never written to the store                                                                                                                      | Nothing sensitive replicates by accident                                     |
-| Triggers run in the core and deliver through a "notify" capability                                                                                                                    | A hosted core can wake a phone with a push notification                      |
-
-Anything beyond these (accounts, billing, the relay, encryption of synced content) belongs to the design of the service.
-
-### 5.3 Questions that belong to the service design
-
-- **Model access on a hosted core.** Either the person signs in to their own harness on their instance, or the service uses API keys and bills for usage. Which is permitted is a terms question for each vendor; the API adapter works whatever the answer.
-- **Encryption.** A service that only stores a copy can hold records and files encrypted on the device, unreadable to it. A hosted core has to read its person's data to work, inside their own instance.
-- **Phone stack.** React Native: it shares the language, the protocol, the client logic and the catalogue, and json-render has a React Native renderer for the same catalogue. Components are written twice; format and behaviour once. Speech on the phone uses each system's own recogniser and voice.
+| Triggers run in the core and deliver through a "notify" capability                                                                                                                    | A core elsewhere still reaches the person's device                           |
 
 ## 6. Harnesses
 
@@ -195,7 +176,7 @@ Anything beyond these (accounts, billing, the relay, encryption of synced conten
 
 ```ts
 interface Harness {
-  id: string // 'claude-code', 'codex', later 'anthropic-api', …
+  id: string // 'claude-code', 'codex'
   status(): Promise<HarnessStatus> // installed, signed in, version
   login(): Promise<void> // opens the vendor's own sign-in
   models(): Promise<Model[]>
@@ -236,7 +217,7 @@ Of these capabilities, the port (`packages/core/src/ports/harness.ts`) carries o
    - Program, model and level are user settings kept by the core, chosen in Settings, Models, or from the row under the composer (section 13.2). A change applies from the next question: a topic whose program, model or level changed opens a new session, told what was said, as on a change of persona.
    - When both harnesses are ready, the preferred one runs; otherwise the first ready. Each is looked at on its own (version, who is signed in, how it reaches files), never twice at once. A look can fail for a passing reason (a slow start, a sign-in being refreshed), and the core never hands the work to another harness for that: before settling on one other than the preferred, it looks again at each one ahead of it whose look got no answer (timed out, could not start, said nothing readable) or is older than 30 seconds, since the person may have signed in meanwhile. One that gave no answer is looked at again by itself after 3, 10, 30 and 60 seconds, and the clients are told when it comes back, so a reload of the window is never needed (`engines/engines.ts`).
 4. **Web search stays with the harness when it has one**, since it comes with the subscription. The adapter maps it to a common tool name; otherwise the core's own tool is used.
-5. **API keys are one more adapter.** It implements the same interface with its own agent loop or the vendor's agent SDK. Nothing above this layer changes, which is why principle 6 costs nothing now and why a hosted core has a route that needs no CLI.
+5. **Another AI program is one more adapter.** It implements the same interface, and nothing above this layer changes.
 
 ### 6.3 Known constraints
 
@@ -387,7 +368,7 @@ The person asks for something later, and it happens at its time: "remind me at 8
 
 **Two kinds.** A **reminder** says a sentence the assistant wrote when it was set, short and in the language of the conversation ("It's eight: time to feed the cat."), with a title for the list and the notification ("Feed the cat"). A **task** carries out a request as if the person had just asked it ("Give me the weather in Lyon.").
 
-**Timing.** On the person's clock, in the time zone of the machine the core runs on (`timeZone` in the core's options, for a hosted core).
+**Timing.** On the person's clock, in the time zone of the machine the core runs on (`timeZone` in the core's options, for a core on another machine).
 
 | Kind     | Rings                                              | Given as                 |
 | -------- | -------------------------------------------------- | ------------------------ |
@@ -537,7 +518,7 @@ One library, sherpa-onnx, runs every engine on the processor, on every system, i
 | Standard    | Between the two                          | 4                  |
 | Performance | 8 processors or more, and 32 GB or more  | 6                  |
 
-Each engine sits behind one of two interfaces, `Recognizer` (start, partial text, final text, stop) and `Voice` (speak a sentence, stop), so a hosted core could run them on a server for phones and weak machines (section 5). Apple's recogniser is not used: the same local engines run on every system, so the product behaves the same everywhere and no audio reaches a vendor.
+Each engine sits behind one of two interfaces, `Recognizer` (start, partial text, final text, stop) and `Voice` (speak a sentence, stop), so a core on another machine could run them there (section 5). Apple's recogniser is not used: the same local engines run on every system, so the product behaves the same everywhere and no audio reaches a vendor.
 
 ### 8.3 System integration
 
@@ -565,7 +546,7 @@ Every session's instructions contain these rules.
 - Plain spoken language: no markup, no lists, no addresses or long numbers read aloud.
 - Anything enumerable or detailed goes to the view.
 - Never describe the view aloud ("as you can see on screen…"). Say the point, show the rest.
-- When there is no screen to use, say a little more. A device that shows no views now, the desktop's Mini window (section 13.2), says so with what the person says (`screen: false` on `utterance.send`), and the line the message starts with then tells the session in one sentence. A locked screen and a phone in a pocket are not told, nor are the turns the assistant starts itself.
+- When there is no screen to use, say a little more. A device that shows no views now, the desktop's Mini window (section 13.2), says so with what the person says (`screen: false` on `utterance.send`), and the line the message starts with then tells the session in one sentence. A locked screen is not told, nor are the turns the assistant starts itself.
 
 ### 8.6 Languages
 
@@ -577,7 +558,7 @@ The person speaks and is answered in the languages of section 8.2. The interface
 
 A view is a description the model writes, limited to the blocks of the catalogue (section 9.6), and drawn by a renderer. It is never code, and because the model can compose only what the catalogue holds, every view has the app's own look.
 
-- **The format is json-render's** (`vercel-labs/json-render`): a flat map of elements under one root, each naming a block, its properties and its children (`packages/catalog/src/view.ts`). It was chosen so that json-render's renderers, on the web and in React Native, could draw a view as it is.
+- **The format is json-render's** (`vercel-labs/json-render`): a flat map of elements under one root, each naming a block, its properties and its children (`packages/catalog/src/view.ts`). It was chosen so that json-render's renderer could draw a view as it is.
 - **The renderer is json-render's React renderer**, with the app's own registry and blocks (`packages/ui-web/src/view/`), so every block looks like the app. The blocks that take input have UI SDK's behaviour (`vercel-labs/ui`, as the app's controls do, section 13.1): a question's answers are a list the arrow keys and typing move through, a Field's label names its input, Media's bars are sliders. A press reaches the app through the renderer's one action, `say` (section 9.5).
 - **The rest is the app's own**: the catalogue, its description for the model and the core's validation (`packages/catalog`); json-render's catalogue, prompts and validation are not used. Both libraries stay inside `packages/ui-web`: the rest of the app knows the view format, not a library.
 - **Where the formats differ.** json-render reads an object of a block's properties keyed `$state`, `$template` and the like as an expression. A Table's column keys are the only keys a model chooses, so they are replaced by their positions before a view is drawn, which changes nothing shown. A block the app does not know, from a newer core, is left out, and so is a block that fails to draw; the rest of the view is drawn.
@@ -591,15 +572,15 @@ A view is a description the model writes, limited to the blocks of the catalogue
 
 ### 9.3 Where views appear
 
-| Place  | Content                                                                                                                                                                                                                                                                      | On a phone                      |
-| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
-| Stage  | The stream: every view of the conversation still open, as answers, one for each topic, the newest first. The cards of the thread in focus are the stage                                                                                                                      | The whole screen                |
-| Asides | Answers to side questions, as cards marked "By the way" in the same stream (`aside` on the view). One that needs work is a topic opened `beside` the topic on the stage, which keeps the stage (section 7.5). Also the "ready" list of background threads, under the caption | Banners over the stage          |
-| Pinned | Saved widgets the person pinned (section 9.8), live, in two docks on either side of the conversation                                                                                                                                                                         | A sheet pulled up from the edge |
+| Place  | Content                                                                                                                                                                                                                                                                      |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Stage  | The stream: every view of the conversation still open, as answers, one for each topic, the newest first. The cards of the thread in focus are the stage                                                                                                                      |
+| Asides | Answers to side questions, as cards marked "By the way" in the same stream (`aside` on the view). One that needs work is a topic opened `beside` the topic on the stage, which keeps the stage (section 7.5). Also the "ready" list of background threads, under the caption |
+| Pinned | Saved widgets the person pinned (section 9.8), live, in two docks on either side of the conversation                                                                                                                                                                         |
 
 Everything the assistant composes appears in the centre, and nothing it does pushes the eye, what is said under it or the answers aside. The sides belong to the person: the pinned widgets, and the side sheet with the transcript, the threads and the inspector (section 13.2).
 
-A view says what to show, never where. Each renderer lays the blocks out for its device; every block wraps and shrinks to its width, and a word longer than its line breaks. The core tells each session what kind of device is active, so a view meant for a phone stays short.
+A view says what to show, never where. Each renderer lays the blocks out for its device; every block wraps and shrinks to its width, and a word longer than its line breaks. The core tells each session what kind of device is active, so a view meant for a small screen stays short.
 
 Earlier views are never lost. The stream holds the latest twenty-four views still open, each card a view, stage and asides together, kept and recorded by the core, so every device opens on the same stream and a restart changes nothing. A view shown again goes back on top; a new card of an aside, a new version of a saved widget, or a card of an answer shown again under its name replaces its earlier one. Closing a card takes it out of the stream for good. A topic brought back puts its cards back on top together, in the order they were shown. When the focus moves to a topic with nothing to show, the stage empties and the stream stays. Older views can be brought back by asking; views to keep go to the library.
 
@@ -746,7 +727,7 @@ The channel log is kept in full unless the person sets a retention period. Even 
 
 ### 10.3 Storage
 
-**One SQLite file, with its built-in full-text search (FTS5), and the records' vectors beside them (section 10.4).** Not PostgreSQL with pgvector, which needs a database server beside a desktop app: the wrong weight for a weak machine and a burden to install on three systems. A heavy user produces a few hundred thousand turns in several years, which one SQLite file handles comfortably. One file is easy to back up, export and delete, and works the same on a hosted core.
+**One SQLite file, with its built-in full-text search (FTS5), and the records' vectors beside them (section 10.4).** Not PostgreSQL with pgvector, which needs a database server beside a desktop app: the wrong weight for a weak machine and a burden to install on three systems. A heavy user produces a few hundred thousand turns in several years, which one SQLite file handles comfortably. One file is easy to back up, export and delete, and works the same wherever the core runs.
 
 **Records are immutable** (section 5.2). A turn, a fact, a view version or a file version is written once, with a global identifier, the core that wrote it and a sequence number. Correcting a fact writes a new record that replaces the old one. Tables that answer "what is true now" are indexes kept in step with the records, so later sync is an exchange of missing records.
 
@@ -813,7 +794,7 @@ Memory is the person's to read and correct, shared by every persona, and survive
 
 - the assistant's state (awake, with when it last slept and will sleep next; or asleep, with the progress of its work), when it sleeps, and "Sleep now";
 - the profile, then the facts by kind, each with how and when it was learned and the words it came from, with Edit and Forget (Forget asks once, since the words are erased);
-- Export to Markdown, built by the client so a phone can offer it too;
+- Export to Markdown, built by the client;
 - how long what was said is kept, search by meaning, and the import.
 
 **Search by meaning** says what it does (finds what was said in other words or another language) and the model it needs: its name, size, source and licence. Nothing is downloaded until the person presses Download; its progress follows, with Cancel, and a download cut short resumes. Once ready, the row says how many lines and facts can be found by meaning, and Remove deletes the model and every vector made with it, after asking once. Where it cannot run, the row gives the core's reason.
@@ -883,7 +864,7 @@ Example: "Send this to my landlord now." The critical persona: "I'd hold it. The
 ### 11.5 First launch and settings
 
 - **First launch.** Before anything else, the app shows each persona as a row: its eye, its name, what its stance does, its name in a field, and whether it answers by default. The person keeps or changes the names, picks one and starts. A name that cannot be kept is refused next to its field, by the same rule on the device and in the core.
-- **Asked once per person, not per device.** The core records the answer. Until it has one, every client asks; once it has, none does, a phone connected later included.
+- **Asked once per person, not per device.** The core records the answer. Until it has one, every client asks; once it has, none does, a device connected later included.
 - **Settings.** The same form, reached from the main screen; a change shows at once on every connected device.
 - **Switching.** The persona that answers is a setting, changed from the eye in the composer or the other persona's eye at the top of home; it is not switched by voice. It changes the accent and the voice at once.
 
@@ -1105,7 +1086,7 @@ The files a command changed, created or deleted, 200 at most, are kept with thei
 
 What the core reads itself, live figures, map shapes and the public addresses of widget apps, comes only from public addresses, never from this computer or its local network (section 9.4). A service the person connects for a widget is the one exception: they name its address when they connect it.
 
-Version 1 has no server of ours, no account of ours and no analytics. With the later service, a person who chooses it has their records on their own hosted instance (section 5).
+Version 1 has no server of ours, no account of ours and no analytics.
 
 ### 12.4 Toward the whole computer: what comes after
 
@@ -1278,14 +1259,12 @@ The side sheet is levels 1 to 3, for advanced use only; what the person keeps at
 
 An opened `memory.changed` event leads to the Memory page, where facts are edited and forgotten. A thread is put away from the Threads tab (Archive). Moving a turn to another thread, a harness or model per role and replaying a turn are not part of version 1.
 
-Themes and easter eggs are not built: Speak's seasonal and secret themes, and the proof of concept's pod-bay-doors reply, which belongs to a name, not a persona: given only while a persona is called HAL.
-
 ## 14. Repository
 
 ### 14.1 Rules of the layout
 
 1. **The root holds only what a tool requires to be at the root.** No source code, no script, no asset.
-2. **A package exists for a stated reason**: it is a contract shared by two sides, a boundary between runtimes (Node, browser, phone), a part that can be swapped, or a part that both the core's side and the client's side use. There is no package per noun. Section 14.3 gives each package's reason.
+2. **A package exists for a stated reason**: it is a contract shared by two sides, a boundary between runtimes (Node, browser), a part that can be swapped, or a part that both the core's side and the client's side use. There is no package per noun. Section 14.3 gives each package's reason.
 3. **Dependencies point inward**: applications, then adapters, then the core, then contracts. Never the reverse. Lint enforces this in CI.
 4. **Composition happens in one file.** Only `apps/server` knows both the core and its adapters (`src/compose.ts`).
 5. **Per-system code is contained.** A concern that differs by system is a folder with one file per system (`darwin.ts`, `win32.ts`, `linux.ts`, or `unix.ts` when macOS and Linux behave the same) and an `index.ts` that picks one. No other product code tests which system is running.
@@ -1334,7 +1313,7 @@ Themes and easter eggs are not built: Speak's seasonal and secret themes, and th
 
 ```
 contracts    protocol · catalog · tokens
-             run anywhere: Node, a browser, a phone. Import nothing from this repository.
+             run anywhere: Node, a browser. Import nothing from this repository.
                  ▲
 core         core
              pure logic. Imports protocol and catalog. No Node API, and no input or output except through its ports.
@@ -1348,9 +1327,9 @@ host         apps/server
 
 client side  client          imports protocol and catalog
                  ▲
-             ui-web          imports client and the contracts       (ui-native, for the phone, in the same place)
+             ui-web          imports client and the contracts
                  ▲
-             apps/desktop                                           (apps/mobile in the same place)
+             apps/desktop
 
 
 either side  speech          recognisers and voices. Node. Imports models only.
@@ -1361,7 +1340,7 @@ either side  speech          recognisers and voices. Node. Imports models only.
 | -------------- | ---------------------------------------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | `protocol`     | Anywhere                                 | Nothing                                                                 | Both sides of a connection build against the same messages                 |
 | `catalog`      | Anywhere                                 | Nothing                                                                 | The core validates what renderers on any device will draw                  |
-| `tokens`       | Anywhere                                 | Nothing                                                                 | One set of design values for web and phone                                 |
+| `tokens`       | Anywhere                                 | Nothing                                                                 | One set of design values for every renderer                                |
 | `core`         | Anywhere                                 | `protocol`, `catalog`                                                   | The assistant can be tested, replayed and hosted without any adapter       |
 | `harness`      | Node                                     | `core`                                                                  | A harness can be added or removed without touching the core                |
 | `store`        | Node                                     | `core`                                                                  | The database can change without touching the core                          |
@@ -1372,15 +1351,15 @@ either side  speech          recognisers and voices. Node. Imports models only.
 | `accounts`     | Node                                     | `core`                                                                  | A provider, and its sign-in, can change without touching the core          |
 | `speech`       | Node                                     | `models`                                                                | Engines run on a device or on a server, unchanged                          |
 | `models`       | Node                                     | Nothing                                                                 | One place downloads and verifies large files and detects the hardware tier |
-| `client`       | Anywhere; its local transport needs Node | `protocol`, `catalog`                                                   | Desktop and phone share connection, state and playback                     |
+| `client`       | Anywhere; its local transport needs Node | `protocol`, `catalog`                                                   | Every client shares connection, state and playback                         |
 | `ui-web`       | Browser                                  | `client`, `protocol`, `catalog`, `tokens`                               | The interface is not tied to Electron                                      |
 | `apps/server`  | Node                                     | `core`, `protocol`, `catalog`, the adapters, `speech`, `models`         | The one place where the core meets its adapters                            |
 | `apps/desktop` | Electron                                 | `client`, `protocol`, `catalog`, `tokens`, `ui-web`, `speech`, `models` | The device: it starts a core and is its client                             |
 
 Adapters import the core for its ports. Two rules follow, and are the ones most likely to be broken by accident:
 
-- **No client-side package imports `core` or an adapter.** A phone build would otherwise pull in Node code.
-- **`speech` and `models` import neither side.** On a desktop the speech engines run on the device, and on a hosted core they will run on the server, so `apps/desktop` and `apps/server` may both use them.
+- **No client-side package imports `core` or an adapter.** A build for a browser would otherwise pull in Node code.
+- **`speech` and `models` import neither side.** On a desktop the speech engines run on the device, and a core on another machine may run them there, so `apps/desktop` and `apps/server` may both use them.
 
 Three checks enforce these rules:
 
@@ -1502,7 +1481,7 @@ apps/desktop/
 
 | Concern             | Choice                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Reason                                                                                                                                                                                                      |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Language            | TypeScript in strict mode                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Shared with Speak, and with a React Native phone app later                                                                                                                                                  |
+| Language            | TypeScript in strict mode                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Shared with Speak                                                                                                                                                                                           |
 | Desktop shell       | Electron, electron-vite, React                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Three systems at once, and Speak's code moves over almost unchanged                                                                                                                                         |
 | Workspace           | pnpm workspaces, with one catalog of versions                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Strict about undeclared dependencies, which supports rule 3                                                                                                                                                 |
 | Tasks               | Turborepo                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Builds and tests only what changed                                                                                                                                                                          |
@@ -1512,7 +1491,7 @@ apps/desktop/
 | Browser             | Playwright (`playwright-core`, with no browser of its own) driving the installed Edge, Chrome or Chromium from the core's process; shipped in the app's archive and loaded at run time                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | The browser the person already has, which plays what theirs plays; Playwright's outline of a page is made for a model to act on                                                                             |
 | Store               | SQLite with FTS5, through Node's built-in `node:sqlite`; vectors in the same file with sqlite-vec, loaded as an extension from its prebuilt package (none for Windows on Arm, where search by meaning is unavailable)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Sections 10.3 and 10.4. No native module to build per system                                                                                                                                                |
 | Tools               | MCP over HTTP on the loopback address                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Understood by every harness                                                                                                                                                                                 |
-| Generated interface | json-render's view format and React renderer, with our own catalogue (zod) and blocks; UI SDK for the blocks that take input                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Section 9. The blocks are ours so every view looks like the app; the format and the renderer are json-render's, so its React Native renderer can draw the same views on a phone                             |
+| Generated interface | json-render's view format and React renderer, with our own catalogue (zod) and blocks; UI SDK for the blocks that take input                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Section 9. The blocks are ours so every view looks like the app; the format and the renderer are json-render's                                                                                              |
 | Interface           | React 19, Tailwind CSS 4 with the theme generated from `@repo/tokens`, its own typefaces, shipped with it (Instrument Sans, Big Shoulders, Geist Pixel, Geist Mono), UI SDK for what the controls do, Motion for transitions, lowlight for code in a diff                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Modern, fast to build with, and the same on every system                                                                                                                                                    |
 | File previews       | mammoth (Word), SheetJS (spreadsheets), JSZip (presentations), react-markdown (Markdown), DOMPurify; each loaded the first time a file of its kind is opened                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Section 9.7. A preview shows what a file says, with well-known libraries (decision 21)                                                                                                                      |
 | Maps                | d3-geo for areas and outlines; MapLibre GL JS for the street map, with OpenFreeMap's vector tiles, loaded the first time one is drawn                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Section 9.6. No key, and nothing to serve ourselves                                                                                                                                                         |
@@ -1558,7 +1537,7 @@ Not built: confinement of Claude Code's commands on Windows (macOS and Linux hav
 | 1   | Generated interface                     | json-render, with UI SDK underneath for component behaviours: views in json-render's format, drawn by its React renderer with the app's own blocks, those that take input on UI SDK; the catalogue and its checks stay the app's (issue #5, 20 November 2026)               |
 | 2   | Desktop shell                           | Electron                                                                                                                                                                                                                                                                    |
 | 3   | Systems in version 1                    | Windows, macOS and Linux, all three.                                                                                                                                                                                                                                        |
-| 4   | Input in version 1                      | Push to talk. Open conversation later                                                                                                                                                                                                                                       |
+| 4   | Input in version 1                      | Push to talk                                                                                                                                                                                                                                                                |
 | 5   | Proof-of-concept features               | Briefing and music player early; the rest after the core works                                                                                                                                                                                                              |
 | 6   | Speak                                   | Stays a separate product. Packages are shared; merging is decided later                                                                                                                                                                                                     |
 | 7   | Product and persona names               | JARVIS was the proof of concept's name, not the product's (decisions 13 and 14)                                                                                                                                                                                             |
@@ -1598,7 +1577,7 @@ Open questions are issues of the repository, each with its options, its cost and
 | Harness memory leaks back in                                | `--bare` is unusable with a subscription, so isolation depends on several settings                                                                                               | Each adapter's isolation settings (`isolation.ts`), checked against the real CLI; a private working folder per session                                                                                                             |
 | Subscription limits                                         | Several sessions per turn                                                                                                                                                        | Model per role, a thread cap per tier, usage shown in the inspector                                                                                                                                                                |
 | Vendor terms                                                | The product drives CLIs it does not own, and later may do so on a server                                                                                                         | Echo drives the person's own unmodified CLI, signed in through its own sign-in, and never handles credentials, as T3 Code does (section 6.3); the API adapter as the independent route                                             |
-| Preparing for the cloud too early                           | The service is not designed yet                                                                                                                                                  | Only the rules of section 5.2 are applied now; each is cheap and useful locally too                                                                                                                                                |
+| Preparing for a core elsewhere too early                    | No such core is planned                                                                                                                                                          | Only the rules of section 5.2 are applied; each is cheap and useful locally too                                                                                                                                                    |
 | Young libraries                                             | json-render is pre-1.0; UI SDK is weeks old                                                                                                                                      | Pinned to exact versions and used only inside `packages/ui-web`, behind the app's own catalogue, checks and blocks; a view is data the core checks, so either library can be replaced without touching a stored view               |
 | Invalid or poor views                                       | The model composes the interface each time                                                                                                                                       | Small catalogue, validation with correction, Prose as a fallback                                                                                                                                                                   |
 | Wrong memories persist                                      | Extraction can misread                                                                                                                                                           | Sources on every fact, an editable memory view, facts only from the person's words                                                                                                                                                 |

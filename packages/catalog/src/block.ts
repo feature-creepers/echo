@@ -3,7 +3,7 @@ import type { z } from 'zod'
 /**
  * A building block of the generated interface: a kind of content or arrangement the assistant can use,
  * whatever the subject. A block says what its properties are and how to use it; it draws nothing. Each
- * renderer (web now, phone later) draws the same blocks its own way.
+ * renderer draws the same blocks its own way.
  *
  * Nothing here is made for one subject: there is no weather block and no recipe block. The assistant
  * composes those, each time, from the blocks below (docs/SPEC.md, section 9.6).

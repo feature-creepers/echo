@@ -6,7 +6,7 @@ The assistant itself: the channel, threads and projects, memory, personas, the l
 
 A persona is data. `src/personas/defaults.ts` is the only file that contains the default names: behaviour depends on a persona's stance, never on which one it is (`scripts/check-persona-names.ts` enforces it).
 
-- **Runs in:** Anywhere: Node, a browser, a phone. No Node API, no DOM
+- **Runs in:** Anywhere: Node, a browser. No Node API, no DOM
 - **May import:** `@repo/protocol`, `@repo/catalog`
 - **Entry points:** `@repo/core`
 

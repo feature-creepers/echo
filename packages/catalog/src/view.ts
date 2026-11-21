@@ -6,7 +6,7 @@ import type { BLOCKS, BlockName } from './catalog.ts'
  * each naming a block, its properties and the elements inside it. A renderer draws it; the core checks it
  * against the catalogue first.
  *
- * The shape is the one json-render uses for its specs, so its renderers, on the web and on a phone, can
+ * The shape is the one json-render uses for its specs, so its renderers can
  * draw a view as it is.
  */
 export const viewSpecSchema = z.object({

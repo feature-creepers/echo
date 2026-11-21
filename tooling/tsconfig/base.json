@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
   "compilerOptions": {
-    // Code that runs anywhere: Node, a browser, a phone. No Node types and no DOM,
+    // Code that runs anywhere: Node, a browser. No Node types and no DOM,
     // so using either is a compile error.
     "target": "ES2024",
     "lib": ["ES2024"],

@@ -1005,7 +1005,7 @@ export function createChannel(options: ChannelOptions): Channel {
     if (turn.exchange.trigger === 'task')
       return `A task the person scheduled is due now ("${turn.title ?? turn.exchange.said}"). Nobody has said anything: carry it out as if they had just asked it, and answer them as usual. They may be away from the screen: if something needs their approval, ask as usual; unanswered, it counts as no.\nThe request: ${turn.exchange.said}${turn.arrived === undefined ? '' : `\n\n${turn.arrived}`}`
     if (turn.exchange.trigger === 'greeting')
-      return 'The person has just opened the app; nobody has said anything yet. Greet them by their name if you know it, in one short sentence, then give a brief briefing for today: the day, the weather where they are if you can find it (their time zone says roughly where), and anything left pending from earlier topics. Keep it short. Either say it all yourself, or pass it whole to a thread if a view of the day would help, saying nothing yourself.'
+      return 'The person has just opened the app; nobody has said anything yet. Greet them by their name if you know it, in one short sentence, then give a brief briefing for today: the day, what matters to them today from what you know of them, and anything left pending from earlier topics. Keep it short. Either say it all yourself, or pass it whole to a thread if a view of the day would help, saying nothing yourself.'
     const said = turn.exchange.said === '' ? 'The person says nothing.' : `The person says: ${turn.exchange.said}`
     return [said, noteForOrchestrator(turn.handed), turn.inFront].filter(Boolean).join('\n')
   }
