@@ -1,5 +1,5 @@
 /**
- * The colours of the interface: a warm black ground, flat layers that barely rise from it, a cream ink in three
+ * The colours of the interface: a warm black ground, two flat layers that barely rise from it, a cream ink in three
  * weights, hairlines of that ink, and three flat colours kept for what they mean.
  */
 export const color = {
@@ -9,8 +9,6 @@ export const color = {
   surface: '#141412',
   /** Something resting on a plane: a row under the pointer. */
   raised: '#191916',
-  /** Something over the rest: a sheet, a menu. */
-  overlay: '#1e1e1b',
   /** A hairline between two areas. A wash of the ink, so it reads on every layer. */
   line: 'rgb(235 230 218 / 0.16)',
   /** The dots under the home of the main screen: one pixel each, and barely there. */

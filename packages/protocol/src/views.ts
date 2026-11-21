@@ -50,7 +50,7 @@ export type ShownView = z.infer<typeof viewSchema>
 
 /**
  * How many views the main screen's stream holds, each card of an answer one view: enough for a topic's earlier
- * answers to stay behind its latest, as the versions the board steps back through. An older one leaves the stream,
+ * answers to stay behind its latest, as the answer's earlier versions. An older one leaves the stream,
  * not the conversation: it stays with its thread and can be asked for again.
  */
 export const STREAM_LENGTH = 24

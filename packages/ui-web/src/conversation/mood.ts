@@ -59,7 +59,7 @@ function doing(tool: string | undefined): string | undefined {
   return Object.hasOwn(DOING, tool) ? DOING[tool] : 'Working'
 }
 
-/** What the core is doing, as the stage knows it. */
+/** What the eye shows, from what the stage knows. */
 export interface MoodFacts {
   /** The assistant sleeps, working out what to remember. */
   asleep: boolean
@@ -78,7 +78,7 @@ export interface MoodFacts {
 }
 
 /**
- * The core's mood: asleep only while nothing else is going on; then listening, writing out what was heard, and
+ * The eye's mood: asleep only while nothing else is going on; then listening, writing out what was heard, and
  * speaking; while a turn goes on, or its voice is about to speak, working when a tool works for the turn, and
  * thinking otherwise. Routing a turn is part of thinking.
  */
@@ -101,7 +101,7 @@ const MOOD_WORDS: Record<Mood, string> = {
   asleep: 'Asleep'
 }
 
-/** The word under the core: while it works, what it is doing, such as searching the web or preparing the view. */
+/** The word under the eye: while it works, what it is doing, such as searching the web or preparing the view. */
 export function moodWord(mood: Mood, tool: string | undefined): string {
   return (mood === 'working' ? doing(tool) : undefined) ?? MOOD_WORDS[mood]
 }

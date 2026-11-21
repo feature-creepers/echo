@@ -2,7 +2,7 @@ import type { Sentence, Speaking } from '@repo/client'
 import { useEffect, useState } from 'react'
 
 /**
- * The line shown under the core: the sentence heard now, what was asked while nothing has been said yet, a
+ * The line shown under the eye: the sentence heard now, what was asked while nothing has been said yet, a
  * problem, the last sentence heard, the reply when none was heard on this screen, or nothing.
  */
 export type CaptionLine = 'sentence' | 'asked' | 'problem' | 'heard' | 'replied' | 'nothing'
@@ -28,7 +28,7 @@ export interface CaptionFacts {
 }
 
 /**
- * Which line the caption shows. What the person asked is a reminder of what the core works on only until the
+ * Which line the caption shows. What the person asked is a reminder of what the assistant works on only until the
  * assistant has said something: once a sentence was heard, the caption stays on what the assistant said, between
  * sentences, while the turn goes on after the voice is done, and once it is over. Their own words never come back.
  */

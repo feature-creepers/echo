@@ -4,7 +4,7 @@ import { rollOf } from './roll.ts'
 /** Seven words over three lines of 24 px: three on the first, two on each of the others. */
 const THREE = [0, 0, 0, 24, 24, 48, 48]
 
-describe('how far a sentence rolls under the core', () => {
+describe('how far a sentence rolls under the eye', () => {
   const cases: [string, readonly number[], number, number][] = [
     ['stays put with no words', [], 0, 0],
     ['stays put on one line, wherever the voice is', [0, 0, 0], 3, 0],

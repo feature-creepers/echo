@@ -1,6 +1,6 @@
 # @repo/ui-web
 
-The interface for web renderers, in React: the shell (title row, screens, side sheet), the stage with the core and its captions, the catalogue's blocks drawn for the web, the library of saved views, the media player, the inspector, and the settings. An app mounts `Shell` and gives it a client from `@repo/client`.
+The interface for web renderers, in React: the shell (title row, screens, side sheet), the stage with the eye and what it says, the catalogue's blocks drawn for the web, the library of saved views, the media player, the inspector, and the settings. An app mounts `Shell` and gives it a client from `@repo/client`.
 
 What belongs to the device reaches the interface through what the app supplies: a `DeviceHost` (`src/device/host.ts`) for the device's settings, shortcuts, files, the app's version and its updates, and a `SpeechEngine` (`src/audio/engine.ts`) for recognition and the voice. Left out, the interface works without them.
 

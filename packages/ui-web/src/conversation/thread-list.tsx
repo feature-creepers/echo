@@ -114,7 +114,7 @@ export function usedWords(iso: string, now: Date, locale?: string): string {
 }
 
 /** How long ago, in as few characters as a row's corner has: "now", "4m", "2h", then the day. */
-export function agoWords(iso: string, now: Date): string {
+function agoWords(iso: string, now: Date): string {
   const passed = now.getTime() - new Date(iso).getTime()
   if (Number.isNaN(passed)) return ''
   if (passed < 60_000) return 'now'

@@ -1,6 +1,6 @@
 # @repo/tokens
 
-Design values (colours and the personas' accents, corner radii, the window's frame, type, motion) as plain data, for any renderer, and the Tailwind theme generated from them.
+Design values (colours and the personas' accents, the window's frame, type, motion) as plain data, for any renderer, and the Tailwind theme generated from them.
 
 - **Runs in:** Anywhere: Node, a browser, a phone. No Node API, no DOM
 - **May import:** Nothing from this repository

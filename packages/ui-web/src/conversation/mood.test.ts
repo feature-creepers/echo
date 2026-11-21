@@ -3,7 +3,7 @@ import { type MoodFacts, moodOf, moodWord } from './mood.ts'
 
 const quiet: MoodFacts = { asleep: false, listening: false, transcribing: false, speaking: false, running: false, voicing: false, tool: undefined }
 
-describe('the mood of the core', () => {
+describe('the mood of the eye', () => {
   it.each<[string, Partial<MoodFacts>, ReturnType<typeof moodOf>]>([
     ['ready with nothing going on', {}, 'idle'],
     ['asleep with nothing going on', { asleep: true }, 'asleep'],
@@ -20,7 +20,7 @@ describe('the mood of the core', () => {
   })
 })
 
-describe('the word under the core', () => {
+describe('the word under the eye', () => {
   it.each<[ReturnType<typeof moodOf>, string | undefined, string]>([
     ['idle', undefined, 'Ready'],
     ['working', 'web_search', 'Searching the web'],

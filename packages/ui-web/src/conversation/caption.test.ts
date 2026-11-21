@@ -4,10 +4,10 @@ import { type CaptionFacts, type CaptionLine, captionOf } from './caption.ts'
 const asked = { request: true, heard: false, replied: false }
 const spoken = { request: true, heard: true, replied: true }
 
-describe('the line under the core', () => {
+describe('the line under the eye', () => {
   const cases: [string, CaptionFacts, CaptionLine][] = [
     ['shows the sentence heard now, whatever else is going on', { hearing: true, busy: true, last: spoken, problem: true }, 'sentence'],
-    ['reminds what was asked while the core works and has said nothing', { hearing: false, busy: true, last: asked, problem: false }, 'asked'],
+    ['reminds what was asked while the assistant works and has said nothing', { hearing: false, busy: true, last: asked, problem: false }, 'asked'],
     ['still reminds it while the first sentence is being voiced', { hearing: false, busy: true, last: { ...asked, replied: true }, problem: false }, 'asked'],
     [
       'shows nothing for a greeting, a reminder or a result the assistant started itself',
