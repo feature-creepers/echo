@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
 
 /**
- * The few glyphs the frame of the app needs, drawn here as strokes so they take the colour of their text.
+ * The few glyphs the frame of the app needs, drawn here as strokes so they take the colour of their text, with square
+ * ends and corners as the rest of the interface has.
  * They are part of the app's own chrome. Nothing the assistant shows uses them: it draws its own.
  */
 function Glyph({ children, size = 16 }: { children: ReactNode; size?: number }) {
@@ -13,8 +14,8 @@ function Glyph({ children, size = 16 }: { children: ReactNode; size?: number }) 
       fill="none"
       stroke="currentColor"
       strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
+      strokeLinecap="square"
+      strokeLinejoin="miter"
       aria-hidden="true"
     >
       {children}
@@ -23,12 +24,12 @@ function Glyph({ children, size = 16 }: { children: ReactNode; size?: number }) 
 }
 
 /**
- * Library and settings: a page of content, as a rounded square with three lines of text in it, the last one
+ * Library and settings: a page of content, as a square with three lines of text in it, the last one
  * shorter. Its strokes sit on half pixels, so at 16 pixels each one covers a whole row of the screen.
  */
 export const LibraryGlyph = () => (
   <Glyph>
-    <rect x="2.5" y="2.5" width="11" height="11" rx="2.5" />
+    <rect x="2.5" y="2.5" width="11" height="11" />
     <path d="M5.5 5.5h5M5.5 8h5M5.5 10.5h3" />
   </Glyph>
 )
@@ -98,8 +99,8 @@ export const PinGlyph = ({ filled = false }: { filled?: boolean }) => (
 /** The side sheet: a window with its right part set apart. */
 export const SheetGlyph = () => (
   <Glyph>
-    <rect x="2" y="3" width="12" height="10" rx="1.5" />
-    <path d="M10 3v10" />
+    <rect x="2.5" y="3.5" width="11" height="9" />
+    <path d="M9.5 3.5v9" />
   </Glyph>
 )
 
@@ -113,10 +114,10 @@ export const TranscriptGlyph = ({ size = 14 }: { size?: number }) => (
 /** The threads: one line that branches into others, as work handed on does. */
 export const ThreadsGlyph = ({ size = 14 }: { size?: number }) => (
   <Glyph size={size}>
-    <circle cx="4" cy="3.5" r="1.5" />
-    <circle cx="4" cy="12.5" r="1.5" />
-    <circle cx="12" cy="8" r="1.5" />
-    <path d="M4 5v6M4 8h3.5a3 3 0 0 0 3-3V8" />
+    <rect x="2.5" y="2" width="3" height="3" />
+    <rect x="2.5" y="11" width="3" height="3" />
+    <rect x="10.5" y="6.5" width="3" height="3" />
+    <path d="M4 5v6M4 8h6.5" />
   </Glyph>
 )
 
@@ -159,15 +160,15 @@ export const ArrowGlyph = () => (
   </Glyph>
 )
 
-/** What a card is dragged by: two columns of dots. */
+/** What a card is dragged by: two columns of small squares. */
 export const GripGlyph = () => (
   <Glyph>
-    <circle cx="6" cy="4" r="0.9" fill="currentColor" stroke="none" />
-    <circle cx="10" cy="4" r="0.9" fill="currentColor" stroke="none" />
-    <circle cx="6" cy="8" r="0.9" fill="currentColor" stroke="none" />
-    <circle cx="10" cy="8" r="0.9" fill="currentColor" stroke="none" />
-    <circle cx="6" cy="12" r="0.9" fill="currentColor" stroke="none" />
-    <circle cx="10" cy="12" r="0.9" fill="currentColor" stroke="none" />
+    <rect x="5" y="3" width="2" height="2" fill="currentColor" stroke="none" />
+    <rect x="9" y="3" width="2" height="2" fill="currentColor" stroke="none" />
+    <rect x="5" y="7" width="2" height="2" fill="currentColor" stroke="none" />
+    <rect x="9" y="7" width="2" height="2" fill="currentColor" stroke="none" />
+    <rect x="5" y="11" width="2" height="2" fill="currentColor" stroke="none" />
+    <rect x="9" y="11" width="2" height="2" fill="currentColor" stroke="none" />
   </Glyph>
 )
 
@@ -191,9 +192,9 @@ export const ExpandGlyph = () => (
  */
 export const WidgetsGlyph = () => (
   <Glyph>
-    <rect x="2.5" y="2.5" width="4.5" height="6" rx="1" />
-    <rect x="9" y="2.5" width="4.5" height="3" rx="1" />
-    <rect x="9" y="7.5" width="4.5" height="6" rx="1" />
-    <rect x="2.5" y="10.5" width="4.5" height="3" rx="1" />
+    <rect x="2.5" y="2.5" width="4.5" height="6" />
+    <rect x="9" y="2.5" width="4.5" height="3" />
+    <rect x="9" y="7.5" width="4.5" height="6" />
+    <rect x="2.5" y="10.5" width="4.5" height="3" />
   </Glyph>
 )
