@@ -18,7 +18,7 @@ import { LibraryContext, type LibraryControls } from '../library/library-context
 import { PinnedDocksView, usePinnedDocks } from '../library/pinned-docks.tsx'
 import { PlayerProvider, usePlayer } from '../media/player-provider.tsx'
 import { Onboarding } from '../onboarding/onboarding.tsx'
-import { Eye } from '../presence/eye.tsx'
+import { Eye, EyeAccentContext } from '../presence/eye.tsx'
 import { Button } from '../primitives/button.tsx'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
@@ -274,25 +274,10 @@ function Connected({ productName, client, engine, mini }: { productName: string;
     )
   }
 
-  // Three buttons at most, from the left: the library and settings, the sidebar, and, while any is pinned, the
-  // pinned widgets. Pressed from the hub, the widgets' button goes back to the main screen to show them.
+  // Three buttons at most, in the window's corner: while any is pinned, the pinned widgets; then the library and
+  // settings, and the sidebar. Pressed from the hub, the widgets' button goes back to the main screen to show them.
   const widgetsShown = showing.is === 'main' && docks.shown
   const cornerActions = (
-    <>
-      <IconButton label={HUB_NAME} active={showing.is === 'hub'} onClick={() => (showing.is === 'hub' ? toMain() : openHub())} className={FLAT}>
-        <LibraryGlyph />
-      </IconButton>
-      <IconButton
-        label={sheet ? 'Hide the sidebar' : transcriptKey ? `Show the sidebar (${describeShortcut(transcriptKey, device.mac)})` : 'Show the sidebar'}
-        active={sheet !== undefined}
-        onClick={() => toggleSheet()}
-        className={FLAT}
-      >
-        <SheetGlyph />
-      </IconButton>
-    </>
-  )
-  const titleActions = (
     <>
       <AnimatePresence initial={false}>
         {docks.count > 0 && (
@@ -318,15 +303,24 @@ function Connected({ productName, client, engine, mini }: { productName: string;
           </motion.span>
         )}
       </AnimatePresence>
+      <IconButton label={HUB_NAME} active={showing.is === 'hub'} onClick={() => (showing.is === 'hub' ? toMain() : openHub())} className={FLAT}>
+        <LibraryGlyph />
+      </IconButton>
+      <IconButton
+        label={sheet ? 'Hide the sidebar' : transcriptKey ? `Show the sidebar (${describeShortcut(transcriptKey, device.mac)})` : 'Show the sidebar'}
+        active={sheet !== undefined}
+        onClick={() => toggleSheet()}
+        className={FLAT}
+      >
+        <SheetGlyph />
+      </IconButton>
     </>
   )
-
   return (
     <LibraryContext.Provider value={controls}>
       <Frame
         productName={productName}
         accent={accent}
-        actions={titleActions}
         corner={cornerActions}
         mini={mini}
         frameRef={sheetArea}
@@ -457,7 +451,7 @@ interface FrameProps {
  * shown while the pointer is over the window or the keyboard is in it; on Windows and Linux the system's buttons stay
  * over its right end, and what Mini shows starts under them.
  */
-function Frame({ productName, accent, actions, corner, mini, side, sideOpen = false, frameRef, children }: FrameProps) {
+function Frame({ productName, accent, corner, mini, side, sideOpen = false, frameRef, children }: FrameProps) {
   return (
     // Clipped, not hidden: what slides in or out past an edge (the side sheet, the pinned widgets) is cut there, and
     // the window can never be scrolled sideways, not even by bringing something into view or giving it the keyboard.
@@ -466,32 +460,35 @@ function Frame({ productName, accent, actions, corner, mini, side, sideOpen = fa
       className={cn('accent-shift relative flex h-screen overflow-clip bg-ground', mini?.on && 'group/mini drag')}
       style={accentStyle(accent)}
     >
-      <div className="relative flex min-w-0 flex-1 flex-col">
-        <header className="drag relative h-[env(titlebar-area-height,var(--frame-title-bar))] shrink-0">
-          {mini?.on ? (
-            <FullWindowButton onPress={() => mini.set(false)} />
-          ) : (
-            <div
-              className={cn(
-                'absolute top-[env(titlebar-area-y,0px)] left-[env(titlebar-area-x,0px)] flex h-[env(titlebar-area-height,var(--frame-title-bar))] items-center gap-2 pr-2 pl-4',
-                // The system's controls sit over the side's top while it is open: the row runs to the side's edge.
-                sideOpen ? 'right-0' : 'w-[env(titlebar-area-width,100%)]'
-              )}
-            >
-              {/* The product's name, written small as a wordmark: lowercase here only, by its style, so it is still read as a name. */}
-              <span className="font-semibold text-[0.8125rem] text-text-soft lowercase tracking-[-0.01em]">{productName}</span>
-              <span className="no-drag flex items-center gap-0.5">{actions}</span>
-            </div>
-          )}
-        </header>
-        <main className="relative min-h-0 flex-1">{children}</main>
-      </div>
-      {side}
-      {corner && !mini?.on && (
-        <div className="no-drag fixed top-[env(titlebar-area-y,0px)] right-[calc(100vw-env(titlebar-area-x,0px)-env(titlebar-area-width,100vw)+0.5rem)] z-50 flex h-[env(titlebar-area-height,var(--frame-title-bar))] items-center gap-0.5">
-          {corner}
+      <EyeAccentContext.Provider value={accent}>
+        <div className="relative flex min-w-0 flex-1 flex-col">
+          {/* Over what is under it: the main screen runs its ground up under the title row. */}
+          <header className="drag relative z-30 h-[env(titlebar-area-height,var(--frame-title-bar))] shrink-0">
+            {mini?.on ? (
+              <FullWindowButton onPress={() => mini.set(false)} />
+            ) : (
+              <div
+                className={cn(
+                  'absolute top-[env(titlebar-area-y,0px)] left-[env(titlebar-area-x,0px)] flex h-[env(titlebar-area-height,var(--frame-title-bar))] items-center gap-2 pr-2 pl-4',
+                  // The system's controls sit over the side's top while it is open: the row runs to the side's edge.
+                  sideOpen ? 'right-0' : 'w-[env(titlebar-area-width,100%)]'
+                )}
+              >
+                {/* The mark and the product's name, as a small label. */}
+                <Eye mood="idle" size={14} still />
+                <span className="caps text-text-soft">{productName}</span>
+              </div>
+            )}
+          </header>
+          <main className="relative min-h-0 flex-1">{children}</main>
         </div>
-      )}
+        {side}
+        {corner && !mini?.on && (
+          <div className="no-drag fixed top-[env(titlebar-area-y,0px)] right-[calc(100vw-env(titlebar-area-x,0px)-env(titlebar-area-width,100vw)+0.5rem)] z-50 flex h-[env(titlebar-area-height,var(--frame-title-bar))] items-center gap-0.5">
+            {corner}
+          </div>
+        )}
+      </EyeAccentContext.Provider>
     </div>
   )
 }

@@ -1,10 +1,10 @@
 import { crc32, deflateSync } from 'node:zlib'
 
 /**
- * The app's mark, drawn as pixels: a ring around a solid core, as the assistant appears in the window. It is
- * drawn rather than shipped as pictures, so it is sharp at each size a system asks for, takes the colours it
- * is given (the tray follows the assistant's accent and state), and has one source for the tray, the window
- * and the packages' icons.
+ * The app's mark, drawn as pixels: the assistant's eye as the window draws it small, a ring, the plane its
+ * composition is known by, and the pupil. It is drawn rather than shipped as pictures, so it is sharp at each size a
+ * system asks for, takes the colours it is given (the tray follows the assistant's accent and state), and has one
+ * source for the tray, the window and the packages' icons.
  */
 
 /** A colour with its opacity, each from 0 to 255. */
@@ -17,6 +17,9 @@ export const rgba = (hex: string, alpha = 255): Rgba => [
   Number.parseInt(hex.slice(5, 7), 16),
   alpha
 ]
+
+/** How an eye is composed, as the design values name it. */
+type Composition = 'sight' | 'orbit'
 
 /** What one layer paints at a point: its colour, and how much of the pixel it covers, from 0 to 1. */
 type Layer = (x: number, y: number) => readonly [colour: Rgba, coverage: number]
@@ -52,88 +55,86 @@ function paint(size: number, layers: Layer[]): Buffer {
   return pixels
 }
 
+/** How much of a pixel a circle's outline covers: its outer radius and thickness in pixels, at least a pixel thick. */
+function outline(size: number, outer: number, thickness: number, x: number, y: number): number {
+  const width = Math.max(1.2, thickness)
+  return clamp(width / 2 - Math.abs(Math.hypot(x - size / 2, y - size / 2) - (outer - width / 2)) + 0.5)
+}
+
 /** A filled circle around the centre, its radius a share of the size. */
 const disc =
   (size: number, radius: number, colour: Rgba): Layer =>
   (x, y) => [colour, clamp(radius * size - Math.hypot(x - size / 2, y - size / 2) + 0.5)]
 
-/** A circle's outline around the centre: its outer radius and thickness as shares of the size, at least a pixel thick. */
+/** A circle's outline around the centre: its outer radius and thickness as shares of the size. */
 const ring =
   (size: number, outer: number, thickness: number, colour: Rgba): Layer =>
+  (x, y) => [colour, outline(size, outer * size, thickness * size, x, y)]
+
+/** The right half of a circle's outline: the orbit's arc, which runs round half the eye when it is small. */
+const halfRing =
+  (size: number, outer: number, thickness: number, colour: Rgba): Layer =>
+  (x, y) => [colour, outline(size, outer * size, thickness * size, x, y) * clamp(x - size / 2 + 0.5)]
+
+/** A triangle with its right angle at the centre and its sides going up and to the right, as far as `reach`: the sight's hand. */
+const hand =
+  (size: number, reach: number, colour: Rgba): Layer =>
   (x, y) => {
-    const width = Math.max(1.2, thickness * size)
-    const middle = outer * size - width / 2
-    return [colour, clamp(width / 2 - Math.abs(Math.hypot(x - size / 2, y - size / 2) - middle) + 0.5)]
+    const right = x - size / 2
+    const up = size / 2 - y
+    return [colour, clamp(Math.min(right, up, (reach * size - right - up) / Math.SQRT2) + 0.5)]
   }
 
-/** Light that fades from the centre out to a radius, as a share of the size: the core's glow. */
-const glow =
-  (size: number, radius: number, colour: Rgba): Layer =>
+/** A filled square around the centre, its side a share of the size. */
+const square =
+  (size: number, side: number, colour: Rgba): Layer =>
+  (x, y) => [colour, clamp((side * size) / 2 - Math.max(Math.abs(x - size / 2), Math.abs(y - size / 2)) + 0.5)]
+
+/** A square's outline around the centre, a pixel wide: the hairline that holds a dark tile on a dark desktop. */
+const frame =
+  (size: number, side: number, colour: Rgba): Layer =>
   (x, y) => {
-    const out = clamp(1 - Math.hypot(x - size / 2, y - size / 2) / (radius * size))
-    return [colour, out * out]
+    const from = Math.max(Math.abs(x - size / 2), Math.abs(y - size / 2))
+    const half = (side * size) / 2
+    return [colour, clamp(half - from + 0.5) * clamp(from - (half - 1) + 0.5)]
   }
 
 /**
- * A tile with rounded corners, its side and corner radius as shares of the size, filled from a colour at
- * its top to another at its bottom, as the icons of macOS are.
+ * The eye as a mark, `scale` of the picture across: its ring, its pupil, and what its composition is known by, drawn
+ * large so it reads at sixteen pixels. The sight's hand lies in front of the pupil; the orbit's arc runs round the
+ * right half of the ring, thicker than it.
  */
-const tile =
-  (size: number, side: number, corner: number, top: Rgba, bottom: Rgba): Layer =>
-  (x, y) => {
-    const half = (side * size) / 2
-    const radius = corner * size
-    const qx = Math.abs(x - size / 2) - (half - radius)
-    const qy = Math.abs(y - size / 2) - (half - radius)
-    const distance = Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - radius
-    const down = clamp((y - (size / 2 - half)) / (2 * half))
-    const colour = top.map((channel, at) => channel + ((bottom[at] ?? channel) - channel) * down) as unknown as Rgba
-    return [colour, clamp(0.5 - distance)]
-  }
-
-/** The mark for the tray: the ring, the core, nothing behind them. */
-export function trayMark(size: number, ringColour: Rgba, coreColour: Rgba): Buffer {
-  return png(size, size, paint(size, [ring(size, 0.46, 0.09, ringColour), disc(size, 0.2, coreColour)]))
+function eye(size: number, scale: number, composition: Composition, ink: Rgba, accent: Rgba): Layer[] {
+  const outer = ring(size, 0.46 * scale, 0.07 * scale, ink)
+  const pupil = disc(size, 0.1 * scale, ink)
+  return composition === 'sight' ? [outer, pupil, hand(size, 0.41 * scale, accent)] : [outer, halfRing(size, 0.5 * scale, 0.19 * scale, accent), pupil]
 }
 
-/** The grounds and light of the app's icon. */
-const GROUND_TOP = rgba('#22252c')
-const GROUND_BOTTOM = rgba('#0c0d10')
-const RIM = rgba('#ffffff', 26)
-const RING = rgba('#e9edf3', 235)
-const CORE = rgba('#ffffff')
-const LIGHT = rgba('#c9d6e8', 150)
-/** A faint ring further out, as the rings around the assistant's core in the window. */
-const ECHO = rgba('#e9edf3', 46)
+/** The mark for the tray: the eye of the persona that answers, with nothing behind it. */
+export function trayMark(size: number, composition: Composition, ink: Rgba, accent: Rgba): Buffer {
+  return png(size, size, paint(size, eye(size, 1, composition, ink, accent)))
+}
+
+/** The icon's colours: the app's ground, its ink, the hairline of that ink, and the red-orange accent. */
+export const ICON = { ground: '#0f0f0d', ink: '#ebe6da', accent: '#f0603c', edge: 0.34 } as const
 
 /**
- * The app's icon: the mark, light on a dark ground. Round on Windows and Linux, where icons take their own
- * shape; on macOS a rounded tile with the margin its icons keep around them.
+ * The app's icon: the eye on a square tile of the app's own black, with a hairline round it. With a `margin`, the
+ * tile keeps the room macOS icons keep around them; elsewhere it fills the picture.
  */
-export function appIcon(size: number, shape: 'round' | 'tile'): Buffer {
-  return png(size, size, appIconPixels(size, shape))
+export function appIcon(size: number, margin = false): Buffer {
+  return png(size, size, appIconPixels(size, margin))
 }
 
 /** The app's icon as pixels in red, green, blue and opacity, one byte each. */
-export function appIconPixels(size: number, shape: 'round' | 'tile'): Buffer {
-  // A faint rim of light around the ground, so the icon holds its edge on a dark desktop.
-  const ground =
-    shape === 'tile'
-      ? [tile(size, 0.805, 0.18, RIM, RIM), tile(size, 0.797, 0.176, GROUND_TOP, GROUND_BOTTOM)]
-      : [disc(size, 0.5, RIM), tile(size, 0.98, 0.49, GROUND_TOP, GROUND_BOTTOM)]
-  // The mark fills a little more of a round icon, which has no margin of its own.
-  const scale = shape === 'tile' ? 0.8 : 1
-  // Small, the faint outer ring and the glow would blur into the ground: the mark is drawn bolder, alone.
-  const small = size <= 48
-  const mark: Layer[] = small
-    ? [ring(size, 0.33 * scale, 0.085 * scale, RING), disc(size, 0.14 * scale, CORE)]
-    : [
-        ring(size, 0.41 * scale, 0.012 * scale, ECHO),
-        glow(size, 0.26 * scale, LIGHT),
-        ring(size, 0.31 * scale, 0.038 * scale, RING),
-        disc(size, 0.105 * scale, CORE)
-      ]
-  return paint(size, [...ground, ...mark])
+export function appIconPixels(size: number, margin = false): Buffer {
+  const side = margin ? 0.8 : 1
+  const ink = rgba(ICON.ink)
+  // From 64 pixels there is room for the eye's inner ring too.
+  const inner = size >= 64 ? [ring(size, 0.16 * side, 0.016 * side, ink)] : []
+  // Under 32 pixels a line a pixel wide round the tile would read as a box: the tile goes without.
+  const edge = size >= 32 ? [frame(size, side, rgba(ICON.ink, Math.round(255 * ICON.edge)))] : []
+  return paint(size, [square(size, side, rgba(ICON.ground)), ...edge, ...eye(size, 0.74 * side, 'sight', ink, rgba(ICON.accent)), ...inner])
 }
 
 /** Pixels in red, green, blue and opacity, one byte each, as a PNG file. */

@@ -135,7 +135,7 @@ function openWindow(visible: boolean): BrowserWindow {
     backgroundColor: color.ground,
     autoHideMenuBar: true,
     // Windows and macOS show the icon the package carries; a Linux desktop shows the one the window gives.
-    ...(process.platform === 'linux' ? { icon: nativeImage.createFromBuffer(appIcon(256, 'round')) } : {}),
+    ...(process.platform === 'linux' ? { icon: nativeImage.createFromBuffer(appIcon(256)) } : {}),
     // No title bar above the page: the page's own title row is the bar, with the system's buttons drawn over it.
     ...look,
     webPreferences: { preload: built('../preload/index.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false }

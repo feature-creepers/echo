@@ -1,3 +1,4 @@
+import type { Stance } from '@repo/protocol'
 import { describe, expect, it } from 'vitest'
 import { type MoodFacts, moodOf, moodWord } from './mood.ts'
 
@@ -21,15 +22,20 @@ describe('the mood of the eye', () => {
 })
 
 describe('the word under the eye', () => {
-  it.each<[ReturnType<typeof moodOf>, string | undefined, string]>([
-    ['idle', undefined, 'Ready'],
-    ['working', 'web_search', 'Searching the web'],
-    ['working', 'computer_write', 'Changing a file'],
-    ['working', 'computer_run', 'Running a command'],
-    ['working', 'browser_click', 'Clicking'],
-    ['working', 'a_new_tool', 'Working'],
-    ['thinking', 'web_search', 'Thinking']
-  ])('says %s with %s as %s', (mood, tool, word) => {
-    expect(moodWord(mood, tool)).toBe(word)
+  it.each<[ReturnType<typeof moodOf>, string | undefined, Stance, string]>([
+    ['idle', undefined, 'critical', 'Ready'],
+    ['idle', undefined, 'accommodating', 'At your service'],
+    ['asleep', undefined, 'critical', 'Standing by'],
+    ['asleep', undefined, 'accommodating', 'Resting'],
+    ['working', 'web_search', 'critical', 'Searching the web'],
+    ['working', 'web_search', 'accommodating', 'Searching the web'],
+    ['working', 'computer_write', 'critical', 'Changing a file'],
+    ['working', 'computer_run', 'critical', 'Running a command'],
+    ['working', 'browser_click', 'critical', 'Clicking'],
+    ['working', 'a_new_tool', 'critical', 'Working'],
+    ['working', 'a_new_tool', 'accommodating', 'On it'],
+    ['thinking', 'web_search', 'critical', 'Thinking']
+  ])('says %s with %s, in the %s stance, as %s', (mood, tool, stance, word) => {
+    expect(moodWord(mood, tool, stance)).toBe(word)
   })
 })

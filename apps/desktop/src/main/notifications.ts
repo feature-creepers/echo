@@ -19,7 +19,7 @@ const snoozeWords = (minutes: number) => `Snooze ${minutes % 60 === 0 ? `${minut
  * buttons to snooze it, where the system shows them (Windows; macOS once the app is signed).
  */
 export function serveNotifications(core: CoreProcess, window: BrowserWindow, bringForward: () => void): void {
-  const icon = nativeImage.createFromBuffer(appIcon(256, 'round'))
+  const icon = nativeImage.createFromBuffer(appIcon(256))
   // A notification no longer referenced can be collected while it is on screen, and its press is then lost.
   const held: Notification[] = []
 

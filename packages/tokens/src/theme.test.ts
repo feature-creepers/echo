@@ -51,7 +51,7 @@ describe('the theme', () => {
 })
 
 describe('the colours', () => {
-  const layers = [color.ground, color.surface, color.raised]
+  const layers = [color.ground, color.panel, color.surface, color.raised]
 
   it.each(['text', 'textSoft', 'textFaint', 'danger', 'ok', 'warn', 'info'] as const)('%s reads on every layer', (name) => {
     for (const layer of layers) expect(contrast(color[name], layer)).toBeGreaterThanOrEqual(4.5)

@@ -19,6 +19,12 @@ export const stanceCopy: Record<Stance, { label: string; summary: string }> = {
   }
 }
 
+/** The line that invites the person to say something, in each stance's tone. */
+export const invitationCopy: Record<Stance, string> = {
+  accommodating: 'What can I do for you?',
+  critical: 'State your request'
+}
+
 /** Why a name cannot be kept, said next to the field. */
 export const nameProblemCopy: Record<NameProblem, string> = {
   empty: 'Type a name.',

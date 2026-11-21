@@ -1,3 +1,4 @@
+import type { Stance } from '@repo/protocol'
 import type { Mood } from '../presence/eye-motion.ts'
 
 /**
@@ -53,11 +54,11 @@ const DOING: Record<string, string | undefined> = {
   media_control: undefined
 }
 
-/** The words for a tool at work, or nothing when "Thinking" says it already. */
-function doing(tool: string | undefined): string | undefined {
-  if (tool === undefined) return undefined
-  return Object.hasOwn(DOING, tool) ? DOING[tool] : 'Working'
-}
+/** The words for a tool at work, when it has words of its own. */
+const wordsOf = (tool: string | undefined) => (tool !== undefined && Object.hasOwn(DOING, tool) ? DOING[tool] : undefined)
+
+/** Whether a tool at work shows as work: any does, but those "Thinking" says already. */
+const works = (tool: string | undefined) => tool !== undefined && (!Object.hasOwn(DOING, tool) || DOING[tool] !== undefined)
 
 /** What the eye shows, from what the stage knows. */
 export interface MoodFacts {
@@ -87,21 +88,25 @@ export function moodOf({ asleep, listening, transcribing, speaking, running, voi
   if (listening) return 'listening'
   if (transcribing) return 'thinking'
   if (speaking) return 'speaking'
-  if (running && doing(tool) !== undefined) return 'working'
+  if (running && works(tool)) return 'working'
   if (running || voicing) return 'thinking'
   return 'idle'
 }
 
-const MOOD_WORDS: Record<Mood, string> = {
-  idle: 'Ready',
-  listening: 'Listening',
-  thinking: 'Thinking',
-  working: 'Working',
-  speaking: 'Speaking',
-  asleep: 'Asleep'
+/** A mood in a word, in each stance's tone: dry for the one that questions, warm for the one that goes along. */
+const MOOD_WORDS: Record<Stance, Record<Mood, string>> = {
+  critical: { idle: 'Ready', listening: 'Listening', thinking: 'Thinking', working: 'Working', speaking: 'Speaking', asleep: 'Standing by' },
+  accommodating: {
+    idle: 'At your service',
+    listening: 'Listening',
+    thinking: 'Thinking it over',
+    working: 'On it',
+    speaking: 'Speaking',
+    asleep: 'Resting'
+  }
 }
 
 /** The word under the eye: while it works, what it is doing, such as searching the web or preparing the view. */
-export function moodWord(mood: Mood, tool: string | undefined): string {
-  return (mood === 'working' ? doing(tool) : undefined) ?? MOOD_WORDS[mood]
+export function moodWord(mood: Mood, tool: string | undefined, stance: Stance): string {
+  return (mood === 'working' ? wordsOf(tool) : undefined) ?? MOOD_WORDS[stance][mood]
 }

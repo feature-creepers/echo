@@ -69,7 +69,7 @@ export function PersonasForm({ personas, active, submitLabel, doneLabel, onSubmi
           return (
             <div key={persona.id} style={accentStyle(persona.accent)} className="grid items-start gap-x-6 gap-y-3 py-4 sm:grid-cols-[1fr_16rem]">
               <div className="flex min-w-0 items-start gap-4">
-                <Eye size={56} mood={answers ? 'idle' : 'asleep'} className="shrink-0" />
+                <Eye size={56} mood={answers ? 'idle' : 'asleep'} accent={persona.accent} className="shrink-0" />
                 <div className="grid min-w-0 gap-1.5">
                   <span className={cn('display min-h-6 truncate text-[1.75rem] leading-6', !answers && 'text-text-soft')}>{nameIn(draft, persona)}</span>
                   <Eyebrow>{stanceCopy[persona.stance].label}</Eyebrow>

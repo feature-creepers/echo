@@ -41,7 +41,7 @@ export function VoicePicker({ speech, personas, languages }: VoicePickerProps) {
       <ul className="divide-y divide-line border-text border-t-2">
         {personas.map((persona) => (
           <li key={persona.id} style={accentStyle(persona.accent)} className="flex items-center gap-4 py-2.5">
-            <Eye size={20} mood="idle" className="shrink-0" />
+            <Eye size={20} mood="idle" accent={persona.accent} still className="shrink-0" />
             <span className="w-32 shrink-0 truncate text-[0.8125rem]">{persona.name}</span>
             <Select
               label={`The voice of ${persona.name}`}

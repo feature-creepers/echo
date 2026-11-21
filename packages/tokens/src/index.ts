@@ -1,4 +1,4 @@
-export { type AccentName, accents, neutralAccent } from './accent.ts'
+export { type AccentName, accents, type EyeComposition, neutralAccent } from './accent.ts'
 export { code, color } from './color.ts'
 export { frame } from './frame.ts'
 export { motion } from './motion.ts'

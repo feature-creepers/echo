@@ -1,11 +1,14 @@
+/** How an eye is composed: the sight's triangle and line, or the orbit's arc and squares. */
+export type EyeComposition = 'sight' | 'orbit'
+
 /**
- * Accents: the colour a persona shows, by name. Each is the colour itself and the ink that reads on top of it.
- * Washes are that colour made more transparent, where they are used.
+ * Accents: the colour a persona shows, by name. Each is the colour itself, the ink that reads on top of it, and how
+ * the eye of a persona of that accent is composed. Washes are that colour made more transparent, where they are used.
  */
 export const accents = {
-  blue: { solid: '#6b85f5', ink: '#0f0f0d' },
-  red: { solid: '#f0603c', ink: '#0f0f0d' }
-} as const
+  blue: { solid: '#7f9bff', ink: '#0f0f0d', eye: 'orbit' },
+  red: { solid: '#f0603c', ink: '#0f0f0d', eye: 'sight' }
+} as const satisfies Record<string, { solid: string; ink: string; eye: EyeComposition }>
 
 export type AccentName = keyof typeof accents
 

@@ -142,7 +142,7 @@ export function SideSheet({ client, personas, place, tab, onMove, onOpenMemory, 
       // Its width follows the one the person chose, within what the window allows, without React drawing it again.
       data-sheet-width
       style={{ ...sheetWidthStyle(resize.width), width: SHEET_CSS_WIDTH }}
-      className="relative z-30 flex h-full min-w-0 shrink-0 flex-col border-line border-l bg-ground"
+      className="relative z-30 flex h-full min-w-0 shrink-0 flex-col border-line border-l bg-panel"
     >
       <SheetHandle {...resize} />
       {/* The sheet's top is the window's top: the title row's height, dragging the window, with room kept on the right

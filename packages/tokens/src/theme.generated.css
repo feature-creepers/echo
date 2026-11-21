@@ -2,7 +2,8 @@
 
 @theme {
   --color-*: initial;
-  --color-ground: #0f0f0d;
+  --color-ground: #090908;
+  --color-panel: #0f0f0d;
   --color-surface: #141412;
   --color-raised: #191916;
   --color-line: rgb(235 230 218 / 0.16);

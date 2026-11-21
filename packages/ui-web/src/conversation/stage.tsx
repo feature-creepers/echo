@@ -3,7 +3,7 @@ import { matchesShortcut } from '@repo/client'
 import { useFollowed } from '@repo/client/react'
 import type { PersonaId, Settings, ShownView, TurnId } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type CSSProperties, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AccessIndicator } from '../access/access-indicator.tsx'
 import { type Dropped, DropState, useWindowDrop } from '../attachments/drop-state.tsx'
 import { useAttachments } from '../attachments/use-attachments.ts'
@@ -18,7 +18,6 @@ import { attendedView, useLingering } from '../presence/attention.ts'
 import { Eye } from '../presence/eye.tsx'
 import type { Mood } from '../presence/eye-motion.ts'
 import { cn } from '../primitives/cn.ts'
-import { accentStyle } from '../styles/accent.ts'
 import { DURATION, EASE, settle } from '../styles/motion.ts'
 import type { ViewActions } from '../view/context.ts'
 import { FEED, type GroupVersion, groupStream, type ViewGroup } from '../view/groups.ts'
@@ -67,8 +66,8 @@ interface StageProps {
 /** The event an app dispatches on the window to start talking, or to send what was said: its global shortcut. */
 export const TALK_EVENT = 'echo:talk'
 
-/** The eye's size, in pixels: alone on an empty screen, over the answers, in the bar it shrinks into, in Mini, and the other persona's. */
-const EYE = { alone: 200, home: 150, bar: 26, mini: 136, other: 28 } as const
+/** The eye's size, in pixels: alone on an empty screen, over the answers, in the bar it shrinks into, and in Mini. */
+const EYE = { alone: 200, home: 150, bar: 26, mini: 136 } as const
 
 /** The column the answers, the bar and the composer share, so their edges line up. */
 const COLUMN = { maxWidth: FEED.most } as const
@@ -81,6 +80,9 @@ const SIDE = { free: 32, docked: DOCK_ROOM + 16 } as const
 
 /** The height of the bar the eye shrinks into, in pixels. */
 const BAR = 44
+
+/** The height of the window's title row, which the page runs under: the system's own where it says, else the app's. */
+const TITLE_ROW = { '--title': 'env(titlebar-area-height, var(--frame-title-bar))' } as CSSProperties
 
 /** How far down the person must have scrolled, in pixels, before an answer counts as in front of them. */
 const AT_TOP = 8
@@ -312,7 +314,7 @@ export function Stage({
     tool
   })
   useShownPresence(active?.accent, mood)
-  const word = moodWord(mood, tool)
+  const word = moodWord(mood, tool, active?.stance ?? 'accommodating')
   const failed =
     talk.is === 'failed' ? talk.reason : !running && !speaking.sentence && last?.outcome === 'failed' ? (last.problem ?? 'It could not answer.') : undefined
 
@@ -459,14 +461,15 @@ export function Stage({
   const side = docked ? SIDE.docked : SIDE.free
 
   return (
-    <div data-stage="" className="relative flex h-full min-w-0 flex-col">
-      {/* The bar the eye shrinks into once home has scrolled away. Pressing its eye goes back up. */}
+    // The page starts at the window's top, under the title row, so home's dots run under it too.
+    <div data-stage="" className="-mt-(--title) relative flex h-[calc(100%+var(--title))] min-w-0 flex-col" style={TITLE_ROW}>
+      {/* The bar the eye shrinks into once home has scrolled away, the title row's ground with it. Pressing its eye goes back up. */}
       <motion.div
         initial={false}
         animate={{ opacity: past ? 1 : 0, y: past ? 0 : -6 }}
         transition={settle}
         inert={!past}
-        className="absolute inset-x-0 top-0 z-20 border-line border-b bg-ground"
+        className="absolute inset-x-0 top-0 z-20 border-line border-b bg-ground pt-(--title)"
         style={{ paddingInline: side }}
       >
         <div className="mx-auto flex w-full min-w-0 items-center gap-3" style={{ ...COLUMN, height: BAR }}>
@@ -490,24 +493,11 @@ export function Stage({
       <motion.div layoutScroll ref={scroller} onScroll={look} className="scroll-none min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <section
           ref={home}
-          className={cn('relative flex flex-col items-center px-8', streaming ? 'pt-7 pb-9' : 'min-h-full justify-center pt-6')}
+          className={cn('relative flex flex-col items-center px-8', streaming ? 'pt-[calc(var(--title)+1rem)] pb-9' : 'min-h-full justify-center pt-(--title)')}
           style={streaming ? undefined : { paddingBottom: composerRoom + 24 }}
         >
           {/* Fine dots under home, fading out where the answers start. */}
           <span aria-hidden="true" className="dot-ground pointer-events-none absolute inset-0 [mask-image:linear-gradient(to_bottom,black_45%,transparent)]" />
-          {other && (
-            <button
-              type="button"
-              onClick={switchPersona}
-              aria-label={`Talking to ${active.name}. Switch to ${other.name}`}
-              title={`Switch to ${other.name}`}
-              style={{ ...accentStyle(other.accent), right: side - 8 }}
-              className="caps absolute top-2 z-10 flex h-9 items-center gap-2 px-2 text-text-faint transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.08] hover:text-text"
-            >
-              <Eye mood="idle" size={EYE.other} />
-              {other.name}
-            </button>
-          )}
           <span className="relative grid place-items-center">
             {/* The eye stands on a disc of the ground, so no dot runs under its lines. */}
             <span aria-hidden="true" className="-inset-3.5 absolute bg-ground [border-radius:50%]" />
@@ -568,7 +558,7 @@ export function Stage({
                 : undefined
             }
             talk={canTalk ? { listening, onPress: toggle } : onSetUpVoice ? { listening: false, onPress: onSetUpVoice } : undefined}
-            persona={{ name: active.name, mood, next: other && { name: other.name }, onToggle: switchPersona }}
+            persona={{ name: active.name, stance: active.stance, mood, next: other && { name: other.name }, onToggle: switchPersona }}
             about={aboutTitle === undefined || front === undefined ? undefined : { title: aboutTitle, onRemove: () => setNotAbout(front) }}
           />
           {/* Why a file was not added, quietly on the left; what it may reach and what it thinks with on the right, changed

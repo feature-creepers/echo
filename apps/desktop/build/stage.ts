@@ -30,12 +30,12 @@ cpSync(here('out'), join(stage, 'out'), { recursive: true })
 // round for Windows and Linux, a tile with its margin for macOS.
 const resources = join(stage, 'build')
 mkdirSync(join(resources, 'icons'), { recursive: true })
-writeFileSync(join(resources, 'icon.ico'), ico([16, 20, 24, 32, 40, 48, 64, 96, 128, 256].map((size) => ({ size, pixels: appIconPixels(size, 'round') }))))
+writeFileSync(join(resources, 'icon.ico'), ico([16, 20, 24, 32, 40, 48, 64, 96, 128, 256].map((size) => ({ size, pixels: appIconPixels(size) }))))
 writeFileSync(
   join(resources, 'icon.icns'),
-  icns((size) => appIcon(size, 'tile'))
+  icns((size) => appIcon(size, true))
 )
-for (const size of [16, 24, 32, 48, 64, 128, 256, 512]) writeFileSync(join(resources, 'icons', `${size}x${size}.png`), appIcon(size, 'round'))
+for (const size of [16, 24, 32, 48, 64, 128, 256, 512]) writeFileSync(join(resources, 'icons', `${size}x${size}.png`), appIcon(size))
 
 /**
  * The GitHub repository whose releases are the update feed: the one a GitHub Actions run belongs to, else the

@@ -39,20 +39,22 @@ export interface TrayMenu {
 }
 
 /**
- * The mark at the sizes this system's tray uses, in the persona's accent: its core in the accent, the ring
- * lit with it too while the assistant listens, both dimmed while it sleeps. macOS tints a black template
- * itself, which is how its menu bar icons look, except while listening, when the mark shows its colour as
- * the system's own microphone light does. Linux trays are usually 24 pixels.
+ * The mark at the sizes this system's tray uses: the eye of the persona that answers, composed after its accent,
+ * with its hand or its arc in the accent, its ring lit with it too while the assistant listens, all of it dimmed
+ * while it sleeps. macOS tints a black template itself, which is how its menu bar icons look, except while
+ * listening, when the mark shows its colour as the system's own microphone light does. Linux trays are usually 24
+ * pixels.
  */
 function icon({ accent, state }: TrayLook): Electron.NativeImage {
   const lit = accent ? accents[accent].solid : neutralAccent.solid
+  const composition = accent ? accents[accent].eye : 'sight'
   const dim = state === 'asleep'
   const template = process.platform === 'darwin' && state !== 'listening'
-  const ring: Rgba = template ? [0, 0, 0, dim ? 150 : 255] : state === 'listening' ? rgba(lit) : rgba(color.text, dim ? 120 : 230)
-  const core: Rgba = template ? [0, 0, 0, dim ? 90 : 255] : rgba(lit, dim ? 110 : 255)
-  if (process.platform === 'linux') return nativeImage.createFromBuffer(trayMark(24, ring, core))
-  const image = nativeImage.createFromBuffer(trayMark(16, ring, core), { scaleFactor: 1 })
-  image.addRepresentation({ scaleFactor: 2, buffer: trayMark(32, ring, core) })
+  const ink: Rgba = template ? [0, 0, 0, dim ? 150 : 255] : state === 'listening' ? rgba(lit) : rgba(color.text, dim ? 120 : 230)
+  const plane: Rgba = template ? [0, 0, 0, dim ? 150 : 255] : rgba(lit, dim ? 110 : 255)
+  if (process.platform === 'linux') return nativeImage.createFromBuffer(trayMark(24, composition, ink, plane))
+  const image = nativeImage.createFromBuffer(trayMark(16, composition, ink, plane), { scaleFactor: 1 })
+  image.addRepresentation({ scaleFactor: 2, buffer: trayMark(32, composition, ink, plane) })
   if (template) image.setTemplateImage(true)
   return image
 }

@@ -1,10 +1,12 @@
 /**
- * The colours of the interface: a warm black ground, two flat layers that barely rise from it, a cream ink in three
+ * The colours of the interface: a warm black ground, flat layers that barely rise from it, a cream ink in three
  * weights, hairlines of that ink, and three flat colours kept for what they mean.
  */
 export const color = {
-  /** Behind everything. */
-  ground: '#0f0f0d',
+  /** Behind everything: the page, the darkest. */
+  ground: '#090908',
+  /** The side panel: a sheet laid beside the page, a shade above it. */
+  panel: '#0f0f0d',
   /** A plane resting on the ground: the composer, a field. */
   surface: '#141412',
   /** Something resting on a plane: a row under the pointer. */

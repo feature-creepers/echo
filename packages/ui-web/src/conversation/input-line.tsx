@@ -1,10 +1,12 @@
 import { describeShortcut } from '@repo/client'
+import type { Stance } from '@repo/protocol'
 import { type ClipboardEvent, type FormEvent, type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { AttachmentChips } from '../attachments/attachment-chips.tsx'
 import { type Attachments, anyCopied, copiedFile } from '../attachments/use-attachments.ts'
 import { lastPart } from '../changes/words.ts'
 import { useDevice } from '../device/device.tsx'
 import { PaperclipGlyph } from '../files/glyphs.tsx'
+import { invitationCopy } from '../personas/copy.ts'
 import { Eye } from '../presence/eye.tsx'
 import type { Mood } from '../presence/eye-motion.ts'
 import { cn } from '../primitives/cn.ts'
@@ -28,8 +30,8 @@ interface InputLineProps {
   pause?: { paused: boolean; onToggle(): void } | undefined
   /** Talking instead of typing, when the device can hear. */
   talk?: { listening: boolean; onPress(): void } | undefined
-  /** The persona that answers, what it is doing, and the one a press of the toggle hands over to. */
-  persona: { name: string; mood: Mood; next: { name: string } | undefined; onToggle(): void }
+  /** The persona that answers, its stance, what it is doing, and the one a press of the toggle hands over to. */
+  persona: { name: string; stance: Stance; mood: Mood; next: { name: string } | undefined; onToggle(): void }
   /**
    * What is in front of the person, which what they say is probably about: named on a chip in the line, which one
    * press takes away. Left out at the top of the main screen, where nothing in particular is in front of them.
@@ -208,7 +210,7 @@ export function InputLine({ name, stopAll, onSay, onStop, talk, persona, pause, 
                   : 'Listening… press again to send'
                 : about
                   ? 'Say more about it, or ask anything'
-                  : `Ask ${name} anything`
+                  : invitationCopy[persona.stance]
           }
           className="scroll-quiet min-h-9 min-w-0 flex-1 resize-none bg-transparent py-[0.4375rem] pl-1.5 text-[0.9375rem] text-text leading-[1.375rem] outline-none placeholder:text-text-faint focus-visible:outline-none"
         />
@@ -280,7 +282,7 @@ export function InputLine({ name, stopAll, onSay, onStop, talk, persona, pause, 
             disabled={empty}
             className={cn(
               'ml-0.5 flex size-9 shrink-0 items-center justify-center transition-colors duration-(--duration-quick) ease-soft',
-              empty ? 'text-text-faint shadow-[inset_0_0_0_1px_var(--color-line)]' : 'bg-text text-ground hover:bg-text/85'
+              empty ? 'text-text-faint shadow-[inset_0_0_0_1px_var(--color-line)]' : 'bg-accent text-accent-ink hover:bg-accent/85'
             )}
           >
             <SendGlyph />
