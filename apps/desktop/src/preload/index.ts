@@ -62,6 +62,9 @@ const bridge: DesktopBridge = {
     set: (on) => ipcRenderer.send(APP_CHANNELS.miniSet, on),
     onChange: (listener) => listen(APP_CHANNELS.miniChanged, listener)
   },
+  widgets: {
+    frame: (page, policy) => ipcRenderer.invoke(APP_CHANNELS.widgetFrame, page, policy)
+  },
   camera: {
     onCapture: (listener) => listen(CAMERA_CHANNELS.capture, listener),
     answer: (answer) => ipcRenderer.send(CAMERA_CHANNELS.picture, answer)

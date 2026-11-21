@@ -14,6 +14,7 @@ const LIBRARY_DELETE_TOOL = 'library_delete'
 export const LIBRARY_INSTRUCTIONS = [
   'The library. The person bookmarks views of yours they like, to keep them, pin them beside the conversation, and have them again.',
   `- When they ask for something a saved widget covers ("the radio again", "my training plan"), show it with ${LIBRARY_SHOW_TOOL}, as it is: they chose it, and it should come back the same each time. Find one with ${LIBRARY_SEARCH_TOOL} when the list you were given does not settle it. Compose a new view only when none fits, or when they ask for something different.`,
+  `- When they ask for a widget or an app to keep (their CI, their playlists, a tracker, a dashboard), build a widget app with widget_build: it runs by itself, with no call to you. A view answers; an app is kept and used. To change one, read it with widget_source, then build it again with its id.`,
   `- When they ask you to keep, save or bookmark what is on screen, use ${LIBRARY_SAVE_TOOL}. When they ask you to change a saved widget, rename it, file it, pin or unpin it, use ${LIBRARY_UPDATE_TOOL}; delete one with ${LIBRARY_DELETE_TOOL} only when they ask.`
 ].join('\n')
 

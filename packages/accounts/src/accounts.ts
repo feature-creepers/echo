@@ -254,7 +254,7 @@ export function createAccounts(options: AccountsOptions): Accounts {
 }
 
 /** The core's signal as the platform's, for fetch and the listener. */
-function abortOf(signal: Signal): AbortSignal {
+export function abortOf(signal: Signal): AbortSignal {
   const controller = new AbortController()
   if (signal.aborted) controller.abort()
   else signal.addEventListener('abort', () => controller.abort(), { once: true })

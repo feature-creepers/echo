@@ -33,6 +33,8 @@ export interface DesktopBridge {
   camera: CameraBridge
   /** Mini: the window made small and kept over the other apps, or the full window. */
   mini: MiniBridge
+  /** Where widget apps run: a page served at an address of its own, under its security policy. */
+  widgets: { frame(page: string, policy: string): Promise<string> }
 }
 
 export interface MiniBridge {
@@ -159,6 +161,7 @@ export const APP_CHANNELS = {
   openReleases: 'app:open-releases',
   openSettings: 'app:open-settings',
   presence: 'app:presence',
+  widgetFrame: 'app:widget-frame',
   load: 'app:load',
   loadFollow: 'app:load-follow',
   updateState: 'updates:state',

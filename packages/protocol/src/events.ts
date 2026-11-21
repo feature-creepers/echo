@@ -15,6 +15,7 @@ import { workspaceChangedSchema } from './events/files.ts'
 import { libraryChangedSchema } from './events/library.ts'
 import { assistantStateChangedSchema, memoryChangedSchema } from './events/memory.ts'
 import { deviceDesktopSchema, deviceNotifySchema, scheduleChangedSchema } from './events/schedule.ts'
+import { servicesChangedSchema } from './events/services.ts'
 import { settingsChangedSchema } from './events/settings.ts'
 import { threadsChangedSchema } from './events/threads.ts'
 import { mediaControlSchema, viewClearedSchema, viewShownSchema } from './events/views.ts'
@@ -43,7 +44,8 @@ export const eventSchema = z.discriminatedUnion('name', [
   workspaceChangedSchema,
   allowancesChangedSchema,
   activityUsedSchema,
-  accountsChangedSchema
+  accountsChangedSchema,
+  servicesChangedSchema
 ])
 export type Event = z.infer<typeof eventSchema>
 export type EventName = Event['name']

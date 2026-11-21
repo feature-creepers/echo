@@ -1,4 +1,5 @@
 import type { Block } from './block.ts'
+import { appBlocks } from './blocks/app.ts'
 import { dataBlocks } from './blocks/data.ts'
 import { drawingBlocks } from './blocks/drawing.ts'
 import { fileBlocks } from './blocks/files.ts'
@@ -17,7 +18,8 @@ export const BLOCKS = {
   ...drawingBlocks,
   ...mediaBlocks,
   ...inputBlocks,
-  ...fileBlocks
+  ...fileBlocks,
+  ...appBlocks
 } satisfies Record<string, Block>
 
 export type BlockName = keyof typeof BLOCKS

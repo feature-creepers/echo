@@ -1,6 +1,6 @@
-import { type AccountsState, type Client, CommandFailed, followAccounts } from '@repo/client'
+import { type AccountsState, type Client, CommandFailed, followAccounts, followServices, type ServicesState } from '@repo/client'
 import { useFollowed } from '@repo/client/react'
-import { type Account, type AccountPart, type AccountProvider, type AccountsView, MAX_ACCOUNTS } from '@repo/protocol'
+import { type Account, type AccountPart, type AccountProvider, type AccountsView, type Connection, MAX_ACCOUNTS } from '@repo/protocol'
 import { useEffect, useState } from 'react'
 import { Button } from '../primitives/button.tsx'
 import { Switch } from '../primitives/switch.tsx'
@@ -25,7 +25,82 @@ function useAccounts(client: Client): AccountsState | undefined {
  */
 export function AccountsSection({ client, productName }: { client: Client; productName: string }) {
   const state = useAccounts(client)
-  return state ? <Accounts state={state} productName={productName} /> : <Reading />
+  const services = useServices(client)
+  return state ? (
+    <div className="grid gap-10">
+      <Accounts state={state} productName={productName} />
+      {services && <Services state={services} />}
+    </div>
+  ) : (
+    <Reading />
+  )
+}
+
+/** The services widget apps call, followed for as long as the page is open. */
+function useServices(client: Client): ServicesState | undefined {
+  const [state, setState] = useState<ServicesState>()
+  useEffect(() => {
+    const followed = followServices(client.session)
+    setState(followed)
+    return () => followed.unfollow()
+  }, [client])
+  return state
+}
+
+/** The services connected for widget apps (docs/SPEC.md, section 9.9): each connected on a widget, disconnected here. */
+function Services({ state }: { state: ServicesState }) {
+  const view = useFollowed(state)
+  const [problem, setProblem] = useState<string>()
+  if (!view || view.connections.length === 0) return null
+  const disconnect = (connection: Connection) => {
+    setProblem(undefined)
+    state.disconnect(connection.id).catch((error: unknown) => setProblem(told(error, 'The service could not be disconnected.')))
+  }
+  return (
+    <SettingGroup title="Services for widgets" note="Connected on a widget">
+      {view.connections.map((connection) => (
+        <ServiceRow key={connection.id} connection={connection} onDisconnect={() => disconnect(connection)} />
+      ))}
+      {problem && (
+        <p role="alert" className="px-4 py-3 text-danger text-xs leading-relaxed">
+          {problem}
+        </p>
+      )}
+    </SettingGroup>
+  )
+}
+
+function ServiceRow({ connection, onDisconnect }: { connection: Connection; onDisconnect(): void }) {
+  const [asking, setAsking] = useState(false)
+  const since = new Date(connection.since).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })
+  const host = /^https:\/\/([^/?#]+)/.exec(connection.api)?.[1] ?? connection.api
+  return (
+    <SettingRow
+      title={connection.name}
+      detail={
+        <span className="grid gap-0.5">
+          <span>{`${host} · ${connection.kind === 'token' ? 'a token' : 'signed in'} · connected on ${since}`}</span>
+          {connection.state === 'sign-in-again' && <span className="text-warn">This computer no longer holds its sign-in: connect it again on a widget.</span>}
+        </span>
+      }
+    >
+      {asking ? (
+        <span className="flex items-center gap-2">
+          <span className="text-text-soft text-xs">Disconnect it?</span>
+          <Button size="sm" onClick={onDisconnect}>
+            Disconnect
+          </Button>
+          <Button size="sm" kind="quiet" onClick={() => setAsking(false)}>
+            Keep it
+          </Button>
+        </span>
+      ) : (
+        <Button size="sm" kind="quiet" onClick={() => setAsking(true)}>
+          Disconnect
+        </Button>
+      )}
+    </SettingRow>
+  )
 }
 
 function Reading() {

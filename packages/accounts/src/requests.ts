@@ -70,7 +70,7 @@ export function caller(fetch: Fetch, token: string, signal: AbortSignal): Call {
 }
 
 /** An answer's text, read as it arrives and refused once past `most` bytes, the rest never read. */
-async function bodyOf(response: Response, host: string, most: number): Promise<string> {
+export async function bodyOf(response: Response, host: string, most: number): Promise<string> {
   const tooLong = () => new CallFailed(`${host} answered more than ${most / 1024 / 1024} MB, more than this app reads.`)
   if (Number(response.headers.get('content-length')) > most) {
     await response.body?.cancel()

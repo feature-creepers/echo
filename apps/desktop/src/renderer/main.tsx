@@ -54,7 +54,8 @@ const device: DeviceHost = {
   load: (listener) => window.desktop.app.onLoad(listener),
   updates: window.desktop.updates,
   files: window.desktop.files,
-  mini: window.desktop.mini
+  mini: window.desktop.mini,
+  widgets: window.desktop.widgets
 }
 
 function App() {

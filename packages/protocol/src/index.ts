@@ -109,6 +109,7 @@ export {
   vaultRequestSchema
 } from './launch.ts'
 export {
+  APP_MAX_LENGTH,
   COLLECTION_MAX_LENGTH,
   collectionSchema,
   DOCK_SIDES,
@@ -119,6 +120,8 @@ export {
   type SavedWidget,
   savedWidgetSchema,
   WIDGET_TITLE_MAX_LENGTH,
+  type WidgetApp,
+  widgetAppSchema,
   widgetTitleSchema
 } from './library.ts'
 export {
@@ -184,8 +187,22 @@ export {
   WEEKDAYS,
   type Weekday
 } from './schedule.ts'
+export {
+  type Connection,
+  connectionSchema,
+  httpsAddressSchema,
+  isWithin,
+  MAX_CONNECTIONS,
+  type Service,
+  type ServiceSign,
+  type ServicesView,
+  serviceSchema,
+  serviceSignSchema,
+  servicesViewSchema
+} from './services.ts'
 export type { Settings } from './settings.ts'
 export { type Thread, type Threads, threadSchema } from './threads.ts'
 export { isCompatible, PROTOCOL_VERSION } from './version.ts'
 export { onTop, type ShownView, viewSchema, viewSpecShape } from './views.ts'
 export { cleanVocabulary, MAX_WORD_LENGTH, MAX_WORDS, type Vocabulary, vocabularySchema } from './vocabulary.ts'
+export { type FrameNews, type FrameQuestion, frameNewsSchema, frameQuestionSchema } from './widget-frame.ts'

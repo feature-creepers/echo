@@ -274,6 +274,8 @@ describe('threads and the screen through the core', () => {
       'library_save',
       'library_update',
       'library_delete',
+      'widget_build',
+      'widget_source',
       'schedule_create',
       'schedule_list',
       'schedule_update',

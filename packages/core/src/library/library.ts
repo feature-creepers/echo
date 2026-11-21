@@ -8,6 +8,7 @@ import {
   type LibraryView,
   pinnedBySide,
   type SavedWidget,
+  type Service,
   type ShownView,
   savedWidgetSchema,
   viewSpecShape
@@ -67,6 +68,10 @@ export interface Library {
   remove(widget: string): LibraryChange
   /** Show a saved widget as it is, where `showing` says. */
   show(widget: string, showing: Showing): ToolResult
+  /** Save a widget app, or a new version of one (docs/SPEC.md, section 9.9). Shown nowhere yet. */
+  build(app: AppBuild): { ok: true; widget: SavedWidget } | { ok: false; text: string }
+  /** Let a widget app call the services it declares, with the person's sign-in. */
+  allow(widget: string): LibraryChange
   /** The saved widgets that best match what was asked for, best first. */
   search(query: string): SavedWidget[]
   /** The tools a thread finds, shows and keeps widgets with. */
@@ -78,6 +83,18 @@ export interface Library {
   /** Be told `library.changed`. Returns a function that stops the telling. */
   onEvent(listener: (event: Event) => void): () => void
 }
+
+/** A widget app as a session builds it: a new one, or a new version of `widget`. */
+export interface AppBuild {
+  widget?: string | undefined
+  title: string
+  html: string
+  addresses: string[]
+  services: Service[]
+}
+
+/** The view of a widget app: one App block, naming it. Its code stays in the library. */
+export const appView = (widget: string): ViewSpec => ({ root: 'app', elements: { app: { type: 'App', props: { widget }, children: [] } } })
 
 const unknown = (widget: string): { ok: false; error: CommandError } => ({
   ok: false,
@@ -223,6 +240,28 @@ export function createLibrary({ records, screen, now, newId }: LibraryOptions): 
     return screen.present({ title: widget.title, spec: checked.spec, widget: widget.id }, showing)
   }
 
+  const build: Library['build'] = (input) => {
+    const before = input.widget === undefined ? undefined : kept.get(input.widget)?.widget
+    if (input.widget !== undefined && !before?.app)
+      return { ok: false, text: `There is no widget app "${input.widget}". Leave "widget" out to build a new one.` }
+    const id = before?.id ?? newId()
+    // What the person allowed stays allowed while the new version still calls it; anything new waits for them.
+    const allowed = (before?.app?.allowed ?? []).filter((api) => input.services.some((service) => service.api === api))
+    const app = { html: input.html, addresses: input.addresses, services: input.services, allowed, built: newId() }
+    const base = before ? (({ at: _at, ...rest }) => rest)(before) : { id, pinned: false, since: now().toISOString() }
+    const widget = write({ ...base, title: input.title, spec: appView(id), app })
+    changed()
+    return { ok: true, widget }
+  }
+
+  const allow: Library['allow'] = (id) => {
+    const before = kept.get(id)?.widget
+    if (!before?.app) return unknown(id)
+    const { at: _at, ...rest } = before
+    write({ ...rest, app: { ...before.app, allowed: before.app.services.map((service) => service.api) } })
+    return { ok: true, library: changed() }
+  }
+
   const search: Library['search'] = (query) => {
     const keywords = keywordsOf(query)
     const widgets = read().widgets
@@ -243,6 +282,8 @@ export function createLibrary({ records, screen, now, newId }: LibraryOptions): 
     arrange,
     remove,
     show,
+    build,
+    allow,
     search,
     tools: (showing) =>
       libraryTools({
@@ -285,7 +326,10 @@ export function createLibrary({ records, screen, now, newId }: LibraryOptions): 
       if (widgets.length === 0) return undefined
       const listed = widgets
         .slice(0, LISTED)
-        .map((widget) => `- [${widget.id}] "${widget.title}"${widget.collection ? ` in ${widget.collection}` : ''}: ${summary(widget.spec)}`)
+        .map(
+          (widget) =>
+            `- [${widget.id}] "${widget.title}"${widget.collection ? ` in ${widget.collection}` : ''}: ${widget.app ? appSummary(widget.app) : summary(widget.spec)}`
+        )
       const more = widgets.length > LISTED ? `\n…and ${widgets.length - LISTED} more, found with library_search.` : ''
       const lead =
         role === 'orchestrator'
@@ -330,6 +374,12 @@ function textsOf(spec: ShownView['spec']): string[] {
   }
   for (const element of Object.values(spec.elements)) walk(element.props)
   return texts
+}
+
+/** A widget app in a few words: what it calls and reads. */
+function appSummary(app: NonNullable<SavedWidget['app']>): string {
+  const reaches = [...app.services.map((service) => service.name), ...app.addresses.map((address) => /^https:\/\/([^/?#]+)/.exec(address)?.[1] ?? address)]
+  return reaches.length > 0 ? `an app that reaches ${reaches.join(', ')}` : 'an app'
 }
 
 /** A widget in a few words, for a model to tell what it is without seeing it: what it plays, then its first texts. */

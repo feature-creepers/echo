@@ -9,6 +9,7 @@ import { fileCommands } from './commands/files.ts'
 import { libraryCommands } from './commands/library.ts'
 import { memoryCommands } from './commands/memory.ts'
 import { scheduleCommands } from './commands/schedule.ts'
+import { servicesCommands } from './commands/services.ts'
 import { settingsCommands } from './commands/settings.ts'
 import { threadCommands } from './commands/threads.ts'
 import { viewCommands } from './commands/views.ts'
@@ -33,7 +34,8 @@ export const COMMANDS = {
   ...fileCommands,
   ...accessCommands,
   ...cameraCommands,
-  ...accountsCommands
+  ...accountsCommands,
+  ...servicesCommands
 } satisfies Record<string, CommandDefinition>
 
 export type CommandName = keyof typeof COMMANDS

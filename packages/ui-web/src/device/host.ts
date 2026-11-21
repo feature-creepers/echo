@@ -63,6 +63,11 @@ export interface DeviceHost {
    * the core looks as it does on a computer at rest.
    */
   load?(listener: (load: number) => void): () => void
+  /**
+   * Where widget apps run (docs/SPEC.md, section 9.9): a page served at an address of its own, under its own security
+   * policy, that a frame then shows. Left out, widget apps cannot run here.
+   */
+  widgets?: { frame(page: string, policy: string): Promise<string> }
   /** The files of this computer, picked by the person for the assistant. Left out, folders cannot be picked here. */
   files?: {
     /**

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { basename, extname, join } from 'node:path'
-import { createAccounts } from '@repo/accounts'
+import { createAccounts, createServices } from '@repo/accounts'
 import { createBrowser } from '@repo/browser'
 import { type Core, createCore } from '@repo/core'
 import { createEmbedder } from '@repo/embedder'
@@ -39,9 +39,18 @@ export async function compose(config: Config): Promise<Composition> {
   // the core runs in the app's program, so its name is the one left out, with the product's.
   const own = [basename(process.execPath, extname(process.execPath)).toLowerCase(), 'echo']
   const desktop = createDesktop({ folder: join(config.data, 'screen'), own })
+  const timers = {
+    after(ms: number, work: () => void) {
+      // A timer of the core never keeps the process alive on its own.
+      const timer = setTimeout(work, ms).unref()
+      return () => clearTimeout(timer)
+    }
+  }
   // The person's accounts: their sign-ins sealed in the vault, never in the store, and opened in the system's browser.
   const vault = openVault({ file: join(config.data, 'vault.json'), sealer: sealerOfStarter() })
   const accounts = createAccounts({ vault, open: (url) => desktop.open(url), registrations, log })
+  // The services the person connects for widget apps, their sign-ins in the same vault.
+  const services = createServices({ vault, open: (url) => desktop.open(url), timers })
   // The same folder, as the person browses it and hands files into it.
   const workspace = await createWorkspace(computer.workspace)
   // The model of search by meaning, kept with the core's data rather than the device's: downloaded only when the person asks.
@@ -68,13 +77,8 @@ export async function compose(config: Config): Promise<Composition> {
     drives: createDrives(),
     workspace,
     accounts,
-    timers: {
-      after(ms, work) {
-        // A timer of the core never keeps the process alive on its own.
-        const timer = setTimeout(work, ms).unref()
-        return () => clearTimeout(timer)
-      }
-    }
+    services,
+    timers
   })
   // Sessions can show things once the tool server listens: it carries their calls to the core.
   const tools = await serveTools(core.toolHost, { version: manifest.version, log })

@@ -1,5 +1,5 @@
 import type { Client, CoreLink } from '@repo/client'
-import { describeShortcut, matchesShortcut, pinnedOf } from '@repo/client'
+import { describeShortcut, followServices, matchesShortcut, pinnedOf } from '@repo/client'
 import { useFollowed } from '@repo/client/react'
 import type { Accent, CommandInput, Look, PersonaId, TurnId } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
@@ -182,7 +182,13 @@ function Connected({ productName, client, engine, mini }: { productName: string;
   const docks = usePinnedDocks(pinnedOf(library).length)
 
   // A saved widget opens in the library, on its widgets page.
-  const controls = useMemo<LibraryControls>(() => ({ library: client.library, open: (widget) => openHub('widgets', widget) }), [client, openHub])
+  // The services widget apps call, followed while the window shows the conversation.
+  const services = useMemo(() => followServices(client.session), [client])
+  useEffect(() => () => services.unfollow(), [services])
+  const controls = useMemo<LibraryControls>(
+    () => ({ library: client.library, services, session: client.session, open: (widget) => openHub('widgets', widget) }),
+    [client, services, openHub]
+  )
   const say = useCallback(
     (text: string) => {
       client.speech.stop()

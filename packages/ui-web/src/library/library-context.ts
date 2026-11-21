@@ -1,9 +1,13 @@
-import type { LibraryState } from '@repo/client'
+import type { Client, LibraryState, ServicesState } from '@repo/client'
 import { createContext, useContext } from 'react'
 
-/** What a view's controls need to save it, pin it, and open it among the widgets in the library. */
+/** What a view's controls need to save it, pin it, and open it among the widgets in the library, and a widget app to run. */
 export interface LibraryControls {
   library: LibraryState
+  /** The services connected for widget apps. */
+  services: ServicesState
+  /** The core a widget app's requests go to. */
+  session: Client['session']
   /** Open the library on its widgets page, on a widget if one is given. */
   open(widget?: string): void
 }

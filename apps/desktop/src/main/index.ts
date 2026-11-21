@@ -55,6 +55,7 @@ import { checkMeaning, checkSettings } from './self-check.ts'
 import { type SpeechProcess, startSpeech } from './speech-process.ts'
 import { createTray, type TrayActions, type TrayLook } from './tray.ts'
 import { createUpdater, releasesPage } from './updater.ts'
+import { registerWidgetScheme, serveWidgetFrames } from './widget-frames.ts'
 
 /**
  * The desktop app: a client of the core, on this device.
@@ -309,6 +310,9 @@ function start(): void {
     bringForward()
   }
   calls.handle(APP_CHANNELS.mini, () => mini.on())
+  // Widget apps, each page served at an address of its own under its policy.
+  const frames = serveWidgetFrames(window.webContents)
+  calls.handle(APP_CHANNELS.widgetFrame, (_event, page, policy) => frames.frame(String(page), String(policy)))
   calls.on(APP_CHANNELS.miniSet, (_event, on) => mini.set(on === true))
   // Reminders, scheduled answers and answers finished out of sight, as the system's notifications.
   serveNotifications(core, window, toFullWindow)
@@ -476,6 +480,9 @@ function start(): void {
   app.on('activate', bringForward)
   app.on('window-all-closed', () => app.quit())
 }
+
+// A widget app's page is served on a scheme of its own, which must be known before the app is ready.
+registerWidgetScheme()
 
 // One core per data folder: a second launch hands over to the app already running and quits.
 // A self-check has a folder of its own, so it runs beside the app without disturbing it.

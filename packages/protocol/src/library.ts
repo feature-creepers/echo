@@ -1,10 +1,12 @@
 import { z } from 'zod'
+import { httpsAddressSchema, serviceSchema } from './services.ts'
 import { viewSpecShape } from './views.ts'
 
 /**
  * The user's library: views the assistant composed that the user bookmarked, to keep, sort, pin beside the
- * conversation and have the assistant bring back as they are (docs/SPEC.md, section 9.8). A saved widget is a
- * view and nothing more: what it plays or shows is its spec, drawn again.
+ * conversation and have the assistant bring back as they are (docs/SPEC.md, section 9.8), and the widget apps the
+ * assistant builds for them (section 9.9). A saved widget is a view: what it plays or shows is its spec, drawn again.
+ * An app is a view of one App block, with its code beside it.
  */
 
 export const widgetIdSchema = z.string().min(1).max(64)
@@ -20,6 +22,27 @@ export const collectionSchema = z.string().trim().min(1).max(COLLECTION_MAX_LENG
 export const DOCK_SIDES = ['left', 'right'] as const
 const dockSideSchema = z.enum(DOCK_SIDES)
 export type DockSide = z.infer<typeof dockSideSchema>
+
+/** The longest page a widget app may have, in characters. */
+export const APP_MAX_LENGTH = 400_000
+
+/**
+ * A widget that is an app (docs/SPEC.md, section 9.9): a page of its own, run in a sandbox, that reaches only the
+ * public addresses and the services it declares, the services only once the person allowed it.
+ */
+export const widgetAppSchema = z.object({
+  /** Its page: HTML, its scripts and styles written in it. */
+  html: z.string().min(1).max(APP_MAX_LENGTH),
+  /** The public https addresses it reads with no sign-in, by their start. */
+  addresses: z.array(httpsAddressSchema).max(8).default([]),
+  /** The services it calls with the person's sign-in. */
+  services: z.array(serviceSchema).max(4).default([]),
+  /** The APIs of its services the person let it call. */
+  allowed: z.array(httpsAddressSchema).max(4).default([]),
+  /** Which build of its code this is: the clients say how each build started. */
+  built: z.string().min(1).max(64)
+})
+export type WidgetApp = z.infer<typeof widgetAppSchema>
 
 /** A view the user saved. */
 export const savedWidgetSchema = z.object({
@@ -47,7 +70,9 @@ export const savedWidgetSchema = z.object({
   at: z.string(),
   /** The view it was saved from, so a client can show that view as saved. */
   from: z.string().min(1).max(64).optional(),
-  spec: viewSpecShape
+  spec: viewSpecShape,
+  /** Its code, when it is an app. */
+  app: widgetAppSchema.optional()
 })
 export type SavedWidget = z.infer<typeof savedWidgetSchema>
 

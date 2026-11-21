@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { collectionSchema, libraryViewSchema, savedWidgetSchema, widgetIdSchema, widgetTitleSchema } from '../library.ts'
+import { httpsAddressSchema } from '../services.ts'
 
 const libraryOutput = z.object({ library: libraryViewSchema })
 
@@ -46,6 +47,59 @@ export const libraryCommands = {
   /** Show a saved widget on the stage, as it was saved. */
   'library.show': {
     input: z.object({ widget: widgetIdSchema }),
+    output: z.object({})
+  },
+
+  /** Let a widget app call the services it declares, with the person's sign-in (docs/SPEC.md, section 9.9). */
+  'widget.allow': {
+    input: z.object({ widget: widgetIdSchema }),
+    output: libraryOutput
+  },
+
+  /**
+   * What a widget app asks of the web: a public address it declares, or the API of a service it is allowed, with the
+   * person's sign-in. Answered with what the address answered, or refused with why, in words for its code.
+   */
+  'widget.call': {
+    input: z.object({
+      widget: widgetIdSchema,
+      url: httpsAddressSchema.max(4000),
+      method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']).default('GET'),
+      headers: z.record(z.string().max(64), z.string().max(2000)).default({}),
+      body: z
+        .string()
+        .max(256 * 1024)
+        .optional()
+    }),
+    output: z.object({ status: z.number().int(), type: z.string().max(200).optional(), body: z.string() })
+  },
+
+  /** What a widget app kept: every key it wrote, with its value. */
+  'widget.state.read': {
+    input: z.object({ widget: widgetIdSchema }),
+    output: z.object({ state: z.record(z.string(), z.unknown()) })
+  },
+
+  /** Keep a value for a widget app under a key, or with `null` forget it. */
+  'widget.state.write': {
+    input: z.object({ widget: widgetIdSchema, key: z.string().min(1).max(100), value: z.unknown() }),
+    output: z.object({})
+  },
+
+  /** Tell the person something from a widget app, with the system's notification: once a minute at most. */
+  'widget.notify': {
+    input: z.object({ widget: widgetIdSchema, title: z.string().trim().min(1).max(120), body: z.string().max(500).default('') }),
+    output: z.object({})
+  },
+
+  /** How a build of a widget app started where it is drawn: running, failing with why, or waiting for the person. */
+  'widget.report': {
+    input: z.object({
+      widget: widgetIdSchema,
+      built: z.string().min(1).max(64),
+      outcome: z.enum(['started', 'failed', 'waiting']),
+      message: z.string().max(2000).optional()
+    }),
     output: z.object({})
   }
 }

@@ -3,6 +3,7 @@ import { type Capability, type Event, MEDIA_ACTIONS, type Result } from '@repo/p
 import { createAccess } from './access/access.ts'
 import { createAccountList } from './accounts/accounts.ts'
 import { calendarBriefing } from './accounts/briefing.ts'
+import { stopping } from './accounts/stopping.ts'
 import { createAccountTools } from './accounts/tools.ts'
 import { createAttachments } from './attachments/attachments.ts'
 import { giveFolders } from './attachments/folders.ts'
@@ -19,6 +20,7 @@ import { createBrowsing } from './files/browse.ts'
 import { createFiles } from './files/files.ts'
 import { createFolderWatch } from './files/watch.ts'
 import { createWrittenFiles } from './files/written.ts'
+import { createWidgetApps } from './library/apps.ts'
 import { createLibrary } from './library/library.ts'
 import { mediaControlOf } from './media/control.ts'
 import { contextOf, EARLIER_FILES, type EarlierFact, type EarlierLine, HISTORY_FILE, historyOf, notesOf } from './memory/earlier.ts'
@@ -38,6 +40,7 @@ import type { Log } from './ports/log.ts'
 import type { Printers } from './ports/printers.ts'
 import type { Records } from './ports/records.ts'
 import type { Search } from './ports/search.ts'
+import type { Services } from './ports/services.ts'
 import type { ToolHost } from './ports/tools.ts'
 import type { Vectors } from './ports/vectors.ts'
 import type { Web } from './ports/web.ts'
@@ -48,6 +51,7 @@ import { memorySearch } from './records/memory-search.ts'
 import { createSchedule } from './schedule/schedule.ts'
 import { readTiming } from './schedule/timing.ts'
 import { SCHEDULE_INSTRUCTIONS, SCHEDULE_ROUTING, scheduleTools } from './schedule/tools.ts'
+import { createConnections } from './services/connections.ts'
 import { createUserSettings } from './settings/settings.ts'
 import { createTools, type Tool } from './tools/tools.ts'
 import { createFeeds } from './views/feeds.ts'
@@ -108,6 +112,8 @@ export interface CoreOptions {
   versions?: Blobs
   /** The person's accounts at their providers: their calendars and mail, read as they granted. Left out, none can be connected. */
   accounts?: Accounts
+  /** The sign-ins of the services widget apps call (docs/SPEC.md, section 9.9). Left out, none can be connected. */
+  services?: Services
 }
 
 /** The core as the listeners see it. */
@@ -218,6 +224,17 @@ export function createCore(options: CoreOptions): Core {
   ]
 
   const library = createLibrary({ records: options.records, screen, now, newId: options.newId })
+  const connections = createConnections({ port: options.services, records: options.records, newId: options.newId, now })
+  const apps = createWidgetApps({
+    library,
+    connections,
+    web: options.web,
+    records: options.records,
+    now,
+    // What a widget app tells the person, as any notification: not while they look at the window, quiet in the quiet hours.
+    notify: (notice) => emit({ type: 'event', name: 'device.notify', notification: { ...notice, silent: schedule.quiet(), unlessFocused: true } }),
+    timers: options.timers
+  })
 
   /** What the orchestrator is told of the folders a project's thread may work in. */
   const projectsStanding = () => {
@@ -388,6 +405,7 @@ export function createCore(options: CoreOptions): Core {
         ...files.tools(() => showing().thread),
         ...memory.tools,
         ...library.tools(showing),
+        ...apps.tools(showing),
         ...access.tools(showing),
         ...browser.tools(showing),
         ...desktop.tools(showing),
@@ -494,6 +512,7 @@ export function createCore(options: CoreOptions): Core {
     clipboard?.forget()
     device.forget()
     accounts.cancel()
+    connections.cancel()
     accountTools.stop()
   })
 
@@ -506,6 +525,7 @@ export function createCore(options: CoreOptions): Core {
   channel.onEvent(emit)
   screen.onEvent(emit)
   library.onEvent(emit)
+  connections.onEvent(emit)
   schedule.onEvent(emit)
   accounts.onEvent(emit)
 
@@ -649,6 +669,30 @@ export function createCore(options: CoreOptions): Core {
         const change = library.remove(input.widget)
         return change.ok ? { ok: true, output: { library: change.library } } : change
       },
+      'widget.allow': (input) => {
+        const change = library.allow(input.widget)
+        return change.ok ? { ok: true, output: { library: change.library } } : change
+      },
+      'widget.call': async (input) => {
+        const answer = await apps.call(input, stopping().signal)
+        return answer.ok ? { ok: true, output: answer.output } : answer
+      },
+      'widget.state.read': (input) => {
+        const read = apps.readState(input.widget)
+        return read.ok ? { ok: true, output: { state: read.state } } : read
+      },
+      'widget.state.write': (input) => {
+        const written = apps.writeState(input)
+        return written.ok ? { ok: true, output: {} } : written
+      },
+      'widget.notify': (input) => {
+        const told = apps.notify(input)
+        return told.ok ? { ok: true, output: {} } : told
+      },
+      'widget.report': (input) => {
+        apps.report(input)
+        return { ok: true, output: {} }
+      },
       'library.show': (input) => {
         // Brought back by the user, it is shown on the stage over whatever topic is there, and starts nothing by itself.
         const shown = library.show(input.widget, { thread: undefined, turn: undefined, focused: true })
@@ -750,6 +794,15 @@ export function createCore(options: CoreOptions): Core {
         // The model's default is kept as no choice at all, so it follows the default of whichever model answers.
         const effort = input.effort === model?.defaultEffort ? null : input.effort
         return { ok: true, output: { settings: settings.chooseEffort(input.harness, effort) } }
+      },
+      'services.read': async () => ({ ok: true, output: { services: await connections.read() } }),
+      'services.connect': async (input) => {
+        const connected = await connections.connect(input)
+        return connected.ok ? { ok: true, output: { services: connected.view, connection: connected.connection } } : connected
+      },
+      'services.disconnect': async (input) => {
+        const change = await connections.disconnect(input.connection)
+        return change.ok ? { ok: true, output: { services: change.view } } : change
       },
       'accounts.read': async () => ({ ok: true, output: { accounts: await accounts.read() } }),
       'accounts.connect': async (input) => {

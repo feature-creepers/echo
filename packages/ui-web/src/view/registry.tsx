@@ -1,6 +1,7 @@
 import type { ComponentRegistry, ComponentRenderProps } from '@json-render/react'
 import type { BlockName, BlockProps } from '@repo/catalog'
 import type { ReactNode } from 'react'
+import { AppFrame } from '../widgets/app-frame.tsx'
 import { Chart, Metric, Progress, Table, Timeline } from './blocks/data.tsx'
 import { Drawing, Image } from './blocks/drawing.tsx'
 import { FileList } from './blocks/file-list.tsx'
@@ -42,7 +43,8 @@ const DRAWERS: Drawers = {
   Questions,
   Field,
   FilePreview,
-  FileList
+  FileList,
+  App: ({ props }: { props: BlockProps<'App'> }) => <AppFrame widget={props.widget} />
 }
 
 /**
