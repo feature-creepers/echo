@@ -22,7 +22,25 @@ export const frameQuestionSchema = z.discriminatedUnion('type', [
   z.object({ echo: z.literal(1), type: z.literal('state'), id: z.number() }),
   z.object({ echo: z.literal(1), type: z.literal('keep'), id: z.number(), key: z.string().min(1).max(100), value: z.unknown() }),
   z.object({ echo: z.literal(1), type: z.literal('notify'), id: z.number(), title: z.string().min(1).max(120), body: z.string().max(500) }),
-  z.object({ echo: z.literal(1), type: z.literal('open'), id: z.number(), url: z.string().max(4000) })
+  z.object({ echo: z.literal(1), type: z.literal('open'), id: z.number(), url: z.string().max(4000) }),
+  z.object({
+    echo: z.literal(1),
+    type: z.literal('media'),
+    id: z.number(),
+    action: z.enum(['play', 'pause', 'resume', 'stop', 'volume', 'state']),
+    /** What to play: a stream or file of a declared address, and how the player names it. */
+    source: z
+      .object({
+        url: z.string().max(4000),
+        title: z.string().min(1).max(200),
+        subtitle: z.string().max(200).optional(),
+        artwork: z.string().max(4000).optional(),
+        live: z.boolean().default(false)
+      })
+      .optional(),
+    /** The volume to set, from 0 to 1. */
+    level: z.number().min(0).max(1).optional()
+  })
 ])
 /** What a widget app's page tells the window of itself: how it started, or how tall it is. */
 export const frameNewsSchema = z.discriminatedUnion('type', [

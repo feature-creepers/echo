@@ -268,7 +268,7 @@ The person still hears one voice: every session receives the same persona, and a
 
 1. **What is said.** Short, as a friend says it (section 8.5): the session's text, spoken sentence by sentence as it is written, and the caption. A thread writes it before any tool call except a search.
 2. **What is shown.** The view (`ui_render`), drawn while the voice speaks.
-3. **The full work.** The complete written answer in Markdown, with figures, sources and details (`answer_write`), and every tool call with its input and whole output, kept with the exchange and read in the side sheet (section 13.3). Small talk has none.
+3. **The full work.** Every tool call with its input and whole output, kept with the exchange and read in the side sheet (section 13.3); and a written answer in Markdown (`answer_write`) only when the person asked for detail, a report or a document to keep, or when the answer does not fit what is said and shown. The person does not read long text: what is shown carries the detail. A project's report is a few lines (section 7.11).
 
 The instructions, a reminder at the end of each request and the core hold the order: a call to `ui_render` or `answer_write` before anything was said is sent back once ("say the short answer first"), after which the model keeps the order for the rest of its thread. A layer is a tool, not a marker in the text, because both harnesses deliver tool calls reliably and in order.
 
@@ -474,7 +474,7 @@ The person works on something with the assistant over hours and days: a code rep
 
 It does what was asked and nothing more. A list in the project of what is not built yet, a to-do, a roadmap or an issue is a record, not a request: an item of it is taken up only when the person names it. When the work is done, it stops and reports, and suggests what could come next rather than starting it. It keeps each change as small as the request needs, uses a well-known library rather than writing a parser, a renderer, a file format or a protocol of its own, and asks before a feature that would take more than a few hundred lines or a new dependency.
 
-**How it speaks.** Work takes minutes, and everything a thread writes is heard. So it says in one short sentence what it is about to do, works without a word, then says how it went in a sentence or two and writes the report with `answer_write`: what changed and why, file by file, the checks and their results, what is left.
+**How it speaks.** Work takes minutes, and everything a thread writes is heard. So it says in one short sentence what it is about to do, works without a word, then says how it went in a sentence or two and writes a short report with `answer_write`, a few lines: what changed, the checks and their results, what is left; file by file only when asked.
 
 - The channel holds it to this. Once a project's thread has started a tool call, what it writes is held: written before another call, it was commentary and is dropped; written before its report or a view, or at the end of the turn, it is said. A view shown on the way does not silence what follows.
 - A thread that goes from its work straight to its report is asked once to say how it went first, as a thread that has said nothing is asked to speak first.
@@ -711,8 +711,10 @@ A widget the person asks for to keep and use (the CI of a repository, their play
   - `echo.state.get` and `echo.state.set`: values it keeps, a hundred at most of 64 KB each, kept by the core so they follow the person to every device, and erased with the widget.
   - `echo.notify(title, body)`: a notification, once a minute at most, not while the person looks at the window.
   - `echo.open(url)`: a page of an address it declares, in the person's browser.
+  - `echo.media`: Echo's one player (section 9.6), lowered under the voice: `play({ url, title, subtitle, artwork, live })` a stream or file of a declared address, `pause`, `resume`, `stop`, `volume` and `state`.
+  - A value kept again unchanged is not written again, so a widget that refreshes every minute adds nothing to the store.
 - **Services** (`core/src/services/`, `accounts/src/services.ts`). A service is the start of its API's addresses, a name, and how it is signed in to: a token the person makes at the service and pastes (sent in a header the widget names, `Authorization: Bearer` by default), or OAuth 2.0 with PKCE in the system's browser, back to the loopback address, with an app the person registers at the service and whose client identifier they give. The person connects it on the widget the first time, and allows the widget to call it; another widget of the same API uses the same connection, but asks to be allowed too. A new version that calls a new service asks again. The sign-in is kept in the vault as the accounts' are (section 12.4, item 4), never given to the widget, the store or a model. The Accounts page lists the services connected, to disconnect one.
-- **Limits.** A widget runs while it is drawn: pinned, on the stage or in the library; nothing of it runs while the window is closed. It runs where a desktop app hosts it. A service whose sign-in needs a client secret, or that plays its sound only through a DRM player (Spotify's own player), is reached through its API alone: Spotify plays on the person's Spotify devices, not in Echo.
+- **Limits.** A pinned widget runs whenever Echo runs: drawn hidden on the hub and in Mini, and with the window closed to the tray, where its timers may be slowed to once a minute. One that is not pinned runs while it is shown, on the stage or in the library. Nothing of a widget runs while Echo is quit. It runs where a desktop app hosts it. A service whose sign-in needs a client secret, or that plays its sound only through a DRM player (Spotify's own player), is reached through its API alone: Spotify plays on the person's Spotify devices, not in Echo.
 
 ## 10. Memory
 

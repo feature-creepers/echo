@@ -28,7 +28,15 @@ describe('what a page asks the window', () => {
     state: vi.fn(async () => ({ repo: 'a/b' })),
     keep: vi.fn(async () => undefined),
     notify: vi.fn(async () => undefined),
-    open: vi.fn()
+    open: vi.fn(),
+    media: {
+      play: vi.fn(),
+      pause: vi.fn(),
+      resume: vi.fn(),
+      stop: vi.fn(),
+      volume: vi.fn(),
+      state: vi.fn(() => ({ title: 'FIP', status: 'playing', volume: 0.8, position: 0, duration: undefined }))
+    }
   })
 
   it.each([
@@ -54,6 +62,22 @@ describe('what a page asks the window', () => {
     })
     expect(await answerQuestion({ echo: 1, type: 'open', id: 4, url: 'https://evil.example/' }, app, given)).toMatchObject({ id: 4, ok: false })
     expect(given.open).toHaveBeenCalledTimes(1)
+  })
+
+  it("plays in Echo's player only what comes from an address the widget declared", async () => {
+    const given = services()
+    const app = { addresses: ['https://icecast.radiofrance.fr/', 'https://i.scdn.co/'] }
+    const play = (url: string, artwork?: string) =>
+      answerQuestion({ echo: 1, type: 'media', id: 6, action: 'play', source: { url, title: 'FIP', live: true, ...(artwork ? { artwork } : {}) } }, app, given)
+    expect(await play('https://icecast.radiofrance.fr/fip-hifi.aac', 'https://i.scdn.co/cover.jpg')).toMatchObject({ ok: true })
+    expect(await play('https://evil.example/stream.mp3')).toMatchObject({ ok: false })
+    expect(await play('https://icecast.radiofrance.fr/fip.aac', 'https://evil.example/pixel.gif')).toMatchObject({ ok: false })
+    expect(given.media.play).toHaveBeenCalledTimes(1)
+    expect(await answerQuestion({ echo: 1, type: 'media', id: 7, action: 'state' }, app, given)).toMatchObject({
+      ok: true,
+      value: { title: 'FIP', status: 'playing' }
+    })
+    expect(await answerQuestion({ echo: 1, type: 'media', id: 8, action: 'volume' }, app, given)).toMatchObject({ ok: false })
   })
 
   it("answers with why when the core refuses, in the core's words", async () => {

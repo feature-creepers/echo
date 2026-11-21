@@ -92,7 +92,15 @@ const SDK = `(() => {
       set: (key, value) => ask('keep', { key: String(key), value: value === undefined ? null : value })
     }),
     notify: (title, body) => ask('notify', { title: String(title), body: body === undefined ? '' : String(body) }),
-    open: (url) => ask('open', { url: String(url) })
+    open: (url) => ask('open', { url: String(url) }),
+    media: Object.freeze({
+      play: (source) => ask('media', { action: 'play', source }),
+      pause: () => ask('media', { action: 'pause' }),
+      resume: () => ask('media', { action: 'resume' }),
+      stop: () => ask('media', { action: 'stop' }),
+      volume: (level) => ask('media', { action: 'volume', level: Number(level) }),
+      state: () => ask('media', { action: 'state' })
+    })
   })
   let failed = false
   const report = (outcome, message) => parent.postMessage({ echo: 1, type: 'report', outcome, message }, '*')

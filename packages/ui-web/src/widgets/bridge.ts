@@ -18,6 +18,15 @@ export interface FrameServices {
   keep(key: string, value: unknown): Promise<void>
   notify(title: string, body: string): Promise<void>
   open(url: string): void
+  /** Echo's one player, as a widget drives it: what plays, its volume, and where it stands. */
+  media: {
+    play(source: { url: string; title: string; subtitle?: string | undefined; artwork?: string | undefined; live: boolean }): void
+    pause(): void
+    resume(): void
+    stop(): void
+    volume(level: number): void
+    state(): { title: string | undefined; status: string; volume: number; position: number; duration: number | undefined }
+  }
 }
 
 /** A page's message: a question to answer, news of the page, or nothing worth reading. */
@@ -53,6 +62,20 @@ export async function answerQuestion(
       case 'notify':
         await services.notify(question.title, question.body)
         return { echo: 1, id, ok: true, value: null }
+      case 'media': {
+        const { source, level } = question
+        if (question.action === 'play') {
+          if (!source) return { echo: 1, id, ok: false, error: 'Give what to play: { url, title }.' }
+          const outside = [source.url, source.artwork].find((url) => url !== undefined && !app.addresses.some((start) => isWithin(url, start)))
+          if (outside !== undefined) return { echo: 1, id, ok: false, error: `${outside} is not among the addresses this widget declared.` }
+          services.media.play(source)
+        } else if (question.action === 'volume') {
+          if (level === undefined) return { echo: 1, id, ok: false, error: 'Give the volume, from 0 to 1.' }
+          services.media.volume(level)
+        } else if (question.action === 'state') return { echo: 1, id, ok: true, value: services.media.state() }
+        else services.media[question.action]()
+        return { echo: 1, id, ok: true, value: null }
+      }
       case 'open':
         if (!app.addresses.some((start) => isWithin(question.url, start)))
           return { echo: 1, id, ok: false, error: `${question.url} is not among the addresses this widget declared.` }

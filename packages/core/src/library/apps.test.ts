@@ -176,6 +176,17 @@ describe('what a widget app reaches', () => {
     expect(apps.readState(widget.id)).toMatchObject({ ok: false })
   })
 
+  it('writes a value again only when it changed', () => {
+    const { apps, records, built } = setup()
+    const widget = built()
+    const count = () => records.read(['widget.state']).length
+    apps.writeState({ widget: widget.id, key: 'runs', value: [1, 2] })
+    apps.writeState({ widget: widget.id, key: 'runs', value: [1, 2] })
+    expect(count()).toBe(1)
+    apps.writeState({ widget: widget.id, key: 'runs', value: [1, 2, 3] })
+    expect(apps.readState(widget.id)).toEqual({ ok: true, state: { runs: [1, 2, 3] } })
+  })
+
   it('tells the person something once a minute at most', () => {
     const { apps, built, notified, later } = setup()
     const widget = built()

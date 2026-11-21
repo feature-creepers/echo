@@ -4,6 +4,7 @@ import type { Connection, SavedWidget, Service, WidgetApp } from '@repo/protocol
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDevice } from '../device/device.tsx'
 import { type LibraryControls, useLibraryControls } from '../library/library-context.ts'
+import { usePlayer } from '../media/player-provider.tsx'
 import { Button } from '../primitives/button.tsx'
 import { answerQuestion, type FrameServices, readMessage } from './bridge.ts'
 import { pageOf, policyOf, themeOf } from './page.ts'
@@ -59,6 +60,7 @@ function Frame({ widget }: { widget: SavedWidget & { app: WidgetApp } }) {
   const controls = useLibraryControls()
   const session = controls?.session
   const { app } = widget
+  const player = usePlayer()
   const frame = useRef<HTMLIFrameElement>(null)
   const [address, setAddress] = useState<string>()
   const [height, setHeight] = useState(FIRST_HEIGHT)
@@ -94,9 +96,24 @@ function Frame({ widget }: { widget: SavedWidget & { app: WidgetApp } }) {
       keep: async (key, value) => void (await session.run('widget.state.write', { widget: widget.id, key, value })),
       notify: async (title, body) => void (await session.run('widget.notify', { widget: widget.id, title, body })),
       // The window opens an https page in the person's browser.
-      open: (url) => void window.open(url, '_blank', 'noopener,noreferrer')
+      open: (url) => void window.open(url, '_blank', 'noopener,noreferrer'),
+      // Echo's one player: what a widget plays is lowered under the voice, and goes on when the widget is closed.
+      media: {
+        play: (source) => player.play({ ...source, kind: 'audio' }),
+        pause: () => player.pause(),
+        resume: () => {
+          const { source } = player.current()
+          if (source) player.play(source)
+        },
+        stop: () => player.stop(),
+        volume: (level) => player.setVolume(level),
+        state: () => {
+          const now = player.current()
+          return { title: now.source?.title, status: now.status, volume: now.volume, position: now.position, duration: now.duration }
+        }
+      }
     }
-  }, [session, widget.id])
+  }, [session, widget.id, player])
 
   useEffect(() => {
     if (!answering || !session) return

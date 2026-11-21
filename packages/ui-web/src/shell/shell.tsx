@@ -370,15 +370,16 @@ function Connected({ productName, client, engine, mini }: { productName: string;
                       onOpenThread={openThread}
                       mini={mini.on ? { onFullWindow: () => mini.set(false) } : undefined}
                     />
-                    {/* Hidden in Mini, and still drawn, so each widget keeps its state. */}
-                    <div className={mini.on ? 'hidden' : 'contents'}>
-                      <PinnedDocksView controls={controls} actions={actions} docks={docks} />
-                    </div>
                   </div>
                 )}
               </motion.div>
             </AnimatePresence>
             {/* A file shown from any view, the stream's, a pinned widget's or a saved one's, opens in one quick look. */}
+            {/* The pinned widgets are drawn whatever screen shows, hidden in Mini and on the hub, so each keeps its
+                state and a widget app keeps running (docs/SPEC.md, section 9.9). */}
+            <div className={mini.on || showing.is === 'hub' ? 'hidden' : 'contents'}>
+              <PinnedDocksView controls={controls} actions={actions} docks={docks} />
+            </div>
             <QuickLook client={client} />
           </div>
           {/* The sheet takes its width from the window and stays from one screen to the next: the screen beside it
