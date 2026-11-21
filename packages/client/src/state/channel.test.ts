@@ -127,14 +127,16 @@ describe('followChannel', () => {
     const channel = followChannel(core.session)
 
     await channel.say('Hello')
-    await channel.say('Bonjour', 'fr')
-    await channel.say('And tomorrow?', 'en', undefined, true, false)
+    await channel.say('Bonjour', { language: 'fr' })
+    await channel.say('And tomorrow?', { language: 'en', spoken: true, screen: false })
+    await channel.say('Make it weekly', { about: 'v7' })
     await channel.stop()
 
     expect(core.ran.slice(1)).toEqual([
       { name: 'utterance.send', input: { text: 'Hello' } },
       { name: 'utterance.send', input: { text: 'Bonjour', language: 'fr' } },
       { name: 'utterance.send', input: { text: 'And tomorrow?', language: 'en', spoken: true, screen: false } },
+      { name: 'utterance.send', input: { text: 'Make it weekly', about: 'v7' } },
       { name: 'turn.stop', input: {} }
     ])
   })

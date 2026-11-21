@@ -23,14 +23,24 @@ export interface Sentence {
   language: string | undefined
 }
 
+/** What goes with something said to the assistant. */
+export interface Said {
+  /** The language spoken, when the device's recogniser could tell. */
+  language?: string | undefined
+  /** The files already handed over and the folders given with it. */
+  handed?: Handed | undefined
+  /** Heard by the device's recogniser, rather than typed or pressed. */
+  spoken?: boolean | undefined
+  /** False while the device shows no views, so the assistant says a little more. */
+  screen?: boolean | undefined
+  /** The view in front of the person when they said it, by its id: what they say is probably about it. */
+  about?: string | undefined
+}
+
 /** The conversation, kept current for as long as the session lasts. */
 export interface ChannelState extends Followed<ChannelSnapshot> {
-  /**
-   * Say something to the assistant, with the files already handed over and the folders given, if any. `screen` is
-   * false while the device shows no views, so the assistant says a little more. Rejects with `CommandFailed` when the
-   * core does not take it.
-   */
-  say(text: string, language?: string, handed?: Handed, spoken?: boolean, screen?: boolean): Promise<void>
+  /** Say something to the assistant. Rejects with `CommandFailed` when the core does not take it. */
+  say(text: string, said?: Said): Promise<void>
   /** The app has opened: let the assistant greet and brief the user, if it is time to. */
   greet(): Promise<void>
   /** Stop the answer under way. */
@@ -99,14 +109,15 @@ export function followChannel(session: Session): ChannelState {
   return {
     current: state.current,
     subscribe: state.subscribe,
-    async say(text, language, handed, spoken, screen) {
+    async say(text, { language, handed, spoken, screen, about } = {}) {
       await session.run('utterance.send', {
         text,
         ...(language === undefined ? {} : { language }),
         ...(spoken ? { spoken } : {}),
         ...(handed?.attachments && handed.attachments.length > 0 ? { attachments: [...handed.attachments] } : {}),
         ...(handed?.folders && handed.folders.length > 0 ? { folders: [...handed.folders] } : {}),
-        ...(screen === false ? { screen } : {})
+        ...(screen === false ? { screen } : {}),
+        ...(about === undefined ? {} : { about })
       })
     },
     async greet() {

@@ -198,7 +198,7 @@ export function Stage({
       client.speech.stop()
       const handed = attachments.pending.length > 0 ? await attachments.take() : {}
       if (handed === undefined) return false
-      client.channel.say(text, undefined, handed).catch(() => setProblem(refusalCopy('failed')))
+      client.channel.say(text, { handed }).catch(() => setProblem(refusalCopy('failed')))
       return true
     },
     [client, attachments]
@@ -268,7 +268,7 @@ export function Stage({
     client.speech.stop()
     // Said aloud: a yes to what sends, pays or publishes counts only with the person's confirmation phrase. Said to
     // Mini, which shows no views, the assistant says a little more.
-    client.channel.say(text, language, undefined, true, !inMini).catch(() => setProblem(refusalCopy('failed')))
+    client.channel.say(text, { language, spoken: true, screen: !inMini }).catch(() => setProblem(refusalCopy('failed')))
   })
   const listening = talk.is === 'listening'
   // A tool at work for the answer: the core works rather than thinks.
