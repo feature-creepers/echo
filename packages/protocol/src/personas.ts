@@ -5,7 +5,7 @@ import { z } from 'zod'
  * the persona in use, and chooses that name.
  *
  * A persona is data. Nothing in the product may depend on which persona it is or on what it is called:
- * behaviour follows the stance, and the look follows the accent.
+ * behaviour follows the stance, and the colour of its eye follows the accent.
  */
 
 /** How the assistant handles a request it has doubts about. */
@@ -24,36 +24,17 @@ const ACCENTS = ['blue', 'red'] as const
 const accentSchema = z.preprocess((kept) => (kept === 'cyan' ? 'blue' : kept), z.enum(ACCENTS))
 export type Accent = z.infer<typeof accentSchema>
 
-/**
- * How a persona's core is drawn. Each value names a design, never a persona: the renderers know how to draw
- * each one, always in the persona's accent.
- */
-export const LOOKS = [
-  /** A camera's lens: black glass in a brushed metal ring, with a lamp deep inside it. */
-  'lens',
-  /** A holographic instrument: fine rings of arcs and ticks turning round a small bright core. */
-  'hud'
-] as const
-const lookSchema = z.enum(LOOKS)
-export type Look = z.infer<typeof lookSchema>
-
-/** The look of a persona written before personas had one: the look its accent first came with. */
-const LOOK_OF_ACCENT: Record<Accent, Look> = { blue: 'hud', red: 'lens' }
-
 export const personaIdSchema = z.string().min(1).max(64)
 export type PersonaId = z.infer<typeof personaIdSchema>
 
-export const personaSchema = z
-  .object({
-    /** Identifies the persona for good. It never changes and is never shown. */
-    id: personaIdSchema,
-    /** What the user calls it. */
-    name: z.string().min(1),
-    stance: stanceSchema,
-    accent: accentSchema,
-    look: lookSchema.optional()
-  })
-  .transform(({ look, ...persona }) => ({ ...persona, look: look ?? LOOK_OF_ACCENT[persona.accent] }))
+export const personaSchema = z.object({
+  /** Identifies the persona for good. It never changes and is never shown. */
+  id: personaIdSchema,
+  /** What the user calls it. */
+  name: z.string().min(1),
+  stance: stanceSchema,
+  accent: accentSchema
+})
 export type Persona = z.infer<typeof personaSchema>
 
 /** The longest name a persona can have, in characters. */

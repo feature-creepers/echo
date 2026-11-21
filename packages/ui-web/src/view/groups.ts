@@ -9,7 +9,7 @@ export interface GroupVersion {
 }
 
 /**
- * What one topic shows on the board (docs/SPEC.md, section 13.2): the cards of its latest answer, with those of its
+ * What one topic shows among the answers (docs/SPEC.md, section 13.2): the cards of its latest answer, with those of its
  * earlier answers behind them as versions, so an answer that updates another takes its place instead of standing
  * beside it.
  */

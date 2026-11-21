@@ -69,10 +69,6 @@ window.desktop.onOpenSettings(() => window.dispatchEvent(new Event(OPEN_SETTINGS
 // A picture the person allowed on a card, taken when the app asks: the window turns the camera on for nothing else.
 serveCamera()
 
-// Where the system draws a translucent material behind the window, the page lets it through its side panes.
-const material = new URLSearchParams(location.search).get('material')
-if (material) document.documentElement.dataset.material = material
-
 const root = document.getElementById('root')
 if (!root) throw new Error('The page has no #root element.')
 createRoot(root).render(

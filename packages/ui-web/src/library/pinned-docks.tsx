@@ -13,7 +13,7 @@ import { PinnedCard } from './pinned-card.tsx'
 /** A dock's width, and the gap it keeps from the window's edge, in pixels. */
 const WIDTH = 280
 const EDGE = 12
-/** The room a dock takes from the screen's edge, in pixels: the board of views keeps clear of it. */
+/** The room a dock takes from the screen's edge, in pixels: the answers keep clear of it. */
 export const DOCK_ROOM = EDGE + WIDTH
 /** The least room left between a dock and the conversation's column. */
 const GAP = 32

@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { advanceEye, type EyeMotion, restingEye } from './eye-motion.ts'
-import type { Mood } from './life.ts'
+import { advanceEye, type EyeMotion, type Mood, restingEye } from './eye-motion.ts'
 
 /** The eye after living `seconds` in a mood, a sixtieth of a second at a time. */
 function live(eye: EyeMotion, mood: Mood, seconds: number, level = 0): EyeMotion {

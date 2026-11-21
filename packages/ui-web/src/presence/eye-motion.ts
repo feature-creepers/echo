@@ -1,11 +1,15 @@
-import type { Mood } from './life.ts'
-
 /**
  * How the eye moves, worked out once per frame as a few numbers its drawing is placed by. The eye is a composition
  * of lines and planes: a ring, a hatched half that turns, an inner ring, a wedge of the accent, a line with a square
  * riding it, and a pupil. A mood shows in the pace of what turns and travels, never in a new shape, and a change of
  * mood eases in, so a turn that goes back and forth between thinking and working reads as one steady state.
  */
+
+/**
+ * What the assistant is doing, as the eye shows it. Thinking is the assistant making up its mind; working is a tool
+ * at work for it: a search, a command, a page it reads.
+ */
+export type Mood = 'idle' | 'listening' | 'thinking' | 'working' | 'speaking' | 'asleep'
 
 /** Where each part of the eye is at one moment. */
 export interface EyePose {

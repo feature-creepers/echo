@@ -67,7 +67,7 @@ export function PersonasForm({ personas, active, submitLabel, doneLabel, onSubmi
           const problem = problems[persona.id]
           const answers = activeIn(draft, active) === persona.id
           return (
-            <div key={persona.id} style={accentStyle(persona.accent, persona.look)} className="grid items-start gap-x-6 gap-y-3 py-4 sm:grid-cols-[1fr_16rem]">
+            <div key={persona.id} style={accentStyle(persona.accent)} className="grid items-start gap-x-6 gap-y-3 py-4 sm:grid-cols-[1fr_16rem]">
               <div className="flex min-w-0 items-start gap-4">
                 <Eye size={56} mood={answers ? 'idle' : 'asleep'} className="shrink-0" />
                 <div className="grid min-w-0 gap-1.5">

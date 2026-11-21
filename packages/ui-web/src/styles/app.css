@@ -92,20 +92,6 @@
     outline-offset: 2px;
   }
 
-  /*
-   * The window's own ground, under every screen and the title row alike. Where the system draws a translucent
-   * material behind the page, the page is transparent and only tints it, nearly opaque, as native apps do.
-   */
-  :root {
-    --window: var(--color-ground);
-  }
-  :root[data-material="vibrant"] {
-    --window: color-mix(in srgb, var(--color-ground) 90%, transparent);
-  }
-  :root[data-material="vibrant"] body {
-    background: transparent;
-  }
-
   button {
     cursor: pointer;
   }

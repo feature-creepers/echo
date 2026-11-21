@@ -1,7 +1,7 @@
 import type { Client, CoreLink } from '@repo/client'
 import { describeShortcut, followServices, matchesShortcut, pinnedOf } from '@repo/client'
 import { useFollowed } from '@repo/client/react'
-import type { Accent, CommandInput, Look, PersonaId, TurnId } from '@repo/protocol'
+import type { Accent, CommandInput, PersonaId, TurnId } from '@repo/protocol'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, type Ref, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import type { SpeechEngine } from '../audio/engine.ts'
@@ -18,9 +18,7 @@ import { LibraryContext, type LibraryControls } from '../library/library-context
 import { PinnedDocksView, usePinnedDocks } from '../library/pinned-docks.tsx'
 import { PlayerProvider, usePlayer } from '../media/player-provider.tsx'
 import { Onboarding } from '../onboarding/onboarding.tsx'
-import { LivingGround } from '../presence/ground.tsx'
-import { CoreLightContext, createCoreLight } from '../presence/light.ts'
-import { Orb } from '../presence/orb.tsx'
+import { Eye } from '../presence/eye.tsx'
 import { Button } from '../primitives/button.tsx'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
@@ -59,13 +57,9 @@ const FLAT = 'hover:bg-transparent active:bg-transparent active:text-text-soft a
  * from the person's settings.
  */
 export function Shell({ device, ...rest }: ShellProps) {
-  // The light the core casts on the ground: written by the core each frame it draws, read by the ground.
-  const [light] = useState(createCoreLight)
   return (
     <DeviceProvider host={device}>
-      <CoreLightContext.Provider value={light}>
-        <Screens {...rest} />
-      </CoreLightContext.Provider>
+      <Screens {...rest} />
     </DeviceProvider>
   )
 }
@@ -249,7 +243,7 @@ function Connected({ productName, client, engine, mini }: { productName: string;
 
   const { personas } = snapshot.settings
   const shownPersona = personas.available.find((persona) => persona.id === (picked ?? personas.active))
-  const { accent, look } = shownPersona ?? {}
+  const accent = shownPersona?.accent
   // First launch is for someone whose personas were not confirmed when the app opened. Once in it, the person
   // stays in it until its last step, although the personas are confirmed halfway through.
   entered.current ??= personas.confirmed ? { is: 'main' } : { is: 'onboarding' }
@@ -259,14 +253,14 @@ function Connected({ productName, client, engine, mini }: { productName: string;
 
   if (showing.is === 'onboarding' && mini.on) {
     return (
-      <Frame productName={productName} accent={accent} look={look} mini={mini}>
+      <Frame productName={productName} accent={accent} mini={mini}>
         <Notice title="Set up in the full window" />
       </Frame>
     )
   }
   if (showing.is === 'onboarding') {
     return (
-      <Frame productName={productName} accent={accent} look={look}>
+      <Frame productName={productName} accent={accent}>
         <Onboarding
           productName={productName}
           personas={personas}
@@ -332,7 +326,6 @@ function Connected({ productName, client, engine, mini }: { productName: string;
       <Frame
         productName={productName}
         accent={accent}
-        look={look}
         actions={titleActions}
         corner={cornerActions}
         mini={mini}
@@ -395,9 +388,8 @@ function Connected({ productName, client, engine, mini }: { productName: string;
                     onBack={toMain}
                   />
                 ) : (
-                  // The composer stays centred in the window whatever is pinned; the board of views takes the room between
+                  // The composer stays centred in the window whatever is pinned; the answers take the room between
                   // the docks while they stand beside it.
-                  // Nothing clips here, so the light around the core runs on into the title row, which is the same ground.
                   <div className="relative h-full">
                     <Stage
                       client={client}
@@ -435,8 +427,6 @@ interface FrameProps {
   productName: string
   /** The accent everything inside shows. Left out, the neutral one. */
   accent?: Accent | undefined
-  /** The look of the core drawn inside. */
-  look?: Look | undefined
   /** What the title row offers, beside the product's name. */
   actions?: ReactNode
   /**
@@ -467,16 +457,15 @@ interface FrameProps {
  * shown while the pointer is over the window or the keyboard is in it; on Windows and Linux the system's buttons stay
  * over its right end, and what Mini shows starts under them.
  */
-function Frame({ productName, accent, look, actions, corner, mini, side, sideOpen = false, frameRef, children }: FrameProps) {
+function Frame({ productName, accent, actions, corner, mini, side, sideOpen = false, frameRef, children }: FrameProps) {
   return (
     // Clipped, not hidden: what slides in or out past an edge (the side sheet, the pinned widgets) is cut there, and
     // the window can never be scrolled sideways, not even by bringing something into view or giving it the keyboard.
     <div
       ref={frameRef}
-      className={cn('accent-shift relative flex h-screen overflow-clip bg-(--window)', mini?.on && 'group/mini drag')}
-      style={accentStyle(accent, look)}
+      className={cn('accent-shift relative flex h-screen overflow-clip bg-ground', mini?.on && 'group/mini drag')}
+      style={accentStyle(accent)}
     >
-      <Ground />
       <div className="relative flex min-w-0 flex-1 flex-col">
         <header className="drag relative h-[env(titlebar-area-height,var(--frame-title-bar))] shrink-0">
           {mini?.on ? (
@@ -540,27 +529,11 @@ function useWindowFocused(): boolean {
   return focused
 }
 
-/**
- * The ground of every screen, title row included: fine, faint dots under a light that drifts over them, lit round
- * the core and where it looks, and a little of the accent's light from the top of the window.
- */
-function Ground() {
-  return (
-    <>
-      <LivingGround />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(56%_42%_at_50%_0%,color-mix(in_oklab,var(--accent)_8%,transparent),transparent_100%)]"
-      />
-    </>
-  )
-}
-
 /** What fills the window when there is nothing else to show: the app is starting, or it could not. */
 function Notice({ title, detail, problem = false }: { title: string; detail?: string; problem?: boolean }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 px-8 text-center" role={problem ? 'alert' : 'status'}>
-      {!problem && <Orb size={120} mood="thinking" />}
+      {!problem && <Eye size={120} mood="thinking" />}
       <Eyebrow className={problem ? 'text-danger' : undefined}>{title}</Eyebrow>
       {detail !== undefined && <p className="max-w-xl text-sm text-text-soft leading-relaxed [overflow-wrap:anywhere]">{detail}</p>}
     </div>

@@ -11,8 +11,8 @@ const settings: Settings = {
   revision: 3,
   personas: {
     available: [
-      { id: 'one', name: 'Ada', stance: 'accommodating', accent: 'blue', look: 'hud' },
-      { id: 'two', name: 'Grace', stance: 'critical', accent: 'red', look: 'lens' }
+      { id: 'one', name: 'Ada', stance: 'accommodating', accent: 'blue' },
+      { id: 'two', name: 'Grace', stance: 'critical', accent: 'red' }
     ],
     active: 'one',
     confirmed: true

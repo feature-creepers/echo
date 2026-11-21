@@ -1,7 +1,6 @@
 import { useEffect, useId, useRef } from 'react'
 import { cn } from '../primitives/cn.ts'
-import { advanceEye, type EyePose, restingEye } from './eye-motion.ts'
-import type { Mood } from './life.ts'
+import { advanceEye, type EyePose, type Mood, restingEye } from './eye-motion.ts'
 import { whileSeen } from './while-seen.ts'
 
 interface EyeProps {

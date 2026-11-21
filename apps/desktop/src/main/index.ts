@@ -137,7 +137,7 @@ function openWindow(visible: boolean): BrowserWindow {
     // Windows and macOS show the icon the package carries; a Linux desktop shows the one the window gives.
     ...(process.platform === 'linux' ? { icon: nativeImage.createFromBuffer(appIcon(256, 'round')) } : {}),
     // No title bar above the page: the page's own title row is the bar, with the system's buttons drawn over it.
-    ...look.options,
+    ...look,
     webPreferences: { preload: built('../preload/index.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false }
   })
   window.once('ready-to-show', () => {
@@ -155,11 +155,9 @@ function openWindow(visible: boolean): BrowserWindow {
   })
 
   // In development the page is served by the bundler, so a change shows without a rebuild.
-  // The page is told whether the system draws a material behind it, so it can let it through.
-  const query = look.vibrant ? { material: 'vibrant' } : {}
   const served = process.env.ELECTRON_RENDERER_URL
-  if (served) void window.loadURL(`${served}?${new URLSearchParams(query)}`)
-  else void window.loadFile(built('../renderer/index.html'), { query })
+  if (served) void window.loadURL(served)
+  else void window.loadFile(built('../renderer/index.html'))
   return window
 }
 

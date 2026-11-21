@@ -6,7 +6,7 @@ import { followSettings } from './settings.ts'
 function at(revision: number): Settings {
   return {
     revision,
-    personas: { available: [{ id: 'first', name: 'Ada', stance: 'accommodating', accent: 'blue', look: 'hud' }], active: 'first', confirmed: revision > 0 },
+    personas: { available: [{ id: 'first', name: 'Ada', stance: 'accommodating', accent: 'blue' }], active: 'first', confirmed: revision > 0 },
     engines: { models: {}, efforts: {} },
     access: DEFAULT_ACCESS,
     languages: DEFAULT_LANGUAGES,

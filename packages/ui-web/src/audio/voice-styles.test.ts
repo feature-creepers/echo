@@ -5,8 +5,8 @@ import { introduction } from './introductions.ts'
 import { firstLanguage } from './voice-picker.tsx'
 import { languageOf, paceOf, styleOf, styleOfStance, withPick } from './voice-styles.ts'
 
-const ally: Persona = { id: 'first', name: 'Ada', stance: 'accommodating', accent: 'blue', look: 'hud' }
-const critic: Persona = { id: 'second', name: 'Grace', stance: 'critical', accent: 'red', look: 'lens' }
+const ally: Persona = { id: 'first', name: 'Ada', stance: 'accommodating', accent: 'blue' }
+const critic: Persona = { id: 'second', name: 'Grace', stance: 'critical', accent: 'red' }
 
 /** The voice's styles, as its engine names them. */
 const STYLES = ['f1', 'f2', 'f3', 'f4', 'f5', 'm1', 'm2', 'm3', 'm4', 'm5']

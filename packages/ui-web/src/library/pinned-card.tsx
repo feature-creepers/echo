@@ -31,7 +31,7 @@ interface PinnedCardProps {
 
 /**
  * One pinned widget, bare on the ground: its name in capitals over a hairline, with what can be done with it there
- * while it is pointed at, then the widget drawn live, as dense as on the board. A tall one is cut to a fixed height,
+ * while it is pointed at, then the widget drawn live, as dense as in an answer. A tall one is cut to a fixed height,
  * fading where it is cut, until unfolded. In a dock, it is dragged by its name's row.
  */
 export function PinnedCard({ widget, controls, actions, dragged, landed, shut, unfolded, onShut, onUnfold, onPress }: PinnedCardProps) {

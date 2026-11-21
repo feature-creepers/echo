@@ -1,6 +1,6 @@
 import type { DeviceSettings, DeviceSettingsChange, UpdateState } from '@repo/client'
 import type { Accent } from '@repo/protocol'
-import type { Mood } from '../presence/life.ts'
+import type { Mood } from '../presence/eye-motion.ts'
 
 export type ShortcutName = keyof DeviceSettings['shortcuts']
 

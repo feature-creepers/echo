@@ -145,8 +145,6 @@ export {
 export {
   type Accent,
   earlierPersonaName,
-  LOOKS,
-  type Look,
   PERSONA_NAME_MAX_LENGTH,
   type Persona,
   type PersonaId,
