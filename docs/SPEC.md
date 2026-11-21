@@ -266,8 +266,8 @@ The person still hears one voice: every session receives the same persona, and a
 
 **An answer has three layers**, in this order, so the voice starts first:
 
-1. **What is said.** Short, as a friend says it (section 8.5): the session's text, spoken sentence by sentence as it is written, and the caption. A thread writes it before any tool call except a search.
-2. **What is shown.** The view (`ui_render`), drawn while the voice speaks.
+1. **What is said.** Short, as a friend says it (section 8.5): the session's text, spoken sentence by sentence as it is written, and the caption. It is also the headline over the answer's cards, so it is one or two short sentences that stand on their own. A thread writes it before any tool call except a search.
+2. **What is shown.** The view (`ui_render`), drawn while the voice speaks, in few words: labels of one to three words, figures rather than sentences, and nothing that repeats what was said.
 3. **The full work.** Every tool call with its input and whole output, kept with the exchange and read in the side sheet (section 13.3); and a written answer in Markdown (`answer_write`) only when the person asked for detail, a report or a document to keep, or when the answer does not fit what is said and shown. The person does not read long text: what is shown carries the detail. A project's report is a few lines (section 7.11).
 
 The instructions, a reminder at the end of each request and the core hold the order: a call to `ui_render` or `answer_write` before anything was said is sent back once ("say the short answer first"), after which the model keeps the order for the rest of its thread. A layer is a tool, not a marker in the text, because both harnesses deliver tool calls reliably and in order.

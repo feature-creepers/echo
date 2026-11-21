@@ -314,6 +314,7 @@ describe('threads', () => {
     expect(harness.sessions[0]?.request.web).toBeUndefined()
     expect(thread?.request.instructions).toContain('"Dinner tonight"')
     expect(thread?.request.instructions).toContain('THE SCREEN')
+    expect(thread?.request.instructions).toContain('shown as the headline over your cards, so it is one or two short sentences that stand on their own')
     expect(thread?.sent).toEqual([`(Now: Tuesday, 17 November 2026, 09:00 (Europe/Paris))\nWhat should I cook tonight?\n\n${SPEAK_FIRST}`])
 
     thread?.emit({ type: 'text', text: 'A risotto would work. ' })

@@ -27,6 +27,11 @@ describe('describeCatalog', () => {
     expect(text).toContain('Left out, the cards share the row evenly.')
   })
 
+  it('tells the model that what it says is the headline, and a card carries few words', () => {
+    expect(text).toContain('What you say aloud is shown as the headline over your cards')
+    expect(text).toContain('labels of one to three words, figures rather than sentences, never a sentence that repeats what you said')
+  })
+
   it('tells the model to play media in the app, not to link to a web player', () => {
     expect(text).toContain('- Media { url: string; kind?: "audio" | "video"; title: string;')
     expect(text).toContain('Never show a link to a web player instead.')
