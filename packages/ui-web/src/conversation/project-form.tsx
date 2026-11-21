@@ -7,8 +7,8 @@ import { useDevice } from '../device/device.tsx'
 import { Button } from '../primitives/button.tsx'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
-import { BackGlyph } from '../primitives/icons.tsx'
 import { TEXT_AREA } from '../settings/field.ts'
+import { BackLink } from './back-link.tsx'
 import { projectFolders } from './project-folders.ts'
 
 interface ProjectFormProps {
@@ -77,17 +77,11 @@ export function ProjectForm({ client, onOpened, onBack }: ProjectFormProps) {
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: Escape and Ctrl+Enter anywhere in the form, as in a dialog
     <div className="flex min-h-0 flex-1 flex-col" onKeyDown={keys}>
-      <div className="grid grid-cols-1 gap-2 border-line border-b px-4 py-3">
-        <button
-          type="button"
-          onClick={onBack}
-          className="-ml-1 flex w-fit items-center gap-1 px-1 py-0.5 text-text-faint text-xs transition-colors hover:text-text"
-        >
-          <BackGlyph /> Threads
-        </button>
-        <div className="grid gap-0.5">
-          <span className="font-medium text-[0.9375rem] leading-snug">Open a project</span>
-          <span className="text-text-faint text-xs">Work together in a folder of yours: code, writing, accounts.</span>
+      <div className="grid grid-cols-1 gap-2 border-line border-b px-4 pt-2 pb-3">
+        <BackLink onClick={onBack}>Threads</BackLink>
+        <div className="grid gap-1">
+          <span className="display text-[1.75rem] leading-[1.5rem]">Open a project</span>
+          <span className="text-[0.8125rem] text-text-soft">Work together in a folder of yours: code, writing, accounts.</span>
         </div>
       </div>
 
@@ -97,7 +91,7 @@ export function ProjectForm({ client, onOpened, onBack }: ProjectFormProps) {
             <Eyebrow>Folder</Eyebrow>
           </span>
           {folders.length > 0 && (
-            <div role="radiogroup" aria-labelledby={ids.folders} className="grid gap-px">
+            <div role="radiogroup" aria-labelledby={ids.folders} className="grid border-text border-t-2">
               {folders.map((one) => {
                 const chosen = one.path === folder
                 return (
@@ -109,18 +103,18 @@ export function ProjectForm({ client, onOpened, onBack }: ProjectFormProps) {
                     aria-checked={chosen}
                     onClick={() => setFolder(one.path)}
                     className={cn(
-                      'flex min-w-0 items-center gap-3 px-3 py-2 text-left transition-colors duration-(--duration-quick) ease-soft',
-                      chosen ? 'bg-text/[0.09] shadow-[inset_0_0_0_1px_rgb(235_230_218/0.14)]' : 'hover:bg-raised'
+                      '-outline-offset-1 flex min-w-0 items-center gap-3 border-line border-t px-1 py-2 text-left transition-colors duration-(--duration-quick) ease-soft first:border-t-0 hover:bg-text/[0.06]',
+                      chosen ? 'text-text' : 'text-text-soft'
                     )}
                   >
-                    <span aria-hidden="true" className={cn('size-1.5 shrink-0', chosen ? 'bg-accent' : 'shadow-[inset_0_0_0_1px_rgb(235_230_218/0.3)]')} />
+                    <span aria-hidden="true" className={cn('size-3 shrink-0', chosen ? 'bg-text' : 'shadow-[inset_0_0_0_1px_var(--color-line-strong)]')} />
                     <span className="grid min-w-0 flex-1 gap-0.5">
-                      <span className="truncate text-sm">{lastPart(one.path)}</span>
-                      <span dir="rtl" title={one.path} className="block truncate text-left font-mono text-[0.6875rem] text-text-faint">
+                      <span className="truncate text-[0.8125rem]">{lastPart(one.path)}</span>
+                      <span dir="rtl" title={one.path} className="block truncate text-left font-mono text-[0.6875rem] text-text-soft">
                         <bdi>{one.path}</bdi>
                       </span>
                     </span>
-                    {one.known && <span className="shrink-0 text-label text-text-faint">Worked in</span>}
+                    {one.known && <span className="caps shrink-0 text-text-soft">Worked in</span>}
                   </button>
                 )
               })}
@@ -131,7 +125,7 @@ export function ProjectForm({ client, onOpened, onBack }: ProjectFormProps) {
               Choose a folder…
             </Button>
           ) : (
-            folders.length === 0 && <p className="text-text-faint text-xs">Give a folder to change in Settings, Access, or ask for one by voice.</p>
+            folders.length === 0 && <p className="text-[0.8125rem] text-text-soft">Give a folder to change in Settings, Access, or ask for one by voice.</p>
           )}
         </div>
 
@@ -150,7 +144,7 @@ export function ProjectForm({ client, onOpened, onBack }: ProjectFormProps) {
           />
         </div>
 
-        <p className="text-text-faint text-xs leading-relaxed">
+        <p className="text-[0.8125rem] text-text-soft leading-relaxed">
           {known
             ? 'Its thread there carries on, or a new one works beside it while it is busy.'
             : 'It may read and change files in this folder. Each change and command is decided by your approval level, and kept in Activity.'}
@@ -158,7 +152,7 @@ export function ProjectForm({ client, onOpened, onBack }: ProjectFormProps) {
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-line border-t px-4 py-3">
-        <span role="alert" className="min-w-0 flex-1 text-danger text-xs">
+        <span role="alert" className="min-w-0 flex-1 text-[0.8125rem] text-danger">
           {problem}
         </span>
         <Button kind="quiet" size="sm" onClick={onBack} disabled={busy}>

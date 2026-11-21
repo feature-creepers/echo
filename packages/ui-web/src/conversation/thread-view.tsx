@@ -12,10 +12,11 @@ import { changedInWords, lastPart, relativePath, totalOf } from '../changes/word
 import { Button } from '../primitives/button.tsx'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
-import { BackGlyph } from '../primitives/icons.tsx'
+import { ChevronGlyph } from '../primitives/icons.tsx'
 import { accentStyle } from '../styles/accent.ts'
 import { settle } from '../styles/motion.ts'
 import { Markdown } from '../view/blocks/markdown.tsx'
+import { BackLink } from './back-link.tsx'
 import { useFollowLatest } from './follow-latest.ts'
 import { AnswerActions } from './full-answer.tsx'
 import { GoArrow } from './go-arrow.tsx'
@@ -84,18 +85,18 @@ export function ThreadView({ client, thread, threads, personas, onBack, onOpenTh
         onFocus={() => void client.threads.focus(thread).catch(() => undefined)}
       />
       <div className="relative flex min-h-0 flex-1 flex-col">
-        <div ref={scroll.ref} className="scroll-quiet min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4">
+        <div ref={scroll.ref} className="scroll-quiet min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pt-1 pb-4">
           <div>
             {pages === undefined ? (
               problem === undefined ? (
-                <p className="text-sm text-text-faint">Reading…</p>
+                <p className="caps pt-3 text-text-soft">Reading</p>
               ) : (
-                <p className="text-danger text-sm [overflow-wrap:anywhere]">{problem}</p>
+                <p className="pt-3 text-[0.8125rem] text-danger [overflow-wrap:anywhere]">{problem}</p>
               )
             ) : pages.entries.length === 0 ? (
-              <p className="text-sm text-text-faint">Nothing has been answered here yet.</p>
+              <p className="pt-3 text-[0.8125rem] text-text-soft">Nothing has been answered here yet.</p>
             ) : (
-              <ol className="grid grid-cols-1 gap-6">
+              <ol className="grid grid-cols-1">
                 {pages.earlier > 0 && <EarlierRequests count={pages.earlier} reading={earlier} read={readEarlier} area={scroll.area} />}
                 {pages.entries.map((entry) => (
                   <ExchangeEntry
@@ -148,10 +149,8 @@ function ThreadHeader({ header, threads, onBack, onOpenThread, onStop, onFocus }
         ].filter((part) => part !== undefined && part !== '')
   return (
     <div className="grid grid-cols-1 gap-2 border-line border-b px-4 pt-2 pb-3">
-      <div className="-ml-1 flex min-w-0 items-center gap-0.5 text-text-faint text-xs">
-        <button type="button" onClick={onBack} className="flex shrink-0 items-center gap-1 px-1 py-0.5 transition-colors hover:text-text">
-          <BackGlyph /> Threads
-        </button>
+      <div className="caps flex min-h-6 min-w-0 items-center gap-1.5 text-text-soft">
+        <BackLink onClick={onBack}>Threads</BackLink>
         {above && (
           <>
             <span aria-hidden="true">/</span>
@@ -159,7 +158,7 @@ function ThreadHeader({ header, threads, onBack, onOpenThread, onStop, onFocus }
               type="button"
               onClick={() => onOpenThread(above.id)}
               title={`Show the work of ${above.title}`}
-              className="min-w-0 truncate px-1 py-0.5 transition-colors hover:text-text"
+              className="min-w-0 truncate transition-colors duration-(--duration-quick) ease-soft hover:text-text"
             >
               {above.title}
             </button>
@@ -178,8 +177,8 @@ function ThreadHeader({ header, threads, onBack, onOpenThread, onStop, onFocus }
       {header && (
         <div className="grid min-w-0 gap-1">
           <span className="font-medium text-[0.9375rem] leading-snug [overflow-wrap:anywhere]">{header.title}</span>
-          <span className="flex min-w-0 items-center gap-2 text-label text-text-faint">
-            <StateDot state={header.state} />
+          <span className="caps flex min-w-0 items-center gap-2 text-text-soft">
+            <StateDot state={header.state} archived={header.archived} />
             <span className="min-w-0 truncate" title={header.folder}>
               {meta.join(' · ')}
             </span>
@@ -187,20 +186,20 @@ function ThreadHeader({ header, threads, onBack, onOpenThread, onStop, onFocus }
         </div>
       )}
       {under.length > 0 && (
-        <div className="grid min-w-0 gap-1.5 pt-0.5">
+        <div className="grid min-w-0 gap-1 pt-1">
           <Eyebrow>{underWords(under)}</Eyebrow>
-          <ul className="flex min-w-0 flex-wrap gap-1">
+          <ul className="grid min-w-0 border-text border-t-2">
             {under.map((thread) => (
-              <li key={thread.id} className="min-w-0 max-w-full">
+              <li key={thread.id} className="min-w-0 border-line border-t first:border-t-0">
                 <button
                   type="button"
                   onClick={() => onOpenThread(thread.id)}
                   title={`Show the work of ${thread.title}`}
-                  className="group flex h-6 min-w-0 max-w-full items-center gap-1.5 bg-text/[0.05] pr-1.5 pl-2 text-text-soft text-xs shadow-[inset_0_0_0_0.5px_rgb(235_230_218/0.07)] transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.09] hover:text-text"
+                  className="group -outline-offset-1 flex h-7 w-full min-w-0 items-center gap-2.5 px-1 text-left text-[0.8125rem] text-text-soft transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.06] hover:text-text"
                 >
-                  <StateDot state={thread.state} />
-                  <span className="min-w-0 truncate">{thread.title}</span>
-                  <GoArrow className="text-text-faint" />
+                  <StateDot state={thread.state} archived={thread.archived} />
+                  <span className="min-w-0 flex-1 truncate">{thread.title}</span>
+                  <GoArrow />
                 </button>
               </li>
             ))}
@@ -228,9 +227,9 @@ function EarlierRequests({ count, reading, read, area }: { count: number; readin
 
   const many = count === 1 ? 'One earlier request' : `${count} earlier requests`
   return (
-    <li ref={setMark} className="flex min-h-6 items-center justify-center gap-2 text-label text-text-faint">
+    <li ref={setMark} className="caps flex min-h-8 items-center justify-center gap-2 text-text-soft">
       {reading.state === 'reading' ? (
-        <span>Reading earlier requests…</span>
+        <span>Reading earlier requests</span>
       ) : reading.state === 'failed' ? (
         <>
           <span className="min-w-0 truncate text-danger" title={reading.problem}>
@@ -289,32 +288,30 @@ function ExchangeEntry({ entry, persona, about, context, changes }: ExchangeEntr
     if (running) setWork(true)
   }, [running])
   return (
-    <li className="grid grid-cols-1 gap-1.5" style={accentStyle(persona?.accent)}>
-      <span className="flex items-baseline gap-2 text-[0.6875rem] text-text-faint">
-        <time dateTime={exchange.at}>{clock.format(new Date(exchange.at))}</time>
-        {asked !== 'You' && <span>{asked}</span>}
+    <li className="grid grid-cols-1 gap-1.5 border-line border-t py-3 first:border-t-0" style={accentStyle(persona?.accent)}>
+      <span className="caps flex min-w-0 items-center gap-2 text-text-soft">
+        <time dateTime={exchange.at} className="tabular-nums">
+          {clock.format(new Date(exchange.at))}
+        </time>
+        {asked !== 'You' && <span className="truncate">{asked}</span>}
+        {running && <span className="ml-auto text-accent">Working</span>}
+        {exchange.outcome === 'stopped' && <span className="ml-auto">Stopped</span>}
       </span>
       <button
         type="button"
         aria-expanded={whole}
         onClick={() => setWhole(!whole)}
         title={whole ? 'Show less' : 'Show it whole'}
-        className="grid min-w-0 grid-cols-1 gap-1 text-left outline-none focus-visible:bg-text/[0.04]"
+        className="grid min-w-0 grid-cols-1 gap-1.5 text-left"
       >
         {exchange.said && (
-          <span className={cn('text-[0.8125rem] text-text-soft leading-snug [overflow-wrap:anywhere]', !whole && 'line-clamp-2')}>{exchange.said}</span>
+          <span className={cn('text-[0.8125rem] text-text-soft leading-relaxed [overflow-wrap:anywhere]', !whole && 'line-clamp-2')}>{exchange.said}</span>
         )}
-        {answer && (
-          <span className={cn('border-accent/50 border-l-2 pl-2 text-[0.8125rem] text-text leading-snug [overflow-wrap:anywhere]', !whole && 'line-clamp-3')}>
-            {answer}
-          </span>
-        )}
+        {answer && <span className={cn('text-[0.8125rem] text-text leading-relaxed [overflow-wrap:anywhere]', !whole && 'line-clamp-3')}>{answer}</span>}
       </button>
       <AttachedLine attached={exchange.attached} />
-      {running && !answer && <span className="text-label text-text-faint">Working…</span>}
-      {exchange.outcome === 'stopped' && <span className="text-label text-text-faint">Stopped</span>}
       {exchange.outcome === 'failed' && (
-        <span className="text-danger text-xs leading-snug [overflow-wrap:anywhere]">{exchange.problem ?? 'It could not answer.'}</span>
+        <span className="text-[0.8125rem] text-danger leading-snug [overflow-wrap:anywhere]">{exchange.problem ?? 'It could not answer.'}</span>
       )}
 
       {files && files.length > 0 && <TurnChanges turn={exchange.turn} files={files} context={context} />}
@@ -322,7 +319,7 @@ function ExchangeEntry({ entry, persona, about, context, changes }: ExchangeEntr
       <PlanList plan={exchange.plan} />
 
       {(hasWork || exchange.written) && (
-        <span className="flex min-w-0 flex-wrap items-center gap-1">
+        <span className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
           {hasWork && (
             <Fold open={work} onToggle={() => setWork(!work)}>
               {calls > 0 ? `${calls} ${calls === 1 ? 'call' : 'calls'}` : 'Work'}
@@ -337,9 +334,9 @@ function ExchangeEntry({ entry, persona, about, context, changes }: ExchangeEntr
       )}
 
       {hasWork && work && (
-        <ul className="grid grid-cols-1 overflow-hidden border border-line">
+        <ul className="grid grid-cols-1 border-text border-t-2 border-b border-b-line">
           {earlierSteps > 0 && (
-            <li className="px-3 py-2 text-text-faint text-xs">
+            <li className="py-2 text-[0.75rem] text-text-soft">
               {earlierSteps === 1 ? 'One earlier call is' : `${earlierSteps} earlier calls are`} not shown: this request made too many to show.
             </li>
           )}
@@ -348,9 +345,9 @@ function ExchangeEntry({ entry, persona, about, context, changes }: ExchangeEntr
           ))}
           {!shownByCalls &&
             views.map((view) => (
-              <li key={view.id} className="flex items-baseline gap-2 border-line border-t px-3 py-2 text-xs first:border-t-0">
-                <span className="shrink-0 text-text-soft">Showed a view</span>
-                <span className="min-w-0 truncate text-text-faint">{view.title}</span>
+              <li key={view.id} className="flex items-baseline gap-2 border-line border-t py-2 pl-5 text-[0.75rem] first:border-t-0">
+                <span className="shrink-0 text-text">Showed a view</span>
+                <span className="min-w-0 truncate text-text-soft">{view.title}</span>
               </li>
             ))}
         </ul>
@@ -361,7 +358,7 @@ function ExchangeEntry({ entry, persona, about, context, changes }: ExchangeEntr
           <div className="flex justify-end">
             <AnswerActions text={exchange.written} about={about} />
           </div>
-          <div className="grid grid-cols-1 gap-3 border border-line bg-ground/60 px-3.5 py-3 text-[0.8125rem] leading-relaxed [&_h3]:text-base [&_h4]:text-sm">
+          <div className="grid grid-cols-1 gap-3 border-text border-t-2 pt-3 text-[0.8125rem] leading-relaxed [&_h3]:text-base [&_h4]:text-sm">
             <Markdown text={exchange.written} />
           </div>
         </div>
@@ -377,7 +374,7 @@ function Fold({ open, onToggle, children }: { open: boolean; onToggle(): void; c
       type="button"
       aria-expanded={open}
       onClick={onToggle}
-      className="flex h-5 items-center gap-1 bg-text/[0.05] px-1.5 text-[0.6875rem] text-text-soft outline-none transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.09] hover:text-text focus-visible:bg-text/[0.09]"
+      className="caps flex h-6 items-center gap-1 text-text-soft transition-colors duration-(--duration-quick) ease-soft hover:text-text aria-expanded:text-text"
     >
       <Chevron open={open} />
       {children}
@@ -415,8 +412,11 @@ function Opening({ open, children }: { open: boolean; children: ReactNode }) {
 }
 
 const Chevron = ({ open }: { open: boolean }) => (
-  <span aria-hidden="true" className={cn('w-2 shrink-0 text-text-faint transition-transform duration-(--duration-quick) ease-soft', open && 'rotate-90')}>
-    ›
+  <span
+    aria-hidden="true"
+    className={cn('shrink-0 text-text-soft transition-transform duration-(--duration-quick) ease-soft [&_svg]:size-3', !open && '-rotate-90')}
+  >
+    <ChevronGlyph />
   </span>
 )
 
@@ -431,10 +431,10 @@ function TurnChanges({ turn, files, context }: { turn: string; files: FileChange
         type="button"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center gap-2 border border-line px-3 py-2 text-left text-xs transition-colors hover:bg-raised"
+        className="-outline-offset-1 flex w-full items-center gap-2 border-line border-y py-2 pr-1 text-left text-[0.75rem] transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.06]"
       >
         <Chevron open={open} />
-        <span className="min-w-0 flex-1 truncate text-text-soft">{said.files}</span>
+        <span className="min-w-0 flex-1 truncate text-text">{said.files}</span>
         <Counts change={said} className="text-[0.6875rem]" />
       </button>
       <Opening open={open}>
@@ -464,26 +464,26 @@ function StepRow({ step, use, context }: { step: Step; use: AccessUse | undefine
         type="button"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className="flex w-full items-baseline gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-raised"
+        className="-outline-offset-1 flex w-full items-baseline gap-2 py-2 pr-1 text-left text-[0.75rem] transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.06]"
       >
         <Chevron open={open} />
-        <span className={cn('shrink-0', step.failed ? 'text-danger' : 'text-text-soft')}>{stepTitle(step, use)}</span>
+        <span className={cn('shrink-0', step.failed ? 'text-danger' : 'text-text')}>{stepTitle(step, use)}</span>
         {summary && FILE_TOOLS.has(step.tool) ? (
           // A path gives way from its start, so the file's name stays in sight.
-          <PathLine path={summary} className="flex-1 text-[0.6875rem] text-text-faint" />
+          <PathLine path={summary} className="flex-1 text-[0.6875rem] text-text-soft" />
         ) : (
-          <span className={cn('min-w-0 flex-1 truncate text-text-faint', (command || step.tool.startsWith('computer_')) && 'font-mono text-[0.6875rem]')}>
+          <span className={cn('min-w-0 flex-1 truncate text-text-soft', (command || step.tool.startsWith('computer_')) && 'font-mono text-[0.6875rem]')}>
             {summary}
           </span>
         )}
         {total && <Counts change={total} className="text-[0.6875rem]" />}
-        {changed?.undo?.done && <span className="shrink-0 text-[0.6875rem] text-accent">undone</span>}
-        <span className="shrink-0 font-mono text-[0.625rem] text-text-faint tabular-nums">
-          {running ? <span className="animate-pulse text-accent">running</span> : seconds !== undefined ? `${seconds.toFixed(1)} s` : ''}
+        {changed?.undo?.done && <span className="caps shrink-0 text-text-soft">Undone</span>}
+        <span className="caps shrink-0 text-text-soft tabular-nums">
+          {running ? <span className="animate-pulse text-accent">Running</span> : seconds !== undefined ? `${seconds.toFixed(1)} s` : ''}
         </span>
       </button>
       <Opening open={open}>
-        <div className="grid grid-cols-1 gap-2.5 px-3 pb-3">
+        <div className="grid grid-cols-1 gap-2.5 pb-3 pl-5">
           {changed ? (
             <>
               <Changes client={context.client} of={{ use: changed.id }} relative={context.relative} version={versionOf(changed)} />
@@ -535,8 +535,8 @@ function useWholeStep(context: StepContext, step: Step, wanted: boolean): Step |
 function Detail({ label, text }: { label: string; text: string }) {
   return (
     <div className="grid grid-cols-1 gap-1">
-      <span className="text-[0.6875rem] text-text-faint">{label}</span>
-      <pre className="scroll-quiet max-h-72 overflow-auto whitespace-pre-wrap bg-ground p-2.5 font-mono text-[0.6875rem] text-text-soft leading-relaxed [overflow-wrap:anywhere]">
+      <Eyebrow>{label}</Eyebrow>
+      <pre className="scroll-quiet max-h-72 overflow-auto whitespace-pre-wrap border border-line bg-surface p-2.5 font-mono text-[0.6875rem] text-text-soft leading-relaxed [overflow-wrap:anywhere]">
         {text}
       </pre>
     </div>

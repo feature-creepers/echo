@@ -142,14 +142,15 @@ export function SideSheet({ client, personas, place, tab, onMove, onOpenMemory, 
       // Its width follows the one the person chose, within what the window allows, without React drawing it again.
       data-sheet-width
       style={{ ...sheetWidthStyle(resize.width), width: SHEET_CSS_WIDTH }}
-      className="relative z-30 flex h-full min-w-0 shrink-0 flex-col border-line border-l bg-surface"
+      className="relative z-30 flex h-full min-w-0 shrink-0 flex-col border-line border-l bg-ground"
     >
       <SheetHandle {...resize} />
       {/* The sheet's top is the window's top: the title row's height, dragging the window, with room kept on the right
           for the window's own buttons, which stand there whether it is open or not, and on Windows and Linux for the
           system's controls, drawn over it. */}
-      <header className="drag flex h-[env(titlebar-area-height,var(--frame-title-bar))] shrink-0 items-center gap-2 pr-[calc(100vw-env(titlebar-area-x,0px)-env(titlebar-area-width,100vw)+5rem)] pl-2">
-        <div role="tablist" aria-label="What the side sheet shows" className="no-drag flex min-w-0 flex-1 items-center gap-0.5">
+      <header className="drag flex h-[env(titlebar-area-height,var(--frame-title-bar))] shrink-0 items-center gap-2 pr-[calc(100vw-env(titlebar-area-x,0px)-env(titlebar-area-width,100vw)+5rem)] pl-3">
+        {/* A container, so each tab can say its name only while the three names fit beside the window's buttons. */}
+        <div role="tablist" aria-label="What the side sheet shows" className="no-drag @container flex min-w-0 flex-1 items-stretch gap-3 self-stretch">
           {SHEET_TABS.map((name) => (
             <button
               key={name}
@@ -162,16 +163,16 @@ export function SideSheet({ client, personas, place, tab, onMove, onOpenMemory, 
               onClick={() => onMove({ to: 'tab', tab: name })}
               title={name === 'transcript' && transcriptKey !== '' ? `Transcript (${describeShortcut(transcriptKey, device.mac)})` : TITLES[name]}
               className={cn(
-                'flex h-6 min-w-0 items-center gap-1.5 px-2 text-xs outline-none transition-colors duration-(--duration-quick) ease-soft focus-visible:bg-text/[0.06]',
-                tab === name ? 'bg-text/[0.07] text-text' : 'text-text-faint hover:bg-text/[0.04] hover:text-text-soft'
+                'caps -outline-offset-2 flex min-w-0 items-center gap-1.5 px-1 transition-colors duration-(--duration-quick) ease-soft',
+                tab === name ? 'text-text shadow-[inset_0_-2px_0_var(--color-text)]' : 'text-text-soft hover:text-text'
               )}
             >
-              <span className="shrink-0 opacity-80">{GLYPHS[name]({})}</span>
-              {/* The chosen tab says its name; the others their glyph, named for the screen reader and the pointer, so the
-                  three fit beside the window's buttons in a narrow sheet. */}
-              {tab === name ? <span className="truncate">{TITLES[name]}</span> : <span className="sr-only">{TITLES[name]}</span>}
+              <span className="shrink-0">{GLYPHS[name]({})}</span>
+              {/* The chosen tab always says its name; the others say theirs once the sheet is wide enough for all three,
+                  else their glyph alone, named for the screen reader and the pointer. */}
+              <span className={cn('truncate', tab !== name && 'sr-only @min-[20rem]:not-sr-only')}>{TITLES[name]}</span>
               {name === 'threads' && working > 0 && (
-                <span className="flex items-center gap-1 text-[0.6875rem] text-accent tabular-nums" title={`${working} at work`}>
+                <span className="flex items-center gap-1 text-accent tabular-nums" title={`${working} at work`}>
                   <StateDot state="working" />
                   {working}
                 </span>

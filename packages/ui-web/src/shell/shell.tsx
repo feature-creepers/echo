@@ -51,6 +51,9 @@ export const OPEN_SETTINGS_EVENT = 'echo:open-settings'
 /** What the title row's button to the hub, and the hub itself, are called where the person reads them. */
 const HUB_NAME = 'Library and settings'
 
+/** The window's own buttons are bare glyphs: what they open shows in the full ink, never on a plane. */
+const FLAT = 'hover:bg-transparent active:bg-transparent active:text-text-soft aria-pressed:bg-transparent'
+
 /**
  * The interface, whole: it decides what fills the window from where the app stands with its core and
  * from the person's settings.
@@ -282,13 +285,14 @@ function Connected({ productName, client, engine, mini }: { productName: string;
   const widgetsShown = showing.is === 'main' && docks.shown
   const cornerActions = (
     <>
-      <IconButton label={HUB_NAME} active={showing.is === 'hub'} onClick={() => (showing.is === 'hub' ? toMain() : openHub())}>
+      <IconButton label={HUB_NAME} active={showing.is === 'hub'} onClick={() => (showing.is === 'hub' ? toMain() : openHub())} className={FLAT}>
         <LibraryGlyph />
       </IconButton>
       <IconButton
         label={sheet ? 'Hide the sidebar' : transcriptKey ? `Show the sidebar (${describeShortcut(transcriptKey, device.mac)})` : 'Show the sidebar'}
         active={sheet !== undefined}
         onClick={() => toggleSheet()}
+        className={FLAT}
       >
         <SheetGlyph />
       </IconButton>
@@ -308,6 +312,7 @@ function Connected({ productName, client, engine, mini }: { productName: string;
             <IconButton
               label={widgetsShown ? 'Hide pinned widgets' : 'Show pinned widgets'}
               active={widgetsShown}
+              className={FLAT}
               onClick={() => {
                 if (showing.is === 'main') return docks.toggle()
                 toMain()

@@ -16,7 +16,7 @@ interface SheetHandleProps {
 /**
  * The sheet's left edge, as a separator that resizes it: dragged with the pointer, moved by the arrow keys, Home
  * and End, and put back to its first width by a double-click. Its hit area is wider than it looks, centred on
- * the edge; under the pointer, after a moment, or while dragged, a hairline of the accent marks it.
+ * the edge; under the pointer, after a moment, or while dragged, a line of the full ink marks it.
  */
 export function SheetHandle({ width, keep, onPreview, onCommit }: SheetHandleProps) {
   const [dragging, setDragging] = useState(false)
@@ -94,7 +94,7 @@ export function SheetHandle({ width, keep, onPreview, onCommit }: SheetHandlePro
     >
       <span
         aria-hidden="true"
-        className="absolute inset-y-0 left-[5px] w-px bg-accent/50 opacity-0 transition-opacity duration-(--duration-quick) ease-soft group-hover:opacity-100 group-hover:delay-150 group-focus-visible:opacity-100 group-data-dragging:opacity-100 group-data-dragging:delay-0"
+        className="absolute inset-y-0 left-[5px] w-px bg-text opacity-0 transition-opacity duration-(--duration-quick) ease-soft group-hover:opacity-100 group-hover:delay-150 group-focus-visible:opacity-100 group-data-dragging:opacity-100 group-data-dragging:delay-0"
       />
     </div>
   )

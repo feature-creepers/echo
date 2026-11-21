@@ -3,6 +3,7 @@ import { type ComponentProps, useMemo, useState } from 'react'
 import { lastPart } from '../changes/words.ts'
 import { Button } from '../primitives/button.tsx'
 import { cn } from '../primitives/cn.ts'
+import { ChevronGlyph } from '../primitives/icons.tsx'
 import { SearchField } from '../primitives/search-field.tsx'
 import { doingOf } from './plan.ts'
 
@@ -137,10 +138,11 @@ interface ThreadListProps {
 
 /**
  * The threads behind the one conversation, by where they stand: at work, saying what each is doing, then ready, then
- * used today and this week, and last what was put away or left for a week, folded. Each row is a small card: where
- * the thread works and how it stands, its title, then what it does. Each topic carries its side questions and
- * sub-threads under it, folded unless one of them works. A field finds one by its title or folder. Pressing one opens
- * its work; pointing at one offers to stop it while it works, else to archive or restore it.
+ * used today and this week, and last what was put away or left for a week, folded. Each part is a list under its name,
+ * opened by a rule of the ink, its rows parted by hairlines: a square that says how the thread stands, its title and
+ * when it was used, then where it works and what it does. Each topic carries its side questions and sub-threads under
+ * it, folded unless one of them works. A field finds one by its title or folder. Pressing one opens its work; pointing
+ * at one offers to stop it while it works, else to archive or restore it.
  */
 export function ThreadList({ threads, exchanges, selected, onOpen, onStop, onArchive, onOpenProject }: ThreadListProps) {
   const [query, setQuery] = useState('')
@@ -149,10 +151,11 @@ export function ThreadList({ threads, exchanges, selected, onOpen, onStop, onArc
   const now = new Date()
   const sections = useMemo(() => sectionThreads(threads.threads, query), [threads.threads, query])
   const finding = query.trim() !== ''
-  const row = (thread: Thread, nested: boolean) => (
+  const row = (thread: Thread, nested: boolean, setAside: boolean) => (
     <Row
       thread={thread}
       nested={nested}
+      setAside={setAside}
       onScreen={threads.focus === thread.id}
       selected={selected === thread.id}
       doing={thread.state === 'working' ? doingOf(thread.id, exchanges) : undefined}
@@ -166,7 +169,7 @@ export function ThreadList({ threads, exchanges, selected, onOpen, onStop, onArc
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center gap-1.5 px-2 pt-2 pb-1">
+      <div className="flex items-center gap-1.5 px-3 pt-2 pb-1">
         {threads.threads.length > 0 && (
           <SearchField value={query} onChange={setQuery} placeholder="Find a thread" label="Find a thread by its title or folder" />
         )}
@@ -179,64 +182,56 @@ export function ThreadList({ threads, exchanges, selected, onOpen, onStop, onArc
       ) : sections.length === 0 ? (
         <Empty title="Nothing found" text={`No thread is called “${query.trim()}”.`} />
       ) : (
-        <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 pb-3 [mask-image:linear-gradient(to_bottom,transparent,black_0.75rem)]">
+        <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pb-3 [mask-image:linear-gradient(to_bottom,transparent,black_0.75rem)]">
           {sections.map((section) => {
             const folded = section.name === 'archived' && !archivedOpen && !finding
+            const setAside = section.name === 'archived'
             const heading = (
               <>
-                <span className={section.name === 'working' ? 'text-accent' : undefined}>{SECTION_TITLE[section.name]}</span>
-                <span aria-hidden="true" className="h-px min-w-2 flex-1 bg-line" />
-                <span className="font-normal tabular-nums">{section.groups.length}</span>
+                <span>{SECTION_TITLE[section.name]}</span>
+                <span className="ml-auto tabular-nums">{section.groups.length}</span>
               </>
             )
             return (
-              <section key={section.name} aria-label={SECTION_TITLE[section.name]} className="mt-2 grid gap-px first:mt-1">
-                {section.name === 'archived' ? (
+              <section key={section.name} aria-label={SECTION_TITLE[section.name]} className="mt-4 grid first:mt-2">
+                {setAside ? (
                   <button
                     type="button"
                     aria-expanded={!folded}
                     onClick={() => setArchivedOpen(!archivedOpen)}
-                    className="flex h-7 w-full items-center gap-2 px-2.5 text-left font-medium text-[0.6875rem] text-text-faint outline-none hover:text-text-soft focus-visible:text-text-soft"
+                    className="caps flex h-6 w-full items-center gap-1.5 text-left text-text-soft transition-colors duration-(--duration-quick) ease-soft hover:text-text"
                   >
+                    <Fold open={!folded} />
                     {heading}
-                    <span
-                      aria-hidden="true"
-                      className={cn('text-[0.625rem] transition-transform duration-(--duration-quick) ease-soft', folded && '-rotate-90')}
-                    >
-                      ▾
-                    </span>
                   </button>
                 ) : (
-                  <h3 className="flex h-7 items-center gap-2 px-2.5 font-medium text-[0.6875rem] text-text-faint">{heading}</h3>
+                  <h3 className="caps flex h-6 items-center gap-1.5 text-text-soft">{heading}</h3>
                 )}
                 {!folded && (
-                  <ul className="grid gap-px">
+                  <ul className="grid border-text border-t-2">
                     {section.groups.map(({ head, under }) => {
                       // What is under a topic stays folded unless part of it works, the person opened it, or they are finding.
                       const open = finding || opened.has(head.id) || under.some((thread) => thread.state === 'working')
                       return (
-                        <li key={head.id}>
-                          {row(head, false)}
+                        <li key={head.id} className="border-line border-t first:border-t-0">
+                          {row(head, false, setAside)}
                           {under.length > 0 && (
                             <button
                               type="button"
                               aria-expanded={open}
                               onClick={() => toggle(head.id)}
-                              className="ml-2.5 flex h-6 items-center gap-1.5 px-2 text-[0.6875rem] text-text-faint outline-none hover:text-text-soft focus-visible:text-text-soft"
+                              className="caps mb-1 ml-2 flex h-6 items-center gap-1.5 text-text-soft transition-colors duration-(--duration-quick) ease-soft hover:text-text"
                             >
-                              <span
-                                aria-hidden="true"
-                                className={cn('text-[0.625rem] transition-transform duration-(--duration-quick) ease-soft', !open && '-rotate-90')}
-                              >
-                                ▾
-                              </span>
-                              {`${under.length} ${underWords(under).toLowerCase()}`}
+                              <Fold open={open} />
+                              {`${under.length} ${underWords(under)}`}
                             </button>
                           )}
                           {under.length > 0 && open && (
-                            <ul className="mb-1 ml-3.5 grid gap-px border-line border-l pl-1.5">
+                            <ul className="mb-2 ml-3.5 grid border-line border-l pl-2">
                               {under.map((thread) => (
-                                <li key={thread.id}>{row(thread, true)}</li>
+                                <li key={thread.id} className="border-line border-t first:border-t-0">
+                                  {row(thread, true, setAside)}
+                                </li>
                               ))}
                             </ul>
                           )}
@@ -254,12 +249,21 @@ export function ThreadList({ threads, exchanges, selected, onOpen, onStop, onArc
   )
 }
 
+/** The chevron of what folds: down while open, turned to the right while folded. */
+function Fold({ open }: { open: boolean }) {
+  return (
+    <span aria-hidden="true" className={cn('transition-transform duration-(--duration-quick) ease-soft [&_svg]:size-3', !open && '-rotate-90')}>
+      <ChevronGlyph />
+    </span>
+  )
+}
+
 /** What a tab shows when it has nothing to list: a title and a sentence, centred in its room. */
 export function Empty({ title, text }: { title: string; text: string }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-1 px-8 pb-16 text-center">
-      <p className="font-medium text-sm text-text">{title}</p>
-      <p className="max-w-64 text-balance text-text-faint text-xs leading-relaxed">{text}</p>
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-8 pb-16 text-center">
+      <p className="display text-[1.75rem] text-text leading-[1.5rem]">{title}</p>
+      <p className="max-w-64 text-balance text-[0.8125rem] text-text-soft leading-relaxed">{text}</p>
     </div>
   )
 }
@@ -268,6 +272,8 @@ interface RowProps {
   thread: Thread
   /** Under its topic: a side question or a sub-thread. */
   nested: boolean
+  /** Put away, or left for a week: listed under Archived. */
+  setAside: boolean
   onScreen: boolean
   selected: boolean
   /** For a thread at work: where its plan stands, or what it is answering. */
@@ -279,35 +285,17 @@ interface RowProps {
   onArchive(thread: string, archived: boolean): void
 }
 
-function Row({ thread, nested, onScreen, selected, doing, ago, onOpen, onStop, onArchive }: RowProps) {
+function Row({ thread, nested, setAside, onScreen, selected, doing, ago, onOpen, onStop, onArchive }: RowProps) {
   const working = thread.state === 'working'
   const kind = kindWords(thread)
   // Where it works, else what it is when that is not the usual: a topic says nothing.
   const where = thread.folder === undefined ? (kind === 'Topic' ? undefined : kind) : lastPart(thread.folder)
-  const line = working ? (doing ?? 'Working') : onScreen ? 'On screen' : undefined
-  // How it stands, in the row's corner: at work and since when, ready, or when it was last used.
-  const state = (
-    <span className="flex shrink-0 items-center gap-1 tabular-nums group-focus-within:invisible group-hover:invisible">
-      {working ? (
-        <span className="flex items-center gap-1 text-accent">
-          <StateDot state="working" />
-          {`Working ${ago === 'now' ? '' : ago}`.trim()}
-        </span>
-      ) : thread.state === 'ready' ? (
-        <span className="flex items-center gap-1 text-accent">
-          <StateDot state="ready" />
-          Ready
-        </span>
-      ) : (
-        ago
-      )}
-    </span>
-  )
+  const line = [where, working ? (doing ?? 'Working') : onScreen ? 'On screen' : undefined].filter((part) => part !== undefined).join(' · ')
   return (
     <div
       className={cn(
-        'group relative transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.05]',
-        selected && 'bg-text/[0.07] hover:bg-text/[0.07]'
+        'group relative transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.06]',
+        selected && 'bg-text/[0.06] shadow-[inset_2px_0_0_var(--color-text)]'
       )}
     >
       <button
@@ -315,31 +303,27 @@ function Row({ thread, nested, onScreen, selected, doing, ago, onOpen, onStop, o
         onClick={() => onOpen(thread.id)}
         aria-current={selected || undefined}
         title={doing ?? thread.folder}
-        className="grid w-full min-w-0 px-2.5 py-1.5 text-left outline-none focus-visible:bg-text/[0.07]"
+        className="-outline-offset-1 grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 py-1.5 pr-1.5 pl-2.5 text-left"
       >
-        {where !== undefined && (
-          <span className="flex h-4 min-w-0 items-center gap-1.5 text-[0.6875rem] text-text-faint">
-            <span className="min-w-0 flex-1 truncate">{where}</span>
-            {state}
-          </span>
-        )}
-        <span className={cn('flex min-w-0 items-center gap-1.5', where !== undefined && 'mt-0.5')}>
-          <span className={cn('min-w-0 flex-1 truncate text-[0.8125rem] leading-5', nested ? 'text-text-soft' : 'font-medium text-text')}>{thread.title}</span>
-          {where === undefined && <span className="text-[0.6875rem] text-text-faint">{state}</span>}
+        <StateDot state={thread.state} archived={setAside} />
+        <span className={cn('truncate text-[0.8125rem] leading-5', selected || !nested ? 'text-text' : 'text-text-soft')}>{thread.title}</span>
+        {/* How it stands, at the row's end: since when it works, ready, or when it was last used. Pointed at, what can be
+            done with it takes its place. */}
+        <span className={cn('caps shrink-0 tabular-nums group-focus-within:invisible group-hover:invisible', working ? 'text-accent' : 'text-text-soft')}>
+          {thread.state === 'ready' ? 'Ready' : ago}
         </span>
-        {line && <span className={cn('truncate text-[0.6875rem] leading-4', working ? 'text-text-soft' : 'text-text-faint')}>{line}</span>}
+        {line !== '' && <span className="col-start-2 col-end-4 truncate text-[0.75rem] text-text-soft leading-4">{line}</span>}
       </button>
-      {/* Pointed at, its corner offers what can be done with it, where its state was. */}
-      <span className="absolute top-1 right-1.5 hidden items-center group-focus-within:flex group-hover:flex">
+      <span className="absolute top-1 right-1 hidden items-center group-focus-within:flex group-hover:flex">
         {working ? (
-          <StopThread title={thread.title} onClick={() => onStop(thread.id)} className="h-5" />
+          <StopThread title={thread.title} onClick={() => onStop(thread.id)} />
         ) : (
           !nested && (
             <button
               type="button"
               aria-label={`${thread.archived ? 'Restore' : 'Archive'} ${thread.title}`}
               onClick={() => onArchive(thread.id, !thread.archived)}
-              className="flex h-5 items-center px-1.5 text-[0.6875rem] text-text-faint outline-none transition-colors duration-(--duration-quick) ease-soft hover:text-text focus-visible:text-text"
+              className="caps flex h-6 items-center px-1.5 text-text-soft transition-colors duration-(--duration-quick) ease-soft hover:text-text"
             >
               {thread.archived ? 'Restore' : 'Archive'}
             </button>
@@ -357,7 +341,7 @@ export function StopThread({ title, className, ...rest }: { title: string } & Om
       type="button"
       aria-label={`Stop ${title}`}
       className={cn(
-        'h-6 shrink-0 px-2 text-label text-text-soft outline-none transition-colors duration-(--duration-quick) ease-soft hover:bg-danger/15 hover:text-danger focus-visible:bg-danger/15 focus-visible:text-danger',
+        'caps h-6 shrink-0 px-2 text-text-soft transition-colors duration-(--duration-quick) ease-soft hover:bg-danger/15 hover:text-danger focus-visible:bg-danger/15 focus-visible:text-danger',
         className
       )}
       {...rest}
@@ -367,15 +351,19 @@ export function StopThread({ title, className, ...rest }: { title: string } & Om
   )
 }
 
-/** Where a thread stands, as a dot: pulsing while it works, the accent when its answer waits. */
-export function StateDot({ state }: { state: Thread['state'] }) {
+/**
+ * Where a thread stands, as a small square: the accent, its opacity pulsing, while it works; the ink when its answer
+ * waits; a square drawn as a line while it rests; hatched once it is set aside.
+ */
+export function StateDot({ state, archived = false }: { state: Thread['state']; archived?: boolean | undefined }) {
   return (
     <span
+      aria-hidden="true"
       className={cn(
-        'size-1.5 shrink-0',
+        'size-2 shrink-0',
         state === 'working' && 'animate-pulse bg-accent',
-        state === 'ready' && 'bg-accent',
-        state === 'parked' && 'bg-text-faint/60'
+        state === 'ready' && 'bg-text',
+        state === 'parked' && (archived ? 'hatch text-text-soft' : 'shadow-[inset_0_0_0_1px_var(--color-line-strong)]')
       )}
     />
   )

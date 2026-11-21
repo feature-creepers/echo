@@ -1,9 +1,10 @@
 import type { Exchange, Persona } from '@repo/protocol'
 import { Button } from '../primitives/button.tsx'
-import { BackGlyph, CheckGlyph } from '../primitives/icons.tsx'
+import { CheckGlyph } from '../primitives/icons.tsx'
 import { accentStyle } from '../styles/accent.ts'
 import { Markdown } from '../view/blocks/markdown.tsx'
 import { answerFileName } from './answer-file.ts'
+import { BackLink } from './back-link.tsx'
 import { useCopy } from './use-copy.ts'
 
 const clock = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' })
@@ -25,19 +26,13 @@ export function FullAnswer({ exchange, title, persona, onBack }: FullAnswerProps
   const about = title ?? (exchange?.said || undefined)
   return (
     <div className="flex min-h-0 flex-1 flex-col" style={accentStyle(persona?.accent)}>
-      <div className="grid grid-cols-1 gap-2 border-line border-b px-4 py-3">
-        <button
-          type="button"
-          onClick={onBack}
-          className="-ml-1 flex w-fit items-center gap-1 px-1 py-0.5 text-text-faint text-xs transition-colors hover:text-text"
-        >
-          <BackGlyph /> Transcript
-        </button>
+      <div className="grid grid-cols-1 gap-2 border-line border-b px-4 pt-2 pb-3">
+        <BackLink onClick={onBack}>Transcript</BackLink>
         {exchange?.written !== undefined && (
           <div className="flex items-start justify-between gap-3">
             <div className="grid min-w-0 gap-1">
               <span className="line-clamp-2 font-medium text-[0.9375rem] leading-snug [overflow-wrap:anywhere]">{about ?? 'Full answer'}</span>
-              <span className="text-label text-text-faint">
+              <span className="caps text-text-soft">
                 {persona?.name ?? 'Assistant'} · <time dateTime={exchange.at}>{clock.format(new Date(exchange.at))}</time>
               </span>
             </div>
@@ -47,7 +42,7 @@ export function FullAnswer({ exchange, title, persona, onBack }: FullAnswerProps
       </div>
       <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto px-5 py-4">
         {exchange?.written === undefined ? (
-          <p className="text-sm text-text-faint">This answer is no longer in the conversation.</p>
+          <p className="text-[0.8125rem] text-text-soft">This answer is no longer in the conversation.</p>
         ) : (
           <Markdown text={exchange.written} />
         )}
