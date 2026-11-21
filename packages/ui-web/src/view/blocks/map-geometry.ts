@@ -2,7 +2,7 @@ import type { Feature, Regions } from '@repo/catalog'
 import { geoArea, geoBounds } from 'd3-geo'
 
 /**
- * The arithmetic of the map blocks, apart from React: winding, colours, number formats and the tiles of a
+ * The arithmetic of the map blocks, apart from React: winding, colours, number formats and the framing of a
  * street map. Each part is small and tested on its own.
  */
 
@@ -78,13 +78,14 @@ export function formatValue(value: number, unit: string | undefined, locale?: st
 
 // ------------------------------------------------------------------- the street map
 
-export const TILE = 256
+/** The width of the world at zoom 0, in pixels, as the places are drawn. */
+const WORLD = 256
 
 /** A place on the Web Mercator world, in pixels at zoom 0, as street maps draw it. */
 export function mercator(lon: number, lat: number): [number, number] {
   const clamped = Math.max(-85.0511, Math.min(85.0511, lat))
   const sin = Math.sin((clamped * Math.PI) / 180)
-  return [((lon + 180) / 360) * TILE, (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * TILE]
+  return [((lon + 180) / 360) * WORLD, (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * WORLD]
 }
 
 interface Frame {
@@ -94,7 +95,7 @@ interface Frame {
   top: number
 }
 
-/** The closest zoom at which every place fits the frame, its margins kept, centred on them. One place gets a street-level view. */
+/** The zoom at which every place fits the frame, its margins kept, centred on them. One place gets a street-level view. */
 export function frame(places: readonly { lat: number; lon: number }[], width: number, height: number, margin = 48): Frame {
   const points = places.map((place) => mercator(place.lon, place.lat))
   const xs = points.map(([x]) => x)
@@ -105,7 +106,7 @@ export function frame(places: readonly { lat: number; lon: number }[], width: nu
   let zoom = 13
   if (spanX > 0 || spanY > 0) {
     const fit = Math.min((width - 2 * margin) / Math.max(spanX, 1e-9), (height - 2 * margin) / Math.max(spanY, 1e-9))
-    zoom = Math.max(1, Math.min(15, Math.floor(Math.log2(fit))))
+    zoom = Math.max(1, Math.min(15, Math.log2(fit)))
   }
   const scale = 2 ** zoom
   return { zoom, left: ((minX + maxX) / 2) * scale - width / 2, top: ((minY + maxY) / 2) * scale - height / 2 }
@@ -118,21 +119,22 @@ export function inFrame(place: { lat: number; lon: number }, at: Frame): [number
   return [x * scale - at.left, y * scale - at.top]
 }
 
-/** The tiles that cover a frame, each with where it is drawn. Columns wrap round the globe; rows stop at its poles. */
-export function tilesFor(at: Frame, width: number, height: number): { x: number; y: number; z: number; left: number; top: number }[] {
-  const count = 2 ** at.zoom
-  const tiles = []
-  for (let row = Math.floor(at.top / TILE); row <= Math.floor((at.top + height) / TILE); row++) {
-    if (row < 0 || row >= count) continue
-    for (let column = Math.floor(at.left / TILE); column <= Math.floor((at.left + width) / TILE); column++) {
-      tiles.push({ x: ((column % count) + count) % count, y: row, z: at.zoom, left: column * TILE - at.left, top: row * TILE - at.top })
-    }
-  }
-  return tiles
+/** Where a street map looks: its centre as longitude and latitude, and its zoom as MapLibre counts it, by tiles of 512 pixels. */
+export interface Camera {
+  center: [number, number]
+  zoom: number
+}
+
+/** The camera that shows a frame. */
+export function cameraFor(at: Frame, width: number, height: number): Camera {
+  const scale = 2 ** at.zoom
+  const x = (at.left + width / 2) / scale / WORLD
+  const y = (at.top + height / 2) / scale / WORLD
+  return { center: [x * 360 - 180, (Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) * 180) / Math.PI], zoom: at.zoom - 1 }
 }
 
 /** Where a marker's label goes: beside it on the right or the left, above or below, or nowhere. */
-interface LabelPlace {
+export interface LabelPlace {
   dx: number
   dy: number
   anchor: 'start' | 'end' | 'middle'

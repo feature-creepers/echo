@@ -7,18 +7,21 @@ import { Eyebrow } from '../../primitives/eyebrow.tsx'
 import { DURATION, EASE } from '../../styles/motion.ts'
 import { useViewActions } from '../context.ts'
 import { TONE_COLOR } from '../tones.ts'
-import { formatValue, frame, inFrame, placeLabels, position, rewoundAll, scaleOf, shade, spansTheWorld, TILE, tilesFor } from './map-geometry.ts'
+import { type Camera, cameraFor, formatValue, frame, inFrame, placeLabels, position, rewoundAll, scaleOf, shade, spansTheWorld } from './map-geometry.ts'
+import type { Streets as Drawn } from './street-map.ts'
+import type { Mark } from './street-style.ts'
 
 /** The tallest each map is drawn. A map shorter than this by its shape takes only the height it needs. */
 const HEIGHT = { short: 240, normal: 380, tall: 560 } as const
 
-/**
- * A quiet dark street map, served without a key: the app's page sends no referrer, which most tile services
- * require. Its tiles say where they come from, as their terms ask.
- */
-const STREETS = (tile: { x: number; y: number; z: number }) =>
-  `https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/${tile.z}/${tile.y}/${tile.x}`
-const STREETS_CREDIT = 'Esri, HERE, Garmin, © OpenStreetMap contributors'
+/** Where the street map comes from, credited as OpenFreeMap and OpenStreetMap ask. A link opens in the person's browser. */
+const STREETS_CREDIT = [
+  { name: 'OpenFreeMap', address: 'https://openfreemap.org' },
+  { name: '© OpenMapTiles', address: 'https://www.openmaptiles.org' },
+  { name: '© OpenStreetMap contributors', address: 'https://www.openstreetmap.org/copyright' }
+]
+
+type Drawing = 'loading' | 'drawn' | 'failed'
 
 /** Shapes read once per address for the whole app: a map drawn again, or twice, reads nothing new. */
 const shapesRead = new Map<string, Promise<Regions>>()
@@ -216,13 +219,48 @@ export function RegionMap({ props }: { props: BlockProps<'RegionMap'> }) {
   )
 }
 
+/** The street map under the places, faded in once drawn. Its library is loaded the first time one is drawn. */
+function Streets({ camera, places, drawing, onDrawing }: { camera: Camera; places: readonly Mark[]; drawing: Drawing; onDrawing: (drawing: Drawing) => void }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const map = useRef<Drawn>(undefined)
+  const shown = useRef({ camera, places })
+
+  useEffect(() => {
+    let current = true
+    import('./street-map.ts')
+      .then(({ drawStreets }) => {
+        if (!current || !ref.current) return
+        map.current = drawStreets(ref.current, shown.current.camera, shown.current.places, () => current && onDrawing('drawn'))
+      })
+      .catch(() => current && onDrawing('failed'))
+    return () => {
+      current = false
+      map.current?.remove()
+      map.current = undefined
+    }
+  }, [onDrawing])
+
+  useEffect(() => {
+    shown.current = { camera, places }
+    map.current?.show(camera, places)
+  }, [camera, places])
+
+  return (
+    // MapLibre positions the element it draws in, so it sits inside one placed by the block.
+    <div className={cn('absolute inset-0 opacity-0 transition-opacity duration-(--duration-slow) ease-soft', drawing === 'drawn' && 'opacity-100')}>
+      <div ref={ref} className="size-full" />
+    </div>
+  )
+}
+
 export function PlaceMap({ props }: { props: BlockProps<'PlaceMap'> }) {
   const loaded = useShapes(props.outline)
   const { ref, width } = useWidth()
   const [pointed, setPointed] = useState<Pointed & { index: number }>()
+  const [streets, setStreets] = useState<Drawing>('loading')
   const height = HEIGHT[props.height]
 
-  // Over an outline, the places are projected with the areas; on a street map, with the tiles.
+  // Over an outline, the places are projected with the areas; on a street map, as the map's camera sees them.
   const placed = useMemo(() => {
     if (width === 0) return undefined
     if (props.outline !== undefined) {
@@ -246,11 +284,11 @@ export function PlaceMap({ props }: { props: BlockProps<'PlaceMap'> }) {
       return {
         outline: loaded.regions.features.map((feature) => path(feature as never) ?? ''),
         points: props.places.map((place) => (projection([place.lon, place.lat]) ?? [0, 0]) as [number, number]),
-        tiles: []
+        camera: undefined
       }
     }
     const at = frame(props.places, width, height)
-    return { outline: [], points: props.places.map((place) => inFrame(place, at)), tiles: tilesFor(at, width, height) }
+    return { outline: [], points: props.places.map((place) => inFrame(place, at)), camera: cameraFor(at, width, height) }
   }, [props.outline, props.places, loaded, width, height])
 
   const labels = useMemo(
@@ -264,24 +302,15 @@ export function PlaceMap({ props }: { props: BlockProps<'PlaceMap'> }) {
     [placed, props.places]
   )
   const route = placed && props.route ? placed.points.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ') : undefined
+  const marks = useMemo(
+    () => props.places.map((place, index) => ({ lon: place.lon, lat: place.lat, label: place.label, side: labels[index] })),
+    [props.places, labels]
+  )
 
   return (
     <MapFrame loaded={props.outline === undefined ? undefined : loaded} height={height}>
       <div ref={ref} className="relative overflow-hidden" style={{ height }} onPointerLeave={() => setPointed(undefined)}>
-        {placed?.tiles.map((tile) => (
-          <img
-            key={`${tile.z}/${tile.x}/${tile.y}/${tile.left}`}
-            src={STREETS(tile)}
-            alt=""
-            draggable={false}
-            referrerPolicy="no-referrer"
-            width={TILE}
-            height={TILE}
-            onLoad={(event) => event.currentTarget.classList.remove('opacity-0')}
-            className="absolute max-w-none opacity-0 brightness-[0.62] transition-opacity duration-(--duration-slow) ease-soft"
-            style={{ left: tile.left, top: tile.top }}
-          />
-        ))}
+        {placed?.camera && <Streets camera={placed.camera} places={marks} drawing={streets} onDrawing={setStreets} />}
         {placed && (
           <svg width={width} height={height} className="absolute inset-0" role="img" aria-label={props.places.map((place) => place.label).join(', ')}>
             <title>{props.places.map((place) => place.label).join(', ')}</title>
@@ -332,7 +361,18 @@ export function PlaceMap({ props }: { props: BlockProps<'PlaceMap'> }) {
             })}
           </svg>
         )}
-        {props.outline === undefined && <span className="pointer-events-none absolute right-2 bottom-1.5 text-[9px] text-text-faint/80">{STREETS_CREDIT}</span>}
+        {props.outline === undefined && (
+          // On the land's colour, so a name of the map passing under it does not run into it.
+          <span className="absolute right-1 bottom-1 flex gap-1.5 rounded-xs bg-surface px-1 py-px text-[9px] text-text-faint/80">
+            {streets === 'failed'
+              ? 'The street map could not be drawn.'
+              : STREETS_CREDIT.map((credit) => (
+                  <a key={credit.name} href={credit.address} target="_blank" rel="noreferrer" className="hover:text-text-soft">
+                    {credit.name}
+                  </a>
+                ))}
+          </span>
+        )}
         <Tooltip pointed={pointed?.detail || (pointed && !labels[pointed.index]) ? pointed : undefined} width={width} />
       </div>
     </MapFrame>

@@ -1,7 +1,7 @@
 import type { Feature } from '@repo/catalog'
 import { geoArea } from 'd3-geo'
 import { describe, expect, it } from 'vitest'
-import { formatValue, frame, inFrame, mercator, placeLabels, position, rewound, scaleOf, shade, tilesFor } from './map-geometry.ts'
+import { cameraFor, formatValue, frame, inFrame, mercator, placeLabels, position, rewound, scaleOf, shade } from './map-geometry.ts'
 
 const square = (clockwise: boolean): Feature => {
   const ring: [number, number][] = [
@@ -70,13 +70,34 @@ describe('the street map', () => {
     }
   })
 
-  it('gives one place a street-level view, and covers the frame with tiles', () => {
+  it('gives one place a street-level view, centred on it', () => {
     const at = frame([{ lat: 48.8566, lon: 2.3522 }], 512, 256)
     expect(at.zoom).toBe(13)
-    const tiles = tilesFor(at, 512, 256)
-    expect(tiles.length).toBeGreaterThanOrEqual(3)
-    expect(Math.min(...tiles.map((tile) => tile.left))).toBeLessThanOrEqual(0)
-    expect(Math.max(...tiles.map((tile) => tile.left + 256))).toBeGreaterThanOrEqual(512)
+    const looking = cameraFor(at, 512, 256)
+    expect(looking.zoom).toBe(12)
+    expect(looking.center[0]).toBeCloseTo(2.3522, 6)
+    expect(looking.center[1]).toBeCloseTo(48.8566, 6)
+  })
+
+  it('looks at the middle of the frame, where the places are drawn', () => {
+    const cases = [
+      [{ lat: 0, lon: 0 }],
+      [
+        { lat: -33.8688, lon: 151.2093 },
+        { lat: -37.8136, lon: 144.9631 }
+      ],
+      [
+        { lat: 64.1466, lon: -21.9426 },
+        { lat: 78.2232, lon: 15.6267 }
+      ]
+    ]
+    for (const places of cases) {
+      const at = frame(places, 800, 400)
+      const [lon, lat] = cameraFor(at, 800, 400).center
+      const [x, y] = inFrame({ lat, lon }, at)
+      expect(x).toBeCloseTo(400, 6)
+      expect(y).toBeCloseTo(200, 6)
+    }
   })
 })
 

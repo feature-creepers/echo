@@ -30,6 +30,7 @@
     "jszip": "catalog:",
     "lowlight": "catalog:",
     "mammoth": "catalog:",
+    "maplibre-gl": "catalog:",
     "motion": "catalog:",
     "react-markdown": "catalog:",
     "remark-breaks": "catalog:",

@@ -5,9 +5,10 @@
     <!--
       Scripts come only from the app's own files. What the assistant shows may load pictures and play media from https
       addresses (an Image, a Media block): data, never code. A map may read its shapes from https where there is no core
-      to ask. A PDF is shown in the window's own viewer, from its bytes: frame-src allows blob. A widget app runs in a
-      frame of its own, served on echo-widget: with a policy of its own. The development server
-      loosens this policy for itself (electron.vite.config.ts).
+      to ask. A street map reads OpenFreeMap's tiles and the letters of its names from https; its worker is a file of
+      the app, so it needs neither blob: nor data: among the scripts. A PDF is shown in the window's own viewer, from
+      its bytes: frame-src allows blob. A widget app runs in a frame of its own, served on echo-widget: with a policy of
+      its own. The development server loosens this policy for itself (electron.vite.config.ts).
     -->
     <meta
       http-equiv="Content-Security-Policy"
