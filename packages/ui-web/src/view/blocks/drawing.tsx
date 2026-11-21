@@ -17,8 +17,8 @@ function ShapeElement({ shape }: { shape: Shape }) {
     stroke: TONE_COLOR[shape.stroke],
     strokeWidth: shape.strokeWidth,
     opacity: shape.opacity,
-    strokeLinecap: 'round' as const,
-    strokeLinejoin: 'round' as const
+    strokeLinecap: 'square' as const,
+    strokeLinejoin: 'miter' as const
   }
   switch (shape.shape) {
     case 'line':
@@ -59,8 +59,8 @@ export function Drawing({ props }: { props: BlockProps<'Drawing'> }) {
 export function Image({ props }: { props: BlockProps<'Image'> }) {
   return (
     <figure className="grid gap-1.5">
-      <img src={props.url} alt={props.alt} referrerPolicy="no-referrer" className="max-h-80 w-full border border-line object-cover" />
-      {props.caption && <figcaption className="text-[0.6875rem] text-text-faint">{props.caption}</figcaption>}
+      <img src={props.url} alt={props.alt} referrerPolicy="no-referrer" className="max-h-80 w-full object-cover" />
+      {props.caption && <figcaption className="caps text-text-soft">{props.caption}</figcaption>}
     </figure>
   )
 }

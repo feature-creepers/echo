@@ -6,10 +6,11 @@ import { cn } from '../../primitives/cn.ts'
 import { Eyebrow } from '../../primitives/eyebrow.tsx'
 import { DURATION, EASE } from '../../styles/motion.ts'
 import { useViewActions } from '../context.ts'
-import { TONE_COLOR } from '../tones.ts'
+import { markColor } from '../tones.ts'
 import { type Camera, cameraFor, formatValue, frame, inFrame, placeLabels, position, rewoundAll, scaleOf, shade, spansTheWorld } from './map-geometry.ts'
 import type { Streets as Drawn } from './street-map.ts'
 import type { Mark } from './street-style.ts'
+import { useWidth } from './use-width.ts'
 
 /** The tallest each map is drawn. A map shorter than this by its shape takes only the height it needs. */
 const HEIGHT = { short: 240, normal: 380, tall: 560 } as const
@@ -57,20 +58,6 @@ function useShapes(url: string | undefined): Loaded {
   return loaded
 }
 
-/** The width an element is given, kept current as the window changes. */
-function useWidth() {
-  const ref = useRef<HTMLDivElement>(null)
-  const [width, setWidth] = useState(0)
-  useEffect(() => {
-    const element = ref.current
-    if (!element) return
-    const observer = new ResizeObserver(([entry]) => setWidth(Math.round(entry?.contentRect.width ?? 0)))
-    observer.observe(element)
-    return () => observer.disconnect()
-  }, [])
-  return { ref, width }
-}
-
 /** What is shown beside the pointer: a name, and its figure or detail. */
 interface Pointed {
   x: number
@@ -84,11 +71,11 @@ function Tooltip({ pointed, width }: { pointed: Pointed | undefined; width: numb
   const flip = pointed.x > width - 200
   return (
     <div
-      className="pointer-events-none absolute z-10 grid max-w-56 gap-0.5 border border-line-strong bg-overlay/95 px-2.5 py-1.5 shadow-lg"
+      className="material shadow-float pointer-events-none absolute z-10 grid max-w-56 gap-0.5 px-2.5 py-1.5"
       style={{ left: pointed.x, top: pointed.y, transform: `translate(${flip ? 'calc(-100% - 12px)' : '12px'}, -50%)` }}
     >
       <span className="font-medium text-[0.8125rem] leading-snug">{pointed.title}</span>
-      {pointed.detail && <span className="font-mono text-text-soft text-xs tabular-nums">{pointed.detail}</span>}
+      {pointed.detail && <span className="caps text-text-soft tabular-nums">{pointed.detail}</span>}
     </div>
   )
 }
@@ -97,10 +84,11 @@ function Tooltip({ pointed, width }: { pointed: Pointed | undefined; width: numb
 function MapFrame({ loaded, height, children, footer }: { loaded: Loaded | undefined; height: number; children: ReactNode; footer?: ReactNode }) {
   return (
     <figure className="grid min-w-0 gap-2.5">
-      <div className="relative overflow-hidden border border-line bg-surface/60" style={{ minHeight: loaded?.is === 'ready' ? undefined : height }}>
-        {loaded?.is === 'loading' && <div className="absolute inset-0 animate-pulse bg-raised/40" />}
+      {/* Bare on the ground. While its shapes are read, a hatched plane holds its place. */}
+      <div className="relative overflow-hidden" style={{ minHeight: loaded?.is === 'ready' ? undefined : height }}>
+        {loaded?.is === 'loading' && <div className="hatch absolute inset-0 text-line" />}
         {loaded?.is === 'failed' && (
-          <div className="absolute inset-0 grid place-content-center text-center text-sm text-text-faint">The map's outlines could not be loaded.</div>
+          <div className="caps absolute inset-0 grid place-content-center text-center text-text-soft">The map's outlines could not be loaded.</div>
         )}
         {children}
       </div>
@@ -123,7 +111,7 @@ export function RegionMap({ props }: { props: BlockProps<'RegionMap'> }) {
       ),
     [props]
   )
-  const colors = { high: TONE_COLOR[props.tone], low: TONE_COLOR[props.lowTone] }
+  const colors = { high: markColor(props.tone), low: markColor(props.lowTone) }
 
   const drawn = useMemo(() => {
     if (loaded.is !== 'ready' || width === 0) return undefined
@@ -165,14 +153,14 @@ export function RegionMap({ props }: { props: BlockProps<'RegionMap'> }) {
   const legend = (
     <figcaption className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
       {props.legend && <Eyebrow>{props.legend}</Eyebrow>}
-      <div className="flex items-center gap-2 font-mono text-text-soft text-xs tabular-nums">
+      <div className="caps flex items-center gap-2 text-text-soft tabular-nums">
         <span>{formatValue(scale.domain[0], props.unit)}</span>
-        <span
-          className="h-2 w-36"
-          style={{
-            background: `linear-gradient(to right, ${(scale.kind === 'diverging' ? [-1, -0.5, 0, 0.5, 1] : [0, 0.25, 0.5, 0.75, 1]).map((at) => shade(at, colors)).join(', ')})`
-          }}
-        />
+        {/* The scale in five flat steps, square, from one end to the other. */}
+        <span className="flex gap-0.5">
+          {(scale.kind === 'diverging' ? [-1, -0.5, 0, 0.5, 1] : [0, 0.25, 0.5, 0.75, 1]).map((at) => (
+            <span key={at} className="h-2 w-5" style={{ background: shade(at, colors) }} />
+          ))}
+        </span>
         <span>{formatValue(scale.domain[1], props.unit)}</span>
         {scale.kind === 'diverging' && <span className="text-text-faint">· centre {formatValue(scale.midpoint, props.unit)}</span>}
       </div>
@@ -210,7 +198,7 @@ export function RegionMap({ props }: { props: BlockProps<'RegionMap'> }) {
               )
             })}
             {/* The area pointed at, outlined over its neighbours. */}
-            {hovered && <path d={hovered.d} fill="none" stroke="var(--color-text)" strokeWidth={1.4} strokeLinejoin="round" pointerEvents="none" />}
+            {hovered && <path d={hovered.d} fill="none" stroke="var(--color-text)" strokeWidth={1.5} strokeLinejoin="miter" pointerEvents="none" />}
           </motion.svg>
         )}
         <Tooltip pointed={pointed} width={width} />
@@ -317,9 +305,7 @@ export function PlaceMap({ props }: { props: BlockProps<'PlaceMap'> }) {
             {placed.outline.map((d, index) => (
               <path key={index} d={d} fill="var(--color-raised)" stroke="var(--color-line-strong)" strokeWidth={0.6} strokeLinejoin="round" />
             ))}
-            {route && (
-              <polyline points={route} fill="none" stroke="var(--accent)" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" opacity={0.75} />
-            )}
+            {route && <polyline points={route} fill="none" stroke="var(--color-text)" strokeWidth={1.5} strokeLinejoin="miter" strokeLinecap="butt" />}
             {props.places.map((place, index) => {
               const [x, y] = placed.points[index] ?? [0, 0]
               const active = pointed?.index === index
@@ -331,12 +317,14 @@ export function PlaceMap({ props }: { props: BlockProps<'PlaceMap'> }) {
                     if (box) setPointed({ index, x: event.clientX - box.left, y: event.clientY - box.top, title: place.label, detail: place.detail })
                   }}
                 >
-                  <circle cx={x} cy={y} r={14} fill="transparent" />
-                  <circle
-                    cx={x}
-                    cy={y}
-                    r={5}
-                    fill={TONE_COLOR[place.tone]}
+                  <rect x={x - 14} y={y - 14} width={28} height={28} fill="transparent" />
+                  {/* A place is a square, set off the map by a line of the ground. */}
+                  <rect
+                    x={x - 5}
+                    y={y - 5}
+                    width={10}
+                    height={10}
+                    fill={markColor(place.tone)}
                     stroke="var(--color-ground)"
                     strokeWidth={2}
                     className={cn('origin-center transition-transform duration-(--duration-quick) ease-soft [transform-box:fill-box]', active && 'scale-[1.3]')}

@@ -3,6 +3,7 @@ import { SliderControl, SliderIndicator, Slider as SliderRoot, SliderThumb, Slid
 import { useEffect, useMemo, useState } from 'react'
 import type { MediaSource } from '../../media/player.ts'
 import { usePlayer, usePlayerState, useVideoSurface } from '../../media/player-provider.tsx'
+import { Button } from '../../primitives/button.tsx'
 import { cn } from '../../primitives/cn.ts'
 import { PauseGlyph, PlayGlyph, VolumeGlyph } from '../../primitives/icons.tsx'
 import { useViewActions } from '../context.ts'
@@ -39,9 +40,9 @@ export function Media({ props }: { props: BlockProps<'Media'> }) {
     status === 'failed' ? 'Unavailable' : going && (state.buffering || status === 'loading') ? 'Tuning in' : going ? 'Playing' : held ? 'Paused' : 'Ready'
 
   return (
-    <div className="@container grid min-w-[min(15rem,100%)] gap-2 border border-line bg-text/[0.018] p-2">
+    <div className="@container grid min-w-[min(15rem,100%)] gap-2.5">
       {props.kind === 'video' && (
-        <div className="relative aspect-video w-full overflow-hidden border border-line bg-black">
+        <div className="relative aspect-video w-full overflow-hidden bg-black">
           {/* While this source plays, the player's element is drawn here; otherwise its picture, if any. */}
           <div ref={surface} className="absolute inset-0" />
           {!held && props.artwork && (
@@ -52,7 +53,7 @@ export function Media({ props }: { props: BlockProps<'Media'> }) {
               type="button"
               aria-label={`Play ${props.title}`}
               onClick={() => player.play(source)}
-              className="absolute inset-0 m-auto flex size-11 items-center justify-center bg-accent text-accent-ink transition duration-(--duration-quick) ease-soft hover:brightness-110 [&_svg]:size-5"
+              className="absolute inset-0 m-auto flex size-11 items-center justify-center bg-text text-ground transition-colors duration-(--duration-quick) ease-soft hover:bg-text/85 [&_svg]:size-5"
             >
               <PlayGlyph />
             </button>
@@ -65,7 +66,7 @@ export function Media({ props }: { props: BlockProps<'Media'> }) {
         <div className="grid min-w-0 flex-1 gap-0.5">
           <div className="flex items-center gap-1.5">
             {props.live && <Live on={sounding} />}
-            <span className={cn('text-[0.6875rem]', status === 'failed' ? 'text-danger' : going ? 'text-accent' : 'text-text-faint')}>{label}</span>
+            <span className={cn('caps', status === 'failed' ? 'text-danger' : going ? 'text-accent' : 'text-text-soft')}>{label}</span>
           </div>
           <p className="truncate font-medium text-[0.8125rem] leading-snug">{props.title}</p>
           {props.subtitle && <p className="truncate text-text-soft text-xs">{props.subtitle}</p>}
@@ -74,9 +75,12 @@ export function Media({ props }: { props: BlockProps<'Media'> }) {
           type="button"
           aria-label={going ? `Pause ${props.title}` : `Play ${props.title}`}
           onClick={() => player.toggle(source)}
+          // Playing, it is a line to pause; else a plane of the ink, the one thing to press.
           className={cn(
-            'mr-0.5 flex size-8 shrink-0 items-center justify-center transition-colors duration-(--duration-quick) ease-soft active:translate-y-px [&_svg]:size-4',
-            going ? 'border border-line-strong bg-raised text-text hover:bg-overlay' : 'bg-accent text-accent-ink hover:brightness-110'
+            'flex size-9 shrink-0 items-center justify-center transition-colors duration-(--duration-quick) ease-soft [&_svg]:size-4',
+            going
+              ? 'text-text shadow-[inset_0_0_0_1px_var(--color-line-strong)] hover:bg-text/[0.08] active:bg-text/[0.14]'
+              : 'bg-text text-ground hover:bg-text/85 active:bg-text/70'
           )}
         >
           {going ? <PauseGlyph /> : <PlayGlyph />}
@@ -84,7 +88,7 @@ export function Media({ props }: { props: BlockProps<'Media'> }) {
       </div>
 
       {held && !props.live && state.duration !== undefined && (
-        <div className="flex items-center gap-2.5 px-0.5 text-[0.6875rem] text-text-faint tabular-nums">
+        <div className="caps flex items-center gap-2.5 text-text-soft tabular-nums">
           <span>{duration(state.position)}</span>
           <Slider
             label="Position"
@@ -96,15 +100,18 @@ export function Media({ props }: { props: BlockProps<'Media'> }) {
       )}
 
       {status === 'failed' ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 border border-danger/30 bg-danger/8 px-2.5 py-1.5">
-          <p className="text-danger text-xs">{state.problem}</p>
-          <button type="button" onClick={() => player.play(source)} className="text-label text-text-soft hover:text-text">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-line border-t pt-2">
+          <p className="flex items-center gap-2 text-danger text-xs">
+            <span aria-hidden="true" className="size-2 shrink-0 bg-danger" />
+            {state.problem}
+          </p>
+          <Button size="sm" kind="quiet" onClick={() => player.play(source)}>
             Try again
-          </button>
+          </Button>
         </div>
       ) : (
         held && (
-          <div className="hidden items-center gap-2.5 px-0.5 @[16rem]:flex">
+          <div className="hidden items-center gap-2.5 @[16rem]:flex">
             <button
               type="button"
               aria-label={state.muted ? 'Unmute' : 'Mute'}
@@ -114,34 +121,35 @@ export function Media({ props }: { props: BlockProps<'Media'> }) {
               <VolumeGlyph muted={state.muted || state.volume === 0} />
             </button>
             <Slider label="Volume" value={state.muted ? 0 : state.volume} onChange={(volume) => player.setVolume(volume)} className="max-w-32" />
-            {state.ducked && <span className="truncate text-[0.6875rem] text-text-faint">Lowered while speaking</span>}
+            {state.ducked && <span className="caps truncate text-text-faint">Lowered while speaking</span>}
           </div>
         )
       )}
 
       {held && state.queue.length > 0 && (
-        <div className="flex items-center justify-between gap-2 px-0.5 text-xs">
+        <div className="flex items-center justify-between gap-2 border-line border-t pt-2 text-xs">
           <p className="min-w-0 truncate text-text-faint">
-            Next: <span className="text-text-soft">{state.queue[0]?.title}</span>
+            <span className="caps mr-1.5">Next</span>
+            <span className="text-text-soft">{state.queue[0]?.title}</span>
             {state.queue.length > 1 && ` and ${state.queue.length - 1} more`}
           </p>
-          <button type="button" onClick={() => player.next()} className="shrink-0 text-label text-text-soft hover:text-text">
+          <Button size="sm" kind="quiet" className="shrink-0" onClick={() => player.next()}>
             Skip
-          </button>
+          </Button>
         </div>
       )}
     </div>
   )
 }
 
-/** The picture of what plays, or, with none, a tile in the accent whose bars move with the sound. */
+/** The picture of what plays, or, with none, a square of the ink's wash whose bars, in the accent, move with the sound. */
 function Artwork({ url, sounding }: { url: string | undefined; sounding: boolean }) {
   const [broken, setBroken] = useState(false)
   if (url && !broken) {
-    return <img src={url} alt="" referrerPolicy="no-referrer" onError={() => setBroken(true)} className="size-11 shrink-0 border border-line object-cover" />
+    return <img src={url} alt="" referrerPolicy="no-referrer" onError={() => setBroken(true)} className="size-11 shrink-0 object-cover" />
   }
   return (
-    <div className="flex size-11 shrink-0 items-end justify-center gap-[2px] overflow-hidden border border-line bg-accent/[0.07] pb-3">
+    <div className="flex size-11 shrink-0 items-end justify-center gap-[2px] overflow-hidden bg-text/[0.06] pb-3">
       {[0.5, 0.85, 0.65, 1, 0.55].map((height, index) => (
         <span
           key={index}
@@ -153,29 +161,30 @@ function Artwork({ url, sounding }: { url: string | undefined; sounding: boolean
   )
 }
 
-/** "Live", with a dot that pulses while it is heard. */
+/** "Live", after a square in the accent while it is heard. */
 function Live({ on }: { on: boolean }) {
   return (
-    <span
-      className={cn(
-        'flex h-4 items-center gap-1 border px-1 font-medium text-[0.625rem]',
-        on ? 'border-danger/40 text-danger' : 'border-line-strong text-text-faint'
-      )}
-    >
-      <span className={cn('size-1', on ? 'animate-pulse bg-danger' : 'bg-text-faint/60')} />
+    <span className={cn('caps flex items-center gap-1.5', on ? 'text-accent' : 'text-text-faint')}>
+      <span className="size-2 bg-current" />
       Live
     </span>
   )
 }
 
-/** A thin bar to set a level or a position, from 0 to 1, by the pointer or the arrow keys; its knob shows under the pointer. */
+/**
+ * A square track to set a level or a position, from 0 to 1, by the pointer or the arrow keys: the ink fills it from
+ * the start over a hairline base, and its square knob shows under the pointer.
+ */
 function Slider({ label, value, onChange, className }: { label: string; value: number; onChange(value: number): void; className?: string }) {
   return (
     <SliderRoot<number> value={value} onValueChange={onChange} min={0} max={1} step={0.01} className={cn('group relative min-w-0 flex-1', className)}>
       <SliderControl className="flex h-4 cursor-pointer items-center">
-        <SliderTrack className="h-[3px] w-full bg-text/[0.08]">
-          <SliderIndicator className="bg-accent" />
-          <SliderThumb aria-label={label} className="pointer-events-none size-2.5 bg-text opacity-0 shadow transition group-hover:opacity-100" />
+        <SliderTrack className="h-1.5 w-full shadow-[inset_0_-1px_0_var(--color-line-strong)]">
+          <SliderIndicator className="bg-text" />
+          <SliderThumb
+            aria-label={label}
+            className="pointer-events-none size-2.5 bg-text opacity-0 transition-opacity duration-(--duration-quick) ease-soft group-hover:opacity-100"
+          />
         </SliderTrack>
       </SliderControl>
     </SliderRoot>

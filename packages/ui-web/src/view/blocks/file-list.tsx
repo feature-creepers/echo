@@ -25,8 +25,8 @@ export function FileList({ props }: { props: BlockProps<'FileList'> }) {
   const folded = props.files.length - props.limit
 
   return (
-    <div className="grid overflow-hidden border border-line">
-      <ul className="divide-y divide-line">
+    <div className="grid">
+      <ul className="grid">
         {shown.map((file) => {
           const { name: last, folder } = partsOf(file.path)
           const name = file.name ?? last
@@ -34,7 +34,7 @@ export function FileList({ props }: { props: BlockProps<'FileList'> }) {
           return (
             <li
               key={file.path}
-              className="group flex min-w-0 items-center gap-3 py-2 pr-2 pl-3 transition-colors duration-(--duration-quick) hover:bg-text/[0.02]"
+              className="group flex min-h-[2.125rem] min-w-0 items-center gap-3 border-line border-t py-1.5 transition-colors duration-(--duration-quick) first:border-text first:border-t-2 hover:bg-text/[0.04]"
             >
               <FileMark name={name} />
               <button
@@ -46,7 +46,7 @@ export function FileList({ props }: { props: BlockProps<'FileList'> }) {
               >
                 <span className="truncate text-[0.8125rem] leading-snug">{name}</span>
                 {file.detail ? (
-                  <span className="truncate text-[0.6875rem] text-text-faint leading-snug">{file.detail}</span>
+                  <span className="truncate text-text-faint text-xs leading-snug">{file.detail}</span>
                 ) : (
                   folder && (
                     <span dir="rtl" className="truncate text-left font-mono text-[0.625rem] text-text-faint leading-snug">
@@ -55,7 +55,7 @@ export function FileList({ props }: { props: BlockProps<'FileList'> }) {
                   )
                 )}
               </button>
-              {file.size !== undefined && <span className="shrink-0 text-[0.6875rem] text-text-faint tabular-nums">{sizeWords(file.size)}</span>}
+              {file.size !== undefined && <span className="caps shrink-0 text-text-soft tabular-nums">{sizeWords(file.size)}</span>}
               <span className="flex shrink-0 items-center text-text-faint">
                 {actions?.open && !runsWhenOpened(name) && (
                   <Button size="sm" kind="quiet" className="[&_svg]:size-3.5" onClick={() => actions.open?.(file.path)}>
@@ -82,9 +82,9 @@ export function FileList({ props }: { props: BlockProps<'FileList'> }) {
         <button
           type="button"
           onClick={() => setUnfolded(!unfolded)}
-          className="h-8 border-line border-t text-left text-[0.75rem] text-text-faint transition-colors duration-(--duration-quick) hover:bg-text/[0.02] hover:text-text-soft"
+          className="caps h-[2.125rem] border-line border-t text-left text-text-soft transition-colors duration-(--duration-quick) hover:bg-text/[0.04] hover:text-text"
         >
-          <span className="pl-3">{unfolded ? 'Show fewer' : `and ${folded} more`}</span>
+          {unfolded ? 'Show fewer' : `and ${folded} more`}
         </button>
       )}
     </div>

@@ -31,10 +31,10 @@ export function FilePreview({ props }: { props: BlockProps<'FilePreview'> }) {
   if (file === 'missing') return <p className="text-[0.8125rem] text-text-faint">This document is no longer available.</p>
 
   return (
-    <div className="grid overflow-hidden border border-line bg-ground/60">
-      <div className="flex items-center justify-between gap-3 border-line border-b bg-text/[0.02] py-2 pr-2 pl-3">
+    <div className="grid min-w-0">
+      <div className="flex items-center justify-between gap-3 pb-2">
         <div className="flex min-w-0 items-center gap-2.5">
-          <span className="flex h-6 w-7 shrink-0 items-center justify-center border border-line-strong font-mono text-[0.5625rem] text-text-soft uppercase">
+          <span className="caps flex h-6 w-8 shrink-0 items-center justify-center text-text-soft shadow-[inset_0_0_0_1px_var(--color-line-strong)]">
             {file ? EXTENSION[file.format] : '…'}
           </span>
           <div className="grid min-w-0">
@@ -46,16 +46,19 @@ export function FilePreview({ props }: { props: BlockProps<'FilePreview'> }) {
           Download
         </Button>
       </div>
-      <div className={cn('scroll-quiet overflow-y-auto px-3 py-2.5', HEIGHT[props.height])}>
-        {!file ? null : file.format === 'markdown' ? (
+      {/* The document starts under a rule of the full ink; while it is read, a hatched plane holds its place. */}
+      <div className={cn('scroll-quiet overflow-y-auto border-text border-t-2 pt-2.5', HEIGHT[props.height])}>
+        {!file ? (
+          <div className="hatch h-16 text-line" />
+        ) : file.format === 'markdown' ? (
           <Markdown text={file.text} />
         ) : file.format === 'csv' ? (
-          <table className="w-full text-[0.8125rem]">
+          <table className="w-full border-collapse text-[0.8125rem] tabular-nums">
             <tbody>
               {tableRows(file.text).map((row, index) => (
-                <tr key={index} className={cn('border-line border-b last:border-0', index === 0 && 'text-label text-text-faint')}>
+                <tr key={index} className={cn('border-b last:border-0', index === 0 ? 'caps border-text border-b-2 text-text-soft' : 'border-line')}>
                   {row.map((value, column) => (
-                    <td key={column} className="px-2 py-1.5">
+                    <td key={column} className="py-1.5 pr-3 last:pr-0">
                       {value}
                     </td>
                   ))}
