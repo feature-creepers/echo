@@ -1,5 +1,6 @@
 import { LANGUAGES, type LanguageCode, type Languages, type Persona } from '@repo/protocol'
 import { useState } from 'react'
+import { Eye } from '../presence/eye.tsx'
 import { Button } from '../primitives/button.tsx'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { Select } from '../primitives/select.tsx'
@@ -40,7 +41,7 @@ export function VoicePicker({ speech, personas, languages }: VoicePickerProps) {
       <ul className="divide-y divide-line border-text border-t-2">
         {personas.map((persona) => (
           <li key={persona.id} style={accentStyle(persona.accent)} className="flex items-center gap-4 py-2.5">
-            <span className="size-2 shrink-0 bg-accent" />
+            <Eye size={20} mood="idle" className="shrink-0" />
             <span className="w-32 shrink-0 truncate text-[0.8125rem]">{persona.name}</span>
             <Select
               label={`The voice of ${persona.name}`}

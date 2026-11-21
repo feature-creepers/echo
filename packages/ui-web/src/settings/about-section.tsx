@@ -100,14 +100,14 @@ export function AboutSection({ productName }: { productName: string }) {
 
 /** Where the updates stand, in a line. */
 function UpdateLine({ state }: { state: UpdateState }) {
-  const [text, tone] = ((): [string, 'soft' | 'ok' | 'accent' | 'danger'] => {
+  const [text, tone] = ((): [string, 'soft' | 'ok' | 'pending' | 'danger'] => {
     switch (state.is) {
       case 'unavailable':
         return [state.reason, 'soft']
       case 'idle':
         return ['Looks for new versions by itself.', 'soft']
       case 'checking':
-        return ['Looking for a new version…', 'accent']
+        return ['Looking for a new version…', 'pending']
       case 'latest':
         return [`Up to date · checked ${ago(state.checkedAt, new Date())}`, 'ok']
       case 'available':
@@ -115,12 +115,12 @@ function UpdateLine({ state }: { state: UpdateState }) {
           state.page
             ? `Version ${state.latest} is out. On a Mac, this build cannot install it by itself yet: download it from the releases page.`
             : `Version ${state.latest} is out.`,
-          'accent'
+          'pending'
         ]
       case 'downloading':
-        return [`Downloading version ${state.latest} · ${state.percent}%`, 'accent']
+        return [`Downloading version ${state.latest} · ${state.percent}%`, 'pending']
       case 'ready':
-        return [`Version ${state.latest} is ready. It installs when you quit, or restart now.`, 'accent']
+        return [`Version ${state.latest} is ready. It installs when you quit, or restart now.`, 'pending']
       case 'failed':
         return [state.problem, 'danger']
     }
@@ -134,7 +134,7 @@ function UpdateLine({ state }: { state: UpdateState }) {
       )}
     >
       {tone === 'ok' && <span className="size-2 shrink-0 bg-ok" />}
-      {tone === 'accent' && <span className="size-2 shrink-0 bg-accent" />}
+      {tone === 'pending' && <span className="hatch size-2 shrink-0 border border-line-strong text-text" />}
       {text}
     </p>
   )
