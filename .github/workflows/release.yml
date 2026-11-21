@@ -4,13 +4,25 @@ name: Release
 # manifests (latest.yml, latest-mac.yml, latest-linux.yml), to a draft GitHub release of that version.
 # Nothing reaches users until the draft is published by hand: installed copies read only published releases.
 # The tag must be the version in apps/desktop/package.json, with a "v" in front.
+#
+# Signing (docs/SPEC.md, section 14.7) starts by itself once the owners have set it up, and a system without it is
+# packaged unsigned, as every other build is:
+# - macOS, with the owners' Developer ID: the secrets CSC_LINK (the certificate, a .p12 in base64) and
+#   CSC_KEY_PASSWORD sign the app, and APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD and APPLE_TEAM_ID have Apple notarise it.
+# - Windows, by SignPath Foundation: the variable SIGNPATH_ORGANIZATION_ID and the secret SIGNPATH_API_TOKEN, for
+#   SignPath's project "echo", its signing policy "release-signing" and its artifact configurations "program" and
+#   "installer". Each signing request waits for an owner to approve it at SignPath.
+# - Linux: the AppImage is not signed.
+# The secrets are kept in the "release" environment, whose rules say who approves a tag's run before it starts.
 
 on:
   push:
     tags: ["v*"]
 
+# SignPath reads the run and downloads what it signs with the run's token.
 permissions:
   contents: write
+  actions: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -33,6 +45,10 @@ jobs:
             stage: --os linux --arch x64
             targets: --linux AppImage --x64
     runs-on: ${{ matrix.os }}
+    environment: release
+    env:
+      MAC_SIGNED: ${{ matrix.os == 'macos-latest' && secrets.CSC_LINK != '' }}
+      WINDOWS_SIGNED: ${{ matrix.os == 'windows-latest' && vars.SIGNPATH_ORGANIZATION_ID != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -71,14 +87,132 @@ jobs:
           ECHO_GOOGLE_CLIENT_SECRET: ${{ vars.ECHO_GOOGLE_CLIENT_SECRET }}
           ECHO_MICROSOFT_CLIENT_ID: ${{ vars.ECHO_MICROSOFT_CLIENT_ID }}
 
-      # electron-builder creates the draft release of this version the first time, and adds to it from the
-      # other systems. The packages are not signed yet: Windows installs and updates them after a warning,
-      # macOS opens them with a right click then Open but cannot update them by itself, Linux needs nothing.
+      # electron-builder creates the draft release of this version the first time, and adds to it from the other
+      # systems. On macOS it signs and notarises the app when given the secrets. A secret that is not set arrives as an
+      # empty variable, which electron-builder would take for a certificate, so it is removed.
       - name: Package and upload to the draft release
+        if: env.WINDOWS_SIGNED != 'true'
         working-directory: apps/desktop
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ runner.os == 'macOS' && secrets.CSC_LINK || '' }}
+          CSC_KEY_PASSWORD: ${{ runner.os == 'macOS' && secrets.CSC_KEY_PASSWORD || '' }}
+          APPLE_ID: ${{ runner.os == 'macOS' && secrets.APPLE_ID || '' }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ runner.os == 'macOS' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ runner.os == 'macOS' && secrets.APPLE_TEAM_ID || '' }}
         run: |
+          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            [ -n "${!name}" ] || unset "$name"
+          done
           node build/stage.ts ${{ matrix.stage }}
           pnpm exec electron-builder --projectDir stage --config ../build/electron-builder.yml ${{ matrix.targets }} --publish always
+
+      # As Gatekeeper judges the app on a Mac that never saw it: signed, notarised, and the notarisation stapled to it.
+      - name: Check the signature (macOS)
+        if: env.MAC_SIGNED == 'true'
+        working-directory: apps/desktop/release/mac-arm64
+        run: |
+          codesign --verify --deep --strict --verbose=2 Echo.app
+          spctl --assess --type execute --verbose Echo.app
+          xcrun stapler validate Echo.app
+
+      # Windows, signed by SignPath Foundation: the program, then the installer made from it. electron-builder writes the
+      # app's update configuration (app-update.yml) only while it makes an installer, so the program is laid out by
+      # making one, which is thrown away. The configuration names the signer, so an installed copy installs only the
+      # updates it signed.
+      - name: Package the program to sign (Windows)
+        if: env.WINDOWS_SIGNED == 'true'
+        working-directory: apps/desktop
+        shell: bash
+        run: |
+          node build/stage.ts ${{ matrix.stage }}
+          pnpm exec electron-builder --projectDir stage --config ../build/electron-builder.yml --win nsis --x64 --publish never \
+            -c.win.signtoolOptions.publisherName="SignPath Foundation"
+
+      - name: Hand the program to SignPath (Windows)
+        id: program
+        if: env.WINDOWS_SIGNED == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: program-unsigned
+          path: apps/desktop/release/win-unpacked
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Sign the program (Windows)
+        if: env.WINDOWS_SIGNED == 'true'
+        uses: signpath/github-action-submit-signing-request@4a84eb4ad763290f059275786f2deed97c2c672b # v3.1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: echo
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: program
+          github-artifact-id: ${{ steps.program.outputs.artifact-id }}
+          # The time an owner has to approve the request at SignPath.
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: apps/desktop/release/signed-program
+
+      - name: Package the installer and the ZIP from the signed program (Windows)
+        if: env.WINDOWS_SIGNED == 'true'
+        working-directory: apps/desktop
+        shell: bash
+        run: |
+          pnpm exec electron-builder --projectDir stage --config ../build/electron-builder.yml --prepackaged "$PWD/release/signed-program" \
+            --win nsis zip --x64 --publish never
+
+      - name: Hand the installer to SignPath (Windows)
+        id: installer
+        if: env.WINDOWS_SIGNED == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: installer-unsigned
+          path: apps/desktop/release/*-setup.exe
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Sign the installer (Windows)
+        if: env.WINDOWS_SIGNED == 'true'
+        uses: signpath/github-action-submit-signing-request@4a84eb4ad763290f059275786f2deed97c2c672b # v3.1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: echo
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: installer
+          github-artifact-id: ${{ steps.installer.outputs.artifact-id }}
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: apps/desktop/release/signed-installer
+
+      - name: Put the signed installer in place and describe it in latest.yml (Windows)
+        if: env.WINDOWS_SIGNED == 'true'
+        working-directory: apps/desktop
+        shell: bash
+        run: node build/signed-installer.ts release/signed-installer/*-setup.exe release
+
+      # What Windows will show for the program (the ZIP holds the same) and for the installer.
+      - name: Check the signatures (Windows)
+        if: env.WINDOWS_SIGNED == 'true'
+        working-directory: apps/desktop/release
+        shell: pwsh
+        run: |
+          foreach ($file in @('signed-program/Echo.exe') + (Get-ChildItem *-setup.exe).Name) {
+            $signature = Get-AuthenticodeSignature $file
+            if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch '(^|, )CN=SignPath Foundation(,|$)') {
+              throw "$file is not signed by SignPath Foundation: $($signature.Status), $($signature.SignerCertificate.Subject)"
+            }
+          }
+
+      # The draft is the one electron-builder makes from the other systems, found by its tag, or made here with the same
+      # name when this job finishes first.
+      - name: Upload to the draft release (Windows)
+        if: env.WINDOWS_SIGNED == 'true'
+        working-directory: apps/desktop/release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --draft --title "${GITHUB_REF_NAME#v}"
+          gh release upload "$GITHUB_REF_NAME" ./*-setup.exe ./*.zip latest.yml --clobber

@@ -36,6 +36,9 @@ electronFuses:
   enableNodeCliInspectArguments: false
   onlyLoadAppFromAsar: true
 
+# Signed by SignPath Foundation in the release workflow, once the owners have set it up there: the workflow names that
+# signer in the app's update configuration, and an installed copy then installs only updates it signed. Every other
+# build is unsigned, and installs updates signed or not.
 win:
   icon: build/icon.ico
   target:
@@ -58,11 +61,20 @@ mac:
       arch: [arm64]
   category: public.app-category.productivity
   icon: build/icon.icns
-  # Unsigned for now: the user opens it the first time with a right click, then Open.
-  identity: null
+  # Signed with the owners' Developer ID when the build is given its certificate (CSC_LINK and CSC_KEY_PASSWORD, which
+  # the release workflow passes), and notarised by Apple when it is also given APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD and
+  # APPLE_TEAM_ID. Without a certificate, electron-builder says it found none and leaves the app unsigned: the person
+  # opens it the first time with a right click, then Open, and it cannot install its updates.
+  # Signed, the app runs under the hardened runtime, which notarisation requires: it may do only what its entitlements
+  # name, and its helpers get the same. The paths are read from apps/desktop, where electron-builder is run.
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize: true
   extendInfo:
     NSMicrophoneUsageDescription: Echo listens to you when you talk to it. Your voice is turned into text on this computer.
     NSCameraUsageDescription: Echo takes a picture with your camera when you allow it, each time, to see what you show it.
+    NSAppleEventsUsageDescription: Echo reads and works your other apps through System Events when you ask it to.
 dmg:
   artifactName: ${productName}-${version}-${arch}.${ext}
 

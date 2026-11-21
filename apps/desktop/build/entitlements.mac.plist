@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  What the signed app may do under macOS's hardened runtime, which turns off everything not named here. The app and
+  its helpers (the window, the core and the speech engines run as Electron's helpers) are signed with the same list.
+-->
+<plist version="1.0">
+  <dict>
+    <!-- V8 compiles JavaScript as it runs. -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <!-- The microphone, for speech. -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+    <!-- The camera, for a picture the person allows each time. -->
+    <key>com.apple.security.device.camera</key>
+    <true/>
+    <!-- Other apps, read and operated through System Events with osascript. -->
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
+  </dict>
+</plist>

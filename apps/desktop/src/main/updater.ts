@@ -1,3 +1,4 @@
+import { execFile } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -50,22 +51,42 @@ function cannotUpdate(): string | undefined {
 }
 
 /**
+ * Whether a new version installs itself, or is only announced with the page to download it from. macOS installs an
+ * update only when it meets the signature of the copy running, which a copy with none cannot give: the signature is
+ * looked at there only, and not for a test feed, which is tried on every system.
+ */
+export async function installsItself(platform: NodeJS.Platform, testFeed: boolean, signed: () => Promise<boolean>): Promise<boolean> {
+  return platform !== 'darwin' || testFeed || (await signed())
+}
+
+/**
+ * Whether this copy holds a valid signature from a certificate Apple issued, as the release workflow's Developer ID
+ * gives it, which a later version signed by the same developer meets. An unsigned copy, one signed ad hoc, and one
+ * whose files no longer match its signature hold none. The signature itself is asked, not how the build was made, so
+ * no copy is promised an update that macOS would then refuse.
+ */
+function signedByDeveloper(): Promise<boolean> {
+  const bundle = join(process.execPath, '..', '..', '..')
+  return new Promise((resolve) => execFile('/usr/bin/codesign', ['--verify', '-R=anchor apple generic', bundle], (error) => resolve(!error)))
+}
+
+/**
  * New versions, from the GitHub releases of the project: the release workflow uploads the packages and the
  * manifests that describe them (latest.yml, latest-mac.yml, latest-linux.yml), and electron-updater reads them.
  *
  * Downloading happens in the background and installing when the app quits, so an update never cuts into a
- * conversation; the user can also restart for it at once. macOS only installs an update signed by the same
- * developer as the app, and this app is not signed yet: there, a new version is announced with the page to
- * download it from.
+ * conversation; the user can also restart for it at once. On macOS a copy built without a signature cannot install
+ * its updates: there, a new version is announced with the page to download it from.
  */
 export function createUpdater(automatic: boolean): Updater {
   const events = new EventEmitter<{ state: [UpdateState] }>()
   const current = app.getVersion()
   const unavailable = cannotUpdate()
-  const manual = process.platform === 'darwin' && !process.env.ECHO_UPDATE_FEED
   const page = releasesPage()
   let state: UpdateState = unavailable ? { is: 'unavailable', current, reason: unavailable } : { is: 'idle', current }
   let updater: AppUpdater | undefined
+  let loading: Promise<AppUpdater | undefined> | undefined
+  let manual = false
   let auto = automatic
 
   const set = (next: UpdateState) => {
@@ -81,9 +102,9 @@ export function createUpdater(automatic: boolean): Updater {
     return message.split('\n')[0]?.slice(0, 200) ?? 'The update failed.'
   }
 
-  const ready = async (): Promise<AppUpdater | undefined> => {
+  const load = async (): Promise<AppUpdater | undefined> => {
     if (unavailable) return undefined
-    if (updater) return updater
+    manual = !(await installsItself(process.platform, Boolean(process.env.ECHO_UPDATE_FEED), signedByDeveloper))
     // Loaded only when updates can happen: a copy run from the sources never loads it.
     const { autoUpdater } = await import('electron-updater')
     updater = autoUpdater
@@ -124,6 +145,11 @@ export function createUpdater(automatic: boolean): Updater {
       else set({ is: 'failed', current, problem: problem(error) })
     })
     return autoUpdater
+  }
+  // Set up once, though two checks may ask for it before it is ready.
+  const ready = () => {
+    loading ??= load()
+    return loading
   }
 
   const check = async () => {
