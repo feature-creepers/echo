@@ -280,7 +280,7 @@ function Connected({ productName, client, engine, mini }: { productName: string;
   // Three buttons at most, from the left: the library and settings, the sidebar, and, while any is pinned, the
   // pinned widgets. Pressed from the hub, the widgets' button goes back to the main screen to show them.
   const widgetsShown = showing.is === 'main' && docks.shown
-  const titleActions = (
+  const cornerActions = (
     <>
       <IconButton label={HUB_NAME} active={showing.is === 'hub'} onClick={() => (showing.is === 'hub' ? toMain() : openHub())}>
         <LibraryGlyph />
@@ -292,6 +292,10 @@ function Connected({ productName, client, engine, mini }: { productName: string;
       >
         <SheetGlyph />
       </IconButton>
+    </>
+  )
+  const titleActions = (
+    <>
       <AnimatePresence initial={false}>
         {docks.count > 0 && (
           <motion.span
@@ -325,6 +329,7 @@ function Connected({ productName, client, engine, mini }: { productName: string;
         accent={accent}
         look={look}
         actions={titleActions}
+        corner={cornerActions}
         mini={mini}
         frameRef={sheetArea}
         sideOpen={sheet !== undefined && !mini.on}
@@ -426,8 +431,13 @@ interface FrameProps {
   accent?: Accent | undefined
   /** The look of the core drawn inside. */
   look?: Look | undefined
-  /** What the title row offers on the right. */
+  /** What the title row offers, beside the product's name. */
   actions?: ReactNode
+  /**
+   * The window's own buttons, in its top right corner just left of the system's controls, as T3 Code places its panel
+   * toggles: they stand there whether the side is open or not, over its top when it is.
+   */
+  corner?: ReactNode
   /** Mini: the window has no title row, only the way back to the full window. */
   mini?: MiniWindow | undefined
   /** What stands beside the screen, the whole height of the window, its own top holding the system's controls: the side sheet. */
@@ -451,7 +461,7 @@ interface FrameProps {
  * shown while the pointer is over the window or the keyboard is in it; on Windows and Linux the system's buttons stay
  * over its right end, and what Mini shows starts under them.
  */
-function Frame({ productName, accent, look, actions, mini, side, sideOpen = false, frameRef, children }: FrameProps) {
+function Frame({ productName, accent, look, actions, corner, mini, side, sideOpen = false, frameRef, children }: FrameProps) {
   return (
     // Clipped, not hidden: what slides in or out past an edge (the side sheet, the pinned widgets) is cut there, and
     // the window can never be scrolled sideways, not even by bringing something into view or giving it the keyboard.
@@ -468,7 +478,7 @@ function Frame({ productName, accent, look, actions, mini, side, sideOpen = fals
           ) : (
             <div
               className={cn(
-                'absolute top-[env(titlebar-area-y,0px)] left-[env(titlebar-area-x,0px)] flex h-[env(titlebar-area-height,var(--frame-title-bar))] items-center justify-between pr-2 pl-4',
+                'absolute top-[env(titlebar-area-y,0px)] left-[env(titlebar-area-x,0px)] flex h-[env(titlebar-area-height,var(--frame-title-bar))] items-center gap-2 pr-2 pl-4',
                 // The system's controls sit over the side's top while it is open: the row runs to the side's edge.
                 sideOpen ? 'right-0' : 'w-[env(titlebar-area-width,100%)]'
               )}
@@ -482,6 +492,11 @@ function Frame({ productName, accent, look, actions, mini, side, sideOpen = fals
         <main className="relative min-h-0 flex-1">{children}</main>
       </div>
       {side}
+      {corner && !mini?.on && (
+        <div className="no-drag fixed top-[env(titlebar-area-y,0px)] right-[calc(100vw-env(titlebar-area-x,0px)-env(titlebar-area-width,100vw)+0.5rem)] z-50 flex h-[env(titlebar-area-height,var(--frame-title-bar))] items-center gap-0.5">
+          {corner}
+        </div>
+      )}
     </div>
   )
 }

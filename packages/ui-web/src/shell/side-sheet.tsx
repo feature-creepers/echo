@@ -12,14 +12,14 @@ import { Transcript } from '../conversation/transcript.tsx'
 import { useDevice } from '../device/device.tsx'
 import { Inspector } from '../inspector/inspector.tsx'
 import { cn } from '../primitives/cn.ts'
-import { IconButton } from '../primitives/icon-button.tsx'
-import { CloseGlyph } from '../primitives/icons.tsx'
+import { InspectorGlyph, ThreadsGlyph, TranscriptGlyph } from '../primitives/icons.tsx'
 import { settle, slide } from '../styles/motion.ts'
 import { SheetHandle } from './sheet-handle.tsx'
 import { SHEET_TABS, type SheetMove, type SheetPlace, type SheetTab } from './sheet-place.ts'
 import { SHEET_CSS_WIDTH, sheetWidthStyle } from './sheet-width.ts'
 
 const TITLES: Record<SheetTab, string> = { transcript: 'Transcript', threads: 'Threads', inspector: 'Inspector' }
+const GLYPHS: Record<SheetTab, (props: { size?: number }) => ReactNode> = { transcript: TranscriptGlyph, threads: ThreadsGlyph, inspector: InspectorGlyph }
 
 interface SideSheetProps {
   client: Client
@@ -145,9 +145,10 @@ export function SideSheet({ client, personas, place, tab, onMove, onOpenMemory, 
       className="relative z-30 flex h-full min-w-0 shrink-0 flex-col border-line border-l bg-surface"
     >
       <SheetHandle {...resize} />
-      {/* The sheet's top is the window's top: the title row's height, dragging the window, and on Windows and Linux
-          room kept on the right for the system's controls, which are drawn over it. */}
-      <header className="drag flex h-[env(titlebar-area-height,var(--frame-title-bar))] shrink-0 items-center gap-2 pr-[calc(100vw-env(titlebar-area-x,0px)-env(titlebar-area-width,100vw)+0.5rem)] pl-2">
+      {/* The sheet's top is the window's top: the title row's height, dragging the window, with room kept on the right
+          for the window's own buttons, which stand there whether it is open or not, and on Windows and Linux for the
+          system's controls, drawn over it. */}
+      <header className="drag flex h-[env(titlebar-area-height,var(--frame-title-bar))] shrink-0 items-center gap-2 pr-[calc(100vw-env(titlebar-area-x,0px)-env(titlebar-area-width,100vw)+5rem)] pl-2">
         <div role="tablist" aria-label="What the side sheet shows" className="no-drag flex min-w-0 flex-1 items-center gap-0.5">
           {SHEET_TABS.map((name) => (
             <button
@@ -159,13 +160,16 @@ export function SideSheet({ client, personas, place, tab, onMove, onOpenMemory, 
               aria-controls={tab === name ? `${ids}-panel` : undefined}
               // Chosen again, a tab goes back to its start: the log, or the list of threads.
               onClick={() => onMove({ to: 'tab', tab: name })}
-              title={name === 'transcript' && transcriptKey !== '' ? `Transcript (${describeShortcut(transcriptKey, device.mac)})` : undefined}
+              title={name === 'transcript' && transcriptKey !== '' ? `Transcript (${describeShortcut(transcriptKey, device.mac)})` : TITLES[name]}
               className={cn(
                 'flex h-6 min-w-0 items-center gap-1.5 rounded-md px-2 text-xs outline-none transition-colors duration-(--duration-quick) ease-soft focus-visible:bg-white/[0.06]',
                 tab === name ? 'bg-white/[0.07] text-text' : 'text-text-faint hover:bg-white/[0.04] hover:text-text-soft'
               )}
             >
-              <span className="truncate">{TITLES[name]}</span>
+              <span className="shrink-0 opacity-80">{GLYPHS[name]({})}</span>
+              {/* The chosen tab says its name; the others their glyph, named for the screen reader and the pointer, so the
+                  three fit beside the window's buttons in a narrow sheet. */}
+              {tab === name ? <span className="truncate">{TITLES[name]}</span> : <span className="sr-only">{TITLES[name]}</span>}
               {name === 'threads' && working > 0 && (
                 <span className="flex items-center gap-1 text-[0.6875rem] text-accent tabular-nums" title={`${working} at work`}>
                   <StateDot state="working" />
@@ -175,9 +179,6 @@ export function SideSheet({ client, personas, place, tab, onMove, onOpenMemory, 
             </button>
           ))}
         </div>
-        <IconButton label="Close the side sheet" onClick={() => onMove({ to: 'close' })} className="no-drag">
-          <CloseGlyph />
-        </IconButton>
       </header>
       {shown()}
     </motion.aside>

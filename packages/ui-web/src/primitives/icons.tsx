@@ -103,6 +103,30 @@ export const SheetGlyph = () => (
   </Glyph>
 )
 
+/** The transcript: lines of what was said, alternating sides, as a conversation reads. */
+export const TranscriptGlyph = ({ size = 14 }: { size?: number }) => (
+  <Glyph size={size}>
+    <path d="M2.5 4h7M6.5 8h7M2.5 12h5" />
+  </Glyph>
+)
+
+/** The threads: one line that branches into others, as work handed on does. */
+export const ThreadsGlyph = ({ size = 14 }: { size?: number }) => (
+  <Glyph size={size}>
+    <circle cx="4" cy="3.5" r="1.5" />
+    <circle cx="4" cy="12.5" r="1.5" />
+    <circle cx="12" cy="8" r="1.5" />
+    <path d="M4 5v6M4 8h3.5a3 3 0 0 0 3-3V8" />
+  </Glyph>
+)
+
+/** The inspector: a pulse, as the events going by. */
+export const InspectorGlyph = ({ size = 14 }: { size?: number }) => (
+  <Glyph size={size}>
+    <path d="M1.5 8h3l2-4.5 3 9 2-4.5h3" />
+  </Glyph>
+)
+
 export const SearchGlyph = () => (
   <Glyph>
     <circle cx="7" cy="7" r="4" />
