@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { answerQuestion, type FrameServices, readMessage } from './bridge.ts'
-import { pageOf, policyOf, themeOf } from './page.ts'
+import { type Face, pageOf, policyOf, themeOf } from './page.ts'
 
 describe("a widget app's page", () => {
   it('may load pictures and sounds from the origins of the addresses it declares, and reach nothing else itself', () => {
@@ -12,13 +12,48 @@ describe("a widget app's page", () => {
     expect(policyOf({ addresses: [] })).toContain('img-src data: blob:;')
   })
 
-  it("is given Echo's colours, and none that could end its style", () => {
-    const theme = themeOf((name) => ({ '--color-accent': ' #5ac8ff ', '--color-text': 'red}</style><script>' })[name] ?? '')
-    expect(theme['--echo-accent']).toBe('#5ac8ff')
+  it('loads a font from the page itself only', () => {
+    expect(policyOf({ addresses: ['https://fonts.example/'] })).toContain('; font-src data:;')
+  })
+
+  it("is given Echo's look, with the accent where it is drawn, and no value that could end its style", () => {
+    const theme = themeOf((name) => ({ '--accent': ' #6b85f5 ', '--accent-ink': '#0f0f0d}</style><script>alert(1)' })[name] ?? '')
     const page = pageOf({ html: '<p>Runs</p>' }, theme)
-    expect(page).toContain('--echo-accent:#5ac8ff')
-    expect(page).not.toContain('</style><script>alert')
+    for (const name of ['ground', 'surface', 'text', 'soft', 'faint', 'line', 'line-strong', 'danger', 'warn', 'info', 'accent'])
+      expect(page).toMatch(new RegExp(`--echo-${name}:[^;]`))
+    for (const face of ['sans', 'display', 'pixel', 'mono']) expect(page).toContain(`--echo-font-${face}:"`)
+    expect(page).toContain('--echo-accent:#6b85f5')
+    expect(page).not.toContain('alert(1)')
     expect(page.endsWith('<p>Runs</p>')).toBe(true)
+  })
+
+  it.each([
+    ['square corners', '*,*::before,*::after{box-sizing:border-box;border-radius:0}'],
+    ['a label in capitals in the pixel face', '.caps{font:400 0.6875rem/1rem var(--echo-font-pixel);letter-spacing:0.04em;text-transform:uppercase}'],
+    ['a figure in the display face', '.display{font-family:var(--echo-font-display);font-weight:900;'],
+    ['hairlines between rows', 'border-top:1px solid var(--echo-line)'],
+    ['buttons drawn as lines', 'button{min-height:28px;padding:0 10px;border:1px solid var(--echo-line-strong);background:transparent;'],
+    ['the one action on a plane of the ink', 'button.primary{border-color:var(--echo-text);background:var(--echo-text);color:var(--echo-ground)}'],
+    ['the names pages used before', '--echo-font:var(--echo-font-sans);--echo-mono:var(--echo-font-mono)']
+  ])('starts from the base style of the app: %s', (_case, rule) => {
+    expect(pageOf({ html: '' }, {})).toContain(rule)
+  })
+
+  it.each<[string, Face, boolean]>([
+    ['a face of the app', { family: 'Geist Pixel', weight: '400', source: 'data:font/woff2;base64,d09GMgAB' }, true],
+    ['a variable face', { family: 'Big Shoulders Variable', weight: '100 900', source: 'data:font/woff2;base64,d09GMgAB==' }, true],
+    ['a face from an address', { family: 'Geist Pixel', weight: '400', source: 'https://fonts.example/pixel.woff2' }, false],
+    ['a family that ends the rule', { family: 'X"}body{display:none', weight: '400', source: 'data:font/woff2;base64,d09G' }, false],
+    ['a source that ends the address', { family: 'Geist Pixel', weight: '400', source: 'data:font/woff2;base64,d09G)}body{' }, false]
+  ])('declares %s: %s', (_case, face, declared) => {
+    expect(pageOf({ html: '' }, {}, [face]).includes('@font-face')).toBe(declared)
+  })
+
+  it("declares the app's four faces, each written into the page", async () => {
+    const { FACES } = await import('./faces.ts')
+    const page = pageOf({ html: '' }, {}, FACES)
+    for (const family of ['Instrument Sans Variable', 'Big Shoulders Variable', 'Geist Pixel', 'Geist Mono Variable'])
+      expect(page).toContain(`@font-face{font-family:"${family}";`)
   })
 })
 

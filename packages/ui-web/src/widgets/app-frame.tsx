@@ -62,22 +62,27 @@ function Frame({ widget }: { widget: SavedWidget & { app: WidgetApp } }) {
   const { app } = widget
   const player = usePlayer()
   const frame = useRef<HTMLIFrameElement>(null)
+  const around = useRef<HTMLDivElement>(null)
   const [address, setAddress] = useState<string>()
   const [height, setHeight] = useState(FIRST_HEIGHT)
   const [problem, setProblem] = useState<string>()
 
-  // A new build is a new page; its theme is read from the window's own colours, the persona's accent among them.
+  // A new build is a new page, in Echo's look, with the accent of the persona where it is drawn.
   useEffect(() => {
-    if (!host?.widgets) return
+    const widgets = host?.widgets
+    if (!widgets || !around.current) return
     let current = true
-    const style = getComputedStyle(document.documentElement)
-    host.widgets
-      .frame(
-        pageOf(
-          app,
-          themeOf((name) => style.getPropertyValue(name))
-        ),
-        policyOf(app)
+    const style = getComputedStyle(around.current)
+    import('./faces.ts')
+      .then(({ FACES }) =>
+        widgets.frame(
+          pageOf(
+            app,
+            themeOf((name) => style.getPropertyValue(name)),
+            FACES
+          ),
+          policyOf(app)
+        )
       )
       .then(
         (url) => current && setAddress(url),
@@ -143,7 +148,7 @@ function Frame({ widget }: { widget: SavedWidget & { app: WidgetApp } }) {
 
   if (!host?.widgets) return <Quiet>Widget apps run in the desktop app.</Quiet>
   return (
-    <div className="grid min-w-0 gap-1">
+    <div ref={around} className="grid min-w-0 gap-1">
       {address && (
         <iframe
           ref={frame}
