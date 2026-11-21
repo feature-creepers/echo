@@ -1,4 +1,5 @@
 import type { CoreLink, DeviceSettings, DeviceSettingsChange, SessionLink, ShortcutName, UpdateState } from '@repo/client'
+import type { ModelSet } from '@repo/models'
 import type { InstallProgress, SpeechStatus } from '@repo/speech'
 
 /**
@@ -116,6 +117,8 @@ export interface About {
   dataFolder: string
   /** The app has a page of releases to open: an installed copy, which knows where its updates come from. */
   releases?: boolean
+  /** Every model the app downloads, with its makers and its licence: all the catalogue says of it but its files. */
+  models: Omit<ModelSet, 'files'>[]
 }
 
 export interface AppBridge {

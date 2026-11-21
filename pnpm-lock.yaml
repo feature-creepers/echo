@@ -192,6 +192,9 @@ importers:
       '@repo/embedder':
         specifier: workspace:*
         version: link:../../packages/embedder
+      '@repo/models':
+        specifier: workspace:*
+        version: link:../../packages/models
       '@repo/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol

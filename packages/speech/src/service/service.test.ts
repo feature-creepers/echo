@@ -19,7 +19,9 @@ function set(id: string, purpose: SpeechSet['purpose'], bytes: number): SpeechSe
     id,
     purpose,
     name: `the ${purpose} set`,
-    licence: 'MIT',
+    model: { name: 'a model', maker: 'its makers', page: 'https://models.invalid/' },
+    licence: { name: 'MIT', url: 'https://models.invalid/licence', asks: 'free to use.' },
+    source: 'https://models.invalid/',
     files: [{ path: 'model.bin', url: 'https://models.invalid/model.bin', bytes, sha256: '0'.repeat(64) }]
   }
 }

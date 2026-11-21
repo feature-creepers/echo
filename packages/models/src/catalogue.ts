@@ -1,3 +1,4 @@
+import { CC_BY_4, MIT, OPENRAIL_M } from './licences.ts'
 import type { ModelFile, ModelSet, SpeechSet } from './model-set.ts'
 
 /**
@@ -6,9 +7,12 @@ import type { ModelFile, ModelSet, SpeechSet } from './model-set.ts'
  * recorded here. Changing a model means a new commit, new sizes and new hashes, together.
  */
 
-/** The files of one repository, at one commit. */
-function hosted(repository: string, commit: string, files: Array<[path: string, bytes: number, sha256: string]>): ModelFile[] {
-  return files.map(([path, bytes, sha256]) => ({ path, url: `https://huggingface.co/${repository}/resolve/${commit}/${path}`, bytes, sha256 }))
+/** The files of one repository, at one commit, and the page of the repository at that commit. */
+function hosted(repository: string, commit: string, files: Array<[path: string, bytes: number, sha256: string]>): { source: string; files: ModelFile[] } {
+  return {
+    source: `https://huggingface.co/${repository}/tree/${commit}`,
+    files: files.map(([path, bytes, sha256]) => ({ path, url: `https://huggingface.co/${repository}/resolve/${commit}/${path}`, bytes, sha256 }))
+  }
 }
 
 /**
@@ -19,8 +23,10 @@ export const PARAKEET: SpeechSet = {
   id: 'parakeet-tdt-0.6b-v3-int8',
   purpose: 'recognition',
   name: 'Speech recognition',
-  licence: 'CC BY 4.0',
-  files: hosted('csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8', 'ed5d745623472f97cfc2e6c2916ee248798fc5a8', [
+  model: { name: 'Parakeet TDT 0.6B v3', maker: 'NVIDIA', page: 'https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3' },
+  licence: CC_BY_4,
+  changes: 'Exported to ONNX by the sherpa-onnx project, with weights reduced to 8 bits.',
+  ...hosted('csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8', 'ed5d745623472f97cfc2e6c2916ee248798fc5a8', [
     ['encoder.int8.onnx', 652_282_294, '1afbe69c1ffdabee94755f42e4daf1d93549131a3da11356bda84fcef0f2c479'],
     ['decoder.int8.onnx', 11_845_274, '0222a86147299d4dee90edf95b6d13827edb42ad8b7c9cf0b2582f030937c0b5'],
     ['joiner.int8.onnx', 6_355_277, 'cbd02f3696e9944970111fb439d9c3fd365a80374565f13f2b9c7007d253fc98'],
@@ -36,8 +42,15 @@ export const SUPERTONIC: SpeechSet = {
   id: 'supertonic-3-int8',
   purpose: 'voice',
   name: 'Voice',
-  licence: 'OpenRAIL-M',
-  files: hosted('csukuangfj2/sherpa-onnx-supertonic-3-tts-int8-2026-05-11', 'cca5a0e6c96e1d2c720986bf7e75fcc81dee3ae4', [
+  model: {
+    name: 'Supertonic 3',
+    maker: 'Supertone Inc.',
+    page: 'https://huggingface.co/Supertone/supertonic-3',
+    copyright: 'Copyright (c) 2026 Supertone Inc.'
+  },
+  licence: OPENRAIL_M,
+  changes: 'Converted for sherpa-onnx by the sherpa-onnx project, with weights reduced to 8 bits.',
+  ...hosted('csukuangfj2/sherpa-onnx-supertonic-3-tts-int8-2026-05-11', 'cca5a0e6c96e1d2c720986bf7e75fcc81dee3ae4', [
     ['vector_estimator.int8.onnx', 78_400_833, '20cd86fa5c6effedfda0e7cffe5b0569ca401c440a0c3a1d72bf39286c0db3fd'],
     ['text_encoder.int8.onnx', 36_416_150, 'c7befd5ea8c3119769e8a6c1486c4edc6a3bc8365c67621c881bbb774b9902ff'],
     ['vocoder.int8.onnx', 25_991_073, 'e923d60f53f95eb1ce235f1dc33ec56d9c057823c96fa6f8acf98f32b0da6152'],
@@ -53,8 +66,14 @@ export const SILERO: SpeechSet = {
   id: 'silero-vad-v5',
   purpose: 'speech-detection',
   name: 'Speech detection',
-  licence: 'MIT',
-  files: hosted('csukuangfj/vad', 'fba88cd2e921609e7675c3aaf51e0b9b295da4bc', [
+  model: {
+    name: 'Silero VAD v5',
+    maker: 'Silero Team',
+    page: 'https://github.com/snakers4/silero-vad',
+    copyright: 'Copyright (c) 2020-present Silero Team'
+  },
+  licence: MIT,
+  ...hosted('csukuangfj/vad', 'fba88cd2e921609e7675c3aaf51e0b9b295da4bc', [
     ['silero_vad_v5.onnx', 2_313_101, '6b99cbfd39246b6706f98ec13c7c50c6b299181f2474fa05cbc8046acc274396']
   ])
 }
@@ -72,8 +91,10 @@ export const E5_SMALL: ModelSet = {
   id: 'multilingual-e5-small-q8',
   purpose: 'embedding',
   name: 'Search by meaning',
-  licence: 'MIT',
-  files: hosted('Xenova/multilingual-e5-small', '761b726dd34fb83930e26aab4e9ac3899aa1fa78', [
+  model: { name: 'multilingual-e5-small', maker: 'intfloat', page: 'https://huggingface.co/intfloat/multilingual-e5-small' },
+  licence: MIT,
+  changes: 'Converted to ONNX for Transformers.js by Xenova, with weights reduced to 8 bits.',
+  ...hosted('Xenova/multilingual-e5-small', '761b726dd34fb83930e26aab4e9ac3899aa1fa78', [
     ['onnx/model_quantized.onnx', 118_308_185, 'f80102d3f2a1229f387d3c81909990d8945513e347b0eab049f7de3c6f98c193'],
     ['tokenizer.json', 17_082_730, '0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39'],
     ['tokenizer_config.json', 443, 'a1d6bc8734a6f635dc158508bef000f8e2e5a759c7d92f984b2c86e5ff53425b'],
@@ -81,6 +102,9 @@ export const E5_SMALL: ModelSet = {
     ['config.json', 658, 'cb99455288675345e1a4f411438d5d0adbba5fbd3a67ea4fb03c015433b996c1']
   ])
 }
+
+/** Every set the app downloads: speech's, and the memory's. */
+export const MODEL_SETS: readonly ModelSet[] = [...SPEECH_SETS, E5_SMALL]
 
 /** The size of a whole set, in bytes. */
 export function bytesOf(set: ModelSet): number {

@@ -6,8 +6,8 @@ import { ago } from '../memory/words.ts'
 import { Orb } from '../presence/orb.tsx'
 import { Button } from '../primitives/button.tsx'
 import { cn } from '../primitives/cn.ts'
-import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { Switch } from '../primitives/switch.tsx'
+import { TextLink } from '../primitives/text-link.tsx'
 import { SettingGroup, SettingRow } from './rows.tsx'
 import { useAbout } from './use-about.ts'
 
@@ -28,15 +28,7 @@ function useUpdates(host: DeviceHost | undefined): UpdateState | undefined {
 
 const SYSTEMS: Record<string, string> = { win32: 'Windows', darwin: 'macOS', linux: 'Linux' }
 
-/** What the speech runs on, credited as their licences ask. */
-const MODELS = [
-  { name: 'NVIDIA Parakeet TDT 0.6B v3', role: 'Hears you', licence: 'CC BY 4.0' },
-  { name: 'Supertonic 3', role: 'Speaks', licence: 'OpenRAIL-M' },
-  { name: 'Silero VAD', role: 'Tells speech from silence', licence: 'MIT' },
-  { name: 'sherpa-onnx', role: 'Runs them on this computer', licence: 'Apache 2.0' }
-]
-
-/** The version, its updates, and who made the app and what it is built on. */
+/** The version, its updates, and who made the app. */
 export function AboutSection({ productName }: { productName: string }) {
   const { settings, change, host } = useDevice()
   const about = useAbout(host)
@@ -77,8 +69,8 @@ export function AboutSection({ productName }: { productName: string }) {
       <SettingGroup title="Made by">
         <div className="grid gap-4 px-5 py-5">
           <p className="text-sm leading-relaxed">
-            <Author name="Rodolphe Barbanneau" page="https://github.com/rodolphebarbanneau" /> and{' '}
-            <Author name="Tommy Sendra" page="https://github.com/doudandyx" />.
+            <TextLink href="https://github.com/rodolphebarbanneau">Rodolphe Barbanneau</TextLink> and{' '}
+            <TextLink href="https://github.com/doudandyx">Tommy Sendra</TextLink>.
             <span className="text-text-soft"> Free and open source, under the MIT licence.</span>
           </p>
           <dl className="grid grid-cols-[auto_1fr] gap-x-8 gap-y-2 font-mono text-xs">
@@ -95,34 +87,7 @@ export function AboutSection({ productName }: { productName: string }) {
           </dl>
         </div>
       </SettingGroup>
-
-      <SettingGroup title="Speech, on this computer">
-        {MODELS.map((model) => (
-          <div key={model.name} className="flex items-center justify-between gap-6 px-5 py-3">
-            <div className="grid gap-0.5">
-              <span className="text-sm">{model.name}</span>
-              <span className="text-text-soft text-xs">{model.role}</span>
-            </div>
-            <Eyebrow>{model.licence}</Eyebrow>
-          </div>
-        ))}
-      </SettingGroup>
     </div>
-  )
-}
-
-/** An author's name, which opens their page in the person's browser. */
-function Author({ name, page }: { name: string; page: string }) {
-  return (
-    <a
-      href={page}
-      target="_blank"
-      rel="noreferrer"
-      title={page.replace(/^https:\/\//, '')}
-      className="rounded-xs underline decoration-white/25 underline-offset-4 transition-colors duration-(--duration-quick) ease-soft hover:decoration-white/70 focus-visible:outline-1 focus-visible:outline-accent focus-visible:outline-offset-2"
-    >
-      {name}
-    </a>
   )
 }
 

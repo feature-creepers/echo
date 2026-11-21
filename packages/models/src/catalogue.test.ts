@@ -2,20 +2,19 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { bytesOf, E5_SMALL, PARAKEET, SILERO, SPEECH_SETS, SUPERTONIC } from './catalogue.ts'
+import { bytesOf, E5_SMALL, MODEL_SETS, PARAKEET, SILERO, SPEECH_SETS, SUPERTONIC } from './catalogue.ts'
 import { installModelSet, isInstalled } from './download.ts'
 import type { DownloadProgress } from './model-set.ts'
-
-const EVERY_SET = [...SPEECH_SETS, E5_SMALL]
 
 describe('the catalogue', () => {
   it('lists one set for each thing speech needs, and keeps the model for search by meaning apart', () => {
     expect(SPEECH_SETS.map((set) => set.purpose).sort()).toEqual(['recognition', 'speech-detection', 'voice'])
-    expect(new Set(EVERY_SET.map((set) => set.id)).size).toBe(EVERY_SET.length)
+    expect(MODEL_SETS.filter((set) => set.purpose === 'embedding')).toEqual([E5_SMALL])
+    expect(new Set(MODEL_SETS.map((set) => set.id)).size).toBe(MODEL_SETS.length)
   })
 
   it('names folders and files that every system accepts', () => {
-    for (const set of EVERY_SET) {
+    for (const set of MODEL_SETS) {
       expect(set.id).toMatch(/^[a-z0-9][a-z0-9.-]*$/)
       expect(new Set(set.files.map((file) => file.path)).size).toBe(set.files.length)
       for (const file of set.files) expect(file.path).toMatch(/^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/)
@@ -23,7 +22,7 @@ describe('the catalogue', () => {
   })
 
   it('records a size and a SHA-256 for every file, at an address that cannot change under them', () => {
-    for (const set of EVERY_SET) {
+    for (const set of MODEL_SETS) {
       for (const file of set.files) {
         expect(file.bytes).toBeGreaterThan(0)
         expect(file.sha256).toMatch(/^[0-9a-f]{64}$/)
@@ -32,6 +31,25 @@ describe('the catalogue', () => {
         expect(file.url.endsWith(`/${file.path}`)).toBe(true)
       }
     }
+  })
+
+  it.each([
+    { set: PARAKEET, maker: 'NVIDIA', licence: 'CC BY 4.0' },
+    { set: SUPERTONIC, maker: 'Supertone Inc.', licence: 'OpenRAIL-M' },
+    { set: SILERO, maker: 'Silero Team', licence: 'MIT' },
+    { set: E5_SMALL, maker: 'intfloat', licence: 'MIT' }
+  ])('credits $maker, under $licence, and names where the files come from', ({ set, maker, licence }) => {
+    expect(set.model.maker).toBe(maker)
+    expect(set.licence.name).toBe(licence)
+    expect(set.model.page).toMatch(/^https:\/\//)
+    expect(set.licence.url).toMatch(/^https:\/\//)
+    for (const file of set.files) expect(file.url.replace('/resolve/', '/tree/').startsWith(`${set.source}/`)).toBe(true)
+  })
+
+  it('passes on every restriction a licence puts on use', () => {
+    // Its Attachment A lists thirteen, (a) to (m).
+    expect(SUPERTONIC.licence.restrictions?.uses).toHaveLength(13)
+    expect(MODEL_SETS.filter((set) => set.licence.restrictions)).toEqual([SUPERTONIC])
   })
 
   it('says how much each set weighs', () => {

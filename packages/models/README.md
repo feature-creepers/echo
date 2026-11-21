@@ -12,6 +12,8 @@ The import rule is enforced by `biome.jsonc` (docs/SPEC.md, section 14.3).
 
 A model set is the files one engine needs. The catalogue (`src/catalogue.ts`) records, for each file, where it is downloaded from, its size and its SHA-256. Every address names one commit of a Hugging Face repository, so it can never serve other bytes than the ones recorded.
 
+Each set also carries its credit: who made the model, their page and copyright notice, how the files differ from the makers' own, the repository they come from, and its licence (`src/licences.ts`) with what it asks and, for OpenRAIL-M, the uses it forbids in its own words. The app shows them before a download and on its Licences page (docs/SPEC.md, section 8.2); `MODEL_SETS` is every set it downloads.
+
 | Set                         | Used for           | Download | Licence    | Files from                                                                                                                                  | Model by                                                                |
 | --------------------------- | ------------------ | -------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
 | `parakeet-tdt-0.6b-v3-int8` | Speech recognition | 671 MB   | CC BY 4.0  | [csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8](https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8)       | [NVIDIA](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)            |

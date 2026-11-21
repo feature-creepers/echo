@@ -118,7 +118,7 @@ export function createEmbedder({ folder, log, idleMs = IDLE_MS, worker: script =
   return {
     model: MODEL,
     dimensions: DIMENSIONS,
-    about: { name: 'multilingual-e5-small', bytes: bytesOf(set), source: 'Hugging Face', licence: set.licence },
+    about: { name: 'multilingual-e5-small', bytes: bytesOf(set), source: 'Hugging Face', licence: set.licence.name },
     state: () => state,
 
     async install(onProgress, signal) {

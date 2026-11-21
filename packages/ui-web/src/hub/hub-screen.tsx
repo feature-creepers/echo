@@ -8,6 +8,7 @@ import type { DeviceSpeech } from '../audio/use-speech.ts'
 import { useDevice } from '../device/device.tsx'
 import { FilesSection } from '../files/files-section.tsx'
 import { WidgetsSection, type WidgetsSectionProps } from '../library/widgets-section.tsx'
+import { LicencesSection } from '../licences/licences-section.tsx'
 import { MemorySection } from '../memory/memory-section.tsx'
 import { PersonasForm } from '../personas/personas-form.tsx'
 import { ScreenHeader } from '../primitives/screen-header.tsx'
@@ -130,7 +131,7 @@ const PAGES = {
   models: {
     title: 'Models',
     lead: (name) =>
-      `${name} runs on an AI program you already have, signed in with your own account. Choose the model it answers with: these choices follow you, not this computer.`,
+      `${name} runs your own Claude Code or Codex, installed on this computer and signed in with your account through that program's own sign-in; it never sees, keeps or passes on your sign-in details. Choose the model it answers with: these choices follow you, not this computer.`,
     render: (hub) => <ModelsSection client={hub.client} settings={hub.settings} />
   },
   access: {
@@ -149,6 +150,12 @@ const PAGES = {
     title: 'Updates & about',
     lead: (name) => `The version of ${name} on this computer, and its updates.`,
     render: (hub) => <AboutSection productName={hub.productName} />
+  },
+  licences: {
+    title: 'Licences',
+    lead: (name) =>
+      `The models ${name} downloads to hear you, speak and search by meaning: who made them, what was changed, where the files come from, and the licences they are published under.`,
+    render: () => <LicencesSection />
   }
 } satisfies Record<string, HubPageEntry>
 
@@ -166,7 +173,7 @@ const GROUPS: { title: string; pages: HubPage[] }[] = [
 ]
 
 /** What stands apart, at the bottom of the sidebar. */
-const APART: HubPage[] = ['about']
+const APART: HubPage[] = ['about', 'licences']
 
 interface HubScreenProps extends HubContext {
   /** The page open. */

@@ -11,6 +11,7 @@ import {
   type ShortcutName,
   shortcutClash
 } from '@repo/client'
+import { MODEL_SETS } from '@repo/models'
 import { type AccentName, accents, color, frame } from '@repo/tokens'
 import {
   app,
@@ -423,7 +424,8 @@ function start(): void {
       system: process.platform,
       electron: process.versions.electron,
       dataFolder: data,
-      ...(releasesPage() ? { releases: true } : {})
+      ...(releasesPage() ? { releases: true } : {}),
+      models: MODEL_SETS.map(({ files: _files, ...notice }) => notice)
     })
   )
   calls.handle(APP_CHANNELS.openDataFolder, async () => void (await shell.openPath(data)))

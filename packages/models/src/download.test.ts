@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { E5_SMALL } from './catalogue.ts'
 import { installModelSet, isInstalled, MARKER_FILE, ModelDownloadError, modelSetFolder, PART_SUFFIX, removeModelSet } from './download.ts'
+import { MIT } from './licences.ts'
 import type { DownloadProgress, ModelSet } from './model-set.ts'
 
 /** What the server holds, by path. Large enough to arrive in several pieces. */
@@ -109,7 +110,9 @@ function testSet(): ModelSet {
     id: 'test-set',
     purpose: 'voice',
     name: 'the test voice',
-    licence: 'MIT',
+    model: { name: 'a model', maker: 'its makers', page: `${origin}/` },
+    licence: MIT,
+    source: `${origin}/`,
     files: [
       { path: 'big.bin', url: `${origin}/big.bin`, bytes: BIG.length, sha256: sha256(BIG) },
       { path: 'nested/small.bin', url: `${origin}/nested/small.bin`, bytes: SMALL.length, sha256: sha256(SMALL) }

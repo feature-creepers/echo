@@ -98,7 +98,7 @@ export function Onboarding({ productName, personas, engines, speech, setPersonas
               <Section
                 eyebrow="Engine"
                 title="What it thinks with."
-                lead={`${productName} runs on an AI program you already have, signed in with your own account. It adds no account of its own.`}
+                lead={`${productName} runs your own Claude Code or Codex, installed on this computer and signed in with your account through that program's own sign-in. ${productName} never sees, keeps or passes on your sign-in details, and adds no account of its own.`}
               >
                 <EngineRows engines={engines} />
                 <div className="mt-8 flex items-center gap-4">

@@ -18,6 +18,29 @@ export interface About {
   dataFolder: string
   /** The app has a page of releases to open: an installed copy, which knows where its updates come from. */
   releases?: boolean
+  /** Every model the app downloads, credited as its licence asks (docs/SPEC.md, section 8.2). */
+  models: ModelNotice[]
+}
+
+/** A model the app downloads: who made it, what was changed, where its files come from, and its licence. */
+export interface ModelNotice {
+  /** The set's identifier, as the speech engines name it too. */
+  id: string
+  /** What it is for, as the person reads it: "Voice". */
+  name: string
+  model: { name: string; maker: string; page: string; copyright?: string }
+  licence: {
+    name: string
+    url: string
+    /** What it asks, in a sentence that follows its name. */
+    asks: string
+    /** The uses it forbids, in its own words, which the person agrees to by downloading the model. */
+    restrictions?: { lead: string; uses: readonly string[] }
+  }
+  /** How the files differ from the makers' own. */
+  changes?: string
+  /** Where the files come from. */
+  source: string
 }
 
 /**
