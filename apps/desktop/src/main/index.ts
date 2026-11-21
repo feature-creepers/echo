@@ -47,7 +47,6 @@ import { serveDesktopMarker } from './desktop-marker.ts'
 import { deviceId } from './device.ts'
 import { openDeviceSettings } from './device-settings.ts'
 import { createGlobalShortcuts } from './global-shortcut.ts'
-import { followLoad } from './load/index.ts'
 import { appIcon } from './mark.ts'
 import { createMini } from './mini/index.ts'
 import { serveNotifications } from './notifications.ts'
@@ -409,13 +408,6 @@ function start(): void {
     marker.accent(look.accent)
     camera.accent(look.accent)
   })
-  // How hard the computer works, for the window's core: read only while the window asks for it and is seen.
-  const load = followLoad(() => !window.isDestroyed() && window.isVisible() && !window.isMinimized())
-  calls.on(APP_CHANNELS.loadFollow, (_event, on) => {
-    if (on === true) load.start((value) => toWindow(APP_CHANNELS.load, value))
-    else load.stop()
-  })
-  window.webContents.on('render-process-gone', () => load.stop())
   calls.handle(
     APP_CHANNELS.about,
     (): About => ({
@@ -465,7 +457,6 @@ function start(): void {
   })
 
   app.on('will-quit', () => {
-    load.stop()
     speech.stop()
     shortcuts.release()
     tray.destroy()

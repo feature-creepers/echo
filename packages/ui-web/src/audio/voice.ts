@@ -3,14 +3,11 @@ import { clauses } from './clauses.ts'
 import { route } from './devices.ts'
 import type { SpeechEngine } from './engine.ts'
 import { loudness } from './recorder.ts'
-import { readBands } from './spectrum.ts'
 
-/** A voice that speaks through the device's engine, and says how loud it is so the core can move with it. */
+/** A voice that speaks through the device's engine, and says how loud it is so the eye can move with it. */
 export interface SpeakingVoice extends DeviceVoice {
   /** How loud what is being said is right now, from 0 to 1. */
   level(): number
-  /** Its spectrum right now, read into the bands given, from the low notes to the high; nothing before it first spoke. */
-  bands(into: Float32Array): Float32Array | undefined
   /** Let its sound go once what it is saying has been said, so a voice no longer used holds no audio of the system's. */
   close(): void
 }
@@ -39,7 +36,7 @@ const FALLBACK_LANGUAGE = 'en'
 export function engineVoice(engine: SpeechEngine, how: VoiceManner): SpeakingVoice {
   /** The device the sound goes to now, so that it is changed only when the setting is. */
   let routed: string | undefined
-  let output: { context: AudioContext; analyser: AnalyserNode; buffer: Float32Array<ArrayBuffer>; spectrum: Float32Array<ArrayBuffer> } | undefined
+  let output: { context: AudioContext; analyser: AnalyserNode; buffer: Float32Array<ArrayBuffer> } | undefined
   /** Sound being made ahead, by sentence text: one piece per clause, in order. */
   const ahead = new Map<string, Promise<AudioBuffer | undefined>[]>()
   /** Sentences under way, and whether the voice was closed: its sound goes once the last of them ends. */
@@ -54,7 +51,7 @@ export function engineVoice(engine: SpeechEngine, how: VoiceManner): SpeakingVoi
       // Quick enough that the core follows each syllable's notes.
       analyser.smoothingTimeConstant = 0.5
       analyser.connect(context.destination)
-      output = { context, analyser, buffer: new Float32Array(analyser.fftSize), spectrum: new Float32Array(analyser.frequencyBinCount) }
+      output = { context, analyser, buffer: new Float32Array(analyser.fftSize) }
       routed = undefined
     }
     return output
@@ -102,10 +99,6 @@ export function engineVoice(engine: SpeechEngine, how: VoiceManner): SpeakingVoi
       if (!output) return 0
       output.analyser.getFloatTimeDomainData(output.buffer)
       return loudness(output.buffer)
-    },
-    bands(into) {
-      if (!output) return undefined
-      return readBands(output.analyser, output.spectrum, into)
     },
     close() {
       closed = true

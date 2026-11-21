@@ -129,11 +129,6 @@ export interface AppBridge {
   openReleases(): Promise<void>
   /** Tell the app how the assistant is now, for its mark in the tray. */
   showPresence(presence: Presence): void
-  /**
-   * Be told how hard this computer works, from 0 to 1, about once a second while the window is seen. The app only
-   * reads it while someone listens. Returns a function that stops the telling.
-   */
-  onLoad(listener: (load: number) => void): () => void
 }
 
 /** How the assistant is, as the window shows it: the accent of the persona that answers, and its mood. */
@@ -165,8 +160,6 @@ export const APP_CHANNELS = {
   openSettings: 'app:open-settings',
   presence: 'app:presence',
   widgetFrame: 'app:widget-frame',
-  load: 'app:load',
-  loadFollow: 'app:load-follow',
   updateState: 'updates:state',
   updateChanged: 'updates:changed',
   updateCheck: 'updates:check',

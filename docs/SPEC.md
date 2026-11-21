@@ -1459,7 +1459,7 @@ packages/ui-web/src/
 ├── settings/  memory/  schedule/  personas/   the other pages of the hub
 ├── inspector/       the inspector's events and their groups (sift.ts)
 ├── onboarding/      first launch
-└── device/          this device as the interface sees it: its settings, the computer's load, the assistant's state
+└── device/          this device as the interface sees it: its settings, the assistant's state
 ```
 
 ### 14.5 Inside the applications
@@ -1484,7 +1484,7 @@ apps/desktop/
 │   ├── self-check.ts     a first launch against the real core, with no window (run in CI)
 │   ├── vault.ts          seals and opens the core's secrets with the system's own store
 │   ├── tray.ts  mark.ts  global-shortcut.ts  notifications.ts  updater.ts  camera.ts  desktop-marker.ts  overlay.ts
-│   └── autostart/  chrome/  load/  keyring/   per system: opening at login, the window's material and buttons, the computer's load, whether a keyring keeps secrets
+│   └── autostart/  chrome/  keyring/   per system: opening at login, the window's material and buttons, whether a keyring keeps secrets
 ├── src/preload/          the typed bridge to the renderer
 ├── src/renderer/         mounts ui-web
 └── build/                packaging: electron-builder.yml, the macOS entitlements, stage.ts, which lays out what is packaged for a system, and signed-installer.ts, which puts a signed Windows installer in the update manifest

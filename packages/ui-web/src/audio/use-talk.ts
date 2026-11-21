@@ -118,7 +118,6 @@ export function useTalk(engine: SpeechEngine | undefined, onHeard: (text: string
     finish,
     cancel,
     level: () => take.current?.take.level() ?? 0,
-    bands: (into: Float32Array) => take.current?.take.bands(into),
     available: engine !== undefined
   }
 }

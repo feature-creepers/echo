@@ -21,8 +21,6 @@ export interface DeviceSpeech {
   ready: SpeechEngine | undefined
   /** How loud the assistant's voice is right now. */
   level: () => number
-  /** Its spectrum right now, read into the bands given; nothing while it has not spoken. */
-  bands: (into: Float32Array) => Float32Array | undefined
   /** The voice styles there are, once the engines have said. */
   styles: { id: string; name: string }[]
   /** The style a persona speaks a language in, picked or by default. */
@@ -167,7 +165,6 @@ export function useDeviceSpeech(engine: SpeechEngine | undefined, client: Client
     startInstall,
     ready,
     level: () => voice.current?.level() ?? 0,
-    bands: (into) => voice.current?.bands(into),
     styles,
     styleOf: (one, language) => styleOf(one, language, picked),
     pick,
