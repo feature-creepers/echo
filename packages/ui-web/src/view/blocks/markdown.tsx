@@ -4,30 +4,30 @@ import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
 import { cn } from '../../primitives/cn.ts'
 
-/** Headings start small: the prose sits inside a view or a sheet that has a title of its own. */
-const HEADING = 'mt-1.5 leading-snug [overflow-wrap:anywhere]'
+/** Headings start small, in the sentence face: the prose sits inside a view or a sheet that has a title of its own. */
+const HEADING = 'mt-1.5 font-semibold leading-snug [overflow-wrap:anywhere]'
 
 /**
  * How each element of the Markdown is drawn. Links show their words and are not followed, pictures show their
  * words, since an address in a model's text is not one the window should load, and HTML is not read at all.
  */
 const COMPONENTS: Components = {
-  h1: ({ children }) => <h3 className={`${HEADING} font-medium text-lg tracking-[-0.015em]`}>{children}</h3>,
-  h2: ({ children }) => <h4 className={`${HEADING} font-medium text-base tracking-[-0.01em]`}>{children}</h4>,
-  h3: ({ children }) => <h5 className={`${HEADING} font-medium text-sm`}>{children}</h5>,
-  h4: ({ children }) => <h5 className={`${HEADING} font-medium text-sm`}>{children}</h5>,
-  h5: ({ children }) => <h6 className={`${HEADING} font-medium text-sm`}>{children}</h6>,
-  h6: ({ children }) => <h6 className={`${HEADING} font-medium text-sm`}>{children}</h6>,
+  h1: ({ children }) => <h3 className={`${HEADING} text-lg tracking-[-0.015em]`}>{children}</h3>,
+  h2: ({ children }) => <h4 className={`${HEADING} text-base tracking-[-0.01em]`}>{children}</h4>,
+  h3: ({ children }) => <h5 className={`${HEADING} text-sm`}>{children}</h5>,
+  h4: ({ children }) => <h5 className={`${HEADING} text-sm`}>{children}</h5>,
+  h5: ({ children }) => <h6 className={`${HEADING} text-sm`}>{children}</h6>,
+  h6: ({ children }) => <h6 className={`${HEADING} text-sm`}>{children}</h6>,
   p: ({ children }) => <p className="text-pretty leading-relaxed [overflow-wrap:anywhere]">{children}</p>,
   ul: ({ children, className }) => (
     <ul
-      className={`grid grid-cols-1 gap-1 pl-5 [overflow-wrap:anywhere] ${className === 'contains-task-list' ? 'list-none' : 'list-disc marker:text-text-faint'}`}
+      className={`grid grid-cols-1 gap-1 pl-5 [overflow-wrap:anywhere] ${className === 'contains-task-list' ? 'list-none' : 'list-[square] marker:text-text-faint'}`}
     >
       {children}
     </ul>
   ),
   ol: ({ children, start }) => (
-    <ol start={start} className="grid grid-cols-1 gap-1 pl-5 [overflow-wrap:anywhere] list-decimal marker:font-mono marker:text-text-faint marker:text-xs">
+    <ol start={start} className="grid grid-cols-1 gap-1 pl-5 [overflow-wrap:anywhere] list-decimal marker:text-text-faint marker:text-xs marker:tabular-nums">
       {children}
     </ol>
   ),
@@ -39,27 +39,31 @@ const COMPONENTS: Components = {
     ),
   // A checklist's box ("- [ ] passport", "- [x] tickets"), drawn in the app's own look rather than the system's.
   input: ({ checked }) => (
-    <span aria-hidden="true" className={`relative top-[0.1875rem] size-3 shrink-0 border ${checked ? 'border-accent bg-accent/80' : 'border-line-strong'}`} />
+    <span
+      aria-hidden="true"
+      className={`relative top-[0.1875rem] size-3 shrink-0 ${checked ? 'bg-text' : 'shadow-[inset_0_0_0_1.5px_var(--color-line-strong)]'}`}
+    />
   ),
   blockquote: ({ children }) => <blockquote className="border-line-strong border-l-2 pl-3.5 text-text-soft [overflow-wrap:anywhere]">{children}</blockquote>,
   pre: ({ children }) => (
-    <pre className="whitespace-pre-wrap border border-line bg-ground px-3.5 py-3 font-mono text-text-soft text-xs leading-relaxed [overflow-wrap:anywhere] [&>code]:bg-transparent [&>code]:p-0 [&>code]:text-[1em]">
+    <pre className="whitespace-pre-wrap border border-line bg-surface px-3.5 py-3 font-mono text-text-soft text-xs leading-relaxed [overflow-wrap:anywhere] [&>code]:border-0 [&>code]:bg-transparent [&>code]:p-0 [&>code]:text-[1em]">
       {children}
     </pre>
   ),
-  code: ({ children }) => <code className="bg-text/[0.06] px-1 py-px font-mono text-[0.85em]">{children}</code>,
+  code: ({ children }) => <code className="border border-line bg-surface px-1 font-mono text-[0.85em]">{children}</code>,
   table: ({ children }) => (
-    <div className="scroll-quiet overflow-x-auto border border-line">
-      <table className="w-full border-collapse text-left text-[0.875rem]">{children}</table>
+    <div className="scroll-quiet overflow-x-auto">
+      <table className="w-full border-collapse text-left text-[0.875rem] tabular-nums">{children}</table>
     </div>
   ),
-  thead: ({ children }) => <thead className="bg-raised/60">{children}</thead>,
+  // A header in capitals over a rule of the full ink, then hairlines between rows: no box, no stripes.
+  thead: ({ children }) => <thead className="border-text border-b-2">{children}</thead>,
   tr: ({ children }) => <tr className="border-line border-t first:border-t-0">{children}</tr>,
-  th: ({ children }) => <th className="px-3 py-1.5 font-medium text-text-soft">{children}</th>,
-  td: ({ children }) => <td className="px-3 py-1.5 tabular-nums">{children}</td>,
+  th: ({ children }) => <th className="caps h-7 pr-3 font-normal text-text-soft last:pr-0">{children}</th>,
+  td: ({ children }) => <td className="py-1.5 pr-3 last:pr-0">{children}</td>,
   strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
   del: ({ children }) => <s className="decoration-text-faint">{children}</s>,
-  a: ({ children }) => <span className="text-accent">{children}</span>,
+  a: ({ children }) => <span className="underline decoration-line-strong underline-offset-2">{children}</span>,
   img: ({ alt }) => alt ?? null,
   hr: () => <hr className="border-line" />
 }
