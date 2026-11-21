@@ -22,7 +22,8 @@ import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { DURATION, EASE, settle } from '../styles/motion.ts'
 import type { ViewActions } from '../view/context.ts'
-import { ViewBoard } from '../view/view-board.tsx'
+import { BOARD, type GroupVersion, type ViewGroup } from '../view/groups.ts'
+import { type GroupWords, ViewBoard } from '../view/view-board.tsx'
 import { captionOf, useLastHeard } from './caption.ts'
 import { EngineIndicator } from './engine-indicator.tsx'
 import { GoArrow } from './go-arrow.tsx'
@@ -34,8 +35,10 @@ import { type ScrollEdges, useScrollEdges } from './scroll-edges.ts'
 import { Caption, OneLine } from './stage-caption.tsx'
 import { Core, LARGEST, type Sight } from './stage-core.tsx'
 import { Suggestions } from './suggestions.tsx'
+import { usedWords } from './thread-list.tsx'
 import { TRAVEL } from './travel.ts'
 import { useCoreViewActions } from './view-actions.ts'
+import { whoAsked } from './who-asked.ts'
 
 interface StageProps {
   client: Client
@@ -76,8 +79,11 @@ type CorePlace = 'empty' | 'board' | 'mini'
 /** The core's size in Mini: the largest it is at the top of the stage. */
 const MINI_CORE = 136
 
-/** The width of the centred column, for the empty stage and for the composer. */
+/** The width of the centred column of the empty stage: its caption and what it suggests. */
 const COLUMN = 'max-w-[45rem]'
+
+/** The board's column, which its header and the composer share, so their edges line up. */
+const BOARD_COLUMN = { maxWidth: BOARD.most } as const
 
 /**
  * The core's square at the top left of the board. The core fills about seven tenths of its square, so it shows about
@@ -226,6 +232,19 @@ export function Stage({
   )
   // Closing a card takes it out of the stream, and off the stage when it is the one there.
   const close = useCallback((view: ShownView) => void client.view.clear(view.id).catch(() => undefined), [client])
+  // What a group of the board says over its cards: when its answer was asked for and in what words, else its topic.
+  const describe = useCallback(
+    (group: ViewGroup, version: GroupVersion): GroupWords => {
+      const exchange = version.turn === undefined ? undefined : channel.exchanges.find((line) => line.turn === version.turn)
+      const topic = group.thread === undefined ? undefined : threads.threads.find((one) => one.id === group.thread)?.title
+      const named = topic ?? version.views[0]?.title ?? 'Shown'
+      if (!exchange) return { title: named }
+      const asked = whoAsked(exchange)
+      const said = exchange.said.replace(/\s+/g, ' ').trim()
+      return { time: usedWords(exchange.at, new Date()), title: asked === 'You' ? said || named : `${asked} · ${said || named}` }
+    },
+    [channel.exchanges, threads.threads]
+  )
   const stop = useCallback(() => {
     client.speech.stop()
     client.channel.stop().catch(() => undefined)
@@ -497,7 +516,7 @@ export function Stage({
       {core}
       {streaming && (
         <header className="relative z-10 shrink-0 pt-1.5 pb-2" style={{ paddingInline: side }}>
-          <div className="flex h-10 min-w-0 items-center gap-3">
+          <div className="mx-auto flex h-10 w-full min-w-0 items-center gap-3" style={BOARD_COLUMN}>
             <div
               ref={keep('board')}
               aria-hidden="true"
@@ -529,8 +548,8 @@ export function Stage({
               initial={{ opacity: 0 }}
               animate={{ opacity: arrived ? 1 : 0 }}
               transition={fadeIn}
-              className="mt-2"
-              style={{ paddingLeft: BOARD_CORE.square - 2 * BOARD_CORE.spill + 12 }}
+              className="mx-auto mt-2 w-full"
+              style={{ ...BOARD_COLUMN, paddingLeft: BOARD_CORE.square - 2 * BOARD_CORE.spill + 12 }}
             >
               {readyTopics}
             </motion.div>
@@ -556,6 +575,7 @@ export function Stage({
                 attended={attended}
                 actions={actionsFor}
                 onClose={close}
+                describe={describe}
               />
             </motion.div>
           )}
@@ -584,7 +604,7 @@ export function Stage({
 
       {/* The composer floats over the bottom of the screen, under the board, with nothing painted behind it. */}
       <div ref={composerBox} className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-8 pb-4">
-        <div className={cn('pointer-events-auto mx-auto grid w-full gap-1.5', COLUMN)}>
+        <div className="pointer-events-auto mx-auto grid w-full gap-1.5" style={BOARD_COLUMN}>
           {composer}
           {/* Why a file was not added, quietly on the left; what it may reach and what it thinks with on the right, changed
               on the spot from their menus. */}

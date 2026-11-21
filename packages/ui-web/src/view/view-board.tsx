@@ -1,12 +1,19 @@
 import type { ShownView } from '@repo/protocol'
-import { animate, type MotionValue, motion, motionValue } from 'motion/react'
-import { type CSSProperties, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { AnimatePresence, type MotionStyle, motion } from 'motion/react'
+import { type CSSProperties, memo, useEffect, useMemo, useRef, useState } from 'react'
 import { useScrollEdges } from '../conversation/scroll-edges.ts'
 import { cn } from '../primitives/cn.ts'
+import { ChevronGlyph, CloseGlyph } from '../primitives/icons.tsx'
 import { DURATION, EASE, glide } from '../styles/motion.ts'
-import { boardOf, type Columns, columnsOf, keptOf } from './board.ts'
 import type { ViewActions } from './context.ts'
+import { BOARD, columnsFor, type GroupVersion, groupStream, inColumns, type ViewGroup } from './groups.ts'
 import { ViewCard } from './view-card.tsx'
+
+/** What a group says over its cards: when its answer was asked for, and in what words. */
+export interface GroupWords {
+  time?: string | undefined
+  title: string
+}
 
 interface ViewBoardProps {
   /** The views to show, newest first. */
@@ -18,8 +25,10 @@ interface ViewBoardProps {
   /** What the blocks of a view can do. Kept the same between renders, so a card is drawn again only when it changes. */
   actions(view: ShownView): ViewActions
   onClose(view: ShownView): void
+  /** What a group's answer is called over its cards. */
+  describe(group: ViewGroup, version: GroupVersion): GroupWords
   className?: string | undefined
-  style?: CSSProperties | undefined
+  style?: MotionStyle | undefined
 }
 
 /**
@@ -35,27 +44,37 @@ const FADES = {
 
 const still = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
-/**
- * The views of the conversation as a board of cards: as many columns as the board's own width holds, the newest view
- * at the top left and the others in reading order across the columns, each column a stack. A new view comes in at
- * the top left, growing slightly as it fades in, while the others glide to their new places; a closed card fades
- * where it stands, then the others close the gap. The board scrolls by itself, and back to its top when a view is
- * put on top.
- */
-export function ViewBoard({ views, arrived, attended, actions, onClose, className, style }: ViewBoardProps) {
-  const [board] = useState(createBoard)
-  const [cards, setCards] = useState(() => keptOf<ShownView>([], views))
-  const [given, setGiven] = useState(views)
-  if (given !== views) {
-    setGiven(views)
-    setCards(keptOf(cards, views))
-  }
-  const left = useCallback((id: string) => setCards((was) => was.filter((card) => !(card.leaving && card.view.id === id))), [])
+/** The version of a group the person stepped back to, good only while the group's latest answer is the same. */
+interface Stepped {
+  latest: string
+  shown: string
+}
 
-  useLayoutEffect(() => board.arrange(cards.map((card) => card.view.id)), [cards, board])
-  useLayoutEffect(() => board.dispose, [board])
+/**
+ * The views of the conversation as a board (docs/SPEC.md, section 13.2): one group for each topic, the group shown
+ * last first, in one column no wider than two cards. A group is the cards of the topic's latest answer side by side
+ * under a line saying when it was asked and in what words; an answer that updates the topic takes their place, the
+ * earlier ones a step back. Only the newest group is open: the others fold to their line until pressed. The board
+ * scrolls by itself, and back to its top when a view is put on top.
+ */
+export function ViewBoard({ views, arrived, attended, actions, onClose, describe, className, style }: ViewBoardProps) {
+  const groups = useMemo(() => groupStream(views), [views])
+  // What the person chose by hand: a group opened or folded, and an earlier version stepped back to.
+  const [chosen, setChosen] = useState<Readonly<Record<string, boolean>>>({})
+  const [stepped, setStepped] = useState<Readonly<Record<string, Stepped>>>({})
+
+  // The board's own width says how many cards stand side by side, whatever narrows it: the window, the side sheet.
+  const [box, setBox] = useState<HTMLDivElement | null>(null)
+  const [columns, setColumns] = useState<number>(BOARD.columns)
+  useEffect(() => {
+    if (!box) return
+    const observer = new ResizeObserver(([entry]) => setColumns(columnsFor(entry?.contentRect.width ?? 0)))
+    observer.observe(box)
+    return () => observer.disconnect()
+  }, [box])
 
   // A view put on top, new or shown again, brings the board back to its top, wherever the person had scrolled to.
+  const scroller = useRef<HTMLDivElement | null>(null)
   const shown = useRef(views)
   useEffect(() => {
     const before = shown.current
@@ -63,100 +82,204 @@ export function ViewBoard({ views, arrived, attended, actions, onClose, classNam
     const top = views[0]
     const was = before[0]
     if (top === undefined || was === undefined || top.id === was.id) return
-    if (!before.some((view) => view.id === top.id) || views.some((view) => view.id === was.id)) board.toTop()
-  }, [views, board])
+    if (!before.some((view) => view.id === top.id) || views.some((view) => view.id === was.id))
+      scroller.current?.scrollTo({ top: 0, behavior: still() ? 'auto' : 'smooth' })
+  }, [views])
 
   const [watchEdges, edges] = useScrollEdges()
-  const scroller = useCallback(
-    (element: HTMLDivElement | null) => {
-      board.attachScroller(element)
-      watchEdges(element)
-    },
-    [board, watchEdges]
-  )
   const fade = FADES[edges.above ? (edges.below ? 'both' : 'above') : edges.below ? 'below' : 'none']
 
   return (
-    <div ref={scroller} className={cn('scroll-none overflow-y-auto overscroll-contain', fade, className)} style={style}>
-      <div ref={board.attachBoard} className="relative">
-        {cards.map(({ view, leaving }) => (
-          <BoardCard
-            key={view.id}
-            view={view}
-            board={board}
-            appear={arrived.includes(view.id)}
-            leaving={leaving}
-            lit={attended === view.id}
-            actions={actions}
-            onClose={onClose}
-            onLeft={left}
-          />
-        ))}
+    <motion.div
+      layoutScroll
+      ref={(element: HTMLDivElement | null) => {
+        scroller.current = element
+        watchEdges(element)
+      }}
+      className={cn('scroll-none overflow-y-auto overscroll-contain', fade, className)}
+      {...(style === undefined ? {} : { style })}
+    >
+      <div ref={setBox} className="mx-auto grid w-full grid-cols-1 gap-1.5" style={{ maxWidth: BOARD.most }}>
+        <AnimatePresence initial={false}>
+          {groups.map((group, index) => {
+            const latest = group.versions[0]
+            if (!latest) return null
+            const step = stepped[group.key]
+            const at =
+              step?.latest === latest.key
+                ? Math.max(
+                    0,
+                    group.versions.findIndex((one) => one.key === step.shown)
+                  )
+                : 0
+            const version = group.versions[at] ?? latest
+            const open = chosen[group.key] ?? index === 0
+            const words = describe(group, version)
+            return (
+              <motion.section
+                key={group.key}
+                layout="position"
+                aria-label={words.title}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1, transition: { duration: DURATION.calm, ease: EASE } }}
+                exit={{ opacity: 0, transition: { duration: DURATION.quick, ease: EASE } }}
+                transition={glide}
+                className="grid min-w-0 grid-cols-1 gap-1"
+              >
+                <GroupLine
+                  words={words}
+                  open={open}
+                  cards={version.views.length}
+                  version={group.versions.length - at}
+                  versions={group.versions.length}
+                  onToggle={() => setChosen((was) => ({ ...was, [group.key]: !open }))}
+                  onStep={(by) => {
+                    const next = group.versions[at + by]
+                    if (next) setStepped((was) => ({ ...was, [group.key]: { latest: latest.key, shown: next.key } }))
+                  }}
+                  onClose={() => {
+                    for (const one of group.versions) for (const view of one.views) onClose(view)
+                  }}
+                />
+                {open && (
+                  // Keyed by the version, so stepping to another draws its cards anew rather than morphing these.
+                  <div key={version.key} className="flex min-w-0 items-start" style={{ gap: BOARD.gap }}>
+                    {inColumns(version.views, columns).map((stack, column) => (
+                      <div key={column} className="grid min-w-0 flex-1 grid-cols-1" style={{ gap: BOARD.gap }}>
+                        <AnimatePresence initial={false}>
+                          {stack.map((view) => (
+                            <BoardCard
+                              key={view.id}
+                              view={view}
+                              appear={arrived.includes(view.id)}
+                              lit={attended === view.id}
+                              actions={actions}
+                              onClose={onClose}
+                            />
+                          ))}
+                        </AnimatePresence>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </motion.section>
+            )
+          })}
+        </AnimatePresence>
       </div>
+    </motion.div>
+  )
+}
+
+interface GroupLineProps {
+  words: GroupWords
+  open: boolean
+  /** How many cards the version shown has. */
+  cards: number
+  /** The version shown, counted from the first, and how many there are. */
+  version: number
+  versions: number
+  onToggle(): void
+  /** Step to an earlier version (1) or back to a later one (-1). */
+  onStep(by: 1 | -1): void
+  onClose(): void
+}
+
+/**
+ * The line over a group: when its answer was asked for and in what words, a press folding or unfolding its cards;
+ * the way through its versions when an answer updated it; and, pointed at, the way to close it.
+ */
+function GroupLine({ words, open, cards, version, versions, onToggle, onStep, onClose }: GroupLineProps) {
+  return (
+    <div className="group/line flex h-7 min-w-0 items-center gap-1 pl-0.5">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={onToggle}
+        title={words.title}
+        className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-sm text-left outline-none focus-visible:bg-white/[0.05]"
+      >
+        <span
+          aria-hidden="true"
+          className={cn('shrink-0 text-text-faint transition-transform duration-(--duration-quick) ease-soft [&_svg]:size-3', !open && '-rotate-90')}
+        >
+          <ChevronGlyph />
+        </span>
+        {words.time && <span className="shrink-0 text-[0.6875rem] text-text-faint tabular-nums">{words.time}</span>}
+        <span
+          className={cn(
+            'min-w-0 truncate text-xs transition-colors duration-(--duration-quick) ease-soft',
+            open ? 'font-medium text-text-soft' : 'text-text-faint group-hover/line:text-text-soft'
+          )}
+        >
+          {words.title}
+        </span>
+        <span aria-hidden="true" className="h-px min-w-3 flex-1 bg-line" />
+        {!open && <span className="shrink-0 text-[0.6875rem] text-text-faint tabular-nums">{cards === 1 ? '1 card' : `${cards} cards`}</span>}
+      </button>
+      {open && versions > 1 && (
+        <span className="flex shrink-0 items-center text-[0.6875rem] text-text-faint tabular-nums">
+          <StepButton label="Earlier version" disabled={version <= 1} onClick={() => onStep(1)} turn="rotate-90" />
+          <span title="An answer that updates this topic takes the place of the one before">{`${version}/${versions}`}</span>
+          <StepButton label="Later version" disabled={version >= versions} onClick={() => onStep(-1)} turn="-rotate-90" />
+        </span>
+      )}
+      <button
+        type="button"
+        aria-label={`Close ${words.title}`}
+        title="Close"
+        onClick={onClose}
+        className="flex size-5 shrink-0 items-center justify-center rounded-sm text-text-faint opacity-0 outline-none transition-[opacity,color] duration-(--duration-quick) ease-soft hover:text-text focus-visible:opacity-100 group-hover/line:opacity-100 [&_svg]:size-3"
+      >
+        <CloseGlyph />
+      </button>
     </div>
+  )
+}
+
+function StepButton({ label, disabled, onClick, turn }: { label: string; disabled: boolean; onClick(): void; turn: string }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="flex size-5 items-center justify-center rounded-sm outline-none transition-colors duration-(--duration-quick) ease-soft hover:text-text focus-visible:bg-white/[0.06] disabled:opacity-35 disabled:hover:text-text-faint [&_svg]:size-3"
+    >
+      <span className={turn}>
+        <ChevronGlyph />
+      </span>
+    </button>
   )
 }
 
 interface BoardCardProps {
   view: ShownView
-  board: Board
   /** Whether it comes in: it arrived while the app was open. */
   appear: boolean
-  /** It was closed: it fades where it stands, then leaves. */
-  leaving: boolean
   /** Whether the core looks at it. */
   lit: boolean
   actions(view: ShownView): ViewActions
   onClose(view: ShownView): void
-  onLeft(id: string): void
 }
 
 /**
  * One card of the board. Drawn again only when its own view or what it can do changes, not each time the screen
- * around it does (a sentence spoken, a change of mood): a view can be a large tree. The board moves it by its
- * transform alone.
+ * around it does (a sentence spoken, a change of mood): a view can be a large tree. It comes in growing slightly as
+ * it fades in, and fades where it stands when closed.
  */
-const BoardCard = memo(function BoardCard({ view, board, appear, leaving, lit, actions, onClose, onLeft }: BoardCardProps) {
-  const element = useRef<HTMLDivElement>(null)
-  const [drawn] = useState(() => {
-    const entering = appear && !still()
-    return { x: motionValue(0), y: motionValue(0), scale: motionValue(entering ? 0.96 : 1), opacity: motionValue(entering ? 0 : 1) }
-  })
+const BoardCard = memo(function BoardCard({ view, appear, lit, actions, onClose }: BoardCardProps) {
   const can = useMemo(() => actions(view), [actions, view])
-  const id = view.id
-
-  useLayoutEffect(() => {
-    const card = element.current
-    if (!card) return
-    board.add(id, card, drawn)
-    return () => board.remove(id)
-  }, [board, id, drawn])
-
-  // It comes in a moment after the others start to make room for it; closed, it fades where it stands, then leaves.
-  useEffect(() => {
-    if (leaving) {
-      if (still()) return onLeft(id)
-      const fading = animate(drawn.opacity, 0, { duration: DURATION.quick * 1.4, ease: EASE, onComplete: () => onLeft(id) })
-      return () => fading.stop()
-    }
-    if (drawn.opacity.get() === 1) return
-    const coming = { duration: DURATION.slow, ease: EASE, delay: 0.06 }
-    const fading = animate(drawn.opacity, 1, coming)
-    const growing = animate(drawn.scale, 1, coming)
-    return () => {
-      fading.stop()
-      growing.stop()
-    }
-  }, [leaving, id, drawn, onLeft])
-
+  const [entering] = useState(() => appear && !still())
   // The core finds the card by its view, to look at it.
   return (
     <motion.div
-      ref={element}
-      data-view={id}
-      inert={leaving}
-      style={drawn}
-      className={cn('group/card absolute top-0 left-0 will-change-transform', leaving && 'pointer-events-none')}
+      data-view={view.id}
+      initial={entering ? { opacity: 0, scale: 0.97 } : false}
+      animate={{ opacity: 1, scale: 1, transition: { duration: DURATION.slow, ease: EASE } }}
+      exit={{ opacity: 0, transition: { duration: DURATION.quick, ease: EASE } }}
+      className="group/card relative min-w-0"
     >
       <ViewCard view={view} actions={can} onClose={() => onClose(view)} />
       {/* The core's light on the card it looks at: its edge in the accent, and a little of the light falling on it
@@ -185,136 +308,4 @@ const CORE_LIGHT: CSSProperties = {
   boxShadow:
     '0 0 0 1px color-mix(in oklab, var(--accent) 46%, transparent), inset 0 1px 0 0 color-mix(in oklab, var(--accent) 60%, transparent), 0 0 0 2px color-mix(in oklab, var(--accent) 12%, transparent)',
   background: 'radial-gradient(90% 55% at 50% 0%, color-mix(in oklab, var(--accent) 8%, transparent), transparent 75%)'
-}
-
-/** Where a card is drawn: the board writes its place, the card its coming and going. */
-interface Motion {
-  x: MotionValue<number>
-  y: MotionValue<number>
-  scale: MotionValue<number>
-  opacity: MotionValue<number>
-}
-
-/** What the board knows of a card. */
-interface Slot {
-  element: HTMLElement
-  motion: Motion
-  /** Its height, as last measured. */
-  height: number
-  /** It has a place already: it glides from there to a new one, where a card just drawn is simply put. */
-  placed: boolean
-}
-
-type Board = ReturnType<typeof createBoard>
-
-/**
- * The board's layout, outside React: it reads the cards' heights only when they change, and writes each card's width
- * and place, the place as a transform, so a card moves without the page being laid out again. A card glides to a new
- * place when the list changes or the board's columns do; when only a width or a height changes, as while the window
- * or the side sheet is resized, everything follows at once.
- */
-function createBoard() {
-  const slots = new Map<string, Slot>()
-  const ids = new Map<Element, string>()
-  let order: readonly string[] = []
-  let scroller: HTMLElement | null = null
-  let box: HTMLElement | null = null
-  let width = 0
-  let columns: Columns = { count: 0, width: -1 }
-
-  const move = (value: MotionValue<number>, to: number, gliding: boolean) => {
-    if (value.get() === to && !value.isAnimating()) return
-    if (gliding) animate(value, to, glide)
-    else value.jump(to)
-  }
-
-  /** Lays every card out for the board's width; `gliding` when the list changed, so cards travel to their places. */
-  const place = (gliding: boolean) => {
-    if (!box) return
-    const next = columnsOf(width)
-    // A new column width changes the cards' heights: they are written, then read again, once, before anything moves.
-    if (next.width !== columns.width) {
-      for (const slot of slots.values()) slot.element.style.width = `${next.width}px`
-      for (const slot of slots.values()) slot.height = slot.element.offsetHeight
-    }
-    const reflowed = next.count !== columns.count
-    columns = next
-    const layout = boardOf(
-      order.map((id) => slots.get(id)?.height ?? 0),
-      columns
-    )
-    box.style.height = `${layout.height}px`
-    for (const [index, id] of order.entries()) {
-      const slot = slots.get(id)
-      const to = layout.places[index]
-      if (!slot || !to) continue
-      // A card on its way somewhere goes on gliding to wherever it now belongs.
-      const travelling = slot.motion.x.isAnimating() || slot.motion.y.isAnimating()
-      const glides = (gliding || reflowed || travelling) && slot.placed && !still()
-      // Newer cards are drawn in front of older ones, which they cross on their way.
-      slot.element.style.zIndex = String(order.length - index)
-      move(slot.motion.x, to.x, glides)
-      move(slot.motion.y, to.y, glides)
-      slot.placed = true
-    }
-  }
-
-  const resized = new ResizeObserver((entries) => {
-    let changed = false
-    for (const entry of entries) {
-      if (entry.target === box) {
-        const now = Math.round(entry.contentRect.width)
-        changed ||= now !== width
-        width = now
-        continue
-      }
-      const slot = slots.get(ids.get(entry.target) ?? '')
-      if (!slot) continue
-      const height = slot.element.offsetHeight
-      changed ||= height !== slot.height
-      slot.height = height
-    }
-    if (changed) place(false)
-  })
-
-  return {
-    attachScroller(element: HTMLDivElement | null) {
-      scroller = element
-    },
-    attachBoard(element: HTMLDivElement | null) {
-      if (box) resized.unobserve(box)
-      box = element
-      if (!element) return
-      width = Math.round(element.clientWidth)
-      resized.observe(element)
-    },
-    /** The cards in order, newest first, whenever they may have changed: they glide only when the order did. */
-    arrange(next: readonly string[]) {
-      const changed = next.length !== order.length || next.some((id, index) => id !== order[index])
-      order = next
-      place(changed)
-    },
-    /** A card is drawn: it takes the board's column width, and is measured. */
-    add(id: string, element: HTMLElement, motion: Motion) {
-      if (columns.width >= 0) element.style.width = `${columns.width}px`
-      slots.set(id, { element, motion, height: element.offsetHeight, placed: false })
-      ids.set(element, id)
-      resized.observe(element)
-    },
-    remove(id: string) {
-      const slot = slots.get(id)
-      if (!slot) return
-      slot.motion.x.stop()
-      slot.motion.y.stop()
-      resized.unobserve(slot.element)
-      ids.delete(slot.element)
-      slots.delete(id)
-    },
-    toTop() {
-      scroller?.scrollTo({ top: 0, behavior: still() ? 'auto' : 'smooth' })
-    },
-    dispose() {
-      resized.disconnect()
-    }
-  }
 }
