@@ -38,16 +38,17 @@ interface PinnedDocks {
 }
 
 /**
- * Where the pinned widgets stand, from the window's width and the user's choice. Wide enough, they are docked on
- * both sides of the conversation; narrower, they wait behind a toggle. The user's choice holds until the window
- * crosses that width again.
+ * Where the pinned widgets stand, from the room the conversation has and the user's choice: the window's width, less
+ * what the side sheet takes beside it (`taken`). Wide enough, they are docked on both sides of the conversation;
+ * narrower, they wait behind a toggle. The user's choice holds until the room crosses that width again.
  */
-export function usePinnedDocks(count: number): PinnedDocks {
-  const query = `(min-width: ${DOCKS_WIDTH}px)`
+export function usePinnedDocks(count: number, taken = 0): PinnedDocks {
+  const query = `(min-width: ${DOCKS_WIDTH + taken}px)`
   const [wide, setWide] = useState(() => window.matchMedia(query).matches)
   const [chosen, setChosen] = useState<boolean>()
   useEffect(() => {
     const media = window.matchMedia(query)
+    setWide(media.matches)
     const onChange = () => {
       setWide(media.matches)
       setChosen(undefined)

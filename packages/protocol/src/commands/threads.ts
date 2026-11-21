@@ -56,6 +56,15 @@ export const threadCommands = {
   },
 
   /**
+   * Put a thread away in the side sheet, or bring it back from there (docs/SPEC.md, section 13.2): folded under
+   * Archived, with what is under it. Nothing else changes, and work on it brings it back by itself.
+   */
+  'thread.archive': {
+    input: z.object({ thread: threadIdSchema, archived: z.boolean() }),
+    output: z.object({})
+  },
+
+  /**
    * Bring a topic back: it takes the focus, its view the stage and its last answer the caption. A side question
    * answered only in passing comes back in passing: its card on top of the stream, for its full time again, and the
    * topic on the stage stays.

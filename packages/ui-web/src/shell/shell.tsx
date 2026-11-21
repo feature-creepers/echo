@@ -13,7 +13,7 @@ import type { DeviceHost } from '../device/host.ts'
 import { type MiniWindow, useMiniWindow } from '../device/mini.ts'
 import { QuickLook } from '../files/quick-look.tsx'
 import { type HubPage, HubScreen } from '../hub/hub-screen.tsx'
-import { HUB_KEEPS, hubMakesRoom } from '../hub/room.ts'
+import { HUB_KEEPS, STAGE_KEEPS } from '../hub/room.ts'
 import { LibraryContext, type LibraryControls } from '../library/library-context.ts'
 import { PinnedDocksView, usePinnedDocks } from '../library/pinned-docks.tsx'
 import { PlayerProvider, usePlayer } from '../media/player-provider.tsx'
@@ -29,7 +29,7 @@ import { LibraryGlyph, SheetGlyph, WidgetsGlyph } from '../primitives/icons.tsx'
 import { accentStyle } from '../styles/accent.ts'
 import { DURATION, EASE } from '../styles/motion.ts'
 import { FIRST_SHEET_PLACE, moveSheet, type SheetTab } from './sheet-place.ts'
-import { previewSheetWidth } from './sheet-width.ts'
+import { clampSheetWidth, previewSheetWidth, sheetBounds } from './sheet-width.ts'
 import { SideSheet } from './side-sheet.tsx'
 
 export interface ShellProps {
@@ -179,7 +179,8 @@ function Connected({ productName, client, engine, mini }: { productName: string;
 
   // The pinned widgets: docked on both sides of the conversation in a wide window, behind a toggle in a narrow one.
   const library = useFollowed(client.library)
-  const docks = usePinnedDocks(pinnedOf(library).length)
+  // The docks measure the room the side sheet leaves them, now that it takes its width from the window.
+  const docks = usePinnedDocks(pinnedOf(library).length, sheet && !mini.on ? clampSheetWidth(device.settings.sheet.width, sheetBounds(window.innerWidth)) : 0)
 
   // A saved widget opens in the library, on its widgets page.
   // The services widget apps call, followed while the window shows the conversation.
@@ -226,7 +227,6 @@ function Connected({ productName, client, engine, mini }: { productName: string;
   const sheetArea = useRef<HTMLDivElement>(null)
   const previewWidth = useCallback((width: number) => previewSheetWidth(sheetArea.current, width), [])
   const keepSheetWidth = useCallback((width: number) => changeDevice({ sheet: { width } }), [changeDevice])
-  const hubRoom = useHubRoom(sheetWidth)
 
   if (snapshot.state === 'loading') {
     return (
@@ -320,68 +320,69 @@ function Connected({ productName, client, engine, mini }: { productName: string;
   return (
     <LibraryContext.Provider value={controls}>
       <Frame productName={productName} accent={accent} look={look} actions={titleActions} mini={mini}>
-        <div ref={sheetArea} className="relative h-full">
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div
-              key={showing.is}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0, transition: { duration: DURATION.calm, ease: EASE } }}
-              exit={{ opacity: 0, transition: { duration: DURATION.quick, ease: EASE } }}
-              className="h-full"
-            >
-              {showing.is === 'hub' ? (
-                <HubScreen
-                  productName={productName}
-                  client={client}
-                  settings={snapshot.settings}
-                  memory={client.memory}
-                  speech={engine ? speech : undefined}
-                  page={showing.page}
-                  onPage={(page) => openHub(page)}
-                  sheetRoom={sheet !== undefined && hubRoom}
-                  widgets={{
-                    controls,
-                    actions,
-                    selected: showing.widget,
-                    onAsk: (text) => {
-                      toMain()
-                      say(text)
-                    }
-                  }}
-                  setPersonas={setPersonas}
-                  onPick={setPicked}
-                  onBack={toMain}
-                />
-              ) : (
-                // The conversation stays centred in the window whatever is pinned: the docks sit in the room on its sides.
-                // Nothing clips here, so the light around the core runs on into the title row, which is the same ground.
-                <div className="relative h-full">
-                  <Stage
+        <div ref={sheetArea} className="flex h-full">
+          <div className="relative h-full min-w-0 flex-1">
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={showing.is}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0, transition: { duration: DURATION.calm, ease: EASE } }}
+                exit={{ opacity: 0, transition: { duration: DURATION.quick, ease: EASE } }}
+                className="h-full"
+              >
+                {showing.is === 'hub' ? (
+                  <HubScreen
+                    productName={productName}
                     client={client}
-                    personas={personas}
-                    onSwitch={(persona) => setPersonas({ names: [], active: persona })}
-                    onSetUpEngine={() => openHub('models')}
-                    onOpenAccess={() => openHub('access')}
-                    speech={speech.ready}
-                    voiceLevel={speech.ready ? speech.level : undefined}
-                    voiceBands={speech.ready ? speech.bands : undefined}
-                    onSetUpVoice={engine ? () => openHub('voice') : undefined}
-                    onOpenAnswer={openAnswer}
-                    onOpenThread={openThread}
-                    mini={mini.on ? { onFullWindow: () => mini.set(false) } : undefined}
+                    settings={snapshot.settings}
+                    memory={client.memory}
+                    speech={engine ? speech : undefined}
+                    page={showing.page}
+                    onPage={(page) => openHub(page)}
+                    widgets={{
+                      controls,
+                      actions,
+                      selected: showing.widget,
+                      onAsk: (text) => {
+                        toMain()
+                        say(text)
+                      }
+                    }}
+                    setPersonas={setPersonas}
+                    onPick={setPicked}
+                    onBack={toMain}
                   />
-                  {/* Hidden in Mini, and still drawn, so each widget keeps its state. */}
-                  <div className={mini.on ? 'hidden' : 'contents'}>
-                    <PinnedDocksView controls={controls} actions={actions} docks={docks} />
+                ) : (
+                  // The conversation stays centred in the window whatever is pinned: the docks sit in the room on its sides.
+                  // Nothing clips here, so the light around the core runs on into the title row, which is the same ground.
+                  <div className="relative h-full">
+                    <Stage
+                      client={client}
+                      personas={personas}
+                      onSwitch={(persona) => setPersonas({ names: [], active: persona })}
+                      onSetUpEngine={() => openHub('models')}
+                      onOpenAccess={() => openHub('access')}
+                      speech={speech.ready}
+                      voiceLevel={speech.ready ? speech.level : undefined}
+                      voiceBands={speech.ready ? speech.bands : undefined}
+                      onSetUpVoice={engine ? () => openHub('voice') : undefined}
+                      onOpenAnswer={openAnswer}
+                      onOpenThread={openThread}
+                      mini={mini.on ? { onFullWindow: () => mini.set(false) } : undefined}
+                    />
+                    {/* Hidden in Mini, and still drawn, so each widget keeps its state. */}
+                    <div className={mini.on ? 'hidden' : 'contents'}>
+                      <PinnedDocksView controls={controls} actions={actions} docks={docks} />
+                    </div>
                   </div>
-                </div>
-              )}
-            </motion.div>
-          </AnimatePresence>
-          {/* A file shown from any view, the stream's, a pinned widget's or a saved one's, opens in one quick look. */}
-          <QuickLook client={client} />
-          {/* The sheet slides over whatever screen is there and stays from one screen to the next: it never pushes
-              the stage off centre, and the hub, when the window has room for both, ends where it starts. */}
+                )}
+              </motion.div>
+            </AnimatePresence>
+            {/* A file shown from any view, the stream's, a pinned widget's or a saved one's, opens in one quick look. */}
+            <QuickLook client={client} />
+          </div>
+          {/* The sheet takes its width from the window and stays from one screen to the next: the screen beside it
+              narrows, so nothing is ever under it. */}
           <AnimatePresence initial={false}>
             {sheet && !mini.on && (
               <SideSheet
@@ -393,7 +394,7 @@ function Connected({ productName, client, engine, mini }: { productName: string;
                 onMove={moveSheetTo}
                 resize={{
                   width: sheetWidth,
-                  keep: showing.is === 'hub' && hubRoom ? HUB_KEEPS : 0,
+                  keep: showing.is === 'hub' ? HUB_KEEPS : STAGE_KEEPS,
                   onPreview: previewWidth,
                   onCommit: keepSheetWidth
                 }}
@@ -404,21 +405,6 @@ function Connected({ productName, client, engine, mini }: { productName: string;
       </Frame>
     </LibraryContext.Provider>
   )
-}
-
-/**
- * Whether the hub makes room for the side sheet in the window as it is now, kept current as the window is resized:
- * drawn again only when the answer changes.
- */
-function useHubRoom(sheetWidth: number): boolean {
-  const [room, setRoom] = useState(() => hubMakesRoom(window.innerWidth, sheetWidth))
-  useEffect(() => {
-    const measure = () => setRoom(hubMakesRoom(window.innerWidth, sheetWidth))
-    measure()
-    window.addEventListener('resize', measure)
-    return () => window.removeEventListener('resize', measure)
-  }, [sheetWidth])
-  return room
 }
 
 interface FrameProps {

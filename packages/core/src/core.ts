@@ -702,6 +702,10 @@ export function createCore(options: CoreOptions): Core {
         channel.focus(input.thread)
           ? { ok: true, output: {} }
           : { ok: false, error: { code: 'invalid-input', message: `There is no thread "${input.thread}".` } },
+      'thread.archive': (input) =>
+        channel.archive(input.thread, input.archived)
+          ? { ok: true, output: {} }
+          : { ok: false, error: { code: 'invalid-input', message: `There is no thread "${input.thread}".` } },
       'threads.dismiss': (input) => {
         channel.dismiss(input.thread)
         return { ok: true, output: {} }

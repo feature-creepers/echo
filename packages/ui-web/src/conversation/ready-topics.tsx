@@ -25,10 +25,13 @@ interface ReadyRow {
  * The finished topics in the order of the threads, the most recent first, each with what its latest answer found: the
  * title of the answer it wrote, which names the outcome, else what it said, which opens on what it set out to do.
  */
+/** The first title of an answer written in Markdown, without its marks: what the answer names as its outcome. */
+export const headingOf = (written: string | undefined): string | undefined => written?.match(/^#{1,6}[ \t]+(.+)$/m)?.[1]?.replace(/\*\*|`/g, '')
+
 export function readyRows(ready: readonly Thread[], exchanges: readonly Exchange[]): ReadyRow[] {
   return ready.map((thread) => {
     const answer = exchanges.findLast((line) => line.thread === thread.id && line.outcome === 'done')
-    const heading = answer?.written?.match(/^#{1,6}[ \t]+(.+)$/m)?.[1]?.replace(/\*\*|`/g, '')
+    const heading = headingOf(answer?.written)
     const line = (heading ?? answer?.replied ?? '').replace(/\s+/g, ' ').trim()
     return { thread, answer: line === '' ? undefined : line }
   })

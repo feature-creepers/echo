@@ -41,8 +41,8 @@ interface SideSheetProps {
 
 /**
  * The right side of the window, for advanced use: what was said, the threads behind the conversation with all
- * their work, and the raw events. It slides over the main screen instead of pushing it, so the core and the view
- * never move off centre, and opens over whatever screen is showing. Its left edge resizes it. What the person keeps
+ * their work, and the raw events. It takes its width from the window, and the screen beside it narrows, so nothing
+ * is ever under it, whatever screen is showing. Its left edge resizes it. What the person keeps
  * at hand, pinned widgets, stays on the main screen.
  *
  * Its header is the tabs alone, with the way to close it: each tab says what it shows, so no title repeats it, and
@@ -124,6 +124,7 @@ export function SideSheet({ client, personas, place, tab, onMove, resize }: Side
         selected={place.lastThread}
         onOpen={openThread}
         onStop={(thread) => void client.threads.stop(thread).catch(() => undefined)}
+        onArchive={(thread, archived) => void client.threads.archive(thread, archived).catch(() => undefined)}
         onOpenProject={() => onMove({ to: 'opening', opening: true })}
       />
     )
@@ -139,7 +140,7 @@ export function SideSheet({ client, personas, place, tab, onMove, resize }: Side
       // Its width follows the one the person chose, within what the window allows, without React drawing it again.
       data-sheet-width
       style={{ ...sheetWidthStyle(resize.width), width: SHEET_CSS_WIDTH }}
-      className="material absolute inset-y-0 right-0 z-30 flex min-w-0 max-w-[calc(100%-3rem)] flex-col border-black/50 border-l shadow-[-20px_0_40px_-24px_rgb(0_0_0/0.7)]"
+      className="material relative z-30 flex h-full min-w-0 shrink-0 flex-col border-black/50 border-l"
     >
       <SheetHandle {...resize} />
       <header className="flex items-center gap-2 border-white/[0.06] border-b py-2.5 pr-2.5 pl-3">

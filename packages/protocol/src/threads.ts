@@ -45,6 +45,8 @@ export const threadSchema = z.object({
    * the folder's own instructions for those who work in it, and works on its files as a developer would.
    */
   folder: z.string().min(1).max(4096).optional(),
+  /** Put away by the person: the side sheet folds it under Archived. Work on it brings it back. */
+  archived: z.boolean().optional(),
   /** When it was last used: an ISO 8601 date in UTC. */
   at: z.string()
 })

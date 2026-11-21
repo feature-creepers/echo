@@ -11,42 +11,64 @@ const thread = (
     beside,
     state = 'parked',
     at = '12:00',
-    folder
-  }: { title?: string; parent?: string; beside?: string; state?: Thread['state']; at?: string; folder?: string } = {}
+    folder,
+    day = '19',
+    archived
+  }: { title?: string; parent?: string; beside?: string; state?: Thread['state']; at?: string; folder?: string; day?: string; archived?: boolean } = {}
 ): Thread => ({
   id,
   title,
   kind,
   state,
-  at: `2026-11-19T${at}:00.000Z`,
+  at: `2026-11-${day}T${at}:00.000Z`,
+  ...(archived === undefined ? {} : { archived }),
   ...(parent === undefined ? {} : { parent }),
   ...(beside === undefined ? {} : { beside }),
   ...(folder === undefined ? {} : { folder })
 })
 
+/** When the list is read: the evening of the day the threads were used. */
+const NOW = new Date('2026-11-19T18:00:00.000Z')
+
 /** The sections as words: each section's name, then each group as its head and what is under it. */
-const read = (threads: Thread[], query?: string) =>
-  sectionThreads(threads, query).map((section) => [
+const read = (threads: Thread[], query?: string, now = NOW) =>
+  sectionThreads(threads, query, now).map((section) => [
     section.name,
     ...section.groups.map((group) => [group.head.id, ...group.under.map((one) => one.id)].join(' > '))
   ])
 
 describe('the threads as the side sheet lists them', () => {
+  it('puts what was used before today under this week, and what was put away or left for a week under Archived', () => {
+    const threads = [
+      thread('today', 'topic'),
+      thread('yesterday', 'topic', { day: '18' }),
+      thread('put away', 'topic', { archived: true }),
+      thread('left', 'topic', { day: '11' }),
+      thread('working', 'topic', { day: '01', state: 'working' })
+    ]
+    expect(read(threads)).toEqual([
+      ['working', 'working'],
+      ['today', 'today'],
+      ['week', 'yesterday'],
+      ['archived', 'put away', 'left']
+    ])
+  })
+
   it.each([
     {
       name: 'a side question and a sub-thread under their topic',
       threads: [thread('topic', 'topic'), thread('side', 'topic', { beside: 'topic' }), thread('part', 'subthread', { parent: 'topic' })],
-      sections: [['earlier', 'topic > side > part']]
+      sections: [['today', 'topic > side > part']]
     },
     {
       name: 'a sub-thread whose topic is gone on its own row',
       threads: [thread('topic', 'topic'), thread('part', 'subthread', { parent: 'gone' })],
-      sections: [['earlier', 'topic', 'part']]
+      sections: [['today', 'topic', 'part']]
     },
     {
       name: 'a side question whose topic is gone on its own row',
       threads: [thread('side', 'topic', { beside: 'gone' })],
-      sections: [['earlier', 'side']]
+      sections: [['today', 'side']]
     },
     {
       name: 'what is at work first, then what is ready, then the rest',
@@ -58,7 +80,7 @@ describe('the threads as the side sheet lists them', () => {
       sections: [
         ['working', 'busy'],
         ['ready', 'ready'],
-        ['earlier', 'idle']
+        ['today', 'idle']
       ]
     },
     {
@@ -66,7 +88,7 @@ describe('the threads as the side sheet lists them', () => {
       threads: [thread('project', 'topic'), thread('part', 'subthread', { parent: 'project', state: 'working' }), thread('other', 'topic')],
       sections: [
         ['working', 'project > part'],
-        ['earlier', 'other']
+        ['today', 'other']
       ]
     },
     {
@@ -76,19 +98,19 @@ describe('the threads as the side sheet lists them', () => {
         thread('early', 'topic', { at: '08:00' }),
         thread('part', 'subthread', { parent: 'early', at: '16:00' })
       ],
-      sections: [['earlier', 'early > part', 'late']]
+      sections: [['today', 'early > part', 'late']]
     }
   ])('puts $name', ({ threads, sections }) => {
     expect(read(threads)).toEqual(sections)
   })
 
   it.each([
-    { name: 'a topic by its title, with everything under it', query: 'Proj', sections: [['earlier', 'project > review > drawings']] },
-    { name: 'a sub-thread by its folder, under its topic', query: 'echo-draw', sections: [['earlier', 'project > drawings']] },
-    { name: 'a sub-thread by every word typed, accents aside', query: 'REVIEW   proj', sections: [['earlier', 'project > review']] },
-    { name: 'a thread by its name written with accents', query: 'resume', sections: [['earlier', 'Résumé']] },
+    { name: 'a topic by its title, with everything under it', query: 'Proj', sections: [['today', 'project > review > drawings']] },
+    { name: 'a sub-thread by its folder, under its topic', query: 'echo-draw', sections: [['today', 'project > drawings']] },
+    { name: 'a sub-thread by every word typed, accents aside', query: 'REVIEW   proj', sections: [['today', 'project > review']] },
+    { name: 'a thread by its name written with accents', query: 'resume', sections: [['today', 'Résumé']] },
     { name: 'nothing for words no thread holds', query: 'nowhere', sections: [] },
-    { name: 'everything for spaces only', query: '   ', sections: [['earlier', 'Résumé', 'project > review > drawings']] }
+    { name: 'everything for spaces only', query: '   ', sections: [['today', 'Résumé', 'project > review > drawings']] }
   ])('finds $name', ({ query, sections }) => {
     const threads = [
       thread('Résumé', 'topic', { at: '13:00' }),

@@ -65,3 +65,23 @@ describe('a side question', () => {
     expect(registry.get('side')).toEqual({ id: 'side', title: 'Montreal', kind: 'topic', state: 'parked', beside: 'trip', at: '2026-11-18T08:01:00.000Z' })
   })
 })
+
+describe('a thread put away', () => {
+  it('stays put away when the core starts again, comes back when restored, and by itself once it works again', () => {
+    const records = memoryRecords()
+    let ids = 0
+    const now = () => new Date('2026-11-21T09:00:00Z')
+    const registry = createThreadRegistry({ records, now, newId: () => `thread-${++ids}` })
+    const trip = registry.open({ title: 'Lisbon trip', kind: 'topic' })
+    registry.setState(trip.id, 'parked')
+    registry.archive(trip.id, true)
+    expect(createThreadRegistry({ records, now, newId: () => 'x' }).get(trip.id)?.archived).toBe(true)
+    expect(registry.index()).toContain('archived by the person')
+
+    registry.archive(trip.id, false)
+    expect(registry.get(trip.id)?.archived).toBeUndefined()
+    registry.archive(trip.id, true)
+    registry.setState(trip.id, 'working')
+    expect(registry.get(trip.id)?.archived).toBeUndefined()
+  })
+})

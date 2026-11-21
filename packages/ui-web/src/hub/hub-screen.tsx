@@ -1,6 +1,5 @@
 import type { Client, MemoryState } from '@repo/client'
 import type { CommandInput, PersonaId, Settings } from '@repo/protocol'
-import { motion } from 'motion/react'
 import { type ReactNode, useEffect, useLayoutEffect, useRef } from 'react'
 import { AccessSection } from '../access/access-section.tsx'
 import { AccountsSection } from '../accounts/accounts-section.tsx'
@@ -20,8 +19,6 @@ import { MicrophoneSection } from '../settings/microphone-section.tsx'
 import { ModelsSection } from '../settings/models-section.tsx'
 import { ShortcutsSection } from '../settings/shortcuts-section.tsx'
 import { VoiceSection } from '../settings/voice-section.tsx'
-import { SHEET_CSS_WIDTH, sheetWidthStyle } from '../shell/sheet-width.ts'
-import { slide } from '../styles/motion.ts'
 import { asksToGoBack, BACK_BUTTON } from './going-back.ts'
 
 /** Everything a page of the hub may draw with. */
@@ -175,8 +172,6 @@ interface HubScreenProps extends HubContext {
   /** The page open. */
   page: HubPage
   onPage(page: HubPage): void
-  /** The side sheet is open and the hub keeps room for it on the right, so nothing of the page is under it. */
-  sheetRoom: boolean
 }
 
 /**
@@ -184,9 +179,9 @@ interface HubScreenProps extends HubContext {
  * settings are, with the page open beside it. The way back to the conversation is the first row of the sidebar;
  * Escape, the mouse's back button, Alt and Left (Command and [ on a Mac) go back too.
  */
-export function HubScreen({ page, onPage, sheetRoom, ...hub }: HubScreenProps) {
+export function HubScreen({ page, onPage, ...hub }: HubScreenProps) {
   const { onBack } = hub
-  const { mac, settings: device } = useDevice()
+  const { mac } = useDevice()
   const scroller = useRef<HTMLDivElement>(null)
   const entry: HubPageEntry = PAGES[page]
 
@@ -240,16 +235,8 @@ export function HubScreen({ page, onPage, sheetRoom, ...hub }: HubScreenProps) {
         ))}
       </Sidebar>
 
-      {/* With the side sheet open and room for both, the page ends where the sheet starts. It changes place once,
-          and its column glides there with the sheet, moved only by a transform. */}
-      <motion.div
-        ref={scroller}
-        layoutScroll
-        className="scroll-quiet min-w-0 flex-1 overflow-y-auto overflow-x-hidden"
-        data-sheet-width
-        style={{ ...sheetWidthStyle(device.sheet.width), marginRight: sheetRoom ? SHEET_CSS_WIDTH : 0 }}
-      >
-        <motion.div layout="position" layoutDependency={sheetRoom} transition={slide} className="mx-auto w-full max-w-[60rem] px-10 pt-7 pb-16">
+      <div ref={scroller} className="scroll-quiet min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
+        <div className="mx-auto w-full max-w-[60rem] px-10 pt-7 pb-16">
           <div className="mb-6">
             <ScreenHeader title={entry.title} />
           </div>
@@ -257,8 +244,8 @@ export function HubScreen({ page, onPage, sheetRoom, ...hub }: HubScreenProps) {
             <p className="-mt-3 max-w-2xl text-[0.8125rem] text-text-soft leading-relaxed">{entry.lead(hub.productName)}</p>
             {entry.render(hub)}
           </div>
-        </motion.div>
-      </motion.div>
+        </div>
+      </div>
     </section>
   )
 }

@@ -36,10 +36,16 @@ interface ThreadGroup {
   under: Thread[]
 }
 
-/** The parts of the list, in order: what is at work, what has an answer waiting, and the rest. */
-const SECTIONS = ['working', 'ready', 'earlier'] as const
+/**
+ * The parts of the list, in order: what is at work, what has an answer waiting, what was used today, then this week,
+ * and what was put away or left for a week, folded.
+ */
+const SECTIONS = ['working', 'ready', 'today', 'week', 'archived'] as const
 type SectionName = (typeof SECTIONS)[number]
-const SECTION_TITLE: Record<SectionName, string> = { working: 'At work', ready: 'Ready', earlier: 'Earlier' }
+const SECTION_TITLE: Record<SectionName, string> = { working: 'At work', ready: 'Ready', today: 'Today', week: 'This week', archived: 'Archived' }
+
+/** How long a thread is left before it folds under Archived by itself. */
+const IDLE_ARCHIVES_MS = 7 * 86_400_000
 
 interface ThreadSection {
   name: SectionName
@@ -59,10 +65,11 @@ const matches = (thread: Thread, words: readonly string[]) => {
  * The threads as the side sheet lists them: each topic with the side questions asked while it was on the stage and
  * the sub-threads it opened under it, one level deep; one whose topic is gone, or is itself under another, stands on
  * its own row, so none is ever left out. A group is listed at work when any of its threads works, ready when any has
- * an answer waiting, else with the rest, and the groups used most recently come first. Words typed keep the threads whose title or folder holds them all, each
+ * an answer waiting, archived when the person put it away or it was left for a week, else by the day it was last
+ * used, the groups used most recently first. Words typed keep the threads whose title or folder holds them all, each
  * under its topic, and everything under a topic found.
  */
-export function sectionThreads(threads: readonly Thread[], query = ''): ThreadSection[] {
+export function sectionThreads(threads: readonly Thread[], query = '', now = new Date()): ThreadSection[] {
   const words = plain(query).split(/\s+/).filter(Boolean)
   const byId = new Map(threads.map((thread) => [thread.id, thread]))
   const isHead = (thread: Thread) => {
@@ -81,12 +88,16 @@ export function sectionThreads(threads: readonly Thread[], query = ''): ThreadSe
     }
   }
   const latest = (group: ThreadGroup) => Math.max(...[group.head, ...group.under].map((thread) => new Date(thread.at).getTime() || 0))
-  const sectionOf = (group: ThreadGroup): SectionName => {
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const sectionOf = ({ group, at }: { group: ThreadGroup; at: number }): SectionName => {
     const states = [group.head, ...group.under].map((thread) => thread.state)
-    return states.includes('working') ? 'working' : states.includes('ready') ? 'ready' : 'earlier'
+    if (states.includes('working')) return 'working'
+    if (states.includes('ready')) return 'ready'
+    if (group.head.archived || at < now.getTime() - IDLE_ARCHIVES_MS) return 'archived'
+    return at >= today ? 'today' : 'week'
   }
   const sorted = groups.map((group) => ({ group, at: latest(group) })).sort((one, other) => other.at - one.at)
-  return SECTIONS.map((name) => ({ name, groups: sorted.filter(({ group }) => sectionOf(group) === name).map(({ group }) => group) })).filter(
+  return SECTIONS.map((name) => ({ name, groups: sorted.filter((one) => sectionOf(one) === name).map(({ group }) => group) })).filter(
     (section) => section.groups.length > 0
   )
 }
@@ -102,10 +113,6 @@ export function usedWords(iso: string, now: Date, locale?: string): string {
   return at.toLocaleDateString(locale, { day: 'numeric', month: 'short', ...(at.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }) })
 }
 
-/** How many groups of the earlier threads show before the rest is asked for, and how many more it takes to fold them. */
-const EARLIER_SHOWN = 20
-const EARLIER_FOLDED = 5
-
 interface ThreadListProps {
   threads: Threads
   /** The conversation's lines, to say what each thread at work is doing. */
@@ -114,19 +121,24 @@ interface ThreadListProps {
   selected: string | undefined
   onOpen(thread: string): void
   onStop(thread: string): void
+  /** Put a thread away, or bring it back. */
+  onArchive(thread: string, archived: boolean): void
   onOpenProject(): void
 }
 
 /**
- * The threads behind the one conversation: what is at work first, saying what each is doing, then what has an
- * answer waiting, then the rest, each topic with its side questions and sub-threads under it. A field finds one by its
- * title or folder. Pressing one opens its work; one at work can be stopped from its row.
+ * The threads behind the one conversation, by where they stand: at work, saying what each is doing, then ready, then
+ * used today and this week, and last what was put away or left for a week, folded. Each topic carries its side
+ * questions and sub-threads under it, folded unless one of them works. A field finds one by its title or folder.
+ * Pressing one opens its work; one at work can be stopped from its row, any other archived or restored.
  */
-export function ThreadList({ threads, exchanges, selected, onOpen, onStop, onOpenProject }: ThreadListProps) {
+export function ThreadList({ threads, exchanges, selected, onOpen, onStop, onArchive, onOpenProject }: ThreadListProps) {
   const [query, setQuery] = useState('')
-  const [allEarlier, setAllEarlier] = useState(false)
-  const sections = useMemo(() => sectionThreads(threads.threads, query), [threads.threads, query])
+  const [archivedOpen, setArchivedOpen] = useState(false)
+  const [opened, setOpened] = useState<ReadonlySet<string>>(new Set())
   const now = new Date()
+  const sections = useMemo(() => sectionThreads(threads.threads, query), [threads.threads, query])
+  const finding = query.trim() !== ''
   const row = (thread: Thread, nested: boolean) => (
     <Row
       thread={thread}
@@ -137,8 +149,10 @@ export function ThreadList({ threads, exchanges, selected, onOpen, onStop, onOpe
       used={usedWords(thread.at, now)}
       onOpen={onOpen}
       onStop={onStop}
+      onArchive={onArchive}
     />
   )
+  const toggle = (head: string) => setOpened((before) => new Set(before.has(head) ? [...before].filter((one) => one !== head) : [...before, head]))
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -157,32 +171,60 @@ export function ThreadList({ threads, exchanges, selected, onOpen, onStop, onOpe
       ) : (
         <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 pb-3">
           {sections.map((section) => {
-            const folded = section.name === 'earlier' && !allEarlier && query === '' && section.groups.length > EARLIER_SHOWN + EARLIER_FOLDED
-            const shown = folded ? section.groups.slice(0, EARLIER_SHOWN) : section.groups
+            const folded = section.name === 'archived' && !archivedOpen && !finding
             return (
-              <section key={section.name} aria-label={SECTION_TITLE[section.name]} className="mt-3 grid gap-1 first:mt-0">
-                <h3 className="flex items-baseline gap-1.5 px-3 pt-1">
-                  <Eyebrow accent={section.name === 'working'}>{SECTION_TITLE[section.name]}</Eyebrow>
-                  <span className="text-[0.6875rem] text-text-faint tabular-nums">{section.groups.length}</span>
+              <section key={section.name} aria-label={SECTION_TITLE[section.name]} className="mt-4 grid gap-0.5 first:mt-1">
+                <h3 className="flex items-baseline gap-1.5 px-3">
+                  {section.name === 'archived' ? (
+                    <button
+                      type="button"
+                      aria-expanded={!folded}
+                      onClick={() => setArchivedOpen(!archivedOpen)}
+                      className="flex items-baseline gap-1.5 rounded-xs outline-none hover:text-text-soft focus-visible:text-text-soft"
+                    >
+                      <Eyebrow>{SECTION_TITLE[section.name]}</Eyebrow>
+                      <span className="text-[0.6875rem] text-text-faint tabular-nums">{section.groups.length}</span>
+                      <span aria-hidden="true" className="text-[0.6875rem] text-text-faint">
+                        {folded ? '▸' : '▾'}
+                      </span>
+                    </button>
+                  ) : (
+                    <>
+                      <Eyebrow accent={section.name === 'working'}>{SECTION_TITLE[section.name]}</Eyebrow>
+                      <span className="text-[0.6875rem] text-text-faint tabular-nums">{section.groups.length}</span>
+                    </>
+                  )}
                 </h3>
-                <ul className="grid gap-px">
-                  {shown.map(({ head, under }) => (
-                    <li key={head.id}>
-                      {row(head, false)}
-                      {under.length > 0 && (
-                        <ul className="mb-1 ml-[1.375rem] grid gap-px border-line border-l pl-1.5">
-                          {under.map((thread) => (
-                            <li key={thread.id}>{row(thread, true)}</li>
-                          ))}
-                        </ul>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-                {folded && (
-                  <Button kind="quiet" size="sm" className="mx-1 w-fit" onClick={() => setAllEarlier(true)}>
-                    Show {section.groups.length - EARLIER_SHOWN} more
-                  </Button>
+                {!folded && (
+                  <ul className="grid gap-px">
+                    {section.groups.map(({ head, under }) => {
+                      // What is under a topic stays folded unless part of it works, the person opened it, or they are finding.
+                      const open = finding || opened.has(head.id) || under.some((thread) => thread.state === 'working')
+                      return (
+                        <li key={head.id}>
+                          {row(head, false)}
+                          {under.length > 0 && (
+                            <button
+                              type="button"
+                              aria-expanded={open}
+                              onClick={() => toggle(head.id)}
+                              className="ml-[1.375rem] flex items-center gap-1 rounded-xs px-1.5 py-0.5 text-label text-text-faint outline-none hover:text-text-soft focus-visible:text-text-soft"
+                            >
+                              <span aria-hidden="true">{open ? '▾' : '▸'}</span>
+                              {`${under.length} ${underWords(under).toLowerCase()}`}
+                            </button>
+                          )}
+                          {under.length > 0 && open && (
+                            <ul className="mb-1 ml-[1.375rem] grid gap-px border-line border-l pl-1.5">
+                              {under.map((thread) => (
+                                <li key={thread.id}>{row(thread, true)}</li>
+                              ))}
+                            </ul>
+                          )}
+                        </li>
+                      )
+                    })}
+                  </ul>
                 )}
               </section>
             )
@@ -205,9 +247,10 @@ interface RowProps {
   used: string
   onOpen(thread: string): void
   onStop(thread: string): void
+  onArchive(thread: string, archived: boolean): void
 }
 
-function Row({ thread, nested, onScreen, selected, doing, used, onOpen, onStop }: RowProps) {
+function Row({ thread, nested, onScreen, selected, doing, used, onOpen, onStop, onArchive }: RowProps) {
   const working = thread.state === 'working'
   // What a thread is said only where it is not the usual one: a topic.
   const kind = kindWords(thread)
@@ -229,16 +272,31 @@ function Row({ thread, nested, onScreen, selected, doing, used, onOpen, onStop }
         onClick={() => onOpen(thread.id)}
         aria-current={selected || undefined}
         title={doing === undefined ? thread.folder : doing}
-        className="flex min-w-0 flex-1 items-center gap-3 rounded-sm px-3 py-1.5 text-left outline-none focus-visible:bg-white/[0.07]"
+        className="flex min-w-0 flex-1 items-center gap-2.5 rounded-sm py-1 pr-1 pl-3 text-left outline-none focus-visible:bg-white/[0.07]"
       >
         <StateDot state={thread.state} />
-        <span className="grid min-w-0 flex-1 gap-0.5">
-          <span className={cn('truncate', nested ? 'text-[0.8125rem] text-text-soft' : 'text-sm')}>{thread.title}</span>
-          {meta.length > 0 && <span className={cn('truncate text-label', working ? 'text-text-soft' : 'text-text-faint')}>{meta.join(' · ')}</span>}
+        <span className="grid min-w-0 flex-1">
+          <span className={cn('truncate text-[0.8125rem] leading-5', nested ? 'text-text-soft' : 'text-text')}>{thread.title}</span>
+          {meta.length > 0 && (
+            <span className={cn('truncate text-[0.6875rem] leading-4', working ? 'text-text-soft' : 'text-text-faint')}>{meta.join(' · ')}</span>
+          )}
         </span>
-        {!working && <span className="shrink-0 text-[0.6875rem] text-text-faint tabular-nums">{used}</span>}
+        {!working && <span className="shrink-0 text-[0.6875rem] text-text-faint tabular-nums group-focus-within:hidden group-hover:hidden">{used}</span>}
       </button>
-      {working && <StopThread title={thread.title} onClick={() => onStop(thread.id)} className="mr-1.5" />}
+      {working ? (
+        <StopThread title={thread.title} onClick={() => onStop(thread.id)} className="mr-1.5" />
+      ) : (
+        !nested && (
+          <button
+            type="button"
+            aria-label={`${thread.archived ? 'Restore' : 'Archive'} ${thread.title}`}
+            onClick={() => onArchive(thread.id, !thread.archived)}
+            className="mr-1.5 hidden h-6 shrink-0 items-center rounded-sm px-2 text-label text-text-soft outline-none transition-colors duration-(--duration-quick) ease-soft hover:bg-white/[0.08] hover:text-text focus-visible:flex focus-visible:bg-white/[0.08] group-focus-within:flex group-hover:flex"
+          >
+            {thread.archived ? 'Restore' : 'Archive'}
+          </button>
+        )
+      )}
     </div>
   )
 }

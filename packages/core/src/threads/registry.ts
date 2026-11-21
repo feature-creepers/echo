@@ -19,6 +19,8 @@ export interface ThreadRegistry {
    */
   open(asked: { title: string; kind: Thread['kind']; parent?: string | undefined; beside?: string | undefined; folder?: string | undefined }): Thread
   setState(id: string, state: Thread['state']): void
+  /** Put a thread away in the side sheet, or bring it back. Work on it brings it back by itself. */
+  archive(id: string, archived: boolean): void
   /** Bring a topic to the stage. A sub-thread never takes the focus: it works for its topic. */
   focus(id: string): void
   focused(): Thread | undefined
@@ -103,7 +105,15 @@ export function createThreadRegistry({ records, now, newId }: RegistryOptions): 
     setState(id, state) {
       const thread = threads.get(id)
       if (!thread || thread.state === state) return
-      write({ ...thread, state, at: now().toISOString() })
+      // A thread put away comes back once it works again.
+      const { archived: _archived, ...rest } = thread
+      write({ ...(state === 'working' ? rest : thread), state, at: now().toISOString() })
+    },
+    archive(id, archived) {
+      const thread = threads.get(id)
+      if (!thread || (thread.archived === true) === archived) return
+      const { archived: _archived, ...rest } = thread
+      write(archived ? { ...rest, archived: true } : rest)
     },
     focus(id) {
       const thread = threads.get(id)
@@ -128,6 +138,7 @@ export function createThreadRegistry({ records, now, newId }: RegistryOptions): 
             thread.state,
             thread.folder === undefined ? undefined : `working in ${thread.folder}`,
             thread.id === focus ? 'on screen' : undefined,
+            thread.archived ? 'archived by the person' : undefined,
             answering ? `answering: ${answering}` : undefined,
             `last used ${thread.at.slice(0, 16).replace('T', ' ')}`
           ]

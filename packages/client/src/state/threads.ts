@@ -13,6 +13,8 @@ export interface ThreadsState extends Followed<Threads> {
   stop(thread?: string): Promise<void>
   /** Put a waiting answer away unseen: one topic's, or with none named, every one that waits. */
   dismiss(thread?: string): Promise<void>
+  /** Put a thread away in the side sheet, or bring it back. */
+  archive(thread: string, archived: boolean): Promise<void>
   /**
    * A page of one thread: its latest requests, or those just before `before`, with their full answers, their tool
    * calls previewed and the titles of their views.
@@ -53,6 +55,9 @@ export function followThreads(session: Session): ThreadsState {
     },
     async dismiss(thread) {
       await session.run('threads.dismiss', thread === undefined ? {} : { thread })
+    },
+    async archive(thread, archived) {
+      await session.run('thread.archive', { thread, archived })
     },
     read: (thread, before) => session.run('thread.read', before === undefined ? { thread } : { thread, before }),
     step: async (thread, call) => (await session.run('thread.step', { thread, call })).step,

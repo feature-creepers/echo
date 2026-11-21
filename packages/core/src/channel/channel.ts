@@ -208,6 +208,8 @@ export interface Channel {
    * so it is neither mentioned nor said, and nothing else about the topic changes.
    */
   dismiss(thread?: string): void
+  /** Put a thread away in the side sheet, or bring it back. Whether there is such a thread. */
+  archive(thread: string, archived: boolean): boolean
   /**
    * A page of one thread, for the side sheet: its latest requests, or those before `before`, as many as fit one
    * message, with their steps previewed and their views named. Undefined when there is no such thread.
@@ -1324,6 +1326,11 @@ export function createChannel(options: ChannelOptions): Channel {
       return true
     },
 
+    archive(id, archived) {
+      if (!registry.get(id)) return false
+      registry.archive(id, archived)
+      return true
+    },
     dismiss(id) {
       for (const thread of registry.read().threads) {
         if (thread.state !== 'ready' || (id !== undefined && thread.id !== id)) continue
