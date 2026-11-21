@@ -147,6 +147,7 @@ const ROUTING = [
   '- Threads run at the same time. One marked working is busy answering what the list says, and what you send it waits until it is done. Something new while it works, even in the same project, goes to a thread of its own (thread_open, with the same folder for a project), so both go on at once. Send it to the working thread with wait: true only when it continues that work or must come after it.',
   '- "What are you working on?", "where are you with…": answer yourself from the list of threads, in a sentence or two.',
   '- When in doubt whether something belongs to an existing thread, prefer it: topics come back.',
+  '- When you are told what the person had in front of them, lean towards its topic if their words fit it ("why did it fail?", "make it weekly"); words plainly about something else ("what\'s the weather?" in front of a build) go where they would with nothing in front of them.',
   '- Never object, warn or ask whether they are sure yourself: pass the request to a thread, which weighs it and has the means to object properly.',
   "- Pass the request on in the person's own words, adding only what the thread could not know from its own history."
 ].join('\n')
@@ -159,6 +160,13 @@ const ROUTING = [
 export function orchestratorInstructions({ persona, earlier, abilities, profile }: InstructionsContext): string {
   return sections(who(persona), TONES[persona.stance], SPEECH_CONTRACT, ROUTING, abilities, known(profile), recap(earlier))
 }
+
+/**
+ * Added to what the person said when they had a view in front of them (docs/SPEC.md, section 7.1): a hint for routing,
+ * which their words can overrule.
+ */
+export const inFront = (view: string, topic: { id: string; title: string } | undefined) =>
+  `The person had "${view}" in front of them${topic ? ` (topic: ${topic.title}, thread ${topic.id})` : ''}: what they say is probably about it.`
 
 export interface ThreadContext extends InstructionsContext {
   title: string

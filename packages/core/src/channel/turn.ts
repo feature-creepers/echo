@@ -75,6 +75,8 @@ export interface Turn {
    * the desktop's Mini window: whoever answers is told to say a little more.
    */
   screen: boolean
+  /** What the orchestrator is told of the view the person had in front of them when they said it, if it was one. */
+  inFront: string | undefined
 }
 
 /** A live session, and what it was opened for. When any of that changes, the session is replaced. */
@@ -136,7 +138,8 @@ export const newTurn = (exchange: Exchange, language: string | undefined, handed
   touched: new Set(),
   delegated: undefined,
   stopping: [],
-  screen: true
+  screen: true,
+  inFront: undefined
 })
 
 export const newRuntime = (thread: string): Runtime => ({

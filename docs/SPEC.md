@@ -251,7 +251,7 @@ Of these capabilities, the port (`packages/core/src/ports/harness.ts`) carries o
 
 1. **Capture.** Speech is recognised into text, with partial words shown while the person talks.
 2. **Local intents.** Commands that need no intelligence never reach a model: stop, pause, next, louder, repeat, show the transcript, switch persona. A small grammar per language handles them at once.
-3. **Context.** The core assembles the time and place, the thread in focus, the index of open threads (title, one-line state) and the memories most relevant to the utterance.
+3. **Context.** The core assembles the time and place, the thread in focus, the index of open threads (title, one-line state) and the memories most relevant to the utterance. When the device says which view was in front of the person (`about`), and it is still in the stream, the orchestrator is told its title and its topic: it leans towards that topic when the words fit it, and is never held to it ("what's the weather?" in front of a build is still about the weather).
 4. **Orchestrator.** A warm session on a fast model reads the utterance and either answers directly (small talk, quick facts), continues a thread (`thread_send`), opens a thread or a side question (`thread_open`), or brings an earlier thread's view back (`thread_focus`, "back to the document").
 5. **Thread.** The chosen thread works in its own session with its own tools and answers in three layers (section 7.2).
 6. **Record.** The utterance, the spoken reply, the view and the thread are appended to the channel log.

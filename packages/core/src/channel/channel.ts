@@ -34,6 +34,7 @@ import { ASIDE_STAYS_MS, type Checked, type Screen, type Showing } from '../view
 import type { Abilities, Remembering } from './abilities.ts'
 import {
   DELEGATED_FIRST,
+  inFront,
   instructionsFor,
   NO_SCREEN,
   orchestratorInstructions,
@@ -140,14 +141,27 @@ export function planProgress(plan: readonly PlanStep[]): string | undefined {
 /** A line of the transcript without a plan: the session dropped its to-do list. */
 const withoutPlan = ({ plan: _plan, ...exchange }: Exchange): Exchange => exchange
 
+/** What goes with something the person said. */
+export interface Said {
+  /** The language spoken, when the device's recogniser could tell. */
+  language?: string | undefined
+  /** The files and folders handed over with it. */
+  handed?: Handed
+  /** Heard by the device's recogniser, rather than typed or pressed. */
+  spoken?: boolean
+  /** False when the device it was said to shows no views now. Left out, it does. */
+  screen?: boolean
+  /** The view in front of the person when they said it, by its id: what they say is probably about it. */
+  about?: string | undefined
+}
+
 /** The single conversation: it takes what the user says, one turn at a time, and announces the answer as it comes. */
 export interface Channel {
   /**
    * The user said something, and may have handed over files and folders with it. The answer follows as events.
-   * Said during an answer, it takes the answer's place. `screen` is false when the device it was said to shows no
-   * views now.
+   * Said during an answer, it takes the answer's place.
    */
-  say(text: string, language?: string, handed?: Handed, spoken?: boolean, screen?: boolean): TurnId
+  say(text: string, said?: Said): TurnId
   /**
    * The person asked for work on a project from the interface (docs/SPEC.md, section 7.11), in a folder already
    * theirs to change: a turn of their own that takes the stage, passed straight to the project's thread, since they
@@ -975,15 +989,25 @@ export function createChannel(options: ChannelOptions): Channel {
     return `(Now: ${moment(now(), options.timeZone?.())}${told === '' ? '' : `.${told}`})`
   }
 
+  /**
+   * What the orchestrator is told of the view the person had in front of them, and of its topic: a view no longer in
+   * the stream tells nothing.
+   */
+  const inFrontOf = (id: string): string | undefined => {
+    const view = screen.stream().find((one) => one.id === id)
+    if (!view) return undefined
+    const thread = view.thread === undefined ? undefined : registry.get(view.thread)
+    return inFront(view.title, thread && { id: thread.id, title: thread.title })
+  }
+
   /** What the person said, or what the assistant starts on by itself, and what they handed over with it. */
   const what = (turn: Turn) => {
     if (turn.exchange.trigger === 'task')
       return `A task the person scheduled is due now ("${turn.title ?? turn.exchange.said}"). Nobody has said anything: carry it out as if they had just asked it, and answer them as usual. They may be away from the screen: if something needs their approval, ask as usual; unanswered, it counts as no.\nThe request: ${turn.exchange.said}${turn.arrived === undefined ? '' : `\n\n${turn.arrived}`}`
     if (turn.exchange.trigger === 'greeting')
       return 'The person has just opened the app; nobody has said anything yet. Greet them by their name if you know it, in one short sentence, then give a brief briefing for today: the day, the weather where they are if you can find it (their time zone says roughly where), and anything left pending from earlier topics. Keep it short. Either say it all yourself, or pass it whole to a thread if a view of the day would help, saying nothing yourself.'
-    const note = noteForOrchestrator(turn.handed)
     const said = turn.exchange.said === '' ? 'The person says nothing.' : `The person says: ${turn.exchange.said}`
-    return note ? `${said}\n${note}` : said
+    return [said, noteForOrchestrator(turn.handed), turn.inFront].filter(Boolean).join('\n')
   }
 
   /**
@@ -1131,7 +1155,7 @@ export function createChannel(options: ChannelOptions): Channel {
   }
 
   return {
-    say(text, language, handed = NOTHING_HANDED, aloud = false, screen = true) {
+    say(text, { language, handed = NOTHING_HANDED, spoken: aloud = false, screen = true, about } = {}) {
       // A yes or a no to a question on screen answers it: the turn that asked goes on, and no new one starts. What
       // answers a question is never kept in the log: a confirmation phrase said aloud is the person's own.
       // Files handed over are something new to look at, never an answer.
@@ -1142,6 +1166,7 @@ export function createChannel(options: ChannelOptions): Channel {
       if (isThanks(text, names)) putAsidesAway()
       const turn = personsTurn(text, language, handed)
       turn.screen = screen
+      turn.inFront = about === undefined ? undefined : inFrontOf(about)
       if (deciding) pending = turn
       else void decide(turn)
       return turn.exchange.turn

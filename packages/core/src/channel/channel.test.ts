@@ -1,4 +1,4 @@
-import { EXAMPLE_VIEW } from '@repo/catalog'
+import { EXAMPLE_VIEW, validateView } from '@repo/catalog'
 import type { Event, Exchange, PlanStep } from '@repo/protocol'
 import { describe, expect, it, vi } from 'vitest'
 import { createEngineRoom } from '../engines/engines.ts'
@@ -132,7 +132,7 @@ describe('a person who sees no screen', () => {
 
   it('has whoever answers told to say a little more, with what they asked and nothing else', async () => {
     const { channel, harness, call } = setup()
-    channel.say('What should I cook tonight?', undefined, undefined, true, false)
+    channel.say('What should I cook tonight?', { spoken: true, screen: false })
     await settled()
     await call(0, 'thread_open', { title: 'Dinner tonight', kind: 'topic' })
     harness.sessions[0]?.emit({ type: 'turn-end' })
@@ -145,7 +145,7 @@ describe('a person who sees no screen', () => {
   it('is told after the language to answer in', async () => {
     const { channel, harness, settings } = setup({ server: false })
     settings.setLanguages({ answers: 'de' })
-    channel.say('What is the weather tomorrow?', undefined, undefined, false, false)
+    channel.say('What is the weather tomorrow?', { screen: false })
     await settled()
 
     expect(harness.sessions[0]?.sent).toEqual([`${NOW}. Answer in German. ${NO_SCREEN})\nWhat is the weather tomorrow?`])
@@ -192,6 +192,70 @@ describe('the orchestrator', () => {
     expect(ended()).toMatchObject([{ said: 'Hello', replied: 'Good morning. How can I help?', outcome: 'done' }])
     expect(ended()[0]?.thread).toBeUndefined()
     expect(harness.sessions).toHaveLength(1)
+  })
+})
+
+describe('what the person had in front of them', () => {
+  /** The stream once a topic showed its card and a card of no topic came after it: the views' ids, and the topic's. */
+  async function shown() {
+    const context = setup()
+    const { channel, harness, call, screen } = context
+    channel.say('Show me the CI of echo')
+    await settled()
+    await call(0, 'thread_open', { title: 'CI of echo' })
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+    harness.sessions[1]?.emit({ type: 'text', text: 'Your CI is green. ' })
+    await call(1, 'ui_render', { title: 'Build status', view: EXAMPLE_VIEW })
+    harness.sessions[1]?.emit({ type: 'turn-end' })
+    const build = screen.current()?.id as string
+    const checked = validateView(EXAMPLE_VIEW)
+    if (!checked.ok) throw new Error('The example view is valid.')
+    screen.present({ title: 'Wake at seven', spec: checked.spec }, { thread: undefined, turn: undefined, focused: true })
+    const reminder = screen.current()?.id as string
+    return { ...context, build, reminder, topic: channel.threads().threads[0]?.id as string }
+  }
+
+  it.each<[string, (ids: Awaited<ReturnType<typeof shown>>) => string | undefined, (topic: string) => string | undefined]>([
+    [
+      "a topic's card, named with its topic",
+      ({ build }) => build,
+      (topic) => `The person had "Build status" in front of them (topic: CI of echo, thread ${topic}): what they say is probably about it.`
+    ],
+    [
+      'a card of no topic, named alone',
+      ({ reminder }) => reminder,
+      () => 'The person had "Wake at seven" in front of them: what they say is probably about it.'
+    ],
+    [
+      'a card closed since: nothing',
+      ({ build, screen }) => {
+        screen.clear(build)
+        return build
+      },
+      () => undefined
+    ],
+    ['a view that was never shown: nothing', () => 'view-unknown', () => undefined],
+    ['nothing in particular: nothing', () => undefined, () => undefined]
+  ])('tells the orchestrator of %s, after what they said', async (_case, about, told) => {
+    const context = await shown()
+    context.channel.say('Why did it fail?', { about: about(context) })
+    await settled()
+
+    const message = context.harness.sessions[0]?.sent.at(-1)
+    const line = told(context.topic)
+    expect(message?.endsWith(line === undefined ? 'The person says: Why did it fail?' : `The person says: Why did it fail?\n${line}`)).toBe(true)
+  })
+
+  it('tells nothing to the thread the request is passed to: the orchestrator decides with it', async () => {
+    const { channel, harness, call, build, topic } = await shown()
+    channel.say('Why did it fail?', { about: build })
+    await settled()
+    await call(0, 'thread_send', { thread: topic })
+    harness.sessions[0]?.emit({ type: 'turn-end' })
+    await settled()
+
+    expect(harness.sessions[1]?.sent.at(-1)).not.toContain('in front of them')
   })
 })
 
@@ -1130,7 +1194,7 @@ describe('files handed over', () => {
 
   it('are named to the orchestrator, then follow the turn to the thread that answers', async () => {
     const { channel, harness, call, events } = setup({ harness: scriptedHarness({ images: true }), more: { reach: () => reach } })
-    channel.say('What is in this picture?', undefined, { files: [photo, plan], folders: [] })
+    channel.say('What is in this picture?', { handed: { files: [photo, plan], folders: [] } })
     await settled()
     expect(harness.sessions[0]?.sent[0]).toContain(
       'The person says: What is in this picture?\n(They handed over 2 files with it: photo.png (a picture), plan.pdf'
@@ -1161,7 +1225,7 @@ describe('files handed over', () => {
 
   it('are named by their path only when the harness cannot show pictures', async () => {
     const { channel, harness, call } = setup()
-    channel.say('Look', undefined, { files: [photo], folders: [] })
+    channel.say('Look', { handed: { files: [photo], folders: [] } })
     await settled()
     await call(0, 'thread_open', { title: 'The picture', kind: 'topic' })
     harness.sessions[0]?.emit({ type: 'turn-end' })
@@ -1172,7 +1236,7 @@ describe('files handed over', () => {
 
   it('go to the one session that answers everything, when there are no threads', async () => {
     const { channel, harness } = setup({ harness: scriptedHarness({ images: true }), server: false })
-    channel.say('', undefined, { files: [photo], folders: ['/home/ada/Projects'] })
+    channel.say('', { handed: { files: [photo], folders: ['/home/ada/Projects'] } })
     await settled()
     expect(harness.sessions[0]?.sent[0]).toContain('The person handed you these without a word')
     expect(harness.sessions[0]?.sent[0]).toContain('- The folder /home/ada/Projects: yours to read from now on, read only.')
@@ -1182,7 +1246,7 @@ describe('files handed over', () => {
   it('are never taken for the answer to a question on screen', async () => {
     const heard: string[] = []
     const { channel, harness } = setup({ more: { hear: (said) => heard.push(said) > 0 } })
-    channel.say('Allow', undefined, { files: [photo], folders: [] })
+    channel.say('Allow', { handed: { files: [photo], folders: [] } })
     await settled()
     expect(heard).toEqual([])
     expect(harness.sessions).toHaveLength(1)

@@ -560,7 +560,18 @@ export function createCore(options: CoreOptions): Core {
         if (gone.length > 0) return { ok: false, error: { code: 'invalid-input', message: 'A file handed over is no longer here: hand it over again.' } }
         const folders = input.folders && input.folders.length > 0 ? await giveFolders(input.folders, { settings, computer }) : []
         const handed = { files: attachments.take(named), folders }
-        return { ok: true, output: { turn: channel.say(input.text, input.language, handed, input.spoken === true, input.screen !== false) } }
+        return {
+          ok: true,
+          output: {
+            turn: channel.say(input.text, {
+              language: input.language,
+              handed,
+              spoken: input.spoken === true,
+              screen: input.screen !== false,
+              about: input.about
+            })
+          }
+        }
       },
       'attachment.open': (input) => attachments.open(input),
       'attachment.write': (input) => attachments.write(input.attachment, input.data),
