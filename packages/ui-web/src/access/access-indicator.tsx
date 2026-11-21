@@ -6,9 +6,9 @@ import { cn } from '../primitives/cn.ts'
 import { Menu } from '../primitives/menu.tsx'
 import { LEVELS, reachInWords } from './words.ts'
 
-/** The look of the words under the composer that open a menu: quiet until pointed at, lit while their menu is open. */
+/** The look of the labels under the composer that open a menu: quiet until pointed at, lit while their menu is open. */
 export const BAR_LABEL =
-  'flex h-5 items-center gap-1.5 px-1.5 text-[0.6875rem] text-text-faint transition-colors duration-(--duration-quick) hover:bg-text/[0.06] hover:text-text-soft aria-expanded:bg-text/[0.07] aria-expanded:text-text-soft'
+  'caps flex h-5 items-center gap-1.5 px-1.5 text-text-faint transition-colors duration-(--duration-quick) hover:bg-text/[0.08] hover:text-text-soft aria-expanded:bg-text/[0.08] aria-expanded:text-text-soft'
 
 /**
  * What the assistant may reach on this computer, in a few words, under the composer beside the name of the AI
@@ -48,12 +48,9 @@ export function AccessIndicator({ client, onOpenSettings }: { client: Client; on
           title={failed}
           className={BAR_LABEL}
         >
-          <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true">
-            <path d="M2 4.5V12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3.5H3a1 1 0 0 0-1 1Z" />
-          </svg>
-          <span className={cn(wide && 'text-warn/80')}>{reach}</span>
+          <span className={cn(wide && 'text-warn')}>{reach}</span>
           <span aria-hidden="true">·</span>
-          {failed ? <span className="text-danger">not changed</span> : <span className={cn(access.approvals === 'auto' && 'text-warn/80')}>{approvals}</span>}
+          {failed ? <span className="text-danger">not changed</span> : <span className={cn(access.approvals === 'auto' && 'text-warn')}>{approvals}</span>}
         </button>
       )}
       items={[

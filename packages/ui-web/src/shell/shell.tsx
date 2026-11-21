@@ -402,7 +402,6 @@ function Connected({ productName, client, engine, mini }: { productName: string;
                       onOpenAccess={() => openHub('access')}
                       speech={speech.ready}
                       voiceLevel={speech.ready ? speech.level : undefined}
-                      voiceBands={speech.ready ? speech.bands : undefined}
                       onSetUpVoice={engine ? () => openHub('voice') : undefined}
                       onOpenAnswer={openAnswer}
                       onOpenThread={openThread}

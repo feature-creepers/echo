@@ -50,9 +50,9 @@ export function StopAllButton({ working, onStop }: { working: number; onStop(): 
   // The button is the glyph alone, square like the composer's others. A tap's hint floats above it, so the button
   // never changes width; while held, the fill says what is happening.
   return (
-    <span className="relative mb-0.5 ml-0.5 flex">
+    <span className="relative ml-0.5 flex">
       {hint && (
-        <span role="status" className="material pointer-events-none absolute right-0 bottom-full mb-1.5 whitespace-nowrap px-2 py-1 text-label text-text-soft">
+        <span role="status" className="material caps pointer-events-none absolute right-0 bottom-full mb-1.5 whitespace-nowrap px-2 py-1 text-text-soft">
           Hold to stop
         </span>
       )}
@@ -67,13 +67,13 @@ export function StopAllButton({ working, onStop }: { working: number; onStop(): 
         onClick={(event) => event.preventDefault()}
         aria-label={`Stop ${what}: hold for ${HOLD_MS / 1000} seconds`}
         title={`Hold to stop ${what}`}
-        className="relative flex size-8 touch-none select-none items-center justify-center overflow-hidden bg-text/[0.08] text-text-soft shadow-[inset_0_0_0_0.5px_rgb(235_230_218/0.1)] transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.12] hover:text-text [&_svg]:size-3.5"
+        className="relative flex size-9 touch-none select-none items-center justify-center overflow-hidden text-text-soft shadow-[inset_0_0_0_1px_var(--color-line-strong)] transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.08] hover:text-text [&_svg]:size-3.5"
       >
         {/* The time held, filling the button from the left. A timer shows time, so it fills evenly; letting go empties
             it with the app's curve. */}
         <span
           aria-hidden="true"
-          className="absolute inset-0 origin-left bg-danger/35"
+          className="absolute inset-0 origin-left bg-danger/45"
           style={{
             transform: `scaleX(${holding ? 1 : 0})`,
             transition: holding ? `transform ${HOLD_MS}ms linear` : 'transform var(--duration-calm) var(--ease-soft)'

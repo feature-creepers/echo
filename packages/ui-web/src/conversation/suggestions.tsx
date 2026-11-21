@@ -2,7 +2,7 @@ import { motion } from 'motion/react'
 import { DURATION, EASE } from '../styles/motion.ts'
 
 /**
- * What a first-time user can try, shown under the core while nothing has been said yet. They show the range
+ * What a first-time user can try, shown under the eye while nothing has been said yet. They show the range
  * of the product in plain words; pressing one says it.
  */
 const SUGGESTIONS = [
@@ -14,7 +14,7 @@ const SUGGESTIONS = [
 
 export function Suggestions({ onSay }: { onSay(text: string): void }) {
   return (
-    <div className="mt-3 flex max-w-[45rem] flex-wrap justify-center gap-1.5">
+    <div className="flex max-w-[45rem] flex-wrap justify-center gap-1.5">
       {SUGGESTIONS.map((suggestion, index) => (
         <motion.button
           key={suggestion}
@@ -23,7 +23,7 @@ export function Suggestions({ onSay }: { onSay(text: string): void }) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.12 + index * 0.05, duration: DURATION.calm, ease: EASE }}
           onClick={() => onSay(suggestion)}
-          className="h-7 border border-line bg-surface/80 px-2.5 text-[0.8125rem] text-text-soft transition-colors duration-(--duration-quick) hover:border-line-strong hover:bg-raised hover:text-text"
+          className="h-7 bg-ground px-2.5 text-[0.8125rem] text-text-soft shadow-[inset_0_0_0_1px_var(--color-line)] transition-colors duration-(--duration-quick) hover:text-text hover:shadow-[inset_0_0_0_1px_var(--color-line-strong)]"
         >
           {suggestion}
         </motion.button>

@@ -25,7 +25,7 @@ export function AttachmentChips({ pending, onRemove }: { pending: readonly Pendi
     // A row too long for the composer scrolls sideways, and fades where it is cut.
     <ul
       aria-label="Files to send"
-      className="scroll-none flex gap-1.5 overflow-x-auto px-1.5 pt-1.5 [mask-image:linear-gradient(to_right,black_calc(100%-1.5rem),transparent)]"
+      className="scroll-none flex gap-1.5 overflow-x-auto px-2 pt-2 [mask-image:linear-gradient(to_right,black_calc(100%-1.5rem),transparent)]"
     >
       <AnimatePresence initial={false}>
         {pending.map((one) => (
@@ -36,14 +36,14 @@ export function AttachmentChips({ pending, onRemove }: { pending: readonly Pendi
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.96, transition: { duration: DURATION.quick, ease: EASE } }}
             transition={{ duration: DURATION.calm, ease: EASE }}
-            className="group relative flex h-11 w-[12.5rem] max-w-[12.5rem] shrink-0 items-center gap-2.5 overflow-hidden bg-text/[0.045] pr-1.5 pl-1.5 shadow-[inset_0_0_0_1px_rgb(235_230_218/0.07)]"
+            className="group relative flex h-11 w-[12.5rem] max-w-[12.5rem] shrink-0 items-center gap-2.5 overflow-hidden pr-1.5 pl-1.5 shadow-[inset_0_0_0_1px_var(--color-line)]"
           >
             <Thumbnail pending={one} />
             <span className="grid min-w-0 flex-1 leading-tight">
               <span className={cn('truncate text-[0.75rem]', one.state === 'failed' ? 'text-danger' : 'text-text')} title={one.name}>
                 {one.name}
               </span>
-              <span className="truncate text-[0.6875rem] text-text-faint">{detailOf(one)}</span>
+              <span className="caps truncate text-text-faint">{detailOf(one)}</span>
             </span>
             <button
               type="button"
@@ -60,7 +60,7 @@ export function AttachmentChips({ pending, onRemove }: { pending: readonly Pendi
             {one.state === 'sending' && (
               <span
                 aria-hidden="true"
-                className="absolute inset-x-0 bottom-0 h-[2px] origin-left bg-accent/70 transition-transform duration-(--duration-calm) ease-soft"
+                className="absolute inset-x-0 bottom-0 h-[2px] origin-left bg-text transition-transform duration-(--duration-calm) ease-soft"
                 style={{ transform: `scaleX(${Math.max(0.04, one.progress)})` }}
               />
             )}
@@ -72,15 +72,15 @@ export function AttachmentChips({ pending, onRemove }: { pending: readonly Pendi
 }
 
 function Thumbnail({ pending }: { pending: Pending }) {
-  if (pending.thumbnail) return <img src={pending.thumbnail} alt="" className="size-8 shrink-0 object-cover shadow-[0_0_0_1px_rgb(235_230_218/0.08)]" />
+  if (pending.thumbnail) return <img src={pending.thumbnail} alt="" className="size-8 shrink-0 object-cover" />
   if (pending.kind === 'folder')
     return (
-      <span className="flex size-8 shrink-0 items-center justify-center bg-text/[0.04] text-text-soft [&_svg]:size-4">
+      <span className="flex size-8 shrink-0 items-center justify-center bg-text/[0.08] text-text-soft [&_svg]:size-4">
         <FolderGlyph />
       </span>
     )
   return (
-    <span className="flex size-8 shrink-0 items-center justify-center bg-text/[0.04] font-mono text-[0.5625rem] text-text-soft uppercase shadow-[inset_0_0_0_1px_rgb(235_230_218/0.08)]">
+    <span className="flex size-8 shrink-0 items-center justify-center bg-text/[0.08] font-mono text-[0.5625rem] text-text-soft uppercase">
       {badgeOf(pending.name)}
     </span>
   )

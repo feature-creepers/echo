@@ -105,13 +105,14 @@ export function EngineIndicator({ client, onOpenSettings }: { client: Client; on
           }}
           className={BAR_LABEL}
         >
-          <span className={cn('size-1.5', engines === undefined ? 'bg-text-faint/50' : active ? 'bg-ok/80' : 'bg-warn')} />
+          {/* Ready needs no mark: only what is missing or still looked for has one. */}
+          {(engines === undefined || !active) && <span className={cn('size-1.5', engines === undefined ? 'bg-text-faint' : 'bg-warn')} />}
           {engines === undefined ? 'Looking…' : active ? active.name : 'No AI program ready'}
           {failed ? (
             <span className="text-danger">· not changed</span>
           ) : (
             model && (
-              <span className="text-text-faint/80">
+              <span>
                 · {model.name}
                 {effort && ` · ${effort.name}`}
               </span>

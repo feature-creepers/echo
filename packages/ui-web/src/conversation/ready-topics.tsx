@@ -84,8 +84,8 @@ export function ReadyTopics({ ready, exchanges, onFocus, onDismiss }: ReadyTopic
   const row = (one: ReadyRow) => <ReadyTopic row={one} now={now} onFocus={onFocus} onDismiss={onDismiss} />
 
   return (
-    <section aria-label="Ready" className="grid w-full max-w-[34rem] grid-cols-1 gap-1">
-      <ul className="grid grid-cols-1 gap-1">
+    <section aria-label="Ready" className="grid w-full max-w-[34rem] grid-cols-1 gap-1 bg-ground">
+      <ul className="grid grid-cols-1 divide-y divide-line border-text border-t-2">
         <AnimatePresence initial={false}>
           {rows.slice(0, SHOWN).map((one) => (
             <motion.li
@@ -102,7 +102,7 @@ export function ReadyTopics({ ready, exchanges, onFocus, onDismiss }: ReadyTopic
         </AnimatePresence>
       </ul>
       {rows.length > 1 && (
-        <div className="flex items-center justify-center gap-1 text-label text-text-faint">
+        <div className="caps flex items-center justify-center gap-1 text-text-faint">
           {more.length > 0 && (
             <Popover open={moreOpen} onOpenChange={setMoreOpen}>
               <PopoverTrigger className={FOOT}>{`${more.length} more`}</PopoverTrigger>
@@ -111,7 +111,7 @@ export function ReadyTopics({ ready, exchanges, onFocus, onDismiss }: ReadyTopic
                 <ul
                   className={cn(
                     FLOATING_LIST,
-                    'scroll-quiet grid grid-cols-1 max-h-[min(20rem,50vh)] w-[30rem] max-w-[calc(100vw-2rem)] gap-1 overflow-y-auto p-1'
+                    'scroll-quiet grid grid-cols-1 max-h-[min(20rem,50vh)] w-[30rem] max-w-[calc(100vw-2rem)] divide-y divide-line overflow-y-auto p-1'
                   )}
                 >
                   {more.map((one) => (
@@ -130,8 +130,7 @@ export function ReadyTopics({ ready, exchanges, onFocus, onDismiss }: ReadyTopic
   )
 }
 
-const FOOT =
-  'h-6 px-2 outline-none transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.05] hover:text-text-soft focus-visible:bg-text/[0.07] focus-visible:text-text-soft'
+const FOOT = 'h-6 px-2 transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.08] hover:text-text-soft'
 
 /** One finished topic: a press brings it back, the cross puts its answer away. */
 function ReadyTopic({ row, now, onFocus, onDismiss }: { row: ReadyRow; now: Date; onFocus(thread: string): void; onDismiss(thread: string): void }) {
@@ -142,25 +141,25 @@ function ReadyTopic({ row, now, onFocus, onDismiss }: { row: ReadyRow; now: Date
     onDismiss(thread.id)
   }
   return (
-    <div className="group flex h-8 items-center bg-text/[0.045] shadow-[inset_0_0_0_0.5px_rgb(235_230_218/0.07)] transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.07]">
+    <div className="group flex h-[34px] items-center transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.06]">
       <button
         type="button"
         title="Bring it back"
         onClick={() => onFocus(thread.id)}
         onKeyDown={onKeyDown}
-        className="flex h-full min-w-0 flex-1 items-center gap-2.5 pr-1 pl-3 text-left outline-none focus-visible:bg-text/[0.07]"
+        className="flex h-full min-w-0 flex-1 items-center gap-2.5 pr-1 pl-1 text-left"
       >
         <StateDot state="ready" />
         <span className={cn('min-w-0 truncate text-[0.8125rem] text-text', answer === undefined ? 'flex-1' : 'max-w-[45%] shrink-0')}>{thread.title}</span>
         {answer !== undefined && <span className="min-w-0 flex-1 truncate text-[0.75rem] text-text-faint">{answer}</span>}
-        <span className="shrink-0 text-label text-text-faint tabular-nums">{waited(thread.at, now)}</span>
+        <span className="caps shrink-0 text-text-soft tabular-nums">{waited(thread.at, now)}</span>
       </button>
       <button
         type="button"
         aria-label={`Dismiss ${thread.title}`}
         title="Dismiss"
         onClick={() => onDismiss(thread.id)}
-        className="mr-1 flex size-6 shrink-0 items-center justify-center text-text-faint outline-none transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.08] hover:text-text focus-visible:bg-text/[0.08] focus-visible:text-text [&_svg]:size-3"
+        className="flex size-6 shrink-0 items-center justify-center text-text-faint transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.08] hover:text-text [&_svg]:size-3"
       >
         <CloseGlyph />
       </button>

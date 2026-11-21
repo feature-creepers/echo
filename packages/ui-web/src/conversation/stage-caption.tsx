@@ -14,7 +14,7 @@ interface CaptionProps {
   last: Exchange | undefined
   /** The voice is held: the words stop where it stopped. */
   paused: boolean
-  /** As large as the core it goes with: large in the middle of an empty stage, small beside the core over the board. */
+  /** As large as the eye it goes with: large under it on an empty screen, medium over the answers and in Mini, small in the bar. */
   size: CaptionSize
   /** How many lines it takes at most, so it never runs onto what is round it; left out, it shows whole. */
   lines: 1 | 2 | undefined
@@ -30,16 +30,17 @@ type CaptionSize = 'large' | 'medium' | 'small'
 
 /** The type of what is said, of what was asked, and of the reply, at each size. */
 const SAID: Record<CaptionSize, string> = {
-  large: 'text-xl leading-snug tracking-[-0.01em]',
+  // The size of an answer's headline: what is said here becomes one.
+  large: 'font-medium text-[1.5625rem] leading-[1.9375rem] tracking-[-0.015em]',
   medium: 'text-[0.9375rem] leading-relaxed',
   small: 'text-sm leading-5'
 }
 const ASKED: Record<CaptionSize, string> = { large: 'text-base leading-relaxed', medium: SAID.medium, small: SAID.small }
-const REPLIED: Record<CaptionSize, string> = { large: 'text-lg leading-snug', medium: SAID.medium, small: SAID.small }
+const REPLIED: Record<CaptionSize, string> = SAID
 
 const CLAMP = { 1: 'line-clamp-1', 2: 'line-clamp-2' } as const
 
-/** What is said under the core, as `captionOf` decides it: one line at a time, each fading into the next. */
+/** What is said under the eye, as `captionOf` decides it: one line at a time, each fading into the next. */
 export function Caption({ line, heard, last, paused, size, lines, problem, onSetUpEngine }: CaptionProps) {
   const clamp = lines === undefined ? undefined : CLAMP[lines]
   const origin = last?.trigger === undefined ? undefined : ORIGIN[last.trigger]
@@ -65,17 +66,17 @@ export function Caption({ line, heard, last, paused, size, lines, problem, onSet
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0, transition: { duration: DURATION.quick, ease: EASE } }}
-          // What was asked is a reminder of what the core works on until it says something, not something to read
+          // What was asked is a reminder of what the assistant works on until it says something, not something to read
           // again: quiet, in the lines kept, however long it was.
           className={cn('text-balance text-text-faint', clamp, ASKED[size])}
         >
-          {origin && <span className="font-medium text-text-soft">{origin} · </span>}
+          {origin && <span className="text-text-soft">{origin} · </span>}
           {/* Files handed over without a word are named instead. */}
           {last.said === '' ? (last.attached?.map((one) => one.name).join(', ') ?? '') : `“${last.said}”`}
         </motion.p>
       ) : line === 'problem' ? (
-        // Only a problem may take more room than one line, in the middle of the stage; beside the small core it keeps to
-        // its line too, and shows whole like the rest of what is said there.
+        // Only a problem may take more room than one line under the eye; in the bar it keeps to its line too, and shows
+        // whole like the rest of what is said there.
         <motion.div
           key="problem"
           initial={{ opacity: 0 }}
@@ -85,7 +86,7 @@ export function Caption({ line, heard, last, paused, size, lines, problem, onSet
         >
           <p className={cn('text-balance text-danger text-sm', size === 'small' ? 'leading-5' : 'leading-relaxed', lines === 1 && clamp)}>{problem}</p>
           {onSetUpEngine && (
-            <button type="button" onClick={onSetUpEngine} className="w-fit text-accent text-xs hover:underline hover:underline-offset-4">
+            <button type="button" onClick={onSetUpEngine} className="caps w-fit underline decoration-text/35 underline-offset-4 hover:decoration-text">
               Set up an AI program
             </button>
           )}
@@ -97,7 +98,7 @@ export function Caption({ line, heard, last, paused, size, lines, problem, onSet
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          // In the lines kept, so what rests by the core stays short and never runs onto the cards, whatever was said.
+          // In the lines kept, so what rests by the eye stays short, whatever was said.
           className={cn('text-balance text-text-soft', clamp, REPLIED[size])}
         >
           {last.replied}
@@ -107,13 +108,13 @@ export function Caption({ line, heard, last, paused, size, lines, problem, onSet
   )
 }
 
-/** The height of the one line kept beside the small core, in pixels: what is said at the small size. */
+/** The height of the one line kept in the bar, in pixels: what is said at the small size. */
 const ONE_LINE = 20
 
 /**
- * What is said, kept to one line beside the small core, and whole while pointed at or once pressed, until pressed
- * again or left: then it is drawn on a floating pane over what is under it, so it moves nothing. The pane shows only
- * when there is more than the one line.
+ * What is said, kept to one line in the bar, and whole while pointed at or once pressed, until pressed again or
+ * left: then it is drawn on a floating plane over what is under it, so it moves nothing. The plane shows only when
+ * there is more than the one line.
  */
 export function OneLine({ children }: { children(whole: boolean): ReactNode }) {
   const [pointed, setPointed] = useState(false)

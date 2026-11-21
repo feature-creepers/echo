@@ -1,6 +1,6 @@
 import { onTop, type ShownView } from '@repo/protocol'
 import { describe, expect, it } from 'vitest'
-import { columnsFor, groupStream, inColumns } from './groups.ts'
+import { groupStream, inRows, type ViewWidth } from './groups.ts'
 
 const view = (id: string, more: Partial<ShownView> = {}): ShownView => ({ id, title: id, spec: { root: 'r', elements: {} }, ...more })
 
@@ -54,32 +54,35 @@ describe('the stream as groups', () => {
   })
 })
 
-describe('the cards of an answer in columns', () => {
+/** Cards of these widths, a dash for one the assistant gave none, laid out and read back as each row's spans. */
+const spans = (widths: string, stacked = false) =>
+  inRows(
+    widths.split(' ').map((width) => (width === '-' ? {} : { width: width as ViewWidth })),
+    stacked
+  ).map((row) => row.map((placed) => placed.span).join('+'))
+
+describe('the cards of an answer in rows', () => {
   it.each([
-    [880, 2],
-    [648, 2],
-    [647, 1],
-    [300, 1],
-    [1600, 2]
-  ])('a board %i wide holds %i', (width, columns) => {
-    expect(columnsFor(width)).toBe(columns)
+    ['one card across the whole row', '-', ['12']],
+    ['two cards half each', '- -', ['6+6']],
+    ['three cards a third each', '- - -', ['4+4+4']],
+    ['four cards two by two', '- - - -', ['6+6', '6+6']],
+    ['five cards in thirds, the last row filled', '- - - - -', ['4+4+4', '4+8']],
+    ['a main card and what supports it', 'two-thirds third', ['8+4']],
+    ['a full card on a row of its own', 'third full third', ['12', '12', '12']],
+    ['what does not fit on the next row', 'two-thirds half', ['12', '12']],
+    ['a card with no width as a half beside one that has', 'half -', ['6+6']],
+    ['the last card grown to fill its row', 'third third', ['4+8']],
+    ['thirds then a main card', 'third third third two-thirds', ['4+4+4', '12']]
+  ])('lays %s', (_case, widths, rows) => {
+    expect(spans(widths)).toEqual(rows)
   })
 
-  it.each([
-    ['one card across the whole width', ['a'], 2, [['a']]],
-    ['two cards side by side', ['a', 'b'], 2, [['a'], ['b']]],
-    [
-      'more cards in reading order',
-      ['a', 'b', 'c', 'd', 'e'],
-      2,
-      [
-        ['a', 'c', 'e'],
-        ['b', 'd']
-      ]
-    ],
-    ['one column where two would be too narrow', ['a', 'b', 'c'], 1, [['a', 'b', 'c']]],
-    ['no card as one empty column', [], 2, [[]]]
-  ])('lays %s', (_case, cards, columns, stacks) => {
-    expect(inColumns(cards, columns)).toEqual(stacks)
+  it('stacks every card on a row of its own in a narrow window', () => {
+    expect(spans('two-thirds third -', true)).toEqual(['12', '12', '12'])
+  })
+
+  it('lays no card as no row', () => {
+    expect(inRows([], false)).toEqual([])
   })
 })
