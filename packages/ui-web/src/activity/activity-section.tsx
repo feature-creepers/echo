@@ -12,12 +12,14 @@ import { Button } from '../primitives/button.tsx'
 import { Choice } from '../primitives/choice.tsx'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
+import { EmptyPlane } from '../settings/rows.tsx'
 import { settle } from '../styles/motion.ts'
 import { ChainCheck } from './chain-check.tsx'
 import { useActivity } from './use-activity.ts'
 import { dayOf, decisionInWords, FILTER_LABELS, FILTERS, type Filter, shownUnder, summary, timeOf } from './words.ts'
 
-const TONE_DOT = { ok: 'bg-ok', accent: 'bg-accent', danger: 'bg-danger', soft: 'bg-text-faint' } as const
+/** The mark of each decision: the ink when it ran, blue when the person approved it, red-orange when it was refused for a reason to watch, an empty square otherwise. */
+const TONE_MARK = { ok: 'bg-ok', accent: 'bg-info', danger: 'bg-danger', soft: 'border border-line-strong' } as const
 
 const Chevron = ({ open }: { open: boolean }) => (
   <svg
@@ -69,14 +71,15 @@ export function ActivitySection({ client, productName }: { client: Client; produ
   }, [shown])
 
   if (activity.problem) return <p className="text-danger text-xs">{activity.problem}</p>
-  if (!activity.uses) return <p className="text-text-faint text-xs">Reading the activity…</p>
+  if (!activity.uses) return <p className="caps text-text-faint">Reading the activity…</p>
 
   if (activity.uses.length === 0) {
     return (
-      <div className="grid gap-2 border border-line-strong border-dashed px-6 py-10 text-center">
-        <p className="text-sm text-text-soft leading-relaxed">Nothing yet. Every file {productName} reads or changes, and every command it runs, shows here.</p>
-        <p className="text-text-faint text-xs">Kept 30 days. A file it changed can be put back from here.</p>
-      </div>
+      <EmptyPlane>
+        <p className="caps text-text">Nothing yet</p>
+        <p>Every file {productName} reads or changes, and every command it runs, shows here.</p>
+        <p className="text-text-faint">Kept 30 days. A file it changed can be put back from here.</p>
+      </EmptyPlane>
     )
   }
 
@@ -84,21 +87,21 @@ export function ActivitySection({ client, productName }: { client: Client; produ
     <div className="grid gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Choice<Filter> label="Show" value={filter} options={FILTERS.map((value) => ({ value, label: FILTER_LABELS[value] }))} onChange={setFilter} />
-        <span className="text-text-faint text-xs">Kept 30 days · commands cannot be undone</span>
+        <span className="caps text-text-faint">Kept 30 days · commands cannot be undone</span>
       </div>
 
       <ChainCheck client={client} />
 
       {days.length === 0 ? (
-        <div className="grid gap-1 border border-line-strong border-dashed px-6 py-8 text-center">
-          <p className="text-sm text-text-soft">Nothing {FILTER_LABELS[filter].toLowerCase()} here.</p>
+        <div className="grid gap-1 border-text border-t-2 py-3">
+          <p className="caps text-text-faint">Nothing {FILTER_LABELS[filter].toLowerCase()} here</p>
           <p className="text-text-faint text-xs">{filter === 'refused' ? 'Everything it tried was within what you gave.' : 'Try another filter.'}</p>
         </div>
       ) : (
         days.map(({ day, uses }) => (
           <section key={day} aria-label={day} className="grid gap-2">
-            <Eyebrow className="px-0.5 font-semibold text-text-soft">{day}</Eyebrow>
-            <ul className="divide-y divide-text/[0.06] overflow-hidden bg-raised/95 shadow-[inset_0_0_0_1px_rgb(235_230_218/0.06)]">
+            <Eyebrow>{day}</Eyebrow>
+            <ul className="divide-y divide-line border-text border-t-2">
               {uses.map((use) => (
                 <UseRow
                   key={use.id}
@@ -160,11 +163,11 @@ function UseRow({ use, open, onToggle, undo, client, relative }: UseRowProps) {
         type="button"
         aria-expanded={open}
         onClick={onToggle}
-        className="grid w-full grid-cols-[2.75rem_6.5rem_minmax(0,1fr)_auto_0.75rem] items-center gap-3 px-4 py-2.5 text-left transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.03]"
+        className="grid w-full grid-cols-[2.75rem_6.5rem_minmax(0,1fr)_auto_0.75rem] items-center gap-3 py-2.5 text-left transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.06]"
       >
-        <span className="text-text-faint text-xs tabular-nums">{timeOf(use.at)}</span>
-        <span className="flex items-center gap-2 text-xs">
-          <span className={cn('size-1.5 shrink-0', TONE_DOT[decision.tone])} aria-hidden="true" />
+        <span className="caps text-text-faint">{timeOf(use.at)}</span>
+        <span className="caps flex items-center gap-2">
+          <span className={cn('size-2 shrink-0', TONE_MARK[decision.tone])} aria-hidden="true" />
           <span className={cn(decision.tone === 'danger' ? 'text-danger' : 'text-text-soft')}>{decision.word}</span>
         </span>
         <span
@@ -175,10 +178,10 @@ function UseRow({ use, open, onToggle, undo, client, relative }: UseRowProps) {
         </span>
         <span className="flex items-center gap-2 text-text-faint text-xs">
           {changed && <Counts change={changed} className="text-[0.6875rem]" />}
-          {use.destructive && <span className="text-danger/90">destructive</span>}
-          {use.network && <span>network</span>}
-          {failed && <span className="text-danger/90">failed</span>}
-          {use.undo?.done && <span className="text-accent">undone</span>}
+          {use.destructive && <span className="caps text-danger">destructive</span>}
+          {use.network && <span className="caps">network</span>}
+          {failed && <span className="caps text-danger">failed</span>}
+          {use.undo?.done && <span className="caps text-text">undone</span>}
           <span className="hidden sm:inline">{decision.why}</span>
         </span>
         <span className="text-text-faint">
@@ -193,10 +196,10 @@ function UseRow({ use, open, onToggle, undo, client, relative }: UseRowProps) {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
             transition={settle}
-            className="grid min-w-0 grid-cols-1 gap-3 border-text/[0.06] border-t bg-black/[0.12] px-4 py-3.5 pl-[4.5rem]"
+            className="grid min-w-0 grid-cols-1 gap-3 border-line border-t py-3.5 pl-[3.5rem]"
           >
             {use.command !== undefined && (
-              <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all bg-black/30 px-3 py-2 font-mono text-[0.75rem] text-text leading-relaxed shadow-[inset_0_0_0_1px_rgb(235_230_218/0.05)]">
+              <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all border-line-strong border-l-2 py-1 pl-3 font-mono text-[0.75rem] text-text leading-relaxed">
                 {use.command}
               </pre>
             )}
@@ -264,7 +267,7 @@ const showsChanges = (use: AccessUse) =>
 function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
     <>
-      <dt className="text-text-faint">{label}</dt>
+      <dt className="caps text-text-faint">{label}</dt>
       <dd className="min-w-0 text-text-soft">{children}</dd>
     </>
   )

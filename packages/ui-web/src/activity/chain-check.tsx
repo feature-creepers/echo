@@ -16,7 +16,7 @@ function download(name: string, text: string): void {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-const TONE = { ok: 'text-ok', danger: 'text-danger', soft: 'text-text-faint' } as const
+const TONE = { ok: 'text-text', danger: 'text-danger', soft: 'text-text-faint' } as const
 
 type Checked = { state: 'idle' } | { state: 'checking' } | { state: 'done'; check: ActivityCheck } | { state: 'failed'; message: string }
 

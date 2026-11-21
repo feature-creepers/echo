@@ -15,8 +15,8 @@ export function LicencesSection() {
   const about = useAbout(host)
 
   if (!host) return <p className="text-text-faint text-xs">Only the app knows the models it downloads, and this window is not in it.</p>
-  if (!about) return <p className="text-text-faint text-xs">Reading the licences…</p>
-  if (about.models.length === 0) return <p className="text-text-faint text-xs">This version downloads no model.</p>
+  if (!about) return <p className="caps text-text-faint">Reading the licences…</p>
+  if (about.models.length === 0) return <p className="caps text-text-faint">This version downloads no model</p>
 
   // Each licence that forbids uses, once, with the models under it.
   const restricting = new Map<string, { restrictions: Restricted; models: string[] }>()
@@ -37,7 +37,7 @@ export function LicencesSection() {
 
       {[...restricting].map(([name, { restrictions, models }]) => (
         <SettingGroup key={name} title={`What ${name} forbids`} note={models.join(', ')}>
-          <div className="px-5 py-4 text-text-soft">
+          <div className="py-3 text-text-soft">
             <Restrictions restrictions={restrictions} />
           </div>
         </SettingGroup>
@@ -54,28 +54,28 @@ export function LicencesSection() {
 function ModelCredit({ notice }: { notice: ModelNotice }) {
   const { model, licence, changes, source } = notice
   return (
-    <div className="grid gap-3 px-5 py-4">
+    <div className="grid gap-3 py-3">
       <div className="flex items-baseline justify-between gap-6">
-        <span className="text-sm">{model.name}</span>
+        <span className="text-[0.8125rem]">{model.name}</span>
         <Eyebrow>{notice.name}</Eyebrow>
       </div>
-      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-8 gap-y-1.5 text-xs leading-relaxed">
-        <dt className="text-text-faint">Made by</dt>
+      <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-8 gap-y-1.5 text-xs leading-relaxed">
+        <dt className="caps text-text-faint">Made by</dt>
         <dd className="text-text-soft">
           <TextLink href={model.page}>{model.maker}</TextLink>
           {model.copyright && <span className="text-text-faint"> · {model.copyright}</span>}
         </dd>
-        <dt className="text-text-faint">Licence</dt>
+        <dt className="caps text-text-faint">Licence</dt>
         <dd className="text-text-soft">
           <TextLink href={licence.url}>{licence.name}</TextLink>: {licence.asks}
         </dd>
         {changes && (
           <>
-            <dt className="text-text-faint">Changed</dt>
+            <dt className="caps text-text-faint">Changed</dt>
             <dd className="text-text-soft">{changes}</dd>
           </>
         )}
-        <dt className="text-text-faint">Files from</dt>
+        <dt className="caps text-text-faint">Files from</dt>
         <dd className="break-all font-mono text-text-soft">
           <TextLink href={source}>{source.replace(/^https:\/\//, '')}</TextLink>
         </dd>

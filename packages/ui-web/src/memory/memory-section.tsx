@@ -58,7 +58,7 @@ export function MemorySection({ memory, productName }: { memory: MemoryState; pr
         <div className="flex items-end justify-between gap-4">
           <div className="grid gap-1.5">
             <h2 className="display text-[1.75rem] leading-6">{TITLE}</h2>
-            <p className="caps text-text-soft">{count === 0 ? 'Nothing yet' : `${count} ${count === 1 ? 'fact' : 'facts'}, each with where it was learned`}</p>
+            <p className="caps text-text-soft">{count === 0 ? 'Nothing yet' : `${count} ${count === 1 ? 'fact' : 'facts'}`}</p>
           </div>
           <Button kind="quiet" size="sm" onClick={exportFile}>
             Export to Markdown

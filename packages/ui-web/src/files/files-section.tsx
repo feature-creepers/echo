@@ -153,7 +153,7 @@ export function FilesSection({ client, productName }: { client: Client; productN
           ) : (
             <div className="row-span-2 flex items-center justify-center px-8 text-center">
               <span className="grid gap-1.5">
-                <span className="text-sm text-text-soft">Select a file to see it here</span>
+                <span className="caps text-text-soft">Select a file to see it here</span>
                 <span className="text-text-faint text-xs">Arrow keys move through the list; Enter opens what is selected.</span>
               </span>
             </div>
@@ -166,11 +166,7 @@ export function FilesSection({ client, productName }: { client: Client; productN
 
 /** The pane that holds the browser, as tall as the screen allows. */
 function Panel({ className, children }: { className?: string; children: ReactNode }) {
-  return (
-    <div className={cn('h-[max(24rem,calc(100vh-19rem))] overflow-hidden bg-raised/95 shadow-[inset_0_0_0_1px_rgb(235_230_218/0.06)]', className)}>
-      {children}
-    </div>
-  )
+  return <div className={cn('h-[max(24rem,calc(100vh-19rem))] overflow-hidden border-text border-t-2 border-b border-b-line', className)}>{children}</div>
 }
 
 interface TreeProps {
@@ -216,7 +212,7 @@ function Tree({ rows, selected, onSelect, onToggle, onOpen }: TreeProps) {
       onKeyDown={onKeyDown}
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
-      className="scroll-quiet min-h-0 overflow-y-auto border-black/45 border-r py-1.5 shadow-[1px_0_0_rgb(235_230_218/0.035)] outline-none"
+      className="scroll-quiet min-h-0 overflow-y-auto border-line border-r py-1.5 outline-none"
     >
       {rows.map((row, index) => {
         const { entry, depth } = row
@@ -236,8 +232,8 @@ function Tree({ rows, selected, onSelect, onToggle, onOpen }: TreeProps) {
             onClick={() => onSelect(entry.path)}
             onDoubleClick={() => onOpen(entry)}
             className={cn(
-              'mx-1.5 flex h-7 cursor-default select-none items-center gap-1.5 pr-2 text-[0.8125rem]',
-              on ? (focused ? 'bg-accent/20 text-text' : 'bg-text/[0.08] text-text') : 'text-text-soft hover:bg-text/[0.03]'
+              'mr-1.5 flex h-7 cursor-default select-none items-center gap-1.5 pr-2 text-[0.8125rem]',
+              on ? (focused ? 'bg-text text-ground' : 'bg-text/[0.1] text-text') : 'text-text-soft hover:bg-text/[0.06]'
             )}
             style={{ paddingLeft: 4 + depth * 14 }}
           >
@@ -250,7 +246,7 @@ function Tree({ rows, selected, onSelect, onToggle, onOpen }: TreeProps) {
                   event.stopPropagation()
                   onToggle(entry.path)
                 }}
-                className="flex size-4 shrink-0 items-center justify-center text-text-faint [&_svg]:size-3"
+                className={cn('flex size-4 shrink-0 items-center justify-center [&_svg]:size-3', on && focused ? 'text-ground' : 'text-text-faint')}
               >
                 <span className={cn('transition-transform duration-(--duration-quick) ease-soft', row.open && 'rotate-90')}>
                   <DisclosureGlyph />
@@ -259,11 +255,13 @@ function Tree({ rows, selected, onSelect, onToggle, onOpen }: TreeProps) {
             ) : (
               <span className="w-4 shrink-0" />
             )}
-            <span className={cn('shrink-0 [&_svg]:size-3.5', on && focused ? 'text-accent' : 'text-text-faint')}>
+            <span className={cn('shrink-0 [&_svg]:size-3.5', on && focused ? 'text-ground' : 'text-text-faint')}>
               {folder ? <FolderGlyph /> : <FileGlyph />}
             </span>
             <span className="min-w-0 flex-1 truncate">{entry.name}</span>
-            <span className="shrink-0 text-[0.6875rem] text-text-faint tabular-nums">{row.reading ? '…' : folder ? entry.size : sizeWords(entry.size)}</span>
+            <span className={cn('caps shrink-0', on && focused ? 'text-ground' : 'text-text-faint')}>
+              {row.reading ? '…' : folder ? entry.size : sizeWords(entry.size)}
+            </span>
           </div>
         )
       })}
@@ -303,8 +301,8 @@ function Preview({ client, entry, onOpenFolder }: { client: Client; entry: Works
           <FileMark name={entry.name} />
         )}
         <div className="grid min-w-0 flex-1">
-          <span className="truncate font-medium text-[0.8125rem]">{entry.name}</span>
-          <span className="truncate text-[0.6875rem] text-text-faint">{facts.join(' · ')}</span>
+          <span className="truncate text-[0.8125rem]">{entry.name}</span>
+          <span className="caps truncate text-text-faint">{facts.join(' · ')}</span>
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
           {opens && (
@@ -342,7 +340,7 @@ function Preview({ client, entry, onOpenFolder }: { client: Client; entry: Works
           <span className="text-text-faint [&_svg]:size-14">
             <FolderGlyph />
           </span>
-          <span className="text-sm text-text-soft">{itemsWords(entry.size)}</span>
+          <span className="caps text-text-soft">{itemsWords(entry.size)}</span>
           <Button size="sm" kind="quiet" onClick={onOpenFolder}>
             Show what is in it
           </Button>
@@ -363,7 +361,7 @@ function Empty({ title, detail, children }: { title: string; detail?: string; ch
         <FolderGlyph />
       </span>
       <span className="grid max-w-sm gap-1.5">
-        <span className="text-sm text-text-soft">{title}</span>
+        <span className="caps text-text-soft">{title}</span>
         {detail && <span className="text-text-faint text-xs leading-relaxed">{detail}</span>}
       </span>
       {children}
@@ -375,9 +373,9 @@ function Empty({ title, detail, children }: { title: string; detail?: string; ch
 function Skeleton() {
   return (
     <div className="grid h-full grid-cols-[minmax(11rem,16rem)_minmax(0,1fr)]" role="status" aria-label="Reading the folder">
-      <div className="grid content-start gap-2.5 border-black/45 border-r px-4 py-3.5 shadow-[1px_0_0_rgb(235_230_218/0.035)]">
+      <div className="grid content-start gap-2.5 border-line border-r px-4 py-3.5">
         {[62, 48, 74, 40, 56].map((width) => (
-          <span key={width} className="h-2.5 bg-text/[0.05]" style={{ width: `${width}%` }} />
+          <span key={width} className="hatch h-2.5 text-line" style={{ width: `${width}%` }} />
         ))}
       </div>
       <div />

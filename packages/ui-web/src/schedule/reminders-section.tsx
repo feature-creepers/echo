@@ -12,7 +12,7 @@ import { IconButton } from '../primitives/icon-button.tsx'
 import { ChevronGlyph, EditGlyph, TrashGlyph } from '../primitives/icons.tsx'
 import { Switch } from '../primitives/switch.tsx'
 import { SMALL_FIELD } from '../settings/field.ts'
-import { SettingGroup, SettingRow } from '../settings/rows.tsx'
+import { EmptyPlane, SettingGroup, SettingRow } from '../settings/rows.tsx'
 import { glide, settle } from '../styles/motion.ts'
 import { JobEditor } from './job-editor.tsx'
 import { clockWords, dayOf, howOften, KIND_WORDS, timeOf, whatItDoes, whenPast } from './words.ts'
@@ -39,7 +39,7 @@ export function RemindersSection({ client, productName }: { client: Client; prod
 }
 
 function Reading() {
-  return <p className="text-text-faint text-xs">Reading your reminders…</p>
+  return <p className="caps text-text-faint">Reading your reminders…</p>
 }
 
 function Schedule({ state, productName }: { state: ScheduleState; productName: string }) {
@@ -64,24 +64,24 @@ function Schedule({ state, productName }: { state: ScheduleState; productName: s
       {view.held && <Held onResume={() => act(state.hold(false), 'They could not be resumed.')} />}
 
       <section aria-label="Coming up" className="grid gap-2">
-        <div className="flex items-baseline justify-between gap-4 px-0.5">
-          <Eyebrow className="font-semibold text-text-soft">Coming up</Eyebrow>
-          <span className="text-right text-text-faint text-xs">
+        <div className="flex items-baseline justify-between gap-4">
+          <Eyebrow>Coming up</Eyebrow>
+          <span className="caps text-right text-text-faint">
             {waiting.length > 0 && `${waiting.length} set · `}times in {view.timeZone.replaceAll('_', ' ')}
           </span>
         </div>
         {problem && (
-          <p role="alert" className="px-0.5 text-danger text-xs">
+          <p role="alert" className="text-danger text-xs">
             {problem}
           </p>
         )}
         {waiting.length === 0 ? (
           <Empty productName={productName} />
         ) : (
-          <ul className="grid overflow-hidden bg-raised/95 shadow-[inset_0_0_0_1px_rgb(235_230_218/0.06)]">
+          <ul className="divide-y divide-line border-text border-t-2">
             <AnimatePresence initial={false}>
-              {waiting.map((job, index) => (
-                <Row key={job.id} first={index === 0}>
+              {waiting.map((job) => (
+                <Row key={job.id}>
                   <Waiting
                     job={job}
                     view={view}
@@ -108,7 +108,7 @@ function Schedule({ state, productName }: { state: ScheduleState; productName: s
 }
 
 /** A row of a list, which fades in and out in place and lets the others take their new places on a spring. */
-function Row({ first, children }: { first: boolean; children: ReactNode }) {
+function Row({ children }: { children: ReactNode }) {
   return (
     <motion.li
       layout="position"
@@ -116,7 +116,7 @@ function Row({ first, children }: { first: boolean; children: ReactNode }) {
       animate={{ opacity: 1 }}
       exit={{ opacity: 0, transition: settle }}
       transition={{ layout: glide, opacity: settle }}
-      className={cn('px-4 py-3', !first && 'border-text/[0.06] border-t')}
+      className="py-3"
     >
       {children}
     </motion.li>
@@ -168,16 +168,16 @@ function Waiting({ job, view, now, held, onPause, onDelete, onChange }: WaitingP
   return (
     <div className="flex items-start gap-4">
       <div className={cn('grid w-24 shrink-0 gap-0.5 pt-px transition-opacity duration-(--duration-calm) ease-soft', (paused || held) && 'opacity-45')}>
-        <span className="truncate font-medium text-[1.0625rem] text-text tabular-nums leading-tight tracking-[-0.01em]" title={when.top}>
+        <span className="display truncate text-[1.5rem] text-text leading-5" title={when.top}>
           {when.top}
         </span>
-        <span className="text-text-faint text-xs">{when.under}</span>
+        <span className="caps text-text-faint">{when.under}</span>
       </div>
 
       <div className={cn('grid min-w-0 flex-1 gap-1 transition-opacity duration-(--duration-calm) ease-soft', paused && 'opacity-55')}>
-        <span className="truncate font-medium text-[0.8125rem] text-text">{job.title}</span>
-        <span className="flex min-w-0 items-center gap-2 text-text-soft text-xs">
-          <span className="shrink-0 bg-text/[0.07] px-1.5 py-px text-[0.6875rem] text-text-soft">{KIND_WORDS[job.kind]}</span>
+        <span className="truncate text-[0.8125rem] text-text">{job.title}</span>
+        <span className="flex min-w-0 items-baseline gap-2 text-text-soft text-xs">
+          <span className="caps shrink-0 text-text-soft">{KIND_WORDS[job.kind]}</span>
           <span className="truncate">{howOften(job.timing)}</span>
         </span>
         {words && <span className="line-clamp-2 text-text-faint text-xs leading-relaxed">{job.kind === 'reminder' ? `“${words}”` : words}</span>}
@@ -199,43 +199,17 @@ function Waiting({ job, view, now, held, onPause, onDelete, onChange }: WaitingP
 /** Nothing set yet: what the page is for, and the words that set a reminder. */
 function Empty({ productName }: { productName: string }) {
   return (
-    <div className="grid justify-items-center gap-3 border border-line-strong border-dashed px-6 py-10 text-center">
-      <ClockMark />
-      <div className="grid max-w-md gap-1.5">
-        <p className="text-sm text-text-soft">Nothing is set.</p>
-        <p className="text-text-faint text-xs leading-relaxed">
-          Just say “remind me at 8 to feed the cat”, or “every weekday at 7:30, tell me the weather in Lyon”. {productName} says it, or does it, at its time.
-        </p>
-      </div>
-    </div>
-  )
-}
-
-/** A small clock face, in the lines of the app's glyphs. */
-function ClockMark() {
-  return (
-    <svg
-      viewBox="0 0 32 32"
-      width="28"
-      height="28"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.25"
-      strokeLinecap="round"
-      className="text-text-faint"
-      aria-hidden
-    >
-      <circle cx="16" cy="16" r="11.5" />
-      <path d="M16 9.5V16l4 2.5" />
-      <path d="M16 3.5v1.5M16 27v1.5M3.5 16H5M27 16h1.5" opacity="0.5" />
-    </svg>
+    <EmptyPlane>
+      <p className="caps text-text">Nothing is set</p>
+      <p>Just say “remind me at 8 to feed the cat”, or “every weekday at 7:30, tell me the weather in Lyon”. {productName} says it, or does it, at its time.</p>
+    </EmptyPlane>
   )
 }
 
 /** Everything was paused at once ("stop everything"): nothing rings until it is resumed. */
 function Held({ onResume }: { onResume(): void }) {
   return (
-    <div role="status" className="flex items-center gap-4 bg-raised/95 px-4 py-3 shadow-[inset_0_0_0_1px_rgb(235_230_218/0.14)]">
+    <div role="status" className="flex items-center gap-4 border-warn border-t-2 py-3">
       <span className="size-2 shrink-0 bg-warn" aria-hidden />
       <div className="grid min-w-0 flex-1 gap-0.5">
         <span className="text-[0.8125rem] text-text">Everything is paused</span>
@@ -257,7 +231,7 @@ function Past({ jobs, view, now, onDelete }: { jobs: Job[]; view: ScheduleView; 
   const list = useId()
   return (
     <section aria-label="Past and missed" className="grid gap-2">
-      <div className="flex items-center justify-between gap-4 px-0.5">
+      <div className="flex items-center justify-between gap-4">
         <button
           type="button"
           aria-expanded={open}
@@ -268,9 +242,9 @@ function Past({ jobs, view, now, onDelete }: { jobs: Job[]; view: ScheduleView; 
           <span className={cn('transition-transform duration-(--duration-calm) ease-soft', !open && '-rotate-90')}>
             <ChevronGlyph />
           </span>
-          <Eyebrow className="font-semibold text-inherit">Past and missed</Eyebrow>
-          <span className="text-label text-text-faint tabular-nums">{jobs.length}</span>
-          {missed > 0 && <span className="text-label text-warn/90">· {missed} missed</span>}
+          <Eyebrow className="text-inherit">Past and missed</Eyebrow>
+          <span className="caps text-text-faint">{jobs.length}</span>
+          {missed > 0 && <span className="caps text-warn">· {missed} missed</span>}
         </button>
         {open && (
           <Button kind="quiet" size="sm" onClick={() => onDelete(jobs.map((job) => job.id))}>
@@ -286,15 +260,15 @@ function Past({ jobs, view, now, onDelete }: { jobs: Job[]; view: ScheduleView; 
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
             transition={settle}
-            className="grid overflow-hidden bg-raised/95 shadow-[inset_0_0_0_1px_rgb(235_230_218/0.06)]"
+            className="divide-y divide-line border-text border-t-2"
           >
             <AnimatePresence initial={false}>
-              {jobs.map((job, index) => (
-                <Row key={job.id} first={index === 0}>
+              {jobs.map((job) => (
+                <Row key={job.id}>
                   <div className="flex items-center gap-4">
-                    <span className="w-24 shrink-0 text-text-faint text-xs tabular-nums">{whenPast(job, now, view.timeZone)}</span>
+                    <span className="caps w-24 shrink-0 text-text-faint">{whenPast(job, now, view.timeZone)}</span>
                     <span className="min-w-0 flex-1 truncate text-[0.8125rem] text-text-soft">{job.title}</span>
-                    <span className={cn('shrink-0 text-xs', job.state === 'missed' ? 'text-warn/90' : 'text-text-faint')}>
+                    <span className={cn('caps shrink-0', job.state === 'missed' ? 'text-warn' : 'text-text-faint')}>
                       {job.state === 'missed' ? 'Missed' : 'Rang'}
                     </span>
                     <IconButton label={`Delete “${job.title}”`} onClick={() => onDelete([job.id])}>
@@ -327,7 +301,7 @@ function QuietPanel({ quiet, onChange }: { quiet: QuietHours; onChange(quiet: Pa
       </SettingRow>
       {quiet.on && (
         <SettingRow title="Hours" detail="Every day, on your clock. Hours that pass midnight carry on the next morning.">
-          <span className="flex items-center gap-2.5 text-sm text-text-soft">
+          <span className="flex items-center gap-2.5 text-[0.8125rem] text-text-soft">
             <label htmlFor={from} className="sr-only">
               From
             </label>

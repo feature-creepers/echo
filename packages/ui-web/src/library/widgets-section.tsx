@@ -7,7 +7,8 @@ import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { cn } from '../primitives/cn.ts'
 import { BookmarkGlyph, PinGlyph } from '../primitives/icons.tsx'
 import { SearchField } from '../primitives/search-field.tsx'
-import { EASE } from '../styles/motion.ts'
+import { EmptyPlane } from '../settings/rows.tsx'
+import { DURATION, EASE } from '../styles/motion.ts'
 import type { ViewActions } from '../view/context.ts'
 import { ViewRenderer } from '../view/view-renderer.tsx'
 import type { LibraryControls } from './library-context.ts'
@@ -99,7 +100,7 @@ export function WidgetsSection({ controls, actions, selected, onAsk, onShown }: 
         <ShelfButton on={on({ is: 'unfiled' })} count={counts.unfiled} onClick={() => setShelf({ is: 'unfiled' })}>
           Unfiled
         </ShelfButton>
-        {collections.length > 0 && <span aria-hidden="true" className="mx-1 h-3.5 w-px bg-text/[0.1]" />}
+        {collections.length > 0 && <span aria-hidden="true" className="mx-1 h-3.5 w-px bg-line" />}
         {collections.map((collection) => (
           <ShelfButton
             key={collection.name}
@@ -113,9 +114,9 @@ export function WidgetsSection({ controls, actions, selected, onAsk, onShown }: 
       </div>
 
       {shown.length === 0 ? (
-        <p className="py-16 text-center text-sm text-text-soft">No widget here{query ? ` matches “${query}”` : ''}.</p>
+        <p className="caps py-16 text-center text-text-soft">No widget here{query ? ` matches “${query}”` : ''}</p>
       ) : (
-        <ul className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(14rem,1fr))]">
+        <ul className="grid gap-x-5 gap-y-6 [grid-template-columns:repeat(auto-fill,minmax(14rem,1fr))]">
           <AnimatePresence initial={false}>
             {shown.map((widget) => (
               <motion.li
@@ -123,8 +124,8 @@ export function WidgetsSection({ controls, actions, selected, onAsk, onShown }: 
                 layout
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.98, transition: { duration: 0.14 } }}
-                transition={{ duration: 0.28, ease: EASE }}
+                exit={{ opacity: 0, scale: 0.98, transition: { duration: DURATION.quick, ease: EASE } }}
+                transition={{ duration: DURATION.calm, ease: EASE }}
               >
                 <Tile widget={widget} actions={actions} onOpen={() => setOpen(widget.id)} />
               </motion.li>
@@ -160,40 +161,39 @@ function ShelfButton({ on, count, onClick, children }: { on: boolean; count: num
       onClick={onClick}
       className={cn(
         'flex h-6 max-w-48 items-center gap-1.5 px-2 text-xs transition-colors duration-(--duration-quick) ease-soft',
-        on ? 'bg-text/[0.1] text-text' : 'text-text-soft hover:bg-text/[0.05] hover:text-text'
+        on ? 'bg-text text-ground' : 'text-text-soft hover:bg-text/[0.08] hover:text-text'
       )}
     >
       <span className="truncate">{children}</span>
-      <span className={cn('tabular-nums', on ? 'text-text-soft' : 'text-text-faint')}>{count}</span>
+      <span className={cn('caps', on ? 'text-ground' : 'text-text-faint')}>{count}</span>
     </button>
   )
 }
 
-/** A saved widget as a tile: a live miniature of it, its title, where it is filed. Pressing it opens it. */
+/** A saved widget as a tile: under a rule of the ink, a live miniature of it, its title, where it is filed. Pressing it opens it. */
 function Tile({ widget, actions, onOpen }: { widget: SavedWidget; actions: ViewActions; onOpen(): void }) {
   return (
     <button
       type="button"
       onClick={onOpen}
-      className="group grid w-full overflow-hidden bg-surface text-left shadow-[0_0_0_1px_rgb(235_230_218/0.06),0_6px_18px_-12px_rgb(0_0_0/0.7)] transition-shadow duration-(--duration-calm) ease-soft hover:shadow-[0_0_0_1px_rgb(235_230_218/0.12),0_10px_24px_-12px_rgb(0_0_0/0.8)]"
+      className="group grid w-full overflow-hidden border-text border-t-2 text-left transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.06] active:bg-text/[0.1]"
     >
-      <div className="relative h-36 overflow-hidden border-line border-b bg-black/20">
+      <div className="h-36 overflow-hidden border-line border-b">
         {/* A miniature, not to be used: the widget is used once opened. */}
         <div inert className="pointer-events-none p-5 [zoom:0.62]">
           <ViewRenderer spec={widget.spec as ViewSpec} actions={actions} />
         </div>
-        <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-ground to-transparent" />
       </div>
-      <div className="grid gap-0.5 px-3 py-2.5">
+      <div className="grid gap-0.5 py-2.5">
         <span className="flex items-center justify-between gap-3">
-          <span className="truncate font-medium text-[0.8125rem]">{widget.title}</span>
+          <span className="truncate text-[0.8125rem]">{widget.title}</span>
           {widget.pinned && (
             <span title="Pinned to the main screen" className="shrink-0 text-text-soft [&_svg]:size-3">
               <PinGlyph filled />
             </span>
           )}
         </span>
-        <span className="flex items-center gap-1.5 text-[0.6875rem] text-text-faint">
+        <span className="caps flex items-center gap-1.5 text-text-faint">
           <span className="truncate">{widget.collection ?? 'Unfiled'}</span>
           <span aria-hidden="true">·</span>
           <time dateTime={widget.since} className="shrink-0">
@@ -207,17 +207,15 @@ function Tile({ widget, actions, onOpen }: { widget: SavedWidget; actions: ViewA
 
 function Empty() {
   return (
-    <div className="grid justify-items-center gap-3 border border-line border-dashed px-8 py-16 text-center">
-      <span className="flex size-9 items-center justify-center border border-line-strong bg-raised text-text-soft [&_svg]:size-4">
+    <EmptyPlane>
+      <span className="mx-auto text-text [&_svg]:size-4">
         <BookmarkGlyph />
       </span>
-      <div className="grid max-w-md gap-1.5">
-        <p className="font-medium text-sm">Keep the views you like</p>
-        <p className="text-balance text-[0.8125rem] text-text-soft leading-relaxed">
-          Press the bookmark on anything the assistant shows. It lands here, to sort into collections, pin beside the conversation, and ask for again: the
-          assistant brings back the same one.
-        </p>
-      </div>
-    </div>
+      <p className="caps text-text">Keep the views you like</p>
+      <p className="text-balance">
+        Press the bookmark on anything the assistant shows. It lands here, to sort into collections, pin beside the conversation, and ask for again: the
+        assistant brings back the same one.
+      </p>
+    </EmptyPlane>
   )
 }

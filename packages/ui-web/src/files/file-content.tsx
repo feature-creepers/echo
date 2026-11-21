@@ -78,7 +78,7 @@ function Shown({ name, bytes, size, className }: { name: string; bytes: Uint8Arr
     case 'image':
       return (
         <div className={cn('flex min-h-0 items-center justify-center p-6', className)}>
-          {url && <img src={url} alt={name} className="max-h-full max-w-full object-contain shadow-[0_0_0_1px_rgb(235_230_218/0.07)]" />}
+          {url && <img src={url} alt={name} className="max-h-full max-w-full border border-line object-contain" />}
         </div>
       )
     case 'pdf':
@@ -155,7 +155,7 @@ function OfficeShown({ preview, className }: { preview: OfficePreview; className
       return (
         <Scroll className={className}>
           <div className="grid gap-6">
-            {preview.sheets.length === 0 && <p className="text-sm text-text-faint">This workbook has no sheets.</p>}
+            {preview.sheets.length === 0 && <p className="caps text-text-faint">This workbook has no sheets</p>}
             {preview.sheets.map((sheet, index) => (
               <section key={`${index}-${sheet.name}`} className="grid gap-2">
                 {preview.sheets.length > 1 && <Eyebrow>{sheet.name}</Eyebrow>}
@@ -169,12 +169,12 @@ function OfficeShown({ preview, className }: { preview: OfficePreview; className
     case 'presentation':
       return (
         <Scroll className={className}>
-          <ol className="mx-auto grid max-w-[44rem] gap-3">
-            {preview.slides.length === 0 && <li className="text-sm text-text-faint">This presentation has no slides.</li>}
+          <ol className="mx-auto grid max-w-[44rem] divide-y divide-line border-text border-t-2">
+            {preview.slides.length === 0 && <li className="caps py-3 text-text-faint">This presentation has no slides</li>}
             {preview.slides.map((slide, index) => (
-              <li key={index} className="grid gap-1.5 border border-line px-4 py-3">
-                <span className="text-[0.6875rem] text-text-faint">Slide {index + 1}</span>
-                {slide.title !== '' && <span className="font-medium text-[0.9375rem]">{slide.title}</span>}
+              <li key={index} className="grid gap-1.5 py-3">
+                <span className="caps text-text-faint">Slide {index + 1}</span>
+                {slide.title !== '' && <span className="text-[0.9375rem]">{slide.title}</span>}
                 {slide.lines.map((line, at) => (
                   <span key={at} className="text-[0.8125rem] text-text-soft">
                     {line}
@@ -202,7 +202,7 @@ const DOCUMENT_HTML: Config = {
 /** A Word document's HTML, sanitised by DOMPurify, laid out as the Prose block lays out text. */
 function DocumentHtml({ html }: { html: string }) {
   const clean = useMemo(() => DOMPurify.sanitize(html, DOCUMENT_HTML), [html])
-  if (clean.trim() === '') return <p className="text-sm text-text-faint">This document has no text.</p>
+  if (clean.trim() === '') return <p className="caps text-text-faint">This document has no text</p>
   return (
     <div
       className={cn(
@@ -229,14 +229,14 @@ function readable(name: string, text: string): string {
 
 function Table({ rows }: { rows: string[][] }) {
   const [head, ...body] = rows
-  if (!head) return <p className="text-sm text-text-faint">This table is empty.</p>
+  if (!head) return <p className="caps text-text-faint">This table is empty</p>
   return (
-    <div className="scroll-quiet overflow-x-auto border border-line">
+    <div className="scroll-quiet overflow-x-auto">
       <table className="w-full border-collapse text-[0.8125rem]">
         <thead>
-          <tr className="border-line border-b bg-text/[0.02]">
+          <tr className="border-text border-b-2">
             {head.map((value, column) => (
-              <th key={column} className="h-8 whitespace-nowrap px-3 text-left font-normal text-[0.6875rem] text-text-faint">
+              <th key={column} className="caps h-8 whitespace-nowrap px-3 text-left font-normal text-text-faint first:pl-0">
                 {value}
               </th>
             ))}
@@ -246,7 +246,7 @@ function Table({ rows }: { rows: string[][] }) {
           {body.map((row, index) => (
             <tr key={index} className="border-line border-b last:border-b-0">
               {head.map((_, column) => (
-                <td key={column} className="px-3 py-1.5 align-top">
+                <td key={column} className="px-3 py-1.5 align-top first:pl-0">
                   {row[column] ?? ''}
                 </td>
               ))}
@@ -286,7 +286,7 @@ export function NoPreview({
     <div className={cn('flex flex-col items-center justify-center gap-3 px-6 text-center', className)}>
       <FileMark name={name} large />
       <div className="grid gap-1">
-        <span className="text-sm text-text-soft">
+        <span className="caps text-text-soft">
           {kindOf(name).label}
           {size === undefined ? '' : ` · ${sizeWords(size)}`}
         </span>
@@ -310,7 +310,7 @@ export function FileMark({ name, large = false }: { name: string; large?: boolea
           strokeLinejoin="round"
           aria-hidden="true"
         >
-          <path d="M6 1.5h30L54.5 20v48a2.5 2.5 0 0 1-2.5 2.5H6A2.5 2.5 0 0 1 3.5 68V4A2.5 2.5 0 0 1 6 1.5ZM36 1.5V20h18.5" />
+          <path d="M3.5 1.5H36L54.5 20v50.5h-51ZM36 1.5V20h18.5" />
         </svg>
         <span className="relative mb-3.5 font-mono text-[0.625rem] text-text-soft uppercase">{badgeOf(name)}</span>
       </span>

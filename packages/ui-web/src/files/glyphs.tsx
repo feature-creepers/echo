@@ -30,7 +30,7 @@ export const PaperclipGlyph = () => (
 
 export const FolderGlyph = () => (
   <Glyph>
-    <path d="M2 4.5V12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3.5H3a1 1 0 0 0-1 1Z" />
+    <path d="M2 3.5V13h12V5H8L6.5 3.5Z" />
   </Glyph>
 )
 
@@ -51,14 +51,14 @@ export const PreviewGlyph = () => (
 /** Show something in its folder: a folder with an arrow pointing into it. */
 export const RevealGlyph = () => (
   <Glyph>
-    <path d="M2 4.5V12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3.5H3a1 1 0 0 0-1 1Z" />
+    <path d="M2 3.5V13h12V5H8L6.5 3.5Z" />
     <path d="M6.5 9h3.5M8.6 7.6 10 9l-1.4 1.4" />
   </Glyph>
 )
 
 export const CopyGlyph = () => (
   <Glyph>
-    <rect x="5.5" y="5.5" width="8" height="8" rx="1.2" />
+    <rect x="5.5" y="5.5" width="8" height="8" />
     <path d="M10.5 3.5v-.3a.7.7 0 0 0-.7-.7H3.2a.7.7 0 0 0-.7.7v6.6a.7.7 0 0 0 .7.7h.3" />
   </Glyph>
 )

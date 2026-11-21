@@ -54,9 +54,9 @@ export function Versions({ client, location, modified }: { client: Client; locat
   if (reading.is === 'reading') {
     return (
       <div aria-busy="true" className="grid content-start gap-1.5 p-4">
-        <div className="h-11 animate-pulse bg-text/[0.035]" />
-        <div className="h-11 animate-pulse bg-text/[0.025]" />
-        <p className="text-[0.6875rem] text-text-faint">Reading its versions…</p>
+        <div className="hatch h-11 text-line" />
+        <div className="hatch h-11 text-line" />
+        <p className="caps text-text-faint">Reading its versions…</p>
       </div>
     )
   }
@@ -80,7 +80,7 @@ export function Versions({ client, location, modified }: { client: Client; locat
   if (reading.versions.length === 0) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-1.5 px-10 text-center">
-        <span className="text-sm text-text-soft">No earlier versions</span>
+        <span className="caps text-text-soft">No earlier versions</span>
         <span className="max-w-xs text-text-faint text-xs">When the assistant changes a file, it keeps the versions before and after, for 30 days.</span>
       </div>
     )
@@ -89,16 +89,16 @@ export function Versions({ client, location, modified }: { client: Client; locat
   return (
     <div className="grid min-h-0 content-start gap-2 overflow-y-auto p-4">
       {problem && <p className="text-danger text-xs">{problem}</p>}
-      <ol className="grid gap-1.5">
+      <ol className="divide-y divide-line border-text border-t-2">
         {reading.versions.map((version) => {
           const key = keyOf(version)
           const shown = open === key
           return (
-            <li key={key} className="grid gap-2 border border-line px-3 py-2">
+            <li key={key} className="grid gap-2 py-2">
               <div className="flex min-w-0 items-center gap-3">
                 <div className="grid min-w-0 flex-1">
                   <span className="truncate text-[0.8125rem]">{versionWords(version)}</span>
-                  <span className="flex min-w-0 items-center gap-2 text-[0.6875rem] text-text-faint">
+                  <span className="caps flex min-w-0 items-center gap-2 text-text-faint">
                     <span className="truncate">{modifiedWords(version.at)}</span>
                     {version.change && <Counts change={version.change} />}
                   </span>
