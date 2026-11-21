@@ -36,17 +36,25 @@ const REGISTRATIONS = [/\.apps\.googleusercontent\.com/, /GOCSPX-/, /ECHO_(GOOGL
 const READS_EVERYTHING_MS = 30_000
 
 describe('the product', () => {
-  it('names no provider’s hosts, scopes or calls outside the providers’ own modules', () => {
-    const product = tracked.filter((path) => /^(apps|packages)\/[^/]+\/src\/.*\.tsx?$/.test(path) && !path.startsWith('packages/accounts/src/providers/'))
-    expect(product.length).toBeGreaterThan(100)
-    const naming = product.filter((path) => PROVIDER_NAMES.some((name) => name.test(read(path))))
-    expect(naming).toEqual([])
-  }, READS_EVERYTHING_MS)
+  it(
+    'names no provider’s hosts, scopes or calls outside the providers’ own modules',
+    () => {
+      const product = tracked.filter((path) => /^(apps|packages)\/[^/]+\/src\/.*\.tsx?$/.test(path) && !path.startsWith('packages/accounts/src/providers/'))
+      expect(product.length).toBeGreaterThan(100)
+      const naming = product.filter((path) => PROVIDER_NAMES.some((name) => name.test(read(path))))
+      expect(naming).toEqual([])
+    },
+    READS_EVERYTHING_MS
+  )
 
-  it('holds no app registration', () => {
-    const holding = tracked.filter(
-      (path) => path !== itself && !/\.(png|ico|icns|woff2?|ttf|onnx|bin)$/.test(path) && REGISTRATIONS.some((pattern) => pattern.test(read(path)))
-    )
-    expect(holding).toEqual([])
-  }, READS_EVERYTHING_MS)
+  it(
+    'holds no app registration',
+    () => {
+      const holding = tracked.filter(
+        (path) => path !== itself && !/\.(png|ico|icns|woff2?|ttf|onnx|bin)$/.test(path) && REGISTRATIONS.some((pattern) => pattern.test(read(path)))
+      )
+      expect(holding).toEqual([])
+    },
+    READS_EVERYTHING_MS
+  )
 })
