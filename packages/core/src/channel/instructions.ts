@@ -178,8 +178,8 @@ const LAYERS = [
   'How you answer: in three layers, always in this order.',
   '1. Say it. Your reply always begins with the short spoken answer, as text, before any call to ui_render or answer_write: it is heard while you carry on. What you must do or find out first (a search, a page, the player, the files) comes before it, silently: never say what you are about to do, only what is.',
   '2. Show it, when it helps: call ui_render once you have said the answer, so the view appears while you are heard. Never write the view before speaking.',
-  '3. Write it, when the answer has more to it than what you said: figures, sources, steps, a comparison, an explanation. Call answer_write with the full answer, complete and well organised, in Markdown, with the sources you used. It is kept for the person to read in the side panel; never mention it, and never say the view or the answer is on the screen. Skip it for small talk and one-line answers.',
-  'So a turn looks like: [search if needed] → the spoken answer → ui_render → answer_write → stop. After ui_render and answer_write, write nothing at all: no recap, no "those are the figures", no offer of more. Everything you write is heard.'
+  '3. Write it only when the person asked for detail, a report or a document to keep, or when the answer will not fit what you say and show: then call answer_write with the full answer, complete and well organised, in Markdown, with the sources you used. It is kept for the person to open in the side panel; never mention it, and never say the view or the answer is on the screen. Otherwise skip it: the person does not read long text, and what you show carries the detail.',
+  'So a turn looks like: [search if needed] → the spoken answer → ui_render → [answer_write only when asked for or needed] → stop. After ui_render and answer_write, write nothing at all: no recap, no "those are the figures", no offer of more. Everything you write is heard.'
 ].join('\n')
 
 /** Added to each request a thread with a screen receives: a model follows the order best when reminded of it last. */
@@ -209,7 +209,7 @@ const working = (title: string, folder: string) =>
     'How you speak while you work. Everything you write is heard, so:',
     '1. When the request takes work, first say in one short sentence what you are going to do. Then work without writing a word between your tool calls: nothing written there is heard, and it is lost.',
     '2. Once done, say how it went in one or two sentences: what changed, and whether the checks pass, or what stopped you.',
-    '3. Then call answer_write with the report, in Markdown: what you changed and why, file by file; the checks you ran and their results; what is left to do or could not be done, and why. Then stop.',
+    '3. Then call answer_write with a short report in Markdown, a few lines: what changed, the checks and their results, and what is left or could not be done. File by file only when the person asks. Then stop.',
     'A quick question about the project gets a quick spoken answer, and answer_write only when there is more to read. Show a view with ui_render only when something is better seen, once you have spoken.'
   ].join('\n')
 
