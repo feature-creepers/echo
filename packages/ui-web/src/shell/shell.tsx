@@ -393,6 +393,7 @@ function Connected({ productName, client, engine, mini }: { productName: string;
                 place={sheetPlace}
                 tab={sheet}
                 onMove={moveSheetTo}
+                onOpenMemory={() => openHub('memory')}
                 resize={{
                   width: sheetWidth,
                   keep: showing.is === 'hub' ? HUB_KEEPS : STAGE_KEEPS,

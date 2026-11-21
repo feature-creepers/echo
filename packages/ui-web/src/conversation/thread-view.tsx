@@ -24,6 +24,7 @@ import { PlanList } from './plan-list.tsx'
 import { commandOf, stepSummary, stepTitle } from './steps.ts'
 import { kindWords, overOf, STATE, StateDot, StopThread, underOf, underWords, usedWords } from './thread-list.tsx'
 import type { ThreadEntry } from './thread-pages.ts'
+import { answerLine } from './transcript.tsx'
 import { type EarlierReading, useThreadPages } from './use-thread-pages.ts'
 import { whoAsked } from './who-asked.ts'
 
@@ -268,73 +269,119 @@ interface StepContext {
 
 // Every stack here is one column that is never wider than the sheet, whatever it holds: a long address, a path or
 // a command wraps, or scrolls in its own box, instead of widening the column and the sheet with it.
+// A request reads as a compact turn, as in the transcript: what was said and what was answered, each on a line or
+// two, whole when pressed; its calls and its full answer fold behind a press, the calls open while it works.
 function ExchangeEntry({ entry, persona, about, context, changes }: ExchangeEntryProps) {
   const { exchange, steps, views, earlierSteps } = entry
   // Views shown before calls were kept have no call to show them by.
   const shownByCalls = steps.some((step) => step.tool === 'ui_render')
   const files = changes.turns.get(exchange.turn)
+  const running = exchange.outcome === 'running'
+  const [whole, setWhole] = useState(false)
+  const [work, setWork] = useState(running)
+  const [written, setWritten] = useState(false)
+  const asked = whoAsked(exchange)
+  const answer = answerLine(exchange)
+  const calls = steps.length + earlierSteps
+  const hasWork = steps.length > 0 || (!shownByCalls && views.length > 0)
+  // While it works, its calls show as they come; once done, they fold unless opened.
+  useEffect(() => {
+    if (running) setWork(true)
+  }, [running])
   return (
-    <li className="grid grid-cols-1 gap-3" style={accentStyle(persona?.accent)}>
-      <div className="grid grid-cols-1 gap-1">
-        <span className="flex items-baseline gap-2 text-label text-text-faint">
-          {whoAsked(exchange)} <time dateTime={exchange.at}>{clock.format(new Date(exchange.at))}</time>
-        </span>
-        {exchange.said && <p className="text-sm text-text-soft leading-relaxed [overflow-wrap:anywhere]">{exchange.said}</p>}
-        <AttachedLine attached={exchange.attached} />
-      </div>
+    <li className="grid grid-cols-1 gap-1.5" style={accentStyle(persona?.accent)}>
+      <span className="flex items-baseline gap-2 text-[0.6875rem] text-text-faint">
+        <time dateTime={exchange.at}>{clock.format(new Date(exchange.at))}</time>
+        {asked !== 'You' && <span>{asked}</span>}
+      </span>
+      <button
+        type="button"
+        aria-expanded={whole}
+        onClick={() => setWhole(!whole)}
+        title={whole ? 'Show less' : 'Show it whole'}
+        className="grid min-w-0 grid-cols-1 gap-1 rounded-xs text-left outline-none focus-visible:bg-white/[0.04]"
+      >
+        {exchange.said && (
+          <span className={cn('text-[0.8125rem] text-text-soft leading-snug [overflow-wrap:anywhere]', !whole && 'line-clamp-2')}>{exchange.said}</span>
+        )}
+        {answer && (
+          <span className={cn('border-accent/50 border-l-2 pl-2 text-[0.8125rem] text-text leading-snug [overflow-wrap:anywhere]', !whole && 'line-clamp-3')}>
+            {answer}
+          </span>
+        )}
+      </button>
+      <AttachedLine attached={exchange.attached} />
+      {running && !answer && <span className="text-label text-text-faint">Working…</span>}
+      {exchange.outcome === 'stopped' && <span className="text-label text-text-faint">Stopped</span>}
+      {exchange.outcome === 'failed' && (
+        <span className="text-danger text-xs leading-snug [overflow-wrap:anywhere]">{exchange.problem ?? 'It could not answer.'}</span>
+      )}
 
       {files && files.length > 0 && <TurnChanges turn={exchange.turn} files={files} context={context} />}
 
       <PlanList plan={exchange.plan} />
 
-      {(steps.length > 0 || (!shownByCalls && views.length > 0)) && (
-        <div className="grid grid-cols-1 gap-1">
-          <Eyebrow>Work</Eyebrow>
-          <ul className="grid grid-cols-1 overflow-hidden rounded-md border border-line">
-            {earlierSteps > 0 && (
-              <li className="px-3 py-2 text-text-faint text-xs">
-                {earlierSteps === 1 ? 'One earlier call is' : `${earlierSteps} earlier calls are`} not shown: this request made too many to show.
-              </li>
-            )}
-            {steps.map((step) => (
-              <StepRow key={step.call} step={step} use={step.use === undefined ? undefined : changes.uses.get(step.use)} context={context} />
-            ))}
-            {!shownByCalls &&
-              views.map((view) => (
-                <li key={view.id} className="flex items-baseline gap-2 border-line border-t px-3 py-2 text-xs first:border-t-0">
-                  <span className="shrink-0 text-text-soft">Showed a view</span>
-                  <span className="min-w-0 truncate text-text-faint">{view.title}</span>
-                </li>
-              ))}
-          </ul>
-        </div>
+      {(hasWork || exchange.written) && (
+        <span className="flex min-w-0 flex-wrap items-center gap-1">
+          {hasWork && (
+            <Fold open={work} onToggle={() => setWork(!work)}>
+              {calls > 0 ? `${calls} ${calls === 1 ? 'call' : 'calls'}` : 'Work'}
+            </Fold>
+          )}
+          {exchange.written && (
+            <Fold open={written} onToggle={() => setWritten(!written)}>
+              Full answer
+            </Fold>
+          )}
+        </span>
       )}
 
-      <div className="grid grid-cols-1 gap-1 border-accent/50 border-l pl-3">
-        <span className="text-accent text-label">{persona?.name ?? 'Assistant'} said</span>
-        {exchange.replied ? (
-          <p className="text-sm leading-relaxed [overflow-wrap:anywhere]">{exchange.replied}</p>
-        ) : exchange.outcome === 'running' ? (
-          <p className="text-sm text-text-faint">…</p>
-        ) : null}
-        {exchange.outcome === 'stopped' && <p className="text-label text-text-faint">Stopped</p>}
-        {exchange.outcome === 'failed' && (
-          <p className="text-danger text-sm leading-relaxed [overflow-wrap:anywhere]">{exchange.problem ?? 'It could not answer.'}</p>
-        )}
-      </div>
+      {hasWork && work && (
+        <ul className="grid grid-cols-1 overflow-hidden rounded-md border border-line">
+          {earlierSteps > 0 && (
+            <li className="px-3 py-2 text-text-faint text-xs">
+              {earlierSteps === 1 ? 'One earlier call is' : `${earlierSteps} earlier calls are`} not shown: this request made too many to show.
+            </li>
+          )}
+          {steps.map((step) => (
+            <StepRow key={step.call} step={step} use={step.use === undefined ? undefined : changes.uses.get(step.use)} context={context} />
+          ))}
+          {!shownByCalls &&
+            views.map((view) => (
+              <li key={view.id} className="flex items-baseline gap-2 border-line border-t px-3 py-2 text-xs first:border-t-0">
+                <span className="shrink-0 text-text-soft">Showed a view</span>
+                <span className="min-w-0 truncate text-text-faint">{view.title}</span>
+              </li>
+            ))}
+        </ul>
+      )}
 
-      {exchange.written && (
+      {exchange.written && written && (
         <div className="grid grid-cols-1 gap-1.5">
-          <div className="flex items-center justify-between gap-3">
-            <Eyebrow>Full answer</Eyebrow>
+          <div className="flex justify-end">
             <AnswerActions text={exchange.written} about={about} />
           </div>
-          <div className="grid grid-cols-1 gap-3 rounded-md border border-line bg-ground/60 px-4 py-3 text-sm leading-relaxed [&_h3]:text-lg [&_h4]:text-base">
+          <div className="grid grid-cols-1 gap-3 rounded-md border border-line bg-ground/60 px-3.5 py-3 text-[0.8125rem] leading-relaxed [&_h3]:text-base [&_h4]:text-sm">
             <Markdown text={exchange.written} />
           </div>
         </div>
       )}
     </li>
+  )
+}
+
+/** A small press that folds or unfolds part of a request: its calls, its full answer. */
+function Fold({ open, onToggle, children }: { open: boolean; onToggle(): void; children: string }) {
+  return (
+    <button
+      type="button"
+      aria-expanded={open}
+      onClick={onToggle}
+      className="flex h-5 items-center gap-1 rounded-xs bg-white/[0.05] px-1.5 text-[0.6875rem] text-text-soft outline-none transition-colors duration-(--duration-quick) ease-soft hover:bg-white/[0.09] hover:text-text focus-visible:bg-white/[0.09]"
+    >
+      <Chevron open={open} />
+      {children}
+    </button>
   )
 }
 

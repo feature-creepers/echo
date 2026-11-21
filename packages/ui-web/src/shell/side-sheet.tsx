@@ -29,6 +29,8 @@ interface SideSheetProps {
   /** The tab it shows. */
   tab: SheetTab
   onMove(move: SheetMove): void
+  /** Open Library and settings on its Memory page. */
+  onOpenMemory?: (() => void) | undefined
   /** How wide the person made the sheet, and what to do as its edge is dragged. */
   resize: {
     width: number
@@ -48,7 +50,7 @@ interface SideSheetProps {
  * Its header is the tabs alone, with the way to close it: each tab says what it shows, so no title repeats it, and
  * what a tab can do (find a thread, open a project, sift the events) sits at the top of the tab itself.
  */
-export function SideSheet({ client, personas, place, tab, onMove, resize }: SideSheetProps) {
+export function SideSheet({ client, personas, place, tab, onMove, onOpenMemory, resize }: SideSheetProps) {
   const channel = useFollowed(client.channel)
   const threads = useFollowed(client.threads)
   const device = useDevice()
@@ -78,7 +80,7 @@ export function SideSheet({ client, personas, place, tab, onMove, resize }: Side
 
   /** The place the tab shows: in the transcript, the log or a full answer; in the threads, the list, a thread or the project form. */
   const shown = (): ReactNode => {
-    if (tab === 'inspector') return pane('inspector', <Inspector client={client} />)
+    if (tab === 'inspector') return pane('inspector', <Inspector client={client} onOpenMemory={onOpenMemory} />)
     if (tab === 'transcript') {
       if (place.answer === undefined) {
         return pane(

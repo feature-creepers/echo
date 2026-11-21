@@ -19,7 +19,11 @@ const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-di
  * they are about and found by their words, and held still to be read: opening one holds the log, so what is read
  * does not move as others arrive, and a line at the top says how many came since and lets them in.
  */
-export function Inspector({ client }: { client: Client }) {
+/**
+ * Where an event leads beyond the raw log: a change of memory opens the Memory page, where facts are edited and
+ * forgotten (docs/SPEC.md, section 13.3).
+ */
+export function Inspector({ client, onOpenMemory }: { client: Client; onOpenMemory?: (() => void) | undefined }) {
   // Followed here rather than by the sheet, so the events that keep arriving draw only the tab that shows them.
   const events = useFollowed(client.events)
   const [group, setGroup] = useState<EventGroup>('all')
@@ -97,6 +101,7 @@ export function Inspector({ client }: { client: Client }) {
                     hold()
                   }
                 }}
+                onOpenMemory={onOpenMemory}
               />
             ))}
           </ol>
@@ -106,7 +111,7 @@ export function Inspector({ client }: { client: Client }) {
   )
 }
 
-function EventLine({ logged, open, onToggle }: { logged: Logged; open: boolean; onToggle(): void }) {
+function EventLine({ logged, open, onToggle, onOpenMemory }: { logged: Logged; open: boolean; onToggle(): void; onOpenMemory?: (() => void) | undefined }) {
   const { event } = logged
   const summary = eventSummary(event)
   return (
@@ -121,6 +126,11 @@ function EventLine({ logged, open, onToggle }: { logged: Logged; open: boolean; 
         <span className="shrink-0 text-accent">{event.name}</span>
         <span className="min-w-0 truncate text-text-soft">{summary}</span>
       </button>
+      {open && event.name === 'memory.changed' && onOpenMemory && (
+        <Button kind="quiet" size="sm" onClick={onOpenMemory} className="mx-4 mb-1 w-fit">
+          Edit or forget in Memory
+        </Button>
+      )}
       {open && <EventWhole logged={logged} />}
     </li>
   )
