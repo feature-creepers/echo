@@ -78,7 +78,7 @@ function Shown({ name, bytes, size, className }: { name: string; bytes: Uint8Arr
     case 'image':
       return (
         <div className={cn('flex min-h-0 items-center justify-center p-6', className)}>
-          {url && <img src={url} alt={name} className="max-h-full max-w-full rounded-xs object-contain shadow-[0_0_0_1px_rgb(255_255_255/0.07)]" />}
+          {url && <img src={url} alt={name} className="max-h-full max-w-full object-contain shadow-[0_0_0_1px_rgb(235_230_218/0.07)]" />}
         </div>
       )
     case 'pdf':
@@ -172,7 +172,7 @@ function OfficeShown({ preview, className }: { preview: OfficePreview; className
           <ol className="mx-auto grid max-w-[44rem] gap-3">
             {preview.slides.length === 0 && <li className="text-sm text-text-faint">This presentation has no slides.</li>}
             {preview.slides.map((slide, index) => (
-              <li key={index} className="grid gap-1.5 rounded-md border border-line px-4 py-3">
+              <li key={index} className="grid gap-1.5 border border-line px-4 py-3">
                 <span className="text-[0.6875rem] text-text-faint">Slide {index + 1}</span>
                 {slide.title !== '' && <span className="font-medium text-[0.9375rem]">{slide.title}</span>}
                 {slide.lines.map((line, at) => (
@@ -210,7 +210,7 @@ function DocumentHtml({ html }: { html: string }) {
         '[&_h1]:font-medium [&_h1]:text-lg [&_h2]:font-medium [&_h2]:text-base [&_h3]:font-medium [&_h4]:font-medium',
         '[&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_li]:pl-1 [&_strong]:font-semibold',
         '[&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-line [&_td]:px-3 [&_td]:py-1.5 [&_td]:align-top',
-        '[&_img]:max-w-full [&_img]:rounded-xs'
+        '[&_img]:max-w-full [&_img]:'
       )}
       dangerouslySetInnerHTML={{ __html: clean }}
     />
@@ -231,10 +231,10 @@ function Table({ rows }: { rows: string[][] }) {
   const [head, ...body] = rows
   if (!head) return <p className="text-sm text-text-faint">This table is empty.</p>
   return (
-    <div className="scroll-quiet overflow-x-auto rounded-md border border-line">
+    <div className="scroll-quiet overflow-x-auto border border-line">
       <table className="w-full border-collapse text-[0.8125rem]">
         <thead>
-          <tr className="border-line border-b bg-white/[0.02]">
+          <tr className="border-line border-b bg-text/[0.02]">
             {head.map((value, column) => (
               <th key={column} className="h-8 whitespace-nowrap px-3 text-left font-normal text-[0.6875rem] text-text-faint">
                 {value}
@@ -316,7 +316,7 @@ export function FileMark({ name, large = false }: { name: string; large?: boolea
       </span>
     )
   return (
-    <span className="flex h-6 w-7 shrink-0 items-center justify-center rounded-xs border border-line-strong font-mono text-[0.5625rem] text-text-soft uppercase">
+    <span className="flex h-6 w-7 shrink-0 items-center justify-center border border-line-strong font-mono text-[0.5625rem] text-text-soft uppercase">
       {badgeOf(name)}
     </span>
   )

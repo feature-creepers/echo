@@ -99,7 +99,7 @@ export function WidgetsSection({ controls, actions, selected, onAsk, onShown }: 
         <ShelfButton on={on({ is: 'unfiled' })} count={counts.unfiled} onClick={() => setShelf({ is: 'unfiled' })}>
           Unfiled
         </ShelfButton>
-        {collections.length > 0 && <span aria-hidden="true" className="mx-1 h-3.5 w-px bg-white/[0.1]" />}
+        {collections.length > 0 && <span aria-hidden="true" className="mx-1 h-3.5 w-px bg-text/[0.1]" />}
         {collections.map((collection) => (
           <ShelfButton
             key={collection.name}
@@ -159,8 +159,8 @@ function ShelfButton({ on, count, onClick, children }: { on: boolean; count: num
       aria-pressed={on}
       onClick={onClick}
       className={cn(
-        'flex h-6 max-w-48 items-center gap-1.5 rounded-md px-2 text-xs transition-colors duration-(--duration-quick) ease-soft',
-        on ? 'bg-white/[0.1] text-text' : 'text-text-soft hover:bg-white/[0.05] hover:text-text'
+        'flex h-6 max-w-48 items-center gap-1.5 px-2 text-xs transition-colors duration-(--duration-quick) ease-soft',
+        on ? 'bg-text/[0.1] text-text' : 'text-text-soft hover:bg-text/[0.05] hover:text-text'
       )}
     >
       <span className="truncate">{children}</span>
@@ -175,7 +175,7 @@ function Tile({ widget, actions, onOpen }: { widget: SavedWidget; actions: ViewA
     <button
       type="button"
       onClick={onOpen}
-      className="group grid w-full overflow-hidden rounded-lg bg-surface text-left shadow-[0_0_0_1px_rgb(255_255_255/0.06),0_6px_18px_-12px_rgb(0_0_0/0.7)] transition-shadow duration-(--duration-calm) ease-soft hover:shadow-[0_0_0_1px_rgb(255_255_255/0.12),0_10px_24px_-12px_rgb(0_0_0/0.8)]"
+      className="group grid w-full overflow-hidden bg-surface text-left shadow-[0_0_0_1px_rgb(235_230_218/0.06),0_6px_18px_-12px_rgb(0_0_0/0.7)] transition-shadow duration-(--duration-calm) ease-soft hover:shadow-[0_0_0_1px_rgb(235_230_218/0.12),0_10px_24px_-12px_rgb(0_0_0/0.8)]"
     >
       <div className="relative h-36 overflow-hidden border-line border-b bg-black/20">
         {/* A miniature, not to be used: the widget is used once opened. */}
@@ -207,8 +207,8 @@ function Tile({ widget, actions, onOpen }: { widget: SavedWidget; actions: ViewA
 
 function Empty() {
   return (
-    <div className="grid justify-items-center gap-3 rounded-lg border border-line border-dashed px-8 py-16 text-center">
-      <span className="flex size-9 items-center justify-center rounded-md border border-line-strong bg-raised text-text-soft [&_svg]:size-4">
+    <div className="grid justify-items-center gap-3 border border-line border-dashed px-8 py-16 text-center">
+      <span className="flex size-9 items-center justify-center border border-line-strong bg-raised text-text-soft [&_svg]:size-4">
         <BookmarkGlyph />
       </span>
       <div className="grid max-w-md gap-1.5">

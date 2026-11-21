@@ -48,10 +48,7 @@ export function SleepPanel({ memory, sleep }: { memory: MemoryState; sleep: Slee
 
   return (
     <div
-      className={cn(
-        'grid gap-5 rounded-lg border bg-raised/95 p-5 transition duration-(--duration-slow) ease-soft',
-        state.asleep ? 'border-line' : 'border-line-strong'
-      )}
+      className={cn('grid gap-5 border bg-raised/95 p-5 transition duration-(--duration-slow) ease-soft', state.asleep ? 'border-line' : 'border-line-strong')}
     >
       <div className="flex items-center gap-5">
         <Orb
@@ -69,7 +66,7 @@ export function SleepPanel({ memory, sleep }: { memory: MemoryState; sleep: Slee
       </div>
 
       {working && (
-        <div className="h-1 overflow-hidden rounded-full bg-white/[0.06]" role="progressbar" aria-label="Sleep" aria-valuenow={Math.round(progress * 100)}>
+        <div className="h-1 overflow-hidden bg-text/[0.06]" role="progressbar" aria-label="Sleep" aria-valuenow={Math.round(progress * 100)}>
           <div
             className="h-full origin-left bg-accent/70 transition-transform duration-(--duration-slow) ease-soft"
             style={{ transform: `scaleX(${Math.max(0.04, progress)})` }}

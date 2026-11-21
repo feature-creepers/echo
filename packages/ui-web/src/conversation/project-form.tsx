@@ -81,7 +81,7 @@ export function ProjectForm({ client, onOpened, onBack }: ProjectFormProps) {
         <button
           type="button"
           onClick={onBack}
-          className="-ml-1 flex w-fit items-center gap-1 rounded-sm px-1 py-0.5 text-text-faint text-xs transition-colors hover:text-text"
+          className="-ml-1 flex w-fit items-center gap-1 px-1 py-0.5 text-text-faint text-xs transition-colors hover:text-text"
         >
           <BackGlyph /> Threads
         </button>
@@ -109,14 +109,11 @@ export function ProjectForm({ client, onOpened, onBack }: ProjectFormProps) {
                     aria-checked={chosen}
                     onClick={() => setFolder(one.path)}
                     className={cn(
-                      'flex min-w-0 items-center gap-3 rounded-sm px-3 py-2 text-left transition-colors duration-(--duration-quick) ease-soft',
-                      chosen ? 'bg-white/[0.09] shadow-[inset_0_0_0_1px_rgb(255_255_255/0.14)]' : 'hover:bg-raised'
+                      'flex min-w-0 items-center gap-3 px-3 py-2 text-left transition-colors duration-(--duration-quick) ease-soft',
+                      chosen ? 'bg-text/[0.09] shadow-[inset_0_0_0_1px_rgb(235_230_218/0.14)]' : 'hover:bg-raised'
                     )}
                   >
-                    <span
-                      aria-hidden="true"
-                      className={cn('size-1.5 shrink-0 rounded-full', chosen ? 'bg-accent' : 'shadow-[inset_0_0_0_1px_rgb(255_255_255/0.3)]')}
-                    />
+                    <span aria-hidden="true" className={cn('size-1.5 shrink-0', chosen ? 'bg-accent' : 'shadow-[inset_0_0_0_1px_rgb(235_230_218/0.3)]')} />
                     <span className="grid min-w-0 flex-1 gap-0.5">
                       <span className="truncate text-sm">{lastPart(one.path)}</span>
                       <span dir="rtl" title={one.path} className="block truncate text-left font-mono text-[0.6875rem] text-text-faint">

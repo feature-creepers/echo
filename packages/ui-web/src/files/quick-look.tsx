@@ -35,7 +35,7 @@ export function QuickLook({ client }: { client: Client }) {
       <DialogContent
         aria-label="Preview"
         initialFocus="content"
-        className="material shadow-float fixed inset-0 m-auto grid h-[min(46rem,calc(100%-4rem))] w-[min(58rem,calc(100%-4rem))] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg outline-none transition-[opacity,translate,scale] ease-soft [transition-duration:var(--duration-quick),var(--duration-calm),var(--duration-calm)] data-starting-style:translate-y-1.5 data-starting-style:scale-98 data-starting-style:opacity-0 data-ending-style:translate-y-1.5 data-ending-style:scale-98 data-ending-style:opacity-0"
+        className="material shadow-float fixed inset-0 m-auto grid h-[min(46rem,calc(100%-4rem))] w-[min(58rem,calc(100%-4rem))] grid-rows-[auto_minmax(0,1fr)] overflow-hidden outline-none transition-[opacity,translate,scale] ease-soft [transition-duration:var(--duration-quick),var(--duration-calm),var(--duration-calm)] data-starting-style:translate-y-1.5 data-starting-style:scale-98 data-starting-style:opacity-0 data-ending-style:translate-y-1.5 data-ending-style:scale-98 data-ending-style:opacity-0"
       >
         <Look client={client} path={path} />
       </DialogContent>

@@ -44,8 +44,8 @@ export function EngineRows({ engines }: { engines: EnginesState }) {
         {known.harnesses.map((harness) => {
           const { tone, text } = standing(harness)
           return (
-            <li key={harness.id} className="flex items-center gap-4 rounded-md border border-line bg-raised/95 px-4 py-3.5">
-              <span className={cn('size-2 shrink-0 rounded-full', TONES[tone])} />
+            <li key={harness.id} className="flex items-center gap-4 border border-line bg-raised/95 px-4 py-3.5">
+              <span className={cn('size-2 shrink-0', TONES[tone])} />
               <div className="grid min-w-0 flex-1 gap-0.5">
                 <span className="font-medium text-sm">
                   {harness.name}

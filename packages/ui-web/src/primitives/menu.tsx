@@ -17,9 +17,8 @@ import { CheckGlyph } from './icons.tsx'
 /**
  * A list floating over everything, against what opened it: the panel of a menu, the options of a select. Shown in
  * the top layer, so no panel or scroll area around its opener cuts it, and in place, so it carries the accent of
- * where it was opened. It rises 3 px towards its opener and grows from 97 % as it fades in. Only this box moves:
- * its shadow and its material fade on their own, since a box that faded would keep the material from blurring
- * what is behind it.
+ * where it was opened. It rises 3 px towards its opener and grows from 97 % as it fades in; its shadow and its plane
+ * fade with it.
  */
 export const FLOATING = cn(
   'no-drag group/floating outline-none max-w-[calc(100vw-1rem)] origin-(--transform-origin) [--list-height:var(--available-height)]',
@@ -31,11 +30,11 @@ export const FLOATING = cn(
 const FADING =
   'transition-opacity duration-(--duration-quick) ease-soft group-data-starting-style/floating:opacity-0 group-data-ending-style/floating:opacity-0'
 
-/** The shadow under a floating list, a layer of its own so it fades with the material. */
-export const FLOATING_SHADOW = cn('pointer-events-none absolute inset-0 rounded-lg shadow-float', FADING)
+/** The shadow under a floating list, a layer of its own so it fades with the plane. */
+export const FLOATING_SHADOW = cn('pointer-events-none absolute inset-0 shadow-float', FADING)
 
-/** The material of a floating list, never taller than the room the window leaves it. */
-export const FLOATING_LIST = cn('material scroll-quiet relative grid max-h-(--list-height) min-w-48 overflow-y-auto overscroll-contain rounded-lg p-1', FADING)
+/** The plane of a floating list, never taller than the room the window leaves it. */
+export const FLOATING_LIST = cn('material scroll-quiet relative grid max-h-(--list-height) min-w-48 overflow-y-auto overscroll-contain p-1', FADING)
 
 /** The space kept between a floating list and what opens it, and between the list and the window's edges. */
 export const GAP = 4
@@ -52,9 +51,9 @@ interface RowLook {
 /** The look of one entry of a floating list, lit while the pointer or the keyboard is on it: one entry at a time. */
 export function rowClass({ detail, danger, disabled }: RowLook): string {
   return cn(
-    'flex w-full min-w-0 gap-2 rounded-[5px] px-2 text-left outline-none transition-colors duration-75',
+    'flex w-full min-w-0 gap-2 px-2 text-left outline-none transition-colors duration-75',
     detail ? 'items-start py-1.5' : 'min-h-6 items-center py-[3px]',
-    disabled ? 'cursor-default' : danger ? 'cursor-pointer data-highlighted:bg-danger/12' : 'cursor-pointer data-highlighted:bg-white/[0.08]'
+    disabled ? 'cursor-default' : danger ? 'cursor-pointer data-highlighted:bg-danger/12' : 'cursor-pointer data-highlighted:bg-text/[0.08]'
   )
 }
 
@@ -76,7 +75,7 @@ interface RowProps extends RowLook {
 export function Row({ label, detail, hint, mark, checked, ticks = false, danger, warn, disabled }: RowProps) {
   return (
     <>
-      {ticks && <span className={cn('flex w-3 shrink-0 justify-center text-accent', detail && 'pt-[3px]')}>{checked && <CheckGlyph size={12} />}</span>}
+      {ticks && <span className={cn('flex w-3 shrink-0 justify-center text-text', detail && 'pt-[3px]')}>{checked && <CheckGlyph size={12} />}</span>}
       {mark && <span className={cn('flex shrink-0 items-center', detail ? 'h-[1.125rem]' : 'h-4')}>{mark}</span>}
       <span className="grid min-w-0 flex-1 gap-px">
         <span
@@ -214,14 +213,12 @@ export function Menu({ trigger, items, align = 'end', side = 'bottom', header, l
         <div className={cn(FLOATING_LIST, className)}>
           {header && <div className="mb-1 border-line border-b px-2 pt-1 pb-2">{header}</div>}
           {sectionsOf(items).map((section, index) => {
-            const heading = section.heading && (
-              <MenuGroupLabel className="px-2 pt-1.5 pb-1 font-medium text-[0.6875rem] text-text-faint">{section.heading}</MenuGroupLabel>
-            )
+            const heading = section.heading && <MenuGroupLabel className="caps px-2 pt-1.5 pb-1 text-text-faint">{section.heading}</MenuGroupLabel>
             const choices = section.entries.some(({ item }) => item.checked !== undefined)
             const chosen = section.entries.find(({ item }) => item.checked === true)
             return (
               <Fragment key={index}>
-                {section.divided && <MenuSeparator className="mx-2 my-1 h-px shrink-0 bg-white/[0.07]" />}
+                {section.divided && <MenuSeparator className="my-1 h-px shrink-0 bg-line" />}
                 {choices ? (
                   <MenuRadioGroup
                     className="contents"

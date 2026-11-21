@@ -10,7 +10,7 @@ const schedule: ScheduleView = { revision: 0, jobs: [], quiet: { on: true, from:
 
 const settings: Settings = {
   revision: 0,
-  personas: { available: [{ id: 'first', name: 'Ada', stance: 'accommodating', accent: 'cyan', look: 'hud' }], active: 'first', confirmed: false },
+  personas: { available: [{ id: 'first', name: 'Ada', stance: 'accommodating', accent: 'blue', look: 'hud' }], active: 'first', confirmed: false },
   engines: { models: {}, efforts: {} },
   access: DEFAULT_ACCESS,
   languages: DEFAULT_LANGUAGES,

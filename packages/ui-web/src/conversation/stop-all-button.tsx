@@ -52,10 +52,7 @@ export function StopAllButton({ working, onStop }: { working: number; onStop(): 
   return (
     <span className="relative mb-0.5 ml-0.5 flex">
       {hint && (
-        <span
-          role="status"
-          className="material pointer-events-none absolute right-0 bottom-full mb-1.5 whitespace-nowrap rounded-sm px-2 py-1 text-label text-text-soft"
-        >
+        <span role="status" className="material pointer-events-none absolute right-0 bottom-full mb-1.5 whitespace-nowrap px-2 py-1 text-label text-text-soft">
           Hold to stop
         </span>
       )}
@@ -70,7 +67,7 @@ export function StopAllButton({ working, onStop }: { working: number; onStop(): 
         onClick={(event) => event.preventDefault()}
         aria-label={`Stop ${what}: hold for ${HOLD_MS / 1000} seconds`}
         title={`Hold to stop ${what}`}
-        className="relative flex size-8 touch-none select-none items-center justify-center overflow-hidden rounded-md bg-white/[0.08] text-text-soft shadow-[inset_0_0_0_0.5px_rgb(255_255_255/0.1)] transition-colors duration-(--duration-quick) ease-soft hover:bg-white/[0.12] hover:text-text [&_svg]:size-3.5"
+        className="relative flex size-8 touch-none select-none items-center justify-center overflow-hidden bg-text/[0.08] text-text-soft shadow-[inset_0_0_0_0.5px_rgb(235_230_218/0.1)] transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.12] hover:text-text [&_svg]:size-3.5"
       >
         {/* The time held, filling the button from the left. A timer shows time, so it fills evenly; letting go empties
             it with the app's curve. */}

@@ -55,7 +55,7 @@ export function Counts({ change, className }: { change: Pick<FileChange, 'added'
   if (change.unknown) return <span className={cn('shrink-0 text-text-faint', className)}>not compared</span>
   return (
     <span className={cn('inline-flex shrink-0 gap-1.5 font-mono tabular-nums', className)}>
-      {change.added > 0 && <span className="text-ok">{plus(change.added)}</span>}
+      {change.added > 0 && <span className="text-info">{plus(change.added)}</span>}
       {change.removed > 0 && <span className="text-danger">{minus(change.removed)}</span>}
       {change.added === 0 && change.removed === 0 && <span className="text-text-faint">±0</span>}
     </span>
@@ -81,13 +81,13 @@ function FileBlock({ file, relative, startsOpen }: { file: FileDiff; relative: R
   const [open, setOpen] = useState(startsOpen)
   const status = STATUS_WORDS[file.status]
   return (
-    <section className="min-w-0 overflow-hidden rounded-md bg-black/25 shadow-[inset_0_0_0_1px_rgb(255_255_255/0.07)]">
+    <section className="min-w-0 overflow-hidden bg-black/25 shadow-[inset_0_0_0_1px_rgb(235_230_218/0.07)]">
       <button
         type="button"
         aria-expanded={open}
         title={file.path}
         onClick={() => setOpen(!open)}
-        className="flex h-8 w-full min-w-0 items-center gap-2 px-2.5 text-left text-text-faint transition-colors duration-(--duration-quick) ease-soft hover:bg-white/[0.03]"
+        className="flex h-8 w-full min-w-0 items-center gap-2 px-2.5 text-left text-text-faint transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.03]"
       >
         <Chevron open={open} />
         <PathLine path={relative(file.path)} className="flex-1 text-text text-xs" />
@@ -160,11 +160,11 @@ function rowsOf(file: FileDiff): Row[] {
   return rows
 }
 
-const TINT = { added: 'bg-ok/[0.07]', removed: 'bg-danger/[0.07]', context: '' } as const
-const GUTTER_TINT = { added: 'bg-ok/[0.11]', removed: 'bg-danger/[0.11]', context: '' } as const
+const TINT = { added: 'bg-info/[0.07]', removed: 'bg-danger/[0.07]', context: '' } as const
+const GUTTER_TINT = { added: 'bg-info/[0.11]', removed: 'bg-danger/[0.11]', context: '' } as const
 const SIGN = { added: '+', removed: '−', context: '' } as const
-const SIGN_COLOUR = { added: 'text-ok/80', removed: 'text-danger/80', context: '' } as const
-const MARK_TINT = { added: 'bg-ok/[0.24]', removed: 'bg-danger/[0.24]', context: '' } as const
+const SIGN_COLOUR = { added: 'text-info/80', removed: 'text-danger/80', context: '' } as const
+const MARK_TINT = { added: 'bg-info/[0.24]', removed: 'bg-danger/[0.24]', context: '' } as const
 
 /** The colour of each role code takes; comments are the faint text. */
 const ROLE_COLOUR: Record<Role, string> = {
@@ -192,7 +192,7 @@ function LineText({ line }: { line: DrawnLine }) {
     )
     const start = run.pieces[0]?.start ?? 0
     return run.marked ? (
-      <mark key={start} className={cn('rounded-xs text-inherit', MARK_TINT[line.kind])}>
+      <mark key={start} className={cn('text-inherit', MARK_TINT[line.kind])}>
         {pieces}
       </mark>
     ) : (
@@ -217,7 +217,7 @@ const Lines = memo(function Lines({ file }: { file: FileDiff }) {
         <div aria-hidden="true" className="shrink-0 select-none border-line border-r text-[0.6875rem] text-text-faint/70 tabular-nums">
           {shown.map((row, index) =>
             row.kind === 'gap' ? (
-              <div key={index} className="h-5 bg-white/[0.025] text-center text-text-faint/60">
+              <div key={index} className="h-5 bg-text/[0.025] text-center text-text-faint/60">
                 ⋯
               </div>
             ) : (
@@ -237,7 +237,7 @@ const Lines = memo(function Lines({ file }: { file: FileDiff }) {
           <div className="w-max min-w-full">
             {shown.map((row, index) =>
               row.kind === 'gap' ? (
-                <div key={index} className="flex h-5 items-center bg-white/[0.025] px-2.5 font-sans text-[0.6875rem] text-text-faint">
+                <div key={index} className="flex h-5 items-center bg-text/[0.025] px-2.5 font-sans text-[0.6875rem] text-text-faint">
                   {linesInWords(row.count)} unchanged
                 </div>
               ) : (
@@ -257,7 +257,7 @@ const Lines = memo(function Lines({ file }: { file: FileDiff }) {
         <button
           type="button"
           onClick={() => setAll(true)}
-          className="flex h-7 w-full items-center justify-center border-line border-t text-[0.6875rem] text-text-soft transition-colors duration-(--duration-quick) ease-soft hover:bg-white/[0.03] hover:text-text"
+          className="flex h-7 w-full items-center justify-center border-line border-t text-[0.6875rem] text-text-soft transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.03] hover:text-text"
         >
           Show the rest · {linesInWords(rest)}
         </button>

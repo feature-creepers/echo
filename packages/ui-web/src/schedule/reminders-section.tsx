@@ -78,7 +78,7 @@ function Schedule({ state, productName }: { state: ScheduleState; productName: s
         {waiting.length === 0 ? (
           <Empty productName={productName} />
         ) : (
-          <ul className="grid overflow-hidden rounded-lg bg-raised/95 shadow-[inset_0_0_0_1px_rgb(255_255_255/0.06)]">
+          <ul className="grid overflow-hidden bg-raised/95 shadow-[inset_0_0_0_1px_rgb(235_230_218/0.06)]">
             <AnimatePresence initial={false}>
               {waiting.map((job, index) => (
                 <Row key={job.id} first={index === 0}>
@@ -116,7 +116,7 @@ function Row({ first, children }: { first: boolean; children: ReactNode }) {
       animate={{ opacity: 1 }}
       exit={{ opacity: 0, transition: settle }}
       transition={{ layout: glide, opacity: settle }}
-      className={cn('px-4 py-3', !first && 'border-white/[0.06] border-t')}
+      className={cn('px-4 py-3', !first && 'border-text/[0.06] border-t')}
     >
       {children}
     </motion.li>
@@ -177,7 +177,7 @@ function Waiting({ job, view, now, held, onPause, onDelete, onChange }: WaitingP
       <div className={cn('grid min-w-0 flex-1 gap-1 transition-opacity duration-(--duration-calm) ease-soft', paused && 'opacity-55')}>
         <span className="truncate font-medium text-[0.8125rem] text-text">{job.title}</span>
         <span className="flex min-w-0 items-center gap-2 text-text-soft text-xs">
-          <span className="shrink-0 rounded-xs bg-white/[0.07] px-1.5 py-px text-[0.6875rem] text-text-soft">{KIND_WORDS[job.kind]}</span>
+          <span className="shrink-0 bg-text/[0.07] px-1.5 py-px text-[0.6875rem] text-text-soft">{KIND_WORDS[job.kind]}</span>
           <span className="truncate">{howOften(job.timing)}</span>
         </span>
         {words && <span className="line-clamp-2 text-text-faint text-xs leading-relaxed">{job.kind === 'reminder' ? `“${words}”` : words}</span>}
@@ -199,7 +199,7 @@ function Waiting({ job, view, now, held, onPause, onDelete, onChange }: WaitingP
 /** Nothing set yet: what the page is for, and the words that set a reminder. */
 function Empty({ productName }: { productName: string }) {
   return (
-    <div className="grid justify-items-center gap-3 rounded-lg border border-line-strong border-dashed px-6 py-10 text-center">
+    <div className="grid justify-items-center gap-3 border border-line-strong border-dashed px-6 py-10 text-center">
       <ClockMark />
       <div className="grid max-w-md gap-1.5">
         <p className="text-sm text-text-soft">Nothing is set.</p>
@@ -235,8 +235,8 @@ function ClockMark() {
 /** Everything was paused at once ("stop everything"): nothing rings until it is resumed. */
 function Held({ onResume }: { onResume(): void }) {
   return (
-    <div role="status" className="flex items-center gap-4 rounded-lg bg-raised/95 px-4 py-3 shadow-[inset_0_0_0_1px_rgb(255_255_255/0.14)]">
-      <span className="size-2 shrink-0 rounded-full bg-warn" aria-hidden />
+    <div role="status" className="flex items-center gap-4 bg-raised/95 px-4 py-3 shadow-[inset_0_0_0_1px_rgb(235_230_218/0.14)]">
+      <span className="size-2 shrink-0 bg-warn" aria-hidden />
       <div className="grid min-w-0 flex-1 gap-0.5">
         <span className="text-[0.8125rem] text-text">Everything is paused</span>
         <span className="text-text-faint text-xs leading-relaxed">
@@ -263,7 +263,7 @@ function Past({ jobs, view, now, onDelete }: { jobs: Job[]; view: ScheduleView; 
           aria-expanded={open}
           aria-controls={list}
           onClick={() => setOpen(!open)}
-          className="-ml-1 flex items-center gap-1 rounded-sm px-1 py-0.5 text-text-soft transition-colors duration-(--duration-quick) ease-soft hover:text-text"
+          className="-ml-1 flex items-center gap-1 px-1 py-0.5 text-text-soft transition-colors duration-(--duration-quick) ease-soft hover:text-text"
         >
           <span className={cn('transition-transform duration-(--duration-calm) ease-soft', !open && '-rotate-90')}>
             <ChevronGlyph />
@@ -286,7 +286,7 @@ function Past({ jobs, view, now, onDelete }: { jobs: Job[]; view: ScheduleView; 
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
             transition={settle}
-            className="grid overflow-hidden rounded-lg bg-raised/95 shadow-[inset_0_0_0_1px_rgb(255_255_255/0.06)]"
+            className="grid overflow-hidden bg-raised/95 shadow-[inset_0_0_0_1px_rgb(235_230_218/0.06)]"
           >
             <AnimatePresence initial={false}>
               {jobs.map((job, index) => (

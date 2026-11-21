@@ -9,10 +9,16 @@ catalogs:
     '@biomejs/biome':
       specifier: ^2.6.8
       version: 2.6.8
-    '@fontsource-variable/geist':
+    '@fontsource-variable/big-shoulders':
       specifier: ^5.3.0
       version: 5.3.0
     '@fontsource-variable/geist-mono':
+      specifier: ^5.3.0
+      version: 5.3.0
+    '@fontsource-variable/instrument-sans':
+      specifier: ^5.3.0
+      version: 5.3.0
+    '@fontsource/geist-pixel':
       specifier: ^5.3.0
       version: 5.3.0
     '@huggingface/transformers':
@@ -559,10 +565,16 @@ importers:
 
   packages/ui-web:
     dependencies:
-      '@fontsource-variable/geist':
+      '@fontsource-variable/big-shoulders':
         specifier: 'catalog:'
         version: 5.3.0
       '@fontsource-variable/geist-mono':
+        specifier: 'catalog:'
+        version: 5.3.0
+      '@fontsource-variable/instrument-sans':
+        specifier: 'catalog:'
+        version: 5.3.0
+      '@fontsource/geist-pixel':
         specifier: 'catalog:'
         version: 5.3.0
       '@json-render/react':
@@ -1028,11 +1040,17 @@ packages:
       '@noble/hashes':
         optional: true
 
+  '@fontsource-variable/big-shoulders@5.3.0':
+    resolution: {integrity: sha512-b6JtGj6cqvOO5RLuzqLOoiG1ojTHhM8hNDmqbwQXmWCcQumP0gzHXgYviAooZZWLtEvOoX/EHboa+6/Nx2n9ng==}
+
   '@fontsource-variable/geist-mono@5.3.0':
     resolution: {integrity: sha512-vBbuwDEo9AkrqADMXOrlAR3DFcJi4/JxeuU43FoiQERnNwsfXNnvxvReZG02cQKmyk4DZkZdBZX3oTDvy2zBAw==}
 
-  '@fontsource-variable/geist@5.3.0':
-    resolution: {integrity: sha512-j0m+vLQuG5XAYoHtGCVu0spvlGreR3EzpECUVzkFmI1mTVnAO38l/NEPDCFgZ177JxzYJCLSmTQibIiYPilGrA==}
+  '@fontsource-variable/instrument-sans@5.3.0':
+    resolution: {integrity: sha512-u4gKbDBTNFGkg997tfQn3eHOhHuquWUFTRT/rwzuKtrxX5P2ekfs2x+LgBPP4P32+cC+vUwF1Cr+IdRoPQbrGw==}
+
+  '@fontsource/geist-pixel@5.3.0':
+    resolution: {integrity: sha512-lno6MaxiPlE8ex9T8GMXvU9ZzGBdt1GSQ7ub00RMrhd7SUs9Qy/L6f3sLwzs1F7YcwAZiIa8pxW5dIqZz3zgCg==}
 
   '@huggingface/jinja@0.5.13':
     resolution: {integrity: sha512-jM17MqFily1iyT/1LD3r5w8/CZiyapVB0+7vOw48PfVtzyKsXStmHE4jVTyDAD05Tqv3un1xrS9ILUU1ugQAYQ==}
@@ -4149,9 +4167,13 @@ snapshots:
       '@noble/hashes': 2.4.0
     optional: true
 
+  '@fontsource-variable/big-shoulders@5.3.0': {}
+
   '@fontsource-variable/geist-mono@5.3.0': {}
 
-  '@fontsource-variable/geist@5.3.0': {}
+  '@fontsource-variable/instrument-sans@5.3.0': {}
+
+  '@fontsource/geist-pixel@5.3.0': {}
 
   '@huggingface/jinja@0.5.13': {}
 

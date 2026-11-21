@@ -1,6 +1,6 @@
 import { CONFIRM_TIMEOUT_MS, checkDeviceRequest, type DeviceConfirmation, openSession } from '@repo/client'
 import { type CommandInput, deviceCameraSchema, encodeBase64 } from '@repo/protocol'
-import { type AccentName, accents, neutralAccent, radius } from '@repo/tokens'
+import { type AccentName, accents, color, neutralAccent } from '@repo/tokens'
 import { type BrowserWindow, dialog, ipcMain, screen, type WebContents } from 'electron'
 import { CAMERA_CHANNELS, type CameraAnswer } from '../preload/bridge.ts'
 import type { CoreProcess } from './core-process.ts'
@@ -13,13 +13,13 @@ const MARKER_LINGER_MS = 1_500
 /** The marker's size, in the screen's points, and how far below the top of the screen it sits. */
 const MARKER = { width: 190, height: 32, top: 12 }
 
-/** The marker, drawn by the page itself: a pill with a dot in the persona's accent, and what is on. */
+/** The marker, drawn by the page itself: a plate with a square in the persona's accent, and what is on. */
 const page = (accent: { solid: string }) =>
   overlayPage(
     `html,body{margin:0;height:100%;background:transparent;overflow:hidden;font:600 12px system-ui,-apple-system,"Segoe UI",sans-serif}
-.pill{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:8px;border-radius:${radius.lg}px;background:rgba(18,18,20,.92);border:1px solid rgba(255,255,255,.14);color:#fff;box-sizing:border-box}
-.dot{width:8px;height:8px;border-radius:50%;background:${accent.solid}}`,
-    '<div class="pill"><span class="dot"></span>Assistant using the camera</div>'
+.plate{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:8px;background:${color.ground};border:1px solid ${color.lineStrong};color:${color.text};box-sizing:border-box}
+.mark{width:8px;height:8px;background:${accent.solid}}`,
+    '<div class="plate"><span class="mark"></span>Assistant using the camera</div>'
   )
 
 export interface CameraService {

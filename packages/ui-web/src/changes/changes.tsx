@@ -37,7 +37,7 @@ export function Changes({ client, of, relative, version }: { client: Client; of:
   if (reading.is === 'reading') {
     return (
       <div aria-busy="true" className="grid grid-cols-1 gap-1.5">
-        <div className="h-8 animate-pulse rounded-md bg-white/[0.035]" />
+        <div className="h-8 animate-pulse bg-text/[0.035]" />
         <p className="text-[0.6875rem] text-text-faint">Reading the changes…</p>
       </div>
     )

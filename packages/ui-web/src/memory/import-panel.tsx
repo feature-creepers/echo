@@ -31,7 +31,7 @@ export function ImportPanel({ memory, imported }: { memory: MemoryState; importe
   }
 
   return (
-    <div className="grid gap-3 rounded-lg border border-line-strong bg-raised/95 p-5">
+    <div className="grid gap-3 border border-line-strong bg-raised/95 p-5">
       <div className="flex items-center justify-between gap-6">
         <div className="grid min-w-0 gap-1">
           <Eyebrow>What the proof of concept knew</Eyebrow>

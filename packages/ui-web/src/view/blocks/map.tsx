@@ -84,7 +84,7 @@ function Tooltip({ pointed, width }: { pointed: Pointed | undefined; width: numb
   const flip = pointed.x > width - 200
   return (
     <div
-      className="pointer-events-none absolute z-10 grid max-w-56 gap-0.5 rounded-sm border border-line-strong bg-overlay/95 px-2.5 py-1.5 shadow-lg"
+      className="pointer-events-none absolute z-10 grid max-w-56 gap-0.5 border border-line-strong bg-overlay/95 px-2.5 py-1.5 shadow-lg"
       style={{ left: pointed.x, top: pointed.y, transform: `translate(${flip ? 'calc(-100% - 12px)' : '12px'}, -50%)` }}
     >
       <span className="font-medium text-[0.8125rem] leading-snug">{pointed.title}</span>
@@ -97,7 +97,7 @@ function Tooltip({ pointed, width }: { pointed: Pointed | undefined; width: numb
 function MapFrame({ loaded, height, children, footer }: { loaded: Loaded | undefined; height: number; children: ReactNode; footer?: ReactNode }) {
   return (
     <figure className="grid min-w-0 gap-2.5">
-      <div className="relative overflow-hidden rounded-md border border-line bg-surface/60" style={{ minHeight: loaded?.is === 'ready' ? undefined : height }}>
+      <div className="relative overflow-hidden border border-line bg-surface/60" style={{ minHeight: loaded?.is === 'ready' ? undefined : height }}>
         {loaded?.is === 'loading' && <div className="absolute inset-0 animate-pulse bg-raised/40" />}
         {loaded?.is === 'failed' && (
           <div className="absolute inset-0 grid place-content-center text-center text-sm text-text-faint">The map's outlines could not be loaded.</div>
@@ -168,7 +168,7 @@ export function RegionMap({ props }: { props: BlockProps<'RegionMap'> }) {
       <div className="flex items-center gap-2 font-mono text-text-soft text-xs tabular-nums">
         <span>{formatValue(scale.domain[0], props.unit)}</span>
         <span
-          className="h-2 w-36 rounded-full"
+          className="h-2 w-36"
           style={{
             background: `linear-gradient(to right, ${(scale.kind === 'diverging' ? [-1, -0.5, 0, 0.5, 1] : [0, 0.25, 0.5, 0.75, 1]).map((at) => shade(at, colors)).join(', ')})`
           }}
@@ -363,7 +363,7 @@ export function PlaceMap({ props }: { props: BlockProps<'PlaceMap'> }) {
         )}
         {props.outline === undefined && (
           // On the land's colour, so a name of the map passing under it does not run into it.
-          <span className="absolute right-1 bottom-1 flex gap-1.5 rounded-xs bg-surface px-1 py-px text-[9px] text-text-faint/80">
+          <span className="absolute right-1 bottom-1 flex gap-1.5 bg-surface px-1 py-px text-[9px] text-text-faint/80">
             {streets === 'failed'
               ? 'The street map could not be drawn.'
               : STREETS_CREDIT.map((credit) => (

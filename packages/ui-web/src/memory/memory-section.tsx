@@ -67,7 +67,7 @@ export function MemorySection({ memory, productName }: { memory: MemoryState; pr
         </div>
 
         {count === 0 ? (
-          <div className="grid gap-2 rounded-lg border border-line-strong border-dashed px-6 py-8 text-center">
+          <div className="grid gap-2 border border-line-strong border-dashed px-6 py-8 text-center">
             <p className="text-sm text-text-soft leading-relaxed">
               Every word said is kept and can be searched at once. While it sleeps, {productName} picks out what is worth remembering about you.
             </p>

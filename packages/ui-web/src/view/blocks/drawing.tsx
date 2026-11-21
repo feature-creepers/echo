@@ -59,7 +59,7 @@ export function Drawing({ props }: { props: BlockProps<'Drawing'> }) {
 export function Image({ props }: { props: BlockProps<'Image'> }) {
   return (
     <figure className="grid gap-1.5">
-      <img src={props.url} alt={props.alt} referrerPolicy="no-referrer" className="max-h-80 w-full rounded-md border border-line object-cover" />
+      <img src={props.url} alt={props.alt} referrerPolicy="no-referrer" className="max-h-80 w-full border border-line object-cover" />
       {props.caption && <figcaption className="text-[0.6875rem] text-text-faint">{props.caption}</figcaption>}
     </figure>
   )

@@ -134,7 +134,7 @@ export function OneLine({ children }: { children(whole: boolean): ReactNode }) {
         <span
           aria-hidden="true"
           className={cn(
-            'material shadow-float pointer-events-none absolute inset-0 rounded-lg transition-opacity duration-(--duration-quick) ease-soft',
+            'material shadow-float pointer-events-none absolute inset-0 transition-opacity duration-(--duration-quick) ease-soft',
             more ? 'opacity-100' : 'opacity-0'
           )}
         />

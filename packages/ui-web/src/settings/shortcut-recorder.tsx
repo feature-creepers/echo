@@ -75,7 +75,7 @@ export function ShortcutRecorder({ label, value, onRecord, onProblem, onClear }:
       className={cn(
         FIELD,
         'flex w-52 items-center',
-        recording ? 'bg-accent/[0.07] shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--accent)_70%,transparent)]' : 'hover:bg-white/[0.11]'
+        recording ? 'bg-accent/[0.07] shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--accent)_70%,transparent)]' : 'hover:bg-text/[0.11]'
       )}
     >
       <button
@@ -87,7 +87,7 @@ export function ShortcutRecorder({ label, value, onRecord, onProblem, onClear }:
           setRecording((on) => !on)
         }}
         onBlur={() => setRecording(false)}
-        className="flex h-full min-w-0 flex-1 items-center gap-1 rounded-md pr-1 pl-2 text-left"
+        className="flex h-full min-w-0 flex-1 items-center gap-1 pr-1 pl-2 text-left"
       >
         {keys.length > 0 ? (
           keys.map((key) => (
@@ -97,7 +97,7 @@ export function ShortcutRecorder({ label, value, onRecord, onProblem, onClear }:
           ))
         ) : recording ? (
           <span className="flex items-center gap-2 text-accent">
-            <span aria-hidden="true" className="size-1.5 animate-pulse rounded-full bg-accent" />
+            <span aria-hidden="true" className="size-1.5 animate-pulse bg-accent" />
             Press the keys…
           </span>
         ) : (
@@ -113,7 +113,7 @@ export function ShortcutRecorder({ label, value, onRecord, onProblem, onClear }:
             aria-label={`Clear ${label}`}
             title="Clear"
             onClick={onClear}
-            className="mr-1 grid size-5 shrink-0 place-items-center rounded-sm text-text-faint transition-colors duration-(--duration-quick) hover:bg-white/[0.09] hover:text-text-soft"
+            className="mr-1 grid size-5 shrink-0 place-items-center text-text-faint transition-colors duration-(--duration-quick) hover:bg-text/[0.09] hover:text-text-soft"
           >
             <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
               <path d="m4 4 8 8M12 4l-8 8" />

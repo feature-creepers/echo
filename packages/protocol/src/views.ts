@@ -12,6 +12,12 @@ export const viewSpecShape = z.object({
   elements: z.record(z.string(), z.object({ type: z.string(), props: z.record(z.string(), z.unknown()), children: z.array(z.string()) }))
 })
 
+/**
+ * How much of an answer's row a card takes, when the assistant says: an answer is laid out as a few cards side by
+ * side, on twelve columns, and a row is filled before the next one starts.
+ */
+export const VIEW_WIDTHS = ['third', 'half', 'two-thirds', 'full'] as const
+
 export const viewSchema = z.object({
   /** Identifies the view for good. */
   id: z.string().min(1).max(64),
@@ -32,6 +38,8 @@ export const viewSchema = z.object({
    * cards side by side, and a card shown again under its name in the same turn takes the place of the one before.
    */
   card: z.string().min(1).max(40).optional(),
+  /** How wide it is among the cards of its answer. Left out, the cards share the row evenly. */
+  width: z.enum(VIEW_WIDTHS).optional(),
   /** The saved widget of the library this view shows again, when it is one. */
   widget: z.string().min(1).max(64).optional(),
   /** The reminder this card is of, when it is one's: it can be snoozed from it. */

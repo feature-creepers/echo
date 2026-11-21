@@ -2,20 +2,20 @@
 
 @theme {
   --color-*: initial;
-  --color-ground: #05070a;
-  --color-surface: #0a0d12;
-  --color-raised: #10141b;
-  --color-overlay: #161b24;
-  --color-line: rgb(255 255 255 / 0.07);
-  --color-dot: rgb(255 255 255 / 0.1);
-  --color-line-strong: rgb(255 255 255 / 0.14);
-  --color-text: #edf0f5;
-  --color-text-soft: #a4adbb;
-  --color-text-faint: #7a8496;
-  --color-danger: #ff7a70;
-  --color-ok: #5fd39b;
-  --color-warn: #f0c05a;
-  --color-white: #ffffff;
+  --color-ground: #0f0f0d;
+  --color-surface: #141412;
+  --color-raised: #191916;
+  --color-overlay: #1e1e1b;
+  --color-line: rgb(235 230 218 / 0.16);
+  --color-dot: rgb(235 230 218 / 0.13);
+  --color-line-strong: rgb(235 230 218 / 0.34);
+  --color-text: #ebe6da;
+  --color-text-soft: #a09b8e;
+  --color-text-faint: #8a8578;
+  --color-danger: #f0603c;
+  --color-ok: #ebe6da;
+  --color-warn: #e9b10a;
+  --color-info: #6b85f5;
   --color-black: #000000;
   --color-code-keyword: #c8a2f8;
   --color-code-string: #a5d6ff;
@@ -23,18 +23,16 @@
   --color-code-type: #7ed6c8;
   --color-code-function: #e0d9a6;
 
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", "Geist Variable", system-ui, sans-serif;
-  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Geist Mono Variable", Menlo, Consolas, monospace;
+  --font-sans: "Instrument Sans Variable", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Big Shoulders Variable", Bahnschrift, "Arial Narrow", sans-serif;
+  --font-pixel: "Geist Pixel", "Geist Mono Variable", ui-monospace, monospace;
+  --font-mono: "Geist Mono Variable", ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
 
   --radius-*: initial;
-  --radius-xs: 2px;
-  --radius-sm: 3px;
-  --radius-md: 4px;
-  --radius-lg: 6px;
 
-  --text-label: 0.75rem;
+  --text-label: 0.6875rem;
   --text-label--line-height: 1rem;
-  --text-label--letter-spacing: 0;
+  --text-label--letter-spacing: 0.04em;
 
   --ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -45,8 +43,8 @@
 }
 
 :root {
-  --accent: #a4adbb;
-  --accent-ink: #05070a;
+  --accent: #a09b8e;
+  --accent-ink: #0f0f0d;
   --duration-quick: 120ms;
   --duration-calm: 240ms;
   --duration-slow: 420ms;

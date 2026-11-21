@@ -3,7 +3,7 @@ import { cn } from './cn.ts'
 import { BackGlyph } from './icons.tsx'
 
 /** The shape every row of a sidebar shares: the back row and the entries. */
-const ROW = 'group flex h-7 shrink-0 items-center rounded-md px-2.5 text-left text-[0.8125rem] transition-colors duration-(--duration-quick) ease-soft'
+const ROW = 'group flex h-7 shrink-0 items-center px-2.5 text-left text-[0.8125rem] transition-colors duration-(--duration-quick) ease-soft'
 
 interface SidebarProps {
   /** What the list is, for a screen reader. */
@@ -16,21 +16,18 @@ interface SidebarProps {
 }
 
 /**
- * The pane down the left of a screen that covers the main one, as in native split views: the way back at its top,
- * then its groups, and what stands apart at its bottom. It has no fill of its own: the window's ground runs under
- * it, and a hairline sets it apart.
+ * The pane down the left of a screen that covers the main one: the way back at its top, then its groups, and what
+ * stands apart at its bottom. It has no fill of its own: the window's ground runs under it, and a hairline sets it
+ * apart.
  */
 export function Sidebar({ label, back, footer, children }: SidebarProps) {
   return (
-    <nav
-      aria-label={label}
-      className="scroll-quiet flex w-56 shrink-0 flex-col gap-5 overflow-y-auto border-black/45 border-r px-2.5 pt-3 pb-4 shadow-[1px_0_0_rgb(255_255_255/0.035)]"
-    >
+    <nav aria-label={label} className="scroll-quiet flex w-56 shrink-0 flex-col gap-5 overflow-y-auto border-line border-r px-2.5 pt-3 pb-4">
       {back && (
         <button
           type="button"
           onClick={back.onBack}
-          className={cn(ROW, 'gap-1.5 pl-1.5 text-text-soft hover:bg-white/[0.04] hover:text-text active:bg-white/[0.07]')}
+          className={cn(ROW, 'gap-1.5 pl-1.5 text-text-soft hover:bg-text/[0.06] hover:text-text active:bg-text/[0.1]')}
         >
           <span className="text-text-faint transition-colors duration-(--duration-quick) group-hover:text-text-soft [&_svg]:size-3.5">
             <BackGlyph />
@@ -50,7 +47,7 @@ export function SidebarGroup({ title, children }: { title?: string | undefined; 
     // biome-ignore lint/a11y/useSemanticElements: a fieldset is for a form's controls; this is a list of places, named for a screen reader.
     <div role="group" aria-label={title} className="grid gap-px">
       {title && (
-        <span aria-hidden="true" className="mb-0.5 px-2.5 font-semibold text-[0.6875rem] text-text-faint">
+        <span aria-hidden="true" className="caps mb-1 px-2.5 text-text-faint">
           {title}
         </span>
       )}
@@ -65,14 +62,17 @@ interface SidebarItemProps {
   children: ReactNode
 }
 
-/** One entry of a sidebar: the chosen one sits on a quiet raised row, as macOS marks a selection in a sidebar. */
+/** One entry of a sidebar: the chosen one is in the full ink, with a bar of it down its left edge. */
 export function SidebarItem({ on, onClick, children }: SidebarItemProps) {
   return (
     <button
       type="button"
       aria-current={on ? 'page' : undefined}
       onClick={onClick}
-      className={cn(ROW, on ? 'bg-white/[0.1] text-text' : 'text-text-soft hover:bg-white/[0.04] hover:text-text active:bg-white/[0.07]')}
+      className={cn(
+        ROW,
+        on ? 'bg-text/[0.08] text-text shadow-[inset_2px_0_0_var(--color-text)]' : 'text-text-soft hover:bg-text/[0.06] hover:text-text active:bg-text/[0.1]'
+      )}
     >
       <span className="truncate">{children}</span>
     </button>

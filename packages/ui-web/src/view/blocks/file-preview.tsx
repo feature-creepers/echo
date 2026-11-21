@@ -31,10 +31,10 @@ export function FilePreview({ props }: { props: BlockProps<'FilePreview'> }) {
   if (file === 'missing') return <p className="text-[0.8125rem] text-text-faint">This document is no longer available.</p>
 
   return (
-    <div className="grid overflow-hidden rounded-md border border-line bg-ground/60">
-      <div className="flex items-center justify-between gap-3 border-line border-b bg-white/[0.02] py-2 pr-2 pl-3">
+    <div className="grid overflow-hidden border border-line bg-ground/60">
+      <div className="flex items-center justify-between gap-3 border-line border-b bg-text/[0.02] py-2 pr-2 pl-3">
         <div className="flex min-w-0 items-center gap-2.5">
-          <span className="flex h-6 w-7 shrink-0 items-center justify-center rounded-xs border border-line-strong font-mono text-[0.5625rem] text-text-soft uppercase">
+          <span className="flex h-6 w-7 shrink-0 items-center justify-center border border-line-strong font-mono text-[0.5625rem] text-text-soft uppercase">
             {file ? EXTENSION[file.format] : '…'}
           </span>
           <div className="grid min-w-0">

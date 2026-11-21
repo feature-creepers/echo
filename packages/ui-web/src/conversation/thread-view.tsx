@@ -149,7 +149,7 @@ function ThreadHeader({ header, threads, onBack, onOpenThread, onStop, onFocus }
   return (
     <div className="grid grid-cols-1 gap-2 border-line border-b px-4 pt-2 pb-3">
       <div className="-ml-1 flex min-w-0 items-center gap-0.5 text-text-faint text-xs">
-        <button type="button" onClick={onBack} className="flex shrink-0 items-center gap-1 rounded-sm px-1 py-0.5 transition-colors hover:text-text">
+        <button type="button" onClick={onBack} className="flex shrink-0 items-center gap-1 px-1 py-0.5 transition-colors hover:text-text">
           <BackGlyph /> Threads
         </button>
         {above && (
@@ -159,7 +159,7 @@ function ThreadHeader({ header, threads, onBack, onOpenThread, onStop, onFocus }
               type="button"
               onClick={() => onOpenThread(above.id)}
               title={`Show the work of ${above.title}`}
-              className="min-w-0 truncate rounded-sm px-1 py-0.5 transition-colors hover:text-text"
+              className="min-w-0 truncate px-1 py-0.5 transition-colors hover:text-text"
             >
               {above.title}
             </button>
@@ -196,7 +196,7 @@ function ThreadHeader({ header, threads, onBack, onOpenThread, onStop, onFocus }
                   type="button"
                   onClick={() => onOpenThread(thread.id)}
                   title={`Show the work of ${thread.title}`}
-                  className="group flex h-6 min-w-0 max-w-full items-center gap-1.5 rounded-sm bg-white/[0.05] pr-1.5 pl-2 text-text-soft text-xs shadow-[inset_0_0_0_0.5px_rgb(255_255_255/0.07)] transition-colors duration-(--duration-quick) ease-soft hover:bg-white/[0.09] hover:text-text"
+                  className="group flex h-6 min-w-0 max-w-full items-center gap-1.5 bg-text/[0.05] pr-1.5 pl-2 text-text-soft text-xs shadow-[inset_0_0_0_0.5px_rgb(235_230_218/0.07)] transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.09] hover:text-text"
                 >
                   <StateDot state={thread.state} />
                   <span className="min-w-0 truncate">{thread.title}</span>
@@ -299,7 +299,7 @@ function ExchangeEntry({ entry, persona, about, context, changes }: ExchangeEntr
         aria-expanded={whole}
         onClick={() => setWhole(!whole)}
         title={whole ? 'Show less' : 'Show it whole'}
-        className="grid min-w-0 grid-cols-1 gap-1 rounded-xs text-left outline-none focus-visible:bg-white/[0.04]"
+        className="grid min-w-0 grid-cols-1 gap-1 text-left outline-none focus-visible:bg-text/[0.04]"
       >
         {exchange.said && (
           <span className={cn('text-[0.8125rem] text-text-soft leading-snug [overflow-wrap:anywhere]', !whole && 'line-clamp-2')}>{exchange.said}</span>
@@ -337,7 +337,7 @@ function ExchangeEntry({ entry, persona, about, context, changes }: ExchangeEntr
       )}
 
       {hasWork && work && (
-        <ul className="grid grid-cols-1 overflow-hidden rounded-md border border-line">
+        <ul className="grid grid-cols-1 overflow-hidden border border-line">
           {earlierSteps > 0 && (
             <li className="px-3 py-2 text-text-faint text-xs">
               {earlierSteps === 1 ? 'One earlier call is' : `${earlierSteps} earlier calls are`} not shown: this request made too many to show.
@@ -361,7 +361,7 @@ function ExchangeEntry({ entry, persona, about, context, changes }: ExchangeEntr
           <div className="flex justify-end">
             <AnswerActions text={exchange.written} about={about} />
           </div>
-          <div className="grid grid-cols-1 gap-3 rounded-md border border-line bg-ground/60 px-3.5 py-3 text-[0.8125rem] leading-relaxed [&_h3]:text-base [&_h4]:text-sm">
+          <div className="grid grid-cols-1 gap-3 border border-line bg-ground/60 px-3.5 py-3 text-[0.8125rem] leading-relaxed [&_h3]:text-base [&_h4]:text-sm">
             <Markdown text={exchange.written} />
           </div>
         </div>
@@ -377,7 +377,7 @@ function Fold({ open, onToggle, children }: { open: boolean; onToggle(): void; c
       type="button"
       aria-expanded={open}
       onClick={onToggle}
-      className="flex h-5 items-center gap-1 rounded-xs bg-white/[0.05] px-1.5 text-[0.6875rem] text-text-soft outline-none transition-colors duration-(--duration-quick) ease-soft hover:bg-white/[0.09] hover:text-text focus-visible:bg-white/[0.09]"
+      className="flex h-5 items-center gap-1 bg-text/[0.05] px-1.5 text-[0.6875rem] text-text-soft outline-none transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.09] hover:text-text focus-visible:bg-text/[0.09]"
     >
       <Chevron open={open} />
       {children}
@@ -431,7 +431,7 @@ function TurnChanges({ turn, files, context }: { turn: string; files: FileChange
         type="button"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center gap-2 rounded-md border border-line px-3 py-2 text-left text-xs transition-colors hover:bg-raised"
+        className="flex w-full items-center gap-2 border border-line px-3 py-2 text-left text-xs transition-colors hover:bg-raised"
       >
         <Chevron open={open} />
         <span className="min-w-0 flex-1 truncate text-text-soft">{said.files}</span>
@@ -536,7 +536,7 @@ function Detail({ label, text }: { label: string; text: string }) {
   return (
     <div className="grid grid-cols-1 gap-1">
       <span className="text-[0.6875rem] text-text-faint">{label}</span>
-      <pre className="scroll-quiet max-h-72 overflow-auto whitespace-pre-wrap rounded-sm bg-ground p-2.5 font-mono text-[0.6875rem] text-text-soft leading-relaxed [overflow-wrap:anywhere]">
+      <pre className="scroll-quiet max-h-72 overflow-auto whitespace-pre-wrap bg-ground p-2.5 font-mono text-[0.6875rem] text-text-soft leading-relaxed [overflow-wrap:anywhere]">
         {text}
       </pre>
     </div>

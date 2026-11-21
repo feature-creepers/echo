@@ -19,7 +19,7 @@ export function LatestButton({ scroll }: { scroll: FollowLatest }) {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 4 }}
             transition={settle}
-            className="material shadow-float pointer-events-auto flex items-center gap-1 rounded-md py-1 pr-2.5 pl-2 text-label text-text-soft transition-colors hover:text-text"
+            className="material shadow-float pointer-events-auto flex items-center gap-1 py-1 pr-2.5 pl-2 text-label text-text-soft transition-colors hover:text-text"
           >
             <ChevronGlyph /> Latest
           </motion.button>

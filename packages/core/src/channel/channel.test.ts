@@ -34,7 +34,7 @@ function setup({ harness = scriptedHarness(), records = memoryRecords(), server 
   let ids = 0
   const newId = () => `${run}id-${++ids}`
   const settings = createUserSettings(records, [
-    { id: 'first', name: 'Ada', stance: 'accommodating', accent: 'cyan', look: 'hud' },
+    { id: 'first', name: 'Ada', stance: 'accommodating', accent: 'blue', look: 'hud' },
     { id: 'second', name: 'Grace', stance: 'critical', accent: 'red', look: 'lens' }
   ])
   const log = { error: vi.fn<(message: string) => void>() }

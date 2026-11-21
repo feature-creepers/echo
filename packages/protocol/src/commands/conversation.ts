@@ -30,7 +30,13 @@ export const conversationCommands = {
          * False when the device shows no views now, as the desktop's Mini window: the person sees no screen, so the
          * assistant says a little more. Left out, it does.
          */
-        screen: z.boolean().optional()
+        screen: z.boolean().optional(),
+        /**
+         * The view in front of the person when they said it, by its id: what they say is probably about it. Left
+         * out when they were at the top of the main screen, where nothing in particular is in front of them, or took
+         * the hint away.
+         */
+        about: z.string().min(1).max(64).optional()
       })
       // Something said, or something handed over without a word.
       .refine((input) => input.text !== '' || (input.attachments?.length ?? 0) + (input.folders?.length ?? 0) > 0),

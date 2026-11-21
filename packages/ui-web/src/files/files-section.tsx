@@ -167,7 +167,7 @@ export function FilesSection({ client, productName }: { client: Client; productN
 /** The pane that holds the browser, as tall as the screen allows. */
 function Panel({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <div className={cn('h-[max(24rem,calc(100vh-19rem))] overflow-hidden rounded-lg bg-raised/95 shadow-[inset_0_0_0_1px_rgb(255_255_255/0.06)]', className)}>
+    <div className={cn('h-[max(24rem,calc(100vh-19rem))] overflow-hidden bg-raised/95 shadow-[inset_0_0_0_1px_rgb(235_230_218/0.06)]', className)}>
       {children}
     </div>
   )
@@ -216,7 +216,7 @@ function Tree({ rows, selected, onSelect, onToggle, onOpen }: TreeProps) {
       onKeyDown={onKeyDown}
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
-      className="scroll-quiet min-h-0 overflow-y-auto border-black/45 border-r py-1.5 shadow-[1px_0_0_rgb(255_255_255/0.035)] outline-none"
+      className="scroll-quiet min-h-0 overflow-y-auto border-black/45 border-r py-1.5 shadow-[1px_0_0_rgb(235_230_218/0.035)] outline-none"
     >
       {rows.map((row, index) => {
         const { entry, depth } = row
@@ -236,8 +236,8 @@ function Tree({ rows, selected, onSelect, onToggle, onOpen }: TreeProps) {
             onClick={() => onSelect(entry.path)}
             onDoubleClick={() => onOpen(entry)}
             className={cn(
-              'mx-1.5 flex h-7 cursor-default select-none items-center gap-1.5 rounded-md pr-2 text-[0.8125rem]',
-              on ? (focused ? 'bg-accent/20 text-text' : 'bg-white/[0.08] text-text') : 'text-text-soft hover:bg-white/[0.03]'
+              'mx-1.5 flex h-7 cursor-default select-none items-center gap-1.5 pr-2 text-[0.8125rem]',
+              on ? (focused ? 'bg-accent/20 text-text' : 'bg-text/[0.08] text-text') : 'text-text-soft hover:bg-text/[0.03]'
             )}
             style={{ paddingLeft: 4 + depth * 14 }}
           >
@@ -375,9 +375,9 @@ function Empty({ title, detail, children }: { title: string; detail?: string; ch
 function Skeleton() {
   return (
     <div className="grid h-full grid-cols-[minmax(11rem,16rem)_minmax(0,1fr)]" role="status" aria-label="Reading the folder">
-      <div className="grid content-start gap-2.5 border-black/45 border-r px-4 py-3.5 shadow-[1px_0_0_rgb(255_255_255/0.035)]">
+      <div className="grid content-start gap-2.5 border-black/45 border-r px-4 py-3.5 shadow-[1px_0_0_rgb(235_230_218/0.035)]">
         {[62, 48, 74, 40, 56].map((width) => (
-          <span key={width} className="h-2.5 rounded-xs bg-white/[0.05]" style={{ width: `${width}%` }} />
+          <span key={width} className="h-2.5 bg-text/[0.05]" style={{ width: `${width}%` }} />
         ))}
       </div>
       <div />

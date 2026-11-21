@@ -21,7 +21,7 @@ export function Metric({ props }: { props: BlockProps<'Metric'> }) {
   // nothing. It keeps a width a figure reads at, a row that has no room for it puts it on the next line, and the
   // figures of a line share it.
   return (
-    <div className="@container grid min-w-[min(7.5rem,100%)] grow content-start gap-0.5 overflow-hidden rounded-md border border-line bg-white/[0.018] px-3 py-2.5">
+    <div className="@container grid min-w-[min(7.5rem,100%)] grow content-start gap-0.5 overflow-hidden border border-line bg-text/[0.018] px-3 py-2.5">
       <Eyebrow>{props.label}</Eyebrow>
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-1">
         <span
@@ -46,10 +46,10 @@ export function Metric({ props }: { props: BlockProps<'Metric'> }) {
 
 export function Table({ props }: { props: BlockProps<'Table'> }) {
   return (
-    <div className="scroll-quiet min-w-0 overflow-x-auto rounded-md border border-line">
+    <div className="scroll-quiet min-w-0 overflow-x-auto border border-line">
       <table className="w-full border-collapse text-[0.8125rem]">
         <thead>
-          <tr className="border-line border-b bg-white/[0.02]">
+          <tr className="border-line border-b bg-text/[0.02]">
             {props.columns.map((column) => (
               <th
                 key={column.key}
@@ -62,7 +62,7 @@ export function Table({ props }: { props: BlockProps<'Table'> }) {
         </thead>
         <tbody>
           {props.rows.map((row, index) => (
-            <tr key={index} className="border-line border-b transition-colors duration-(--duration-quick) last:border-b-0 hover:bg-white/[0.02]">
+            <tr key={index} className="border-line border-b transition-colors duration-(--duration-quick) last:border-b-0 hover:bg-text/[0.02]">
               {props.columns.map((column) => (
                 <td key={column.key} className={cn('px-2.5 py-1.5', column.align === 'end' ? 'text-right tabular-nums' : 'text-left')}>
                   {row[column.key] ?? ''}
@@ -84,7 +84,7 @@ export function Timeline({ props }: { props: BlockProps<'Timeline'> }) {
         <li key={index} className="contents">
           <span className="text-right text-[0.6875rem] text-text-faint tabular-nums leading-5">{item.time}</span>
           <div className="flex flex-col items-center">
-            <span className="mt-[0.4375rem] size-1.5 shrink-0 rounded-full" style={{ background: markColor(item.tone) }} />
+            <span className="mt-[0.4375rem] size-1.5 shrink-0" style={{ background: markColor(item.tone) }} />
             {index < props.items.length - 1 && <span className="my-1 w-px flex-1 bg-line-strong" />}
           </div>
           <div className="grid content-start gap-0.5 pb-2 last:pb-0">
@@ -108,10 +108,10 @@ export function Progress({ props }: { props: BlockProps<'Progress'> }) {
           <span className="font-mono text-[0.6875rem] text-text-soft tabular-nums">{props.detail ?? `${Math.round(value * 100)} %`}</span>
         </div>
       )}
-      <div className="h-1 overflow-hidden rounded-full bg-white/[0.06]">
+      <div className="h-1 overflow-hidden bg-text/[0.06]">
         {/* The whole bar slides in from the left rather than growing, so it moves by transform and keeps its round end. */}
         <div
-          className="h-full rounded-full transition-transform duration-(--duration-slow) ease-soft"
+          className="h-full transition-transform duration-(--duration-slow) ease-soft"
           style={{ transform: `translateX(${(value - 1) * 100}%)`, background: TONE_COLOR[props.tone] }}
         />
       </div>
@@ -177,7 +177,7 @@ export function Chart({ props: given }: { props: BlockProps<'Chart'> }) {
           {props.series.length > 1 &&
             props.series.map((series) => (
               <span key={series.name} className="flex items-center gap-1.5 text-[0.6875rem] text-text-soft">
-                <span className="h-0.5 w-3 rounded-full" style={{ background: markColor(series.tone) }} />
+                <span className="h-0.5 w-3" style={{ background: markColor(series.tone) }} />
                 {series.name}
               </span>
             ))}

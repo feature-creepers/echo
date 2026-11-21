@@ -118,7 +118,7 @@ export function InputLine({ name, stopAll, onSay, onStop, talk, persona, pause, 
       }
     : undefined
   const clipClass =
-    'mb-0.5 flex size-8 items-center justify-center rounded-md text-text-faint transition-colors duration-(--duration-quick) ease-soft hover:bg-white/[0.05] hover:text-text'
+    'mb-0.5 flex size-8 items-center justify-center text-text-faint transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.05] hover:text-text'
 
   // Pictures and files pasted go with the message; text pasted is text, as always.
   const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
@@ -143,7 +143,7 @@ export function InputLine({ name, stopAll, onSay, onStop, talk, persona, pause, 
   }
 
   return (
-    <form onSubmit={send} className="material shadow-float group grid rounded-lg transition-shadow duration-(--duration-calm) ease-soft">
+    <form onSubmit={send} className="material shadow-float group grid transition-shadow duration-(--duration-calm) ease-soft">
       {waiting > 0 && <AttachmentChips pending={attachments.pending} onRemove={attachments.remove} />}
       <div className="flex min-h-12 items-end gap-1 px-1.5 py-1.5">
         {/* The eye says which persona answers and what it is doing; pressing it hands over to the other one. */}
@@ -153,9 +153,9 @@ export function InputLine({ name, stopAll, onSay, onStop, talk, persona, pause, 
           disabled={!persona.next}
           aria-label={persona.next ? `Talking to ${persona.name}. Switch to ${persona.next.name}` : `Talking to ${persona.name}`}
           title={persona.next ? `${persona.name} · click for ${persona.next.name}` : persona.name}
-          className="flex size-9 shrink-0 items-center justify-center rounded-md transition-colors duration-(--duration-quick) ease-soft hover:not-disabled:bg-white/[0.05]"
+          className="flex size-9 shrink-0 items-center justify-center transition-colors duration-(--duration-quick) ease-soft hover:not-disabled:bg-text/[0.05]"
         >
-          <Eye mood={persona.mood} look={persona.look} />
+          <Eye mood={persona.mood} size={22} />
         </button>
         <textarea
           ref={input}
@@ -225,8 +225,8 @@ export function InputLine({ name, stopAll, onSay, onStop, talk, persona, pause, 
                 : `Talk${talkKey ? ` (${talkKey}${anywhereKey ? `, or ${anywhereKey} from any app` : ''})` : ''}`
             }
             className={cn(
-              'mb-0.5 flex size-8 items-center justify-center rounded-md transition-colors duration-(--duration-quick) ease-soft',
-              talk.listening ? 'bg-accent text-accent-ink' : 'text-text-faint hover:bg-white/[0.05] hover:text-text'
+              'mb-0.5 flex size-8 items-center justify-center transition-colors duration-(--duration-quick) ease-soft',
+              talk.listening ? 'bg-accent text-accent-ink' : 'text-text-faint hover:bg-text/[0.05] hover:text-text'
             )}
           >
             <MicGlyph />
@@ -238,7 +238,7 @@ export function InputLine({ name, stopAll, onSay, onStop, talk, persona, pause, 
             onClick={pause.onToggle}
             aria-label={pause.paused ? 'Continue' : 'Pause'}
             title={pause.paused ? 'Continue' : 'Pause'}
-            className="mb-0.5 flex size-8 items-center justify-center rounded-md text-text-faint transition-colors duration-(--duration-quick) ease-soft hover:bg-white/[0.05] hover:text-text"
+            className="mb-0.5 flex size-8 items-center justify-center text-text-faint transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.05] hover:text-text"
           >
             {pause.paused ? <PlayGlyph /> : <PauseGlyph />}
           </button>
@@ -250,7 +250,7 @@ export function InputLine({ name, stopAll, onSay, onStop, talk, persona, pause, 
             aria-label="Send"
             disabled={text.trim() === '' && waiting === 0}
             className={cn(
-              'mb-0.5 ml-0.5 flex size-8 items-center justify-center rounded-md transition-colors duration-(--duration-quick) ease-soft',
+              'mb-0.5 ml-0.5 flex size-8 items-center justify-center transition-colors duration-(--duration-quick) ease-soft',
               text.trim() === '' && waiting === 0 ? 'text-text-faint/60' : 'bg-accent text-accent-ink hover:brightness-110'
             )}
           >

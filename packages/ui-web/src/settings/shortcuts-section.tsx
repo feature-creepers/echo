@@ -98,5 +98,5 @@ export function ShortcutsSection({ productName }: { productName: string }) {
 }
 
 function Option({ children }: { children: string }) {
-  return <code className="rounded-sm bg-raised px-1.5 py-0.5 font-mono text-[0.6875rem] text-text">{children}</code>
+  return <code className="bg-raised px-1.5 py-0.5 font-mono text-[0.6875rem] text-text">{children}</code>
 }

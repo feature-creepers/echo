@@ -25,7 +25,7 @@ export function FileList({ props }: { props: BlockProps<'FileList'> }) {
   const folded = props.files.length - props.limit
 
   return (
-    <div className="grid overflow-hidden rounded-md border border-line">
+    <div className="grid overflow-hidden border border-line">
       <ul className="divide-y divide-line">
         {shown.map((file) => {
           const { name: last, folder } = partsOf(file.path)
@@ -34,7 +34,7 @@ export function FileList({ props }: { props: BlockProps<'FileList'> }) {
           return (
             <li
               key={file.path}
-              className="group flex min-w-0 items-center gap-3 py-2 pr-2 pl-3 transition-colors duration-(--duration-quick) hover:bg-white/[0.02]"
+              className="group flex min-w-0 items-center gap-3 py-2 pr-2 pl-3 transition-colors duration-(--duration-quick) hover:bg-text/[0.02]"
             >
               <FileMark name={name} />
               <button
@@ -82,7 +82,7 @@ export function FileList({ props }: { props: BlockProps<'FileList'> }) {
         <button
           type="button"
           onClick={() => setUnfolded(!unfolded)}
-          className="h-8 border-line border-t text-left text-[0.75rem] text-text-faint transition-colors duration-(--duration-quick) hover:bg-white/[0.02] hover:text-text-soft"
+          className="h-8 border-line border-t text-left text-[0.75rem] text-text-faint transition-colors duration-(--duration-quick) hover:bg-text/[0.02] hover:text-text-soft"
         >
           <span className="pl-3">{unfolded ? 'Show fewer' : `and ${folded} more`}</span>
         </button>

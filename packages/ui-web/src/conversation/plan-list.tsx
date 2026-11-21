@@ -16,7 +16,7 @@ export function PlanList({ plan }: { plan: readonly PlanStep[] | undefined }) {
         <Eyebrow>Plan</Eyebrow>
         <span className="text-label text-text-faint tabular-nums">{planCount(plan)}</span>
       </span>
-      <ol className="grid grid-cols-1 gap-px rounded-md border border-line px-3 py-2">
+      <ol className="grid grid-cols-1 gap-px border border-line px-3 py-2">
         {plan.map((step, index) => (
           <li
             // A plan is told whole each time: a step is known by its place and its words.
@@ -30,7 +30,7 @@ export function PlanList({ plan }: { plan: readonly PlanStep[] | undefined }) {
                   <CheckGlyph size={12} />
                 </span>
               ) : (
-                <span className={cn('size-1.5 rounded-full', step.state === 'current' ? 'bg-accent' : 'shadow-[inset_0_0_0_1px_rgb(255_255_255/0.3)]')} />
+                <span className={cn('size-1.5', step.state === 'current' ? 'bg-accent' : 'shadow-[inset_0_0_0_1px_rgb(235_230_218/0.3)]')} />
               )}
             </span>
             <span

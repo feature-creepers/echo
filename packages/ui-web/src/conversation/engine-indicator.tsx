@@ -31,7 +31,7 @@ export function EngineIndicator({ client, onOpenSettings }: { client: Client; on
           const { tone, text } = standing(harness)
           return {
             label: harness.name,
-            mark: <span className={cn('size-1.5 rounded-full', TONES[tone])} />,
+            mark: <span className={cn('size-1.5', TONES[tone])} />,
             checked: harness.id === engines.active,
             disabled: tone !== 'ok',
             hint: tone === 'ok' ? undefined : <span title={text}>{text}</span>,
@@ -105,7 +105,7 @@ export function EngineIndicator({ client, onOpenSettings }: { client: Client; on
           }}
           className={BAR_LABEL}
         >
-          <span className={cn('size-1.5 rounded-full', engines === undefined ? 'bg-text-faint/50' : active ? 'bg-ok/80' : 'bg-warn')} />
+          <span className={cn('size-1.5', engines === undefined ? 'bg-text-faint/50' : active ? 'bg-ok/80' : 'bg-warn')} />
           {engines === undefined ? 'Looking…' : active ? active.name : 'No AI program ready'}
           {failed ? (
             <span className="text-danger">· not changed</span>

@@ -21,7 +21,7 @@ export function IconButton({ label, active, className, children, type = 'button'
       title={label}
       aria-pressed={active}
       className={cn(
-        'inline-flex size-7 shrink-0 items-center justify-center rounded-md text-text-soft transition duration-(--duration-quick) ease-soft hover:bg-white/[0.07] hover:text-text active:bg-white/[0.1] aria-pressed:bg-white/[0.09] aria-pressed:text-text',
+        'inline-flex size-7 shrink-0 items-center justify-center text-text-soft transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.08] hover:text-text active:bg-text/[0.14] aria-pressed:bg-text/[0.12] aria-pressed:text-text',
         className
       )}
       {...rest}

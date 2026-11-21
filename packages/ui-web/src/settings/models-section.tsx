@@ -108,12 +108,12 @@ function HarnessCard({ harness, inUse, onSignIn, onModel, onEffort }: HarnessCar
     <section
       aria-label={harness.name}
       className={cn(
-        'divide-y divide-white/[0.06] overflow-hidden rounded-lg bg-raised/95 transition-shadow duration-(--duration-calm)',
-        inUse ? 'shadow-[inset_0_0_0_1px_rgb(255_255_255/0.11)]' : 'shadow-[inset_0_0_0_1px_rgb(255_255_255/0.06)]'
+        'divide-y divide-text/[0.06] overflow-hidden bg-raised/95 transition-shadow duration-(--duration-calm)',
+        inUse ? 'shadow-[inset_0_0_0_1px_rgb(235_230_218/0.11)]' : 'shadow-[inset_0_0_0_1px_rgb(235_230_218/0.06)]'
       )}
     >
       <div className="flex items-center gap-3.5 px-4 py-3">
-        <span className={cn('size-2 shrink-0 rounded-full', TONES[tone])} />
+        <span className={cn('size-2 shrink-0', TONES[tone])} />
         <div className="grid min-w-0 flex-1 gap-0.5">
           <span className="flex items-center gap-2.5 font-medium text-[0.8125rem]">
             {harness.name}

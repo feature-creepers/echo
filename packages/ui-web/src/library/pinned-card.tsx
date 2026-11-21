@@ -60,7 +60,7 @@ export function PinnedCard({ widget, controls, actions, dragged, landed, shut, u
       animate={{ opacity: 1, y: 0 }}
       // Dragged, the card leaves the layout: the picture that follows the pointer stands for it.
       style={{ display: dragged ? 'none' : undefined }}
-      className="group/card relative grid min-w-0 grid-cols-[minmax(0,1fr)] overflow-hidden rounded-lg bg-surface shadow-[0_0_0_1px_rgb(255_255_255/0.06),0_6px_18px_-10px_rgb(0_0_0/0.7)]"
+      className="group/card relative grid min-w-0 grid-cols-[minmax(0,1fr)] overflow-hidden bg-surface shadow-[0_0_0_1px_rgb(235_230_218/0.06),0_6px_18px_-10px_rgb(0_0_0/0.7)]"
     >
       <div
         onPointerDown={onPress && ((event) => root.current && onPress(event, root.current))}
@@ -103,7 +103,7 @@ export function PinnedCard({ widget, controls, actions, dragged, landed, shut, u
             <button
               type="button"
               onClick={onUnfold}
-              className="flex h-5 items-center gap-1 rounded-sm px-2 text-[0.6875rem] text-text-soft transition-colors hover:bg-white/[0.06] hover:text-text"
+              className="flex h-5 items-center gap-1 px-2 text-[0.6875rem] text-text-soft transition-colors hover:bg-text/[0.06] hover:text-text"
             >
               {unfolded ? 'Show less' : 'Show more'}
             </button>

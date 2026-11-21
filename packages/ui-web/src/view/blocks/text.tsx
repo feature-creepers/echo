@@ -18,10 +18,7 @@ export function Text({ props }: { props: BlockProps<'Text'> }) {
 export function Badge({ props }: { props: BlockProps<'Badge'> }) {
   return (
     <span
-      className={cn(
-        'inline-flex h-5 w-fit items-center gap-1.5 rounded-xs border border-current/25 bg-current/[0.07] px-1.5 text-[0.6875rem]',
-        TONE_TEXT[props.tone]
-      )}
+      className={cn('inline-flex h-5 w-fit items-center gap-1.5 border border-current/25 bg-current/[0.07] px-1.5 text-[0.6875rem]', TONE_TEXT[props.tone])}
     >
       {props.text}
     </span>
@@ -46,12 +43,12 @@ export function List({ props }: { props: BlockProps<'List'> }) {
     <ul className="grid gap-1">
       {props.items.map((item, index) => (
         <li key={index} className="flex gap-2">
-          {props.marker === 'bullet' && <span className="mt-[0.5625rem] size-1 shrink-0 rounded-full bg-text-faint" />}
+          {props.marker === 'bullet' && <span className="mt-[0.5625rem] size-1 shrink-0 bg-text-faint" />}
           {props.marker === 'number' && <span className="w-4 shrink-0 pt-px text-right text-[0.6875rem] text-text-faint leading-5">{index + 1}</span>}
           {props.marker === 'check' && (
             <span
               className={cn(
-                'mt-[0.1875rem] flex size-3.5 shrink-0 items-center justify-center rounded-xs border [&_svg]:size-3',
+                'mt-[0.1875rem] flex size-3.5 shrink-0 items-center justify-center border [&_svg]:size-3',
                 item.checked ? 'border-accent bg-accent text-accent-ink' : 'border-line-strong'
               )}
             >
@@ -78,7 +75,7 @@ export function Steps({ props }: { props: BlockProps<'Steps'> }) {
             <div className="flex flex-col items-center">
               <span
                 className={cn(
-                  'flex size-5 shrink-0 items-center justify-center rounded-sm border text-[0.625rem] [&_svg]:size-3',
+                  'flex size-5 shrink-0 items-center justify-center border text-[0.625rem] [&_svg]:size-3',
                   step.state === 'done' && 'border-accent/50 bg-accent/15 text-accent',
                   step.state === 'current' && 'border-accent text-accent',
                   step.state === 'todo' && 'border-line-strong text-text-faint'

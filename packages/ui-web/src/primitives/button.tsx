@@ -3,22 +3,21 @@ import type { ButtonHTMLAttributes } from 'react'
 import { cn } from './cn.ts'
 
 const button = cva(
-  'inline-flex select-none items-center justify-center gap-2 whitespace-nowrap font-medium transition duration-(--duration-quick) ease-soft disabled:opacity-45 active:not-disabled:brightness-90',
+  'caps inline-flex select-none items-center justify-center gap-2 whitespace-nowrap transition-colors duration-(--duration-quick) ease-soft disabled:opacity-45',
   {
     variants: {
       kind: {
-        /** The one action a screen is there for. */
-        primary: 'bg-accent text-accent-ink shadow-[0_1px_2px_rgb(0_0_0/0.35),inset_0_1px_0_rgb(255_255_255/0.25)] hover:not-disabled:brightness-110',
-        /** A second choice beside the primary one. */
-        secondary:
-          'bg-white/[0.09] text-text shadow-[0_1px_2px_rgb(0_0_0/0.3),inset_0_0_0_0.5px_rgb(255_255_255/0.1),inset_0_1px_0_rgb(255_255_255/0.06)] hover:not-disabled:bg-white/[0.12]',
+        /** The one action a screen is there for: a plane of the ink. */
+        primary: 'bg-text text-ground hover:not-disabled:bg-text/85 active:not-disabled:bg-text/70',
+        /** A second choice beside the primary one: a line round it. */
+        secondary: 'text-text shadow-[inset_0_0_0_1px_var(--color-line-strong)] hover:not-disabled:bg-text/[0.08] active:not-disabled:bg-text/[0.14]',
         /** There when wanted, asking for no attention. */
-        quiet: 'text-text-soft hover:not-disabled:bg-white/[0.06] hover:not-disabled:text-text'
+        quiet: 'text-text-soft hover:not-disabled:bg-text/[0.08] hover:not-disabled:text-text active:not-disabled:bg-text/[0.14]'
       },
       size: {
-        sm: 'h-6 rounded-sm px-2.5 text-xs',
-        md: 'h-7 rounded-md px-3 text-[0.8125rem]',
-        lg: 'h-10 rounded-md px-5 text-sm'
+        sm: 'h-6 px-2.5',
+        md: 'h-7 px-3',
+        lg: 'h-10 px-5'
       }
     },
     defaultVariants: { kind: 'secondary', size: 'md' }

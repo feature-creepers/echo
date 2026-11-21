@@ -9,7 +9,10 @@ interface SwitchProps {
   disabled?: boolean
 }
 
-/** On or off, taking effect at once: the switch of macOS. */
+/**
+ * On or off, taking effect at once: a square knob in a track drawn as a line. On, the track is a plane of the ink
+ * and the knob is cut out of it.
+ */
 export function Switch({ label, on, onChange, disabled = false }: SwitchProps) {
   return (
     <SwitchRoot
@@ -18,16 +21,14 @@ export function Switch({ label, on, onChange, disabled = false }: SwitchProps) {
       aria-label={label}
       disabled={disabled}
       className={cn(
-        'relative inline-flex h-[1.375rem] w-[2.375rem] shrink-0 items-center rounded-full transition-colors duration-(--duration-calm) ease-soft disabled:opacity-45',
-        'shadow-[inset_0_0_0_1px_rgb(0_0_0/0.25),inset_0_1px_2px_rgb(0_0_0/0.25)]',
-        on ? 'bg-accent' : 'bg-white/[0.13] hover:not-disabled:bg-white/[0.17]'
+        'relative inline-flex h-5 w-9 shrink-0 items-center transition-colors duration-(--duration-calm) ease-soft disabled:opacity-45',
+        on ? 'bg-text' : 'shadow-[inset_0_0_0_1px_var(--color-line-strong)] hover:not-disabled:bg-text/[0.08]'
       )}
     >
-      {/* The knob, as macOS draws it: white, round, lifted by a small shadow. */}
       <SwitchThumb
         className={cn(
-          'absolute top-[0.1875rem] left-[0.1875rem] size-4 rounded-full bg-[#f4f6f9] shadow-[0_1px_2px_rgb(0_0_0/0.4),0_0_0_0.5px_rgb(0_0_0/0.2)] transition-transform duration-(--duration-calm) ease-soft',
-          on && 'translate-x-4'
+          'absolute top-1 left-1 size-3 transition-[transform,background-color] duration-(--duration-calm) ease-soft',
+          on ? 'translate-x-4 bg-ground' : 'bg-text-soft'
         )}
       />
     </SwitchRoot>

@@ -1,5 +1,5 @@
 import { type DesktopControl, deviceDesktopSchema } from '@repo/protocol'
-import { type AccentName, accents, neutralAccent, radius } from '@repo/tokens'
+import { type AccentName, accents, neutralAccent } from '@repo/tokens'
 import { type BrowserWindow, screen } from 'electron'
 import type { CoreProcess } from './core-process.ts'
 import { overlayPage, overlayWindow } from './overlay.ts'
@@ -11,8 +11,8 @@ const MARGIN = 3
 const page = (app: string, accent: { solid: string; ink: string }) =>
   overlayPage(
     `html,body{margin:0;height:100%;background:transparent;overflow:hidden;font:12px system-ui,-apple-system,"Segoe UI",sans-serif}
-.ring{position:absolute;inset:0;border:3px solid ${accent.solid};border-radius:${radius.lg}px;box-sizing:border-box}
-.tab{position:absolute;top:0;left:50%;transform:translateX(-50%);padding:2px 10px 4px;border-radius:0 0 ${radius.md}px ${radius.md}px;background:${accent.solid};color:${accent.ink};font-weight:600;white-space:nowrap}`,
+.ring{position:absolute;inset:0;border:3px solid ${accent.solid};box-sizing:border-box}
+.tab{position:absolute;top:0;left:50%;transform:translateX(-50%);padding:2px 10px 4px;background:${accent.solid};color:${accent.ink};font-weight:600;white-space:nowrap}`,
     `<div class="ring"></div><div class="tab">Assistant using ${app.replace(/[<&>"]/g, '')}</div>`
   )
 

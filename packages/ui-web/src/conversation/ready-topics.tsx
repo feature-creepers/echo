@@ -131,7 +131,7 @@ export function ReadyTopics({ ready, exchanges, onFocus, onDismiss }: ReadyTopic
 }
 
 const FOOT =
-  'h-6 rounded-sm px-2 outline-none transition-colors duration-(--duration-quick) ease-soft hover:bg-white/[0.05] hover:text-text-soft focus-visible:bg-white/[0.07] focus-visible:text-text-soft'
+  'h-6 px-2 outline-none transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.05] hover:text-text-soft focus-visible:bg-text/[0.07] focus-visible:text-text-soft'
 
 /** One finished topic: a press brings it back, the cross puts its answer away. */
 function ReadyTopic({ row, now, onFocus, onDismiss }: { row: ReadyRow; now: Date; onFocus(thread: string): void; onDismiss(thread: string): void }) {
@@ -142,13 +142,13 @@ function ReadyTopic({ row, now, onFocus, onDismiss }: { row: ReadyRow; now: Date
     onDismiss(thread.id)
   }
   return (
-    <div className="group flex h-8 items-center rounded-md bg-white/[0.045] shadow-[inset_0_0_0_0.5px_rgb(255_255_255/0.07)] transition-colors duration-(--duration-quick) ease-soft hover:bg-white/[0.07]">
+    <div className="group flex h-8 items-center bg-text/[0.045] shadow-[inset_0_0_0_0.5px_rgb(235_230_218/0.07)] transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.07]">
       <button
         type="button"
         title="Bring it back"
         onClick={() => onFocus(thread.id)}
         onKeyDown={onKeyDown}
-        className="flex h-full min-w-0 flex-1 items-center gap-2.5 rounded-md pr-1 pl-3 text-left outline-none focus-visible:bg-white/[0.07]"
+        className="flex h-full min-w-0 flex-1 items-center gap-2.5 pr-1 pl-3 text-left outline-none focus-visible:bg-text/[0.07]"
       >
         <StateDot state="ready" />
         <span className={cn('min-w-0 truncate text-[0.8125rem] text-text', answer === undefined ? 'flex-1' : 'max-w-[45%] shrink-0')}>{thread.title}</span>
@@ -160,7 +160,7 @@ function ReadyTopic({ row, now, onFocus, onDismiss }: { row: ReadyRow; now: Date
         aria-label={`Dismiss ${thread.title}`}
         title="Dismiss"
         onClick={() => onDismiss(thread.id)}
-        className="mr-1 flex size-6 shrink-0 items-center justify-center rounded-sm text-text-faint outline-none transition-colors duration-(--duration-quick) ease-soft hover:bg-white/[0.08] hover:text-text focus-visible:bg-white/[0.08] focus-visible:text-text [&_svg]:size-3"
+        className="mr-1 flex size-6 shrink-0 items-center justify-center text-text-faint outline-none transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.08] hover:text-text focus-visible:bg-text/[0.08] focus-visible:text-text [&_svg]:size-3"
       >
         <CloseGlyph />
       </button>

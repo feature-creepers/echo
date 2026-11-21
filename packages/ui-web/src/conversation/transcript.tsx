@@ -73,7 +73,7 @@ export function Transcript({ exchanges, threads, personas, onOpenAnswer, onOpenT
                           onClick={() => toggle(exchange.turn)}
                           title={time}
                           className={cn(
-                            'min-w-0 rounded-lg rounded-br-sm bg-white/[0.07] px-3 py-1.5 text-left text-[0.8125rem] text-text leading-relaxed outline-none [overflow-wrap:anywhere] focus-visible:bg-white/[0.1]',
+                            'min-w-0 bg-text/[0.07] px-3 py-1.5 text-left text-[0.8125rem] text-text leading-relaxed outline-none [overflow-wrap:anywhere] focus-visible:bg-text/[0.1]',
                             !open && 'line-clamp-4'
                           )}
                         >
@@ -103,7 +103,7 @@ export function Transcript({ exchanges, threads, personas, onOpenAnswer, onOpenT
                       aria-expanded={open}
                       onClick={() => toggle(exchange.turn)}
                       className={cn(
-                        'min-w-0 rounded-sm text-left text-[0.8125rem] text-text leading-relaxed outline-none [overflow-wrap:anywhere] focus-visible:bg-white/[0.04]',
+                        'min-w-0 text-left text-[0.8125rem] text-text leading-relaxed outline-none [overflow-wrap:anywhere] focus-visible:bg-text/[0.04]',
                         !open && 'line-clamp-4'
                       )}
                     >
@@ -150,7 +150,7 @@ function Chip({ children, onClick, title }: { children: string; onClick(): void;
       type="button"
       onClick={onClick}
       title={title}
-      className="group flex h-5 min-w-0 max-w-full items-center gap-0.5 rounded-xs bg-white/[0.05] px-1.5 text-[0.6875rem] text-text-soft outline-none transition-colors duration-(--duration-quick) ease-soft hover:bg-white/[0.09] hover:text-text focus-visible:bg-white/[0.09]"
+      className="group flex h-5 min-w-0 max-w-full items-center gap-0.5 bg-text/[0.05] px-1.5 text-[0.6875rem] text-text-soft outline-none transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.09] hover:text-text focus-visible:bg-text/[0.09]"
     >
       <span className="min-w-0 truncate">{children}</span>
       <GoArrow />

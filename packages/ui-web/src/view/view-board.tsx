@@ -197,7 +197,7 @@ function GroupLine({ words, open, cards, version, versions, onToggle, onStep, on
         aria-expanded={open}
         onClick={onToggle}
         title={words.title}
-        className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-sm text-left outline-none focus-visible:bg-white/[0.05]"
+        className="flex h-full min-w-0 flex-1 items-center gap-2 text-left outline-none focus-visible:bg-text/[0.05]"
       >
         <span
           aria-hidden="true"
@@ -229,7 +229,7 @@ function GroupLine({ words, open, cards, version, versions, onToggle, onStep, on
         aria-label={`Close ${words.title}`}
         title="Close"
         onClick={onClose}
-        className="flex size-5 shrink-0 items-center justify-center rounded-sm text-text-faint opacity-0 outline-none transition-[opacity,color] duration-(--duration-quick) ease-soft hover:text-text focus-visible:opacity-100 group-hover/line:opacity-100 [&_svg]:size-3"
+        className="flex size-5 shrink-0 items-center justify-center text-text-faint opacity-0 outline-none transition-[opacity,color] duration-(--duration-quick) ease-soft hover:text-text focus-visible:opacity-100 group-hover/line:opacity-100 [&_svg]:size-3"
       >
         <CloseGlyph />
       </button>
@@ -245,7 +245,7 @@ function StepButton({ label, disabled, onClick, turn }: { label: string; disable
       title={label}
       disabled={disabled}
       onClick={onClick}
-      className="flex size-5 items-center justify-center rounded-sm outline-none transition-colors duration-(--duration-quick) ease-soft hover:text-text focus-visible:bg-white/[0.06] disabled:opacity-35 disabled:hover:text-text-faint [&_svg]:size-3"
+      className="flex size-5 items-center justify-center outline-none transition-colors duration-(--duration-quick) ease-soft hover:text-text focus-visible:bg-text/[0.06] disabled:opacity-35 disabled:hover:text-text-faint [&_svg]:size-3"
     >
       <span className={turn}>
         <ChevronGlyph />
@@ -289,7 +289,7 @@ const BoardCard = memo(function BoardCard({ view, appear, lit, actions, onClose 
         aria-hidden="true"
         style={CORE_LIGHT}
         className={cn(
-          'pointer-events-none absolute inset-0 rounded-lg transition-opacity duration-(--duration-slow) ease-soft',
+          'pointer-events-none absolute inset-0 transition-opacity duration-(--duration-slow) ease-soft',
           lit ? 'opacity-100' : 'opacity-0 group-hover/card:opacity-40'
         )}
       />

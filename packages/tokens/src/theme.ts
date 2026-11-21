@@ -2,7 +2,6 @@ import { neutralAccent } from './accent.ts'
 import { code, color } from './color.ts'
 import { frame } from './frame.ts'
 import { motion } from './motion.ts'
-import { radius } from './radius.ts'
 import { font, label } from './type.ts'
 
 const kebab = (name: string) => name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)
@@ -14,7 +13,7 @@ const declarations = (prefix: string, values: Record<string, unknown>, unit = ''
 
 /**
  * The design values as a Tailwind theme, which is how the web interface reads them: `bg-surface`,
- * `text-text-soft`, `rounded-md`, `font-mono`. The file this renders is `theme.generated.css`; a test fails
+ * `text-text-soft`, `font-display`, `font-mono`. The file this renders is `theme.generated.css`; a test fails
  * when the two differ, so the values here stay the single source.
  *
  * The accent is not a fixed colour: it is the `--accent` variable, set on any element to colour what is
@@ -32,8 +31,8 @@ export function renderTheme(): string {
     '',
     ...declarations('font', font),
     '',
+    // No radius is named: every corner is square, and a `rounded-md` written by habit draws nothing.
     '  --radius-*: initial;',
-    ...declarations('radius', radius, 'px'),
     '',
     `  --text-label: ${label.size};`,
     `  --text-label--line-height: ${label.lineHeight};`,

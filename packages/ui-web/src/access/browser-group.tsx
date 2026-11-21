@@ -95,7 +95,7 @@ export function BrowserGroup({ client, access, productName }: { client: Client; 
               {browser.name}
               {browser.running && (
                 <span className="inline-flex items-center gap-1.5 text-text-faint text-xs">
-                  <span aria-hidden="true" className="size-1.5 rounded-full bg-ok" />
+                  <span aria-hidden="true" className="size-1.5 bg-ok" />
                   Open
                 </span>
               )}

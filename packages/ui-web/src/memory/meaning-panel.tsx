@@ -36,10 +36,7 @@ export function MeaningPanel({ memory, meaning }: { memory: MemoryState; meaning
 
   return (
     <div
-      className={cn(
-        'grid gap-3 rounded-lg border bg-raised/95 p-5 transition duration-(--duration-quick) ease-soft',
-        asked ? 'border-danger/40' : 'border-line-strong'
-      )}
+      className={cn('grid gap-3 border bg-raised/95 p-5 transition duration-(--duration-quick) ease-soft', asked ? 'border-danger/40' : 'border-line-strong')}
     >
       <div className="flex items-center justify-between gap-6">
         <div className="grid min-w-0 gap-1" aria-live="polite">
@@ -77,9 +74,9 @@ export function MeaningPanel({ memory, meaning }: { memory: MemoryState; meaning
       </div>
 
       {meaning.state === 'downloading' && (
-        <div role="progressbar" aria-label={LABEL} aria-valuenow={Math.round(progress * 100)} className="h-1 overflow-hidden rounded-full bg-white/[0.06]">
+        <div role="progressbar" aria-label={LABEL} aria-valuenow={Math.round(progress * 100)} className="h-1 overflow-hidden bg-text/[0.06]">
           <div
-            className="h-full origin-left rounded-full bg-accent transition-transform duration-(--duration-calm) ease-soft"
+            className="h-full origin-left bg-accent transition-transform duration-(--duration-calm) ease-soft"
             style={{ transform: `scaleX(${progress})` }}
           />
         </div>

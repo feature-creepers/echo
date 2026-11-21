@@ -177,7 +177,7 @@ export function PinnedDocksView({ controls, actions, docks }: { controls: Librar
             : { opacity: 0, x: 24, transitionEnd: { visibility: 'hidden' }, transition: { duration: DURATION.calm, ease: EASE } }
         }
         style={{ width: WIDTH + 2 * EDGE, right: EDGE / 2 }}
-        className="material shadow-float absolute top-1.5 bottom-1.5 z-20 flex max-w-[calc(100%-1rem)] flex-col overflow-hidden rounded-lg"
+        className="material shadow-float absolute top-1.5 bottom-1.5 z-20 flex max-w-[calc(100%-1rem)] flex-col overflow-hidden"
       >
         <motion.div
           layoutScroll
@@ -221,9 +221,9 @@ export function PinnedDocksView({ controls, actions, docks }: { controls: Librar
             <div
               aria-hidden="true"
               className={cn(
-                '-inset-x-1.5 pointer-events-none absolute inset-y-0 rounded-lg transition duration-(--duration-calm) ease-soft',
-                drag ? 'bg-white/[0.015] shadow-[inset_0_0_0_1px_rgb(255_255_255/0.05)]' : 'opacity-0',
-                target && 'bg-white/[0.025] shadow-[inset_0_0_0_1px_rgb(255_255_255/0.09)]'
+                '-inset-x-1.5 pointer-events-none absolute inset-y-0 transition duration-(--duration-calm) ease-soft',
+                drag ? 'bg-text/[0.015] shadow-[inset_0_0_0_1px_rgb(235_230_218/0.05)]' : 'opacity-0',
+                target && 'bg-text/[0.025] shadow-[inset_0_0_0_1px_rgb(235_230_218/0.09)]'
               )}
             />
             {/* The list scrolls with the wheel, and fades out at its ends instead of being cut. */}
@@ -249,7 +249,7 @@ function DropSlot({ height }: { height: number }) {
     <div
       data-drop=""
       style={{ height }}
-      className="rounded-lg bg-[color-mix(in_oklab,var(--accent)_6%,transparent)] shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--accent)_42%,transparent)]"
+      className="bg-[color-mix(in_oklab,var(--accent)_6%,transparent)] shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--accent)_42%,transparent)]"
     />
   )
 }

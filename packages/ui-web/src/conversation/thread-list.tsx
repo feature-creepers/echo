@@ -196,7 +196,7 @@ export function ThreadList({ threads, exchanges, selected, onOpen, onStop, onArc
                     type="button"
                     aria-expanded={!folded}
                     onClick={() => setArchivedOpen(!archivedOpen)}
-                    className="flex h-7 w-full items-center gap-2 rounded-md px-2.5 text-left font-medium text-[0.6875rem] text-text-faint outline-none hover:text-text-soft focus-visible:text-text-soft"
+                    className="flex h-7 w-full items-center gap-2 px-2.5 text-left font-medium text-[0.6875rem] text-text-faint outline-none hover:text-text-soft focus-visible:text-text-soft"
                   >
                     {heading}
                     <span
@@ -222,7 +222,7 @@ export function ThreadList({ threads, exchanges, selected, onOpen, onStop, onArc
                               type="button"
                               aria-expanded={open}
                               onClick={() => toggle(head.id)}
-                              className="ml-2.5 flex h-6 items-center gap-1.5 rounded-sm px-2 text-[0.6875rem] text-text-faint outline-none hover:text-text-soft focus-visible:text-text-soft"
+                              className="ml-2.5 flex h-6 items-center gap-1.5 px-2 text-[0.6875rem] text-text-faint outline-none hover:text-text-soft focus-visible:text-text-soft"
                             >
                               <span
                                 aria-hidden="true"
@@ -306,8 +306,8 @@ function Row({ thread, nested, onScreen, selected, doing, ago, onOpen, onStop, o
   return (
     <div
       className={cn(
-        'group relative rounded-md transition-colors duration-(--duration-quick) ease-soft hover:bg-white/[0.05]',
-        selected && 'bg-white/[0.07] hover:bg-white/[0.07]'
+        'group relative transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.05]',
+        selected && 'bg-text/[0.07] hover:bg-text/[0.07]'
       )}
     >
       <button
@@ -315,7 +315,7 @@ function Row({ thread, nested, onScreen, selected, doing, ago, onOpen, onStop, o
         onClick={() => onOpen(thread.id)}
         aria-current={selected || undefined}
         title={doing ?? thread.folder}
-        className="grid w-full min-w-0 rounded-md px-2.5 py-1.5 text-left outline-none focus-visible:bg-white/[0.07]"
+        className="grid w-full min-w-0 px-2.5 py-1.5 text-left outline-none focus-visible:bg-text/[0.07]"
       >
         {where !== undefined && (
           <span className="flex h-4 min-w-0 items-center gap-1.5 text-[0.6875rem] text-text-faint">
@@ -339,7 +339,7 @@ function Row({ thread, nested, onScreen, selected, doing, ago, onOpen, onStop, o
               type="button"
               aria-label={`${thread.archived ? 'Restore' : 'Archive'} ${thread.title}`}
               onClick={() => onArchive(thread.id, !thread.archived)}
-              className="flex h-5 items-center rounded-sm px-1.5 text-[0.6875rem] text-text-faint outline-none transition-colors duration-(--duration-quick) ease-soft hover:text-text focus-visible:text-text"
+              className="flex h-5 items-center px-1.5 text-[0.6875rem] text-text-faint outline-none transition-colors duration-(--duration-quick) ease-soft hover:text-text focus-visible:text-text"
             >
               {thread.archived ? 'Restore' : 'Archive'}
             </button>
@@ -357,7 +357,7 @@ export function StopThread({ title, className, ...rest }: { title: string } & Om
       type="button"
       aria-label={`Stop ${title}`}
       className={cn(
-        'h-6 shrink-0 rounded-sm px-2 text-label text-text-soft outline-none transition-colors duration-(--duration-quick) ease-soft hover:bg-danger/15 hover:text-danger focus-visible:bg-danger/15 focus-visible:text-danger',
+        'h-6 shrink-0 px-2 text-label text-text-soft outline-none transition-colors duration-(--duration-quick) ease-soft hover:bg-danger/15 hover:text-danger focus-visible:bg-danger/15 focus-visible:text-danger',
         className
       )}
       {...rest}
@@ -372,7 +372,7 @@ export function StateDot({ state }: { state: Thread['state'] }) {
   return (
     <span
       className={cn(
-        'size-1.5 shrink-0 rounded-full',
+        'size-1.5 shrink-0',
         state === 'working' && 'animate-pulse bg-accent',
         state === 'ready' && 'bg-accent',
         state === 'parked' && 'bg-text-faint/60'

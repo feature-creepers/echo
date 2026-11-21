@@ -162,8 +162,8 @@ export function SideSheet({ client, personas, place, tab, onMove, onOpenMemory, 
               onClick={() => onMove({ to: 'tab', tab: name })}
               title={name === 'transcript' && transcriptKey !== '' ? `Transcript (${describeShortcut(transcriptKey, device.mac)})` : TITLES[name]}
               className={cn(
-                'flex h-6 min-w-0 items-center gap-1.5 rounded-md px-2 text-xs outline-none transition-colors duration-(--duration-quick) ease-soft focus-visible:bg-white/[0.06]',
-                tab === name ? 'bg-white/[0.07] text-text' : 'text-text-faint hover:bg-white/[0.04] hover:text-text-soft'
+                'flex h-6 min-w-0 items-center gap-1.5 px-2 text-xs outline-none transition-colors duration-(--duration-quick) ease-soft focus-visible:bg-text/[0.06]',
+                tab === name ? 'bg-text/[0.07] text-text' : 'text-text-faint hover:bg-text/[0.04] hover:text-text-soft'
               )}
             >
               <span className="shrink-0 opacity-80">{GLYPHS[name]({})}</span>

@@ -8,7 +8,7 @@ import { LEVELS, reachInWords } from './words.ts'
 
 /** The look of the words under the composer that open a menu: quiet until pointed at, lit while their menu is open. */
 export const BAR_LABEL =
-  'flex h-5 items-center gap-1.5 rounded-sm px-1.5 text-[0.6875rem] text-text-faint transition-colors duration-(--duration-quick) hover:bg-white/[0.06] hover:text-text-soft aria-expanded:bg-white/[0.07] aria-expanded:text-text-soft'
+  'flex h-5 items-center gap-1.5 px-1.5 text-[0.6875rem] text-text-faint transition-colors duration-(--duration-quick) hover:bg-text/[0.06] hover:text-text-soft aria-expanded:bg-text/[0.07] aria-expanded:text-text-soft'
 
 /**
  * What the assistant may reach on this computer, in a few words, under the composer beside the name of the AI

@@ -43,10 +43,7 @@ export function RetentionPanel({ memory, days }: { memory: MemoryState; days: nu
 
   return (
     <div
-      className={cn(
-        'grid gap-3 rounded-lg border bg-raised/95 p-5 transition duration-(--duration-quick) ease-soft',
-        asked ? 'border-danger/40' : 'border-line-strong'
-      )}
+      className={cn('grid gap-3 border bg-raised/95 p-5 transition duration-(--duration-quick) ease-soft', asked ? 'border-danger/40' : 'border-line-strong')}
     >
       <div className="flex items-center justify-between gap-6">
         <div className="grid min-w-0 gap-1">

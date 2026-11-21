@@ -2,9 +2,9 @@ import { LOOKS, type Look } from '@repo/protocol'
 import { type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { cn } from '../primitives/cn.ts'
 import { readAccent } from './color.ts'
-import { Eye } from './eye.tsx'
 import { createGpuCore } from './gpu.ts'
 import { type Around, createLife, type Mood, type Pose } from './life.ts'
+import { whileSeen } from './while-seen.ts'
 
 interface OrbProps {
   mood: Mood
@@ -63,47 +63,6 @@ function readLook(element: Element): Look {
 
 /** How large the core is drawn in its square, as `scale` asks, from a twentieth of it to all of it. */
 const sizeOf = (scale: (() => number) | undefined) => Math.min(1, Math.max(0.05, scale?.() ?? 1))
-
-/**
- * Calls `frame` on every frame while the window is shown and the element is in view, and `resume` before the first
- * frame after a pause, so the time away is not lived through. Returns what stops it.
- */
-function whileSeen(element: Element, frame: (now: number) => void, resume?: () => void): () => void {
-  let id = 0
-  let onScreen = true
-  const run = () => {
-    if (!id && onScreen && document.visibilityState === 'visible') id = requestAnimationFrame(tick)
-  }
-  const tick = (now: number) => {
-    id = 0
-    frame(now)
-    run()
-  }
-  const pause = () => {
-    cancelAnimationFrame(id)
-    id = 0
-  }
-  const onVisibility = () => {
-    if (document.visibilityState !== 'visible') return pause()
-    resume?.()
-    run()
-  }
-  // Several records can come at once for the one element; the last says where it is now.
-  const watch = new IntersectionObserver((entries) => {
-    onScreen = entries.at(-1)?.isIntersecting ?? true
-    if (!onScreen) return pause()
-    resume?.()
-    run()
-  })
-  document.addEventListener('visibilitychange', onVisibility)
-  watch.observe(element)
-  run()
-  return () => {
-    pause()
-    document.removeEventListener('visibilitychange', onVisibility)
-    watch.disconnect()
-  }
-}
 
 /**
  * The core, in whatever accent and look surround it (`--accent`, and `--look`, which `accentStyle` sets from the
@@ -243,11 +202,12 @@ function StillCore({ live }: { live: RefObject<Followed> }) {
     })
   }, [live, look, placed])
 
-  // The eye's ring is 85 % of its box and the core's edge about 72 % of its square: inset by 8 % on each side, the
-  // ring falls where the core's edge would.
   return (
-    <span ref={box} className="block size-full p-[8%]">
-      <Eye mood="idle" look={look} still className="size-full" />
+    <span ref={box} className="grid size-full place-items-center">
+      <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" className="size-[72%] text-text">
+        <circle cx="10" cy="10" r="8.5" stroke="currentColor" />
+        <circle cx="10" cy="10" r="2" fill="var(--accent)" />
+      </svg>
     </span>
   )
 }

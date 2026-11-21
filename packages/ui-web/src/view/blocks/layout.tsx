@@ -43,8 +43,8 @@ export function Card({ props, children }: { props: BlockProps<'Card'>; children:
   return (
     <div
       className={cn(
-        'grid min-w-0 content-start gap-2 overflow-hidden rounded-md border px-3 py-2.5',
-        accent ? 'border-accent/35 bg-accent/[0.045]' : 'border-line bg-white/[0.018]'
+        'grid min-w-0 content-start gap-2 overflow-hidden border px-3 py-2.5',
+        accent ? 'border-accent/35 bg-accent/[0.045]' : 'border-line bg-text/[0.018]'
       )}
     >
       {(props.title || props.subtitle) && (

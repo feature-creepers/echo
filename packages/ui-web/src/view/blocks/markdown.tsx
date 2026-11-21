@@ -39,20 +39,17 @@ const COMPONENTS: Components = {
     ),
   // A checklist's box ("- [ ] passport", "- [x] tickets"), drawn in the app's own look rather than the system's.
   input: ({ checked }) => (
-    <span
-      aria-hidden="true"
-      className={`relative top-[0.1875rem] size-3 shrink-0 rounded-xs border ${checked ? 'border-accent bg-accent/80' : 'border-line-strong'}`}
-    />
+    <span aria-hidden="true" className={`relative top-[0.1875rem] size-3 shrink-0 border ${checked ? 'border-accent bg-accent/80' : 'border-line-strong'}`} />
   ),
   blockquote: ({ children }) => <blockquote className="border-line-strong border-l-2 pl-3.5 text-text-soft [overflow-wrap:anywhere]">{children}</blockquote>,
   pre: ({ children }) => (
-    <pre className="whitespace-pre-wrap rounded-md border border-line bg-ground px-3.5 py-3 font-mono text-text-soft text-xs leading-relaxed [overflow-wrap:anywhere] [&>code]:bg-transparent [&>code]:p-0 [&>code]:text-[1em]">
+    <pre className="whitespace-pre-wrap border border-line bg-ground px-3.5 py-3 font-mono text-text-soft text-xs leading-relaxed [overflow-wrap:anywhere] [&>code]:bg-transparent [&>code]:p-0 [&>code]:text-[1em]">
       {children}
     </pre>
   ),
-  code: ({ children }) => <code className="rounded-xs bg-white/[0.06] px-1 py-px font-mono text-[0.85em]">{children}</code>,
+  code: ({ children }) => <code className="bg-text/[0.06] px-1 py-px font-mono text-[0.85em]">{children}</code>,
   table: ({ children }) => (
-    <div className="scroll-quiet overflow-x-auto rounded-md border border-line">
+    <div className="scroll-quiet overflow-x-auto border border-line">
       <table className="w-full border-collapse text-left text-[0.875rem]">{children}</table>
     </div>
   ),

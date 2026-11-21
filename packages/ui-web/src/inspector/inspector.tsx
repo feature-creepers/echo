@@ -73,9 +73,9 @@ export function Inspector({ client, onOpenMemory }: { client: Client; onOpenMemo
               <button
                 type="button"
                 onClick={follow}
-                className="material shadow-float pointer-events-auto flex items-center gap-1.5 rounded-md py-1 pr-2.5 pl-2 text-label text-text-soft transition-colors hover:text-text"
+                className="material shadow-float pointer-events-auto flex items-center gap-1.5 py-1 pr-2.5 pl-2 text-label text-text-soft transition-colors hover:text-text"
               >
-                <span className="size-1.5 rounded-full bg-accent" />
+                <span className="size-1.5 bg-accent" />
                 {arrived === 0 ? 'Held · follow new events' : arrived === 1 ? 'One new event · show' : `${arrived} new events · show`}
               </button>
             </motion.div>
@@ -123,8 +123,8 @@ function EventLine({ logged, open, onToggle, onOpenMemory }: { logged: Logged; o
         aria-expanded={open}
         onClick={onToggle}
         className={cn(
-          'mx-2 flex w-[calc(100%-1rem)] items-baseline gap-2 rounded-sm px-2 py-0.5 text-left transition-colors duration-(--duration-quick) ease-soft hover:bg-white/[0.05]',
-          open && 'bg-white/[0.07]'
+          'mx-2 flex w-[calc(100%-1rem)] items-baseline gap-2 px-2 py-0.5 text-left transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.05]',
+          open && 'bg-text/[0.07]'
         )}
       >
         <span className="shrink-0 text-text-faint tabular-nums">{time.format(logged.at)}</span>
@@ -151,7 +151,7 @@ function EventWhole({ logged }: { logged: Logged }) {
         {copied === undefined ? 'Copy' : copied ? 'Copied' : 'Could not copy'}
       </Button>
       {/* An event can hold a long answer, an address or a path. */}
-      <pre className="scroll-quiet max-h-96 overflow-y-auto whitespace-pre-wrap rounded-sm bg-ground p-3 pr-16 text-text-soft leading-relaxed [overflow-wrap:anywhere]">
+      <pre className="scroll-quiet max-h-96 overflow-y-auto whitespace-pre-wrap bg-ground p-3 pr-16 text-text-soft leading-relaxed [overflow-wrap:anywhere]">
         {text}
       </pre>
     </div>

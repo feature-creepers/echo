@@ -86,18 +86,22 @@ describe('samePersonaName', () => {
 
 describe('a persona as data', () => {
   it('keeps the look it is given, whatever its accent', () => {
-    const persona = personaSchema.parse({ id: 'first', name: 'Ada', stance: 'critical', accent: 'cyan', look: 'lens' })
+    const persona = personaSchema.parse({ id: 'first', name: 'Ada', stance: 'critical', accent: 'blue', look: 'lens' })
     expect(persona.look).toBe('lens')
   })
 
   it.each([
-    ['cyan', 'hud'],
+    ['blue', 'hud'],
     ['red', 'lens']
   ] as const)('gives a persona written before looks existed the look of its accent (%s)', (accent, look) => {
     expect(personaSchema.parse({ id: 'first', name: 'Ada', stance: 'accommodating', accent }).look).toBe(look)
   })
 
+  it('reads the blue accent of a persona kept when it was called cyan', () => {
+    expect(personaSchema.parse({ id: 'first', name: 'Ada', stance: 'accommodating', accent: 'cyan' }).accent).toBe('blue')
+  })
+
   it('refuses a look it does not know', () => {
-    expect(personaSchema.safeParse({ id: 'first', name: 'Ada', stance: 'accommodating', accent: 'cyan', look: 'crystal' }).success).toBe(false)
+    expect(personaSchema.safeParse({ id: 'first', name: 'Ada', stance: 'accommodating', accent: 'blue', look: 'crystal' }).success).toBe(false)
   })
 })

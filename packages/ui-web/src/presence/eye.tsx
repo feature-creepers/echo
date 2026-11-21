@@ -1,117 +1,118 @@
-import type { Look } from '@repo/protocol'
-import { useId } from 'react'
+import { useEffect, useId, useRef } from 'react'
 import { cn } from '../primitives/cn.ts'
+import { advanceEye, type EyePose, restingEye } from './eye-motion.ts'
 import type { Mood } from './life.ts'
-
-/** Each part's animation in each mood. Only transform and opacity move, so the compositor runs them alone. */
-const RING: Record<Mood, string> = {
-  idle: 'animate-eye-breathe',
-  listening: 'animate-eye-listen opacity-100',
-  thinking: 'opacity-30',
-  working: 'opacity-45',
-  speaking: 'opacity-80',
-  asleep: 'animate-eye-breathe [animation-duration:7s]'
-}
-const PUPIL: Record<Mood, string> = {
-  idle: 'animate-eye-blink',
-  listening: 'scale-125',
-  thinking: 'opacity-80',
-  working: 'animate-eye-work',
-  speaking: 'animate-eye-speak',
-  asleep: 'animate-eye-sleep'
-}
-
-/** The circumference of the ring, which its dashes are measured against. */
-const AROUND = 2 * Math.PI * 8.5
+import { whileSeen } from './while-seen.ts'
 
 interface EyeProps {
   mood: Mood
-  look: Look
-  /** Drawn without its mood's motion: where the core cannot be drawn, the eye stands for it, at rest. */
-  still?: boolean
-  /** Its size, 20 pixels unless said. */
-  className?: string
+  /** The side of the square it is drawn in, in CSS pixels. */
+  size: number
+  /**
+   * How loud the voice heard or spoken is right now, from 0 to 1. Asked for at every frame, so the sound can move
+   * the pupil without the interface being drawn again.
+   */
+  level?: (() => number) | undefined
+  className?: string | undefined
 }
 
+/** From this size up the eye is drawn whole; under it, it keeps only its ring, its wedge and its pupil. */
+const WHOLE_FROM = 72
+/** Under this size the inner ring is left out too. */
+const INNER_FROM = 28
+
+/** How far the square rides along its line, in the drawing's units. */
+const RIDE = { x: 34, y: -15 } as const
+
+const turned = (degrees: number) => `rotate(${degrees.toFixed(2)}deg)`
+
 /**
- * The persona's mark in the composer: a ring with a pupil, the core in miniature, drawn after the persona's look so
- * the two read as one, and living as the core does in each mood. It is one picture so the pupil sits exactly in the
- * middle of its ring at every size and on every screen.
+ * The assistant's eye, in the accent around it (`--accent`): one drawing of lines and planes for every persona, which
+ * differ by the colour of its wedge. Large, it is whole: a ring, a hatched half that turns, an inner ring, the wedge,
+ * a line with a square riding it, the pupil. Small, it keeps what still reads. It is decoration for a screen reader:
+ * the name and the state written beside it say the same in words.
+ *
+ * Its parts are placed on every frame from `eye-motion.ts`, as transforms and an opacity only. Frames stop while the
+ * window is hidden or the eye is out of view; with less motion asked for it holds still, drawn as its mood rests.
  */
-export function Eye({ mood, look, still = false, className }: EyeProps) {
-  // Parts scale about their own centre, which in a drawing has to be asked for.
-  const part = '[transform-box:fill-box] origin-center transition-opacity duration-(--duration-calm) motion-reduce:animate-none'
-  const lens = look === 'lens'
-  const glow = useId()
+export function Eye({ mood, size, level, className }: EyeProps) {
+  const hatch = useId()
+  const root = useRef<SVGSVGElement>(null)
+  const sweep = useRef<SVGGElement>(null)
+  const iris = useRef<SVGCircleElement>(null)
+  const wedge = useRef<SVGPathElement>(null)
+  const square = useRef<SVGRectElement>(null)
+  const pupil = useRef<SVGCircleElement>(null)
+  const live = useRef({ mood, level })
+  live.current = { mood, level }
+  const whole = size >= WHOLE_FROM
+
+  useEffect(() => {
+    const element = root.current
+    if (!element) return
+    const place = (pose: EyePose) => {
+      element.style.opacity = pose.strength.toFixed(3)
+      if (sweep.current) sweep.current.style.transform = turned(pose.sweep)
+      if (iris.current) iris.current.style.transform = `scale(${pose.iris.toFixed(3)})`
+      if (wedge.current) wedge.current.style.transform = turned(pose.wedge)
+      if (square.current) square.current.style.transform = `translate(${(pose.ride * RIDE.x).toFixed(2)}px,${(pose.ride * RIDE.y).toFixed(2)}px)`
+      if (pupil.current) pupil.current.style.transform = `scale(${pose.pupil.toFixed(3)},${(pose.pupil * pose.lid).toFixed(3)})`
+    }
+    const still = window.matchMedia('(prefers-reduced-motion: reduce)')
+    let eye = restingEye(live.current.mood)
+    let previous = performance.now()
+    place(eye)
+    return whileSeen(
+      element,
+      (now) => {
+        const delta = Math.min(0.1, (now - previous) / 1000)
+        previous = now
+        const heard = Math.max(0, Math.min(1, live.current.level?.() ?? 0))
+        // Holding still, it is drawn as its mood rests, with nothing turning.
+        eye = still.matches ? restingEye(live.current.mood) : advanceEye(eye, live.current.mood, heard, delta)
+        place(eye)
+      },
+      () => {
+        previous = performance.now()
+      }
+    )
+  }, [])
+
+  // Every part turns and grows about the middle of the drawing, and lines keep their weight at every size.
+  const part = '[transform-origin:75px_75px] [vector-effect:non-scaling-stroke]'
   return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className={cn('size-5 overflow-visible text-accent', className)}>
-      {lens ? (
+    <svg
+      ref={root}
+      viewBox={whole ? '0 0 150 150' : '21 21 108 108'}
+      width={size}
+      height={size}
+      fill="none"
+      aria-hidden="true"
+      className={cn('pointer-events-none block shrink-0 select-none overflow-visible text-text', className)}
+    >
+      {whole && (
         <>
           <defs>
-            <radialGradient id={glow}>
-              <stop offset="0%" stopColor="currentColor" stopOpacity="0.95" />
-              <stop offset="45%" stopColor="currentColor" stopOpacity="0.4" />
-              <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
-            </radialGradient>
+            <pattern id={hatch} width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+              <line x1="0" y1="0" x2="0" y2="5" stroke="currentColor" strokeWidth="1" />
+            </pattern>
           </defs>
-          <circle
-            cx="10"
-            cy="10"
-            r="8.5"
-            fill="rgb(0 0 0 / 0.72)"
-            stroke="rgb(140 170 210)"
-            strokeOpacity={mood === 'asleep' ? 0.1 : 0.2}
-            strokeWidth="0.75"
-            className={cn(part, !still && RING[mood])}
-          />
-          <circle cx="10" cy="10" r="7" fill={`url(#${glow})`} opacity={mood === 'asleep' ? 0.35 : 0.75} className={part} />
+          {/* The hatched half lies between the two rings, so nothing has to be painted over it. */}
+          <g ref={sweep} className={part}>
+            <path d="M75 25A50 50 0 0 1 75 125L75 98A23 23 0 0 0 75 52Z" fill={`url(#${hatch})`} opacity="0.9" />
+          </g>
         </>
-      ) : (
-        // Broken in four, the gaps on the diagonals, as the instrument's rings are broken.
-        <g transform="rotate(45 10 10)">
-          <circle
-            cx="10"
-            cy="10"
-            r="8.5"
-            fill="none"
-            stroke="currentColor"
-            strokeOpacity={mood === 'asleep' ? 0.45 : 0.75}
-            strokeWidth="1"
-            strokeDasharray={`${AROUND / 4 - 1.7} 1.7`}
-            strokeDashoffset={-0.85}
-            className={cn(part, !still && RING[mood])}
-          />
-        </g>
       )}
-      {!still && (mood === 'thinking' || mood === 'working') && (
-        <circle
-          cx="10"
-          cy="10"
-          r="8.5"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.25"
-          strokeLinecap="round"
-          // A quarter of the ring, the rest of it left empty. Working, it steps round rather than glides.
-          strokeDasharray={`${AROUND / 4} ${(AROUND * 3) / 4}`}
-          className={cn(part, mood === 'working' ? 'animate-eye-step' : 'animate-eye-spin')}
-        />
+      <circle cx="75" cy="75" r="50" stroke="currentColor" strokeWidth={whole ? 1.5 : 1.25} className={part} />
+      {size >= INNER_FROM && <circle ref={iris} cx="75" cy="75" r="23" stroke="currentColor" strokeWidth="1" className={part} />}
+      <path ref={wedge} d="M75 52L98 75L75 75Z" fill="var(--accent)" className={part} />
+      {whole && (
+        <>
+          <line x1="8" y1="104" x2="142" y2="46" stroke="currentColor" strokeWidth="1" className={part} />
+          <rect ref={square} x="96" y="60" width="9" height="9" fill="var(--color-warn)" />
+        </>
       )}
-      <g className={cn(part, 'transition-transform', !still && PUPIL[mood])}>
-        {lens ? (
-          // The lens's disc: amber, with a little red round it.
-          <>
-            <circle cx="10" cy="10" r="2.6" fill="currentColor" opacity="0.9" />
-            <circle cx="10" cy="10" r="1.7" fill="rgb(255 196 72)" opacity={mood === 'asleep' ? 0.25 : 1} />
-          </>
-        ) : (
-          // The instrument's core: cool white at its heart.
-          <>
-            <circle cx="10" cy="10" r="3" fill="currentColor" />
-            <circle cx="10" cy="10" r="1.2" fill="rgb(236 250 255)" opacity={mood === 'asleep' ? 0 : 0.9} />
-          </>
-        )}
-      </g>
+      <circle ref={pupil} cx="75" cy="75" r={whole ? 5 : size >= INNER_FROM ? 7 : 11} fill="currentColor" className={part} />
     </svg>
   )
 }

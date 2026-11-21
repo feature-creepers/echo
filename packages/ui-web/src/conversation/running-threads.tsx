@@ -78,7 +78,7 @@ export function RunningThreads({
               ].filter((part) => part !== undefined)
               return (
                 <li key={thread.id} className={nested ? 'ml-[1.125rem] border-line border-l pl-1' : undefined}>
-                  <div className="flex items-center gap-1 rounded-sm hover:bg-white/[0.05]">
+                  <div className="flex items-center gap-1 hover:bg-text/[0.05]">
                     <RovingEntry
                       value={thread.id}
                       onClick={() => {
@@ -86,7 +86,7 @@ export function RunningThreads({
                         setOpen(false)
                       }}
                       title={answering ?? 'Show its work'}
-                      className="grid min-w-0 flex-1 gap-0.5 rounded-sm px-2.5 py-1.5 text-left outline-none focus-visible:bg-white/[0.07]"
+                      className="grid min-w-0 flex-1 gap-0.5 px-2.5 py-1.5 text-left outline-none focus-visible:bg-text/[0.07]"
                     >
                       <span className={nested ? 'truncate text-[0.75rem] text-text-soft' : 'truncate text-[0.8125rem] text-text'}>{thread.title}</span>
                       <span className="truncate text-label text-text-faint">{where.join(' · ')}</span>
@@ -104,7 +104,7 @@ export function RunningThreads({
                 onOpen(undefined)
                 setOpen(false)
               }}
-              className="group flex w-full items-center justify-between gap-2 rounded-sm px-2.5 py-1.5 text-left text-label text-text-soft outline-none transition-colors duration-(--duration-quick) ease-soft hover:bg-white/[0.05] hover:text-text focus-visible:bg-white/[0.07]"
+              className="group flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left text-label text-text-soft outline-none transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.05] hover:text-text focus-visible:bg-text/[0.07]"
             >
               All threads
               <GoArrow />

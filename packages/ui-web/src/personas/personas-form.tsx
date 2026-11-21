@@ -71,7 +71,7 @@ export function PersonasForm({ personas, active, submitLabel, doneLabel, onSubmi
               key={persona.id}
               style={accentStyle(persona.accent, persona.look)}
               className={cn(
-                'relative grid gap-4 rounded-lg border bg-raised/95 p-5 transition-colors duration-(--duration-calm) ease-soft',
+                'relative grid gap-4 border bg-raised/95 p-5 transition-colors duration-(--duration-calm) ease-soft',
                 answers ? 'border-accent/50 bg-accent/[0.03]' : 'border-line hover:border-line-strong'
               )}
             >
@@ -100,7 +100,7 @@ export function PersonasForm({ personas, active, submitLabel, doneLabel, onSubmi
                     change({ ...draft, active: persona.id })
                     onPick(persona.id)
                   }}
-                  className="grid size-4 cursor-pointer appearance-none place-content-center rounded-full border border-line-strong transition before:size-2 before:scale-0 before:rounded-full before:bg-accent before:transition before:content-[''] checked:border-accent checked:before:scale-100"
+                  className="grid size-4 cursor-pointer appearance-none place-content-center border border-line-strong transition before:size-2 before:scale-0 before:before:bg-accent before:transition before:content-[''] checked:border-accent checked:before:scale-100"
                 />
                 Answers by default
               </label>

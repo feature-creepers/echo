@@ -148,7 +148,7 @@ export function useDockDrag({ layer, order, drag, setDrag, settle, holding }: Do
           pointerEvents: 'none',
           willChange: 'translate, scale',
           transition: `scale ${tokens.duration.calm}ms ${tokens.ease}, box-shadow ${tokens.duration.calm}ms ${tokens.ease}, opacity ${tokens.duration.quick}ms ${tokens.ease}`,
-          boxShadow: '0 0 0 1px rgb(255 255 255 / 0.1), 0 22px 48px -16px rgb(0 0 0 / 0.85), 0 4px 12px -4px rgb(0 0 0 / 0.5)'
+          boxShadow: '0 0 0 1px rgb(235 230 218 / 0.1), 0 22px 48px -16px rgb(0 0 0 / 0.85), 0 4px 12px -4px rgb(0 0 0 / 0.5)'
         })
         root.append(picture)
         requestAnimationFrame(() => {

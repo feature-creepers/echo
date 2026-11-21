@@ -29,7 +29,7 @@ export function FullAnswer({ exchange, title, persona, onBack }: FullAnswerProps
         <button
           type="button"
           onClick={onBack}
-          className="-ml-1 flex w-fit items-center gap-1 rounded-sm px-1 py-0.5 text-text-faint text-xs transition-colors hover:text-text"
+          className="-ml-1 flex w-fit items-center gap-1 px-1 py-0.5 text-text-faint text-xs transition-colors hover:text-text"
         >
           <BackGlyph /> Transcript
         </button>

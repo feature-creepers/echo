@@ -187,8 +187,8 @@ function When({ form, set }: { form: TimingForm; set(change: Partial<TimingForm>
                   aria-pressed={on}
                   onClick={() => set({ days: on ? form.days.filter((one) => one !== day) : [...form.days, day] })}
                   className={cn(
-                    'h-7 rounded-sm px-2 text-[0.75rem] transition-colors duration-(--duration-quick) ease-soft',
-                    on ? 'bg-accent/20 text-text shadow-[inset_0_0_0_1px_rgb(255_255_255/0.14)]' : 'bg-white/[0.06] text-text-soft hover:text-text'
+                    'h-7 px-2 text-[0.75rem] transition-colors duration-(--duration-quick) ease-soft',
+                    on ? 'bg-accent/20 text-text shadow-[inset_0_0_0_1px_rgb(235_230_218/0.14)]' : 'bg-text/[0.06] text-text-soft hover:text-text'
                   )}
                 >
                   {DAY_NAMES[day]}

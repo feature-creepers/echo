@@ -13,8 +13,8 @@ interface ChoiceProps<Value extends string | number> {
 }
 
 /**
- * One of a few, as a segmented control: every option in sight, side by side in one trough, the chosen one on a
- * raised segment that slides to the next choice. The arrow keys move between them.
+ * One of a few, as a segmented control: every option in sight, side by side inside one line, the chosen one on a
+ * plane of the ink that slides to the next choice. The arrow keys move between them.
  */
 export function Choice<Value extends string | number>({ label, value, options, onChange }: ChoiceProps<Value>) {
   const group = useId()
@@ -27,7 +27,7 @@ export function Choice<Value extends string | number>({ label, value, options, o
         const option = options.find((one) => String(one.value) === chosen)
         if (option) onChange(option.value)
       }}
-      className="inline-flex max-w-full flex-wrap rounded-md bg-white/[0.06] p-0.5 shadow-[inset_0_0_0_1px_rgb(255_255_255/0.04)]"
+      className="inline-flex max-w-full flex-wrap shadow-[inset_0_0_0_1px_var(--color-line-strong)]"
     >
       {options.map((option) => (
         <SegmentedControlItem
@@ -35,21 +35,15 @@ export function Choice<Value extends string | number>({ label, value, options, o
           value={String(option.value)}
           className={(state) =>
             cn(
-              'relative h-6 rounded-sm px-3 text-xs transition-colors duration-(--duration-quick) ease-soft',
-              state.checked ? 'text-text' : 'text-text-soft hover:text-text'
+              'caps relative h-7 px-3 transition-colors duration-(--duration-quick) ease-soft',
+              state.checked ? 'text-ground' : 'text-text-soft hover:text-text'
             )
           }
         >
           {(state) => (
             <>
-              {/* The raised segment follows the choice on a spring, which a CSS transition cannot. */}
-              {state.checked && (
-                <motion.span
-                  layoutId={`${group}-chosen`}
-                  transition={glide}
-                  className="absolute inset-0 rounded-sm bg-white/[0.13] shadow-[0_1px_2px_rgb(0_0_0/0.35),inset_0_1px_0_rgb(255_255_255/0.06)]"
-                />
-              )}
+              {/* The plane follows the choice on a spring, which a CSS transition cannot. */}
+              {state.checked && <motion.span layoutId={`${group}-chosen`} transition={glide} className="absolute inset-0 bg-text" />}
               <span className="relative">{option.label}</span>
             </>
           )}

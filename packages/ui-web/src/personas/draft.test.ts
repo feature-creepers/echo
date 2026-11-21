@@ -2,7 +2,7 @@ import type { Persona } from '@repo/protocol'
 import { describe, expect, it } from 'vitest'
 import { activeIn, asTyped, choiceOf, NO_EDITS, nameIn, problemsOf } from './draft.ts'
 
-const first: Persona = { id: 'first', name: 'Ada', stance: 'accommodating', accent: 'cyan', look: 'hud' }
+const first: Persona = { id: 'first', name: 'Ada', stance: 'accommodating', accent: 'blue', look: 'hud' }
 const second: Persona = { id: 'second', name: 'Grace', stance: 'critical', accent: 'red', look: 'lens' }
 const personas = [first, second]
 

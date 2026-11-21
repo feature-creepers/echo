@@ -29,9 +29,9 @@ export function VoiceSetup({ speech }: { speech: DeviceSpeech }) {
         {readiness.models.map((model) => {
           const notice = notices?.find((known) => known.id === model.id)
           return (
-            <li key={model.id} className="grid gap-1.5 rounded-md border border-line bg-raised/95 px-4 py-3.5">
+            <li key={model.id} className="grid gap-1.5 border border-line bg-raised/95 px-4 py-3.5">
               <div className="flex items-center gap-4">
-                <span className={cn('size-2 shrink-0 rounded-full', model.installed ? 'bg-ok' : 'bg-text-faint/50')} />
+                <span className={cn('size-2 shrink-0', model.installed ? 'bg-ok' : 'bg-text-faint/50')} />
                 <span className="flex-1 text-sm">{model.name}</span>
                 <span className="text-text-soft text-xs">{model.installed ? 'Installed' : megabytes(model.bytes)}</span>
               </div>
@@ -49,14 +49,9 @@ export function VoiceSetup({ speech }: { speech: DeviceSpeech }) {
         <p className="text-sm text-text-soft">Ready. Press {talkKey ? `${describeShortcut(talkKey, mac)}, or ` : ''}the microphone, to talk.</p>
       ) : install.is === 'running' ? (
         <div className="grid gap-2">
-          <div
-            role="progressbar"
-            aria-label="The voice's download"
-            aria-valuenow={Math.round(progress * 100)}
-            className="h-1 overflow-hidden rounded-full bg-white/[0.06]"
-          >
+          <div role="progressbar" aria-label="The voice's download" aria-valuenow={Math.round(progress * 100)} className="h-1 overflow-hidden bg-text/[0.06]">
             <div
-              className="h-full origin-left rounded-full bg-accent transition-transform duration-(--duration-calm) ease-soft"
+              className="h-full origin-left bg-accent transition-transform duration-(--duration-calm) ease-soft"
               style={{ transform: `scaleX(${progress})` }}
             />
           </div>

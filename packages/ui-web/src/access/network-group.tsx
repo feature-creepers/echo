@@ -104,7 +104,7 @@ function HostList({ label, hosts, busy, onChange }: { label: string; hosts: read
       {hosts.length > 0 && (
         <ul className="flex flex-wrap gap-1.5" aria-label={label}>
           {hosts.map((host) => (
-            <li key={host} className="inline-flex h-7 items-center gap-0.5 rounded-sm bg-white/[0.07] pl-2.5 font-mono text-text text-xs">
+            <li key={host} className="inline-flex h-7 items-center gap-0.5 bg-text/[0.07] pl-2.5 font-mono text-text text-xs">
               {host}
               <IconButton label={`Remove ${host}`} disabled={busy} className="size-6" onClick={() => void onChange(hosts.filter((one) => one !== host))}>
                 <CloseGlyph />

@@ -90,7 +90,7 @@ function LevelMeter({ hearing }: { hearing: Hearing }) {
             <span
               key={index}
               style={{ height: `${height}%` }}
-              className={cn('flex-1 rounded-[1.5px] transition-colors duration-75', on ? (index > BARS * 0.86 ? 'bg-warn' : 'bg-accent') : 'bg-raised')}
+              className={cn('flex-1 transition-colors duration-75', on ? (index > BARS * 0.86 ? 'bg-warn' : 'bg-accent') : 'bg-raised')}
             />
           )
         })}
@@ -102,7 +102,7 @@ function LevelMeter({ hearing }: { hearing: Hearing }) {
         )}
         aria-live="polite"
       >
-        {words.tone === 'ok' && <span className="size-1.5 rounded-full bg-ok" />}
+        {words.tone === 'ok' && <span className="size-1.5 bg-ok" />}
         {words.text}
       </p>
     </div>

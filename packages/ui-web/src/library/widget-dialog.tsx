@@ -29,7 +29,7 @@ interface WidgetDialogProps {
 const when = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'long', year: 'numeric' })
 
 /** The look of the dialog's fields: a sunken box with a hairline. */
-const FIELD = 'h-8 rounded-md border border-line-strong bg-black/25 px-2.5 text-[0.8125rem] shadow-[inset_0_1px_1px_rgb(0_0_0/0.25)] transition-colors'
+const FIELD = 'h-8 border border-line-strong bg-black/25 px-2.5 text-[0.8125rem] shadow-[inset_0_1px_1px_rgb(0_0_0/0.25)] transition-colors'
 
 /**
  * One saved widget, open: drawn at full size and usable, beside what can be done with it. Its name and
@@ -79,7 +79,7 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
       <DialogContent
         aria-label={widget.title}
         initialFocus="content"
-        className="shadow-float fixed inset-6 m-auto flex h-fit max-h-[calc(100%-3rem)] w-[calc(100%-3rem)] max-w-4xl overflow-hidden rounded-lg bg-surface outline-none ring-1 ring-white/[0.08] transition-[opacity,translate,scale] duration-(--duration-calm) ease-soft data-starting-style:translate-y-2 data-starting-style:scale-99 data-starting-style:opacity-0 data-ending-style:translate-y-1 data-ending-style:scale-99 data-ending-style:opacity-0 data-ending-style:duration-(--duration-quick)"
+        className="shadow-float fixed inset-6 m-auto flex h-fit max-h-[calc(100%-3rem)] w-[calc(100%-3rem)] max-w-4xl overflow-hidden bg-surface outline-none ring-1 ring-text/[0.08] transition-[opacity,translate,scale] duration-(--duration-calm) ease-soft data-starting-style:translate-y-2 data-starting-style:scale-99 data-starting-style:opacity-0 data-ending-style:translate-y-1 data-ending-style:scale-99 data-ending-style:opacity-0 data-ending-style:duration-(--duration-quick)"
       >
         <div className="scroll-quiet grid min-w-0 flex-1 content-start overflow-y-auto">
           <div className="sticky top-0 z-10 flex h-10 items-center border-line border-b bg-surface/90 px-5 text-text-soft text-xs backdrop-blur-xl">
@@ -90,7 +90,7 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
           </div>
         </div>
 
-        <aside className="scroll-quiet flex w-72 shrink-0 flex-col gap-5 overflow-y-auto border-black/40 border-l bg-white/[0.025] px-4 pb-4 *:shrink-0">
+        <aside className="scroll-quiet flex w-72 shrink-0 flex-col gap-5 overflow-y-auto border-black/40 border-l bg-text/[0.025] px-4 pb-4 *:shrink-0">
           <div className="-mx-4 flex h-10 shrink-0 items-center justify-between border-line border-b pr-1.5 pl-4">
             <Eyebrow>Saved {when.format(new Date(widget.since))}</Eyebrow>
             <DialogClose
@@ -138,7 +138,7 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
                 ))}
               </datalist>
             </div>
-            <div className="flex items-center justify-between gap-3 rounded-md bg-white/[0.04] px-2.5 py-2 shadow-[inset_0_0_0_1px_rgb(255_255_255/0.05)]">
+            <div className="flex items-center justify-between gap-3 bg-text/[0.04] px-2.5 py-2 shadow-[inset_0_0_0_1px_rgb(235_230_218/0.05)]">
               <span className="grid gap-px">
                 <span className="text-[0.8125rem]">Pin to the main screen</span>
                 <span className="text-[0.6875rem] text-text-faint">Kept live beside the conversation, in your order</span>
@@ -155,7 +155,7 @@ export function WidgetDialog({ widget, collections, controls, actions, onAsk, on
             <label htmlFor={`${ids}-change`}>
               <Eyebrow>Ask for a change</Eyebrow>
             </label>
-            <div className="flex items-end gap-1.5 rounded-md border border-line-strong bg-black/25 shadow-[inset_0_1px_1px_rgb(0_0_0/0.25)] py-1.5 pr-1 pl-2.5 transition-colors focus-within:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_55%,transparent)]">
+            <div className="flex items-end gap-1.5 border border-line-strong bg-black/25 shadow-[inset_0_1px_1px_rgb(0_0_0/0.25)] py-1.5 pr-1 pl-2.5 transition-colors focus-within:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_55%,transparent)]">
               <textarea
                 id={`${ids}-change`}
                 value={change}

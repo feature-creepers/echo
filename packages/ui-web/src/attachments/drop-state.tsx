@@ -102,14 +102,14 @@ export function DropState({ over, name }: { over: boolean; name: string }) {
           transition={{ duration: DURATION.quick, ease: EASE }}
         >
           <div className="absolute inset-0 bg-ground/55" />
-          <div className="absolute inset-3 rounded-lg shadow-[inset_0_0_0_1px_rgb(255_255_255/0.14)]" />
+          <div className="absolute inset-3 shadow-[inset_0_0_0_1px_rgb(235_230_218/0.14)]" />
           <div className="absolute inset-0 flex items-center justify-center">
             <motion.div
               initial={{ scale: 0.97, y: 4 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.98 }}
               transition={{ duration: DURATION.calm, ease: EASE }}
-              className="material shadow-float grid justify-items-center gap-2.5 rounded-lg px-9 py-7 text-center"
+              className="material shadow-float grid justify-items-center gap-2.5 px-9 py-7 text-center"
             >
               <span className="text-text-soft [&_svg]:size-6">
                 <PaperclipGlyph />

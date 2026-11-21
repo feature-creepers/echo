@@ -174,7 +174,7 @@ function Allow({ widget, waiting, connections }: { widget: SavedWidget & { app: 
     controls?.session.run('widget.allow', { widget: widget.id }).catch((error: unknown) => setProblem(wordsOf(error)))
   }
   return (
-    <div className="grid gap-3 rounded-md border border-line bg-white/[0.018] p-3">
+    <div className="grid gap-3 border border-line bg-text/[0.018] p-3">
       <p className="text-sm">
         {`${widget.title} calls ${waiting.map((service) => service.name).join(' and ')} with your sign-in. Echo keeps the sign-in; the widget never sees it.`}
       </p>
@@ -242,7 +242,7 @@ function Connect({ service }: { service: Service }) {
           value={value}
           disabled={busy}
           onChange={(event) => setValue(event.target.value)}
-          className="h-8 min-w-0 flex-1 rounded-md border border-line-strong bg-black/25 px-2.5 text-sm placeholder:text-text-faint disabled:opacity-60"
+          className="h-8 min-w-0 flex-1 border border-line-strong bg-black/25 px-2.5 text-sm placeholder:text-text-faint disabled:opacity-60"
         />
         <Button type="submit" kind="secondary" size="sm" disabled={busy || value.trim() === ''}>
           {busy ? (token ? 'Connecting…' : 'Signing in…') : token ? 'Connect' : 'Sign in'}

@@ -1,16 +1,17 @@
 /**
- * Typefaces. Sentences and controls are set in the system's own face, as native apps are: San Francisco on
- * macOS, Segoe UI on Windows. Linux has no single system face, so Geist, shipped with the app, stands in.
- * The monospace face is kept for what is technical: values, code, paths, the inspector. Keys are shown in the
- * sentence face, as the system shows them in its menus.
+ * Typefaces, all shipped with the app so it reads the same on every system. Sentences and controls are set in
+ * Instrument Sans. Short titles and large figures are set in Big Shoulders: condensed, heavy, in capitals. Small
+ * labels are set in Geist Pixel, in capitals. The monospace face is kept for what is technical: values, code, paths.
  */
 export const font = {
-  sans: '-apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", "Geist Variable", system-ui, sans-serif',
-  mono: 'ui-monospace, "SF Mono", "Cascadia Mono", "Geist Mono Variable", Menlo, Consolas, monospace'
+  sans: '"Instrument Sans Variable", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif',
+  display: '"Big Shoulders Variable", Bahnschrift, "Arial Narrow", sans-serif',
+  pixel: '"Geist Pixel", "Geist Mono Variable", ui-monospace, monospace',
+  mono: '"Geist Mono Variable", ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace'
 } as const
 
 /**
- * The small labels of the interface: a group's name, a field's label, a state. In sentence case and in the
- * sentence face, a little smaller than body text, as system settings label their groups.
+ * The small labels of the interface: a group's name, a field's label, a time, a state. In capitals in the pixel
+ * face, spaced a little, smaller than body text.
  */
-export const label = { size: '0.75rem', lineHeight: '1rem', letterSpacing: '0' } as const
+export const label = { size: '0.6875rem', lineHeight: '1rem', letterSpacing: '0.04em' } as const

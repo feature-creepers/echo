@@ -23,7 +23,7 @@ export function Suggestions({ onSay }: { onSay(text: string): void }) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.12 + index * 0.05, duration: DURATION.calm, ease: EASE }}
           onClick={() => onSay(suggestion)}
-          className="h-7 rounded-md border border-line bg-surface/80 px-2.5 text-[0.8125rem] text-text-soft transition-colors duration-(--duration-quick) hover:border-line-strong hover:bg-raised hover:text-text"
+          className="h-7 border border-line bg-surface/80 px-2.5 text-[0.8125rem] text-text-soft transition-colors duration-(--duration-quick) hover:border-line-strong hover:bg-raised hover:text-text"
         >
           {suggestion}
         </motion.button>

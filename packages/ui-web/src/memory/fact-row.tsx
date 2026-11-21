@@ -54,7 +54,7 @@ export function FactRow({ fact, onEdit, onForget }: FactRowProps) {
       if (text !== '') void act(() => onEdit(text, mode.kind), 'The correction could not be saved.')
     }
     return (
-      <li className="grid gap-3 rounded-md border border-accent/45 bg-surface px-4 py-3.5">
+      <li className="grid gap-3 border border-accent/45 bg-surface px-4 py-3.5">
         <textarea
           aria-label="What it knows"
           value={mode.text}
@@ -64,7 +64,7 @@ export function FactRow({ fact, onEdit, onForget }: FactRowProps) {
           autoFocus
           onChange={(event) => setMode({ ...mode, text: event.target.value })}
           onKeyDown={(event) => keys(event, save)}
-          className="w-full resize-none rounded-sm bg-transparent text-sm text-text leading-relaxed outline-none"
+          className="w-full resize-none bg-transparent text-sm text-text leading-relaxed outline-none"
         />
         <div className="flex flex-wrap items-center gap-2 border-line border-t pt-3">
           <select
@@ -72,7 +72,7 @@ export function FactRow({ fact, onEdit, onForget }: FactRowProps) {
             value={mode.kind}
             onChange={(event) => setMode({ ...mode, kind: event.target.value as FactKind })}
             onKeyDown={(event) => keys(event)}
-            className={cn(FIELD, 'h-7 rounded-sm px-2 text-text-soft text-xs outline-none')}
+            className={cn(FIELD, 'h-7 px-2 text-text-soft text-xs outline-none')}
           >
             {FACT_KINDS.map((kind) => (
               <option key={kind} value={kind}>
@@ -96,7 +96,7 @@ export function FactRow({ fact, onEdit, onForget }: FactRowProps) {
   return (
     <li
       className={cn(
-        'group flex items-start gap-4 rounded-md border bg-raised/95 px-4 py-3.5 transition duration-(--duration-quick) ease-soft',
+        'group flex items-start gap-4 border bg-raised/95 px-4 py-3.5 transition duration-(--duration-quick) ease-soft',
         mode.is === 'forgetting' ? 'border-danger/40' : 'border-line hover:border-line-strong'
       )}
     >

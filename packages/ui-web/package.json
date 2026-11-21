@@ -14,8 +14,10 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@fontsource-variable/geist": "catalog:",
+    "@fontsource-variable/big-shoulders": "catalog:",
     "@fontsource-variable/geist-mono": "catalog:",
+    "@fontsource-variable/instrument-sans": "catalog:",
+    "@fontsource/geist-pixel": "catalog:",
     "@json-render/react": "catalog:",
     "@repo/catalog": "workspace:*",
     "@repo/client": "workspace:*",

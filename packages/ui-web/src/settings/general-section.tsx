@@ -36,10 +36,7 @@ export function GeneralSection({ productName }: { productName: string }) {
           stacked
         >
           <div className="flex items-center gap-3">
-            <code
-              className="min-w-0 flex-1 truncate rounded-md border border-line bg-ground px-3 py-2 font-mono text-text-soft text-xs"
-              title={about?.dataFolder}
-            >
+            <code className="min-w-0 flex-1 truncate border border-line bg-ground px-3 py-2 font-mono text-text-soft text-xs" title={about?.dataFolder}>
               {about?.dataFolder ?? '…'}
             </code>
             <Button disabled={!host} onClick={() => void host?.openDataFolder()}>

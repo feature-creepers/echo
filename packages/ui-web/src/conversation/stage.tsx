@@ -427,7 +427,7 @@ export function Stage({
             aria-label={listening ? 'Send' : 'Talk'}
             disabled={press === undefined}
             onClick={press}
-            className="shrink-0 rounded-full"
+            className="shrink-0"
             style={{ width: MINI_CORE, height: MINI_CORE, marginBlock: -Math.round(MINI_CORE * 0.1) }}
           />
           <span className="mt-1.5 font-semibold text-[1.0625rem] leading-tight tracking-[-0.015em]">{active.name}</span>
@@ -454,7 +454,7 @@ export function Stage({
                 exit={{ opacity: 0, transition: { duration: DURATION.quick, ease: EASE } }}
                 transition={settle}
                 onClick={mini.onFullWindow}
-                className="group mt-1 inline-flex h-6 shrink-0 items-center gap-1 rounded-sm px-1.5 text-text-faint text-xs transition-colors duration-(--duration-quick) hover:text-text-soft"
+                className="group mt-1 inline-flex h-6 shrink-0 items-center gap-1 px-1.5 text-text-faint text-xs transition-colors duration-(--duration-quick) hover:text-text-soft"
               >
                 Shown in the full window
                 <GoArrow />
@@ -678,7 +678,7 @@ function FullAnswerLink({ onOpen }: { onOpen(): void }) {
       exit={{ opacity: 0, transition: { duration: DURATION.quick, ease: EASE } }}
       transition={settle}
       onClick={onOpen}
-      className="group inline-flex h-6 shrink-0 items-center gap-1 rounded-sm px-1.5 text-text-faint text-xs transition-colors duration-(--duration-quick) hover:text-text-soft"
+      className="group inline-flex h-6 shrink-0 items-center gap-1 px-1.5 text-text-faint text-xs transition-colors duration-(--duration-quick) hover:text-text-soft"
     >
       Full answer
       <GoArrow />

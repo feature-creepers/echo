@@ -19,7 +19,7 @@ export function SearchField({ value, onChange, placeholder, label, className }: 
   return (
     <label
       className={cn(
-        'flex h-7 min-w-0 flex-1 items-center gap-2 rounded-md bg-white/[0.06] px-2.5 text-text-faint shadow-[inset_0_0_0_0.5px_rgb(255_255_255/0.08)] transition-shadow duration-(--duration-quick) focus-within:text-text-soft focus-within:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_55%,transparent)] [&_svg]:size-3.5',
+        'flex h-7 min-w-0 flex-1 items-center gap-2 px-2.5 text-text-faint shadow-[inset_0_0_0_1px_var(--color-line)] transition-shadow duration-(--duration-quick) focus-within:text-text-soft focus-within:shadow-[inset_0_0_0_1px_var(--color-text)] [&_svg]:size-3.5',
         className
       )}
     >

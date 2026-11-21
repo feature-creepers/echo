@@ -73,7 +73,7 @@ export function ActivitySection({ client, productName }: { client: Client; produ
 
   if (activity.uses.length === 0) {
     return (
-      <div className="grid gap-2 rounded-lg border border-line-strong border-dashed px-6 py-10 text-center">
+      <div className="grid gap-2 border border-line-strong border-dashed px-6 py-10 text-center">
         <p className="text-sm text-text-soft leading-relaxed">Nothing yet. Every file {productName} reads or changes, and every command it runs, shows here.</p>
         <p className="text-text-faint text-xs">Kept 30 days. A file it changed can be put back from here.</p>
       </div>
@@ -90,7 +90,7 @@ export function ActivitySection({ client, productName }: { client: Client; produ
       <ChainCheck client={client} />
 
       {days.length === 0 ? (
-        <div className="grid gap-1 rounded-lg border border-line-strong border-dashed px-6 py-8 text-center">
+        <div className="grid gap-1 border border-line-strong border-dashed px-6 py-8 text-center">
           <p className="text-sm text-text-soft">Nothing {FILTER_LABELS[filter].toLowerCase()} here.</p>
           <p className="text-text-faint text-xs">{filter === 'refused' ? 'Everything it tried was within what you gave.' : 'Try another filter.'}</p>
         </div>
@@ -98,7 +98,7 @@ export function ActivitySection({ client, productName }: { client: Client; produ
         days.map(({ day, uses }) => (
           <section key={day} aria-label={day} className="grid gap-2">
             <Eyebrow className="px-0.5 font-semibold text-text-soft">{day}</Eyebrow>
-            <ul className="divide-y divide-white/[0.06] overflow-hidden rounded-lg bg-raised/95 shadow-[inset_0_0_0_1px_rgb(255_255_255/0.06)]">
+            <ul className="divide-y divide-text/[0.06] overflow-hidden bg-raised/95 shadow-[inset_0_0_0_1px_rgb(235_230_218/0.06)]">
               {uses.map((use) => (
                 <UseRow
                   key={use.id}
@@ -160,11 +160,11 @@ function UseRow({ use, open, onToggle, undo, client, relative }: UseRowProps) {
         type="button"
         aria-expanded={open}
         onClick={onToggle}
-        className="grid w-full grid-cols-[2.75rem_6.5rem_minmax(0,1fr)_auto_0.75rem] items-center gap-3 px-4 py-2.5 text-left transition-colors duration-(--duration-quick) ease-soft hover:bg-white/[0.03]"
+        className="grid w-full grid-cols-[2.75rem_6.5rem_minmax(0,1fr)_auto_0.75rem] items-center gap-3 px-4 py-2.5 text-left transition-colors duration-(--duration-quick) ease-soft hover:bg-text/[0.03]"
       >
         <span className="text-text-faint text-xs tabular-nums">{timeOf(use.at)}</span>
         <span className="flex items-center gap-2 text-xs">
-          <span className={cn('size-1.5 shrink-0 rounded-full', TONE_DOT[decision.tone])} aria-hidden="true" />
+          <span className={cn('size-1.5 shrink-0', TONE_DOT[decision.tone])} aria-hidden="true" />
           <span className={cn(decision.tone === 'danger' ? 'text-danger' : 'text-text-soft')}>{decision.word}</span>
         </span>
         <span
@@ -193,10 +193,10 @@ function UseRow({ use, open, onToggle, undo, client, relative }: UseRowProps) {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
             transition={settle}
-            className="grid min-w-0 grid-cols-1 gap-3 border-white/[0.06] border-t bg-black/[0.12] px-4 py-3.5 pl-[4.5rem]"
+            className="grid min-w-0 grid-cols-1 gap-3 border-text/[0.06] border-t bg-black/[0.12] px-4 py-3.5 pl-[4.5rem]"
           >
             {use.command !== undefined && (
-              <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-sm bg-black/30 px-3 py-2 font-mono text-[0.75rem] text-text leading-relaxed shadow-[inset_0_0_0_1px_rgb(255_255_255/0.05)]">
+              <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all bg-black/30 px-3 py-2 font-mono text-[0.75rem] text-text leading-relaxed shadow-[inset_0_0_0_1px_rgb(235_230_218/0.05)]">
                 {use.command}
               </pre>
             )}

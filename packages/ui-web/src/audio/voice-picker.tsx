@@ -37,10 +37,10 @@ export function VoicePicker({ speech, personas, languages }: VoicePickerProps) {
         <Eyebrow className="px-0.5 font-semibold text-text-soft">Voices</Eyebrow>
         <Select<LanguageCode> label="The language of the voices" value={language} options={LANGUAGE_OPTIONS} onChange={setLanguage} className="w-44" />
       </div>
-      <ul className="divide-y divide-white/[0.06] overflow-hidden rounded-lg bg-raised/95 shadow-[inset_0_0_0_1px_rgb(255_255_255/0.06)]">
+      <ul className="divide-y divide-text/[0.06] overflow-hidden bg-raised/95 shadow-[inset_0_0_0_1px_rgb(235_230_218/0.06)]">
         {personas.map((persona) => (
           <li key={persona.id} style={accentStyle(persona.accent)} className="flex items-center gap-4 px-4 py-2.5">
-            <span className="size-2 shrink-0 rounded-full bg-accent" />
+            <span className="size-2 shrink-0 bg-accent" />
             <span className="w-32 shrink-0 truncate text-[0.8125rem]">{persona.name}</span>
             <Select
               label={`The voice of ${persona.name}`}

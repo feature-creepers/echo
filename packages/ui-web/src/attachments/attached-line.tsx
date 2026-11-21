@@ -9,7 +9,7 @@ export function AttachedLine({ attached }: { attached: Exchange['attached'] }) {
       {attached.map((one, index) => (
         <li
           key={`${one.name}-${index}`}
-          className="flex h-5 max-w-full items-center gap-1 rounded-xs bg-white/[0.05] px-1.5 text-[0.6875rem] text-text-soft [&_svg]:size-3 [&_svg]:shrink-0"
+          className="flex h-5 max-w-full items-center gap-1 bg-text/[0.05] px-1.5 text-[0.6875rem] text-text-soft [&_svg]:size-3 [&_svg]:shrink-0"
         >
           {one.kind === 'folder' ? <FolderGlyph /> : <PaperclipGlyph />}
           <span className="truncate">{one.name}</span>

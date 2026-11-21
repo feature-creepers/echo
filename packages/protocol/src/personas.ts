@@ -19,8 +19,9 @@ const stanceSchema = z.enum(STANCES)
 export type Stance = z.infer<typeof stanceSchema>
 
 /** The colour a persona shows. The values behind each name are design values, known to the renderers. */
-const ACCENTS = ['cyan', 'red'] as const
-const accentSchema = z.enum(ACCENTS)
+const ACCENTS = ['blue', 'red'] as const
+/** A persona kept before the accents were redrawn names the blue one `cyan`, which it was. */
+const accentSchema = z.preprocess((kept) => (kept === 'cyan' ? 'blue' : kept), z.enum(ACCENTS))
 export type Accent = z.infer<typeof accentSchema>
 
 /**
@@ -37,7 +38,7 @@ const lookSchema = z.enum(LOOKS)
 export type Look = z.infer<typeof lookSchema>
 
 /** The look of a persona written before personas had one: the look its accent first came with. */
-const LOOK_OF_ACCENT: Record<Accent, Look> = { cyan: 'hud', red: 'lens' }
+const LOOK_OF_ACCENT: Record<Accent, Look> = { blue: 'hud', red: 'lens' }
 
 export const personaIdSchema = z.string().min(1).max(64)
 export type PersonaId = z.infer<typeof personaIdSchema>
