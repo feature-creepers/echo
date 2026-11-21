@@ -17,7 +17,7 @@ export function VoiceSetup({ speech }: { speech: DeviceSpeech }) {
   const { settings, mac, host } = useDevice()
   const notices = useAbout(host)?.models
   const talkKey = settings.shortcuts.talkInWindow
-  if (!readiness) return <p className="text-text-faint text-xs">Looking at the voice models on this computer…</p>
+  if (!readiness) return <p className="caps text-text-faint">Looking at the voice models…</p>
 
   const missing = readiness.models.filter((model) => !model.installed)
   const total = missing.reduce((sum, model) => sum + model.bytes, 0)
@@ -25,18 +25,18 @@ export function VoiceSetup({ speech }: { speech: DeviceSpeech }) {
 
   return (
     <div className="grid gap-4">
-      <ul className="grid gap-2">
+      <ul className="divide-y divide-line border-text border-t-2">
         {readiness.models.map((model) => {
           const notice = notices?.find((known) => known.id === model.id)
           return (
-            <li key={model.id} className="grid gap-1.5 border border-line bg-raised/95 px-4 py-3.5">
-              <div className="flex items-center gap-4">
-                <span className={cn('size-2 shrink-0', model.installed ? 'bg-ok' : 'bg-text-faint/50')} />
-                <span className="flex-1 text-sm">{model.name}</span>
-                <span className="text-text-soft text-xs">{model.installed ? 'Installed' : megabytes(model.bytes)}</span>
+            <li key={model.id} className="grid gap-1.5 py-3">
+              <div className="flex items-center gap-3">
+                <span className={cn('size-2 shrink-0', model.installed ? 'bg-ok' : 'hatch border border-line-strong text-text-faint')} />
+                <span className="flex-1 text-[0.8125rem]">{model.name}</span>
+                <span className={cn('caps', model.installed ? 'text-text' : 'text-text-soft')}>{model.installed ? 'Installed' : megabytes(model.bytes)}</span>
               </div>
               {notice && (
-                <div className="pl-6">
+                <div className="pl-5">
                   <LicenceNote notice={notice} />
                 </div>
               )}
@@ -46,16 +46,21 @@ export function VoiceSetup({ speech }: { speech: DeviceSpeech }) {
       </ul>
 
       {readiness.ready ? (
-        <p className="text-sm text-text-soft">Ready. Press {talkKey ? `${describeShortcut(talkKey, mac)}, or ` : ''}the microphone, to talk.</p>
+        <p className="text-[0.8125rem] text-text-soft">Ready. Press {talkKey ? `${describeShortcut(talkKey, mac)}, or ` : ''}the microphone, to talk.</p>
       ) : install.is === 'running' ? (
         <div className="grid gap-2">
-          <div role="progressbar" aria-label="The voice's download" aria-valuenow={Math.round(progress * 100)} className="h-1 overflow-hidden bg-text/[0.06]">
+          <div
+            role="progressbar"
+            aria-label="The voice's download"
+            aria-valuenow={Math.round(progress * 100)}
+            className="h-1.5 overflow-hidden shadow-[inset_0_-1px_0_var(--color-line-strong)]"
+          >
             <div
-              className="h-full origin-left bg-accent transition-transform duration-(--duration-calm) ease-soft"
+              className="h-full origin-left bg-text transition-transform duration-(--duration-calm) ease-soft"
               style={{ transform: `scaleX(${progress})` }}
             />
           </div>
-          <span className="text-text-soft text-xs tabular-nums">
+          <span className="caps text-text-soft">
             {install.progress ? `${megabytes(install.progress.received)} of ${megabytes(install.progress.total)}` : 'Starting the download…'}
           </span>
         </div>
@@ -65,7 +70,7 @@ export function VoiceSetup({ speech }: { speech: DeviceSpeech }) {
             Download the voice · {megabytes(total)}
           </Button>
           {notices && <span className="text-text-faint text-xs">Downloading them means accepting their licences.</span>}
-          {install.is === 'failed' && <span className="text-danger text-sm">{install.reason}</span>}
+          {install.is === 'failed' && <span className="text-danger text-xs">{install.reason}</span>}
         </div>
       )}
     </div>

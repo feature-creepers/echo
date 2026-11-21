@@ -114,7 +114,7 @@ function WordsRow({ client, words }: { client: Client; words: Vocabulary }) {
           onBlur={keep}
           className={TEXT_AREA}
         />
-        <span className="text-text-faint text-xs tabular-nums">{count === 0 ? 'None yet' : `${count} of ${MAX_WORDS}`}</span>
+        <span className="caps text-text-faint">{count === 0 ? 'None yet' : `${count} of ${MAX_WORDS}`}</span>
       </div>
     </SettingRow>
   )
@@ -154,7 +154,7 @@ export function VoiceSection({ client, languages, interruptions, vocabulary, spe
           <VoicePicker speech={speech} personas={personas} languages={languages} />
         </div>
       ) : (
-        <p className="text-sm text-text-soft">This device cannot run speech models.</p>
+        <p className="caps text-text-faint">This device cannot run speech models</p>
       )}
 
       <SettingGroup title="Languages" note="On every device">

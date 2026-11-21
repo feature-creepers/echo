@@ -13,7 +13,8 @@ export function standing(harness: HarnessState): { tone: 'ok' | 'warn' | 'off'; 
   return { tone: 'ok', text: harness.account ? `Ready · ${harness.account}` : 'Ready' }
 }
 
-export const TONES = { ok: 'bg-ok', warn: 'bg-warn', off: 'bg-text-faint/50' }
+/** The mark of each standing: the ink when ready, yellow to watch, an empty square when absent. */
+export const TONES = { ok: 'bg-ok', warn: 'bg-warn', off: 'border border-line-strong' }
 
 /** Look for the AI programs again, and whether a look is under way. One that fails leaves what was last known. */
 export function useLookAgain(engines: EnginesState): { looking: boolean; look(): void } {
@@ -40,16 +41,16 @@ export function EngineRows({ engines }: { engines: EnginesState }) {
 
   return (
     <div className="grid gap-3">
-      <ul className="grid gap-2">
+      <ul className="divide-y divide-line border-text border-t-2">
         {known.harnesses.map((harness) => {
           const { tone, text } = standing(harness)
           return (
-            <li key={harness.id} className="flex items-center gap-4 border border-line bg-raised/95 px-4 py-3.5">
+            <li key={harness.id} className="flex items-center gap-3 py-3">
               <span className={cn('size-2 shrink-0', TONES[tone])} />
               <div className="grid min-w-0 flex-1 gap-0.5">
-                <span className="font-medium text-sm">
+                <span className="flex items-baseline gap-2.5 text-[0.8125rem]">
                   {harness.name}
-                  {harness.id === known.active && <span className="ml-2 font-medium text-accent text-label">In use</span>}
+                  {harness.id === known.active && <span className="caps text-text">In use</span>}
                 </span>
                 <span className="truncate text-text-soft text-xs" title={text}>
                   {text}

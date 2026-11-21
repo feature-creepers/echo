@@ -6,7 +6,7 @@ import type { DeviceSpeech } from '../audio/use-speech.ts'
 import { VoiceSetup } from '../audio/voice-setup.tsx'
 import { EngineRows } from '../conversation/engine-rows.tsx'
 import { PersonasForm } from '../personas/personas-form.tsx'
-import { Orb } from '../presence/orb.tsx'
+import { Eye } from '../presence/eye.tsx'
 import { Button } from '../primitives/button.tsx'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
 import { Kbd } from '../primitives/kbd.tsx'
@@ -43,10 +43,11 @@ export function Onboarding({ productName, personas, engines, speech, setPersonas
         <Eyebrow className="tabular-nums">
           Step {at + 1} of {steps.length}
         </Eyebrow>
-        <div className="h-px flex-1 bg-line">
+        <div className="h-1.5 flex-1 shadow-[inset_0_-1px_0_var(--color-line-strong)]">
           <motion.div
-            className="h-px bg-accent"
-            animate={{ width: `${((at + 1) / steps.length) * 100}%` }}
+            className="h-full origin-left bg-text"
+            initial={false}
+            animate={{ scaleX: (at + 1) / steps.length }}
             transition={{ duration: DURATION.slow, ease: EASE }}
           />
         </div>
@@ -65,7 +66,7 @@ export function Onboarding({ productName, personas, engines, speech, setPersonas
             {step === 'personalities' && (
               <Section
                 eyebrow="Personalities"
-                title="One assistant. Two ways to answer."
+                title="Two ways to answer"
                 lead="You call it by the name of the personality in use. Keep these names or type your own; you can change them later."
               >
                 <PersonasForm
@@ -83,7 +84,7 @@ export function Onboarding({ productName, personas, engines, speech, setPersonas
             {step === 'voice' && speech && (
               <Section
                 eyebrow="Voice"
-                title="So you can simply talk."
+                title="Just talk"
                 lead="To hear you and answer aloud, this computer runs its own speech models. Your voice never leaves it. The download happens once."
               >
                 <VoiceSetup speech={speech} />
@@ -97,7 +98,7 @@ export function Onboarding({ productName, personas, engines, speech, setPersonas
             {step === 'engine' && (
               <Section
                 eyebrow="Engine"
-                title="What it thinks with."
+                title="What it thinks with"
                 lead={`${productName} runs your own Claude Code or Codex, installed on this computer and signed in with your account through that program's own sign-in. ${productName} never sees, keeps or passes on your sign-in details, and adds no account of its own.`}
               >
                 <EngineRows engines={engines} />
@@ -127,9 +128,9 @@ function Welcome({ productName, onNext }: { productName: string; onNext(): void 
 
   return (
     <div className="flex flex-col items-center text-center">
-      <Orb size={260} mood="idle" />
-      <h1 className="mt-1 font-semibold text-4xl tracking-[-0.03em]">{productName}</h1>
-      <p className="mt-4 max-w-sm text-balance text-base text-text-soft leading-relaxed">
+      <Eye size={176} mood="idle" />
+      <h1 className="display mt-8 text-[4rem] leading-[3.5rem]">{productName}</h1>
+      <p className="mt-3 max-w-sm text-balance text-[0.9375rem] text-text-soft leading-relaxed">
         A personal assistant you talk to. It answers aloud, and shows the rest.
       </p>
       <div className="mt-8 flex items-center gap-2.5">
@@ -147,8 +148,8 @@ function Section({ eyebrow, title, lead, children }: { eyebrow: string; title: s
     <section className="grid gap-7">
       <div className="grid max-w-2xl gap-2.5">
         <Eyebrow>{eyebrow}</Eyebrow>
-        <h1 className="font-semibold text-3xl tracking-[-0.025em]">{title}</h1>
-        <p className="text-base text-text-soft leading-relaxed">{lead}</p>
+        <h1 className="display text-[2.5rem] leading-9">{title}</h1>
+        <p className="text-[0.9375rem] text-text-soft leading-relaxed">{lead}</p>
       </div>
       <div>{children}</div>
     </section>

@@ -71,13 +71,7 @@ export function ShortcutRecorder({ label, value, onRecord, onProblem, onClear }:
 
   return (
     // The field of a select, holding the keys: the same height, corners, hairline and face as the other controls.
-    <div
-      className={cn(
-        FIELD,
-        'flex w-52 items-center',
-        recording ? 'bg-accent/[0.07] shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--accent)_70%,transparent)]' : 'hover:bg-text/[0.11]'
-      )}
-    >
+    <div className={cn(FIELD, 'flex w-52 items-center', recording ? 'bg-text/[0.06] shadow-[inset_0_0_0_1px_var(--color-text)]' : 'hover:bg-text/[0.08]')}>
       <button
         type="button"
         aria-label={recording ? `${label}: press the new keys, or Escape to cancel` : `${label}: ${said || 'not set'}. Press to change.`}
@@ -91,13 +85,13 @@ export function ShortcutRecorder({ label, value, onRecord, onProblem, onClear }:
       >
         {keys.length > 0 ? (
           keys.map((key) => (
-            <Kbd key={key} className={cn('text-[0.6875rem]', recording && 'text-accent')}>
+            <Kbd key={key} className={cn(recording && 'text-text')}>
               {key}
             </Kbd>
           ))
         ) : recording ? (
-          <span className="flex items-center gap-2 text-accent">
-            <span aria-hidden="true" className="size-1.5 animate-pulse bg-accent" />
+          <span className="flex items-center gap-2 text-text">
+            <span aria-hidden="true" className="size-2 bg-text" />
             Press the keys…
           </span>
         ) : (

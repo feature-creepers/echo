@@ -38,7 +38,7 @@ export function MicrophoneSection() {
         >
           <Select label="Microphone" value={choice.value} options={choice.options} onChange={(id) => change({ microphone: choice.pick(id) })} />
         </SettingRow>
-        <div className="px-5 pt-1 pb-5">
+        <div className="py-3">
           <LevelMeter hearing={hearing} />
         </div>
       </SettingGroup>
@@ -86,23 +86,17 @@ function LevelMeter({ hearing }: { hearing: Hearing }) {
           const on = index < lit
           // The bars rise in height left to right, as a level grows.
           const height = 30 + (70 * index) / (BARS - 1)
-          return (
-            <span
-              key={index}
-              style={{ height: `${height}%` }}
-              className={cn('flex-1 transition-colors duration-75', on ? (index > BARS * 0.86 ? 'bg-warn' : 'bg-accent') : 'bg-raised')}
-            />
-          )
+          return <span key={index} style={{ height: `${height}%` }} className={cn('flex-1', on ? (index > BARS * 0.86 ? 'bg-warn' : 'bg-text') : 'bg-line')} />
         })}
       </div>
       <p
         className={cn(
           'flex items-center gap-2 text-xs',
-          words.tone === 'danger' ? 'text-danger' : words.tone === 'warn' ? 'text-warn' : words.tone === 'ok' ? 'text-ok' : 'text-text-faint'
+          words.tone === 'danger' ? 'text-danger' : words.tone === 'warn' ? 'text-warn' : words.tone === 'ok' ? 'text-text' : 'text-text-faint'
         )}
         aria-live="polite"
       >
-        {words.tone === 'ok' && <span className="size-1.5 bg-ok" />}
+        {words.tone === 'ok' && <span className="size-2 bg-ok" />}
         {words.text}
       </p>
     </div>

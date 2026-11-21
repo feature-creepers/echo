@@ -31,21 +31,18 @@ export function ModelsSection({ client, settings }: { client: Client; settings: 
 
   return (
     <div className="grid gap-10">
-      <section aria-label="AI programs" className="grid gap-2">
-        <Eyebrow className="px-0.5 font-semibold text-text-soft">AI programs</Eyebrow>
-        <div className="grid gap-3">
-          {known.harnesses.map((harness) => (
-            <HarnessCard
-              key={harness.id}
-              harness={harness}
-              inUse={harness.id === known.active}
-              onSignIn={() => run(client.engines.signIn(harness.id))}
-              onModel={(model) => run(client.session.run('engines.model.set', { harness: harness.id, model }))}
-              onEffort={(effort) => run(client.session.run('engines.effort.set', { harness: harness.id, effort }))}
-            />
-          ))}
-        </div>
-      </section>
+      <SettingGroup title="AI programs">
+        {known.harnesses.map((harness) => (
+          <HarnessRows
+            key={harness.id}
+            harness={harness}
+            inUse={harness.id === known.active}
+            onSignIn={() => run(client.engines.signIn(harness.id))}
+            onModel={(model) => run(client.session.run('engines.model.set', { harness: harness.id, model }))}
+            onEffort={(effort) => run(client.session.run('engines.effort.set', { harness: harness.id, effort }))}
+          />
+        ))}
+      </SettingGroup>
 
       {installed.length > 1 && (
         <SettingGroup title="When more than one is ready">
@@ -85,7 +82,7 @@ export function ModelsSection({ client, settings }: { client: Client; settings: 
   )
 }
 
-interface HarnessCardProps {
+interface HarnessRowsProps {
   harness: HarnessState
   inUse: boolean
   onSignIn(): void
@@ -97,7 +94,7 @@ interface HarnessCardProps {
 const AUTOMATIC = '*'
 
 /** One AI program: where it stands, the model it answers with, picked from those it offers, and how hard it reasons. */
-function HarnessCard({ harness, inUse, onSignIn, onModel, onEffort }: HarnessCardProps) {
+function HarnessRows({ harness, inUse, onSignIn, onModel, onEffort }: HarnessRowsProps) {
   const { tone, text } = standing(harness)
   const choosable = harness.installed && harness.models.length > 0
   const chosen = harness.models.find((model) => model.id === harness.model)
@@ -105,19 +102,13 @@ function HarnessCard({ harness, inUse, onSignIn, onModel, onEffort }: HarnessCar
   const effort = efforts.find((one) => one.id === harness.effort)
 
   return (
-    <section
-      aria-label={harness.name}
-      className={cn(
-        'divide-y divide-text/[0.06] overflow-hidden bg-raised/95 transition-shadow duration-(--duration-calm)',
-        inUse ? 'shadow-[inset_0_0_0_1px_rgb(235_230_218/0.11)]' : 'shadow-[inset_0_0_0_1px_rgb(235_230_218/0.06)]'
-      )}
-    >
-      <div className="flex items-center gap-3.5 px-4 py-3">
+    <section aria-label={harness.name} className="divide-y divide-line">
+      <div className="flex items-center gap-3 py-3">
         <span className={cn('size-2 shrink-0', TONES[tone])} />
         <div className="grid min-w-0 flex-1 gap-0.5">
-          <span className="flex items-center gap-2.5 font-medium text-[0.8125rem]">
+          <span className="flex items-baseline gap-2.5 text-[0.8125rem]">
             {harness.name}
-            {inUse && <Eyebrow accent>In use</Eyebrow>}
+            {inUse && <Eyebrow className="text-text">In use</Eyebrow>}
           </span>
           <span className="truncate text-text-faint text-xs" title={text}>
             {text}
@@ -132,40 +123,42 @@ function HarnessCard({ harness, inUse, onSignIn, onModel, onEffort }: HarnessCar
       </div>
 
       {choosable && (
-        <SettingRow title="Model" detail={chosen?.description}>
-          <Select
-            label={`The model ${harness.name} answers with`}
-            className="w-52"
-            value={harness.model ?? ''}
-            options={harness.models.map((model) => ({
-              value: model.id,
-              label: model.name,
-              description: model.description,
-              hint: model.id === harness.defaultModel ? 'Default' : undefined
-            }))}
-            onChange={onModel}
-          />
-        </SettingRow>
-      )}
-
-      {choosable && efforts.length > 0 && (
-        <SettingRow title="Reasoning" detail={effort?.description ?? `${harness.name} decides how hard ${chosen?.name ?? 'it'} thinks.`}>
-          <Select
-            label={`How hard ${harness.name} reasons`}
-            className="w-52"
-            value={harness.effort ?? AUTOMATIC}
-            options={[
-              ...efforts.map((one) => ({
-                value: one.id,
-                label: one.name,
-                description: one.description,
-                hint: one.id === chosen?.defaultEffort ? 'Default' : undefined
-              })),
-              ...(chosen?.defaultEffort === undefined ? [{ value: AUTOMATIC, label: 'Automatic', description: `${harness.name} decides` }] : [])
-            ]}
-            onChange={(value) => onEffort(value === AUTOMATIC ? null : value)}
-          />
-        </SettingRow>
+        // The program's own settings sit under its name, set in by the width of its mark.
+        <div className="ml-5 divide-y divide-line">
+          <SettingRow title="Model" detail={chosen?.description}>
+            <Select
+              label={`The model ${harness.name} answers with`}
+              className="w-52"
+              value={harness.model ?? ''}
+              options={harness.models.map((model) => ({
+                value: model.id,
+                label: model.name,
+                description: model.description,
+                hint: model.id === harness.defaultModel ? 'Default' : undefined
+              }))}
+              onChange={onModel}
+            />
+          </SettingRow>
+          {efforts.length > 0 && (
+            <SettingRow title="Reasoning" detail={effort?.description ?? `${harness.name} decides how hard ${chosen?.name ?? 'it'} thinks.`}>
+              <Select
+                label={`How hard ${harness.name} reasons`}
+                className="w-52"
+                value={harness.effort ?? AUTOMATIC}
+                options={[
+                  ...efforts.map((one) => ({
+                    value: one.id,
+                    label: one.name,
+                    description: one.description,
+                    hint: one.id === chosen?.defaultEffort ? 'Default' : undefined
+                  })),
+                  ...(chosen?.defaultEffort === undefined ? [{ value: AUTOMATIC, label: 'Automatic', description: `${harness.name} decides` }] : [])
+                ]}
+                onChange={(value) => onEffort(value === AUTOMATIC ? null : value)}
+              />
+            </SettingRow>
+          )}
+        </div>
       )}
     </section>
   )

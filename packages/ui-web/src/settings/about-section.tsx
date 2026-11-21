@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { useDevice } from '../device/device.tsx'
 import type { DeviceHost } from '../device/host.ts'
 import { ago } from '../memory/words.ts'
-import { Orb } from '../presence/orb.tsx'
+import { Eye } from '../presence/eye.tsx'
 import { Button } from '../primitives/button.tsx'
 import { cn } from '../primitives/cn.ts'
 import { Switch } from '../primitives/switch.tsx'
@@ -36,26 +36,33 @@ export function AboutSection({ productName }: { productName: string }) {
 
   return (
     <div className="grid gap-10">
-      <div className="flex items-center gap-6 border border-line bg-raised/95 p-5">
-        <Orb size={72} mood={updates?.is === 'checking' || updates?.is === 'downloading' ? 'thinking' : 'idle'} className="-m-2 shrink-0" />
-        <div className="grid min-w-0 flex-1 gap-1.5">
-          <div className="flex items-baseline gap-3">
-            <span className="font-medium text-2xl tracking-tight">{productName}</span>
-            <span className="font-mono text-sm text-text-soft tabular-nums">{about ? `v${about.version}` : ''}</span>
+      <div className="grid gap-3">
+        <div className="flex items-center gap-5">
+          <Eye size={64} mood={updates?.is === 'checking' || updates?.is === 'downloading' ? 'thinking' : 'idle'} className="shrink-0" />
+          <div className="grid min-w-0 flex-1 gap-1.5">
+            <div className="flex items-baseline gap-3">
+              <span className="display text-[2rem] leading-7">{productName}</span>
+              <span className="font-mono text-text-soft text-xs tabular-nums">{about ? `v${about.version}` : ''}</span>
+            </div>
+            {updates && host ? <UpdateLine state={updates} /> : <p className="text-[0.8125rem] text-text-soft">A personal assistant you talk to.</p>}
           </div>
-          {updates && host ? <UpdateLine state={updates} /> : <p className="text-sm text-text-soft">A personal assistant you talk to.</p>}
+          {updates && host && <UpdateAction state={updates} host={host} releases={about?.releases === true} />}
         </div>
-        {updates && host && <UpdateAction state={updates} host={host} releases={about?.releases === true} />}
-      </div>
 
-      {updates?.is === 'downloading' && (
-        <div className="-mt-7 h-1 overflow-hidden bg-text/[0.06]" role="progressbar" aria-label="Download" aria-valuenow={updates.percent}>
+        {updates?.is === 'downloading' && (
           <div
-            className="h-full origin-left bg-accent transition-transform duration-(--duration-slow) ease-soft"
-            style={{ transform: `scaleX(${Math.max(3, updates.percent) / 100})` }}
-          />
-        </div>
-      )}
+            className="h-1.5 overflow-hidden shadow-[inset_0_-1px_0_var(--color-line-strong)]"
+            role="progressbar"
+            aria-label="Download"
+            aria-valuenow={updates.percent}
+          >
+            <div
+              className="h-full origin-left bg-text transition-transform duration-(--duration-slow) ease-soft"
+              style={{ transform: `scaleX(${Math.max(3, updates.percent) / 100})` }}
+            />
+          </div>
+        )}
+      </div>
 
       <SettingGroup title="Updates">
         <SettingRow
@@ -67,25 +74,25 @@ export function AboutSection({ productName }: { productName: string }) {
       </SettingGroup>
 
       <SettingGroup title="Made by">
-        <div className="grid gap-4 px-5 py-5">
-          <p className="text-sm leading-relaxed">
-            <TextLink href="https://github.com/rodolphebarbanneau">Rodolphe Barbanneau</TextLink> and{' '}
-            <TextLink href="https://github.com/doudandyx">Tommy Sendra</TextLink>.
-            <span className="text-text-soft"> Free and open source, under the MIT licence.</span>
-          </p>
-          <dl className="grid grid-cols-[auto_1fr] gap-x-8 gap-y-2 font-mono text-xs">
-            {about && (
-              <>
-                <dt className="text-text-faint">Version</dt>
-                <dd className="text-text-soft tabular-nums">{about.version}</dd>
-                <dt className="text-text-faint">System</dt>
-                <dd className="text-text-soft">{SYSTEMS[about.system] ?? about.system}</dd>
-                <dt className="text-text-faint">Electron</dt>
-                <dd className="text-text-soft tabular-nums">{about.electron}</dd>
-              </>
-            )}
+        <p className="py-3 text-[0.8125rem] leading-relaxed">
+          <TextLink href="https://github.com/rodolphebarbanneau">Rodolphe Barbanneau</TextLink> and{' '}
+          <TextLink href="https://github.com/doudandyx">Tommy Sendra</TextLink>.
+          <span className="text-text-soft"> Free and open source, under the MIT licence.</span>
+        </p>
+        {about && (
+          <dl className="divide-y divide-line">
+            {[
+              ['Version', about.version],
+              ['System', SYSTEMS[about.system] ?? about.system],
+              ['Electron', about.electron]
+            ].map(([term, value]) => (
+              <div key={term} className="flex items-baseline gap-4 py-2">
+                <dt className="caps w-32 shrink-0 text-text-faint">{term}</dt>
+                <dd className="font-mono text-text-soft text-xs tabular-nums">{value}</dd>
+              </div>
+            ))}
           </dl>
-        </div>
+        )}
       </SettingGroup>
     </div>
   )
@@ -121,10 +128,13 @@ function UpdateLine({ state }: { state: UpdateState }) {
   return (
     <p
       aria-live="polite"
-      className={cn('flex items-center gap-2 text-sm leading-relaxed', tone === 'accent' ? 'text-text' : tone === 'danger' ? 'text-danger' : 'text-text-soft')}
+      className={cn(
+        'flex items-center gap-2 text-[0.8125rem] leading-relaxed',
+        tone === 'soft' ? 'text-text-soft' : tone === 'danger' ? 'text-danger' : 'text-text'
+      )}
     >
-      {tone === 'ok' && <span className="size-1.5 shrink-0 bg-ok" />}
-      {tone === 'accent' && <span className="size-1.5 shrink-0 animate-pulse bg-accent" />}
+      {tone === 'ok' && <span className="size-2 shrink-0 bg-ok" />}
+      {tone === 'accent' && <span className="size-2 shrink-0 bg-accent" />}
       {text}
     </p>
   )

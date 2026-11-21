@@ -32,14 +32,14 @@ export function VoicePicker({ speech, personas, languages }: VoicePickerProps) {
   const [language, setLanguage] = useState<LanguageCode>(() => firstLanguage(languages))
   if (!speech.ready || speech.styles.length === 0) return null
   return (
-    <div className="grid gap-3">
+    <section aria-label="Voices" className="grid gap-2">
       <div className="flex items-center justify-between gap-4">
-        <Eyebrow className="px-0.5 font-semibold text-text-soft">Voices</Eyebrow>
+        <Eyebrow>Voices</Eyebrow>
         <Select<LanguageCode> label="The language of the voices" value={language} options={LANGUAGE_OPTIONS} onChange={setLanguage} className="w-44" />
       </div>
-      <ul className="divide-y divide-text/[0.06] overflow-hidden bg-raised/95 shadow-[inset_0_0_0_1px_rgb(235_230_218/0.06)]">
+      <ul className="divide-y divide-line border-text border-t-2">
         {personas.map((persona) => (
-          <li key={persona.id} style={accentStyle(persona.accent)} className="flex items-center gap-4 px-4 py-2.5">
+          <li key={persona.id} style={accentStyle(persona.accent)} className="flex items-center gap-4 py-2.5">
             <span className="size-2 shrink-0 bg-accent" />
             <span className="w-32 shrink-0 truncate text-[0.8125rem]">{persona.name}</span>
             <Select
@@ -55,6 +55,6 @@ export function VoicePicker({ speech, personas, languages }: VoicePickerProps) {
           </li>
         ))}
       </ul>
-    </div>
+    </section>
   )
 }
