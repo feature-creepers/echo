@@ -1,4 +1,16 @@
-import { type Answer, answerIdOf, type Event, type Exchange, inConversation, type ShownView, type Topic, type TopicAnswers } from '@repo/protocol'
+import {
+  type Answer,
+  answerIdOf,
+  type Event,
+  type Exchange,
+  inConversation,
+  inProgress,
+  type ShownView,
+  type Thread,
+  type Topic,
+  type TopicAnswers,
+  type TopicProgress
+} from '@repo/protocol'
 import { z } from 'zod'
 import type { Records } from '../ports/records.ts'
 import { shorten } from '../text.ts'
@@ -41,8 +53,11 @@ export interface Topics {
   touch(topic: string): void
   /** Lines were erased from the conversation: they are no longer answers. */
   forget(turns: ReadonlySet<string>): void
-  /** The topics for the main screen, the one last active first: each with its latest answer. */
-  read(page: Page): { topics: TopicAnswers[]; more: boolean }
+  /**
+   * The topics for the main screen, the one last active first, each with its latest answer, and where the page after
+   * starts. The first page holds every topic in progress too.
+   */
+  read(page: Page): { topics: TopicAnswers[]; next?: string }
   /** A topic's answers, the latest first. Undefined when there is no such topic. */
   answers(topic: string, page: Page): (TopicAnswers & { more: boolean }) | undefined
   rename(topic: string, title: string): boolean
@@ -107,19 +122,53 @@ export function createTopics({ records, registry, screen, lines, now, newId }: T
   }
   /** The topics in order, the one last active first. */
   const byActivity = (one: Kept, other: Kept) => activeAt(other).localeCompare(activeAt(one)) || other.turn - one.turn
-  const asTopic = (topic: Kept): Topic => ({
-    id: topic.id,
-    title: topic.title,
-    at: activeAt(topic),
-    answers: topic.filed.length,
-    ...(topic.archived ? { archived: true } : {})
-  })
 
   const of = (id: string): string | undefined => {
     const thread = registry.get(id)
     if (!thread) return undefined
     if (thread.kind === 'subthread') return thread.parent === undefined ? undefined : of(thread.parent)
     return thread.topic ?? thread.id
+  }
+
+  /** The threads that work for each topic, sub-threads among them: put together when asked for, until a thread changes. */
+  let working: Map<string, Thread[]> | undefined
+  const threadsOf = (topic: string): readonly Thread[] => {
+    if (!working) {
+      working = new Map()
+      for (const thread of registry.read().threads) {
+        const id = of(thread.id)
+        if (id !== undefined) working.set(id, [...(working.get(id) ?? []), thread])
+      }
+    }
+    return working.get(topic) ?? []
+  }
+  /**
+   * How a topic stands, by what it needs of the person first (docs/SPEC.md, section 7.3): it asks them something, it
+   * is at work, an answer of it waits to be heard, or it rests. A single answer that needs nothing has no standing.
+   */
+  const progressOf = (topic: Kept): TopicProgress | undefined => {
+    const latest = topic.filed.at(-1)
+    if (!latest) return undefined
+    if (screen.asks(latest.id)) return 'asks'
+    const threads = threadsOf(topic.id)
+    if (threads.some((thread) => thread.state === 'working')) return 'working'
+    if (threads.some((thread) => thread.state === 'ready')) return 'ready'
+    return topic.filed.length > 1 ? 'quiet' : undefined
+  }
+  /** How each topic stood when it was last told: what `refresh` compares with. */
+  const told = new Map<string, TopicProgress>()
+  const asTopic = (topic: Kept): Topic => {
+    const progress = progressOf(topic)
+    if (progress === undefined) told.delete(topic.id)
+    else told.set(topic.id, progress)
+    return {
+      id: topic.id,
+      title: topic.title,
+      at: activeAt(topic),
+      answers: topic.filed.length,
+      ...(progress === undefined ? {} : { progress }),
+      ...(topic.archived ? { archived: true } : {})
+    }
   }
   /** The topic of a thread, made from the thread itself when it was recorded before there were topics. */
   const topicFor = (thread: string): Kept | undefined => {
@@ -264,9 +313,32 @@ export function createTopics({ records, registry, screen, lines, now, newId }: T
     for (const answer of emptied) unplace(answer)
     if (changed.length > 0) announce(...changed)
   }
+  /**
+   * Tell of the topics that no longer stand as they were last told: a thread started or finished, a card that asks
+   * something came or went. Only those that stood somehow, have a thread that makes them stand, or are named are
+   * looked at.
+   */
+  const refresh = (...named: (string | undefined)[]) => {
+    const lively = registry.read().threads.flatMap((thread) => (thread.state === 'parked' ? [] : (of(thread.id) ?? [])))
+    const changed = [...new Set([...told.keys(), ...lively, ...named])].filter((id): id is string => {
+      if (id === undefined) return false
+      const topic = topics.get(id)
+      return topic !== undefined && topic.filed.length > 0 && progressOf(topic) !== told.get(id)
+    })
+    if (changed.length > 0) announce(...changed)
+  }
   screen.onEvent((event) => {
-    if (event.name === 'view.shown') shown(event.view)
-    else if (event.name === 'view.cleared') cleared()
+    if (event.name === 'view.shown') {
+      shown(event.view)
+      refresh(where.get(answerIdOf(event.view)))
+    } else if (event.name === 'view.cleared') {
+      cleared()
+      refresh()
+    }
+  })
+  registry.onEvent(() => {
+    working = undefined
+    refresh()
   })
 
   return {
@@ -303,7 +375,12 @@ export function createTopics({ records, registry, screen, lines, now, newId }: T
       const listed = [...topics.values()]
         .filter((topic) => topic.filed.length > 0 && !topic.archived && (before === undefined || activeAt(topic) < before))
         .sort(byActivity)
-      return { topics: withLatest(listed.slice(0, limit)), more: listed.length > limit }
+      const page = listed.slice(0, limit)
+      const last = page.at(-1)
+      // What is in progress is there from the start, however far down the list it stands.
+      const moment = now()
+      const further = before === undefined ? listed.slice(limit).filter((topic) => inProgress(asTopic(topic), moment)) : []
+      return { topics: withLatest([...page, ...further]), ...(last !== undefined && listed.length > limit ? { next: activeAt(last) } : {}) }
     },
 
     answers(id, { limit, before }) {

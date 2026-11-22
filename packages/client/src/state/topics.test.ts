@@ -65,10 +65,10 @@ const shown = (one: ShownView): Event => ({ type: 'event', name: 'view.shown', v
 const read = (state: ReturnType<typeof followTopics>) =>
   state.current().topics.map((one) => [one.topic.id, ...one.answers.map((each) => `${each.id}:${each.views.map((card) => card.title).join('+')}`)])
 
-async function opened(topics: TopicAnswers[] = [], more = false) {
+async function opened(topics: TopicAnswers[] = [], next?: string) {
   const core = fakeSession()
   const state = followTopics(core.session)
-  await core.answer('topics.read', { topics, more })
+  await core.answer('topics.read', { topics, ...(next === undefined ? {} : { next }) })
   return { core, state }
 }
 
@@ -77,7 +77,7 @@ describe('followTopics', () => {
     const core = fakeSession()
     const state = followTopics(core.session)
     expect(state.current()).toMatchObject({ topics: [], ready: false })
-    await core.answer('topics.read', { topics: [topic('trip', [answer('t2', [view('map')])])], more: true })
+    await core.answer('topics.read', { topics: [topic('trip', [answer('t2', [view('map')])])], next: line('t2').at })
     expect(state.current()).toMatchObject({ ready: true, more: true, arrived: [] })
     expect(read(state)).toEqual([['trip', 't2:map']])
   })
@@ -87,7 +87,7 @@ describe('followTopics', () => {
     const state = followTopics(core.session)
     core.emit(changed([topic('build', [answer('t5')])]))
     core.emit(shown(view('status', { turn: 't5' })))
-    await core.answer('topics.read', { topics: [topic('trip', [answer('t2')])], more: false })
+    await core.answer('topics.read', { topics: [topic('trip', [answer('t2')])] })
     expect(read(state)).toEqual([
       ['build', 't5:status'],
       ['trip', 't2:']
@@ -165,18 +165,20 @@ describe('followTopics', () => {
     expect(state.current().topics[0]?.answers[0]?.exchange).toMatchObject({ replied: 'Here is the plan.', outcome: 'done' })
   })
 
-  it('reads the topics active before those it has, once at a time, and adds them after', async () => {
-    const { core, state } = await opened([topic('trip', [answer('t2')])], true)
+  it('reads the topics active before those it has, from where the core says, once at a time', async () => {
+    // The first page also holds a topic in progress from long before: the next page starts after the page, not after it.
+    const { core, state } = await opened([topic('trip', [answer('t5')]), topic('thesis', [answer('t1')], { progress: 'quiet' })], line('t5').at)
     void state.older()
     void state.older()
     expect(core.ran).toEqual([
       ['topics.read', {}],
-      ['topics.read', { before: line('t2').at }]
+      ['topics.read', { before: line('t5').at }]
     ])
-    await core.answer('topics.read', { topics: [topic('trip', [answer('t2')]), topic('old', [answer('t1')])], more: false })
+    await core.answer('topics.read', { topics: [topic('old', [answer('t3')]), topic('thesis', [answer('t1')], { progress: 'quiet' })] })
     expect(read(state)).toEqual([
-      ['trip', 't2:'],
-      ['old', 't1:']
+      ['trip', 't5:'],
+      ['old', 't3:'],
+      ['thesis', 't1:']
     ])
     expect(state.current().more).toBe(false)
     await state.older()

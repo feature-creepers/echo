@@ -77,17 +77,22 @@ describe('a topic', () => {
   })
 
   it('is listed the one last active first, a page at a time, and comes back to the top when asked for again', () => {
-    const { topics, thread, ask, titles } = setup()
+    const context = setup()
+    const { topics, thread, ask, titles } = context
+    const { registry } = context
     const threads = ['Taxes', 'Garden', 'Radio'].map((title) => thread(title))
-    for (const one of threads) ask(`about ${one.title}`, one.id)
+    for (const one of threads) {
+      ask(`about ${one.title}`, one.id)
+      registry.setState(one.id, 'parked')
+    }
     expect(titles()).toEqual(['Radio', 'Garden', 'Taxes'])
 
     const first = topics.read({ limit: 2 })
     expect(first.topics.map((one) => one.topic.title)).toEqual(['Radio', 'Garden'])
-    expect(first.more).toBe(true)
-    const rest = topics.read({ limit: 2, before: first.topics.at(-1)?.topic.at })
+    expect(first.next).toBe(first.topics.at(-1)?.topic.at)
+    const rest = topics.read({ limit: 2, before: first.next })
     expect(rest.topics.map((one) => one.topic.title)).toEqual(['Taxes'])
-    expect(rest.more).toBe(false)
+    expect(rest.next).toBeUndefined()
 
     ask('more about taxes', threads[0]?.id as string)
     expect(titles()).toEqual(['Taxes', 'Radio', 'Garden'])
@@ -241,6 +246,92 @@ describe('what is shown outside any thread', () => {
     topics.answered(line)
     expect(titles()).toEqual(['Thesis'])
     expect(asked(topics.of(thesis.id) as string)).toEqual(['work in my thesis folder'])
+  })
+})
+
+describe('a topic in progress', () => {
+  /** A card that asks the person something, as a questionnaire or an approval does. */
+  const question = {
+    root: 'q',
+    elements: { q: { type: 'Questions', props: { questions: [{ options: [{ label: 'Yes' }, { label: 'No' }], other: false }] }, children: [] } }
+  }
+
+  it.each<[string, (context: ReturnType<typeof setup>, thread: string) => void, string | undefined]>([
+    [
+      'a single answer that needs nothing: none, a quick question is never in progress',
+      ({ registry }, thread) => registry.setState(thread, 'parked'),
+      undefined
+    ],
+    ['at work', () => undefined, 'working'],
+    ['an answer waiting to be heard', ({ registry }, thread) => registry.setState(thread, 'ready'), 'ready'],
+    [
+      'come back to and resting',
+      ({ registry, ask }, thread) => {
+        ask('and next year?', thread)
+        registry.setState(thread, 'parked')
+      },
+      'quiet'
+    ],
+    [
+      'asking something, which comes before its being at work',
+      ({ screen, lines }, thread) => void screen.present({ title: 'Waiting for you', spec: question as never }, { thread, turn: lines.at(-1)?.turn }),
+      'asks'
+    ]
+  ])('stands by what it needs of the person first: %s', (_case, act, progress) => {
+    const context = setup()
+    const taxes = context.thread('Taxes')
+    context.ask('how much do I owe?', taxes.id)
+    act(context, taxes.id)
+    expect(context.topics.get(context.topics.of(taxes.id) as string)?.progress).toBe(progress)
+  })
+
+  it('tells when it no longer stands as it did: a thread finishes, a card that asks comes and goes', () => {
+    const { topics, registry, screen, thread, ask, events } = setup()
+    const taxes = thread('Taxes')
+    const turn = ask('how much do I owe?', taxes.id)
+    const stood = () => events.at(-1)?.topics[0]?.topic.progress
+    expect(stood()).toBe('working')
+
+    const part = registry.open({ title: 'Receipts', kind: 'subthread', parent: taxes.id })
+    registry.setState(taxes.id, 'parked')
+    // Its sub-thread still works for it.
+    expect(topics.get(topics.of(taxes.id) as string)?.progress).toBe('working')
+    events.length = 0
+    registry.setState(part.id, 'parked')
+    expect(events).toMatchObject([{ topics: [{ topic: { title: 'Taxes' } }], gone: [] }])
+    expect(stood()).toBeUndefined()
+
+    screen.present({ title: 'Which year?', spec: question as never }, { thread: taxes.id, turn })
+    expect(stood()).toBe('asks')
+    screen.clear(screen.cards(taxes.id).at(-1)?.id as string)
+    expect(stood()).toBeUndefined()
+
+    // What changes nothing tells nothing.
+    events.length = 0
+    registry.focus(taxes.id)
+    expect(events).toEqual([])
+  })
+
+  it('is on the first page however far down it stands, unless it has rested for three days', () => {
+    const { topics, registry, thread, ask } = setup()
+    const asked = (title: string, times: number, more = {}) => {
+      const one = thread(title)
+      for (let time = 0; time < times; time++) ask(`about ${title}`, one.id, more)
+      registry.setState(one.id, 'parked')
+    }
+    asked('Old thesis', 2, { at: '2026-11-01T09:00:00.000Z' })
+    asked('Camping', 2)
+    for (const title of ['Weather', 'Radio']) asked(title, 1)
+
+    const first = topics.read({ limit: 2 })
+    expect(first.topics.map((one) => [one.topic.title, one.topic.progress])).toEqual([
+      ['Radio', undefined],
+      ['Weather', undefined],
+      ['Camping', 'quiet']
+    ])
+    // The page after starts where the page ended, not after what was added to it.
+    expect(first.next).toBe(first.topics[1]?.topic.at)
+    expect(topics.read({ limit: 2, before: first.next }).topics.map((one) => one.topic.title)).toEqual(['Camping', 'Old thesis'])
   })
 })
 

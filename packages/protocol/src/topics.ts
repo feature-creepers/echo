@@ -9,6 +9,13 @@ import { type ShownView, viewSchema } from './views.ts'
  */
 export const topicIdSchema = z.string().min(1).max(64)
 
+/**
+ * How a topic in progress stands, by what it needs of the person first: it asks them something, it is at work, an
+ * answer of it waits to be heard, or it rests.
+ */
+export const TOPIC_PROGRESS = ['asks', 'working', 'ready', 'quiet'] as const
+export type TopicProgress = (typeof TOPIC_PROGRESS)[number]
+
 export const topicSchema = z.object({
   id: topicIdSchema,
   /** What it is about, in a few words. */
@@ -17,10 +24,26 @@ export const topicSchema = z.object({
   at: z.string(),
   /** How many answers it has. */
   answers: z.number().int().nonnegative(),
+  /**
+   * How it stands, when it can be in progress (`inProgress`): one the person came back to, or one that asks them
+   * something, is at work or has an answer waiting. Left out for a single answer that needs nothing more: a quick
+   * question is never in progress.
+   */
+  progress: z.enum(TOPIC_PROGRESS).optional(),
   /** Put away by the person: it leaves the main screen. Work on it, or asking for it again, brings it back. */
   archived: z.boolean().optional()
 })
 export type Topic = z.infer<typeof topicSchema>
+
+/** How long a topic stays in progress after it was last active, unless it is at work: three days. */
+const IN_PROGRESS_MS = 3 * 24 * 60 * 60_000
+
+/**
+ * Whether a topic is in progress at a moment (docs/SPEC.md, section 7.3): what the person is working on with the
+ * assistant, as opposed to what was asked once. Nobody marks it: it follows from what happens in the topic.
+ */
+export const inProgress = (topic: Topic, now: Date): boolean =>
+  topic.progress !== undefined && (topic.progress === 'working' || now.getTime() - new Date(topic.at).getTime() < IN_PROGRESS_MS)
 
 /**
  * Identifies an answer for good: its turn. What is shown outside a turn is an answer of its own: a saved widget the

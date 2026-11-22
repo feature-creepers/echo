@@ -7,10 +7,13 @@ import { type CSSProperties, type ReactNode, useCallback, useEffect, useMemo, us
 import { AccessIndicator } from '../access/access-indicator.tsx'
 import { type Dropped, DropState, useWindowDrop } from '../attachments/drop-state.tsx'
 import { useAttachments } from '../attachments/use-attachments.ts'
+import { playCue } from '../audio/cues.ts'
+import { findDevice } from '../audio/devices.ts'
 import type { SpeechEngine } from '../audio/engine.ts'
 import { useTalk } from '../audio/use-talk.ts'
 import { keyPress, useDevice } from '../device/device.tsx'
 import { useShownPresence } from '../device/presence.ts'
+import { useNow } from '../hub/use-now.ts'
 import { DOCK_ROOM } from '../library/pinned-docks.tsx'
 import { usePlayer } from '../media/player-provider.tsx'
 import { refusalCopy } from '../personas/copy.ts'
@@ -29,7 +32,9 @@ import { EngineIndicator } from './engine-indicator.tsx'
 import { GoArrow } from './go-arrow.tsx'
 import { InputLine } from './input-line.tsx'
 import { moodOf, moodWord } from './mood.ts'
-import { ReadyTopics } from './ready-topics.tsx'
+import { latestLine, topicOf, topicsNow } from './now.ts'
+import { HUB_WIDTH, NowHub } from './now-hub.tsx'
+import { NowStrip, type NowTab, NowTabs } from './now-tabs.tsx'
 import { RunningThreads } from './running-threads.tsx'
 import { Caption, OneLine } from './stage-caption.tsx'
 import { Suggestions } from './suggestions.tsx'
@@ -74,6 +79,9 @@ const EYE = { alone: 200, home: 150, bar: 26, mini: 136 } as const
 /** The column the answers, the bar and the composer share, so their edges line up. */
 const COLUMN = { maxWidth: FEED.most } as const
 
+/** The room home keeps on each side, in pixels. */
+const HOME_SIDE = 32
+
 /** The width of what is said under the eye, and of what is offered there. */
 const SAID = 'max-w-[45rem]'
 
@@ -91,6 +99,9 @@ const AT_TOP = 8
 
 /** How much of a topic must still show under the bar, in pixels, for it to be the one in front: that, or half of it. */
 const FRONT_SHOWS = 96
+
+/** How long a topic whose answer waited must stay in front, in milliseconds, for the answer to count as seen. */
+const SEEN_AFTER_MS = 1500
 
 /** How far from the end of the topics read, in pixels, the ones before them are read. */
 const READ_AHEAD = 800
@@ -137,9 +148,11 @@ const still = () => typeof matchMedia === 'function' && matchMedia('(prefers-red
 
 /**
  * The main screen (docs/SPEC.md, section 13.2): one page that scrolls. At its top, home: the assistant's eye, its
- * name, what it is doing and what it is saying. Under it the topics, the one last active first, each an island that
- * shows its latest answer. Scrolled past home, the eye shrinks into a bar that stays at the top. The line to talk to
- * it stays at the bottom, and names the topic in front of the person, which what they say next is probably about.
+ * name, what it is doing and what it is saying, and around the eye the Now zone, the topics in progress. Under it the
+ * topic the person is on, then the others, the one last active first, each an island that shows its latest answer.
+ * Scrolled past home, the eye shrinks into a bar that stays at the top, the topics in progress with it. The line to
+ * talk to it stays at the bottom, and names the topic in front of the person, which what they say next is probably
+ * about.
  */
 export function Stage({
   client,
@@ -165,12 +178,40 @@ export function Stage({
   const streaming = topics.length > 0
   /** The cards on screen: those of each topic's latest answer. */
   const cards = useMemo(() => topics.flatMap((one) => one.answers[0]?.views ?? []), [topics])
-  const names = useMemo(() => topics.map((one) => one.topic), [topics])
   const earlier = useCallback((topic: string) => client.topics.earlier(topic), [client])
   const versions = useVersions(topics, earlier)
   const threads = useFollowed(client.threads)
   const asleep = useFollowed(client.memory.asleep)
-  const ready = threads.threads.filter((thread) => thread.state === 'ready')
+
+  // The Now zone: the topics in progress, what needs the person first, each numbered by its place.
+  const moment = useNow()
+  const tabs = useMemo<NowTab[]>(
+    () => topicsNow(topics, moment).map((one, at) => ({ topic: one.topic, number: at + 1, line: latestLine(one.answers[0]) })),
+    [topics, moment]
+  )
+  /** The topic in progress the person picked, until the conversation moves on to another thread. */
+  const [picked, setPicked] = useState<string>()
+  const focused = topicOf(
+    threads.threads.find((thread) => thread.id === threads.focus),
+    threads.threads
+  )
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the conversation moving on is what takes the pick away
+  useEffect(() => setPicked((was) => (was === focused ? was : undefined)), [focused])
+  /**
+   * The topic that leads the page, under the Now zone: the one picked, else the one the conversation is on while it
+   * is the last one active, else the first in progress, which is what needs the person most. With nothing in
+   * progress there is no Now zone, and the topics simply follow each other.
+   */
+  const lead = useMemo(() => {
+    if (tabs.length === 0) return undefined
+    if (tabs.some((tab) => tab.topic.id === picked)) return picked
+    return focused !== undefined && topics[0]?.topic.id === focused ? focused : tabs[0]?.topic.id
+  }, [tabs, picked, focused, topics])
+  const ordered = useMemo(() => {
+    const first = topics.find((one) => one.topic.id === lead)
+    return first ? [first, ...topics.filter((one) => one !== first)] : topics
+  }, [topics, lead])
+  const names = useMemo(() => ordered.map((one) => one.topic), [ordered])
   /** The threads at work, behind or on the stage: each goes on while the person asks for something else. */
   const working = threads.threads.filter((thread) => thread.state === 'working').length
   const [problem, setProblem] = useState<string>()
@@ -190,6 +231,15 @@ export function Stage({
   // The page that scrolls, its home, and what the person has in front of them on it.
   const scroller = useRef<HTMLDivElement | null>(null)
   const home = useRef<HTMLElement | null>(null)
+  // The room home has for the hub and the column for its tabs, kept current.
+  const [room, setRoom] = useState<number>(HUB_WIDTH)
+  useEffect(() => {
+    const element = home.current
+    if (!element) return
+    const observer = new ResizeObserver(() => setRoom(element.clientWidth - 2 * HOME_SIDE))
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
   const [past, setPast] = useState(false)
   const [front, setFront] = useState<string>()
   /** The topic the person said their words are not about: its chip stays away until another topic is in front. */
@@ -218,9 +268,21 @@ export function Stage({
   }, [covered])
   // Topics coming and going change what is in front without a scroll.
   useEffect(look, [look, topics])
-  const about = front === undefined || front === notAbout ? undefined : names.find((topic) => topic.id === front)
+  // What is said is probably about the topic in front; at the very top, about the one the person picked, if any.
+  const facing = front ?? (picked !== undefined && picked === lead ? picked : undefined)
+  const about = facing === undefined || facing === notAbout ? undefined : names.find((topic) => topic.id === facing)
   const aboutId = useRef<string | undefined>(undefined)
   aboutId.current = about?.id
+
+  // An answer that waited counts as seen once its topic has stood in front of the person for a moment.
+  useEffect(() => {
+    const waiting = threads.threads.filter((thread) => thread.state === 'ready' && topicOf(thread, threads.threads) === front)
+    if (front === undefined || waiting.length === 0) return
+    const timer = window.setTimeout(() => {
+      for (const thread of waiting) void client.threads.dismiss(thread.id).catch(() => undefined)
+    }, SEEN_AFTER_MS)
+    return () => window.clearTimeout(timer)
+  }, [front, threads.threads, client])
 
   /** Bring a topic's island under the bar. */
   const goTo = useCallback(
@@ -228,11 +290,35 @@ export function Stage({
       const area = scroller.current
       const island = area?.querySelector<HTMLElement>(`[data-topic="${CSS.escape(topic)}"]`)
       if (!area || !island) return
-      const top = area.scrollTop + island.getBoundingClientRect().top - area.getBoundingClientRect().top - covered() - 8
+      // The island that leads comes right under the bar, so nothing of the tabs over it shows; any other keeps a gap.
+      const leads = island.parentElement?.firstElementChild === island && island.parentElement.previousElementSibling?.tagName === 'NAV'
+      const top = area.scrollTop + island.getBoundingClientRect().top - area.getBoundingClientRect().top - covered() - (leads ? 0 : 8)
       area.scrollTo({ top, behavior: still() ? 'auto' : 'smooth' })
     },
     [covered]
   )
+
+  /**
+   * Pick a topic in progress: its island leads the page, and what is said next is probably about it. An answer of it
+   * that waited is said now. Scrolled past home, its island is brought under the bar.
+   */
+  const [going, setGoing] = useState<string>()
+  const pick = useCallback(
+    (topic: string) => {
+      setPicked(topic)
+      setNotAbout(undefined)
+      const waiting = threads.threads.find((thread) => thread.state === 'ready' && topicOf(thread, threads.threads) === topic)
+      if (waiting) void client.threads.focus(waiting.id).catch(() => undefined)
+      if (past) setGoing(topic)
+    },
+    [threads.threads, client, past]
+  )
+  // Once its island leads, it is gone to.
+  useEffect(() => {
+    if (going === undefined || ordered[0]?.topic.id !== going) return
+    goTo(going)
+    setGoing(undefined)
+  }, [going, ordered, goTo])
 
   const say = useCallback(
     (text: string, about?: string) => {
@@ -266,6 +352,20 @@ export function Stage({
   )
   // Files and folders dropped anywhere on the main screen wait in the composer. A folder needs the desktop, which knows where it is.
   const device = useDevice()
+  // A topic whose answer starts waiting comes with a soft sound when answers are heard on this device, for a person
+  // looking elsewhere. Those already waiting when the window opens make none.
+  const waiting = tabs.flatMap((tab) => (tab.topic.progress === 'ready' ? [tab.topic.id] : [])).join(' ')
+  const heardWaiting = useRef<string | undefined>(undefined)
+  const { aloud } = device.settings.voice
+  const { speaker } = device.settings
+  useEffect(() => {
+    if (!shown.ready) return
+    const before = heardWaiting.current
+    heardWaiting.current = waiting
+    if (before === undefined || !aloud || waiting === '') return
+    const known = new Set(before.split(' '))
+    if (waiting.split(' ').some((id) => !known.has(id))) void findDevice(speaker, 'audiooutput').then((sink) => playCue('ready', sink))
+  }, [waiting, shown.ready, aloud, speaker])
   const dropping = useWindowDrop((dropped: Dropped) => {
     // Mini has no composer for them to wait in.
     if (inMini) return
@@ -531,15 +631,10 @@ export function Stage({
   const captioned = line !== 'nothing' && !(resting && answered)
   // The last reply's full answer, when its thread wrote one and no answer below offers it.
   const written = last?.written !== undefined && !failed && !problem && !answered ? last.turn : undefined
-  const readyTopics =
-    ready.length > 0 ? (
-      <ReadyTopics
-        ready={ready}
-        exchanges={channel.exchanges}
-        onFocus={(thread) => void client.threads.focus(thread).catch(() => undefined)}
-        onDismiss={(thread) => void client.threads.dismiss(thread).catch(() => undefined)}
-      />
-    ) : undefined
+  // The hub needs its width; in a narrower window the Now zone is the eye and the tabs alone.
+  const hub = tabs.length > 0 && room >= HUB_WIDTH
+  // While something is being said or has gone wrong, the bar says it; else it holds the topics in progress.
+  const telling = speaking.sentence !== undefined || running || failed !== undefined || problem !== undefined
   const switchPersona = () => {
     if (other) onSwitch(other.id).catch(() => setProblem(refusalCopy('failed')))
   }
@@ -570,8 +665,14 @@ export function Stage({
             <span className="display text-[1.375rem] leading-none">{active.name}</span>
           </button>
           <MoodWord mood={mood} word={word} />
-          <div className="flex min-w-0 flex-1 items-center border-line border-l pl-3" aria-live="polite">
-            {captioned && <OneLine>{(whole) => caption('small', whole ? undefined : 1)}</OneLine>}
+          <div className="flex min-w-0 flex-1 items-stretch self-stretch border-line border-l" aria-live="polite">
+            {tabs.length > 0 && !telling ? (
+              <NowTabs tabs={tabs} selected={lead} picked={picked} onPick={pick} />
+            ) : (
+              <div className="flex min-w-0 flex-1 items-center pl-3">
+                {captioned && <OneLine>{(whole) => caption('small', whole ? undefined : 1)}</OneLine>}
+              </div>
+            )}
           </div>
         </div>
       </motion.div>
@@ -584,13 +685,24 @@ export function Stage({
         >
           {/* Fine dots under home, fading out where the answers start. */}
           <span aria-hidden="true" className="dot-ground pointer-events-none absolute inset-0 [mask-image:linear-gradient(to_bottom,black_45%,transparent)]" />
-          <span className="relative grid place-items-center">
-            {/* The eye stands on a disc of the ground, so no dot runs under its lines. */}
-            <span aria-hidden="true" className="-inset-3.5 absolute bg-ground [border-radius:50%]" />
-            <span className="relative">{eye(streaming ? EYE.home : EYE.alone)}</span>
-          </span>
-          <h1 className="display relative mt-3 text-[2.75rem] leading-[2.5rem]">{active.name}</h1>
-          <MoodWord mood={mood} word={word} className="relative mt-1.5" />
+          {hub ? (
+            <div className="relative">
+              <NowHub tabs={tabs} selected={lead} picked={picked} onPick={pick} eye={eye}>
+                <h1 className="display text-lg leading-4">{active.name}</h1>
+                <MoodWord mood={mood} word={word} />
+              </NowHub>
+            </div>
+          ) : (
+            <>
+              <span className="relative grid place-items-center">
+                {/* The eye stands on a disc of the ground, so no dot runs under its lines. */}
+                <span aria-hidden="true" className="-inset-3.5 absolute bg-ground [border-radius:50%]" />
+                <span className="relative">{eye(streaming ? EYE.home : EYE.alone)}</span>
+              </span>
+              <h1 className="display relative mt-3 text-[2.75rem] leading-[2.5rem]">{active.name}</h1>
+              <MoodWord mood={mood} word={word} className="relative mt-1.5" />
+            </>
+          )}
           {(captioned || written !== undefined) && (
             <div className={cn('relative mt-5 flex w-full flex-col items-center gap-1.5 text-center', SAID)}>
               <div className="flex w-full justify-center" aria-live="polite">
@@ -605,26 +717,21 @@ export function Stage({
               </AnimatePresence>
             </div>
           )}
-          {readyTopics ? (
-            <div className={cn('relative mt-5 flex w-full justify-center', SAID)}>{readyTopics}</div>
-          ) : (
-            // Until the person has said anything, a few things to try.
-            !streaming &&
-            !noEngine &&
-            !running &&
-            !speaking.sentence &&
-            channel.exchanges.every((exchange) => exchange.trigger !== undefined) && (
-              <div className="relative mt-4">
-                <Suggestions onSay={say} />
-              </div>
-            )
+          {/* Until the person has said anything, a few things to try. */}
+          {!streaming && !noEngine && !running && !speaking.sentence && channel.exchanges.every((exchange) => exchange.trigger !== undefined) && (
+            <div className="relative mt-4">
+              <Suggestions onSay={say} />
+            </div>
           )}
         </section>
         {streaming && (
           <div style={{ paddingInline: side, paddingBottom: composerRoom + 24 }}>
             <div className="mx-auto w-full" style={COLUMN}>
+              {tabs.length > 0 && <NowStrip tabs={tabs} selected={lead} picked={picked} onPick={pick} narrow={room < FEED.stacked} />}
               <TopicFeed
-                topics={topics}
+                topics={ordered}
+                lead={lead}
+                moment={moment}
                 stepped={versions.stepped}
                 onStep={(topic, way) => void step(topic, way)}
                 arrived={shown.arrived}
@@ -645,7 +752,14 @@ export function Stage({
           </div>
         )}
       </motion.div>
-      {streaming && names.length > 1 && <TopicIndex topics={names} front={front} onGo={goTo} />}
+      {streaming && names.length > 1 && (
+        <TopicIndex
+          now={tabs.map((tab) => tab.topic)}
+          topics={names.filter((topic) => tabs.every((tab) => tab.topic.id !== topic.id))}
+          front={front ?? lead}
+          onGo={(topic) => (tabs.some((tab) => tab.topic.id === topic) ? pick(topic) : goTo(topic))}
+        />
+      )}
 
       {/* The composer stays at the bottom, on the ground: the answers end above it. */}
       <div ref={composerBox} className="pointer-events-none absolute inset-x-0 bottom-0 z-20" style={{ paddingInline: side - 8 }}>

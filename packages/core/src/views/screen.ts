@@ -66,6 +66,8 @@ export interface Screen {
   of(answers: readonly string[]): Map<string, ShownView[]>
   /** Whether an answer has a card. */
   has(answer: string): boolean
+  /** Whether an answer has a card that asks the person something: a question to answer, an approval to give. */
+  asks(answer: string): boolean
   /** Every view a thread showed, oldest first, from the records. */
   history(thread: string): ShownView[]
   /** Remove a card from its answer, for good. */
@@ -79,7 +81,12 @@ interface Slot {
   record: string
   card: string | undefined
   widget: string | undefined
+  /** It asks the person something. */
+  asks: boolean
 }
+
+/** Whether a view asks the person something: it holds a questionnaire, which is also how an approval is asked for. */
+const asking = (view: ShownView) => Object.values(view.spec.elements).some((element) => element.type === 'Questions')
 
 /**
  * Whether a clearing recorded before answers were kept for good is one to forget: the cards of side questions left by
@@ -125,7 +132,7 @@ export function createScreen({ records, newId }: ScreenOptions): Screen {
     // A card brought up to date in a later turn is a card of that turn's answer.
     if (answerOf.get(view.id) !== answer) drop(view.id)
     const before = slots.get(answer) ?? []
-    const after = withCard(before, { id: view.id, record, card: view.card, widget: view.widget })
+    const after = withCard(before, { id: view.id, record, card: view.card, widget: view.widget, asks: asking(view) })
     for (const slot of before) if (!after.includes(slot) && slot.id !== view.id) answerOf.delete(slot.id)
     slots.set(answer, after)
     answerOf.set(view.id, answer)
@@ -219,6 +226,8 @@ export function createScreen({ records, newId }: ScreenOptions): Screen {
     of,
 
     has: (answer) => slots.has(answer),
+
+    asks: (answer) => slots.get(answer)?.some((slot) => slot.asks) === true,
 
     history(thread) {
       const views: ShownView[] = []

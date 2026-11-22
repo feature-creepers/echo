@@ -7,11 +7,13 @@ const nothing = z.object({})
 export const topicCommands = {
   /**
    * Read the topics for the main screen, the one last active first, a page at a time: each with its latest answer.
-   * With `before`, those last active before that moment. Topics put away are left out.
+   * With `before`, those last active before that moment. The first page also holds every topic in progress, however
+   * long ago it was active, so what is being worked on is there from the start. `next` is the `before` of the page
+   * after this one, left out at the end. Topics put away are left out.
    */
   'topics.read': {
     input: z.object({ limit: z.number().int().min(1).max(50).default(12), before: z.string().min(1).max(40).optional() }),
-    output: z.object({ topics: z.array(topicAnswersSchema), more: z.boolean() })
+    output: z.object({ topics: z.array(topicAnswersSchema), next: z.string().optional() })
   },
 
   /** Read a topic's answers, the latest first, a page at a time: with `before`, those before that answer. */

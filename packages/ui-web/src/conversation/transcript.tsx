@@ -6,7 +6,7 @@ import { accentStyle } from '../styles/accent.ts'
 import { useFollowLatest } from './follow-latest.ts'
 import { GoArrow } from './go-arrow.tsx'
 import { LatestButton } from './latest-button.tsx'
-import { headingOf } from './ready-topics.tsx'
+import { headingOf } from './now.ts'
 import { whoAsked } from './who-asked.ts'
 
 interface TranscriptProps {

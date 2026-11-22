@@ -135,13 +135,16 @@ export function followTopics(session: Session): TopicsState {
     early?.push(event as TopicEvent)
     apply(event as TopicEvent)
   })
+  /** Where the page after those read starts: the core says, since the first page also holds what is in progress. */
+  let next: string | undefined
   session.run('topics.read', {}).then(
-    ({ topics, more }) => {
+    ({ topics, next: after }) => {
       // The read is the screen as the core had it when it read it, which may be before or after an event that arrived
       // meanwhile. Those events are applied again on top of it: applying one twice changes nothing.
       const heard = early ?? []
       early = undefined
-      state.set({ topics, more, ready: true, arrived: [] })
+      next = after
+      state.set({ topics: inOrder(topics), more: after !== undefined, ready: true, arrived: [] })
       for (const event of heard) apply(event)
     },
     () => {
@@ -157,14 +160,14 @@ export function followTopics(session: Session): TopicsState {
     subscribe: state.subscribe,
 
     older() {
-      const last = state.current().topics.at(-1)
-      if (!last || !state.current().more) return Promise.resolve()
+      if (next === undefined) return Promise.resolve()
       reading ??= session
-        .run('topics.read', { before: last.topic.at })
-        .then(({ topics, more }) => {
+        .run('topics.read', { before: next })
+        .then(({ topics, next: after }) => {
           const shown = state.current()
           const known = new Set(shown.topics.map((one) => one.topic.id))
-          state.set({ ...shown, topics: [...shown.topics, ...topics.filter((one) => !known.has(one.topic.id))], more })
+          next = after
+          state.set({ ...shown, topics: inOrder([...shown.topics, ...topics.filter((one) => !known.has(one.topic.id))]), more: after !== undefined })
         })
         .finally(() => {
           reading = undefined

@@ -38,6 +38,13 @@ export interface Corrections {
 interface TopicFeedProps {
   /** The topics to show, the one last active first, each with the answers of it read so far. */
   topics: readonly TopicAnswers[]
+  /**
+   * The topic that leads the page, first of the topics: the one in progress the person is on, right under the Now
+   * zone's rule. The others follow it as the chronology, under "Earlier".
+   */
+  lead?: string | undefined
+  /** The time now, to say which day each topic was last active. */
+  moment: Date
   /** The answer each topic shows, when the person stepped away from its latest. */
   stepped: Readonly<Record<string, Stepped>>
   /** Step a topic to an earlier answer (1) or back to a later one (-1). */
@@ -61,6 +68,17 @@ const SWIPE = { travel: 70, rest: 450 } as const
 /** How many other topics an answer or a topic is offered to go to: the ones last active. */
 const OFFERED = 8
 
+/** The day a topic was last active, as the chronology's sections name it: "Today", "Yesterday", then the date. */
+export function dayWords(iso: string, now: Date, locale?: string): string {
+  const at = new Date(iso)
+  if (Number.isNaN(at.getTime())) return ''
+  const day = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
+  const days = Math.round((day(now) - day(at)) / 86_400_000)
+  if (days <= 0) return 'Today'
+  if (days === 1) return 'Yesterday'
+  return at.toLocaleDateString(locale, { day: 'numeric', month: 'short', ...(at.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }) })
+}
+
 /** What a topic made of one answer is called until the person names it: what was asked, cut short. */
 const namedAfter = (answer: Answer) => {
   const words = (answer.exchange?.said || answer.views[0]?.title || 'New topic').replace(/\s+/g, ' ').trim()
@@ -78,10 +96,12 @@ function scrollsSideways(from: EventTarget, within: HTMLElement): boolean {
  * The topics of the conversation, one under the other, the one last active first (docs/SPEC.md, section 13.2). Each
  * is an island, bare on the ground: its name, when its answer was asked for and in what words, the way through its
  * versions, what the assistant said as its headline, then its cards side by side on rows of twelve columns. Each
- * answer is a version of its topic: the latest shows, the earlier ones are a step to the left. A rule of the full ink
- * stands over the topic last active, a hairline over the others.
+ * answer is a version of its topic: the latest shows, the earlier ones are a step to the left.
+ *
+ * The topic that leads stands first, under the Now zone. The others are the chronology, in sections by the day each was
+ * last active, each section under its day's name; a hairline parts the islands of one day.
  */
-export function TopicFeed({ topics, stepped, onStep, arrived, attended, actions, onRemove, describe, corrections }: TopicFeedProps) {
+export function TopicFeed({ topics, lead, moment, stepped, onStep, arrived, attended, actions, onRemove, describe, corrections }: TopicFeedProps) {
   // The feed's own width says whether cards stand side by side, whatever narrows it: the window, the side sheet.
   const [box, setBox] = useState<HTMLDivElement | null>(null)
   const [stacked, setStacked] = useState(false)
@@ -92,15 +112,39 @@ export function TopicFeed({ topics, stepped, onStep, arrived, attended, actions,
     return () => observer.disconnect()
   }, [box])
   const names = useMemo(() => topics.map((one) => one.topic), [topics])
+  // Each topic with the day that opens its section, when it is the first of that day in the chronology.
+  let day: string | undefined
+  const placed = topics.map((one, index) => {
+    if (index === 0 && one.topic.id === lead) return { one, opens: undefined, ruled: false }
+    const its = dayWords(one.topic.at, moment)
+    const opens = its === day ? undefined : { day: its, first: day === undefined }
+    day = its
+    return { one, opens, ruled: opens === undefined }
+  })
 
   return (
     <div ref={setBox} className="grid w-full min-w-0 grid-cols-1">
       <AnimatePresence initial={false}>
-        {topics.map((one, index) => (
+        {placed.flatMap(({ one, opens, ruled }) => [
+          opens && (
+            <motion.div
+              key={`day:${opens.day}`}
+              layout="position"
+              transition={glide}
+              // Under the Now zone the chronology is what came earlier; alone, its first section carries the page's rule.
+              className={cn(
+                'caps flex items-center gap-2.5 pt-3',
+                opens.first && lead === undefined ? 'border-text border-t-[3px]' : 'border-line-strong border-t'
+              )}
+            >
+              {opens.first && lead !== undefined && <span className="text-text">Earlier</span>}
+              <span className="text-text-soft">{opens.day}</span>
+            </motion.div>
+          ),
           <Island
             key={one.topic.id}
             topic={one}
-            first={index === 0}
+            ruled={ruled}
             stepped={stepped[one.topic.id]}
             stacked={stacked}
             others={names}
@@ -112,22 +156,23 @@ export function TopicFeed({ topics, stepped, onStep, arrived, attended, actions,
             describe={describe}
             corrections={corrections}
           />
-        ))}
+        ])}
       </AnimatePresence>
     </div>
   )
 }
 
-interface IslandProps extends Omit<TopicFeedProps, 'topics' | 'stepped'> {
+interface IslandProps extends Omit<TopicFeedProps, 'topics' | 'stepped' | 'lead' | 'moment'> {
   topic: TopicAnswers
-  first: boolean
+  /** A hairline stands over it: it follows another island of its day. */
+  ruled: boolean
   stepped: Stepped | undefined
   stacked: boolean
   /** Every topic shown, this one among them: where an answer or the topic can go. */
   others: readonly Topic[]
 }
 
-function Island({ topic, first, stepped, stacked, others, onStep, arrived, attended, actions, onRemove, describe, corrections }: IslandProps) {
+function Island({ topic, ruled, stepped, stacked, others, onStep, arrived, attended, actions, onRemove, describe, corrections }: IslandProps) {
   const { id, title, answers: total } = topic.topic
   const { at, way } = shownOf(topic, stepped)
   const answer = topic.answers[at]
@@ -176,7 +221,7 @@ function Island({ topic, first, stepped, stacked, others, onStep, arrived, atten
         const [across, down] = [finger.clientX - from.x, finger.clientY - from.y]
         if (Math.abs(across) > SWIPE.travel && Math.abs(across) > 1.5 * Math.abs(down)) onStep(id, across > 0 ? 1 : -1)
       }}
-      className={cn('group/island min-w-0 pb-9', first ? 'border-text border-t-[3px] pt-3' : 'border-line-strong border-t pt-3.5')}
+      className={cn('group/island min-w-0 pb-9', ruled ? 'border-line-strong border-t pt-3.5' : 'pt-2.5')}
     >
       <div className="flex h-5 min-w-0 items-center gap-2.5">
         {renaming ? (
