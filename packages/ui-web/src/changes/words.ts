@@ -1,5 +1,14 @@
-import type { AccessUse, FileChange, FileDiff, Hunk } from '@repo/protocol'
+import type { AccessUse, FileChange, FileDiff, Hunk, Thread } from '@repo/protocol'
 import type { Painted } from './syntax.ts'
+
+/**
+ * The folders a thread's files are named from: the copy of the project it works in, its own or, for a sub-thread, its
+ * thread's, then the project's folder.
+ */
+export function foldersOf(thread: Thread | undefined, threads: readonly Thread[]): (string | undefined)[] {
+  const over = thread?.kind === 'subthread' ? threads.find((one) => one.id === thread.parent) : undefined
+  return [thread?.copy?.folder ?? over?.copy?.folder, thread?.folder]
+}
 
 /** A path as the person reads it: within the first of the folders that holds it, by its place there; else whole. */
 export function relativePath(path: string, folders: readonly (string | undefined)[]): string {

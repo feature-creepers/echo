@@ -28,8 +28,11 @@ export interface Abilities {
    * not theirs to change yet. Gives back the folder as the system names it, or why not.
    */
   workIn?(path: string, showing: Showing): Promise<{ ok: true; folder: string } | { ok: false; text: string }>
-  /** What a project tells those who work in it: its own instructions, read from its folder each time a session opens. */
-  guide?(folder: string): Promise<string | undefined>
+  /**
+   * What a project tells those who work in it: its own instructions, read from its folder each time a session opens,
+   * or from the copy of it that `thread` works in.
+   */
+  guide?(folder: string, thread?: string): Promise<string | undefined>
   /** What a thread did on the computer so far, for a new session carrying on its work. Paths are written from `folder`. */
   worked?(thread: string, folder?: string): string | undefined
   /** The person's computer as a thread reaches it, its questions going where `showing` says. */

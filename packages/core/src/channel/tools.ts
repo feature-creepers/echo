@@ -37,6 +37,8 @@ export interface ThreadToolsOptions {
   ownerOf(thread: string): string
   /** What a thread is answering now, in a few words. */
   doing(thread: string): string | undefined
+  /** Where a thread works: its project's folder, or its copy of it. */
+  placeOf(thread: Thread): string | undefined
   /** The files the request a thread is answering changed so far. */
   touched(thread: string): readonly string[]
   /** The full answer of a turn, written for reading: kept on its line and told to the clients. */
@@ -51,7 +53,18 @@ export interface ThreadTools {
   besideIn(thread: Thread): string
 }
 
-export function createThreadTools({ registry, records, newId, transcript, subthreads, ownerOf, doing, touched, written }: ThreadToolsOptions): ThreadTools {
+export function createThreadTools({
+  registry,
+  records,
+  newId,
+  transcript,
+  subthreads,
+  ownerOf,
+  doing,
+  placeOf,
+  touched,
+  written
+}: ThreadToolsOptions): ThreadTools {
   /**
    * The full answer, for reading. What a thread writes as text is spoken, so it is short; what it found, whole,
    * goes through this tool once the spoken answer has started, and waits in the side sheet.
@@ -82,16 +95,24 @@ export function createThreadTools({ registry, records, newId, transcript, subthr
     definition: {
       name: BESIDE_TOOL,
       description:
-        'What the other threads are doing now: each one at work, its folder, what it is answering and the files it changed so far. Call it before you commit, push or build, and before anything that restarts the app you run in, so that you neither undo nor cut short their work.',
+        "What the other threads are doing now: each one at work, the folder it works in (the project's own, or a copy of its own), what it is answering and the files it changed so far. Call it before you commit, push or build, and before anything that restarts the app you run in, so that you neither undo nor cut short their work.",
       inputSchema: { type: 'object', properties: {} }
     },
     run() {
       const others = registry.read().threads.filter((other) => other.id !== runtime.thread && other.state === 'working')
       if (others.length === 0) return { ok: true, text: 'No other thread is at work.' }
-      const own = registry.get(runtime.thread)?.folder
+      const mine = registry.get(runtime.thread)
+      const own = mine && placeOf(mine)
       const lines = others.map((other) => {
         const files = touched(other.id)
-        const where = other.folder === undefined ? '' : ` in ${other.folder}${other.folder === own ? ' (your folder)' : ''}`
+        const place = placeOf(other)
+        const copied = place !== undefined && place !== other.folder
+        const where =
+          place === undefined
+            ? ''
+            : copied
+              ? ` in ${place}${place === own ? ' (your folder)' : ''}, a copy of ${other.folder}${other.copy ? ` on the branch ${other.copy.branch}` : ''}`
+              : ` in ${place}${place === own ? ' (your folder)' : place === mine?.folder ? " (the project's own folder, which yours is a copy of)" : ''}`
         const answering = doing(other.id)
         const yours = other.kind === 'subthread' && other.parent === runtime.thread ? ', your sub-thread' : ''
         return [
@@ -173,10 +194,12 @@ export function createThreadTools({ registry, records, newId, transcript, subthr
     },
 
     besideIn(thread) {
-      if (thread.folder === undefined) return ''
+      // A thread in a copy of its own shares its folder with no other, but for its own sub-threads.
+      const place = placeOf(thread)
+      if (place === undefined) return ''
       const others = registry
         .read()
-        .threads.filter((other) => other.id !== thread.id && other.folder === thread.folder && other.state === 'working')
+        .threads.filter((other) => other.id !== thread.id && placeOf(other) === place && other.state === 'working')
         .map((other) => {
           const answering = doing(other.id)
           return `"${other.title}"${answering ? `, on: ${answering}` : ''}`

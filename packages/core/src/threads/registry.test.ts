@@ -49,6 +49,29 @@ describe('the focus', () => {
   })
 })
 
+describe("a project's thread in a copy of its repository", () => {
+  const copy = { folder: '/data/worktrees/echo/echo-dark-mode', branch: 'echo/dark-mode', start: { commit: 'c0ffee', branch: 'main' } }
+
+  it('keeps its copy when the core starts again, and works in the project once the copy is taken away', () => {
+    const { records, now, registry } = setup()
+    const thread = registry.open({ title: 'Dark mode', kind: 'topic', folder: '/home/ada/code/echo' })
+    registry.copy(thread.id, copy)
+    expect(createThreadRegistry({ records, now, newId: () => 'x' }).get(thread.id)).toMatchObject({ folder: '/home/ada/code/echo', copy })
+
+    registry.copy(thread.id, undefined)
+    expect(createThreadRegistry({ records, now, newId: () => 'x' }).get(thread.id)?.copy).toBeUndefined()
+  })
+
+  it('gives no copy to a thread that works on no project, nor to a sub-thread', () => {
+    const { registry } = setup()
+    const topic = registry.open({ title: 'Dinner', kind: 'topic' })
+    const part = registry.open({ title: 'Part', kind: 'subthread', parent: topic.id, folder: '/home/ada/code/echo' })
+    registry.copy(topic.id, copy)
+    registry.copy(part.id, copy)
+    expect([registry.get(topic.id)?.copy, registry.get(part.id)?.copy]).toEqual([undefined, undefined])
+  })
+})
+
 describe('a thread put away', () => {
   it('stays put away when the core starts again, comes back when restored, and by itself once it works again', () => {
     const { records, now, registry } = setup()

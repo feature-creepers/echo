@@ -46,7 +46,8 @@ import type { ToolHost } from './ports/tools.ts'
 import type { Vectors } from './ports/vectors.ts'
 import type { Web } from './ports/web.ts'
 import type { Workspace } from './ports/workspace.ts'
-import { inFolder } from './projects/folders.ts'
+import type { Worktrees } from './ports/worktrees.ts'
+import { folderName, inFolder } from './projects/folders.ts'
 import { guideText, readGuide } from './projects/guide.ts'
 import { memorySearch } from './records/memory-search.ts'
 import { createSchedule } from './schedule/schedule.ts'
@@ -106,6 +107,11 @@ export interface CoreOptions {
   web?: Web
   /** The computer the core runs on, whose files the assistant may reach as the user grants. Left out, it reaches none. */
   computer?: Computer
+  /**
+   * Where a copy of a repository is made for a thread that works beside another (docs/SPEC.md, section 7.11). Left
+   * out, every project's thread works in the project's own folder.
+   */
+  worktrees?: Worktrees
   /** The web browser of the computer the core runs on, which the assistant drives as the user allows. Left out, it has none. */
   browser?: Browser
   /** The other apps of the computer the core runs on, which the assistant sees and operates as the user allows. Left out, none. */
@@ -271,7 +277,9 @@ export function createCore(options: CoreOptions): Core {
     records: options.records,
     versions: options.versions ?? options.blobs,
     now,
-    newId: options.newId
+    newId: options.newId,
+    // The channel is made below; no session reaches the computer before it is.
+    copyOf: (thread) => channel.copyOf(thread)
   })
   access.onEvent(emit)
   const accounts = createAccountList({ port: options.accounts, records: options.records, newId: options.newId, now, log: options.log })
@@ -334,7 +342,10 @@ export function createCore(options: CoreOptions): Core {
         screen,
         workspace,
         newId: options.newId,
-        projectOf: (thread) => (thread === undefined ? undefined : channel.threads().threads.find((one) => one.id === thread)?.folder)
+        projectOf: (thread) => {
+          const project = thread === undefined ? undefined : channel.threads().threads.find((one) => one.id === thread)?.folder
+          return thread === undefined || project === undefined ? undefined : { folder: channel.copyOf(thread)?.folder ?? project, name: folderName(project) }
+        }
       })
     : undefined
 
@@ -458,9 +469,9 @@ export function createCore(options: CoreOptions): Core {
         const granted = await access.grant({ path, write: true, purpose: 'work' }, showing)
         return granted.ok ? { ok: true, folder: granted.path } : granted
       },
-      guide: async (folder) => {
+      guide: async (folder, thread) => {
         // Read only while the folder is still within reach: the person may have taken it back since the thread began.
-        if (!computer || !access.reaches(folder)) return undefined
+        if (!computer || !access.reaches(folder, false, thread)) return undefined
         const guide = await readGuide(computer, folder).catch(() => undefined)
         return guide && guideText(guide)
       },
@@ -481,7 +492,8 @@ export function createCore(options: CoreOptions): Core {
     // its notification.
     mayInterrupt: () => !schedule.quiet() && interruptions.take(),
     // A thread waiting for its sub-threads is told after a while which are still at work.
-    timers: options.timers
+    timers: options.timers,
+    worktrees: computer ? options.worktrees : undefined
   })
   currentTurn = channel.turn
 

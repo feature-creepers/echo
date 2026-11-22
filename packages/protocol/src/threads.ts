@@ -26,6 +26,20 @@ const THREAD_STATES = [
   'parked'
 ] as const
 
+/**
+ * A thread's copy of the repository its project is in (docs/SPEC.md, section 7.11): a git worktree on a branch of its
+ * own, kept in the app's data, so that it works beside another thread without getting in its way.
+ */
+const threadCopySchema = z.object({
+  /** Where the thread works in the copy: the project's folder as the copy holds it, absolute. */
+  folder: z.string().min(1).max(4096),
+  /** The branch the copy is on, made for it. It stays when the copy is removed. */
+  branch: z.string().min(1).max(255),
+  /** Where it started: the commit the project's folder was on, and its branch, when it was on one. */
+  start: z.object({ commit: z.string().min(1).max(64), branch: z.string().min(1).max(255).optional() })
+})
+export type ThreadCopy = z.infer<typeof threadCopySchema>
+
 export const threadSchema = z.object({
   id: threadIdSchema,
   title: z.string(),
@@ -43,6 +57,11 @@ export const threadSchema = z.object({
    * the folder's own instructions for those who work in it, and works on its files as a developer would.
    */
   folder: z.string().min(1).max(4096).optional(),
+  /**
+   * For a project's thread that works beside another, or was asked to: its copy of the repository. Its session runs
+   * there; `folder` stays the project's own.
+   */
+  copy: threadCopySchema.optional(),
   /** Put away by the person: the side sheet folds it under Archived. Work on it brings it back. */
   archived: z.boolean().optional(),
   /** When it was last used: an ISO 8601 date in UTC. */

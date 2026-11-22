@@ -5,6 +5,7 @@ import type { ThreadRegistry } from '../threads/registry.ts'
 import type { Tool } from '../tools/tools.ts'
 import type { Topics } from '../topics/topics.ts'
 import type { Abilities } from './abilities.ts'
+import type { Copies } from './copies.ts'
 import type { Turn } from './turn.ts'
 
 const openInput = z.object({
@@ -12,7 +13,8 @@ const openInput = z.object({
   kind: z.enum(['topic', 'aside']).default('topic'),
   topic: z.string().min(1).optional(),
   request: z.string().optional(),
-  folder: z.string().trim().min(1).max(4096).optional()
+  folder: z.string().trim().min(1).max(4096).optional(),
+  copy: z.boolean().optional()
 })
 const sendInput = z.object({ thread: z.string().min(1), request: z.string().optional(), wait: z.boolean().optional() })
 const focusInput = z.object({ thread: z.string().min(1) })
@@ -20,6 +22,8 @@ const focusInput = z.object({ thread: z.string().min(1) })
 export interface RoutingOptions {
   registry: ThreadRegistry
   topics: Topics
+  /** Told of each project's thread it opens, and whether a copy of the repository was asked for it. */
+  copies: Pick<Copies, 'opened'>
   /** Have a folder of the person's for a project's thread to work in. */
   workIn: Abilities['workIn']
   /** The turn the orchestrator is deciding about. */
@@ -42,14 +46,14 @@ export interface RoutingOptions {
  * The tools the orchestrator passes each turn on with (docs/SPEC.md, section 7): to a new thread, in the topic it is
  * about or a new one, to a thread that exists, or back to an earlier topic.
  */
-export function routingTools({ registry, topics, workIn, deciding, answering, doing, summaryOf, passOn, bringBack, say }: RoutingOptions): Tool[] {
+export function routingTools({ registry, topics, copies, workIn, deciding, answering, doing, summaryOf, passOn, bringBack, say }: RoutingOptions): Tool[] {
   const listed = () => `The topics and their threads are:\n${topics.index(doing, summaryOf)}`
   return [
     {
       definition: {
         name: 'thread_open',
         description:
-          'Open a new thread and pass it what the person said. Give `topic` when it belongs to a topic of the list; left out, it starts a new topic, named by the title. kind "topic" for something to work on, "aside" for a quick side question that needs a search, a tool or the screen: it is answered briefly, in passing. For work on a project, a code repository or a folder of files the person works on with you, give `folder`: the thread works there.',
+          'Open a new thread and pass it what the person said. Give `topic` when it belongs to a topic of the list; left out, it starts a new topic, named by the title. kind "topic" for something to work on, "aside" for a quick side question that needs a search, a tool or the screen: it is answered briefly, in passing. For work on a project, a code repository or a folder of files the person works on with you, give `folder`: the thread works there. In a git repository where another thread is at work, it works in a copy of its own, on a branch of its own, by itself; give `copy` when the person asks for that ("in a separate copy", "on a branch of its own").',
         inputSchema: {
           type: 'object',
           properties: {
@@ -60,7 +64,8 @@ export function routingTools({ registry, topics, workIn, deciding, answering, do
             folder: {
               type: 'string',
               description: 'For a project: its folder, absolute or from ~. The person is asked on screen first when it is not one they let you change.'
-            }
+            },
+            copy: { type: 'boolean', description: 'With `folder`, when the person asks for the work to be done in a separate copy of the repository.' }
           },
           required: ['title']
         }
@@ -72,10 +77,11 @@ export function routingTools({ registry, topics, workIn, deciding, answering, do
         if (!asked.success)
           return {
             ok: false,
-            text: 'thread_open takes a title, the id of the topic it belongs to, a kind ("topic" or "aside"), a request, and for a project its folder.'
+            text: 'thread_open takes a title, the id of the topic it belongs to, a kind ("topic" or "aside"), a request, and for a project its folder, and whether it works in a copy.'
           }
         if (turn.next) return { ok: false, text: 'This has already been passed on. Write nothing more.' }
         if (asked.data.topic !== undefined && !topics.get(asked.data.topic)) return { ok: false, text: `There is no such topic. ${listed()}` }
+        if (asked.data.copy === true && asked.data.folder === undefined) return { ok: false, text: 'A copy is made of a project: give its folder too.' }
         let folder: string | undefined
         if (asked.data.folder !== undefined) {
           if (!workIn) return { ok: false, text: 'Projects cannot be worked on here: there is no computer to work on.' }
@@ -88,6 +94,7 @@ export function routingTools({ registry, topics, workIn, deciding, answering, do
         // nothing to answer it beside. A project is never a side question.
         const aside = folder === undefined && asked.data.kind === 'aside' && registry.focused() !== undefined
         const thread = registry.open({ title: asked.data.title, kind: 'topic', topic: asked.data.topic ?? topics.open(asked.data.title), folder })
+        if (folder !== undefined) copies.opened(thread.id, asked.data.copy === true)
         return passOn(turn, thread, asked.data.request ?? turn.exchange.said, aside)
       }
     },
@@ -120,7 +127,7 @@ export function routingTools({ registry, topics, workIn, deciding, answering, do
           const on = doing(thread.id)
           return {
             ok: false,
-            text: `Not sent: thread ${thread.id} is working now${on ? ` on: ${on}` : ''}, and would answer this only once that is done. If it continues that work or must come after it, call thread_send again with wait: true. Otherwise call thread_open, with the same folder for a project, so it runs at the same time.`
+            text: `Not sent: thread ${thread.id} is working now${on ? ` on: ${on}` : ''}, and would answer this only once that is done. If it continues that work or must come after it, call thread_send again with wait: true. Otherwise call thread_open, with the same folder for a project, so it runs at the same time, in a copy of its own when the folder is in a git repository.`
           }
         }
         return passOn(turn, thread, asked.data.request ?? turn.exchange.said)

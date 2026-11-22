@@ -4,7 +4,7 @@ import { createAccounts, createServices } from '@repo/accounts'
 import { createBrowser } from '@repo/browser'
 import { type Core, createCore } from '@repo/core'
 import { createEmbedder } from '@repo/embedder'
-import { createComputer, createHarnesses, createWorkspace } from '@repo/harness'
+import { createComputer, createHarnesses, createWorkspace, createWorktrees } from '@repo/harness'
 import { createClipboard, createDesktop, createDrives, createPrinters } from '@repo/screen'
 import { openStore } from '@repo/store'
 import { serveTools } from '@repo/tools'
@@ -69,6 +69,8 @@ export async function compose(config: Config): Promise<Composition> {
     newId: randomUUID,
     web: createPublicWeb(),
     computer,
+    // The copies of a repository that threads work in beside one another: in the data folder, each reached by its thread alone.
+    worktrees: createWorktrees({ folder: join(config.data, 'worktrees') }),
     browser,
     desktop,
     clipboard: createClipboard(),

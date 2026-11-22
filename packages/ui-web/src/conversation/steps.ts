@@ -49,7 +49,8 @@ const TOOL_TITLES: Record<string, string> = {
   desktop_scroll: 'Scrolled a window',
   desktop_click: 'Clicked',
   desktop_type: 'Typed',
-  desktop_press: 'Pressed a key'
+  desktop_press: 'Pressed a key',
+  copy_prepare: 'Prepared a copy of the project'
 }
 
 /** A path whole, when nothing says what it is relative to. */

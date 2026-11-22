@@ -6,6 +6,7 @@ import type { Timers } from '../ports/clock.ts'
 import { memoryRecords } from '../records/memory.ts'
 import { manualTimers } from '../replay/manual-timers.ts'
 import { type ScriptedHarness, scriptedHarness } from '../replay/scripted-harness.ts'
+import { SCRIPTED_COMMIT, type ScriptedWorktrees, scriptedWorktrees } from '../replay/scripted-worktrees.ts'
 import { watchedScreen } from '../replay/watched-screen.ts'
 import { createUserSettings } from '../settings/settings.ts'
 import { createTools } from '../tools/tools.ts'
@@ -28,9 +29,11 @@ interface Setup {
   quiet?: boolean
   /** Time passing, for waits that end by themselves. */
   timers?: Timers
+  /** Where copies of a repository are made. Left out, there are none. */
+  worktrees?: ScriptedWorktrees
 }
 
-function setup({ harness = scriptedHarness(), records = memoryRecords(), server = true, more = {}, run = '', quiet = false, timers }: Setup = {}) {
+function setup({ harness = scriptedHarness(), records = memoryRecords(), server = true, more = {}, run = '', quiet = false, timers, worktrees }: Setup = {}) {
   let ids = 0
   const newId = () => `${run}id-${++ids}`
   const settings = createUserSettings(records, [
@@ -69,7 +72,8 @@ function setup({ harness = scriptedHarness(), records = memoryRecords(), server 
     },
     notify: (notice) => notices.push(notice),
     mayInterrupt: () => !quiet,
-    timers
+    timers,
+    worktrees
   })
   const events: Event[] = []
   channel.onEvent((event) => events.push(event))
@@ -1678,6 +1682,267 @@ describe('a project', () => {
     const after = setup({ records, more: projectAbilities(), run: 'after-' })
     expect(after.channel.resume()).toEqual([])
     expect(after.channel.read(1).at(-1)).toMatchObject({ trigger: 'resume', outcome: 'stopped', problem: expect.stringContaining('Not carried on by itself') })
+  })
+
+  describe('in a copy of its repository', () => {
+    const COPY = '/data/worktrees/echo/echo-dark-mode'
+    /** A computer where the project is a git repository, and the scripted copies made of it. */
+    const copying = (repositories = ['/home/ada/code/echo']) => {
+      const guided: [string, string | undefined][] = []
+      const worktrees = scriptedWorktrees(repositories)
+      const more: Partial<Abilities> = {
+        ...projectAbilities(),
+        guide: async (folder, thread) => {
+          guided.push([folder, thread])
+          return `Run pnpm check in ${folder}.`
+        }
+      }
+      return { worktrees, more, guided }
+    }
+    /** A first thread at work in the project, then a second opened in the same folder. */
+    async function openBeside(input: Record<string, unknown> = {}, made = copying()) {
+      const context = setup({ more: made.more, worktrees: made.worktrees })
+      context.channel.say('In the echo repo, make the handle wider.')
+      await settled()
+      await context.call(0, 'thread_open', { title: 'Echo', folder: '~/code/echo' })
+      context.harness.sessions[0]?.emit({ type: 'turn-end' })
+      await settled()
+      context.channel.say('Also add a dark mode to the settings.')
+      await settled()
+      const opened = await context.call(0, 'thread_open', { title: 'Dark mode', folder: '~/code/echo', ...input })
+      context.harness.sessions[0]?.emit({ type: 'turn-end' })
+      await settled()
+      const threadOf = (title: string) => context.channel.threads().threads.find((one) => one.title === title)
+      return { ...context, ...made, opened, first: context.harness.sessions[1], second: context.harness.sessions[2], threadOf }
+    }
+
+    it('gives the second thread at work in a repository a copy on a branch of its own, and leaves the first where it is', async () => {
+      const { first, second, threadOf, worktrees, guided, channel } = await openBeside()
+
+      expect(threadOf('Echo')).toMatchObject({ folder: '/home/ada/code/echo' })
+      expect(threadOf('Echo')?.copy).toBeUndefined()
+      expect(threadOf('Dark mode')).toMatchObject({
+        folder: '/home/ada/code/echo',
+        copy: { folder: COPY, branch: 'echo/dark-mode', start: { commit: SCRIPTED_COMMIT, branch: 'main' } }
+      })
+      expect(worktrees.there()).toEqual([COPY])
+      expect([first?.request.folder, second?.request.folder]).toEqual(['/home/ada/code/echo', COPY])
+      // The project's own instructions are read from where each works.
+      expect(guided).toEqual([
+        ['/home/ada/code/echo', threadOf('Echo')?.id],
+        [COPY, threadOf('Dark mode')?.id]
+      ])
+      // Neither is told to keep out of the other's way: they do not share a folder.
+      expect(second?.sent[0]).not.toContain('Other threads are working in this folder')
+      expect(channel.copyOf(threadOf('Dark mode')?.id ?? '')).toEqual({ folder: COPY, project: '/home/ada/code/echo' })
+      expect(channel.copyOf(threadOf('Echo')?.id ?? '')).toBeUndefined()
+    })
+
+    it('tells the thread in a copy where it works, what the copy lacks, and how its work is brought back', async () => {
+      const { first, second } = await openBeside()
+      const told = second?.request.instructions ?? ''
+
+      expect(told).toContain(`"Dark mode". Its folder is /home/ada/code/echo; you work in a copy of it made for you, ${COPY}.`)
+      expect(told).toContain('on the branch echo/dark-mode, made for you from the commit c0ffee123456 of main')
+      expect(told).toContain('It is a fresh checkout: dependencies are not installed, and the files git ignores (such as .env) are not there.')
+      expect(told).toContain("Changes not committed in the project's folder are not in it either.")
+      expect(told).toContain("In the project's folder, /home/ada/code/echo, never change branch")
+      expect(told).toContain('"Bring it into main?", with the answers "Merge" and "Leave it on its branch"')
+      expect(told).toContain('with a fast-forward only')
+      expect(told).not.toContain('Commit only when the person asks')
+      // The thread in the project's folder is told what it always was.
+      expect(first?.request.instructions).toContain('you work on a project with the person: "Echo", in the folder /home/ada/code/echo')
+      expect(first?.request.instructions).toContain('Commit only when the person asks')
+      expect(first?.request.instructions).not.toContain('Your copy of the project')
+    })
+
+    it('shows each thread where the other works', async () => {
+      const { call } = await openBeside()
+
+      expect((await call(2, 'threads_beside', {})).text).toContain('- "Echo" in /home/ada/code/echo (the project\'s own folder, which yours is a copy of)')
+      expect((await call(1, 'threads_beside', {})).text).toContain(`- "Dark mode" in ${COPY}, a copy of /home/ada/code/echo on the branch echo/dark-mode`)
+    })
+
+    it('says "Preparing a copy" as a step of the request while the copy is checked out', async () => {
+      const made = copying()
+      const release = made.worktrees.holdNext()
+      const { events, harness, threadOf } = await openBeside({}, made)
+      const steps = () => events.flatMap((event) => (event.name === 'activity' && event.tool === 'copy_prepare' ? [[event.phase, event.step?.thread]] : []))
+
+      // Held: the step has started, and no session has opened for the thread yet.
+      expect(steps()).toEqual([['started', threadOf('Dark mode')?.id]])
+      expect(harness.sessions).toHaveLength(2)
+      release()
+      await settled()
+      expect(steps().map(([phase]) => phase)).toEqual(['started', 'ended'])
+      expect(harness.sessions[2]?.request.folder).toBe(COPY)
+    })
+
+    it('changes nothing outside a git repository: the second thread works in the folder, told who works there', async () => {
+      const { second, threadOf, worktrees } = await openBeside({}, copying([]))
+
+      expect(threadOf('Dark mode')?.copy).toBeUndefined()
+      expect(worktrees.there()).toEqual([])
+      expect(second?.request.folder).toBe('/home/ada/code/echo')
+      expect(second?.sent[0]).toContain('Other threads are working in this folder at the same time: "Echo"')
+    })
+
+    it('makes no copy for a thread that opens where nobody is at work, unless one was asked for', async () => {
+      const alone = async (input: Record<string, unknown>, repositories?: string[]) => {
+        const made = copying(repositories)
+        const context = setup({ more: made.more, worktrees: made.worktrees })
+        context.channel.say('In the echo repo, try a dark mode.')
+        await settled()
+        await context.call(0, 'thread_open', { title: 'Dark mode', folder: '~/code/echo', ...input })
+        context.harness.sessions[0]?.emit({ type: 'turn-end' })
+        await settled()
+        return { thread: context.harness.sessions[1], record: context.channel.threads().threads[0] }
+      }
+
+      const plain = await alone({})
+      expect([plain.record?.copy, plain.thread?.request.folder]).toEqual([undefined, '/home/ada/code/echo'])
+      const asked = await alone({ copy: true })
+      expect([asked.record?.copy?.branch, asked.thread?.request.folder]).toEqual(['echo/dark-mode', COPY])
+      // Asked for where none can be made: the thread works in the folder, and is told why.
+      const outside = await alone({ copy: true }, [])
+      expect([outside.record?.copy, outside.thread?.request.folder]).toEqual([undefined, '/home/ada/code/echo'])
+      expect(outside.thread?.sent[0]).toContain('No copy of the project could be made for you: /home/ada/code/echo is not in a git repository with a commit.')
+    })
+
+    it('refuses a copy asked for with no project', async () => {
+      const { channel, harness, call } = setup({ more: copying().more })
+      channel.say('Tell me a joke, in a separate copy.')
+      await settled()
+      expect(await call(0, 'thread_open', { title: 'A joke', copy: true })).toEqual({ ok: false, text: expect.stringContaining('give its folder too') })
+      harness.sessions[0]?.emit({ type: 'turn-end' })
+    })
+
+    it('has the thread work in the project when its copy cannot be made, and say why', async () => {
+      const made = copying()
+      made.worktrees.failNext("fatal: 'echo/dark-mode' is already checked out")
+      const { second, threadOf, events } = await openBeside({}, made)
+
+      expect(threadOf('Dark mode')?.copy).toBeUndefined()
+      expect(second?.request.folder).toBe('/home/ada/code/echo')
+      expect(second?.sent[0]).toContain("No copy of the project could be made for you: fatal: 'echo/dark-mode' is already checked out.")
+      expect(second?.sent[0]).toContain('Tell the person in a sentence.')
+      expect(second?.sent[0]).toContain('Other threads are working in this folder at the same time: "Echo"')
+      expect(events.flatMap((event) => (event.name === 'activity' && event.tool === 'copy_prepare' ? [event.step?.failed === true] : []))).toEqual([
+        false,
+        true
+      ])
+    })
+
+    it('opens no session for a request stopped while its copy is made, and leaves no copy', async () => {
+      const made = copying()
+      const release = made.worktrees.holdNext()
+      const { channel, harness, threadOf, worktrees, ended } = await openBeside({}, made)
+
+      expect(channel.stopThread(threadOf('Dark mode')?.id ?? '')).toBe(true)
+      release()
+      await settled()
+      expect(harness.sessions).toHaveLength(2)
+      expect(worktrees.there()).toEqual([])
+      expect(threadOf('Dark mode')?.copy).toBeUndefined()
+      expect(ended().map((line) => [line.said, line.outcome])).toContainEqual(['Also add a dark mode to the settings.', 'stopped'])
+    })
+
+    it('makes a copy that was removed again at the next request, from its branch', async () => {
+      const { channel, harness, call, second, threadOf, worktrees, events } = await openBeside()
+      second?.emit({ type: 'turn-end' })
+      await settled()
+      worktrees.remove(COPY)
+
+      channel.say('In the dark mode, also change the accent.')
+      await settled()
+      await call(0, 'thread_send', { thread: threadOf('Dark mode')?.id })
+      harness.sessions[0]?.emit({ type: 'turn-end' })
+      await settled()
+
+      expect(worktrees.there()).toEqual([COPY])
+      expect(second?.sent).toHaveLength(2)
+      expect(second?.sent[1]).toContain('was just checked out again from your branch, echo/dark-mode')
+      expect(events.filter((event) => event.name === 'activity' && event.tool === 'copy_prepare')).toHaveLength(4)
+      // Still there at the request after: nothing is made, and nothing is said of it.
+      second?.emit({ type: 'turn-end' })
+      await settled()
+      channel.say('And the borders.')
+      await settled()
+      await call(0, 'thread_send', { thread: threadOf('Dark mode')?.id })
+      await settled()
+      expect(second?.sent[2]).not.toContain('checked out again')
+    })
+
+    it('has a thread whose branch was deleted work in the project from then on, and say why', async () => {
+      const { channel, harness, call, second, threadOf, worktrees } = await openBeside()
+      second?.emit({ type: 'turn-end' })
+      harness.sessions[1]?.emit({ type: 'turn-end' })
+      await settled()
+      worktrees.remove(COPY)
+      worktrees.deleteBranch('echo/dark-mode')
+
+      channel.say('In the dark mode, also change the accent.')
+      await settled()
+      await call(0, 'thread_send', { thread: threadOf('Dark mode')?.id })
+      harness.sessions[0]?.emit({ type: 'turn-end' })
+      await settled()
+
+      expect(threadOf('Dark mode')?.copy).toBeUndefined()
+      const again = harness.sessions.at(-1)
+      expect(again?.request.folder).toBe('/home/ada/code/echo')
+      expect(again?.sent.at(-1)).toContain('Your copy of the project could not be had again: Its branch, echo/dark-mode, was deleted.')
+      expect(again?.sent.at(-1)).toContain("From now on you work in the project's own folder, /home/ada/code/echo")
+    })
+
+    it('has a sub-thread work in the copy of the thread that opened it, never in one of its own', async () => {
+      const { channel, harness, call, threadOf, worktrees } = await openBeside()
+
+      expect(await call(2, 'subthread_open', { title: 'Check the contrast', request: 'Check the contrast of the dark colours.' })).toMatchObject({ ok: true })
+      await settled()
+
+      const sub = threadOf('Check the contrast')
+      expect(sub).toMatchObject({ kind: 'subthread', folder: '/home/ada/code/echo' })
+      expect(sub?.copy).toBeUndefined()
+      expect(harness.sessions[3]?.request.folder).toBe(COPY)
+      expect(harness.sessions[3]?.request.instructions).toContain(`You work in the folder ${COPY}`)
+      expect(channel.copyOf(sub?.id ?? '')).toEqual({ folder: COPY, project: '/home/ada/code/echo' })
+      expect(worktrees.there()).toEqual([COPY])
+    })
+
+    it('gives a copy to work asked from the interface while the project’s thread is at work', async () => {
+      const made = copying()
+      const { channel, harness } = setup({ more: made.more, worktrees: made.worktrees })
+      channel.work({ folder: '/home/ada/code/echo', request: 'Make the handle wider.' })
+      await settled()
+      const beside = channel.work({ folder: '/home/ada/code/echo', request: 'Add a dark mode.' })
+      await settled()
+
+      expect(harness.sessions[0]?.request.folder).toBe('/home/ada/code/echo')
+      expect(harness.sessions[1]?.request.folder).toBe('/data/worktrees/echo/echo-echo')
+      expect(channel.threads().threads.find((one) => one.id === beside.thread)?.copy?.branch).toBe('echo/echo')
+    })
+
+    it('keeps its copy across a restart of the app', async () => {
+      const made = copying()
+      const records = memoryRecords()
+      const first = setup({ records, more: made.more, worktrees: made.worktrees })
+      first.channel.say('In the echo repo, add a dark mode.')
+      await settled()
+      await first.call(0, 'thread_open', { title: 'Dark mode', folder: '~/code/echo', copy: true })
+      first.harness.sessions[0]?.emit({ type: 'turn-end' })
+      await settled()
+      first.harness.sessions[1]?.emit({ type: 'turn-end' })
+      await settled()
+
+      const second = setup({ records, more: made.more, worktrees: made.worktrees, run: 'again-' })
+      const [thread] = second.channel.threads().threads
+      expect(thread?.copy?.folder).toBe(COPY)
+      second.channel.say('In the dark mode, also change the accent.')
+      await settled()
+      await second.call(0, 'thread_send', { thread: thread?.id })
+      await settled()
+      expect(second.harness.sessions[1]?.request.folder).toBe(COPY)
+    })
   })
 })
 

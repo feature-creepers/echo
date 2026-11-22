@@ -7,7 +7,7 @@ import { Changes } from '../changes/changes.tsx'
 import { Counts, type Relative } from '../changes/diff-view.tsx'
 import { type Undo, UndoAction } from '../changes/undo-action.tsx'
 import { useAssistantFolder } from '../changes/use-assistant-folder.ts'
-import { relativePath, totalOf } from '../changes/words.ts'
+import { foldersOf, relativePath, totalOf } from '../changes/words.ts'
 import { Button } from '../primitives/button.tsx'
 import { Choice } from '../primitives/choice.tsx'
 import { cn } from '../primitives/cn.ts'
@@ -52,8 +52,16 @@ export function ActivitySection({ client, productName }: { client: Client; produ
   // A path is shown from the folder of the thread that used it when it is a project's, else from the assistant's.
   const relativeFor = useCallback(
     (use: AccessUse): Relative =>
-      (path) =>
-        relativePath(path, [client.threads.current().threads.find((thread) => thread.id === use.thread)?.folder, assistantFolder]),
+      (path) => {
+        const { threads } = client.threads.current()
+        return relativePath(path, [
+          ...foldersOf(
+            threads.find((thread) => thread.id === use.thread),
+            threads
+          ),
+          assistantFolder
+        ])
+      },
     [client, assistantFolder]
   )
 

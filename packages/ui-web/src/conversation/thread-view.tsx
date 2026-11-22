@@ -8,7 +8,7 @@ import { Counts, PathLine, type Relative } from '../changes/diff-view.tsx'
 import { type Undo, UndoAction } from '../changes/undo-action.tsx'
 import { useAssistantFolder } from '../changes/use-assistant-folder.ts'
 import { type ThreadChanges, useThreadChanges } from '../changes/use-thread-changes.ts'
-import { changedInWords, lastPart, relativePath, totalOf } from '../changes/words.ts'
+import { changedInWords, foldersOf, lastPart, relativePath, totalOf } from '../changes/words.ts'
 import { Button } from '../primitives/button.tsx'
 import { cn } from '../primitives/cn.ts'
 import { Eyebrow } from '../primitives/eyebrow.tsx'
@@ -65,8 +65,8 @@ export function ThreadView({ client, thread, threads, personas, nav }: ThreadVie
   )
   const changes = useThreadChanges(client, thread, changing)
   const assistantFolder = useAssistantFolder(client)
-  const folder = header?.folder
-  const relative = useCallback<Relative>((path) => relativePath(path, [folder, assistantFolder]), [folder, assistantFolder])
+  const [copy, folder] = foldersOf(header, threads)
+  const relative = useCallback<Relative>((path) => relativePath(path, [copy, folder, assistantFolder]), [copy, folder, assistantFolder])
   const undo = useCallback<Undo>(
     async (use, anyway) => {
       const undone = await client.session.run('activity.undo', { use, anyway })
@@ -149,6 +149,7 @@ function ThreadHeader({ header, threads, onBack, onOpenThread, onStop, onFocus }
           kindWords(header),
           STATE[header.state],
           header.folder === undefined ? undefined : `in ${lastPart(header.folder)}`,
+          header.copy === undefined ? undefined : `a copy on ${header.copy.branch}`,
           working ? undefined : usedWords(header.at, new Date())
         ].filter((part) => part !== undefined && part !== '')
   return (
@@ -183,7 +184,7 @@ function ThreadHeader({ header, threads, onBack, onOpenThread, onStop, onFocus }
           <span className="font-medium text-[0.9375rem] leading-snug [overflow-wrap:anywhere]">{header.title}</span>
           <span className="caps flex min-w-0 items-center gap-2 text-text-soft">
             <StateDot state={header.state} archived={header.archived} />
-            <span className="min-w-0 truncate" title={header.folder}>
+            <span className="min-w-0 truncate" title={header.copy?.folder ?? header.folder}>
               {meta.join(' · ')}
             </span>
           </span>

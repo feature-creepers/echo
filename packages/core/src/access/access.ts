@@ -29,7 +29,10 @@ import { stopsEverything } from './words.ts'
  * the previous version of a file changed, for 30 days.
  */
 export interface AccessControl {
-  /** The computer as a thread reaches it, its questions going where `showing` says. Nothing when the core has no computer. */
+  /**
+   * The computer as a thread reaches it, its questions going where `showing` says: what the person granted, and the
+   * copy of a project the thread works in. Nothing when the core has no computer.
+   */
   reach(showing: () => Showing): Reach | undefined
   /** The tool a thread asks for a folder or a file with, when the person gives one by voice. */
   tools(showing: () => Showing): Tool[]
@@ -50,8 +53,9 @@ export interface AccessControl {
   /**
    * Whether a place is within reach now, for reading or, with `write`, for changing, and not a place never reached.
    * Read from its words: what the core reads itself, such as a project's instructions, it reads only from there.
+   * For a `thread`, the copy of a project it works in is within reach too.
    */
-  reaches(path: string, write?: boolean): boolean
+  reaches(path: string, write?: boolean, thread?: string): boolean
   /** What a place is that is never reached whatever is granted, named for the person ("SSH keys"). Nothing when it is not one. */
   neverReached(path: string): string | undefined
   /**
@@ -124,6 +128,11 @@ export interface AccessOptions {
   versions?: Blobs | undefined
   now?: (() => Date) | undefined
   newId?: (() => string) | undefined
+  /**
+   * The copy of a repository a thread works in, when it works in one (docs/SPEC.md, section 7.11), and the project's
+   * folder it is a copy of. Left out, no thread works in a copy.
+   */
+  copyOf?: ((thread: string) => { folder: string; project: string } | undefined) | undefined
 }
 
 const grantInput = z.object({ path: z.string().trim().min(1).max(4096), write: z.boolean().default(false) })
@@ -264,7 +273,7 @@ export const DIRECT_TOOLS: HarnessComputer = {
 const NO_RECORDS: Records = { append: () => [], read: () => [], get: () => [] }
 const NO_VERSIONS: Blobs = { put: () => '', get: () => undefined }
 
-export function createAccess({ settings, screen, computer, timers, records, versions, now = () => new Date(), newId }: AccessOptions): AccessControl {
+export function createAccess({ settings, screen, computer, timers, records, versions, now = () => new Date(), newId, copyOf }: AccessOptions): AccessControl {
   const access = () => settings.read().access
   const approvals = createApprovals({ screen, timers, wait: () => access().approvalWait, phrase: () => access().confirmation })
   let ids = 0
@@ -304,19 +313,44 @@ export function createAccess({ settings, screen, computer, timers, records, vers
   }
 
   /**
+   * The copy of a repository a thread works in, while it is within its reach: as long as the person lets the
+   * assistant change the project's folder it is a copy of. It is in the app's data, which is never reached, and is
+   * reached all the same by that thread and its sub-threads only. It is no place the settings keep.
+   */
+  const copyFor = (thread: string | undefined): string | undefined => {
+    const copy = thread === undefined ? undefined : copyOf?.(thread)
+    return copy && !neverReached(copy.project) && covered(copy.project, true) ? copy.folder : undefined
+  }
+
+  /** What a thread may reach: what was granted, and the copy it works in, open to it inside the place never reached that holds it. */
+  const scopeFor = (thread: string | undefined): Scope => {
+    const granted = scope()
+    const copy = copyFor(thread)
+    if (copy === undefined) return granted
+    return {
+      ...granted,
+      places: [...granted.places, { path: copy, kind: 'folder', write: true }],
+      protected: (granted.protected ?? []).map((place) =>
+        place.path !== undefined && within(copy, place.path) ? { ...place, except: [...(place.except ?? []), copy] } : place
+      )
+    }
+  }
+
+  /**
    * The place never reached that a path is in, if any, as the adapter finds it: a file or a folder whose name ends a
    * certain way (some formats are folders), or a place inside one, unless it is inside a folder reached all the same.
+   * For a `thread`, the copy it works in is such a folder.
    */
-  const neverReached = (path: string) =>
-    computer?.protected.find((place) => {
+  const neverReached = (path: string, thread?: string) =>
+    (thread === undefined ? (computer?.protected ?? []) : (scopeFor(thread).protected ?? [])).find((place) => {
       const { ending } = place
       if (ending !== undefined) return path.split(/[\\/]/).some((part) => part.toLowerCase().endsWith(ending.toLowerCase()))
       return place.path !== undefined && within(path, place.path) && !(place.except ?? []).some((open) => within(path, open))
     })
 
-  /** Whether a place is within what was granted, by its words, for reading or, with `write`, for changing. */
-  const covered = (path: string, write: boolean) => {
-    const current = scope()
+  /** Whether a place is within what was granted, by its words, for reading or, with `write`, for changing: to a `thread`, its copy too. */
+  const covered = (path: string, write: boolean, thread?: string) => {
+    const current = scopeFor(thread)
     return (
       current.computer === 'write' ||
       (current.computer === 'read' && !write) ||
@@ -441,7 +475,7 @@ export function createAccess({ settings, screen, computer, timers, records, vers
     // what it changed once it ended; the places it may change are watched while it runs, for the files a program
     // works out once it runs.
     const folder = use.action === 'run' && reason !== 'read-only' && reading?.readOnly !== true ? use.paths[0] : undefined
-    const current = scope()
+    const current = scopeFor(by.thread)
     const changeable = { places: current.places.filter((place) => place.write).map((place) => place.path), everywhere: current.computer === 'write' }
     const snapshot = folder === undefined ? undefined : await computer?.snapshot?.(folder, use.named ?? [], changeable).catch(() => undefined)
     const recorded = activity.record({
@@ -524,7 +558,7 @@ export function createAccess({ settings, screen, computer, timers, records, vers
     reach(showing) {
       if (!computer) return undefined
       return {
-        scope,
+        scope: () => scopeFor(showing().thread),
         async approve(use, signal): Promise<Verdict> {
           const by = madeBy(showing())
           if (use.refused) {
@@ -672,7 +706,7 @@ export function createAccess({ settings, screen, computer, timers, records, vers
 
     neverReached: (path) => neverReached(path)?.label,
 
-    reaches: (path, write = false) => computer !== undefined && !neverReached(path) && covered(path, write),
+    reaches: (path, write = false, thread) => computer !== undefined && !neverReached(path, thread) && covered(path, write, thread),
 
     worked(thread, folder) {
       // Reading is left out: it changes nothing, and is quickly done again. What changed, ran or was refused is kept.

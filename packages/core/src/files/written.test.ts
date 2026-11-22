@@ -41,14 +41,16 @@ describe('the card of the files a thread writes', () => {
   it('names a project’s files from its folder', () => {
     const workspace = memoryWorkspace()
     const at = (location: string) => ({ path: location, name: location.split(/[\\/]/).at(-1) ?? '', kind: 'file' as const, size: 1, modified: '', location })
-    const card = writtenCard(
-      [at('/home/ada/code/echo/src/ui/a.ts'), at('/home/ada/code/echo/README.md'), at('/elsewhere/b.ts')],
-      workspace,
-      '/home/ada/code/echo'
-    )
-    const { files } = (card.spec.elements.files?.props ?? { files: [] }) as { files: { detail?: string }[] }
-    const details = files.map((file) => file.detail)
-    expect(details).toEqual(['In echo › src › ui', 'In echo', undefined])
+    const details = (card: ReturnType<typeof writtenCard>) =>
+      ((card.spec.elements.files?.props ?? { files: [] }) as { files: { detail?: string }[] }).files.map((file) => file.detail)
+    const card = writtenCard([at('/home/ada/code/echo/src/ui/a.ts'), at('/home/ada/code/echo/README.md'), at('/elsewhere/b.ts')], workspace, {
+      folder: '/home/ada/code/echo',
+      name: 'echo'
+    })
+    expect(details(card)).toEqual(['In echo › src › ui', 'In echo', undefined])
+    // In a copy of the project, a file is named as in the project.
+    const copy = '/data/worktrees/echo/echo-dark-mode'
+    expect(details(writtenCard([at(`${copy}/src/a.ts`)], workspace, { folder: copy, name: 'echo' }))).toEqual(['In echo › src'])
   })
 
   it('is one card a turn, brought up to date as files are written, each file once', async () => {

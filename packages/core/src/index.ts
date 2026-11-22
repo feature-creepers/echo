@@ -71,3 +71,4 @@ export type { ToolDefinition, ToolHost, ToolImage, ToolResult } from './ports/to
 export type { NearestQuery, RecordVector, VectorCount, Vectors, VectorsAvailable, WithoutVector } from './ports/vectors.ts'
 export type { Web } from './ports/web.ts'
 export type { NewFile, Workspace, WorkspaceItem } from './ports/workspace.ts'
+export type { Worktrees } from './ports/worktrees.ts'

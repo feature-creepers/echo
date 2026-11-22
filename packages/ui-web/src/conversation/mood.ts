@@ -47,6 +47,7 @@ const DOING: Record<string, string | undefined> = {
   desktop_click: 'Clicking',
   desktop_type: 'Typing',
   desktop_press: 'Pressing a key',
+  copy_prepare: 'Preparing a copy of the project',
   thread_open: undefined,
   thread_send: undefined,
   thread_focus: undefined,

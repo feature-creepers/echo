@@ -1,4 +1,4 @@
-import { type Event, type Thread, type Threads, threadSchema } from '@repo/protocol'
+import { type Event, type Thread, type ThreadCopy, type Threads, threadSchema } from '@repo/protocol'
 import type { Records } from '../ports/records.ts'
 
 /** The type of the record written each time a thread is opened or changes. Its payload is the thread whole. */
@@ -19,6 +19,8 @@ export interface ThreadRegistry {
   archive(id: string, archived: boolean): void
   /** File what a thread answers in another topic. */
   file(id: string, topic: string): void
+  /** Give a project's thread its copy of the repository, or take it away when it can no longer be had. */
+  copy(id: string, copy: ThreadCopy | undefined): void
   /** The person turned to a thread. A sub-thread never takes the focus: it works for its thread. */
   focus(id: string): void
   focused(): Thread | undefined
@@ -104,6 +106,12 @@ export function createThreadRegistry({ records, now, newId }: RegistryOptions): 
     file(id, topic) {
       const thread = threads.get(id)
       if (thread?.kind === 'topic' && thread.topic !== topic) write({ ...thread, topic })
+    },
+    copy(id, copy) {
+      const thread = threads.get(id)
+      if (thread?.kind !== 'topic' || thread.folder === undefined) return
+      const { copy: _copy, ...rest } = thread
+      write(copy ? { ...rest, copy } : rest)
     },
     focus(id) {
       const thread = threads.get(id)

@@ -16,6 +16,7 @@ import {
   type Threads,
   type TurnId
 } from '@repo/protocol'
+import { stopping } from '../accounts/stopping.ts'
 import { attachmentsFor, type Handed, handedAny, NOTHING_HANDED, noteForOrchestrator, noteForThread } from '../attachments/framing.ts'
 import type { EngineRoom } from '../engines/engines.ts'
 import type { Timers } from '../ports/clock.ts'
@@ -23,6 +24,7 @@ import type { Harness, Reach, Scope, Session, SessionEvent } from '../ports/harn
 import type { Log } from '../ports/log.ts'
 import type { Records } from '../ports/records.ts'
 import type { ToolResult } from '../ports/tools.ts'
+import type { Worktrees } from '../ports/worktrees.ts'
 import { folderName, partsFrom } from '../projects/folders.ts'
 import type { UserSettings } from '../settings/settings.ts'
 import { languageOf } from '../speech/language.ts'
@@ -33,6 +35,7 @@ import { createThreadRegistry } from '../threads/registry.ts'
 import { createTopics, type Topics } from '../topics/topics.ts'
 import type { Checked, Screen, Showing } from '../views/screen.ts'
 import type { Abilities, Remembering } from './abilities.ts'
+import { COPY_STEP, createCopies } from './copies.ts'
 import {
   DELEGATED_FIRST,
   inFront,
@@ -115,6 +118,11 @@ export interface ChannelOptions {
   mayInterrupt?(): boolean
   /** Time passing, for a thread waiting for its sub-threads to be told which are still at work. Left out, it waits until they are done. */
   timers?: Timers | undefined
+  /**
+   * Where a copy of a repository is made for a project's thread that works beside another (docs/SPEC.md, section
+   * 7.11). Left out, every thread works in its project's own folder.
+   */
+  worktrees?: Worktrees | undefined
 }
 
 /** A moment as a person says it, with its time zone: "Tuesday, 17 November 2026, 14:13 (Europe/Paris)". */
@@ -212,6 +220,8 @@ export interface Channel {
   forgetLines(turns: ReadonlySet<string>): void
   /** The threads, and the one in focus. */
   threads(): Threads
+  /** The copy of a repository a thread works in, its own or its thread's for a sub-thread, and the project's folder it is a copy of. */
+  copyOf(thread: string): { folder: string; project: string } | undefined
   /** The topics the answers are filed in: what the main screen reads, and what the person corrects. */
   topics: Pick<Topics, 'read' | 'answers' | 'rename' | 'archive' | 'move' | 'merge'>
   /** The turn on the stage, if any. */
@@ -266,6 +276,7 @@ export function createChannel(options: ChannelOptions): Channel {
   registry.onEvent(emit)
   const topics = createTopics({ records, registry, screen, lines: () => transcript, now, newId })
   topics.onEvent(emit)
+  const copies = createCopies({ registry, worktrees: options.worktrees })
   /** The thread whose work a thread does: a sub-thread's is the thread that opened it. */
   const ownerOf = (id: string): string => {
     const thread = registry.get(id)
@@ -581,6 +592,7 @@ export function createChannel(options: ChannelOptions): Channel {
     subthreads,
     ownerOf,
     doing,
+    placeOf: copies.placeOf,
     touched: (thread) => [...(runtimes.get(thread)?.answering?.touched ?? [])],
     written: (turn, text) => {
       turn.exchange = { ...turn.exchange, written: text }
@@ -591,10 +603,13 @@ export function createChannel(options: ChannelOptions): Channel {
 
   const threadSession = async (runtime: Runtime, engine: Harness, server: string): Promise<Session> => {
     const thread = registry.get(runtime.thread)
-    const folder = thread?.folder
+    // Where it works: its project's folder, or its copy of it.
+    const folder = thread && copies.placeOf(thread)
     const persona = activePersona()
     const profile = memory?.profile()
-    const granted = abilities?.reach?.(() => showing())
+    const showing = (): Showing => ({ thread: runtime.thread, turn: runtime.answering?.exchange.turn })
+    // What it may reach is read for the thread it is: one that works in a copy of a project reaches that copy.
+    const granted = abilities?.reach?.(showing)
     // Files handed to the thread are readable by it, whatever else it may reach: the person gave them.
     const computer: Reach | undefined = granted && { ...granted, scope: () => withReadable(granted.scope(), runtime.readable) }
     // A change of program, model, level of reasoning or persona opens a new session for the next question, told what was said before.
@@ -618,10 +633,16 @@ export function createChannel(options: ChannelOptions): Channel {
     const kind = thread?.kind ?? 'topic'
     const told = abilities?.told?.(await engine.computer?.())
     // A project's thread is given what the project tells those who work in it, and what it did there so far.
-    const project = folder ? { folder, guide: await abilities?.guide?.(folder), worked: abilities?.worked?.(runtime.thread, folder) } : undefined
+    const project = folder
+      ? {
+          folder,
+          guide: await abilities?.guide?.(folder, runtime.thread),
+          worked: abilities?.worked?.(runtime.thread, folder),
+          ...(thread?.copy && thread.folder !== undefined ? { copy: { of: thread.folder, branch: thread.copy.branch, start: thread.copy.start } } : {})
+        }
+      : undefined
     // A sub-thread works for the thread that opened it.
     const parent = kind === 'subthread' && thread?.parent !== undefined ? registry.get(thread.parent) : undefined
-    const showing = (): Showing => ({ thread: runtime.thread, turn: runtime.answering?.exchange.turn })
     runtime.showing = showing
     const grant = abilities?.grant(threadTools.toolsOf(runtime, kind, abilities.threadTools(showing, persona.stance)))
     const earlier = recapFor(runtime.thread)
@@ -779,6 +800,24 @@ export function createChannel(options: ChannelOptions): Channel {
     })
   }
 
+  /**
+   * A project's thread that works beside another has its copy of the repository before its session opens there: made
+   * the first time, made again when it was removed. While git checks it out, that is a step of the request.
+   */
+  const withCopy = async (runtime: Runtime, turn: Turn): Promise<string | undefined> => {
+    const stop = stopping()
+    turn.stopping.push(stop.stop)
+    const call = `${turn.exchange.turn}:${COPY_STEP}`
+    let making = false
+    const note = await copies.prepare(runtime.thread, stop.signal, () => {
+      making = true
+      step(turn, runtime.thread, { type: 'tool', name: COPY_STEP, phase: 'started', call })
+    })
+    if (making)
+      step(turn, runtime.thread, { type: 'tool', name: COPY_STEP, phase: 'ended', call, ...(registry.get(runtime.thread)?.copy ? {} : { failed: true }) })
+    return note
+  }
+
   /** Give the thread the next request that waits for it, if it is free. */
   const next = async (runtime: Runtime) => {
     if (runtime.answering) return
@@ -801,6 +840,8 @@ export function createChannel(options: ChannelOptions): Channel {
     const server = abilities?.server()
     if (typeof engine === 'string') return skip('failed', engine)
     if (server === undefined) return skip('failed', 'The tools are not running.')
+    if (waiting.turn.stopped) return skip('stopped')
+    const copied = await withCopy(runtime, waiting.turn)
     if (waiting.turn.stopped) return skip('stopped')
     const live = runtime.live
     const session = await threadSession(runtime, engine, server)
@@ -827,7 +868,7 @@ export function createChannel(options: ChannelOptions): Channel {
     // A side question is answered in passing; a request that follows it up is the topic's own, answered in full.
     const side = waiting.turn.aside ? `${SIDE_QUESTION}\n\n` : ''
     session.send(
-      `${context(waiting.turn)}\n${changed}${recalled ? `${recalled}\n\n` : ''}${waiting.text}${beside}\n\n${note ? `${note}\n\n` : ''}${side}${reminder}`,
+      `${context(waiting.turn)}\n${changed}${recalled ? `${recalled}\n\n` : ''}${waiting.text}${beside}\n\n${copied ? `${copied}\n\n` : ''}${note ? `${note}\n\n` : ''}${side}${reminder}`,
       attachmentsFor(handed, images)
     )
   }
@@ -883,6 +924,7 @@ export function createChannel(options: ChannelOptions): Channel {
   const routing = routingTools({
     registry,
     topics,
+    copies,
     workIn: abilities?.workIn?.bind(abilities),
     deciding: () => deciding,
     answering: (thread) => runtimes.get(thread)?.answering,
@@ -1161,6 +1203,7 @@ export function createChannel(options: ChannelOptions): Channel {
       const free = same && runtimes.get(same.id)?.answering === undefined ? same : undefined
       const title = folderName(folder).slice(0, 80)
       const thread = free ?? registry.open({ title, kind: 'topic', topic: topics.open(title), folder })
+      if (!free) copies.opened(thread.id, false)
       emit({ type: 'event', name: 'turn.started', exchange: turn.exchange })
       route(turn, thread, request)
       return { thread: thread.id, turn: turn.exchange.turn }
@@ -1332,6 +1375,8 @@ export function createChannel(options: ChannelOptions): Channel {
         }
       return true
     },
+
+    copyOf: (thread) => copies.copyOf(thread),
 
     archive(id, archived) {
       if (!registry.get(id)) return false

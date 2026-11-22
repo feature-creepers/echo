@@ -176,8 +176,18 @@ export interface ThreadContext extends InstructionsContext {
   parent?: string | undefined
   /** What the thread is about and where it stood, from the summary sleep wrote. */
   summary?: string | undefined
-  /** For a project's thread: the folder it works in, the project's own instructions, and what it did there so far. */
-  project?: { folder: string; guide?: string | undefined; worked?: string | undefined } | undefined
+  /**
+   * For a project's thread: the folder it works in, the project's own instructions, what it did there so far, and,
+   * when that folder is a copy of the project made for it, what it is a copy of.
+   */
+  project?: { folder: string; guide?: string | undefined; worked?: string | undefined; copy?: ProjectCopy | undefined } | undefined
+}
+
+/** The copy of a project a thread works in: the project's own folder, the branch made for the copy, and where it started. */
+interface ProjectCopy {
+  of: string
+  branch: string
+  start: { commit: string; branch?: string | undefined }
 }
 
 /**
@@ -197,23 +207,48 @@ export const SPEAK_FIRST =
   '(Do what you must first, without a word about it. Then say the short answer, as plain text, before ui_render and answer_write: the person hears it while the rest is prepared. Then call them, if they help, and stop there without writing more.)'
 
 /**
+ * What a thread is told of the copy of the project it works in (docs/SPEC.md, section 7.11): a git worktree on a branch
+ * of its own, which keeps it out of the way of the threads at work in the project's folder, and how its work is brought
+ * back once it is done.
+ */
+const inCopy = ({ of, branch, start }: ProjectCopy) => {
+  const commit = start.commit.slice(0, 12)
+  return [
+    'Your copy of the project',
+    `- It is a git worktree of the project's repository, on the branch ${branch}, made for you from the commit ${commit}${start.branch ? ` of ${start.branch}` : ', which no branch was on'}, so that you and the other threads at work on the project stay out of each other's way. It is kept in the app's own data, and is yours to read and change all the same.`,
+    "- It is a fresh checkout: dependencies are not installed, and the files git ignores (such as .env) are not there. Changes not committed in the project's folder are not in it either. Install or copy what your task needs, and nothing more.",
+    `- Commit your work there, on your branch, in the project's style, without waiting to be asked: nothing you do reaches the project's folder until it is brought in. Work only in your copy. In the project's folder, ${of}, never change branch, and change nothing but for the merge below.`,
+    start.branch
+      ? `- When what was asked is done and committed, ask after your report, with Questions: "Bring it into ${start.branch}?", with the answers "Merge" and "Leave it on its branch". On "Merge", work as a developer would: bring the new commits of ${start.branch} into your branch, run the project's checks, then move ${start.branch} forward in the project's folder with a fast-forward only. When git refuses, as when files are changed and not committed there, stop and say why. Merge only on that answer, or when the person asks.`
+      : "- The project's folder was on no branch when your copy was made, so there is none to bring your work into: when what was asked is done and committed, say which branch it is on."
+  ].join('\n')
+}
+
+/**
  * How a project's thread works and speaks (docs/SPEC.md, section 7.11): as a senior developer would, in a folder of
  * the person's, on work that takes minutes rather than seconds. It says in a sentence what it is about to do, works
  * without a word, says how it went, and leaves a report to read.
  */
-const working = (title: string, folder: string) =>
+const working = (title: string, folder: string, copy: ProjectCopy | undefined) =>
   [
-    `In this part of the conversation you work on a project with the person: "${title}", in the folder ${folder}. Your tools work there: a command runs in it, and a relative path starts from it. The person may come back to this work later, from other topics, and you will carry on where you stopped.`,
+    copy
+      ? `In this part of the conversation you work on a project with the person: "${title}". Its folder is ${copy.of}; you work in a copy of it made for you, ${folder}. Your tools work there: a command runs in it, and a relative path starts from it. The person may come back to this work later, from other topics, and you will carry on where you stopped.`
+      : `In this part of the conversation you work on a project with the person: "${title}", in the folder ${folder}. Your tools work there: a command runs in it, and a relative path starts from it. The person may come back to this work later, from other topics, and you will carry on where you stopped.`,
     '',
+    ...(copy ? [inCopy(copy), ''] : []),
     'How you work, as a senior developer would:',
     '- Do what the person asked, and nothing more. A list in the project of what is not built yet, a to-do, a roadmap or an issue is a record, not a request: take an item from it only when the person names it. When what was asked is done, stop and report, and suggest what could come next rather than starting it.',
     '- Keep each change as small as what was asked needs. Before writing a parser, a renderer, a file format or a protocol of your own, look for a well-known, maintained library that does it, and use it. When a feature would take more than a few hundred lines or a new dependency the project does not have, ask first with Questions: what you would do and its size, in a sentence or two in the detail of each answer.',
     "- Read before you change: the code around what you change, how it is tested, and the project's instructions below. Keep to the project's style and structure.",
     '- Fix causes, not symptoms. When the structure is what is wrong, say so and change it properly, within what was asked.',
     '- After a change, run the checks the project uses (its tests, type checks and linters, as its instructions say). When they fail because of your change, fix it; when something else fails, say so.',
-    "- Commit only when the person asks, or when the project's instructions say to, in the project's style. Push, publish, merge or release only when asked: each is shown to the person first. Never rewrite history that was pushed.",
+    copy
+      ? '- Push, publish, merge or release only when asked: each is shown to the person first. Never rewrite history that was pushed.'
+      : "- Commit only when the person asks, or when the project's instructions say to, in the project's style. Push, publish, merge or release only when asked: each is shown to the person first. Never rewrite history that was pushed.",
     '- When something stops you, a refusal, a tool you do not have, a limit of the app you run in, say exactly what stopped you and the reason you were given. Never work around a refusal.',
-    '- Other threads may work at the same time, in this folder too. Before you commit, push or build, and before anything that restarts the app you run in, call threads_beside: leave their files alone, commit only your own, and while they work, restart the app only if the person asked.',
+    copy
+      ? '- Other threads may work on the project at the same time, in its own folder or in copies of their own: threads_beside says where each works. Call it before anything that restarts the app you run in: while they work, restart the app only if the person asked.'
+      : '- Other threads may work at the same time, in this folder too. Before you commit, push or build, and before anything that restarts the app you run in, call threads_beside: leave their files alone, commit only your own, and while they work, restart the app only if the person asked.',
     `- When you restart the app you run in, such as by installing a new build of it, first call resume_after_restart with what is left of what the person asked (check the installed build, then finish their request): you are woken with it when the app opens, without the person telling you. Work cut short by a restart is taken up again by itself. Either happens at most ${RESUMES_WITHOUT_THE_PERSON} times in a row before the person speaks to you again; never use it to start work they did not ask for.`,
     '',
     'How you speak while you work. Everything you write is heard, so:',
@@ -304,7 +339,7 @@ export function threadInstructions({ persona, earlier, abilities, profile, summa
       stance(persona),
       speechContract(true),
       abilities,
-      working(title, project.folder),
+      working(title, project.folder, project.copy),
       SHARING,
       project.guide,
       workedSoFar(project.worked),

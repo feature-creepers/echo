@@ -1,9 +1,8 @@
-import { execFile } from 'node:child_process'
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative, resolve, sep } from 'node:path'
-import { promisify } from 'node:util'
 import type { Changeable, FolderSnapshot, FoundChange, NamedPlace } from '@repo/core'
+import { git, text } from './git.ts'
 import { within } from './paths.ts'
 import { system } from './system/index.ts'
 import { type Noted, watchPlaces } from './watching.ts'
@@ -66,16 +65,6 @@ const MADE_SLACK_MS = 10
  * line's length there (32,767 characters) for paths from a work tree's top.
  */
 const GIT_BATCH = 150
-
-const execute = promisify(execFile)
-
-/** Run git in a folder and give back what it printed, as bytes. Rejects when it fails or is not there. */
-async function git(folder: string, args: readonly string[]): Promise<Uint8Array> {
-  const { stdout } = await execute('git', ['-C', folder, ...args], { encoding: 'buffer', maxBuffer: 64 * 1024 * 1024, windowsHide: true, timeout: 20_000 })
-  return new Uint8Array(stdout)
-}
-
-const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes)
 
 /**
  * The paths `git status --porcelain=v1 -z` names, from the work tree's top, "/" between their parts: both of a

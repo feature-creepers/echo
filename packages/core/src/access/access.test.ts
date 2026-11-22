@@ -19,7 +19,7 @@ const read = (bytes: Uint8Array | undefined) => (bytes ? new TextDecoder().decod
 const print = (bytes: Uint8Array) => `#${read(bytes)}`
 
 /** A computer with a few places on it, and files held in memory. */
-function machine() {
+function machine(data = false) {
   const files = new Map<string, Uint8Array>()
   const trashed: string[] = []
   const watched: Changeable[] = []
@@ -37,7 +37,8 @@ function machine() {
     },
     protected: [
       { label: 'SSH keys', path: '/home/ada/.ssh' },
-      { label: 'Password databases', ending: '.kdbx' }
+      { label: 'Password databases', ending: '.kdbx' },
+      ...(data ? [{ label: 'The app’s own data', path: '/data', except: [WORKSPACE] }] : [])
     ],
     async read(path, limit) {
       const bytes = files.get(path)
@@ -93,12 +94,32 @@ function versions(): Blobs & { held: Map<string, Uint8Array> } {
   }
 }
 
-function setup({ withComputer = true, records = memoryRecords(), now = () => new Date('2026-11-18T10:00:00Z'), kept = versions(), core = 'id' } = {}) {
+interface Setup {
+  withComputer?: boolean
+  records?: ReturnType<typeof memoryRecords>
+  now?: () => Date
+  kept?: ReturnType<typeof versions>
+  core?: string
+  /** Whether the computer keeps the app's data, never reached but for the assistant's folder. */
+  data?: boolean
+  /** The copy of a project a thread works in. */
+  copyOf?: (thread: string) => { folder: string; project: string } | undefined
+}
+
+function setup({
+  withComputer = true,
+  records = memoryRecords(),
+  now = () => new Date('2026-11-18T10:00:00Z'),
+  kept = versions(),
+  core = 'id',
+  data = false,
+  copyOf
+}: Setup = {}) {
   let ids = 0
   const screen = watchedScreen({ records, newId: () => `v${++ids}` })
   const settings = createUserSettings(records, undefined, withComputer ? WORKSPACE : undefined)
   const timers = manualTimers()
-  const { computer, files, trashed, watched } = machine()
+  const { computer, files, trashed, watched } = machine(data)
   const access = createAccess({
     settings,
     screen,
@@ -107,7 +128,8 @@ function setup({ withComputer = true, records = memoryRecords(), now = () => new
     records,
     versions: kept,
     now,
-    newId: () => `${core}${++ids}`
+    newId: () => `${core}${++ids}`,
+    copyOf
   })
   const events: Event[] = []
   access.onEvent((event) => events.push(event))
@@ -1004,6 +1026,56 @@ describe('a project folder to work in', () => {
     })
     expect(await access.grant({ path: '~/.ssh', write: true, purpose: 'work' }, showing)).toEqual({ ok: false, text: expect.stringContaining('never reached') })
     expect(screen.current()).toBeUndefined()
+  })
+})
+
+describe('the copy of a project a thread works in', () => {
+  const PROJECT = '/home/ada/Documents'
+  const COPY = '/data/worktrees/Documents/echo-dark-mode'
+  const DATA = { label: 'The app’s own data', path: '/data' }
+  /** The thread `t` works in a copy of the project, and so does its sub-thread. */
+  const copyOf = (thread: string) => (thread === 't' || thread === 'sub' ? { folder: COPY, project: PROJECT } : undefined)
+  const scopeOf = (access: ReturnType<typeof setup>['access'], thread: string) => (access.reach(() => ({ thread, turn: 'turn' })) as Reach).scope()
+
+  it('is reached by its thread and its sub-threads only, inside the app’s data, and is no place the settings keep', () => {
+    const { access, settings } = setup({ data: true, copyOf })
+    settings.setAccess({ places: [{ path: PROJECT, kind: 'folder', write: true }] })
+
+    for (const thread of ['t', 'sub']) {
+      const scope = scopeOf(access, thread)
+      expect(scope.places).toEqual([
+        { path: WORKSPACE, kind: 'folder', write: true },
+        { path: PROJECT, kind: 'folder', write: true },
+        { path: COPY, kind: 'folder', write: true }
+      ])
+      expect(scope.protected).toContainEqual({ ...DATA, except: [WORKSPACE, COPY] })
+      expect(access.reaches(`${COPY}/AGENTS.md`, true, thread)).toBe(true)
+    }
+    const other = scopeOf(access, 'other')
+    expect(other.places.map((place) => place.path)).toEqual([WORKSPACE, PROJECT])
+    expect(other.protected).toContainEqual({ ...DATA, except: [WORKSPACE] })
+    expect(access.reaches(`${COPY}/AGENTS.md`, false, 'other')).toBe(false)
+    expect(access.reaches(`${COPY}/AGENTS.md`)).toBe(false)
+    // Its thread reaches no other copy, and no file never reached inside its own.
+    expect(access.reaches('/data/worktrees/Documents/echo-other/a.ts', false, 't')).toBe(false)
+    expect(access.reaches(`${COPY}/Vault.kdbx`, false, 't')).toBe(false)
+    expect(settings.read().access.places).toEqual([{ path: PROJECT, kind: 'folder', write: true }])
+    expect(access.standingRules().protected).toContainEqual(DATA)
+  })
+
+  it.each([
+    ['the project may be changed', { places: [{ path: PROJECT, kind: 'folder' as const, write: true }] }, true],
+    ['the whole computer may be changed', { places: [], computer: 'write' as const }, true],
+    ['the project may only be read', { places: [{ path: PROJECT, kind: 'folder' as const, write: false }] }, false],
+    ['the whole computer may only be read', { places: [], computer: 'read' as const }, false],
+    ['the project was taken back', { places: [] }, false]
+  ])('when %s, is reached: %s', (_case, granted, reached) => {
+    const { access, settings } = setup({ data: true, copyOf })
+    settings.setAccess(granted)
+
+    expect(scopeOf(access, 't').places.some((place) => place.path === COPY)).toBe(reached)
+    expect(access.reaches(`${COPY}/src/a.ts`, true, 't')).toBe(reached)
+    expect(access.reaches(`${COPY}/src/a.ts`, false, 't')).toBe(reached)
   })
 })
 

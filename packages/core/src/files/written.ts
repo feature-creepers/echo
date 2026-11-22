@@ -1,7 +1,7 @@
 import type { ViewSpec } from '@repo/catalog'
 import type { TurnId } from '@repo/protocol'
 import type { Workspace, WorkspaceItem } from '../ports/workspace.ts'
-import { folderName, partsFrom } from '../projects/folders.ts'
+import { partsFrom } from '../projects/folders.ts'
 import type { Screen, Showing } from '../views/screen.ts'
 
 /**
@@ -20,13 +20,19 @@ const SHOWN = 5
 /** How many turns' cards are kept current: an older turn's card is left as it was. */
 const TURNS_KEPT = 20
 
+/** The project a thread works on: the folder it works in, its own or a copy of it, and the project's name. */
+export interface WrittenIn {
+  folder: string
+  name: string
+}
+
 /**
  * What the card says of where a file is: in the project the thread works on, or in the assistant's folder, then the
  * folders inside it. Nothing for a file elsewhere: its place on the computer is shown as it is.
  */
-function detailOf(item: WorkspaceItem, workspace: Workspace, project?: string): string | undefined {
-  const inProject = project === undefined ? undefined : partsFrom(project, item.location)
-  if (inProject !== undefined && project !== undefined) return ['In', [folderName(project), ...inProject.slice(0, -1)].join(' › ')].join(' ')
+function detailOf(item: WorkspaceItem, workspace: Workspace, project?: WrittenIn): string | undefined {
+  const inProject = project === undefined ? undefined : partsFrom(project.folder, item.location)
+  if (inProject !== undefined && project !== undefined) return ['In', [project.name, ...inProject.slice(0, -1)].join(' › ')].join(' ')
   const path = workspace.pathOf(item.location)
   if (path === undefined) return undefined
   const folders = path.split('/').slice(0, -1)
@@ -34,7 +40,7 @@ function detailOf(item: WorkspaceItem, workspace: Workspace, project?: string): 
 }
 
 /** The card: the files written, newest last, with what the person can do with each. */
-export function writtenCard(items: readonly WorkspaceItem[], workspace: Workspace, project?: string): { title: string; spec: ViewSpec } {
+export function writtenCard(items: readonly WorkspaceItem[], workspace: Workspace, project?: WrittenIn): { title: string; spec: ViewSpec } {
   const files = items.map((item) => {
     const detail = detailOf(item, workspace, project)
     return { path: item.location, name: item.name, size: item.size, ...(detail === undefined ? {} : { detail }) }
@@ -49,8 +55,8 @@ interface WrittenFilesOptions {
   screen: Screen
   workspace: Workspace
   newId: () => string
-  /** The folder a thread works in, when it works on a project: its files are named from there. */
-  projectOf?: (thread: string | undefined) => string | undefined
+  /** Where a thread works, when it works on a project: its files are named from there, under the project's name. */
+  projectOf?: (thread: string | undefined) => WrittenIn | undefined
 }
 
 export function createWrittenFiles({ screen, workspace, newId, projectOf }: WrittenFilesOptions): WrittenFiles {
