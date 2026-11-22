@@ -2,7 +2,7 @@ import type { ShownView } from '@repo/protocol'
 import { createScreen, type Screen, type ScreenOptions, VIEW_CLEARED, VIEW_SHOWN } from '../views/screen.ts'
 
 /** A screen that also says what it shows, for a test to look at: the screen itself only remembers where its cards are. */
-export interface WatchedScreen extends Screen {
+interface WatchedScreen extends Screen {
   /** Every card still shown, the one shown last at the end. */
   shown(): ShownView[]
   /** The card shown last. */

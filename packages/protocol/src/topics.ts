@@ -13,7 +13,7 @@ export const topicIdSchema = z.string().min(1).max(64)
  * How a topic in progress stands, by what it needs of the person first: it asks them something, it is at work, an
  * answer of it waits to be heard, or it rests.
  */
-export const TOPIC_PROGRESS = ['asks', 'working', 'ready', 'quiet'] as const
+const TOPIC_PROGRESS = ['asks', 'working', 'ready', 'quiet'] as const
 export type TopicProgress = (typeof TOPIC_PROGRESS)[number]
 
 export const topicSchema = z.object({

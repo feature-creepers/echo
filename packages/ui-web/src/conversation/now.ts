@@ -34,7 +34,7 @@ export function latestLine(answer: Answer | undefined): string | undefined {
 export const HUB_SIDE = 4
 
 /** Which topics stand on the hub's spokes, by their place among those in progress, and how many wait on other turns of it. */
-export interface HubTurn {
+interface HubTurn {
   left: number[]
   right: number[]
   /** How many topics are not on this turn of the hub: its last spoke then turns it. */

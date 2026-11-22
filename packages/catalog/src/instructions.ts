@@ -20,22 +20,7 @@ export const EXAMPLE_VIEW = {
     all: { type: 'Stack', props: {}, children: ['title', 'now', 'week'] },
     title: { type: 'Heading', props: { text: 'Lyon, this week', level: 1 } },
     now: { type: 'Row', props: { gap: 'loose' }, children: ['sun', 'temp', 'wind'] },
-    sun: {
-      type: 'Drawing',
-      props: {
-        width: 48,
-        height: 48,
-        size: 'icon',
-        label: 'Sun',
-        shapes: [
-          { shape: 'circle', cx: 24, cy: 24, r: 9, stroke: 'accent', fill: 'accent' },
-          { shape: 'line', x1: 24, y1: 3, x2: 24, y2: 9, stroke: 'accent' },
-          { shape: 'line', x1: 24, y1: 39, x2: 24, y2: 45, stroke: 'accent' },
-          { shape: 'line', x1: 3, y1: 24, x2: 9, y2: 24, stroke: 'accent' },
-          { shape: 'line', x1: 39, y1: 24, x2: 45, y2: 24, stroke: 'accent' }
-        ]
-      }
-    },
+    sun: { type: 'Illustration', props: { name: 'sun', size: 'icon' } },
     temp: { type: 'Metric', props: { label: 'Now', value: '21', unit: '°C', detail: 'Clear sky' } },
     wind: { type: 'Metric', props: { label: 'Wind', value: '12', unit: 'km/h', tone: 'soft' } },
     week: {

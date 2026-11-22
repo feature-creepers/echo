@@ -200,7 +200,7 @@ export {
 } from './services.ts'
 export type { Settings } from './settings.ts'
 export { type Thread, type Threads, threadSchema } from './threads.ts'
-export { type Answer, answerIdOf, inProgress, TOPIC_PROGRESS, type Topic, type TopicAnswers, type TopicProgress } from './topics.ts'
+export { type Answer, answerIdOf, inProgress, type Topic, type TopicAnswers, type TopicProgress } from './topics.ts'
 export { isCompatible, PROTOCOL_VERSION } from './version.ts'
 export { type ShownView, VIEW_WIDTHS, viewSchema, viewSpecShape, withCard } from './views.ts'
 export { cleanVocabulary, MAX_WORD_LENGTH, MAX_WORDS, type Vocabulary, vocabularySchema } from './vocabulary.ts'

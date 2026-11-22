@@ -34,9 +34,22 @@ describe("a widget app's page", () => {
     ['hairlines between rows', 'border-top:1px solid var(--echo-line)'],
     ['buttons drawn as lines', 'button{min-height:28px;padding:0 10px;border:1px solid var(--echo-line-strong);background:transparent;'],
     ['the one action on a plane of the ink', 'button.primary{border-color:var(--echo-text);background:var(--echo-text);color:var(--echo-ground)}'],
-    ['the names pages used before', '--echo-font:var(--echo-font-sans);--echo-mono:var(--echo-font-mono)']
+    ['the names pages used before', '--echo-font:var(--echo-font-sans);--echo-mono:var(--echo-font-mono)'],
+    ['a rule of the full ink over a list', '.rule{border-top:2px solid var(--echo-text)}'],
+    ['a small square that says how something stands', '.mark.warn{background:var(--echo-warn)}'],
+    ['parts side by side, parted by a hairline', '.cols>*+*{margin-left:16px;padding-left:16px;border-left:1px solid var(--echo-line)}'],
+    ["the illustrations' movement", '@keyframes echo-il-turn{to{transform:rotate(360deg)}}']
   ])('starts from the base style of the app: %s', (_case, rule) => {
     expect(pageOf({ html: '' }, {})).toContain(rule)
+  })
+
+  it("gives the page the app's illustrations by name, written so that none can end its script", () => {
+    const page = pageOf({ html: '' }, {})
+    const script = page.slice(page.indexOf('<script>') + 8, page.indexOf('</script>'))
+    expect(script).toContain("illustration: (name) => drawn[name] || ''")
+    const drawn = script.split('\n').find((line) => line.includes('const drawn = ')) ?? ''
+    expect(drawn).toContain('"rain":"\\u003csvg class=')
+    expect(drawn).not.toContain('<')
   })
 
   it.each<[string, Face, boolean]>([

@@ -6,6 +6,7 @@ import { Chart, Metric, Progress, Table, Timeline } from './blocks/data.tsx'
 import { Drawing, Image } from './blocks/drawing.tsx'
 import { FileList } from './blocks/file-list.tsx'
 import { FilePreview } from './blocks/file-preview.tsx'
+import { Illustration } from './blocks/illustration.tsx'
 import { Button, Field, Questions } from './blocks/input.tsx'
 import { Card, Divider, Grid, Row, Section, Stack } from './blocks/layout.tsx'
 import { PlaceMap, RegionMap } from './blocks/map.tsx'
@@ -37,6 +38,7 @@ const DRAWERS: Drawers = {
   RegionMap,
   PlaceMap,
   Drawing,
+  Illustration,
   Image,
   Media,
   Button,

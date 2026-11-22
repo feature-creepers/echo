@@ -1,5 +1,6 @@
 import type { WidgetApp } from '@repo/protocol'
 import { color, font, label } from '@repo/tokens'
+import { PAGE_ILLUSTRATIONS } from '../illustrations/illustrations.ts'
 
 /**
  * A widget app's page as its frame is given it (docs/SPEC.md, section 9.9): the app's own HTML, after Echo's look
@@ -50,10 +51,13 @@ const declared = ({ family, weight, source }: Face) =>
 const CAPS = `font:400 ${label.size}/${label.lineHeight} var(--echo-font-pixel);letter-spacing:${label.letterSpacing};text-transform:uppercase`
 
 /**
- * What every page starts from: the app's look (docs/SPEC.md, section 13.1). Content lies bare, corners are square,
- * rules are hairlines of the ink, `caps` sets a small label and `display` a short title or a large figure, and
- * buttons and fields are drawn in lines, `primary` the one action a page is there for. The page's own style comes
- * after it. Pages built before the faces had names of their own use `--echo-font` and `--echo-mono`.
+ * What every page starts from: the app's look (docs/SPEC.md, section 13.1), as a few parts to build with. Content
+ * lies bare, corners are square, rules are hairlines of the ink, `caps` sets a small label and `display` a short title
+ * or a large figure, and buttons and fields are drawn in lines, `primary` the one action a page is there for. `soft`
+ * and `faint` are the quieter inks; `rule` is the rule of the full ink over a list and `row` a line of it; `mark` is
+ * the small square that says how something stands; `cols` sets parts side by side, parted by a vertical hairline;
+ * `hatch` is a hatched plane. The illustrations' movement comes with it. The page's own style comes after it. Pages
+ * built before the faces had names of their own use `--echo-font` and `--echo-mono`.
  */
 const BASE = [
   ':root{color-scheme:dark;scrollbar-width:thin;scrollbar-color:var(--echo-line-strong) transparent;--echo-font:var(--echo-font-sans);--echo-mono:var(--echo-font-mono)}',
@@ -76,7 +80,20 @@ const BASE = [
   'button:disabled{opacity:.4;cursor:default}',
   'input,select,textarea{min-height:28px;padding:4px 8px;border:1px solid var(--echo-line-strong);background:transparent}',
   'input:focus,select:focus,textarea:focus{border-color:var(--echo-text);outline:0}',
-  '::placeholder{color:var(--echo-faint)}'
+  '::placeholder{color:var(--echo-faint)}',
+  '.soft{color:var(--echo-soft)}',
+  '.faint{color:var(--echo-faint)}',
+  '.rule{border-top:2px solid var(--echo-text)}',
+  '.row{display:flex;align-items:center;gap:8px;min-height:28px;border-top:1px solid var(--echo-line)}',
+  '.mark{display:inline-block;flex:none;width:6px;height:6px;background:var(--echo-text)}',
+  '.mark.accent{background:var(--echo-accent)}',
+  '.mark.warn{background:var(--echo-warn)}',
+  '.mark.danger{background:var(--echo-danger)}',
+  '.mark.hollow{background:none;box-shadow:inset 0 0 0 1px var(--echo-line-strong)}',
+  '.cols{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr)}',
+  '.cols>*+*{margin-left:16px;padding-left:16px;border-left:1px solid var(--echo-line)}',
+  '.hatch{background:repeating-linear-gradient(45deg,var(--echo-line-strong) 0 1px,transparent 1px 5px)}',
+  PAGE_ILLUSTRATIONS.rules
 ].join('')
 
 /** The origins a page may load pictures and sounds from: those of the public addresses it declares. */
@@ -117,6 +134,7 @@ export function pageOf(app: Pick<WidgetApp, 'html'>, theme: Readonly<Record<stri
  * window carries `echo: 1`; the window answers a question with its `id`.
  */
 const SDK = `(() => {
+  const drawn = ${JSON.stringify(PAGE_ILLUSTRATIONS.drawn).replaceAll('<', '\\u003c')}
   const waiting = new Map()
   let next = 0
   const ask = (type, data) => new Promise((resolve, reject) => {
@@ -141,6 +159,7 @@ const SDK = `(() => {
     }),
     notify: (title, body) => ask('notify', { title: String(title), body: body === undefined ? '' : String(body) }),
     open: (url) => ask('open', { url: String(url) }),
+    illustration: (name) => drawn[name] || '',
     media: Object.freeze({
       play: (source) => ask('media', { action: 'play', source }),
       pause: () => ask('media', { action: 'pause' }),

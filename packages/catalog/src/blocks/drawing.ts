@@ -36,10 +36,29 @@ const shapeSchema = z.discriminatedUnion('shape', [
 ])
 export type Shape = z.infer<typeof shapeSchema>
 
+/**
+ * The illustrations the app draws itself, by name (docs/SPEC.md, section 13.1): the sky first. A renderer has a
+ * drawing for each one.
+ */
+export const ILLUSTRATIONS = ['sun', 'moon', 'partly-cloudy', 'cloud', 'rain', 'snow', 'storm', 'fog', 'wind'] as const
+export type IllustrationName = (typeof ILLUSTRATIONS)[number]
+
 export const drawingBlocks = {
+  Illustration: {
+    description:
+      "A ready-made picture in the app's own style, alive, by name: the sky of a forecast beside its figures, as a card's main picture or small in a row. Use it whenever it has the picture; for any other, draw a Drawing.",
+    props: z.object({
+      name: z.enum(ILLUSTRATIONS),
+      /** How large it is shown: `icon` beside a Metric or in a row, `figure` as a card's picture, `large` alone. */
+      size: z.enum(['icon', 'figure', 'large']).default('figure'),
+      /** What it shows, in words, for someone who cannot see it. Left out, its name. */
+      label: z.string().optional()
+    }),
+    children: false
+  },
   Drawing: {
     description:
-      'A picture you draw yourself from simple shapes, in a canvas `width` by `height` units with the origin at the top left. Use it for a pictogram, a diagram, a map sketch, anything no other block shows. There is no ready-made icon or illustration: when a view needs a picture, draw it here. Keep pictograms simple and bold: a few shapes, `accent` for what matters.',
+      'A picture you draw yourself from simple shapes, in a canvas `width` by `height` units with the origin at the top left. Use it for a pictogram, a diagram, a map sketch, anything no other block shows, a picture Illustration has no name for. Keep pictograms simple and bold: a few shapes, `accent` for what matters.',
     props: z.object({
       width: z.number().min(1).max(2000),
       height: z.number().min(1).max(2000),

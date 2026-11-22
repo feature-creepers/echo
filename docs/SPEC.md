@@ -613,24 +613,24 @@ A Metric, a Progress or a series of a Chart takes a `feed`: a public JSON addres
 
 ### 9.6 The catalogue: building blocks only
 
-The catalogue holds generic building blocks and nothing made for one subject: no weather component, no recipe component, no prepared illustration. A weather answer is a layout the assistant composes from the same blocks as anything else. What appears on screen is as open as the conversation, and the work goes into the blocks and how well a model composes them, not into special cases.
+The catalogue holds generic building blocks and nothing made for one subject: no weather component, no recipe component. A weather answer is a layout the assistant composes from the same blocks as anything else, one of the app's illustrations among them. What appears on screen is as open as the conversation, and the work goes into the blocks and how well a model composes them, not into special cases.
 
-| Group   | Blocks                                                                                                                    |
-| ------- | ------------------------------------------------------------------------------------------------------------------------- |
-| Layout  | Stack, Row, Grid, Card, Section, Divider                                                                                  |
-| Text    | Heading, Text, Badge, KeyValue, List, Steps, Prose (formatted long text, for when detail is asked for)                    |
-| Data    | Metric, Table, Chart, Timeline, Progress                                                                                  |
-| Maps    | RegionMap (areas coloured by a figure, from a GeoJSON the assistant finds), PlaceMap (places with coordinates)            |
-| Drawing | Drawing (vector shapes the assistant writes itself: lines, circles, paths, labels), Image (a picture from a file or page) |
-| Media   | Media (sound or video from an https stream or file: a radio, a podcast, a song, a clip)                                   |
-| Input   | Questions, Field, Button                                                                                                  |
-| Apps    | App (a widget app of the library, live: section 9.9)                                                                      |
-| Files   | FilePreview (a document written with `file_write`, to read and download), FileList (files on the computer, to open)       |
+| Group   | Blocks                                                                                                                                            |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Layout  | Stack, Row, Grid, Card, Section, Divider                                                                                                          |
+| Text    | Heading, Text, Badge, KeyValue, List, Steps, Prose (formatted long text, for when detail is asked for)                                            |
+| Data    | Metric, Table, Chart, Timeline, Progress                                                                                                          |
+| Maps    | RegionMap (areas coloured by a figure, from a GeoJSON the assistant finds), PlaceMap (places with coordinates)                                    |
+| Drawing | Illustration (one of the app's own pictures, by name), Drawing (vector shapes the assistant writes itself), Image (a picture from a file or page) |
+| Media   | Media (sound or video from an https stream or file: a radio, a podcast, a song, a clip)                                                           |
+| Input   | Questions, Field, Button                                                                                                                          |
+| Apps    | App (a widget app of the library, live: section 9.9)                                                                                              |
+| Files   | FilePreview (a document written with `file_write`, to read and download), FileList (files on the computer, to open)                               |
 
 Three rules keep it that way:
 
 1. **A block is a kind of content or arrangement, never a subject.** The test before adding one: would answers on unrelated subjects use it?
-2. **No prepared artwork.** The product ships no icon set and no illustration. When an answer needs a picture, the assistant draws it with Drawing, in the accent and text colours, or uses a character as a pictogram.
+2. **Pictures are the app's own, or drawn.** The app ships a small set of illustrations in its own style (section 13.1), which a view shows by name with Illustration: a generic block, whatever the picture is of. For a picture the set does not have, the assistant draws it with Drawing, in the accent and text colours. No icon set and no artwork from elsewhere.
 3. **Live data attaches to generic blocks** (section 9.4), not to a dedicated widget.
 
 The catalogue stays small on purpose: it is part of every prompt, and a model composes better from few well-described pieces. When nothing fits, the model falls back to Prose.
@@ -698,12 +698,13 @@ A widget the person asks for to keep and use (the CI of a repository, their play
 
 - **Built by a thread** with `widget_build` (`core/src/library/apps.ts`): its title, its page (HTML, CSS and JavaScript written in it, nothing loaded from elsewhere, no framework), the public https addresses it reads, and the services it calls. It is saved in the library at once, as a view of one App block naming it, with its code beside the view, and shown. Each build is a version; `widget_source` gives a thread the page to change. The thread waits up to eight seconds to hear how the build started where it is drawn: running, failed with the page's error, or waiting for the person, and corrects it when it failed.
 - **Where it runs** (`ui-web/src/widgets/`, `desktop/src/main/widget-frames.ts`). The window hands the page to the desktop app, which serves it at an address of its own on the `echo-widget:` scheme, under a security policy sent as a header: its own scripts and styles, pictures and sounds from the origins of the addresses it declares, fonts written in the page, and no request, form, frame or other script of its own. The frame is sandboxed with scripts only, so it reaches neither the window, nor its storage, nor another frame, and it never navigates elsewhere.
-- **In Echo's look** (section 13.1), so an app reads as part of the screen it sits on. The page is given the colours and the four faces as CSS variables, the accent of the persona where it is drawn among them; the faces themselves, their Latin letters only, written into it as data (about 140 KB, loaded with the first app drawn), since the window's own files are out of its reach; and a base style it starts from: square corners, hairlines, a `caps` class for labels and a `display` class for figures, buttons and fields drawn in lines. `widget_build` tells the assistant to keep to it.
+- **In Echo's look** (section 13.1), so an app reads as part of the screen it sits on. The page is given the colours and the four faces as CSS variables, the accent of the persona where it is drawn among them; the faces themselves, their Latin letters only, written into it as data (about 140 KB, loaded with the first app drawn), since the window's own files are out of its reach; and a base style it starts from, the style guide of a widget app: square corners, hairlines, a `caps` class for labels and a `display` class for figures, buttons and fields drawn in lines, `soft` and `faint` for quieter words, `rule` and `row` for a list, `mark` for the small square that says how something stands, `cols` for parts side by side and `hatch` for a hatched plane (`ui-web/src/widgets/page.ts`). `widget_build` tells the assistant to keep to it.
 - **What it reaches.** Only through `echo`, an object the page is given, which asks the window, which asks the core:
   - `echo.fetch(url, init)`: a public address it declares, read with GET by the core, which reads only public addresses (section 9.4); or the API of a service it declares, once the person connected the service and allowed the widget, with their sign-in added by the core's adapter. A header in place of the sign-in is dropped, and no redirect is followed.
   - `echo.state.get` and `echo.state.set`: values it keeps, a hundred at most of 64 KB each, kept by the core so they follow the person to every device, and erased with the widget.
   - `echo.notify(title, body)`: a notification, once a minute at most, not while the person looks at the window.
   - `echo.open(url)`: a page of an address it declares, in the person's browser.
+  - `echo.illustration(name)`: one of the app's illustrations (section 13.1), as SVG the page puts where it wants it. It reaches nothing: the drawings are written into the page.
   - `echo.media`: Echo's one player (section 9.6), lowered under the voice: `play({ url, title, subtitle, artwork, live })` a stream or file of a declared address, `pause`, `resume`, `stop`, `volume` and `state`.
   - A value kept again unchanged is not written again, so a widget that refreshes every minute adds nothing to the store.
 - **Services** (`core/src/services/`, `accounts/src/services.ts`). A service is the start of its API's addresses, a name, and how it is signed in to: a token the person makes at the service and pastes (sent in a header the widget names, `Authorization: Bearer` by default), or OAuth 2.0 with PKCE in the system's browser, back to the loopback address, with an app the person registers at the service and whose client identifier they give. The person connects it on the widget the first time, and allows the widget to call it; another widget of the same API uses the same connection, but asks to be allowed too. A new version that calls a new service asks again. The sign-in is kept in the vault as the accounts' are (section 12.4, item 4), never given to the widget, the store or a model. The Accounts page lists the services connected, to disconnect one.
@@ -1164,6 +1165,14 @@ When the work is done the sight's triangle comes back round to the top right and
 
 **As a mark.** The app's icon is the sight on a square tile of the side panel's black with a hairline round it (`apps/desktop/src/main/mark.ts`): its ring, its pupil and its triangle in front, the inner ring from 64 px. macOS icons keep their margin. The tray's mark is the eye of the persona that answers: its triangle or its arc in the accent, its ring lit with it too while the assistant listens, all of it dimmed asleep.
 
+#### Illustrations
+
+The app has a few pictures of its own, in the eye's language (`ui-web/src/illustrations/`): rings, lines and planes, small squares, hatching, the ink with one colour that means something. The first set is the sky: sun, moon, partly cloudy, cloud, rain, snow, storm, fog, wind.
+
+- **Drawn once.** Each is a drawing of vectors on a square of 96 units, sharp at every size, in the ink of the words around it: yellow for the sun, the stars and lightning, blue for rain, the accent sparingly. An overcast cloud is hatched as the eye's half is.
+- **Alive.** Each moves slowly by itself: rays turn, a cloud drifts, rain and snow fall, lightning flashes, fog and wind slide. Only transforms and an opacity, and nothing moves when less motion is asked for.
+- **Everywhere the same.** A view shows one by name with the Illustration block (section 9.6), at 48, 96 or 160 px; a widget app's page gets the same drawing from `echo.illustration(name)` (section 9.9). Both draw the same SVG, written in the app's sources and never taken from a view or the web.
+
 **Its voice.** The pupil follows the loudness of the speaking voice and of the microphone. With no sound to read, while sentences are shown and not played, it follows a rhythm of syllables.
 
 **Cost and less motion.** Its motion is a few numbers worked out once per frame (`presence/eye-motion.ts`, tested), written as transforms and one opacity, so a frame costs no layout. Nothing is worked out while the window is hidden or the eye is out of view. With less motion asked for, it holds still, drawn as its mood rests.
@@ -1580,7 +1589,7 @@ Not built: confinement of Claude Code's commands on Windows (macOS and Linux hav
 | 12  | Credits                                 | Rodolphe Barbanneau and Tommy Sendra are co-authors and joint copyright holders, named in that order                                                                                                                                                                        |
 | 13  | The product's name                      | Echo, chosen knowing that Amazon sells voice devices under that name and that no short domain is free (section 16)                                                                                                                                                          |
 | 14  | Persona names                           | Chosen by the person. JARVIS and HAL are defaults, offered at first launch and changeable in settings. No code names a persona (section 11)                                                                                                                                 |
-| 15  | What the catalogue contains             | Generic building blocks only: no component made for one subject and no prepared artwork. The assistant composes and draws (section 9.6)                                                                                                                                     |
+| 15  | What the catalogue contains             | Generic building blocks only: no component made for one subject. Pictures are the app's own illustrations, by name, or drawn by the assistant (section 9.6)                                                                                                                 |
 | 16  | When memory is processed                | While the assistant sleeps: after a quiet period, at a set time, on request or never, as the person sets it (section 10.6)                                                                                                                                                  |
 | 17  | The model the assistant answers with    | The person's choice per AI program, with its level of reasoning: Haiku by default with Claude Code, Terra with Codex. Routing stays on the fast model (section 6.2)                                                                                                         |
 | 18  | One line of work                        | On `main`, for Windows, macOS and Linux at once, behind one interface; never a branch of one system's own. A change too large for one sitting goes on a short-lived branch, merged back once CI passes. Echo is developed with Echo (section 7.11)                          |
