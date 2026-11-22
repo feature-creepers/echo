@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { exchangeSchema, stepSchema, turnIdSchema, UTTERANCE_MAX_LENGTH } from '../conversation.ts'
-import { threadIdSchema, threadSchema, threadsSchema } from '../threads.ts'
+import { keptCopySchema, threadIdSchema, threadSchema, threadsSchema } from '../threads.ts'
 import { viewSchema } from '../views.ts'
 
 export const threadCommands = {
@@ -85,5 +85,25 @@ export const threadCommands = {
       request: z.string().trim().min(1).max(UTTERANCE_MAX_LENGTH)
     }),
     output: z.object({ thread: threadIdSchema, turn: turnIdSchema })
+  },
+
+  /**
+   * The copies of repositories kept in the app's data (docs/SPEC.md, section 7.11): each thread's that is there, the
+   * thread used last first, then the folders left there that no thread names, with the room each takes and what
+   * removing it would lose.
+   */
+  'copies.read': {
+    input: z.object({}),
+    output: z.object({ copies: z.array(keptCopySchema) })
+  },
+
+  /**
+   * Remove a copy, by its folder as `copies.read` gave it. One that holds something that would be lost is kept
+   * unless `anyway`, and `holds` says what. Its branch is never deleted. `problem` says why it could not be removed:
+   * its thread is at work, or a program still works in it.
+   */
+  'copy.remove': {
+    input: z.object({ folder: z.string().min(1).max(4096), anyway: z.boolean().default(false) }),
+    output: z.object({ removed: z.boolean(), holds: z.string().optional(), problem: z.string().optional() })
   }
 }

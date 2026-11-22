@@ -199,7 +199,7 @@ export {
   servicesViewSchema
 } from './services.ts'
 export type { Settings } from './settings.ts'
-export { type Thread, type ThreadCopy, type Threads, threadSchema } from './threads.ts'
+export { IDLE_ARCHIVES_MS, type KeptCopy, type Thread, type ThreadCopy, type Threads, threadSchema } from './threads.ts'
 export { type Answer, answerIdOf, inProgress, type Topic, type TopicAnswers, type TopicProgress } from './topics.ts'
 export { isCompatible, PROTOCOL_VERSION } from './version.ts'
 export { asksSomething, type ShownView, VIEW_WIDTHS, viewSchema, viewSpecShape, withCard } from './views.ts'

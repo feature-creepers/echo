@@ -1,6 +1,6 @@
-import { execFileSync } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
-import { basename, dirname, join } from 'node:path'
+import { execFileSync, spawn } from 'node:child_process'
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { eventually, folder, removeFolders } from '../../test/sessions.ts'
 import { branchSlug, createWorktrees } from './worktrees.ts'
@@ -123,6 +123,9 @@ describe.runIf(hasGit)('making a copy of a repository', () => {
     const [name = ''] = made(place)
     expect(name).toMatch(/^echo-réécrire-entièr-[0-9a-f]{16}$/)
     expect(Buffer.byteLength(name)).toBeLessThanOrEqual(23 + 1 + 16)
+    // A name cut between two words ends on the word.
+    await worktrees.make({ folder: top, title: 'Dark mode for the settings' })
+    expect(made(place)).toContainEqual(expect.stringMatching(/^echo-dark-mode-for-the-[0-9a-f]{16}$/))
   })
 
   it('tells apart two repositories that only share their short name', async () => {
@@ -269,6 +272,188 @@ describe.runIf(hasGit)('having a copy there again', () => {
   it('refuses a folder that is not where copies are kept', async () => {
     const { top, worktrees, copy } = await copied()
 
-    await expect(worktrees.again(top, { ...copy, folder: basename(top) === '' ? top : dirname(top) })).rejects.toThrow('is not where copies are kept')
+    await expect(worktrees.again(top, { ...copy, folder: dirname(top) })).rejects.toThrow('is not where copies are kept')
+  })
+})
+
+/** A copy of a new repository with one commit of its own: nothing in it would be lost. */
+const committed = async (title = 'Carry on') => {
+  const top = repository()
+  const { place, worktrees } = kept()
+  const copy = await worktrees.make({ folder: top, title })
+  if (!copy) throw new Error('No copy was made.')
+  writeFileSync(join(copy.folder, 'src', 'b.ts'), 'committed in the copy\n')
+  git(copy.folder, 'add', '.')
+  git(copy.folder, 'commit', '-q', '-m', 'In the copy')
+  return { top, place, worktrees, copy }
+}
+
+describe.runIf(hasGit)('how a copy stands', () => {
+  it('says that nothing would be lost, that its work is not merged yet, and the room its files take', async () => {
+    const { worktrees, copy } = await committed()
+    writeFileSync(join(copy.folder, 'large.bin'), Buffer.alloc(100_000))
+
+    expect(await worktrees.state(copy)).toMatchObject({ there: true, merged: false })
+    const size = (await worktrees.size(copy.folder)) ?? 0
+    // Its files, and git's own file that names its repository: no more than that.
+    expect(size).toBeGreaterThanOrEqual(100_000)
+    expect(size).toBeLessThan(110_000)
+  })
+
+  it('is merged once the branch it started from holds what it committed, and not before it committed anything', async () => {
+    const { top, worktrees, copy } = await committed()
+    const untouched = await worktrees.make({ folder: top, title: 'Untouched' })
+
+    git(top, 'merge', '-q', '--ff-only', copy.branch)
+
+    expect(await worktrees.state(copy)).toMatchObject({ merged: true })
+    expect(untouched && (await worktrees.state(untouched))).toMatchObject({ merged: false })
+  })
+
+  it('is not there once its folder is gone', async () => {
+    const { worktrees, copy } = await committed()
+    rmSync(copy.folder, { recursive: true, force: true })
+
+    expect(await worktrees.state(copy)).toEqual({ there: false })
+  })
+})
+
+describe.runIf(hasGit)('removing a copy', () => {
+  it('removes a clean one, and leaves its branch and the repository as they were', async () => {
+    const { top, place, worktrees, copy } = await committed()
+
+    expect(await worktrees.remove(copy.folder, false)).toEqual({ removed: true })
+
+    expect(existsSync(copy.folder)).toBe(false)
+    expect(existsSync(join(place, 'project'))).toBe(false)
+    expect(branches(top)).toEqual([copy.branch, 'main'])
+    expect(git(top, 'show', `${copy.branch}:src/b.ts`)).toBe('committed in the copy\n')
+    expect(recorded(top)).toBe(1)
+    // Its branch stays, so it comes back.
+    expect(await worktrees.again(top, copy)).toBe(true)
+  })
+
+  it.each<[string, (copy: string, top: string) => void, string]>([
+    ['files changed and not committed', (copy) => writeFileSync(join(copy, 'src', 'a.ts'), 'changed\n'), '1 file changed and not committed'],
+    [
+      'files git does not track, hidden by the person’s settings',
+      (copy, top) => {
+        git(top, 'config', 'status.showUntrackedFiles', 'no')
+        writeFileSync(join(copy, 'notes.md'), 'new\n')
+        writeFileSync(join(copy, 'more.md'), 'new\n')
+      },
+      '2 files changed and not committed'
+    ],
+    [
+      'a merge under way',
+      (copy, top) => {
+        writeFileSync(join(top, 'src', 'b.ts'), 'committed in the project\n')
+        git(top, 'add', '.')
+        git(top, 'commit', '-q', '-m', 'In the project')
+        try {
+          git(copy, 'merge', '-q', 'main')
+        } catch {
+          // The two sides added the same file: the merge stops on the conflict.
+        }
+      },
+      '1 file changed and not committed, a merge under way'
+    ],
+    [
+      'commits that no branch holds',
+      (copy) => {
+        git(copy, 'checkout', '-q', '--detach')
+        git(copy, 'commit', '-q', '--allow-empty', '-m', 'On no branch')
+      },
+      'commits that no branch holds'
+    ]
+  ])('keeps one that holds %s, unless told to remove it anyway', async (_case, arrange, holds) => {
+    const { top, worktrees, copy } = await committed()
+    arrange(copy.folder, top)
+
+    expect(await worktrees.state(copy)).toMatchObject({ there: true, holds })
+    expect(await worktrees.remove(copy.folder, false)).toEqual({ removed: false, holds })
+    expect(existsSync(join(copy.folder, 'src', 'a.ts'))).toBe(true)
+
+    expect(await worktrees.remove(copy.folder, true)).toEqual({ removed: true })
+    expect(existsSync(copy.folder)).toBe(false)
+    expect(branches(top)).toContain(copy.branch)
+  })
+
+  it('does not follow a link to a folder outside: what it leads to is left as it is', async () => {
+    const { top, worktrees, copy } = await committed()
+    const outside = join(scratch(), 'store')
+    mkdirSync(outside)
+    writeFileSync(join(outside, 'kept.txt'), 'kept\n')
+    // As pnpm links what it installs: a folder git ignores, leading out of the copy.
+    writeFileSync(join(copy.folder, '.gitignore'), '.env\nnode_modules\n')
+    git(copy.folder, 'commit', '-q', '-am', 'Ignore what is installed')
+    symlinkSync(outside, join(copy.folder, 'node_modules'), 'junction')
+
+    expect(await worktrees.remove(copy.folder, false)).toEqual({ removed: true })
+
+    expect(existsSync(copy.folder)).toBe(false)
+    expect(readFileSync(join(outside, 'kept.txt'), 'utf8')).toBe('kept\n')
+    expect(recorded(top)).toBe(1)
+  })
+
+  it('has nothing to do for a folder already gone', async () => {
+    const { worktrees, copy } = await committed()
+    rmSync(copy.folder, { recursive: true, force: true })
+
+    expect(await worktrees.remove(copy.folder, false)).toEqual({ removed: true })
+  })
+
+  it('leaves a copy whole while a program works in it, where the system holds it', { timeout: 30_000 }, async () => {
+    const { worktrees, copy } = await committed()
+    const program = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 20000)'], { cwd: copy.folder, stdio: 'ignore' })
+    await new Promise((resolve) => program.once('spawn', resolve))
+    try {
+      const outcome = await worktrees.remove(copy.folder, false).then(
+        () => 'removed',
+        (error: unknown) => String(error)
+      )
+      // Windows holds a folder a program works in; macOS and Linux let it go.
+      if (process.platform === 'win32') {
+        expect(outcome).toContain('A program still works in it.')
+        expect(readFileSync(join(copy.folder, 'src', 'b.ts'), 'utf8')).toBe('committed in the copy\n')
+        expect(await worktrees.state(copy)).toMatchObject({ there: true })
+      } else {
+        expect(outcome).toBe('removed')
+        expect(existsSync(copy.folder)).toBe(false)
+      }
+    } finally {
+      program.kill()
+      await new Promise((resolve) => program.once('exit', resolve))
+    }
+  })
+})
+
+describe.runIf(hasGit)('folders no thread names', () => {
+  it('lists a copy no thread names, with what it holds, and not those named or being made', async () => {
+    const { top, place, worktrees, copy } = await committed()
+    const other = await worktrees.make({ folder: top, title: 'Left behind' })
+    writeFileSync(join(other?.folder ?? '', 'notes.md'), 'new\n')
+    const left = join(place, 'project', 'echo-old.gone-1a2b3c')
+    mkdirSync(left)
+    writeFileSync(join(left, 'a.txt'), 'left\n')
+
+    const orphans = await worktrees.orphans([copy.folder])
+
+    expect(orphans.map((one) => [one.folder, one.holds]).sort()).toEqual(
+      [
+        [other?.folder, '1 file changed and not committed'],
+        [left, 'files that could not be checked: it is no longer a git worktree']
+      ].sort()
+    )
+    expect(await worktrees.size(left)).toBe(5)
+    // Removed only when told to, anyway: what a folder that is no work tree holds cannot be checked.
+    expect(await worktrees.remove(left, false)).toMatchObject({ removed: false })
+    expect(await worktrees.remove(left, true)).toEqual({ removed: true })
+    expect(existsSync(left)).toBe(false)
+    expect((await worktrees.orphans([copy.folder, other?.folder ?? ''])).map((one) => one.folder)).toEqual([])
+  })
+
+  it('lists none where no copy was ever made', async () => {
+    expect(await kept().worktrees.orphans([])).toEqual([])
   })
 })

@@ -14,6 +14,7 @@ import { EmptyRow, SettingGroup, SettingRow } from '../settings/rows.tsx'
 import { AppsGroup } from './apps-group.tsx'
 import { BrowserGroup } from './browser-group.tsx'
 import { ConfirmationRow } from './confirmation-row.tsx'
+import { CopiesGroup } from './copies-group.tsx'
 import { NetworkGroup } from './network-group.tsx'
 import { PathText } from './path-text.tsx'
 import { useStandingRules } from './use-standing-rules.ts'
@@ -163,6 +164,8 @@ export function AccessSection({ client, settings, productName }: { client: Clien
           )}
         </div>
       </SettingGroup>
+
+      <CopiesGroup client={client} productName={productName} />
 
       <SettingGroup title="The whole computer">
         <SettingRow

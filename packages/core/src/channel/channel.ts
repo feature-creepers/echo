@@ -35,7 +35,7 @@ import { createThreadRegistry } from '../threads/registry.ts'
 import { createTopics, type Topics } from '../topics/topics.ts'
 import type { Checked, Screen, Showing } from '../views/screen.ts'
 import type { Abilities, Remembering } from './abilities.ts'
-import { COPY_STEP, createCopies } from './copies.ts'
+import { COPY_STEP, type Copies, createCopies } from './copies.ts'
 import {
   DELEGATED_FIRST,
   inFront,
@@ -220,8 +220,8 @@ export interface Channel {
   forgetLines(turns: ReadonlySet<string>): void
   /** The threads, and the one in focus. */
   threads(): Threads
-  /** The copy of a repository a thread works in, its own or its thread's for a sub-thread, and the project's folder it is a copy of. */
-  copyOf(thread: string): { folder: string; project: string } | undefined
+  /** The copies of a repository threads work in: the one a thread works in, those kept, and removing one. */
+  copies: Pick<Copies, 'copyOf' | 'kept' | 'remove'>
   /** The topics the answers are filed in: what the main screen reads, and what the person corrects. */
   topics: Pick<Topics, 'read' | 'answers' | 'rename' | 'archive' | 'move' | 'merge'>
   /** The turn on the stage, if any. */
@@ -276,7 +276,7 @@ export function createChannel(options: ChannelOptions): Channel {
   registry.onEvent(emit)
   const topics = createTopics({ records, registry, screen, lines: () => transcript, now, newId })
   topics.onEvent(emit)
-  const copies = createCopies({ registry, worktrees: options.worktrees })
+  const copies = createCopies({ registry, worktrees: options.worktrees, log, now, release: (thread) => releaseCopy(thread) })
   /** The thread whose work a thread does: a sub-thread's is the thread that opened it. */
   const ownerOf = (id: string): string => {
     const thread = registry.get(id)
@@ -779,6 +779,24 @@ export function createChannel(options: ChannelOptions): Channel {
     if (runtime.answering || runtime.queue.length > 0) return
     for (const resolve of runtime.idle.splice(0)) resolve()
     closeLater(runtime)
+    // Its work may be merged by now: its copy of the repository is then removed.
+    void copies.settle(runtime.thread)
+  }
+
+  /**
+   * End the sessions that work in a thread's copy of a repository, its own and its sub-threads', so that the folder
+   * can be removed: a program holds the folder it runs in. False, and none is ended, while one has something to answer.
+   */
+  const releaseCopy = (id: string): boolean => {
+    const users = [id, ...subthreads.of(id).map((one) => one.id)].flatMap((one) => runtimes.get(one) ?? [])
+    if (users.some((runtime) => runtime.answering !== undefined || runtime.queue.length > 0)) return false
+    for (const runtime of users) {
+      runtime.closing?.()
+      runtime.closing = undefined
+      end(runtime.live)
+      runtime.live = undefined
+    }
+    return true
   }
 
   /**
@@ -1177,6 +1195,9 @@ export function createChannel(options: ChannelOptions): Channel {
     return { exchanges, steps }
   }
 
+  // Copies whose thread was put away or left alone for a week while the app was closed are removed now, when clean.
+  for (const thread of registry.read().threads) void copies.settle(thread.id)
+
   return {
     say(text, { language, handed = NOTHING_HANDED, spoken: aloud = false, screen = true, about } = {}) {
       // A yes or a no to a question on screen answers it: the turn that asked goes on, and no new one starts. What
@@ -1376,11 +1397,13 @@ export function createChannel(options: ChannelOptions): Channel {
       return true
     },
 
-    copyOf: (thread) => copies.copyOf(thread),
+    copies,
 
     archive(id, archived) {
       if (!registry.get(id)) return false
       registry.archive(id, archived)
+      // Put away, its copy of a repository goes when nothing in it would be lost.
+      if (archived) void copies.settle(id)
       return true
     },
     dismiss(id) {

@@ -6,7 +6,7 @@ import type { Timers } from '../ports/clock.ts'
 import { memoryRecords } from '../records/memory.ts'
 import { manualTimers } from '../replay/manual-timers.ts'
 import { type ScriptedHarness, scriptedHarness } from '../replay/scripted-harness.ts'
-import { SCRIPTED_COMMIT, type ScriptedWorktrees, scriptedWorktrees } from '../replay/scripted-worktrees.ts'
+import { SCRIPTED_COMMIT, SCRIPTED_SIZE, type ScriptedWorktrees, scriptedWorktrees } from '../replay/scripted-worktrees.ts'
 import { watchedScreen } from '../replay/watched-screen.ts'
 import { createUserSettings } from '../settings/settings.ts'
 import { createTools } from '../tools/tools.ts'
@@ -31,9 +31,21 @@ interface Setup {
   timers?: Timers
   /** Where copies of a repository are made. Left out, there are none. */
   worktrees?: ScriptedWorktrees
+  /** The moment it is, as an ISO date. */
+  at?: string
 }
 
-function setup({ harness = scriptedHarness(), records = memoryRecords(), server = true, more = {}, run = '', quiet = false, timers, worktrees }: Setup = {}) {
+function setup({
+  harness = scriptedHarness(),
+  records = memoryRecords(),
+  server = true,
+  more = {},
+  run = '',
+  quiet = false,
+  timers,
+  worktrees,
+  at = '2026-11-17T08:00:00Z'
+}: Setup = {}) {
   let ids = 0
   const newId = () => `${run}id-${++ids}`
   const settings = createUserSettings(records, [
@@ -55,7 +67,7 @@ function setup({ harness = scriptedHarness(), records = memoryRecords(), server 
     records,
     screen,
     log,
-    now: () => new Date('2026-11-17T08:00:00Z'),
+    now: () => new Date(at),
     newId,
     timeZone: () => 'Europe/Paris',
     abilities: {
@@ -1734,8 +1746,8 @@ describe('a project', () => {
       ])
       // Neither is told to keep out of the other's way: they do not share a folder.
       expect(second?.sent[0]).not.toContain('Other threads are working in this folder')
-      expect(channel.copyOf(threadOf('Dark mode')?.id ?? '')).toEqual({ folder: COPY, project: '/home/ada/code/echo' })
-      expect(channel.copyOf(threadOf('Echo')?.id ?? '')).toBeUndefined()
+      expect(channel.copies.copyOf(threadOf('Dark mode')?.id ?? '')).toEqual({ folder: COPY, project: '/home/ada/code/echo' })
+      expect(channel.copies.copyOf(threadOf('Echo')?.id ?? '')).toBeUndefined()
     })
 
     it('tells the thread in a copy where it works, what the copy lacks, and how its work is brought back', async () => {
@@ -1851,7 +1863,7 @@ describe('a project', () => {
       const { channel, harness, call, second, threadOf, worktrees, events } = await openBeside()
       second?.emit({ type: 'turn-end' })
       await settled()
-      worktrees.remove(COPY)
+      worktrees.takeAway(COPY)
 
       channel.say('In the dark mode, also change the accent.')
       await settled()
@@ -1878,7 +1890,7 @@ describe('a project', () => {
       second?.emit({ type: 'turn-end' })
       harness.sessions[1]?.emit({ type: 'turn-end' })
       await settled()
-      worktrees.remove(COPY)
+      worktrees.takeAway(COPY)
       worktrees.deleteBranch('echo/dark-mode')
 
       channel.say('In the dark mode, also change the accent.')
@@ -1905,7 +1917,7 @@ describe('a project', () => {
       expect(sub?.copy).toBeUndefined()
       expect(harness.sessions[3]?.request.folder).toBe(COPY)
       expect(harness.sessions[3]?.request.instructions).toContain(`You work in the folder ${COPY}`)
-      expect(channel.copyOf(sub?.id ?? '')).toEqual({ folder: COPY, project: '/home/ada/code/echo' })
+      expect(channel.copies.copyOf(sub?.id ?? '')).toEqual({ folder: COPY, project: '/home/ada/code/echo' })
       expect(worktrees.there()).toEqual([COPY])
     })
 
@@ -1942,6 +1954,140 @@ describe('a project', () => {
       await second.call(0, 'thread_send', { thread: thread?.id })
       await settled()
       expect(second.harness.sessions[1]?.request.folder).toBe(COPY)
+    })
+
+    describe('once it is no longer needed', () => {
+      /** The second thread, in its copy, with its first request answered. */
+      async function answered(made = copying()) {
+        const context = await openBeside({}, made)
+        context.second?.emit({ type: 'turn-end' })
+        await settled()
+        return { ...context, id: context.threadOf('Dark mode')?.id ?? '' }
+      }
+      /** Ask the thread in the copy something more, and have it answer. */
+      async function askAgain({ channel, harness, call, second, id }: Awaited<ReturnType<typeof answered>>) {
+        channel.say('In the dark mode, bring it into main.')
+        await settled()
+        await call(0, 'thread_send', { thread: id })
+        harness.sessions[0]?.emit({ type: 'turn-end' })
+        await settled()
+        second?.emit({ type: 'turn-end' })
+        await settled()
+      }
+
+      it('removes the copy once the branch it started from holds its work, its branch and its record kept', async () => {
+        const context = await answered()
+        const { worktrees, second, threadOf } = context
+        // Its request answered and nothing merged: the copy stays, and so does its session.
+        expect(worktrees.there()).toEqual([COPY])
+        expect(second?.closed).toBe(false)
+
+        worktrees.merge(COPY)
+        await askAgain(context)
+
+        expect(worktrees.there()).toEqual([])
+        expect(second?.closed).toBe(true)
+        expect(threadOf('Dark mode')?.copy).toMatchObject({ folder: COPY, branch: 'echo/dark-mode' })
+      })
+
+      it('keeps a copy that holds something that would be lost, merged or put away', async () => {
+        const context = await answered()
+        const { channel, worktrees, id } = context
+        worktrees.hold(COPY, '2 files changed and not committed')
+        worktrees.merge(COPY)
+
+        await askAgain(context)
+        channel.archive(id, true)
+        await settled()
+
+        expect(worktrees.there()).toEqual([COPY])
+      })
+
+      it('removes a clean copy when its thread is put away, and never one whose thread is at work', async () => {
+        const { channel, worktrees, second, threadOf } = await openBeside()
+        const id = threadOf('Dark mode')?.id ?? ''
+
+        channel.archive(id, true)
+        await settled()
+        expect(worktrees.there()).toEqual([COPY])
+
+        second?.emit({ type: 'turn-end' })
+        await settled()
+        channel.archive(id, true)
+        await settled()
+        expect(worktrees.there()).toEqual([])
+      })
+
+      it('removes, when the app opens, the clean copy of a thread left alone for a week', async () => {
+        const made = copying()
+        const records = memoryRecords()
+        const first = setup({ records, more: made.more, worktrees: made.worktrees })
+        first.channel.say('In the echo repo, add a dark mode.')
+        await settled()
+        await first.call(0, 'thread_open', { title: 'Dark mode', folder: '~/code/echo', copy: true })
+        first.harness.sessions[0]?.emit({ type: 'turn-end' })
+        await settled()
+        first.harness.sessions[1]?.emit({ type: 'turn-end' })
+        await settled()
+
+        setup({ records, more: made.more, worktrees: made.worktrees, run: 'next-day-', at: '2026-11-18T08:00:00Z' })
+        await settled()
+        expect(made.worktrees.there()).toEqual([COPY])
+
+        setup({ records, more: made.more, worktrees: made.worktrees, run: 'next-week-', at: '2026-11-25T08:00:00Z' })
+        await settled()
+        expect(made.worktrees.there()).toEqual([])
+      })
+
+      it('lists the copies kept: each thread’s with what it holds, then the folders no thread names', async () => {
+        const { channel, worktrees, id } = await answered()
+        worktrees.hold(COPY, '1 file changed and not committed')
+        worktrees.leave('/data/worktrees/echo/echo-old')
+
+        expect(await channel.copies.kept()).toEqual([
+          {
+            folder: COPY,
+            thread: { id, title: 'Dark mode', project: '/home/ada/code/echo', branch: 'echo/dark-mode' },
+            size: SCRIPTED_SIZE,
+            holds: '1 file changed and not committed'
+          },
+          { folder: '/data/worktrees/echo/echo-old', size: SCRIPTED_SIZE }
+        ])
+        // A copy that is gone is not listed, though its thread still names it.
+        worktrees.takeAway(COPY)
+        expect((await channel.copies.kept()).map((copy) => copy.folder)).toEqual(['/data/worktrees/echo/echo-old'])
+      })
+
+      it('removes a copy as the person asks: never while its thread is at work, nor what it holds unless told to', async () => {
+        const { channel, worktrees, second, threadOf } = await openBeside()
+        worktrees.hold(COPY, '1 file changed and not committed')
+
+        expect(await channel.copies.remove(COPY, true)).toEqual({ removed: false, problem: '“Dark mode” is at work in it. Stop it first.' })
+        second?.emit({ type: 'turn-end' })
+        await settled()
+        expect(await channel.copies.remove(COPY, false)).toEqual({ removed: false, holds: '1 file changed and not committed' })
+        expect(worktrees.there()).toEqual([COPY])
+
+        expect(await channel.copies.remove(COPY, true)).toEqual({ removed: true })
+        expect(worktrees.there()).toEqual([])
+        // Its session ran in the folder: it was ended first. Its record and its branch stay.
+        expect(second?.closed).toBe(true)
+        expect(threadOf('Dark mode')?.copy?.branch).toBe('echo/dark-mode')
+      })
+
+      it('removes a folder no thread names, says why a copy in use stays, and removes nothing that was not listed', async () => {
+        const { channel, worktrees } = await answered()
+        worktrees.leave('/data/worktrees/echo/echo-old')
+        worktrees.use(COPY, true)
+
+        expect(await channel.copies.remove(COPY, false)).toEqual({
+          removed: false,
+          problem: 'A program still works in it. Close it, or stop the thread, and try again.'
+        })
+        expect(await channel.copies.remove(`${COPY}/src`, true)).toEqual({ removed: false, problem: 'There is no such copy.' })
+        expect(await channel.copies.remove('/data/worktrees/echo/echo-old', false)).toEqual({ removed: true })
+        expect(worktrees.there()).toEqual([COPY])
+      })
     })
   })
 })

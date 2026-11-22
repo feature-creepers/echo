@@ -1,9 +1,10 @@
-import { createHash } from 'node:crypto'
-import { mkdir, rm, rmdir } from 'node:fs/promises'
+import { createHash, randomBytes } from 'node:crypto'
+import { mkdir, readdir, rename, rm, rmdir } from 'node:fs/promises'
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import type { Signal, Worktrees } from '@repo/core'
 import { git, text } from './git.ts'
 import { kindAt, within } from './paths.ts'
+import { holdsOf, sizeOf } from './worktree-state.ts'
 
 /**
  * Copies of a repository for threads that work beside another (docs/SPEC.md, section 7.11), as git worktrees kept in
@@ -17,6 +18,12 @@ const SLUG_LIMIT = 48
 const PREFIX_BYTES = 23
 /** How many names are tried for a branch or a folder that is taken. */
 const TRIES = 50
+/**
+ * How often, and how long apart in milliseconds, a copy is tried again when the system still holds it: a session's
+ * program that was just closed takes up to two seconds to end, and holds its folder until it has.
+ */
+const HELD_TRIES = 20
+const HELD_WAIT_MS = 200
 
 /** A thread's title as the end of a branch's name: its letters and digits in small letters, "-" between its words. */
 export function branchSlug(title: string): string {
@@ -71,6 +78,23 @@ async function discard(top: string, root: string): Promise<void> {
   await git(top, ['worktree', 'prune']).catch(() => undefined)
 }
 
+/**
+ * Move a copy aside before it is removed, which the system refuses while a program still works in it: nothing is
+ * changed then, so a removal never stops half-way through a copy in use.
+ */
+async function moveAside(root: string, aside: string): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await rename(root, aside)
+    } catch (error) {
+      const held = ['EBUSY', 'EPERM', 'EACCES'].includes((error as NodeJS.ErrnoException).code ?? '')
+      if (!held) throw error
+      if (attempt >= HELD_TRIES) throw new Error('A program still works in it. Close it, or stop the thread, and try again.', { cause: error })
+      await new Promise((resolve) => setTimeout(resolve, HELD_WAIT_MS))
+    }
+  }
+}
+
 /** The copies kept in `folder`, a folder of the app's data made when the first copy is. */
 export function createWorktrees({ folder: kept }: { folder: string }): Worktrees {
   /** Where a copy starts, from a folder inside it: copies are two folders deep. */
@@ -79,18 +103,24 @@ export function createWorktrees({ folder: kept }: { folder: string }): Worktrees
     return within(folder, kept) && repositoryName && name ? join(kept, repositoryName, name) : undefined
   }
 
+  /** The copies being checked out now: no thread names them yet, and they are not left-overs. */
+  const making = new Set<string>()
+
   /**
    * Check a branch out in a new folder. It has no time limit: a deadline would stop a large checkout half-way. A stop
    * ends it; on macOS and Linux only once the checkout git started has ended, which nothing is left of either way.
    */
   const checkOut = async (top: string, root: string, branch: string, signal: Signal | undefined) => {
-    await mkdir(dirname(root), { recursive: true })
+    making.add(root)
     try {
+      await mkdir(dirname(root), { recursive: true })
       await git(top, ['worktree', 'add', '--', root, branch], { timeout: null, signal })
       if (signal?.aborted) throw new Error('It was stopped.')
     } catch (error) {
       await discard(top, root)
       throw signal?.aborted ? new Error('It was stopped.') : error
+    } finally {
+      making.delete(root)
     }
   }
 
@@ -124,7 +154,8 @@ export function createWorktrees({ folder: kept }: { folder: string }): Worktrees
 
       // The repository's git folder and the branch tell two copies apart, whatever their repositories are named.
       const hash = createHash('sha256').update(`${common}\0${branch}`).digest('hex').slice(0, 16)
-      const base = join(kept, basename(top) || 'repository', `${startOf(branch.replaceAll('/', '-'), PREFIX_BYTES)}-${hash}`)
+      const start = startOf(branch.replaceAll('/', '-'), PREFIX_BYTES).replace(/-+$/, '')
+      const base = join(kept, basename(top) || 'repository', `${start}-${hash}`)
       let root = base
       for (let count = 2; (await kindAt(root)) !== undefined && count <= TRIES; count++) root = `${base}-${count}`
 
@@ -168,6 +199,68 @@ export function createWorktrees({ folder: kept }: { folder: string }): Worktrees
       await checkOut(top, root, copy.branch, signal)
       if ((await kindAt(copy.folder)) !== 'folder') throw new Error(`${copy.folder} is no longer there on the branch ${copy.branch}.`)
       return true
+    },
+
+    async state(copy) {
+      const root = rootOf(copy.folder)
+      if (root === undefined || (await kindAt(root)) === undefined) return { there: false }
+      const holds = await holdsOf(root)
+      // Merged: it committed something, and the branch it started from now holds all of it.
+      const tip = await git(root, ['rev-parse', '--verify', '-q', `refs/heads/${copy.branch}`]).then(
+        (printed) => text(printed).trim(),
+        () => ''
+      )
+      const merged =
+        copy.start.branch !== undefined &&
+        tip !== '' &&
+        tip !== copy.start.commit &&
+        (await git(root, ['merge-base', '--is-ancestor', tip, `refs/heads/${copy.start.branch}`]).then(
+          () => true,
+          () => false
+        ))
+      return { there: true, merged, ...(holds === undefined ? {} : { holds }) }
+    },
+
+    async size(folder) {
+      const root = rootOf(folder)
+      return root === undefined ? undefined : sizeOf(root)
+    },
+
+    async remove(folder, anyway) {
+      const root = rootOf(folder)
+      if (root === undefined) throw new Error(`${folder} is not where copies are kept.`)
+      if ((await kindAt(root)) === undefined) return { removed: true }
+      // The repository it is a work tree of is read before it goes, to have git drop its record of it after.
+      const common = await git(root, ['rev-parse', '--git-common-dir']).then(
+        (printed) => resolve(root, text(printed).trim()),
+        () => undefined
+      )
+      if (!anyway) {
+        const holds = await holdsOf(root)
+        if (holds !== undefined) return { removed: false, holds }
+      }
+      const aside = `${root}.gone-${randomBytes(3).toString('hex')}`
+      await moveAside(root, aside)
+      // Removed by Node, which unlinks a link without following it. What cannot be removed stays as a left-over, listed
+      // with the folders no thread names.
+      await rm(aside, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }).catch(() => undefined)
+      if (common !== undefined) await git(common, ['worktree', 'prune']).catch(() => undefined)
+      await rmdir(dirname(root)).catch(() => undefined)
+      return { removed: true }
+    },
+
+    async orphans(named) {
+      const found: Awaited<ReturnType<Worktrees['orphans']>> = []
+      for (const repositoryName of await readdir(kept, { withFileTypes: true }).catch(() => [])) {
+        if (!repositoryName.isDirectory()) continue
+        for (const entry of await readdir(join(kept, repositoryName.name), { withFileTypes: true }).catch(() => [])) {
+          const root = join(kept, repositoryName.name, entry.name)
+          if (!entry.isDirectory() || making.has(root) || named.some((folder) => within(folder, root))) continue
+          const holds = await holdsOf(root)
+          found.push({ folder: root, ...(holds === undefined ? {} : { holds }) })
+        }
+      }
+      return found
     }
   }
 }

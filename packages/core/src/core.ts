@@ -279,7 +279,7 @@ export function createCore(options: CoreOptions): Core {
     now,
     newId: options.newId,
     // The channel is made below; no session reaches the computer before it is.
-    copyOf: (thread) => channel.copyOf(thread)
+    copyOf: (thread) => channel.copies.copyOf(thread)
   })
   access.onEvent(emit)
   const accounts = createAccountList({ port: options.accounts, records: options.records, newId: options.newId, now, log: options.log })
@@ -344,7 +344,9 @@ export function createCore(options: CoreOptions): Core {
         newId: options.newId,
         projectOf: (thread) => {
           const project = thread === undefined ? undefined : channel.threads().threads.find((one) => one.id === thread)?.folder
-          return thread === undefined || project === undefined ? undefined : { folder: channel.copyOf(thread)?.folder ?? project, name: folderName(project) }
+          return thread === undefined || project === undefined
+            ? undefined
+            : { folder: channel.copies.copyOf(thread)?.folder ?? project, name: folderName(project) }
         }
       })
     : undefined
@@ -766,6 +768,8 @@ export function createCore(options: CoreOptions): Core {
         channel.dismiss(input.thread)
         return { ok: true, output: {} }
       },
+      'copies.read': async () => ({ ok: true, output: { copies: await channel.copies.kept() } }),
+      'copy.remove': async (input) => ({ ok: true, output: await channel.copies.remove(input.folder, input.anyway) }),
       'project.open': async (input) => {
         if (toolServer === undefined || !computer)
           return { ok: false, error: { code: 'failed', message: 'Projects cannot be worked on here: the assistant has no computer to work on.' } }

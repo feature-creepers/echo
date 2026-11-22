@@ -1,4 +1,4 @@
-import type { Exchange, Thread, Threads } from '@repo/protocol'
+import { type Exchange, IDLE_ARCHIVES_MS, type Thread, type Threads } from '@repo/protocol'
 import { type ComponentProps, useMemo, useState } from 'react'
 import { lastPart } from '../changes/words.ts'
 import { Button } from '../primitives/button.tsx'
@@ -39,9 +39,6 @@ interface ThreadGroup {
 const SECTIONS = ['working', 'ready', 'today', 'week', 'archived'] as const
 type SectionName = (typeof SECTIONS)[number]
 const SECTION_TITLE: Record<SectionName, string> = { working: 'At work', ready: 'Ready', today: 'Today', week: 'This week', archived: 'Archived' }
-
-/** How long a thread is left before it folds under Archived by itself. */
-const IDLE_ARCHIVES_MS = 7 * 86_400_000
 
 interface ThreadSection {
   name: SectionName

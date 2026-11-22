@@ -26,4 +26,33 @@ export interface Worktrees {
    * was deleted.
    */
   again(folder: string, copy: ThreadCopy, signal?: Signal, making?: () => void): Promise<boolean>
+  /** How a copy stands: whether it is there, what removing it would lose, and whether its work was merged. */
+  state(copy: ThreadCopy): Promise<CopyState>
+  /**
+   * The room a copy takes, or a folder no thread names, in bytes. Nothing when it holds more files than are counted.
+   * It goes through every file: asked only when the person looks at the copies kept.
+   */
+  size(folder: string): Promise<number | undefined>
+  /**
+   * Remove a copy, or a folder no thread names, given a folder in it. Unless `anyway`, one that holds something that
+   * would be lost is kept, and what it holds is said. Its branch is never deleted, and no link in it is followed.
+   * Rejects with the reason when it cannot be removed, as while a program still works in it: nothing is changed then.
+   */
+  remove(folder: string, anyway: boolean): Promise<{ removed: true } | { removed: false; holds: string }>
+  /**
+   * The folders where copies are kept that no thread names, left by a making cut short or by a thread that is gone:
+   * `named` are the folders the threads' copies are in. They are told, never removed by themselves.
+   */
+  orphans(named: readonly string[]): Promise<{ folder: string; holds?: string | undefined }[]>
 }
+
+/** How a thread's copy stands on the disk. */
+export type CopyState =
+  | { there: false }
+  | {
+      there: true
+      /** What removing it would lose, in words for the person: "3 files changed and not committed". Left out when nothing would be. */
+      holds?: string | undefined
+      /** It committed something, and the branch it started from now holds all of it. */
+      merged: boolean
+    }

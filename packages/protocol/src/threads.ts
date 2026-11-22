@@ -40,6 +40,28 @@ const threadCopySchema = z.object({
 })
 export type ThreadCopy = z.infer<typeof threadCopySchema>
 
+/**
+ * A copy of a repository kept in the app's data, as Settings lists it (docs/SPEC.md, section 7.11): a thread's, or a
+ * folder left there that no thread names.
+ */
+export const keptCopySchema = z.object({
+  /** Where it is, absolute: it is removed by it. */
+  folder: z.string().min(1).max(4096),
+  /** The thread that works in it, the project's folder it is a copy of and its branch. Left out for a folder no thread names. */
+  thread: z.object({ id: threadIdSchema, title: z.string(), project: z.string(), branch: z.string() }).optional(),
+  /** The room it takes, in bytes. Left out when it holds more files than are counted. */
+  size: z.number().int().nonnegative().optional(),
+  /** What removing it would lose, in words for the person. Left out when nothing would be: what was committed stays on its branch. */
+  holds: z.string().optional()
+})
+export type KeptCopy = z.infer<typeof keptCopySchema>
+
+/**
+ * How long a thread is left alone before it counts as put away, in milliseconds: the side panel then folds it under
+ * Archived by itself, and its copy of a repository is removed when nothing in it would be lost.
+ */
+export const IDLE_ARCHIVES_MS = 7 * 86_400_000
+
 export const threadSchema = z.object({
   id: threadIdSchema,
   title: z.string(),
