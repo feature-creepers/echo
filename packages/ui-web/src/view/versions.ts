@@ -1,4 +1,4 @@
-import type { TopicAnswers } from '@repo/protocol'
+import { asksSomething, type TopicAnswers } from '@repo/protocol'
 import { useCallback, useRef, useState } from 'react'
 
 /**
@@ -12,11 +12,18 @@ export interface Stepped {
   way: 1 | -1
 }
 
-/** Which answer of a topic is shown, counted from the latest, and which way the person came to it, if they stepped. */
+/**
+ * Which answer of a topic is shown, counted from the latest, and which way the person came to it, if they stepped.
+ * Until they do, it is the latest, or, while the topic asks them something, the answer that asks: a request passed on
+ * behind an approval must not hide it.
+ */
 export function shownOf(topic: TopicAnswers, stepped: Stepped | undefined): { at: number; way: 1 | -1 | 0 } {
-  if (stepped === undefined || stepped.latest !== topic.answers[0]?.id) return { at: 0, way: 0 }
-  const at = topic.answers.findIndex((answer) => answer.id === stepped.shown)
-  return at < 0 ? { at: 0, way: 0 } : { at, way: stepped.way }
+  if (stepped !== undefined && stepped.latest === topic.answers[0]?.id) {
+    const at = topic.answers.findIndex((answer) => answer.id === stepped.shown)
+    if (at >= 0) return { at, way: stepped.way }
+  }
+  const asking = topic.topic.progress === 'asks' ? topic.answers.findIndex((answer) => answer.views.some(asksSomething)) : -1
+  return { at: Math.max(asking, 0), way: 0 }
 }
 
 /** Where a step leads from the answer shown, counted from the latest, or nothing when there is no answer that way. */

@@ -1214,10 +1214,12 @@ export function createChannel(options: ChannelOptions): Channel {
           records.append([{ type: EXCHANGE, payload: stopped }])
           topics.answered(stopped)
         }
-        if (held.has(owner)) continue
+        // What was cut short too long ago is only closed: the person has moved on.
+        const due = waiting.filter((resumption) => resumption.late !== true)
+        if (held.has(owner) || due.length === 0) continue
 
-        const planned = waiting.find((resumption) => !resumption.cut)
-        const cutShort = waiting.find((resumption) => resumption.cut)
+        const planned = due.find((resumption) => !resumption.cut)
+        const cutShort = due.find((resumption) => resumption.cut)
         const cut = cutShort?.cut
         // A sub-thread takes up its part for the thread that opened it, out of the conversation, as before.
         const delegated = thread.kind === 'subthread' ? owner : undefined

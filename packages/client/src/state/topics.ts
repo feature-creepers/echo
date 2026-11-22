@@ -163,17 +163,20 @@ export function followTopics(session: Session): TopicsState {
 
     older() {
       if (next === undefined) return Promise.resolve()
-      reading ??= session
-        .run('topics.read', { before: next })
-        .then(({ topics, next: after }) => {
-          const shown = state.current()
-          const known = new Set(shown.topics.map((one) => one.topic.id))
-          next = after
-          state.set({ ...shown, topics: inOrder([...shown.topics, ...topics.filter((one) => !known.has(one.topic.id))]), more: after !== undefined })
-        })
-        .finally(() => {
-          reading = undefined
-        })
+      // A page that holds only topics already read, those in progress given at first, is followed by the next at once:
+      // nothing new on screen would ask for it.
+      const page = async (): Promise<void> => {
+        const { topics, next: after } = await session.run('topics.read', { before: next })
+        const shown = state.current()
+        const known = new Set(shown.topics.map((one) => one.topic.id))
+        const read = topics.filter((one) => !known.has(one.topic.id))
+        next = after
+        state.set({ ...shown, topics: inOrder([...shown.topics, ...read]), more: after !== undefined })
+        if (read.length === 0 && after !== undefined) await page()
+      }
+      reading ??= page().finally(() => {
+        reading = undefined
+      })
       return reading
     },
 

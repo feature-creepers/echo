@@ -11,7 +11,7 @@ export function Illustration({ props }: { props: BlockProps<'Illustration'> }) {
       role="img"
       aria-label={props.label ?? props.name.replace('-', ' ')}
       className={cn('block shrink-0', SIZE[props.size])}
-      // biome-ignore lint/security/noDangerouslySetInnerHtml: the app's own drawing, written in its sources, never words of a view
+      // The app's own drawing, written in its sources: never words of a view.
       dangerouslySetInnerHTML={{ __html: illustration(props.name) }}
     />
   )

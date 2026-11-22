@@ -118,8 +118,8 @@ export function NowTabs({ tabs, selected, picked, onPick }: NowTabsProps) {
   const [fits, setFits] = useState(tabs.length)
   const start = from < tabs.length ? from : 0
   const turned = [...tabs.slice(start), ...tabs.slice(0, start)]
-  // The tabs that do not fit wrap under the row, out of sight: counting those still on it says how many do.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the tabs' names change how many fit
+  // The tabs that do not fit wrap under the row, out of sight: counting those still on it says how many do. Counted
+  // again when the tabs change, as their names change how many fit.
   useEffect(() => {
     if (!row) return
     const count = () => setFits([...row.children].filter((tab) => (tab as HTMLElement).offsetTop < row.clientHeight).length)

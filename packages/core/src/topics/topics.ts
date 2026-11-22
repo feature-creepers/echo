@@ -31,6 +31,8 @@ type FiledByHand = z.infer<typeof filedRecord>
 
 /** How many topics the orchestrator is told about, and how many threads of each. Older ones are still kept, and searched. */
 const INDEXED = { topics: 12, threads: 4 }
+/** How many of a topic's latest answers may still be given: one of them can ask while a later request waits behind it. */
+const STILL_GIVEN = 4
 /** How much of a thread's summary the orchestrator reads beside its line: enough to know where a request belongs. */
 const ABOUT_LENGTH = 240
 
@@ -115,7 +117,10 @@ export function createTopics({ records, registry, screen, lines, now, newId }: T
   const where = new Map<string, string>()
   /** The answers filed by a record, each as last filed. */
   const byHand = new Map<string, FiledByHand>()
-  /** The answers that are no line of the conversation: each one lasts as long as it has a card. */
+  /**
+   * The answers that are no line a thread answered the person with: what was shown outside any thread, by a sub-thread
+   * for its thread, or for a line no longer kept. Each lasts as long as it has a card.
+   */
   const loose = new Set<string>()
 
   const listeners = new Set<(event: Event) => void>()
@@ -152,9 +157,10 @@ export function createTopics({ records, registry, screen, lines, now, newId }: T
    * is at work, an answer of it waits to be heard, or it rests. A single answer that needs nothing has no standing.
    */
   const progressOf = (topic: Kept): TopicProgress | undefined => {
-    const latest = topic.filed.at(-1)
-    if (!latest) return undefined
-    if (screen.asks(latest.id)) return 'asks'
+    if (topic.filed.length === 0) return undefined
+    // Its latest answer asks, or one before it that is still being given: a request passed on behind it changes nothing.
+    const recent = topic.filed.slice(-STILL_GIVEN)
+    if (recent.some((answer, at) => screen.asks(answer.id) && (at === recent.length - 1 || lineOf(answer.id)?.outcome === 'running'))) return 'asks'
     const threads = threadsOf(topic.id)
     if (threads.some((thread) => thread.state === 'working')) return 'working'
     if (threads.some((thread) => thread.state === 'ready')) return 'ready'
@@ -174,6 +180,13 @@ export function createTopics({ records, registry, screen, lines, now, newId }: T
       ...(progress === undefined ? {} : { progress }),
       ...(topic.archived ? { archived: true } : {})
     }
+  }
+  /** A topic by its identifier: one made from a thread recorded before there were topics exists once it is asked for. */
+  const topicBy = (id: string): Kept | undefined => {
+    const known = topics.get(id)
+    if (known) return known
+    const thread = registry.get(id)
+    return thread?.kind === 'topic' && thread.topic === undefined ? topicFor(id) : undefined
   }
   /** The topic of a thread, made from the thread itself when it was recorded before there were topics. */
   const topicFor = (thread: string): Kept | undefined => {
@@ -220,29 +233,27 @@ export function createTopics({ records, registry, screen, lines, now, newId }: T
         turn: 0
       })
   }
-  const spoken = new Set<string>()
+  const answered = new Set<string>()
   for (const line of lines()) {
-    spoken.add(line.turn)
     if (line.thread === undefined || !inConversation(line)) continue
+    answered.add(line.turn)
     const moved = byHand.get(line.turn)
-    const topic = (moved?.moved === true ? topics.get(moved.topic) : undefined) ?? topicFor(line.thread)
+    const topic = (moved?.moved === true ? topicBy(moved.topic) : undefined) ?? topicFor(line.thread)
     if (topic) place({ id: line.turn, at: line.at }, topic)
   }
   for (const filed of byHand.values()) {
-    const topic = topics.get(filed.topic)
-    if (!topic || where.has(filed.answer)) continue
-    if (!spoken.has(filed.answer)) {
-      if (!screen.has(filed.answer)) continue
-      loose.add(filed.answer)
-    }
+    const topic = topicBy(filed.topic)
+    if (!topic || answered.has(filed.answer) || !screen.has(filed.answer)) continue
     place({ id: filed.answer, at: filed.at }, topic)
+    loose.add(filed.answer)
   }
 
   /** Answers as they are read, the latest first: their lines from the conversation, their cards from the screen. */
   const answersOf = (filed: readonly Filed[], cards = screen.of(filed.map((one) => one.id))): Answer[] =>
     filed.toReversed().map((one) => {
+      // What a thread handed a sub-thread is no line of the conversation: its card stands alone.
       const exchange = lineOf(one.id)
-      return { id: one.id, at: one.at, ...(exchange ? { exchange } : {}), views: cards.get(one.id) ?? [] }
+      return { id: one.id, at: one.at, ...(exchange && inConversation(exchange) ? { exchange } : {}), views: cards.get(one.id) ?? [] }
     })
   const withLatest = (list: readonly Kept[]): TopicAnswers[] => {
     const cards = screen.of(list.flatMap((topic) => topic.filed.at(-1)?.id ?? []))
@@ -304,14 +315,14 @@ export function createTopics({ records, registry, screen, lines, now, newId }: T
       return
     }
     const line = lineOf(answer)
-    // A line a thread is answering is filed by its thread.
-    if (line?.thread !== undefined) return
+    // A line a thread is answering the person with is filed by its thread.
+    if (line?.thread !== undefined && inConversation(line)) return
     const topic = (view.thread === undefined ? undefined : topicFor(view.thread)) ?? open(view.title)
     fileByHand({ id: answer, at: line?.at ?? now().toISOString() }, topic, false)
-    if (!line) loose.add(answer)
+    loose.add(answer)
     announce(topic.id)
   }
-  /** A card was removed: what was no line of the conversation and has no card left is nothing any more. */
+  /** A card was removed: an answer that lasts as long as its cards and has none left is nothing any more. */
   const cleared = () => {
     const emptied = [...loose].filter((answer) => !screen.has(answer))
     const changed = emptied.map((answer) => where.get(answer))
@@ -357,7 +368,7 @@ export function createTopics({ records, registry, screen, lines, now, newId }: T
     answered(line) {
       if (line.thread === undefined || !inConversation(line)) return
       const moved = byHand.get(line.turn)
-      const topic = (moved?.moved === true ? topics.get(moved.topic) : undefined) ?? topicFor(line.thread)
+      const topic = (moved?.moved === true ? topicBy(moved.topic) : undefined) ?? topicFor(line.thread)
       if (!topic) return
       const was = where.get(line.turn)
       place({ id: line.turn, at: line.at }, topic)
@@ -371,9 +382,20 @@ export function createTopics({ records, registry, screen, lines, now, newId }: T
     touch,
 
     forget(turns) {
-      const changed = [...turns].map((turn) => where.get(turn))
-      for (const turn of turns) unplace(turn)
-      if (changed.some((topic) => topic !== undefined)) announce(...changed)
+      const changed: string[] = []
+      for (const turn of turns) {
+        const topic = topics.get(where.get(turn) ?? '')
+        const filed = topic?.filed.find((one) => one.id === turn)
+        if (!topic || !filed) continue
+        changed.push(topic.id)
+        // The cards it showed are kept, as a view still there is: from now the answer is its cards, and lasts as they do.
+        if (!screen.has(turn)) unplace(turn)
+        else if (!loose.has(turn)) {
+          fileByHand(filed, topic, false)
+          loose.add(turn)
+        }
+      }
+      if (changed.length > 0) announce(...changed)
     },
 
     read({ limit, before, archived = false }) {
@@ -421,7 +443,7 @@ export function createTopics({ records, registry, screen, lines, now, newId }: T
       const from = topics.get(where.get(answer) ?? '')
       const filed = from?.filed.find((one) => one.id === answer)
       if (!from || !filed) return undefined
-      const target = 'topic' in to ? topics.get(to.topic) : open(to.title)
+      const target = 'topic' in to ? topicBy(to.topic) : open(to.title)
       if (!target) return undefined
       if (target !== from) {
         const wasLoose = loose.has(answer)

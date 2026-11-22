@@ -42,6 +42,9 @@ export const viewSchema = z.object({
 })
 export type ShownView = z.infer<typeof viewSchema>
 
+/** Whether a view asks the person something: it holds a questionnaire, which is also how an approval is asked for. */
+export const asksSomething = (view: Pick<ShownView, 'spec'>): boolean => Object.values(view.spec.elements).some((element) => element.type === 'Questions')
+
 /**
  * The cards of one answer once a view is shown, in the order they were first shown, each once. The core and every
  * client keep them by this one rule, so they agree. A view shown again keeps its place; so does the card a view

@@ -14,7 +14,10 @@ export const RESUME = 'channel.resume'
 /** The type of the record written once work cut short, or planned for after a restart, is taken up again. */
 export const RESUMED = 'channel.resumed'
 
-/** Work cut short longer ago than this is not taken up again by itself: the person has moved on. */
+/**
+ * Work cut short longer ago than this is not taken up again by itself: the person has moved on. Its line is still
+ * closed, as stopped, so what was asked and what it showed are not lost.
+ */
 const RESUME_WITHIN_MS = 24 * 60 * 60_000
 
 /**
@@ -38,11 +41,14 @@ export interface Resumption {
   request: string
   /** For a request cut short: its line of the transcript, recorded as stopped once it is taken up. */
   cut?: Exchange | undefined
+  /** Cut short too long ago to be taken up again: its line is closed, and nothing more. */
+  late?: boolean | undefined
 }
 
 /**
- * What the last run of the app left to do, from the records: the requests its threads were answering when it
- * stopped, and what a thread asked to be woken with, recent enough and not taken up yet, for threads still known.
+ * What the last run of the app left to do, from the records, for threads still known: the requests its threads were
+ * answering when it stopped, those cut short too long ago marked late; and what a thread asked to be woken with,
+ * recent enough. None of them taken up yet.
  */
 export function readResumptions(records: Records, transcript: readonly Exchange[], now: Date, known: (thread: string) => boolean): Resumption[] {
   const answered = new Set(transcript.map((line) => line.turn))
@@ -55,8 +61,14 @@ export function readResumptions(records: Records, transcript: readonly Exchange[
       if (read.success) done.add(read.data.id)
     } else if (record.type === WORK) {
       const read = workRecord.safeParse(record.payload)
-      if (read.success && !answered.has(read.data.exchange.turn) && recent(record.at))
-        found.set(read.data.exchange.turn, { id: read.data.exchange.turn, thread: read.data.thread, request: read.data.request, cut: read.data.exchange })
+      if (read.success && !answered.has(read.data.exchange.turn))
+        found.set(read.data.exchange.turn, {
+          id: read.data.exchange.turn,
+          thread: read.data.thread,
+          request: read.data.request,
+          cut: read.data.exchange,
+          ...(recent(record.at) ? {} : { late: true })
+        })
     } else {
       const read = resumeRecord.safeParse(record.payload)
       if (read.success && recent(record.at)) found.set(read.data.id, read.data)

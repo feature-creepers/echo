@@ -199,7 +199,7 @@ export function Stage({
     threads.threads.find((thread) => thread.id === threads.focus),
     threads.threads
   )
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the conversation moving on is what takes the pick away
+  // The conversation moving on to another topic takes the pick away.
   useEffect(() => setPicked((was) => (was === focused ? was : undefined)), [focused])
   /**
    * The topic that leads the page, under the Now zone: the one picked, else the one the conversation is on while it
@@ -235,13 +235,17 @@ export function Stage({
   // The page that scrolls, its home, and what the person has in front of them on it.
   const scroller = useRef<HTMLDivElement | null>(null)
   const home = useRef<HTMLElement | null>(null)
-  // The room home has for the hub and the column for its tabs, kept current.
+  // The room the page has, kept current: across, for the hub and its tabs; down, for its last topic to reach the top.
   const [room, setRoom] = useState<number>(HUB_WIDTH)
+  const [tall, setTall] = useState(0)
   useEffect(() => {
-    const element = home.current
-    if (!element) return
-    const observer = new ResizeObserver(() => setRoom(element.clientWidth - 2 * HOME_SIDE))
-    observer.observe(element)
+    const area = scroller.current
+    if (!area) return
+    const observer = new ResizeObserver(() => {
+      setRoom(area.clientWidth - 2 * HOME_SIDE)
+      setTall(area.clientHeight)
+    })
+    observer.observe(area)
     return () => observer.disconnect()
   }, [])
   const [past, setPast] = useState(false)
@@ -281,15 +285,26 @@ export function Stage({
   const stands = front ?? lead ?? names[0]?.id
   useEffect(() => onFacing(stands), [stands, onFacing])
 
-  // An answer that waited counts as seen once its topic has stood in front of the person for a moment.
+  // An answer that waited counts as seen once its topic has stood in front of the person for a moment: in the full
+  // window, while it shows. Mini shows no topic, and a window out of sight shows nothing.
   useEffect(() => {
     const waiting = threads.threads.filter((thread) => thread.state === 'ready' && topicOf(thread, threads.threads) === front)
-    if (front === undefined || waiting.length === 0) return
-    const timer = window.setTimeout(() => {
+    if (inMini || front === undefined || waiting.length === 0) return
+    let timer: number | undefined
+    const seen = () => {
       for (const thread of waiting) void client.threads.dismiss(thread.id).catch(() => undefined)
-    }, SEEN_AFTER_MS)
-    return () => window.clearTimeout(timer)
-  }, [front, threads.threads, client])
+    }
+    const watch = () => {
+      window.clearTimeout(timer)
+      if (document.visibilityState === 'visible') timer = window.setTimeout(seen, SEEN_AFTER_MS)
+    }
+    watch()
+    document.addEventListener('visibilitychange', watch)
+    return () => {
+      window.clearTimeout(timer)
+      document.removeEventListener('visibilitychange', watch)
+    }
+  }, [inMini, front, threads.threads, client])
 
   /** Bring a topic's island under the bar. */
   const goTo = useCallback(
@@ -748,12 +763,20 @@ export function Stage({
                 describe={describe}
                 corrections={corrections}
               />
-              {/* Where the topics read so far end: the ones before them are read as it comes near. */}
-              {shown.more && (
-                <p ref={setEnd} className="caps flex items-center gap-[7px] border-line-strong border-t pt-3.5 pb-9 text-text-soft">
-                  <span aria-hidden="true" className="size-[7px] border border-text-soft" />
+              {/* Where the topics read so far end: the ones before them are read as it comes near, or when it is pressed. */}
+              {shown.more ? (
+                <button
+                  type="button"
+                  ref={setEnd}
+                  onClick={() => void client.topics.older().catch(() => undefined)}
+                  className="caps flex w-full items-center gap-[7px] border-line-strong border-t pt-3.5 pb-9 text-left text-text-soft transition-colors duration-(--duration-quick) ease-soft hover:text-text"
+                >
+                  <span aria-hidden="true" className="size-[7px] border border-current" />
                   Earlier topics
-                </p>
+                </button>
+              ) : (
+                // Room under the last topic, so it too can come under the bar and stand in front.
+                <div aria-hidden="true" style={{ height: Math.max(0, tall - covered() - composerRoom - 24 - FRONT_SHOWS) }} />
               )}
             </div>
           </div>

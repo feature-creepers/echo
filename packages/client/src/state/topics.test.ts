@@ -185,6 +185,18 @@ describe('followTopics', () => {
     expect(core.ran).toHaveLength(2)
   })
 
+  it('reads on at once when a page holds only topics it already has', async () => {
+    const progressing = [topic('thesis', [answer('t1')], { progress: 'quiet' }), topic('garden', [answer('t2')], { progress: 'quiet' })]
+    const { core, state } = await opened([topic('trip', [answer('t5')]), ...progressing], line('t5').at)
+    const reading = state.older()
+    await core.answer('topics.read', { topics: progressing, next: line('t1').at })
+    expect(core.ran.at(-1)).toEqual(['topics.read', { before: line('t1').at }])
+    await core.answer('topics.read', { topics: [topic('old', [answer('t0')])] })
+    await reading
+    expect(read(state).map(([id]) => id)).toEqual(['trip', 'garden', 'thesis', 'old'])
+    expect(state.current().more).toBe(false)
+  })
+
   it("reads a topic's earlier answers when asked for, and nothing once it has them all", async () => {
     const { core, state } = await opened([topic('trip', [answer('t3')], { answers: 3 })])
     void state.earlier('trip')

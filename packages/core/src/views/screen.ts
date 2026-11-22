@@ -1,5 +1,5 @@
 import { CARDS_PER_ANSWER, CLEAR_TOOL, type ViewSpec, validateView } from '@repo/catalog'
-import { answerIdOf, type Event, type ShownView, type TurnId, VIEW_WIDTHS, viewSchema, withCard } from '@repo/protocol'
+import { answerIdOf, asksSomething, type Event, type ShownView, type TurnId, VIEW_WIDTHS, viewSchema, withCard } from '@repo/protocol'
 import { z } from 'zod'
 import type { Records, StoredRecord } from '../ports/records.ts'
 import type { ToolResult } from '../ports/tools.ts'
@@ -85,9 +85,6 @@ interface Slot {
   asks: boolean
 }
 
-/** Whether a view asks the person something: it holds a questionnaire, which is also how an approval is asked for. */
-const asking = (view: ShownView) => Object.values(view.spec.elements).some((element) => element.type === 'Questions')
-
 /**
  * Whether a clearing recorded before answers were kept for good is one to forget: the cards of side questions left by
  * themselves after a while, only put away, and a clearing that named no view emptied the stage of the time.
@@ -132,7 +129,7 @@ export function createScreen({ records, newId }: ScreenOptions): Screen {
     // A card brought up to date in a later turn is a card of that turn's answer.
     if (answerOf.get(view.id) !== answer) drop(view.id)
     const before = slots.get(answer) ?? []
-    const after = withCard(before, { id: view.id, record, card: view.card, widget: view.widget, asks: asking(view) })
+    const after = withCard(before, { id: view.id, record, card: view.card, widget: view.widget, asks: asksSomething(view) })
     for (const slot of before) if (!after.includes(slot) && slot.id !== view.id) answerOf.delete(slot.id)
     slots.set(answer, after)
     answerOf.set(view.id, answer)

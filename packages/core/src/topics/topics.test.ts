@@ -188,18 +188,50 @@ describe('what the person corrects', () => {
     expect([topics.merge(into, into), topics.merge('nowhere', into)]).toEqual([false, false])
   })
 
-  it('forgets the lines erased from the conversation', () => {
-    const { topics, thread, ask, titles, lines } = setup()
+  it('keeps, of a line erased from the conversation, the cards it showed, and nothing of one that showed none', () => {
+    const { topics, screen, spec, thread, ask, titles, lines, again } = setup()
     const taxes = thread('Taxes')
-    const turn = ask('how much do I owe?', taxes.id)
+    const garden = thread('Garden')
+    const owed = ask('how much do I owe?', taxes.id)
+    const planted = ask('what to plant in May?', garden.id)
+    screen.present({ title: 'Owed', spec: spec() }, { thread: taxes.id, turn: owed })
     lines.length = 0
-    topics.forget(new Set([turn]))
+    topics.forget(new Set([owed, planted]))
+
+    expect(titles()).toEqual(['Taxes'])
+    expect(topics.read({ limit: 5 }).topics[0]?.answers).toMatchObject([{ id: owed, views: [{ title: 'Owed' }] }])
+    expect(topics.read({ limit: 5 }).topics[0]?.answers[0]?.exchange).toBeUndefined()
+    // The same after a restart, and until its card is removed.
+    expect(again().titles()).toEqual(['Taxes'])
+    screen.clear(screen.cards(taxes.id).at(-1)?.id as string)
     expect(titles()).toEqual([])
+    expect(again().titles()).toEqual([])
+  })
+
+  it('keeps an answer moved into a topic made from a thread recorded before there were topics, after a restart too', () => {
+    const records = memoryRecords()
+    const old = (id: string, title: string) => ({ type: THREAD, payload: { id, title, kind: 'topic', state: 'parked', at: '2026-11-18T08:00:00.000Z' } })
+    records.append([old('k', 'Kitchen'), old('l', 'Lisbon trip')])
+    const line = (turn: string, thread: string, hour: string): Exchange => ({
+      turn,
+      at: `2026-11-18T${hour}:00:00.000Z`,
+      persona: 'one',
+      thread,
+      said: turn,
+      replied: 'Here.',
+      outcome: 'done'
+    })
+    // The answer moved was given before any line of the topic it goes to.
+    const { topics, asked, again } = setup(records, [line('flights', 'k', '10'), line('plan', 'l', '11')])
+    expect(topics.move('flights', { topic: 'l' })).toBe('l')
+    expect(asked('l')).toEqual(['plan', 'flights'])
+    expect(again().asked('l')).toEqual(['plan', 'flights'])
+    expect(again().titles()).toEqual(['Lisbon trip'])
   })
 })
 
 describe('what is shown outside any thread', () => {
-  it('is a topic of its own, named as it is: a reminder, with its words', () => {
+  it('is a topic of its own, named as it is, for as long as it has a card: a reminder, with its words', () => {
     const { topics, screen, spec, lines, titles, again } = setup()
     lines.push({
       turn: 'ring',
@@ -212,10 +244,15 @@ describe('what is shown outside any thread', () => {
     })
     screen.present({ title: 'Feed the cat', spec: spec() }, { thread: undefined, turn: 'ring' })
     expect(titles()).toEqual(['Feed the cat'])
-    expect(topics.read({ limit: 5 }).topics[0]?.answers[0]).toMatchObject({ id: 'ring', exchange: { trigger: 'reminder' }, views: [{ title: 'Feed the cat' }] })
-    // Its words stay once its card is closed.
-    screen.clear(topics.read({ limit: 5 }).topics[0]?.answers[0]?.views[0]?.id as string)
+    expect(topics.read({ limit: 5 }).topics[0]?.answers[0]).toMatchObject({
+      id: 'ring',
+      exchange: { trigger: 'reminder' },
+      views: [{ title: 'Feed the cat' }]
+    })
     expect(again().titles()).toEqual(['Feed the cat'])
+    screen.clear(topics.read({ limit: 5 }).topics[0]?.answers[0]?.views[0]?.id as string)
+    expect(titles()).toEqual([])
+    expect(again().titles()).toEqual([])
   })
 
   it('is one topic for a saved widget however often it is shown, back on top each time, and gone once its card is closed', () => {
@@ -247,6 +284,44 @@ describe('what is shown outside any thread', () => {
     topics.answered(line)
     expect(titles()).toEqual(['Thesis'])
     expect(asked(topics.of(thesis.id) as string)).toEqual(['work in my thesis folder'])
+  })
+
+  it('is gone with its card when the line it was shown for is never passed on', () => {
+    const { screen, spec, lines, titles, again } = setup()
+    lines.push({ turn: 'ask', at: '2026-11-22T08:00:00.000Z', persona: 'one', said: 'work in my thesis folder', replied: 'As you wish.', outcome: 'done' })
+    screen.present({ id: 'approval', title: 'Waiting for you', spec: spec() }, { thread: undefined, turn: 'ask' })
+    expect(titles()).toEqual(['Waiting for you'])
+    screen.clear('approval')
+    expect(titles()).toEqual([])
+    expect(again().titles()).toEqual([])
+  })
+
+  it("is an answer of its thread's topic when a sub-thread shows it, without the sub-thread's request, and gone with it", () => {
+    const { topics, registry, screen, thread, ask, lines, events } = setup()
+    const taxes = thread('Taxes')
+    ask('how much do I owe?', taxes.id)
+    const part = registry.open({ title: 'Receipts', kind: 'subthread', parent: taxes.id })
+    lines.push({
+      turn: 'handed',
+      at: '2026-11-22T09:30:00.000Z',
+      persona: 'one',
+      thread: part.id,
+      said: 'read the receipts',
+      trigger: 'delegated',
+      replied: '',
+      outcome: 'running'
+    })
+    const question = { root: 'q', elements: { q: { type: 'Questions', props: { questions: [] }, children: [] } } }
+    screen.present({ id: 'approval', title: 'Waiting for you', spec: question as never }, { thread: part.id, turn: 'handed' })
+
+    const topic = topics.of(taxes.id) as string
+    expect(events.at(-1)?.topics[0]).toMatchObject({
+      topic: { id: topic, answers: 2, progress: 'asks' },
+      answers: [{ id: 'handed', views: [{ id: 'approval' }] }]
+    })
+    expect(events.at(-1)?.topics[0]?.answers[0]?.exchange).toBeUndefined()
+    screen.clear('approval')
+    expect(topics.get(topic)).toMatchObject({ answers: 1 })
   })
 })
 
@@ -284,6 +359,19 @@ describe('a topic in progress', () => {
     context.ask('how much do I owe?', taxes.id)
     act(context, taxes.id)
     expect(context.topics.get(context.topics.of(taxes.id) as string)?.progress).toBe(progress)
+  })
+
+  it('asks while an answer still being given asks, though a later request was passed on behind it', () => {
+    const { topics, screen, thread, ask, lines } = setup()
+    const taxes = thread('Taxes')
+    const first = ask('how much do I owe?', taxes.id, { outcome: 'running' })
+    ask('and next year?', taxes.id, { outcome: 'running' })
+    const topic = topics.of(taxes.id) as string
+    screen.present({ id: 'approval', title: 'Waiting for you', spec: question as never }, { thread: taxes.id, turn: first })
+    expect(topics.get(topic)?.progress).toBe('asks')
+    // Once the answer that asked is given, what it showed no longer asks for the topic.
+    Object.assign(lines[0] as Exchange, { outcome: 'done' })
+    expect(topics.get(topic)?.progress).toBe('working')
   })
 
   it('tells when it no longer stands as it did: a thread finishes, a card that asks comes and goes', () => {

@@ -20,6 +20,24 @@ describe('the version a topic shows', () => {
   })
 })
 
+describe('the version a topic that asks shows', () => {
+  const question = { id: 'q', title: 'Go ahead?', spec: { root: 'a', elements: { a: { type: 'Questions', props: {}, children: [] } } } }
+  const asking = (progress: TopicAnswers['topic']['progress']): TopicAnswers => {
+    const one = topic('c', 'b', 'a')
+    return {
+      topic: { ...one.topic, ...(progress === undefined ? {} : { progress }) },
+      answers: one.answers.map((answer) => (answer.id === 'b' ? { ...answer, views: [question] } : answer))
+    }
+  }
+  it.each<[string, TopicAnswers, Stepped | undefined, number]>([
+    ['the answer that asks, though a later request was passed on behind it', asking('asks'), undefined, 1],
+    ['the answer the person stepped to, all the same', asking('asks'), { latest: 'c', shown: 'a', way: 1 }, 2],
+    ['its latest answer, once it no longer asks', asking('working'), undefined, 0]
+  ])('is %s', (_case, one, stepped, at) => {
+    expect(shownOf(one, stepped).at).toBe(at)
+  })
+})
+
 describe('a step', () => {
   it.each<[string, number, 1 | -1, number | undefined]>([
     ['leads to the answer before', 0, 1, 1],

@@ -1,6 +1,7 @@
 import type { Exchange } from '@repo/protocol'
 import { describe, expect, it } from 'vitest'
-import { lastRequest, resumesInARow, wakeRequest } from './resume.ts'
+import { memoryRecords } from '../records/memory.ts'
+import { lastRequest, RESUME, RESUMED, readResumptions, resumesInARow, WORK, wakeRequest } from './resume.ts'
 
 let turn = 0
 const line = (thread: string, trigger: Exchange['trigger'], said = '', outcome: Exchange['outcome'] = 'done'): Exchange => ({
@@ -59,5 +60,39 @@ describe('wakeRequest', () => {
     ]
   ])('%s', (_, woken, request) => {
     expect(wakeRequest(woken)).toBe(request)
+  })
+})
+
+describe('what the last run of the app left to do', () => {
+  const NOW = new Date('2026-11-22T12:00:00.000Z')
+  const cut = (id: string, thread = 'a'): Exchange => ({
+    turn: id,
+    at: '2026-11-20T08:00:00.000Z',
+    persona: 'p1',
+    thread,
+    said: id,
+    replied: '',
+    outcome: 'running'
+  })
+
+  it('is the requests cut short, the old ones only to be closed, and the recent notes a thread left, none taken up yet', () => {
+    const records = memoryRecords()
+    const work = (id: string, at: string, thread = 'a') => ({ type: WORK, at, payload: { thread, request: `Do ${id}.`, exchange: cut(id, thread) } })
+    records.append([
+      work('answered', '2026-11-22T09:00:00.000Z'),
+      work('fresh', '2026-11-22T10:00:00.000Z'),
+      work('old', '2026-11-19T10:00:00.000Z'),
+      work('taken', '2026-11-22T11:00:00.000Z'),
+      work('gone', '2026-11-22T11:00:00.000Z', 'unknown'),
+      { type: RESUME, at: '2026-11-22T11:30:00.000Z', payload: { id: 'note', thread: 'a', request: 'Check the build.' } },
+      { type: RESUME, at: '2026-11-19T11:30:00.000Z', payload: { id: 'old note', thread: 'a', request: 'Check the build.' } },
+      { type: RESUMED, payload: { id: 'taken' } }
+    ])
+    const found = readResumptions(records, [{ ...cut('answered'), outcome: 'done' }], NOW, (thread) => thread === 'a')
+    expect(found.map((one) => [one.id, one.cut !== undefined, one.late === true])).toEqual([
+      ['fresh', true, false],
+      ['old', true, true],
+      ['note', false, false]
+    ])
   })
 })
