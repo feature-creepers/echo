@@ -205,13 +205,15 @@ describe('followTopics', () => {
     void state.move('t2', { title: 'Roses' })
     void state.merge('trip', 'build')
     void state.clear('map')
+    void state.away()
     expect(core.ran.slice(1)).toEqual([
       ['topic.rename', { topic: 'trip', title: 'Lisbon' }],
       ['topic.archive', { topic: 'trip', archived: true }],
       ['topic.move', { answer: 't2', topic: 'build' }],
       ['topic.move', { answer: 't2', title: 'Roses' }],
       ['topic.merge', { topic: 'trip', into: 'build' }],
-      ['view.clear', { view: 'map' }]
+      ['view.clear', { view: 'map' }],
+      ['topics.read', { archived: true, limit: 50 }]
     ])
   })
 })

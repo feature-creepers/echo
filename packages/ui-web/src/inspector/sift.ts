@@ -71,16 +71,44 @@ export function eventSummary(event: Event): string {
 /** A text as it is compared with what is typed: without accents or case. */
 const plain = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
 
+/** A topic as the events tell of it: what names it, the threads that work for it, and the turns it answered. */
+export interface TopicTrace {
+  topic: string
+  threads: ReadonlySet<string>
+  turns: ReadonlySet<string>
+}
+
+/** Whether an event is about a topic: it names the topic, one of its threads or one of its turns. */
+export function concerns(event: Event, { topic, threads, turns }: TopicTrace): boolean {
+  switch (event.name) {
+    case 'turn.started':
+    case 'turn.ended':
+    case 'turn.planned':
+    case 'answer.written':
+      return turns.has(event.exchange.turn) || (event.exchange.thread !== undefined && threads.has(event.exchange.thread))
+    case 'speech.say':
+    case 'activity':
+      return turns.has(event.turn)
+    case 'view.shown':
+      return (event.view.turn !== undefined && turns.has(event.view.turn)) || (event.view.thread !== undefined && threads.has(event.view.thread))
+    case 'topics.changed':
+      return event.gone.includes(topic) || event.topics.some((one) => one.topic.id === topic)
+    default:
+      return false
+  }
+}
+
 /**
  * The events the inspector lists, newest first: those of the group chosen whose name or summary holds every word
- * typed.
+ * typed, and, with a topic given, those about it.
  */
-export function siftEvents(events: readonly Logged[], group: EventGroup, query: string): Logged[] {
+export function siftEvents(events: readonly Logged[], group: EventGroup, query: string, about?: TopicTrace): Logged[] {
   const words = plain(query).split(/\s+/).filter(Boolean)
   const kept: Logged[] = []
   for (let index = events.length - 1; index >= 0; index--) {
     const logged = events[index] as Logged
     if (group !== 'all' && GROUP_OF[logged.event.name] !== group) continue
+    if (about && !concerns(logged.event, about)) continue
     if (words.length > 0) {
       const text = plain(`${logged.event.name} ${eventSummary(logged.event)}`)
       if (!words.every((word) => text.includes(word))) continue

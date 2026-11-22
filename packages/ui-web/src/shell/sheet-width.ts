@@ -48,10 +48,12 @@ export function sheetWidthByKey(key: string, width: number, bounds: SheetBounds)
 
 /**
  * The width the sheet is drawn at, written for CSS from the width the person chose: it follows the window as it is
- * resized without anything else being drawn again, and comes back to the chosen width once there is room. The
- * element that uses it carries the chosen width itself, as `sheetWidthStyle` writes it.
+ * resized without anything else being drawn again, and comes back to the chosen width once there is room. As when
+ * its edge is dragged, it leaves the screen beside it the room that screen keeps (`keep`), down to its own narrowest.
+ * The element that uses it carries the chosen width itself, as `sheetWidthStyle` writes it.
  */
-export const SHEET_CSS_WIDTH = `clamp(${SHEET_WIDTH.least}px, var(--sheet-width), min(${SHARE * 100}vw, ${SHEET_WIDTH.most}px))`
+export const sheetCssWidth = (keep: number): string =>
+  `clamp(${SHEET_WIDTH.least}px, var(--sheet-width), min(${SHARE * 100}vw, ${SHEET_WIDTH.most}px, calc(100vw - ${keep}px)))`
 
 /** The chosen width, as the style of an element that reads it. */
 export const sheetWidthStyle = (width: number): Record<'--sheet-width', string> => ({ '--sheet-width': `${width}px` })

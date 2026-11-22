@@ -40,6 +40,11 @@ interface Page {
   before?: string | undefined
 }
 
+/** A page of topics: those on the main screen, or with `archived` those put away. */
+interface TopicsPage extends Page {
+  archived?: boolean | undefined
+}
+
 export interface Topics {
   /** The topic a thread's answers are filed in. A sub-thread's is its thread's. */
   of(thread: string): string | undefined
@@ -57,7 +62,7 @@ export interface Topics {
    * The topics for the main screen, the one last active first, each with its latest answer, and where the page after
    * starts. The first page holds every topic in progress too.
    */
-  read(page: Page): { topics: TopicAnswers[]; next?: string }
+  read(page: TopicsPage): { topics: TopicAnswers[]; next?: string }
   /** A topic's answers, the latest first. Undefined when there is no such topic. */
   answers(topic: string, page: Page): (TopicAnswers & { more: boolean }) | undefined
   rename(topic: string, title: string): boolean
@@ -371,15 +376,15 @@ export function createTopics({ records, registry, screen, lines, now, newId }: T
       if (changed.some((topic) => topic !== undefined)) announce(...changed)
     },
 
-    read({ limit, before }) {
+    read({ limit, before, archived = false }) {
       const listed = [...topics.values()]
-        .filter((topic) => topic.filed.length > 0 && !topic.archived && (before === undefined || activeAt(topic) < before))
+        .filter((topic) => topic.filed.length > 0 && topic.archived === archived && (before === undefined || activeAt(topic) < before))
         .sort(byActivity)
       const page = listed.slice(0, limit)
       const last = page.at(-1)
       // What is in progress is there from the start, however far down the list it stands.
       const moment = now()
-      const further = before === undefined ? listed.slice(limit).filter((topic) => inProgress(asTopic(topic), moment)) : []
+      const further = before === undefined && !archived ? listed.slice(limit).filter((topic) => inProgress(asTopic(topic), moment)) : []
       return { topics: withLatest([...page, ...further]), ...(last !== undefined && listed.length > limit ? { next: activeAt(last) } : {}) }
     },
 

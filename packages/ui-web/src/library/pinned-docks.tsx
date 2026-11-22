@@ -22,11 +22,14 @@ const COLUMN = 720
 /**
  * The narrowest window where the docks sit beside the conversation without covering it. The composer is centred,
  * so both docks need the same room: they appear and disappear together. Narrower, the pinned widgets wait behind
- * the title row's toggle and float over the stage in one list.
+ * the title row's toggle and stand in one list in a pane at the right, where the side panel stands.
  */
 const DOCKS_WIDTH = COLUMN + 2 * (GAP + DOCK_ROOM)
 
-/** Where the pinned widgets stand: in their docks, over the stage, or out of sight. */
+/** The width of the pane the pinned widgets stand in, in a narrow window: the screen beside it keeps clear of it. */
+export const PINNED_PANE = WIDTH + 2 * EDGE
+
+/** Where the pinned widgets stand: in their docks, in their pane, or out of sight. */
 interface PinnedDocks {
   /** How many widgets are pinned. */
   count: number
@@ -73,10 +76,10 @@ export function usePinnedDocks(count: number, area: HTMLElement | null): PinnedD
  * docks on either side of the centred conversation, each scrolled with the wheel. The user drags a card by its bar
  * to put it in order in its dock or to move it to the other one. Docks and order are the library's, kept by the core.
  *
- * In a narrow window the docks are hidden, and the title row's toggle slides every pinned widget over the right of
- * the stage in one list, the left dock's first, on a floating plane that the same toggle or Escape closes.
- * Hidden, the widgets stay drawn and only fade: showing them again costs no new layout, and what they hold (a
- * scroll position, an unfolded card) is kept.
+ * In a narrow window the docks are hidden, and the title row's toggle shows every pinned widget in one list, the left
+ * dock's first, in a pane at the right of the screen with the side panel's look, which the same toggle or Escape
+ * closes; the screen beside it makes room. Hidden, the widgets stay drawn and only fade: showing them again costs no
+ * new layout, and what they hold (a scroll position, an unfolded card) is kept.
  */
 export function PinnedDocksView({ controls, actions, docks }: { controls: LibraryControls; actions: ViewActions; docks: PinnedDocks }) {
   const library = useFollowed(controls.library)
@@ -111,17 +114,17 @@ export function PinnedDocksView({ controls, actions, docks }: { controls: Librar
   // A card dropped somewhere new is drawn anew there, so it does not glide in from where it was hidden.
   const [landings, setLandings] = useState<Readonly<Record<string, number>>>({})
 
-  const floating = docks.shown && !docks.wide
+  const inPane = docks.shown && !docks.wide
   const { hide } = docks
   useEffect(() => {
-    if (!floating) return
+    if (!inPane) return
     const onKey = (event: KeyboardEvent) => {
       // Escape that closed a menu or a dialog over the widgets closes only that.
       if (event.key === 'Escape' && !event.defaultPrevented) hide()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [floating, hide])
+  }, [inPane, hide])
 
   const layer = useRef<HTMLDivElement>(null)
   const settle = useCallback(
@@ -176,12 +179,16 @@ export function PinnedDocksView({ controls, actions, docks }: { controls: Librar
             ? { opacity: 1, x: 0, visibility: 'visible', transition: { duration: DURATION.slow, ease: EASE } }
             : { opacity: 0, x: 24, transitionEnd: { visibility: 'hidden' }, transition: { duration: DURATION.calm, ease: EASE } }
         }
-        style={{ width: WIDTH + 2 * EDGE, right: EDGE / 2 }}
-        className="material shadow-float absolute top-1.5 bottom-1.5 z-20 flex max-w-[calc(100%-1rem)] flex-col overflow-hidden"
+        style={{ width: PINNED_PANE }}
+        className="absolute inset-y-0 right-0 z-20 flex max-w-full flex-col overflow-hidden border-line border-l bg-panel"
       >
+        <div className="caps flex h-8 shrink-0 items-center justify-between px-3 text-text-soft">
+          <span>Pinned</span>
+          <span className="tabular-nums">{all.length}</span>
+        </div>
         <motion.div
           layoutScroll
-          className="scroll-quiet min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pt-3 pb-3 [mask-image:linear-gradient(to_bottom,black_calc(100%-12px),transparent)]"
+          className="scroll-quiet min-h-0 flex-1 overflow-y-auto overflow-x-hidden border-line border-t px-3 pt-3 pb-3 [mask-image:linear-gradient(to_bottom,black_calc(100%-12px),transparent)]"
         >
           <div className="grid grid-cols-[minmax(0,1fr)] gap-5">{all.map((widget) => card(widget, undefined))}</div>
         </motion.div>

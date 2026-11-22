@@ -155,7 +155,7 @@ export function InputLine({ name, stopAll, onSay, onStop, talk, persona, pause, 
   }
 
   return (
-    <form onSubmit={send} className="material shadow-float group grid min-w-0 grid-cols-1">
+    <form onSubmit={send} className="material shadow-float group @container grid min-w-0 grid-cols-1">
       {waiting > 0 && <AttachmentChips pending={attachments.pending} onRemove={attachments.remove} />}
       <div className="flex min-h-[3.25rem] min-w-0 items-end gap-1 p-2">
         {/* The eye says which persona answers and what it is doing; pressing it hands over to the other one. */}
@@ -214,8 +214,8 @@ export function InputLine({ name, stopAll, onSay, onStop, talk, persona, pause, 
           }
           className="scroll-quiet min-h-9 min-w-0 flex-1 resize-none bg-transparent py-[0.4375rem] pl-1.5 text-[0.9375rem] text-text leading-[1.375rem] outline-none placeholder:text-text-faint focus-visible:outline-none"
         />
-        {/* The key that starts talking, while there is nothing typed to send. */}
-        {talk && talkKey && !talk.listening && empty && <span className="caps mr-1 mb-2.5 shrink-0 text-text-faint">{talkKey}</span>}
+        {/* The key that starts talking, while there is nothing typed to send and the line has room for it. */}
+        {talk && talkKey && !talk.listening && empty && <span className="caps mr-1 mb-2.5 shrink-0 text-text-faint @max-[30rem]:hidden">{talkKey}</span>}
         <input
           ref={picker}
           type="file"

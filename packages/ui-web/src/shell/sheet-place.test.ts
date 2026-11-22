@@ -3,103 +3,115 @@ import { FIRST_SHEET_PLACE, moveSheet, type SheetMove, type SheetPlace } from '.
 
 const at = (place: Partial<SheetPlace>): SheetPlace => ({ ...FIRST_SHEET_PLACE, ...place })
 
-describe('where the side sheet goes', () => {
+describe('where the side panel goes', () => {
   it.each<{ name: string; from: SheetPlace; move: SheetMove; to: SheetPlace }>([
     {
       name: 'the title row opens it on the tab it showed last',
-      from: at({ last: 'inspector' }),
+      from: at({ last: 'trace' }),
       move: { to: 'toggle' },
-      to: at({ open: 'inspector', last: 'inspector' })
+      to: at({ open: 'trace', last: 'trace' })
     },
     {
       name: 'the title row closes it, whatever it shows',
-      from: at({ open: 'threads', last: 'threads', thread: 'project' }),
+      from: at({ open: 'work', last: 'work', thread: 'project' }),
       move: { to: 'toggle' },
-      to: at({ last: 'threads', thread: 'project' })
+      to: at({ last: 'work', thread: 'project' })
     },
     {
-      name: 'the transcript key opens it on the transcript from another tab',
-      from: at({ open: 'threads', last: 'threads' }),
-      move: { to: 'toggle', tab: 'transcript' },
-      to: at({ open: 'transcript', last: 'transcript' })
+      name: "the story's key opens it on the story from another tab",
+      from: at({ open: 'work', last: 'work' }),
+      move: { to: 'toggle', tab: 'story' },
+      to: at({ open: 'story', last: 'story' })
     },
     {
-      name: 'the transcript key closes it on the transcript',
-      from: at({ open: 'transcript' }),
-      move: { to: 'toggle', tab: 'transcript' },
+      name: "the story's key closes it on the story",
+      from: at({ open: 'story' }),
+      move: { to: 'toggle', tab: 'story' },
       to: at({})
     },
     {
-      name: 'another tab keeps the thread opened in the threads',
-      from: at({ open: 'threads', last: 'threads', thread: 'project' }),
-      move: { to: 'tab', tab: 'inspector' },
-      to: at({ open: 'inspector', last: 'inspector', thread: 'project' })
+      name: 'another tab keeps the thread opened in the work',
+      from: at({ open: 'work', last: 'work', thread: 'project' }),
+      move: { to: 'tab', tab: 'trace' },
+      to: at({ open: 'trace', last: 'trace', thread: 'project' })
     },
     {
-      name: 'the threads tab chosen again goes back to the list',
-      from: at({ open: 'threads', last: 'threads', thread: 'project' }),
-      move: { to: 'tab', tab: 'threads' },
-      to: at({ open: 'threads', last: 'threads' })
+      name: 'the work tab chosen again goes back to its start',
+      from: at({ open: 'work', last: 'work', thread: 'project', away: true }),
+      move: { to: 'tab', tab: 'work' },
+      to: at({ open: 'work', last: 'work' })
     },
     {
-      name: 'the threads tab chosen again leaves the project form',
-      from: at({ open: 'threads', last: 'threads', opening: true }),
-      move: { to: 'tab', tab: 'threads' },
-      to: at({ open: 'threads', last: 'threads' })
+      name: 'the work tab chosen again leaves the project form',
+      from: at({ open: 'work', last: 'work', scope: 'everything', opening: true }),
+      move: { to: 'tab', tab: 'work' },
+      to: at({ open: 'work', last: 'work', scope: 'everything' })
     },
     {
-      name: 'the transcript tab chosen again goes back to the log',
-      from: at({ open: 'transcript', answer: 'turn-1' }),
-      move: { to: 'tab', tab: 'transcript' },
-      to: at({ open: 'transcript' })
+      name: 'the story tab chosen again goes back to the story',
+      from: at({ open: 'story', answer: 'turn-1' }),
+      move: { to: 'tab', tab: 'story' },
+      to: at({ open: 'story' })
     },
     {
       name: 'closed, it keeps where each tab stood',
-      from: at({ open: 'transcript', answer: 'turn-1', thread: 'project' }),
+      from: at({ open: 'story', answer: 'turn-1', thread: 'project' }),
       move: { to: 'close' },
       to: at({ answer: 'turn-1', thread: 'project' })
     },
     {
+      name: 'everything takes the place of the topic in front, on the tab shown, at its start',
+      from: at({ open: 'work', last: 'work', thread: 'project', answer: 'turn-1' }),
+      move: { to: 'scope', scope: 'everything' },
+      to: at({ open: 'work', last: 'work', scope: 'everything' })
+    },
+    {
       name: 'a thread at work opens it on its work, from any tab',
-      from: at({ open: 'inspector', last: 'inspector' }),
+      from: at({ open: 'trace', last: 'trace' }),
       move: { to: 'thread', thread: 'project' },
-      to: at({ open: 'threads', last: 'threads', thread: 'project', lastThread: 'project' })
+      to: at({ open: 'work', last: 'work', thread: 'project', lastThread: 'project' })
     },
     {
       name: 'a thread opens it closed, over the project form',
-      from: at({ opening: true }),
+      from: at({ scope: 'everything', opening: true }),
       move: { to: 'thread', thread: 'project' },
-      to: at({ open: 'threads', last: 'threads', thread: 'project', lastThread: 'project' })
+      to: at({ open: 'work', last: 'work', scope: 'everything', thread: 'project', lastThread: 'project' })
     },
     {
-      name: 'back from a thread shows the list, the thread marked in it',
-      from: at({ open: 'threads', last: 'threads', thread: 'project', lastThread: 'project' }),
+      name: 'back from a thread shows the work, the thread marked in it',
+      from: at({ open: 'work', last: 'work', thread: 'project', lastThread: 'project' }),
       move: { to: 'thread', thread: undefined },
-      to: at({ open: 'threads', last: 'threads', lastThread: 'project' })
+      to: at({ open: 'work', last: 'work', lastThread: 'project' })
     },
     {
-      name: 'all threads opens it on the list, from a thread kept in another tab',
-      from: at({ open: 'transcript', thread: 'project', lastThread: 'project' }),
-      move: { to: 'thread', thread: undefined },
-      to: at({ open: 'threads', last: 'threads', lastThread: 'project' })
-    },
-    {
-      name: 'a full answer opens it on the transcript',
-      from: at({ open: 'threads', last: 'threads' }),
+      name: 'a full answer opens it on the story',
+      from: at({ open: 'work', last: 'work' }),
       move: { to: 'answer', turn: 'turn-1' },
-      to: at({ open: 'transcript', last: 'transcript', answer: 'turn-1' })
+      to: at({ open: 'story', last: 'story', answer: 'turn-1' })
     },
     {
-      name: 'back from a full answer shows the log',
-      from: at({ open: 'transcript', answer: 'turn-1' }),
+      name: 'back from a full answer shows the story',
+      from: at({ open: 'story', answer: 'turn-1' }),
       move: { to: 'answer', turn: undefined },
-      to: at({ open: 'transcript' })
+      to: at({ open: 'story' })
     },
     {
-      name: 'the project form opens on the threads',
-      from: at({ open: 'transcript' }),
+      name: 'the project form opens on the work of everything',
+      from: at({ open: 'story', thread: 'project' }),
       move: { to: 'opening', opening: true },
-      to: at({ open: 'threads', last: 'threads', opening: true })
+      to: at({ open: 'work', last: 'work', scope: 'everything', opening: true })
+    },
+    {
+      name: 'the topics put away open on the work of everything',
+      from: at({ open: 'story' }),
+      move: { to: 'away', away: true },
+      to: at({ open: 'work', last: 'work', scope: 'everything', away: true })
+    },
+    {
+      name: 'back from the topics put away shows the work of everything',
+      from: at({ open: 'work', last: 'work', scope: 'everything', away: true }),
+      move: { to: 'away', away: false },
+      to: at({ open: 'work', last: 'work', scope: 'everything' })
     }
   ])('$name', ({ from, move, to }) => {
     expect(moveSheet(from, move)).toEqual(to)

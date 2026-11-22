@@ -26,7 +26,7 @@ import type { ViewActions } from '../view/context.ts'
 import { FEED } from '../view/rows.ts'
 import { type AnswerWords, type Corrections, TopicFeed } from '../view/topic-feed.tsx'
 import { TopicIndex } from '../view/topic-index.tsx'
-import { useVersions } from '../view/versions.ts'
+import type { Versions } from '../view/versions.ts'
 import { captionOf, useLastHeard } from './caption.ts'
 import { EngineIndicator } from './engine-indicator.tsx'
 import { GoArrow } from './go-arrow.tsx'
@@ -68,6 +68,10 @@ interface StageProps {
   mini?: { onFullWindow(): void } | undefined
   /** The pinned widgets stand in their docks on both sides of the screen: the answers take the room between them. */
   docked?: boolean | undefined
+  /** The version each topic shows, held by the window so the side panel shows and changes it too. */
+  versions: Versions
+  /** Told which topic is in front of the person: the one the side panel is the back of. */
+  onFacing(topic: string | undefined): void
 }
 
 /** The event an app dispatches on the window to start talking, or to send what was said: its global shortcut. */
@@ -166,7 +170,9 @@ export function Stage({
   onOpenAnswer,
   onOpenThread,
   mini,
-  docked = false
+  docked = false,
+  versions,
+  onFacing
 }: StageProps) {
   const inMini = mini !== undefined
   const channel = useFollowed(client.channel)
@@ -178,8 +184,6 @@ export function Stage({
   const streaming = topics.length > 0
   /** The cards on screen: those of each topic's latest answer. */
   const cards = useMemo(() => topics.flatMap((one) => one.answers[0]?.views ?? []), [topics])
-  const earlier = useCallback((topic: string) => client.topics.earlier(topic), [client])
-  const versions = useVersions(topics, earlier)
   const threads = useFollowed(client.threads)
   const asleep = useFollowed(client.memory.asleep)
 
@@ -273,6 +277,9 @@ export function Stage({
   const about = facing === undefined || facing === notAbout ? undefined : names.find((topic) => topic.id === facing)
   const aboutId = useRef<string | undefined>(undefined)
   aboutId.current = about?.id
+  // The side panel is the back of the topic in front, or at the very top of the one that stands first.
+  const stands = front ?? lead ?? names[0]?.id
+  useEffect(() => onFacing(stands), [stands, onFacing])
 
   // An answer that waited counts as seen once its topic has stood in front of the person for a moment.
   useEffect(() => {

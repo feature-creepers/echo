@@ -14,7 +14,7 @@ const SHORTCUTS: { name: ShortcutName; title: string; detail: string }[] = [
       'Brings the assistant forward and starts listening, wherever you are. Press it again to send. Off until you record keys: other apps lose the keys you pick, so choose ones they do not use.'
   },
   { name: 'talkInWindow', title: 'Talk in the window', detail: 'Starts listening while the window is in front. Press it again to send.' },
-  { name: 'transcript', title: 'Show the transcript', detail: 'Opens and closes the conversation, written out.' },
+  { name: 'transcript', title: 'Show the side panel', detail: 'Opens and closes it on the story: what was asked and answered.' },
   {
     name: 'mini',
     title: 'Mini window',

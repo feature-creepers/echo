@@ -9,10 +9,14 @@ export const topicCommands = {
    * Read the topics for the main screen, the one last active first, a page at a time: each with its latest answer.
    * With `before`, those last active before that moment. The first page also holds every topic in progress, however
    * long ago it was active, so what is being worked on is there from the start. `next` is the `before` of the page
-   * after this one, left out at the end. Topics put away are left out.
+   * after this one, left out at the end. Topics put away are left out; with `archived`, they are the ones read.
    */
   'topics.read': {
-    input: z.object({ limit: z.number().int().min(1).max(50).default(12), before: z.string().min(1).max(40).optional() }),
+    input: z.object({
+      limit: z.number().int().min(1).max(50).default(12),
+      before: z.string().min(1).max(40).optional(),
+      archived: z.boolean().default(false)
+    }),
     output: z.object({ topics: z.array(topicAnswersSchema), next: z.string().optional() })
   },
 

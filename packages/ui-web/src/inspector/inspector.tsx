@@ -11,7 +11,7 @@ import { IconButton } from '../primitives/icon-button.tsx'
 import { PauseGlyph, PlayGlyph } from '../primitives/icons.tsx'
 import { SearchField } from '../primitives/search-field.tsx'
 import { settle } from '../styles/motion.ts'
-import { arrivedSince, EVENT_GROUPS, type EventGroup, eventSummary, GROUP_TITLE, siftEvents } from './sift.ts'
+import { arrivedSince, EVENT_GROUPS, type EventGroup, eventSummary, GROUP_TITLE, siftEvents, type TopicTrace } from './sift.ts'
 
 const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 })
 
@@ -24,7 +24,14 @@ const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-di
  * Where an event leads beyond the raw log: a change of memory opens the Memory page, where facts are edited and
  * forgotten (docs/SPEC.md, section 13.3).
  */
-export function Inspector({ client, onOpenMemory }: { client: Client; onOpenMemory?: (() => void) | undefined }) {
+interface InspectorProps {
+  client: Client
+  /** The topic whose events alone are listed. Left out, every event. */
+  about?: TopicTrace | undefined
+  onOpenMemory?: (() => void) | undefined
+}
+
+export function Inspector({ client, about, onOpenMemory }: InspectorProps) {
   // Followed here rather than by the sheet, so the events that keep arriving draw only the tab that shows them.
   const events = useFollowed(client.events)
   const [group, setGroup] = useState<EventGroup>('all')
@@ -33,7 +40,7 @@ export function Inspector({ client, onOpenMemory }: { client: Client; onOpenMemo
   const [open, setOpen] = useState<number>()
   const list = useRef<HTMLOListElement>(null)
 
-  const shown = useMemo(() => siftEvents(held ?? events, group, query), [held, events, group, query])
+  const shown = useMemo(() => siftEvents(held ?? events, group, query, about), [held, events, group, query, about])
   const arrived = held === undefined ? 0 : arrivedSince(events, held)
   const hold = () => setHeld((was) => was ?? events)
   const follow = () => {
@@ -83,7 +90,11 @@ export function Inspector({ client, onOpenMemory }: { client: Client; onOpenMemo
         </AnimatePresence>
         {shown.length === 0 ? (
           <p className="px-4 py-4 text-[0.8125rem] text-text-soft [overflow-wrap:anywhere]">
-            {query.trim() === '' ? `No ${GROUP_TITLE[group].toLowerCase()} event yet.` : `No event holds “${query.trim()}”.`}
+            {query.trim() !== ''
+              ? `No event holds “${query.trim()}”.`
+              : about
+                ? 'No event about this topic since the window opened.'
+                : `No ${GROUP_TITLE[group].toLowerCase()} event yet.`}
           </p>
         ) : (
           // Each line is keyed by its place in the order of arrival, so a line read stays where it is as others come in.

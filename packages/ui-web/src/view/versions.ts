@@ -48,5 +48,17 @@ export function useVersions(topics: readonly TopicAnswers[], earlier: (topic: st
     },
     [earlier]
   )
-  return { stepped, step }
+  /** Show one answer of a topic, by what names it: the one a line of its story stands for. */
+  const show = useCallback((id: string, answer: string) => {
+    const topic = current.current.topics.find((one) => one.topic.id === id)
+    const latest = topic?.answers[0]
+    const to = topic?.answers.findIndex((one) => one.id === answer) ?? -1
+    if (!topic || !latest || to < 0) return
+    const from = shownOf(topic, current.current.stepped[id]).at
+    setStepped((was) => ({ ...was, [id]: { latest: latest.id, shown: answer, way: to >= from ? 1 : -1 } }))
+  }, [])
+  return { stepped, step, show }
 }
+
+/** The versions the topics show, as the main screen and the side panel share them. */
+export type Versions = ReturnType<typeof useVersions>

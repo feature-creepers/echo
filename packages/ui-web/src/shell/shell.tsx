@@ -15,7 +15,7 @@ import { QuickLook } from '../files/quick-look.tsx'
 import { type HubPage, HubScreen } from '../hub/hub-screen.tsx'
 import { HUB_KEEPS, STAGE_KEEPS } from '../hub/room.ts'
 import { LibraryContext, type LibraryControls } from '../library/library-context.ts'
-import { PinnedDocksView, usePinnedDocks } from '../library/pinned-docks.tsx'
+import { PINNED_PANE, PinnedDocksView, usePinnedDocks } from '../library/pinned-docks.tsx'
 import { PlayerProvider, usePlayer } from '../media/player-provider.tsx'
 import { Onboarding } from '../onboarding/onboarding.tsx'
 import { Eye, EyeAccentContext } from '../presence/eye.tsx'
@@ -26,6 +26,7 @@ import { IconButton } from '../primitives/icon-button.tsx'
 import { LibraryGlyph, SheetGlyph, WidgetsGlyph } from '../primitives/icons.tsx'
 import { accentStyle } from '../styles/accent.ts'
 import { DURATION, EASE } from '../styles/motion.ts'
+import { useVersions } from '../view/versions.ts'
 import { FIRST_SHEET_PLACE, moveSheet, type SheetTab } from './sheet-place.ts'
 import { previewSheetWidth } from './sheet-width.ts'
 import { SideSheet } from './side-sheet.tsx'
@@ -174,6 +175,12 @@ function Connected({ productName, client, engine, mini }: { productName: string;
     [client, player]
   )
 
+  // What the main screen and the side panel share: the version each topic shows, and the topic in front.
+  const topics = useFollowed(client.topics)
+  const earlier = useCallback((topic: string) => client.topics.earlier(topic), [client])
+  const versions = useVersions(topics.topics, earlier)
+  const [facing, setFacing] = useState<string>()
+
   // The pinned widgets: docked on both sides of the conversation in a wide window, behind a toggle in a narrow one.
   const library = useFollowed(client.library)
   // The docks measure the room the screen has beside the side sheet, however it changes.
@@ -202,10 +209,10 @@ function Connected({ productName, client, engine, mini }: { productName: string;
     const onKey = (event: KeyboardEvent) => {
       if (transcriptKey === '' || !matchesShortcut(keyPress(event), transcriptKey, device.mac)) return
       event.preventDefault()
-      // Mini has no room for the sheet: the window goes back to the full one, and shows the transcript there.
-      if (!leaveMini) return toggleSheet('transcript')
+      // Mini has no room for the panel: the window goes back to the full one, and shows the story there.
+      if (!leaveMini) return toggleSheet('story')
       leaveMini(false)
-      moveSheetTo({ to: 'tab', tab: 'transcript' })
+      moveSheetTo({ to: 'tab', tab: 'story' })
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -277,6 +284,8 @@ function Connected({ productName, client, engine, mini }: { productName: string;
   // Three buttons at most, in the window's corner: while any is pinned, the pinned widgets; then the library and
   // settings, and the sidebar. Pressed from the hub, the widgets' button goes back to the main screen to show them.
   const widgetsShown = showing.is === 'main' && docks.shown
+  // In a narrow window the pinned widgets and the side panel stand at the same place: one at a time.
+  const pinnedPane = widgetsShown && !docks.wide && !mini.on
   const cornerActions = (
     <>
       <AnimatePresence initial={false}>
@@ -293,6 +302,7 @@ function Connected({ productName, client, engine, mini }: { productName: string;
               active={widgetsShown}
               className={FLAT}
               onClick={() => {
+                if (!docks.wide && !widgetsShown) moveSheetTo({ to: 'close' })
                 if (showing.is === 'main') return docks.toggle()
                 toMain()
                 docks.show()
@@ -309,7 +319,10 @@ function Connected({ productName, client, engine, mini }: { productName: string;
       <IconButton
         label={sheet ? 'Hide the sidebar' : transcriptKey ? `Show the sidebar (${describeShortcut(transcriptKey, device.mac)})` : 'Show the sidebar'}
         active={sheet !== undefined}
-        onClick={() => toggleSheet()}
+        onClick={() => {
+          if (pinnedPane && sheet === undefined) docks.hide()
+          toggleSheet()
+        }}
         className={FLAT}
       >
         <SheetGlyph />
@@ -337,6 +350,9 @@ function Connected({ productName, client, engine, mini }: { productName: string;
                 place={sheetPlace}
                 tab={sheet}
                 onMove={moveSheetTo}
+                facing={showing.is === 'main' ? facing : undefined}
+                versions={versions}
+                corner={docks.count > 0 ? 3 : 2}
                 onOpenMemory={() => openHub('memory')}
                 resize={{
                   width: sheetWidth,
@@ -383,8 +399,8 @@ function Connected({ productName, client, engine, mini }: { productName: string;
                   />
                 ) : (
                   // The composer stays centred in the window whatever is pinned; the answers take the room between
-                  // the docks while they stand beside it.
-                  <div className="relative h-full">
+                  // the docks while they stand beside it, and the whole screen makes room for their pane.
+                  <div className="relative h-full" style={pinnedPane ? { paddingRight: PINNED_PANE } : undefined}>
                     <Stage
                       client={client}
                       personas={personas}
@@ -398,6 +414,8 @@ function Connected({ productName, client, engine, mini }: { productName: string;
                       onOpenThread={openThread}
                       mini={mini.on ? { onFullWindow: () => mini.set(false) } : undefined}
                       docked={docks.wide && docks.shown}
+                      versions={versions}
+                      onFacing={setFacing}
                     />
                   </div>
                 )}

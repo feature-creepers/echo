@@ -37,9 +37,11 @@ interface ThreadViewProps {
   /** Every thread, to show the one this thread is part of and those it handed work to. */
   threads: readonly Thread[]
   personas: readonly Persona[]
-  onBack(): void
-  /** Open another thread's work in its place. */
-  onOpenThread(thread: string): void
+  /**
+   * The way back, and to the threads around it: its header then shows, with what the thread is and where it stands.
+   * Left out, its work alone, for a place that says itself which thread it shows.
+   */
+  nav?: { onBack(): void; onOpenThread(thread: string): void } | undefined
 }
 
 /**
@@ -49,7 +51,7 @@ interface ThreadViewProps {
  * header says where it stands, stops it while it works, and leads to the thread it is part of and to those it
  * handed work to.
  */
-export function ThreadView({ client, thread, threads, personas, onBack, onOpenThread }: ThreadViewProps) {
+export function ThreadView({ client, thread, threads, personas, nav }: ThreadViewProps) {
   const scroll = useFollowLatest()
   const { pages, problem, earlier, readEarlier } = useThreadPages(client, thread, scroll.prepend)
 
@@ -76,14 +78,16 @@ export function ThreadView({ client, thread, threads, personas, onBack, onOpenTh
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <ThreadHeader
-        header={header}
-        threads={threads}
-        onBack={onBack}
-        onOpenThread={onOpenThread}
-        onStop={() => void client.threads.stop(thread).catch(() => undefined)}
-        onFocus={() => void client.threads.focus(thread).catch(() => undefined)}
-      />
+      {nav && (
+        <ThreadHeader
+          header={header}
+          threads={threads}
+          onBack={nav.onBack}
+          onOpenThread={nav.onOpenThread}
+          onStop={() => void client.threads.stop(thread).catch(() => undefined)}
+          onFocus={() => void client.threads.focus(thread).catch(() => undefined)}
+        />
+      )}
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div ref={scroll.ref} className="scroll-quiet min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pt-1 pb-4">
           <div>

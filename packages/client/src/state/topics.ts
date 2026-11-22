@@ -28,6 +28,8 @@ export interface TopicsState extends Followed<TopicsShown> {
   rename(topic: string, title: string): Promise<void>
   /** Put a topic away from the main screen, or bring it back. */
   archive(topic: string, archived: boolean): Promise<void>
+  /** The topics put away, the one last active first: read when asked for, as they are no part of what is shown. */
+  away(): Promise<readonly TopicAnswers[]>
   /** Move an answer to another topic, or to a new one of the title given. */
   move(answer: string, to: { topic: string } | { title: string }): Promise<void>
   /** Merge a topic into another. */
@@ -208,6 +210,9 @@ export function followTopics(session: Session): TopicsState {
     },
     async move(answer, to) {
       await session.run('topic.move', { answer, ...to })
+    },
+    async away() {
+      return (await session.run('topics.read', { archived: true, limit: 50 })).topics
     },
     async merge(topic, into) {
       await session.run('topic.merge', { topic, into })

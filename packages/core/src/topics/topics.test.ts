@@ -135,6 +135,7 @@ describe('what the person corrects', () => {
     expect(topics.rename(topic, 'Taxes 2026')).toBe(true)
     expect(topics.archive(topic, true)).toBe(true)
     expect(titles()).toEqual([])
+    expect(topics.read({ limit: 5, archived: true }).topics.map((one) => one.topic.title)).toEqual(['Taxes 2026'])
     expect(again().topics.get(topic)).toMatchObject({ title: 'Taxes 2026', archived: true })
 
     ask('and next year?', taxes.id)
